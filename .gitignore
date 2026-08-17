@@ -1,0 +1,77 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+var/
+*.db
+
+node_modules/
+.next/
+
+.dart_tool/
+build/
+**/ephemeral/
+
+.idea/
+*.iml
+.DS_Store
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node / Next.js
+node_modules/
+.next/
+
+# Runtime company data
+data/companies/
+uploads/
+
+# ML binary artifacts
+*.joblib
+*.pkl
+*.pickle
+*.h5
+*.keras
+*.onnx
+*.pt
+*.pth
+
+# Logs and temporary development outputs
+*.log
+phase23_final_run.txt
+phase23_final_run2.txt
+phase23_new_tests.txt
+phase23_warnings_default.txt
+phase23_warnings_full.txt
+tmp_e2e_avenqo/
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# OS / IDE
+Thumbs.db
+.vscode/

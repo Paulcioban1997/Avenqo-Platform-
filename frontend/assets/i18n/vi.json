@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Đăng nhập",
+    "tryFree": "Dùng thử miễn phí",
+    "watchDemo": "Xem demo",
+    "noCreditCard": "Không cần thẻ tín dụng",
+    "guidedSetup": "Thiết lập có hướng dẫn",
+    "isolatedData": "Dữ liệu tách biệt"
+  },
+  "nav": {
+    "features": "Tính năng",
+    "modules": "Mô-đun",
+    "pricing": "Bảng giá",
+    "enterprise": "Doanh nghiệp",
+    "docs": "Tài liệu"
+  },
+  "hero": {
+    "eyebrow": "Nền tảng AI tất cả trong một cho doanh nghiệp",
+    "titleLine1": "Toàn bộ doanh nghiệp của bạn.",
+    "titleLine2": "Một trí tuệ duy nhất.",
+    "subtitle": "Avenqo hợp nhất bán hàng, quan hệ khách hàng, tài chính, tài liệu và vận hành trong một nền tảng AI mô-đun duy nhất, được xây dựng cho sự phát triển của doanh nghiệp vừa và nhỏ cũng như các tập đoàn lớn.",
+    "trustLabel": "Một nền tảng để",
+    "trustSell": "Bán hàng",
+    "trustUnderstand": "Thấu hiểu",
+    "trustAutomate": "Tự động hóa",
+    "trustDecide": "Quyết định"
+  },
+  "dashboard": {
+    "greeting": "Xin chào Paul",
+    "subtitle": "Hoạt động của bạn hôm nay",
+    "askAvenqo": "Hỏi Avenqo",
+    "salesLabel": "Doanh số tháng này",
+    "activeClientsLabel": "Khách hàng đang hoạt động",
+    "opportunitiesLabel": "Cơ hội",
+    "opportunitiesHint": "Cần ưu tiên",
+    "performanceLabel": "Hiệu suất kinh doanh",
+    "performancePeriod": "6 tháng",
+    "recommendationLabel": "Đề xuất",
+    "recommendationTitle": "Kích hoạt lại 42 khách hàng có giá trị.",
+    "recommendationText": "Một chiến dịch nhắm mục tiêu có thể tạo ra tới 18.400 $ trong tháng này.",
+    "recommendationAction": "Xem hành động",
+    "quickModulesLabel": "Mô-đun của bạn",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Trí tuệ hữu ích",
+    "title": "Từ câu hỏi đến hành động, không phức tạp.",
+    "subtitle": "Avenqo biến hoạt động của bạn thành các quyết định rõ ràng, tại một nơi duy nhất.",
+    "assistantLabel": "Trợ lý Avenqo",
+    "assistantTitle": "Trò chuyện với doanh nghiệp của bạn.",
+    "assistantText": "Đặt câu hỏi như bạn hỏi một đồng nghiệp. Avenqo thu thập ngữ cảnh và trả lời trực tiếp.",
+    "demoQuestion": "Tại sao doanh số của tôi giảm trong tháng này?",
+    "demoAnswer": "Sự sụt giảm chủ yếu đến từ phân khúc Nhà, giảm 14%. Tôi khuyên nên theo dõi có mục tiêu với 126 khách hàng.",
+    "demoAction1": "Chuẩn bị chiến dịch",
+    "demoAction2": "Xem phân tích",
+    "actionsTitle": "Hành động, không phải bảng điều khiển.",
+    "actionsText": "Mỗi đề xuất cho biết cần làm gì, tại sao và kết quả mong đợi là gì.",
+    "actionsPriority": "Ưu tiên cao",
+    "actionsLine": "Kích hoạt lại 42 tài khoản",
+    "securityTitle": "Doanh nghiệp của bạn vẫn là của bạn.",
+    "securityText": "Không gian làm việc tách biệt, quyền truy cập được kiểm soát và kiến trúc được thiết kế để mở rộng.",
+    "securityItem1": "Truy cập dựa trên vai trò",
+    "securityItem2": "Khả năng truy xuất đầy đủ",
+    "securityItem3": "Lưu trữ có thể mở rộng"
+  },
+  "modulesSection": {
+    "kicker": "Bộ Avenqo",
+    "title": "Một mô-đun cho mỗi ưu tiên kinh doanh.",
+    "subtitle": "Xây dựng môi trường tùy chỉnh của bạn. Tất cả các mô-đun đều chia sẻ cùng một trải nghiệm và hoạt động cùng nhau.",
+    "discover": "Khám phá",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Quản lý bán hàng, sản phẩm và lòng trung thành từ một góc nhìn duy nhất."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Ưu tiên các mối quan hệ, cơ hội và các hành động tốt nhất tiếp theo."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Đẩy nhanh việc theo dõi tài chính và khóa sổ kế toán."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Biến các tài liệu đến thành các quy trình có cấu trúc."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Hiểu các xu hướng và sai lệch thực sự quan trọng."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Điều phối các chiến dịch phù hợp hơn và có thể đo lường được."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Cung cấp câu trả lời đáng tin cậy dựa trên kiến thức của công ty."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Tự động hóa các tương tác giọng nói mà không mất ngữ cảnh."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Kết nối các nhóm và tự động hóa các tác vụ lặp đi lặp lại."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Sản xuất và sắp xếp nội dung của bạn từ một không gian làm việc duy nhất."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Giảm thời gian phản hồi và cải thiện mọi giải pháp."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Triển khai trợ lý hội thoại cho khách hàng của bạn."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Đơn giản ngay từ đầu",
+    "title": "Hoạt động trong bốn bước.",
+    "ctaLabel": "Sẵn sàng bắt đầu?",
+    "ctaButton": "Tạo không gian làm việc của tôi",
+    "items": [
+      {
+        "number": "01",
+        "title": "Tạo không gian làm việc của bạn",
+        "text": "Thiết lập công ty của bạn trong vài phút."
+      },
+      {
+        "number": "02",
+        "title": "Chọn mô-đun của bạn",
+        "text": "Chỉ kích hoạt các giải pháp bạn cần."
+      },
+      {
+        "number": "03",
+        "title": "Kết nối công cụ của bạn",
+        "text": "Liên kết bán hàng, CRM hoặc tài liệu."
+      },
+      {
+        "number": "04",
+        "title": "Để Avenqo hành động",
+        "text": "Nhận câu trả lời và hành động sẵn sàng để thực hiện."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Cho toàn bộ doanh nghiệp",
+    "title": "Một tầm nhìn chung. Các nhóm nhanh hơn.",
+    "subtitle": "Ban lãnh đạo, bán hàng, tài chính và vận hành cuối cùng cũng chia sẻ cùng một bức tranh hoạt động.",
+    "direction": {
+      "title": "Ban lãnh đạo",
+      "text": "Theo dõi các ưu tiên và kết quả theo thời gian thực."
+    },
+    "finance": {
+      "title": "Tài chính",
+      "text": "Dự đoán sai lệch và đẩy nhanh báo cáo."
+    },
+    "commerce": {
+      "title": "Bán hàng",
+      "text": "Xác định khách hàng và sản phẩm có tiềm năng lớn nhất."
+    },
+    "operations": {
+      "title": "Vận hành",
+      "text": "Tự động hóa các tác vụ làm chậm nhóm của bạn."
+    }
+  },
+  "why": {
+    "kicker": "Tại sao chọn Avenqo",
+    "title": "Được xây dựng để phát triển cùng bạn.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Mô-đun theo bản chất",
+        "text": "Bắt đầu với một ưu tiên và mở rộng nền tảng mà không cần bắt đầu lại từ đầu."
+      },
+      {
+        "number": "02",
+        "title": "Một trải nghiệm thống nhất",
+        "text": "Một lần đăng nhập, một giao diện, một trợ lý dùng chung cho tất cả các mô-đun."
+      },
+      {
+        "number": "03",
+        "title": "Hỗ trợ từ con người",
+        "text": "PMC Solutions AI đồng hành cùng bạn từ triển khai đến áp dụng hoàn toàn."
+      },
+      {
+        "number": "04",
+        "title": "Sẵn sàng cho doanh nghiệp lớn",
+        "text": "Quản lý truy cập, không gian làm việc tách biệt và cơ sở hạ tầng có thể mở rộng."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Giá cả minh bạch",
+    "title": "Bắt đầu ngay. Phát triển theo tốc độ của bạn.",
+    "subtitle": "Mỗi gói đều bao gồm nền tảng, trợ lý Avenqo và một không gian làm việc an toàn.",
+    "popular": "Phổ biến nhất",
+    "priceLabel": "Theo yêu cầu",
+    "plans": [
+      {
+        "tier": "Cơ bản",
+        "title": "Để bắt đầu",
+        "items": [
+          "1 mô-đun Avenqo",
+          "Tối đa 5 người dùng",
+          "Trợ lý tích hợp sẵn",
+          "Hỗ trợ tiêu chuẩn"
+        ],
+        "action": "Nói chuyện với cố vấn"
+      },
+      {
+        "tier": "Chuyên nghiệp",
+        "title": "Để tăng tốc",
+        "items": [
+          "Tối đa 5 mô-đun",
+          "Tối đa 25 người dùng",
+          "Tự động hóa nâng cao",
+          "Hỗ trợ ưu tiên"
+        ],
+        "action": "Dùng thử miễn phí"
+      },
+      {
+        "tier": "Doanh nghiệp",
+        "title": "Để điều phối",
+        "items": [
+          "Mô-đun không giới hạn",
+          "Người dùng theo yêu cầu",
+          "Tích hợp tùy chỉnh",
+          "Quản trị chuyên biệt"
+        ],
+        "action": "Liên hệ đội ngũ bán hàng"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Câu hỏi thường gặp",
+    "title": "Tất cả những gì bạn cần biết.",
+    "subtitle": "Câu hỏi khác? Đội ngũ của chúng tôi sẽ trả lời trực tiếp cho bạn.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Avenqo có thay thế các công cụ hiện tại của tôi không?",
+        "answer": "Avenqo kết nối với môi trường của bạn và tập hợp các quyết định, đề xuất và tự động hóa thành một trải nghiệm duy nhất."
+      },
+      {
+        "question": "Tôi có thể bắt đầu chỉ với một mô-đun không?",
+        "answer": "Có. Bắt đầu với ưu tiên chính của bạn, sau đó thêm các tính năng theo tốc độ của doanh nghiệp bạn."
+      },
+      {
+        "question": "Dữ liệu của tôi có được tách biệt không?",
+        "answer": "Có. Mỗi công ty có không gian làm việc riêng, quyền truy cập riêng và dữ liệu được tách biệt nghiêm ngặt."
+      },
+      {
+        "question": "Avenqo có phù hợp với doanh nghiệp vừa và nhỏ không?",
+        "answer": "Có. Các gói của chúng tôi hỗ trợ cả một nhóm đang phát triển và một tổ chức đa chi nhánh."
+      },
+      {
+        "question": "Mất bao lâu để bắt đầu?",
+        "answer": "Không gian làm việc của bạn được tạo ngay lập tức. Thời gian kết nối sau đó phụ thuộc vào các công cụ đã chọn."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Bước tiếp theo của bạn",
+    "title": "Điều hành doanh nghiệp của bạn theo cách khác.",
+    "tryFree": "Dùng thử miễn phí",
+    "scheduleDemo": "Lên lịch demo"
+  },
+  "footer": {
+    "tagline": "Một nền tảng. Tất cả các giải pháp AI của bạn.",
+    "platformTitle": "Nền tảng",
+    "platformLinks": [
+      "Tính năng",
+      "Mô-đun",
+      "Bảng giá",
+      "Cách thức hoạt động"
+    ],
+    "companyTitle": "Công ty",
+    "companyLinks": [
+      "Về chúng tôi",
+      "Liên hệ",
+      "Bảo mật",
+      "Đối tác"
+    ],
+    "resourcesTitle": "Tài nguyên",
+    "resourcesLinks": [
+      "Tài liệu",
+      "Câu hỏi thường gặp",
+      "Quyền riêng tư",
+      "Điều khoản"
+    ],
+    "copyright": "© 2026 Avenqo. Một nền tảng của PMC Solutions AI."
+  }
+}

@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Shiga",
+    "tryFree": "Gwada kyauta",
+    "watchDemo": "Duba nunin",
+    "noCreditCard": "Ba a bukatar katin kiredit",
+    "guidedSetup": "Saitin da ake jagoranta",
+    "isolatedData": "Bayanan da aka keɓe"
+  },
+  "nav": {
+    "features": "Fasaloli",
+    "modules": "Modules",
+    "pricing": "Farashi",
+    "enterprise": "Kamfani",
+    "docs": "Takardu"
+  },
+  "hero": {
+    "eyebrow": "Dandalin AI mai komai-a-daya don kasuwanci",
+    "titleLine1": "Duk kasuwancinku.",
+    "titleLine2": "Basira ɗaya.",
+    "subtitle": "Avenqo yana haɗa siyarwa, huldar abokan ciniki, kuɗi, takardu, da ayyuka a cikin dandali ɗaya na AI mai sassa, wanda aka gina don ci gaban ƙananan da matsakaitan kamfanoni da manyan kamfanoni.",
+    "trustLabel": "Dandali ɗaya don",
+    "trustSell": "Sayarwa",
+    "trustUnderstand": "Fahimta",
+    "trustAutomate": "Sarrafa kansa",
+    "trustDecide": "Yanke shawara"
+  },
+  "dashboard": {
+    "greeting": "Sannu Paul",
+    "subtitle": "Ayyukanku a yau",
+    "askAvenqo": "Tambayi Avenqo",
+    "salesLabel": "Siyarwa na wata",
+    "activeClientsLabel": "Abokan ciniki masu aiki",
+    "opportunitiesLabel": "Damarmaki",
+    "opportunitiesHint": "Don ba da fifiko",
+    "performanceLabel": "Aikin kasuwanci",
+    "performancePeriod": "Watanni 6",
+    "recommendationLabel": "Shawara",
+    "recommendationTitle": "Sake kunna abokan ciniki 42 masu daraja.",
+    "recommendationText": "Yaƙin neman zaɓe da aka yi niyya na iya samar da har zuwa $18,400 a wannan watan.",
+    "recommendationAction": "Duba aikin",
+    "quickModulesLabel": "Modules ɗinku",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Basira mai amfani",
+    "title": "Daga tambaya zuwa aiki, ba tare da rikitarwa ba.",
+    "subtitle": "Avenqo yana mai da ayyukanku zuwa shawarwari bayyanannu, a wuri ɗaya.",
+    "assistantLabel": "Mataimakin Avenqo",
+    "assistantTitle": "Yi magana da kasuwancinku.",
+    "assistantText": "Yi tambaya kamar yadda za ku yi wa abokin aiki. Avenqo yana tattara mahallin kuma yana amsawa kai tsaye.",
+    "demoQuestion": "Me yasa siyarwar ta ke raguwa a wannan watan?",
+    "demoAnswer": "Raguwar ta fito ne musamman daga sashin Gida, wanda ya ragu da 14%. Ina ba da shawarar bin diddigi da aka yi niyya tare da abokan ciniki 126.",
+    "demoAction1": "Shirya yaƙin neman zaɓe",
+    "demoAction2": "Duba bincike",
+    "actionsTitle": "Ayyuka, ba dashboards ba.",
+    "actionsText": "Kowace shawara tana nuna abin da za a yi, dalili, da sakamakon da ake tsammani.",
+    "actionsPriority": "Babban fifiko",
+    "actionsLine": "Sake kunna asusu 42",
+    "securityTitle": "Kasuwancinku ya rage naku.",
+    "securityText": "Wuraren aiki da aka keɓe, shiga da aka sarrafa, da tsari da aka tsara don girma.",
+    "securityItem1": "Shiga bisa matsayi",
+    "securityItem2": "Cikakken bin diddigi",
+    "securityItem3": "Karɓar bakuncin da za a iya faɗaɗawa"
+  },
+  "modulesSection": {
+    "kicker": "Rukunin Avenqo",
+    "title": "Module don kowane fifikon kasuwanci.",
+    "subtitle": "Gina yanayin ku na musamman. Duk modules suna raba irin wannan gogewa kuma suna aiki tare.",
+    "discover": "Gano",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Sarrafa siyarwa, kayayyaki, da aminci daga wuri ɗaya."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Ba da fifiko ga alaƙa, damarmaki, da mafi kyawun matakan gaba."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Hanzarta lura da kuɗi da rufe asusu."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Mayar da takardun da ke shigowa zuwa hanyoyin da aka tsara."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Fahimci yanayin da bambance-bambancen da suke da mahimmanci."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Shirya yaƙe-yaƙe masu dacewa da za a iya aunawa."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Bayar da amsoshi masu dogaro dangane da ilimin kamfani."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Sarrafa mu'amalar murya ta atomatik ba tare da rasa mahallin ba."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Haɗa ƙungiyoyi da sarrafa ayyuka masu maimaitawa ta atomatik."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Kirkiro da tsara abubuwan ku daga wuri ɗaya na aiki."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Rage lokutan amsawa da inganta kowace mafita."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Tura mataimakin tattaunawa don abokan cinikinku."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Mai sauƙi tun daga farko",
+    "title": "Aiki a matakai huɗu.",
+    "ctaLabel": "A shirye don farawa?",
+    "ctaButton": "Ƙirƙiri wurin aikina",
+    "items": [
+      {
+        "number": "01",
+        "title": "Ƙirƙiri wurin aikinku",
+        "text": "Saita kamfaninku cikin mintuna kaɗan."
+      },
+      {
+        "number": "02",
+        "title": "Zaɓi modules ɗinku",
+        "text": "Kunna kawai mafita da kuke bukata."
+      },
+      {
+        "number": "03",
+        "title": "Haɗa kayan aikinku",
+        "text": "Haɗa siyarwa, CRM, ko takardu."
+      },
+      {
+        "number": "04",
+        "title": "Bar Avenqo yayi aiki",
+        "text": "Sami amsoshi da ayyuka a shirye don aiwatarwa."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Don duk kasuwanci",
+    "title": "Hangen nesa mai raba. Ƙungiyoyi masu sauri.",
+    "subtitle": "Gudanarwa, siyarwa, kuɗi, da ayyuka a ƙarshe suna raba irin wannan hoto na ayyuka.",
+    "direction": {
+      "title": "Gudanarwa",
+      "text": "Bibiyi fifiko da sakamako a lokaci na ainihi."
+    },
+    "finance": {
+      "title": "Kuɗi",
+      "text": "Yi hasashen bambance-bambance da hanzarta rahoto."
+    },
+    "commerce": {
+      "title": "Siyarwa",
+      "text": "Gano abokan ciniki da kayayyaki masu mafi girman damar."
+    },
+    "operations": {
+      "title": "Ayyuka",
+      "text": "Sarrafa ayyukan da ke rage saurin ƙungiyoyin ku ta atomatik."
+    }
+  },
+  "why": {
+    "kicker": "Me yasa Avenqo",
+    "title": "An gina shi don girma tare da ku.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Mai sassa ta yanayi",
+        "text": "Fara da fifiko ɗaya kuma faɗaɗa dandalin ba tare da sake farawa ba."
+      },
+      {
+        "number": "02",
+        "title": "Gogewa ɗaya haɗaɗɗiya",
+        "text": "Shiga ɗaya, mu'amala ɗaya, mataimaki ɗaya da aka raba tsakanin duk modules."
+      },
+      {
+        "number": "03",
+        "title": "Tallafin ɗan adam",
+        "text": "PMC Solutions AI yana rakiyar ku daga aiwatarwa zuwa cikakken karɓuwa."
+      },
+      {
+        "number": "04",
+        "title": "A shirye don manyan kamfanoni",
+        "text": "Gudanar da shiga, wuraren aiki da aka keɓe, da kayan aiki masu faɗaɗawa."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Farashi mai bayyana",
+    "title": "Fara yanzu. Yi girma a saurin ku.",
+    "subtitle": "Kowace shirin ya haɗa da dandali, mataimakin Avenqo, da amintaccen wurin aiki.",
+    "popular": "Mafi shahara",
+    "priceLabel": "Bisa buƙata",
+    "plans": [
+      {
+        "tier": "Na asali",
+        "title": "Don farawa",
+        "items": [
+          "Module Avenqo 1",
+          "Har zuwa masu amfani 5",
+          "Mataimaki da aka gina a ciki",
+          "Tallafi na yau da kullun"
+        ],
+        "action": "Yi magana da mai ba da shawara"
+      },
+      {
+        "tier": "Ƙwararre",
+        "title": "Don hanzarta",
+        "items": [
+          "Har zuwa modules 5",
+          "Har zuwa masu amfani 25",
+          "Atomatik na ci gaba",
+          "Tallafi mai fifiko"
+        ],
+        "action": "Gwada kyauta"
+      },
+      {
+        "tier": "Kamfani",
+        "title": "Don daidaitawa",
+        "items": [
+          "Modules marasa iyaka",
+          "Masu amfani bisa buƙata",
+          "Haɗin gwiwa na musamman",
+          "Gudanarwa na musamman"
+        ],
+        "action": "Tuntuɓi tawagar siyarwa"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Tambayoyin da ake yawan yi",
+    "title": "Duk abin da kuke bukatar sani.",
+    "subtitle": "Wata tambaya? Ƙungiyar mu za ta amsa muku kai tsaye.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Shin Avenqo yana maye gurbin kayan aikina na yanzu?",
+        "answer": "Avenqo yana haɗawa da yanayin ku kuma yana tattara shawarwari, shawarwarin, da atomatik a cikin gogewa ɗaya."
+      },
+      {
+        "question": "Zan iya farawa da module ɗaya kawai?",
+        "answer": "Eh. Fara da babban fifikon ku, sannan ƙara ikon a saurin kasuwancin ku."
+      },
+      {
+        "question": "Shin bayanaina an keɓe su?",
+        "answer": "Eh. Kowane kamfani yana da nasa wurin aiki, nasa shiga, da bayanan da aka raba sosai."
+      },
+      {
+        "question": "Shin Avenqo ya dace da ƙananan da matsakaitan kamfanoni?",
+        "answer": "Eh. Tsare-tsaren mu suna goyan bayan duka ƙungiya mai girma da kungiya mai reshe da yawa."
+      },
+      {
+        "question": "Nawa lokaci ake bukata don farawa?",
+        "answer": "Ana ƙirƙiri wurin aikinku nan take. Lokacin haɗi ya dogara da kayan aikin da aka zaɓa."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Matakinku na gaba",
+    "title": "Gudanar da kasuwancinku daban.",
+    "tryFree": "Gwada kyauta",
+    "scheduleDemo": "Tsara nunin"
+  },
+  "footer": {
+    "tagline": "Dandali ɗaya. Duk mafitattun AI ɗinku.",
+    "platformTitle": "Dandali",
+    "platformLinks": [
+      "Fasaloli",
+      "Modules",
+      "Farashi",
+      "Yadda yake aiki"
+    ],
+    "companyTitle": "Kamfani",
+    "companyLinks": [
+      "Game da mu",
+      "Tuntuɓe mu",
+      "Tsaro",
+      "Abokan hulɗa"
+    ],
+    "resourcesTitle": "Albarkatu",
+    "resourcesLinks": [
+      "Takardu",
+      "Tambayoyi",
+      "Sirri",
+      "Sharuɗɗa"
+    ],
+    "copyright": "© 2026 Avenqo. Dandalin PMC Solutions AI."
+  }
+}

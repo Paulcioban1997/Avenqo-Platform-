@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Přihlásit se",
+    "tryFree": "Vyzkoušet zdarma",
+    "watchDemo": "Zhlédnout demo",
+    "noCreditCard": "Bez kreditní karty",
+    "guidedSetup": "Asistované nastavení",
+    "isolatedData": "Izolovaná data"
+  },
+  "nav": {
+    "features": "Funkce",
+    "modules": "Moduly",
+    "pricing": "Ceník",
+    "enterprise": "Firma",
+    "docs": "Dokumentace"
+  },
+  "hero": {
+    "eyebrow": "All-in-one AI platforma pro firmy",
+    "titleLine1": "Celá vaše firma.",
+    "titleLine2": "Jedna inteligence.",
+    "subtitle": "Avenqo sjednocuje prodej, vztahy se zákazníky, finance, dokumenty a provoz do jedné modulární AI platformy, postavené pro růst malých a středních podniků i velkých firem.",
+    "trustLabel": "Jedna platforma pro",
+    "trustSell": "Prodej",
+    "trustUnderstand": "Porozumění",
+    "trustAutomate": "Automatizaci",
+    "trustDecide": "Rozhodování"
+  },
+  "dashboard": {
+    "greeting": "Ahoj Paule",
+    "subtitle": "Vaše aktivita dnes",
+    "askAvenqo": "Zeptejte se Avenqo",
+    "salesLabel": "Tržby za měsíc",
+    "activeClientsLabel": "Aktivní zákazníci",
+    "opportunitiesLabel": "Příležitosti",
+    "opportunitiesHint": "K prioritizaci",
+    "performanceLabel": "Obchodní výkonnost",
+    "performancePeriod": "6 měsíců",
+    "recommendationLabel": "Doporučení",
+    "recommendationTitle": "Reaktivujte 42 hodnotných zákazníků.",
+    "recommendationText": "Cílená kampaň může tento měsíc přinést až 18 400 $.",
+    "recommendationAction": "Zobrazit akci",
+    "quickModulesLabel": "Vaše moduly",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Užitečná inteligence",
+    "title": "Od otázky k akci, bez složitosti.",
+    "subtitle": "Avenqo mění vaši činnost v jasná rozhodnutí, na jednom místě.",
+    "assistantLabel": "Asistent Avenqo",
+    "assistantTitle": "Mluvte se svou firmou.",
+    "assistantText": "Zeptejte se, jako byste se ptali kolegy. Avenqo shromáždí kontext a odpoví přímo.",
+    "demoQuestion": "Proč mi tento měsíc klesají tržby?",
+    "demoAnswer": "Pokles pochází především ze segmentu Domácnost, který klesl o 14 %. Doporučuji cílený kontakt se 126 zákazníky.",
+    "demoAction1": "Připravit kampaň",
+    "demoAction2": "Zobrazit analýzu",
+    "actionsTitle": "Akce, ne dashboardy.",
+    "actionsText": "Každé doporučení ukazuje, co dělat, proč a jaký výsledek očekávat.",
+    "actionsPriority": "Vysoká priorita",
+    "actionsLine": "Reaktivovat 42 účtů",
+    "securityTitle": "Vaše firma zůstává vaše.",
+    "securityText": "Izolované pracovní prostory, řízený přístup a architektura navržená pro škálování.",
+    "securityItem1": "Přístup na základě rolí",
+    "securityItem2": "Plná sledovatelnost",
+    "securityItem3": "Škálovatelný hosting"
+  },
+  "modulesSection": {
+    "kicker": "Sada Avenqo",
+    "title": "Modul pro každou firemní prioritu.",
+    "subtitle": "Vybudujte si prostředí na míru. Všechny moduly sdílejí stejný zážitek a spolupracují.",
+    "discover": "Objevit",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Spravujte prodej, produkty a věrnost z jednoho přehledu."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Určujte priority vztahů, příležitostí a dalších nejlepších kroků."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Zrychlete finanční sledování a účetní uzávěrku."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Přeměňte příchozí dokumenty na strukturované procesy."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Pochopte trendy a odchylky, na kterých skutečně záleží."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Organizujte relevantnější a měřitelné kampaně."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Poskytujte spolehlivé odpovědi založené na firemních znalostech."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Automatizujte hlasové interakce bez ztráty kontextu."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Propojte týmy a automatizujte opakující se úkoly."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Vytvářejte a organizujte svůj obsah z jednoho pracovního prostoru."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Zkraťte dobu odezvy a zlepšete každé řešení."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Nasaďte konverzačního asistenta pro vaše zákazníky."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Jednoduché od začátku",
+    "title": "Provozuschopné ve čtyřech krocích.",
+    "ctaLabel": "Připraveni začít?",
+    "ctaButton": "Vytvořit můj prostor",
+    "items": [
+      {
+        "number": "01",
+        "title": "Vytvořte si pracovní prostor",
+        "text": "Nastavte svou firmu během několika minut."
+      },
+      {
+        "number": "02",
+        "title": "Vyberte si své moduly",
+        "text": "Aktivujte jen ta řešení, která potřebujete."
+      },
+      {
+        "number": "03",
+        "title": "Připojte své nástroje",
+        "text": "Propojte prodej, CRM nebo dokumenty."
+      },
+      {
+        "number": "04",
+        "title": "Nechte Avenqo jednat",
+        "text": "Získejte odpovědi a akce připravené k provedení."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Pro celou firmu",
+    "title": "Sdílená vize. Rychlejší týmy.",
+    "subtitle": "Vedení, prodej, finance a provoz konečně sdílejí stejný pohled na činnost.",
+    "direction": {
+      "title": "Vedení",
+      "text": "Sledujte priority a výsledky v reálném čase."
+    },
+    "finance": {
+      "title": "Finance",
+      "text": "Předvídejte odchylky a zrychlete reportování."
+    },
+    "commerce": {
+      "title": "Prodej",
+      "text": "Identifikujte zákazníky a produkty s největším potenciálem."
+    },
+    "operations": {
+      "title": "Provoz",
+      "text": "Automatizujte úkoly, které zpomalují vaše týmy."
+    }
+  },
+  "why": {
+    "kicker": "Proč Avenqo",
+    "title": "Postaveno tak, aby rostlo s vámi.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modulární svou podstatou",
+        "text": "Začněte s jednou prioritou a rozšiřujte platformu bez nutnosti začínat od nuly."
+      },
+      {
+        "number": "02",
+        "title": "Jednotný zážitek",
+        "text": "Jedno přihlášení, jedno rozhraní, jeden asistent sdílený všemi moduly."
+      },
+      {
+        "number": "03",
+        "title": "Lidská podpora",
+        "text": "PMC Solutions AI vás doprovází od nasazení až po plné přijetí."
+      },
+      {
+        "number": "04",
+        "title": "Připraveno pro velké firmy",
+        "text": "Správa přístupu, izolované pracovní prostory a škálovatelná infrastruktura."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Transparentní ceny",
+    "title": "Začněte nyní. Rosťte svým tempem.",
+    "subtitle": "Každý plán zahrnuje platformu, asistenta Avenqo a zabezpečený pracovní prostor.",
+    "popular": "Nejoblíbenější",
+    "priceLabel": "Na míru",
+    "plans": [
+      {
+        "tier": "Základní",
+        "title": "Pro začátek",
+        "items": [
+          "1 modul Avenqo",
+          "Až 5 uživatelů",
+          "Vestavěný asistent",
+          "Standardní podpora"
+        ],
+        "action": "Promluvte si s poradcem"
+      },
+      {
+        "tier": "Profesionální",
+        "title": "Pro zrychlení",
+        "items": [
+          "Až 5 modulů",
+          "Až 25 uživatelů",
+          "Pokročilé automatizace",
+          "Prioritní podpora"
+        ],
+        "action": "Vyzkoušet zdarma"
+      },
+      {
+        "tier": "Podnikový",
+        "title": "Pro orchestraci",
+        "items": [
+          "Neomezené moduly",
+          "Uživatelé na míru",
+          "Vlastní integrace",
+          "Vyhrazené řízení"
+        ],
+        "action": "Kontaktujte obchodní tým"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Často kladené otázky",
+    "title": "Vše, co potřebujete vědět.",
+    "subtitle": "Máte jinou otázku? Náš tým vám odpoví přímo.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Nahrazuje Avenqo mé současné nástroje?",
+        "answer": "Avenqo se připojuje k vašemu prostředí a shromažďuje rozhodnutí, doporučení a automatizace do jednoho zážitku."
+      },
+      {
+        "question": "Mohu začít pouze s jedním modulem?",
+        "answer": "Ano. Začněte se svou hlavní prioritou a poté přidávejte funkce tempem vaší firmy."
+      },
+      {
+        "question": "Jsou má data izolovaná?",
+        "answer": "Ano. Každá firma má svůj vlastní pracovní prostor, vlastní přístupy a přísně oddělená data."
+      },
+      {
+        "question": "Je Avenqo vhodné pro malé a střední podniky?",
+        "answer": "Ano. Naše plány podporují jak rostoucí tým, tak organizaci s více pobočkami."
+      },
+      {
+        "question": "Jak dlouho trvá začít?",
+        "answer": "Váš pracovní prostor je vytvořen okamžitě. Doba připojení pak závisí na zvolených nástrojích."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Váš další krok",
+    "title": "Řiďte svou firmu jinak.",
+    "tryFree": "Vyzkoušet zdarma",
+    "scheduleDemo": "Naplánovat demo"
+  },
+  "footer": {
+    "tagline": "Jedna platforma. Všechna vaše AI řešení.",
+    "platformTitle": "Platforma",
+    "platformLinks": [
+      "Funkce",
+      "Moduly",
+      "Ceník",
+      "Jak to funguje"
+    ],
+    "companyTitle": "Firma",
+    "companyLinks": [
+      "O nás",
+      "Kontakt",
+      "Zabezpečení",
+      "Partneři"
+    ],
+    "resourcesTitle": "Zdroje",
+    "resourcesLinks": [
+      "Dokumentace",
+      "Časté dotazy",
+      "Ochrana soukromí",
+      "Podmínky"
+    ],
+    "copyright": "© 2026 Avenqo. Platforma PMC Solutions AI."
+  }
+}

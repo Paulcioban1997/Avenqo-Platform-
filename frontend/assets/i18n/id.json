@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Masuk",
+    "tryFree": "Coba gratis",
+    "watchDemo": "Tonton demo",
+    "noCreditCard": "Tanpa kartu kredit",
+    "guidedSetup": "Pengaturan terpandu",
+    "isolatedData": "Data terisolasi"
+  },
+  "nav": {
+    "features": "Fitur",
+    "modules": "Modul",
+    "pricing": "Harga",
+    "enterprise": "Perusahaan",
+    "docs": "Dokumentasi"
+  },
+  "hero": {
+    "eyebrow": "Platform AI serba lengkap untuk bisnis",
+    "titleLine1": "Seluruh bisnis Anda.",
+    "titleLine2": "Satu kecerdasan.",
+    "subtitle": "Avenqo menyatukan penjualan, hubungan pelanggan, keuangan, dokumen, dan operasi dalam satu platform AI modular, dibangun untuk pertumbuhan UKM dan perusahaan besar.",
+    "trustLabel": "Satu platform untuk",
+    "trustSell": "Menjual",
+    "trustUnderstand": "Memahami",
+    "trustAutomate": "Mengotomatisasi",
+    "trustDecide": "Memutuskan"
+  },
+  "dashboard": {
+    "greeting": "Halo Paul",
+    "subtitle": "Aktivitas Anda hari ini",
+    "askAvenqo": "Tanya Avenqo",
+    "salesLabel": "Penjualan bulan ini",
+    "activeClientsLabel": "Pelanggan aktif",
+    "opportunitiesLabel": "Peluang",
+    "opportunitiesHint": "Untuk diprioritaskan",
+    "performanceLabel": "Kinerja komersial",
+    "performancePeriod": "6 bulan",
+    "recommendationLabel": "Rekomendasi",
+    "recommendationTitle": "Aktifkan kembali 42 pelanggan bernilai tinggi.",
+    "recommendationText": "Kampanye yang ditargetkan dapat menghasilkan hingga $18.400 bulan ini.",
+    "recommendationAction": "Lihat tindakan",
+    "quickModulesLabel": "Modul Anda",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Kecerdasan yang bermanfaat",
+    "title": "Dari pertanyaan ke tindakan, tanpa kerumitan.",
+    "subtitle": "Avenqo mengubah aktivitas Anda menjadi keputusan yang jelas, di satu tempat.",
+    "assistantLabel": "Asisten Avenqo",
+    "assistantTitle": "Berbicaralah dengan bisnis Anda.",
+    "assistantText": "Ajukan pertanyaan seperti yang Anda ajukan kepada rekan kerja. Avenqo mengumpulkan konteks dan menjawab langsung.",
+    "demoQuestion": "Mengapa penjualan saya menurun bulan ini?",
+    "demoAnswer": "Penurunan terutama berasal dari segmen Rumah, yang turun 14%. Saya merekomendasikan tindak lanjut yang ditargetkan dengan 126 pelanggan.",
+    "demoAction1": "Siapkan kampanye",
+    "demoAction2": "Lihat analisis",
+    "actionsTitle": "Tindakan, bukan dasbor.",
+    "actionsText": "Setiap rekomendasi menunjukkan apa yang harus dilakukan, mengapa, dan hasil apa yang diharapkan.",
+    "actionsPriority": "Prioritas tinggi",
+    "actionsLine": "Aktifkan kembali 42 akun",
+    "securityTitle": "Bisnis Anda tetap milik Anda.",
+    "securityText": "Ruang kerja terisolasi, akses terkontrol, dan arsitektur yang dirancang untuk berkembang.",
+    "securityItem1": "Akses berbasis peran",
+    "securityItem2": "Ketertelusuran penuh",
+    "securityItem3": "Hosting yang dapat diskalakan"
+  },
+  "modulesSection": {
+    "kicker": "Rangkaian Avenqo",
+    "title": "Satu modul untuk setiap prioritas bisnis.",
+    "subtitle": "Bangun lingkungan yang disesuaikan. Semua modul berbagi pengalaman yang sama dan bekerja bersama.",
+    "discover": "Temukan",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Kelola penjualan, produk, dan loyalitas dari satu tampilan."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Prioritaskan hubungan, peluang, dan tindakan terbaik berikutnya."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Percepat pemantauan keuangan dan penutupan akuntansi."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Ubah dokumen masuk menjadi proses terstruktur."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Pahami tren dan penyimpangan yang benar-benar penting."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Atur kampanye yang lebih relevan dan terukur."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Berikan jawaban yang dapat diandalkan berdasarkan pengetahuan perusahaan."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Otomatisasi interaksi suara tanpa kehilangan konteks."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Hubungkan tim dan otomatisasi tugas berulang."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Produksi dan atur konten Anda dari satu ruang kerja."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Kurangi waktu respons dan tingkatkan setiap solusi."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Terapkan asisten percakapan untuk pelanggan Anda."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Sederhana sejak awal",
+    "title": "Operasional dalam empat langkah.",
+    "ctaLabel": "Siap untuk memulai?",
+    "ctaButton": "Buat ruang kerja saya",
+    "items": [
+      {
+        "number": "01",
+        "title": "Buat ruang kerja Anda",
+        "text": "Atur perusahaan Anda dalam beberapa menit."
+      },
+      {
+        "number": "02",
+        "title": "Pilih modul Anda",
+        "text": "Aktifkan hanya solusi yang Anda butuhkan."
+      },
+      {
+        "number": "03",
+        "title": "Hubungkan alat Anda",
+        "text": "Tautkan penjualan, CRM, atau dokumen."
+      },
+      {
+        "number": "04",
+        "title": "Biarkan Avenqo bertindak",
+        "text": "Dapatkan jawaban dan tindakan yang siap dijalankan."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Untuk seluruh bisnis",
+    "title": "Visi bersama. Tim yang lebih cepat.",
+    "subtitle": "Manajemen, penjualan, keuangan, dan operasi akhirnya berbagi gambaran aktivitas yang sama.",
+    "direction": {
+      "title": "Manajemen",
+      "text": "Pantau prioritas dan hasil secara real-time."
+    },
+    "finance": {
+      "title": "Keuangan",
+      "text": "Antisipasi penyimpangan dan percepat pelaporan."
+    },
+    "commerce": {
+      "title": "Penjualan",
+      "text": "Identifikasi pelanggan dan produk dengan potensi terbesar."
+    },
+    "operations": {
+      "title": "Operasi",
+      "text": "Otomatisasi tugas yang memperlambat tim Anda."
+    }
+  },
+  "why": {
+    "kicker": "Mengapa Avenqo",
+    "title": "Dibangun untuk berkembang bersama Anda.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modular secara alami",
+        "text": "Mulai dengan satu prioritas dan perluas platform tanpa memulai dari nol."
+      },
+      {
+        "number": "02",
+        "title": "Satu pengalaman terpadu",
+        "text": "Satu login, satu antarmuka, satu asisten yang digunakan bersama di semua modul."
+      },
+      {
+        "number": "03",
+        "title": "Dukungan manusia",
+        "text": "PMC Solutions AI mendampingi Anda dari implementasi hingga adopsi penuh."
+      },
+      {
+        "number": "04",
+        "title": "Siap untuk perusahaan besar",
+        "text": "Manajemen akses, ruang kerja terisolasi, dan infrastruktur yang dapat diskalakan."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Harga transparan",
+    "title": "Mulai sekarang. Berkembang sesuai kecepatan Anda.",
+    "subtitle": "Setiap paket mencakup platform, asisten Avenqo, dan ruang kerja yang aman.",
+    "popular": "Paling populer",
+    "priceLabel": "Sesuai permintaan",
+    "plans": [
+      {
+        "tier": "Dasar",
+        "title": "Untuk memulai",
+        "items": [
+          "1 modul Avenqo",
+          "Hingga 5 pengguna",
+          "Asisten bawaan",
+          "Dukungan standar"
+        ],
+        "action": "Bicara dengan konsultan"
+      },
+      {
+        "tier": "Profesional",
+        "title": "Untuk mempercepat",
+        "items": [
+          "Hingga 5 modul",
+          "Hingga 25 pengguna",
+          "Otomatisasi lanjutan",
+          "Dukungan prioritas"
+        ],
+        "action": "Coba gratis"
+      },
+      {
+        "tier": "Perusahaan",
+        "title": "Untuk mengorkestrasi",
+        "items": [
+          "Modul tak terbatas",
+          "Pengguna sesuai permintaan",
+          "Integrasi khusus",
+          "Tata kelola khusus"
+        ],
+        "action": "Hubungi tim penjualan"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Pertanyaan yang sering diajukan",
+    "title": "Semua yang perlu Anda ketahui.",
+    "subtitle": "Pertanyaan lain? Tim kami akan menjawab Anda secara langsung.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Apakah Avenqo menggantikan alat saya saat ini?",
+        "answer": "Avenqo terhubung ke lingkungan Anda dan menyatukan keputusan, rekomendasi, dan otomatisasi dalam satu pengalaman."
+      },
+      {
+        "question": "Bisakah saya mulai dengan hanya satu modul?",
+        "answer": "Ya. Mulailah dengan prioritas utama Anda, lalu tambahkan kemampuan sesuai kecepatan bisnis Anda."
+      },
+      {
+        "question": "Apakah data saya terisolasi?",
+        "answer": "Ya. Setiap perusahaan memiliki ruang kerja sendiri, akses sendiri, dan data yang dipisahkan secara ketat."
+      },
+      {
+        "question": "Apakah Avenqo cocok untuk UKM?",
+        "answer": "Ya. Paket kami mendukung baik tim yang berkembang maupun organisasi multi-cabang."
+      },
+      {
+        "question": "Berapa lama waktu yang dibutuhkan untuk memulai?",
+        "answer": "Ruang kerja Anda dibuat secara instan. Waktu koneksi kemudian bergantung pada alat yang dipilih."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Langkah Anda berikutnya",
+    "title": "Kelola bisnis Anda secara berbeda.",
+    "tryFree": "Coba gratis",
+    "scheduleDemo": "Jadwalkan demo"
+  },
+  "footer": {
+    "tagline": "Satu platform. Semua solusi AI Anda.",
+    "platformTitle": "Platform",
+    "platformLinks": [
+      "Fitur",
+      "Modul",
+      "Harga",
+      "Cara kerja"
+    ],
+    "companyTitle": "Perusahaan",
+    "companyLinks": [
+      "Tentang kami",
+      "Kontak",
+      "Keamanan",
+      "Mitra"
+    ],
+    "resourcesTitle": "Sumber daya",
+    "resourcesLinks": [
+      "Dokumentasi",
+      "FAQ",
+      "Privasi",
+      "Ketentuan"
+    ],
+    "copyright": "© 2026 Avenqo. Sebuah platform dari PMC Solutions AI."
+  }
+}

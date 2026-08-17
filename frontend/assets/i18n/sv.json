@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Logga in",
+    "tryFree": "Prova gratis",
+    "watchDemo": "Se en demo",
+    "noCreditCard": "Inget kreditkort krävs",
+    "guidedSetup": "Guidad installation",
+    "isolatedData": "Isolerad data"
+  },
+  "nav": {
+    "features": "Funktioner",
+    "modules": "Moduler",
+    "pricing": "Priser",
+    "enterprise": "Företag",
+    "docs": "Dokumentation"
+  },
+  "hero": {
+    "eyebrow": "Allt-i-ett AI-plattformen för företag",
+    "titleLine1": "Hela ditt företag.",
+    "titleLine2": "En enda intelligens.",
+    "subtitle": "Avenqo förenar försäljning, kundrelationer, ekonomi, dokument och verksamhet i en enda modulär AI-plattform, byggd för att växa med små och medelstora företag och stora organisationer.",
+    "trustLabel": "En plattform för att",
+    "trustSell": "Sälja",
+    "trustUnderstand": "Förstå",
+    "trustAutomate": "Automatisera",
+    "trustDecide": "Besluta"
+  },
+  "dashboard": {
+    "greeting": "Hej Paul",
+    "subtitle": "Din verksamhet idag",
+    "askAvenqo": "Fråga Avenqo",
+    "salesLabel": "Försäljning denna månad",
+    "activeClientsLabel": "Aktiva kunder",
+    "opportunitiesLabel": "Möjligheter",
+    "opportunitiesHint": "Att prioritera",
+    "performanceLabel": "Försäljningsresultat",
+    "performancePeriod": "6 månader",
+    "recommendationLabel": "Rekommendation",
+    "recommendationTitle": "Återaktivera 42 värdefulla kunder.",
+    "recommendationText": "En riktad kampanj kan generera upp till 18 400 $ denna månad.",
+    "recommendationAction": "Se åtgärd",
+    "quickModulesLabel": "Dina moduler",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Användbar intelligens",
+    "title": "Från fråga till handling, utan komplexitet.",
+    "subtitle": "Avenqo omvandlar din verksamhet till tydliga beslut, på ett och samma ställe.",
+    "assistantLabel": "Avenqo-assistent",
+    "assistantTitle": "Prata med ditt företag.",
+    "assistantText": "Ställ en fråga som du skulle till en kollega. Avenqo samlar in kontexten och svarar direkt.",
+    "demoQuestion": "Varför sjunker min försäljning denna månad?",
+    "demoAnswer": "Nedgången kommer främst från segmentet Hem, som sjunkit med 14%. Jag rekommenderar riktad uppföljning med 126 kunder.",
+    "demoAction1": "Förbered kampanj",
+    "demoAction2": "Se analys",
+    "actionsTitle": "Åtgärder, inte instrumentpaneler.",
+    "actionsText": "Varje rekommendation visar vad som ska göras, varför och vilket resultat som kan förväntas.",
+    "actionsPriority": "Hög prioritet",
+    "actionsLine": "Återaktivera 42 konton",
+    "securityTitle": "Ditt företag förblir ditt.",
+    "securityText": "Isolerade arbetsytor, kontrollerad åtkomst och en arkitektur byggd för att skala.",
+    "securityItem1": "Rollbaserad åtkomst",
+    "securityItem2": "Full spårbarhet",
+    "securityItem3": "Skalbar hosting"
+  },
+  "modulesSection": {
+    "kicker": "Avenqo-sviten",
+    "title": "En modul för varje affärsprioritet.",
+    "subtitle": "Bygg din skräddarsydda miljö. Alla moduler delar samma upplevelse och fungerar tillsammans.",
+    "discover": "Upptäck",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Hantera försäljning, produkter och lojalitet från en enda vy."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Prioritera relationer, möjligheter och nästa bästa åtgärd."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Snabba upp ekonomisk uppföljning och bokslut."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Omvandla inkommande dokument till strukturerade processer."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Förstå trender och avvikelser som verkligen betyder något."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Orkestrera mer relevanta och mätbara kampanjer."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Ge tillförlitliga svar baserade på företagets kunskap."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Automatisera röstinteraktioner utan att förlora kontexten."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Koppla samman team och automatisera repetitiva uppgifter."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Producera och organisera ditt innehåll från en enda arbetsyta."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Minska svarstider och förbättra varje lösning."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Driftsätt en konversationsassistent för dina kunder."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Enkelt från början",
+    "title": "Igång på fyra steg.",
+    "ctaLabel": "Redo att komma igång?",
+    "ctaButton": "Skapa min arbetsyta",
+    "items": [
+      {
+        "number": "01",
+        "title": "Skapa din arbetsyta",
+        "text": "Konfigurera ditt företag på några minuter."
+      },
+      {
+        "number": "02",
+        "title": "Välj dina moduler",
+        "text": "Aktivera bara de lösningar du behöver."
+      },
+      {
+        "number": "03",
+        "title": "Anslut dina verktyg",
+        "text": "Koppla samman försäljning, CRM eller dokument."
+      },
+      {
+        "number": "04",
+        "title": "Låt Avenqo agera",
+        "text": "Få svar och åtgärder redo att genomföras."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "För hela företaget",
+    "title": "En delad vision. Snabbare team.",
+    "subtitle": "Ledning, försäljning, ekonomi och verksamhet delar äntligen samma bild av verksamheten.",
+    "direction": {
+      "title": "Ledning",
+      "text": "Följ prioriteringar och resultat i realtid."
+    },
+    "finance": {
+      "title": "Ekonomi",
+      "text": "Förutse avvikelser och snabba upp rapporteringen."
+    },
+    "commerce": {
+      "title": "Försäljning",
+      "text": "Identifiera kunder och produkter med störst potential."
+    },
+    "operations": {
+      "title": "Verksamhet",
+      "text": "Automatisera uppgifter som saktar ner dina team."
+    }
+  },
+  "why": {
+    "kicker": "Varför Avenqo",
+    "title": "Byggt för att växa med dig.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modulärt till sin natur",
+        "text": "Börja med en prioritet och utöka plattformen utan att börja om."
+      },
+      {
+        "number": "02",
+        "title": "En enhetlig upplevelse",
+        "text": "En inloggning, ett gränssnitt, en assistent som delas mellan alla moduler."
+      },
+      {
+        "number": "03",
+        "title": "Mänskligt stöd",
+        "text": "PMC Solutions AI följer dig från driftsättning till full användning."
+      },
+      {
+        "number": "04",
+        "title": "Redo för företag",
+        "text": "Åtkomsthantering, isolerade arbetsytor och skalbar infrastruktur."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Transparent prissättning",
+    "title": "Kom igång nu. Väx i din egen takt.",
+    "subtitle": "Varje plan inkluderar plattformen, Avenqo-assistenten och en säker arbetsyta.",
+    "popular": "Mest populär",
+    "priceLabel": "Skräddarsytt",
+    "plans": [
+      {
+        "tier": "Grundläggande",
+        "title": "För att komma igång",
+        "items": [
+          "1 Avenqo-modul",
+          "Upp till 5 användare",
+          "Inbyggd assistent",
+          "Standardsupport"
+        ],
+        "action": "Prata med en rådgivare"
+      },
+      {
+        "tier": "Professionell",
+        "title": "För att accelerera",
+        "items": [
+          "Upp till 5 moduler",
+          "Upp till 25 användare",
+          "Avancerade automatiseringar",
+          "Prioriterad support"
+        ],
+        "action": "Prova gratis"
+      },
+      {
+        "tier": "Företag",
+        "title": "För att orkestrera",
+        "items": [
+          "Obegränsade moduler",
+          "Skräddarsytt antal användare",
+          "Anpassade integrationer",
+          "Dedikerad styrning"
+        ],
+        "action": "Kontakta säljteamet"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Vanliga frågor",
+    "title": "Allt du behöver veta.",
+    "subtitle": "Ytterligare en fråga? Vårt team svarar dig direkt.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Ersätter Avenqo mina nuvarande verktyg?",
+        "answer": "Avenqo ansluter till din miljö och samlar beslut, rekommendationer och automatiseringar i en enda upplevelse."
+      },
+      {
+        "question": "Kan jag börja med bara en modul?",
+        "answer": "Ja. Börja med din huvudprioritet och lägg sedan till funktioner i takt med ditt företag."
+      },
+      {
+        "question": "Är min data isolerad?",
+        "answer": "Ja. Varje företag har sin egen arbetsyta, egna åtkomster och strikt separerad data."
+      },
+      {
+        "question": "Passar Avenqo för små och medelstora företag?",
+        "answer": "Ja. Våra planer stödjer både ett växande team och en organisation med flera kontor."
+      },
+      {
+        "question": "Hur lång tid tar det att komma igång?",
+        "answer": "Din arbetsyta skapas omedelbart. Anslutningstiden beror sedan på vilka verktyg du väljer."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Ditt nästa steg",
+    "title": "Driv ditt företag på ett annat sätt.",
+    "tryFree": "Prova gratis",
+    "scheduleDemo": "Boka en demo"
+  },
+  "footer": {
+    "tagline": "En plattform. Alla dina AI-lösningar.",
+    "platformTitle": "Plattform",
+    "platformLinks": [
+      "Funktioner",
+      "Moduler",
+      "Priser",
+      "Så fungerar det"
+    ],
+    "companyTitle": "Företag",
+    "companyLinks": [
+      "Om oss",
+      "Kontakt",
+      "Säkerhet",
+      "Partners"
+    ],
+    "resourcesTitle": "Resurser",
+    "resourcesLinks": [
+      "Dokumentation",
+      "Vanliga frågor",
+      "Integritet",
+      "Villkor"
+    ],
+    "copyright": "© 2026 Avenqo. En plattform från PMC Solutions AI."
+  }
+}

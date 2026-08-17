@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Inloggen",
+    "tryFree": "Gratis proberen",
+    "watchDemo": "Bekijk een demo",
+    "noCreditCard": "Geen creditcard",
+    "guidedSetup": "Begeleide installatie",
+    "isolatedData": "Geïsoleerde gegevens"
+  },
+  "nav": {
+    "features": "Functies",
+    "modules": "Modules",
+    "pricing": "Prijzen",
+    "enterprise": "Onderneming",
+    "docs": "Documentatie"
+  },
+  "hero": {
+    "eyebrow": "Het alles-in-één AI-platform voor bedrijven",
+    "titleLine1": "Uw hele bedrijf.",
+    "titleLine2": "Eén intelligentie.",
+    "subtitle": "Avenqo verenigt verkoop, klantrelaties, financiën, documenten en operaties in één modulair AI-platform, gebouwd voor de groei van kmo's en grote ondernemingen.",
+    "trustLabel": "Eén platform om te",
+    "trustSell": "Verkopen",
+    "trustUnderstand": "Begrijpen",
+    "trustAutomate": "Automatiseren",
+    "trustDecide": "Beslissen"
+  },
+  "dashboard": {
+    "greeting": "Hallo Paul",
+    "subtitle": "Uw activiteit vandaag",
+    "askAvenqo": "Vraag het Avenqo",
+    "salesLabel": "Verkoop deze maand",
+    "activeClientsLabel": "Actieve klanten",
+    "opportunitiesLabel": "Kansen",
+    "opportunitiesHint": "Te prioriteren",
+    "performanceLabel": "Verkoopprestaties",
+    "performancePeriod": "6 maanden",
+    "recommendationLabel": "Aanbeveling",
+    "recommendationTitle": "Reactiveer 42 waardevolle klanten.",
+    "recommendationText": "Een gerichte campagne kan deze maand tot 18.400 $ opleveren.",
+    "recommendationAction": "Bekijk actie",
+    "quickModulesLabel": "Uw modules",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Nuttige intelligentie",
+    "title": "Van vraag naar actie, zonder complexiteit.",
+    "subtitle": "Avenqo verandert uw bedrijf op één plek in duidelijke beslissingen.",
+    "assistantLabel": "Avenqo-assistent",
+    "assistantTitle": "Praat met uw bedrijf.",
+    "assistantText": "Stel een vraag zoals u dat bij een collega zou doen. Avenqo verzamelt de context en antwoordt direct.",
+    "demoQuestion": "Waarom dalen mijn verkopen deze maand?",
+    "demoAnswer": "De daling komt vooral uit het segment Thuis, dat 14% is gedaald. Ik raad een gerichte opvolging bij 126 klanten aan.",
+    "demoAction1": "Campagne voorbereiden",
+    "demoAction2": "Analyse bekijken",
+    "actionsTitle": "Acties, geen dashboards.",
+    "actionsText": "Elke aanbeveling geeft aan wat te doen, waarom en welk resultaat te verwachten.",
+    "actionsPriority": "Hoge prioriteit",
+    "actionsLine": "42 accounts reactiveren",
+    "securityTitle": "Uw bedrijf blijft van u.",
+    "securityText": "Geïsoleerde werkruimtes, gecontroleerde toegang en een architectuur die met u meegroeit.",
+    "securityItem1": "Roltoegang",
+    "securityItem2": "Volledige traceerbaarheid",
+    "securityItem3": "Schaalbare hosting"
+  },
+  "modulesSection": {
+    "kicker": "De Avenqo-suite",
+    "title": "Een module voor elke bedrijfsprioriteit.",
+    "subtitle": "Bouw uw omgeving op maat. Alle modules delen dezelfde ervaring en werken samen.",
+    "discover": "Ontdekken",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Beheer verkoop, producten en loyaliteit vanuit één overzicht."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Prioriteer relaties, kansen en de beste vervolgacties."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Versnel financiële opvolging en boekhoudkundige afsluiting."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Zet binnenkomende documenten om in gestructureerde processen."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Begrijp de trends en afwijkingen die er echt toe doen."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Orkestreer relevantere en meetbare campagnes."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Geef betrouwbare antwoorden op basis van bedrijfskennis."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Automatiseer spraakinteracties zonder de context te verliezen."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Verbind teams en automatiseer repetitieve taken."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Produceer en organiseer uw content vanuit één werkruimte."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Verkort reactietijden en verbeter elke oplossing."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Zet een conversatie-assistent in voor uw klanten."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Simpel vanaf dag één",
+    "title": "Operationeel in vier stappen.",
+    "ctaLabel": "Klaar om te beginnen?",
+    "ctaButton": "Mijn werkruimte aanmaken",
+    "items": [
+      {
+        "number": "01",
+        "title": "Maak uw werkruimte aan",
+        "text": "Stel uw bedrijf in enkele minuten in."
+      },
+      {
+        "number": "02",
+        "title": "Kies uw modules",
+        "text": "Activeer alleen de oplossingen die u nodig heeft."
+      },
+      {
+        "number": "03",
+        "title": "Verbind uw tools",
+        "text": "Koppel uw verkoop, CRM of documenten."
+      },
+      {
+        "number": "04",
+        "title": "Laat Avenqo handelen",
+        "text": "Ontvang uitvoeringsklare antwoorden en acties."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Voor het hele bedrijf",
+    "title": "Eén gedeeld beeld. Snellere teams.",
+    "subtitle": "Directie, verkoop, financiën en operaties delen eindelijk hetzelfde beeld van de activiteit.",
+    "direction": {
+      "title": "Directie",
+      "text": "Volg prioriteiten en resultaten in realtime."
+    },
+    "finance": {
+      "title": "Financiën",
+      "text": "Anticipeer op afwijkingen en versnel de rapportage."
+    },
+    "commerce": {
+      "title": "Verkoop",
+      "text": "Identificeer klanten en producten met het meeste potentieel."
+    },
+    "operations": {
+      "title": "Operaties",
+      "text": "Automatiseer taken die uw teams vertragen."
+    }
+  },
+  "why": {
+    "kicker": "Waarom Avenqo",
+    "title": "Gebouwd om met u mee te groeien.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modulair van opzet",
+        "text": "Begin met één prioriteit en breid het platform uit zonder opnieuw te beginnen."
+      },
+      {
+        "number": "02",
+        "title": "Eén uniforme ervaring",
+        "text": "Eén login, één interface, één assistent gedeeld over alle modules."
+      },
+      {
+        "number": "03",
+        "title": "Menselijke ondersteuning",
+        "text": "PMC Solutions AI begeleidt u van onboarding tot adoptie."
+      },
+      {
+        "number": "04",
+        "title": "Klaar voor de onderneming",
+        "text": "Toegangsbeheer, geïsoleerde werkruimtes en schaalbare infrastructuur."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Heldere prijzen",
+    "title": "Begin nu. Groei op uw tempo.",
+    "subtitle": "Elk plan omvat het platform, de Avenqo-assistent en een beveiligde werkruimte.",
+    "popular": "Meest gekozen",
+    "priceLabel": "Op maat",
+    "plans": [
+      {
+        "tier": "Essentieel",
+        "title": "Om te beginnen",
+        "items": [
+          "1 Avenqo-module",
+          "Tot 5 gebruikers",
+          "Ingebouwde assistent",
+          "Standaard support"
+        ],
+        "action": "Praat met een adviseur"
+      },
+      {
+        "tier": "Professioneel",
+        "title": "Om te versnellen",
+        "items": [
+          "Tot 5 modules",
+          "Tot 25 gebruikers",
+          "Geavanceerde automatiseringen",
+          "Prioritaire support"
+        ],
+        "action": "Gratis proberen"
+      },
+      {
+        "tier": "Onderneming",
+        "title": "Om te orkestreren",
+        "items": [
+          "Onbeperkte modules",
+          "Gebruikers op maat",
+          "Aangepaste integraties",
+          "Toegewijde governance"
+        ],
+        "action": "Contacteer sales"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Veelgestelde vragen",
+    "title": "Alles wat u moet weten.",
+    "subtitle": "Nog een vraag? Ons team antwoordt u rechtstreeks.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Vervangt Avenqo mijn huidige tools?",
+        "answer": "Avenqo verbindt met uw omgeving en bundelt beslissingen, aanbevelingen en automatiseringen in één ervaring."
+      },
+      {
+        "question": "Kan ik met één module beginnen?",
+        "answer": "Ja. Begin met uw topprioriteit en voeg vervolgens mogelijkheden toe op het tempo van uw bedrijf."
+      },
+      {
+        "question": "Zijn mijn gegevens geïsoleerd?",
+        "answer": "Ja. Elk bedrijf heeft zijn eigen werkruimte, eigen toegang en strikt gescheiden gegevens."
+      },
+      {
+        "question": "Is Avenqo geschikt voor kmo's?",
+        "answer": "Ja. Onze plannen ondersteunen zowel een groeiend team als een organisatie met meerdere vestigingen."
+      },
+      {
+        "question": "Hoe lang duurt het om te starten?",
+        "answer": "Uw werkruimte wordt onmiddellijk aangemaakt. De verbindingstijd hangt vervolgens af van de gekozen tools."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Uw volgende stap",
+    "title": "Laat uw bedrijf anders werken.",
+    "tryFree": "Gratis proberen",
+    "scheduleDemo": "Plan een demo"
+  },
+  "footer": {
+    "tagline": "Eén platform. Al uw AI-oplossingen.",
+    "platformTitle": "Platform",
+    "platformLinks": [
+      "Functies",
+      "Modules",
+      "Prijzen",
+      "Werking"
+    ],
+    "companyTitle": "Onderneming",
+    "companyLinks": [
+      "Over ons",
+      "Contact",
+      "Beveiliging",
+      "Partners"
+    ],
+    "resourcesTitle": "Bronnen",
+    "resourcesLinks": [
+      "Documentatie",
+      "FAQ",
+      "Privacy",
+      "Voorwaarden"
+    ],
+    "copyright": "© 2026 Avenqo. Een platform van PMC Solutions AI."
+  }
+}

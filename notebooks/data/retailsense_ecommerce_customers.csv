@@ -1,0 +1,1209 @@
+customer_id,age,gender,city,country,acquisition_channel,loyalty_level,purchase_frequency,average_order_value,total_orders,total_spent,discount_usage,last_purchase_days,number_returns,payment_method,device,newsletter_subscribed,signup_date,record_source,churn
+CUST-000001,43.0,Femme,Lille,France,Paid Search,Gold,4.0,92.41,10,886.73,0.318,2,0,Carte,Mobile,False,2022-04-08,retailsense_demo,False
+CUST-000002,27.0,Femme,Bordeaux,France,Referral,Bronze,4.0,143.75,7,1015.5,0.19,109,0,Carte,Mobile,True,2024-02-09,retailsense_demo,False
+CUST-000003,48.0,Femme,Paris,France,Social Media,Platinum,6.0,85.51,14,1160.44,0.064,32,1,Carte,Desktop,False,2022-01-28,retailsense_demo,False
+CUST-000004,50.0,Femme,Bruxelles,Belgique,Social Media,Bronze,7.0,70.88,27,1983.87,0.341,26,1,PayPal,Desktop,True,2023-08-30,retailsense_demo,False
+CUST-000005,18.0,Homme,Genève,Suisse,Referral,Bronze,5.0,121.63,15,14754.88,0.649,139,1,PayPal,Mobile,True,2025-11-05,retailsense_demo,True
+CUST-000006,23.0,Femme,Bordeaux,France,Referral,Gold,7.0,205.72,14,2894.95,0.319,80,1,Carte,Mobile,True,2023-10-21,retailsense_demo,False
+CUST-000007,41.0,Femme,Lille,France,Paid Search,Gold,3.0,108.77,7,816.37,0.3,10,2,Carte,Tablet,False,2024-09-24,retailsense_demo,True
+CUST-000008,35.0,Femme,Lille,France,Paid Search,Silver,9.0,77.4,39,2932.81,0.312,18,3,Virement,Desktop,False,2023-07-17,retailsense_demo,False
+CUST-000009,39.0,Femme,Lille,France,Social Media,Platinum,8.0,86.28,22,1939.27,0.636,10,2,Carte,Desktop,True,2025-04-25,retailsense_demo,False
+CUST-000010,29.0,Femme,Lyon,France,Organic,Bronze,5.0,79.27,14,1021.05,0.505,84,0,Carte,Mobile,False,2022-04-09,retailsense_demo,True
+CUST-000011,50.0,Homme,Lille,France,Referral,Gold,5.0,70.73,10,5873.04,0.479,87,0,PayPal,Mobile,True,2022-11-22,retailsense_demo,False
+CUST-000012,48.0,Femme,Paris,France,Organic,Bronze,4.0,198.2,10,1982.82,0.153,159,0,Carte,Mobile,True,2025-03-25,retailsense_demo,True
+CUST-000013,,Homme,Paris,France,Organic,Silver,8.0,48.93,32,1492.8,0.51,24,5,Apple Pay,Desktop,True,2021-03-06,retailsense_demo,False
+CUST-000014,53.0,Homme,Bordeaux,France,Referral,Silver,2.0,122.04,8,898.46,0.278,13,0,Carte,Desktop,True,2024-03-21,retailsense_demo,False
+CUST-000015,45.0,Femme,Lille,France,Paid Search,Bronze,7.0,66.0,20,1363.62,0.308,10,0,Virement,Mobile,False,2024-11-25,retailsense_demo,False
+CUST-000016,29.0,Femme,Bruxelles,Belgique,Organic,Silver,3.0,34.45,13,459.46,0.423,119,2,Carte,Desktop,True,2025-12-01,retailsense_demo,False
+CUST-000017,43.0,Femme,Lyon,France,Organic,Silver,3.0,64.05,8,525.93,0.113,56,0,Carte,Desktop,True,2024-09-21,retailsense_demo,False
+CUST-000018,27.0,Homme,Bruxelles,Belgique,Social Media,Bronze,1.0,53.92,4,213.53,0.494,71,0,Carte,Desktop,True,2025-10-13,retailsense_demo,True
+CUST-000019,50.0,Femme,Lille,France,Referral,Gold,4.0,92.5,6,4539.12,0.612,66,0,Apple Pay,Mobile,False,2023-07-31,retailsense_demo,False
+CUST-000020,38.0,Homme,Bordeaux,France,Organic,Silver,2.0,73.25,5,370.41,0.465,16,0,PayPal,Mobile,False,2022-12-24,retailsense_demo,False
+CUST-000021,37.0,Homme,Lyon,France,Organic,Bronze,5.0,42.92,20,822.61,0.373,65,0,Carte,Tablet,True,2024-02-16,retailsense_demo,False
+CUST-000022,31.0,Homme,Lyon,France,Paid Search,Silver,2.0,142.04,8,1139.7,0.418,7,3,Apple Pay,Mobile,False,2021-09-03,retailsense_demo,False
+CUST-000023,54.0,Homme,Paris,France,Marketplace,Bronze,8.0,118.3,30,3557.43,0.296,44,3,Carte,Mobile,True,2021-03-28,retailsense_demo,False
+CUST-000024,37.0,Non renseigné,Lyon,France,Organic,Bronze,6.0,150.1,21,3315.33,0.582,21,3,Carte,Mobile,False,2024-06-08,retailsense_demo,False
+CUST-000025,34.0,Femme,Bruxelles,Belgique,Marketplace,Silver,6.0,78.55,24,1865.15,0.461,64,3,Carte,Mobile,True,2022-10-30,retailsense_demo,True
+CUST-000026,35.0,Femme,Paris,France,Marketplace,Bronze,7.0,68.91,25,1705.21,0.065,6,0,Virement,Mobile,True,2023-12-21,retailsense_demo,False
+CUST-000027,45.0,Femme,Lyon,France,Paid Search,Bronze,6.0,98.27,14,1482.39,0.252,50,2,Carte,Mobile,True,2024-08-04,retailsense_demo,False
+CUST-000028,43.0,Homme,Bordeaux,France,Referral,Silver,5.0,53.13,14,790.82,0.288,15,1,Carte,Tablet,True,2024-11-25,retailsense_demo,False
+CUST-000029,44.0,Homme,,France,Social Media,Bronze,6.0,74.62,21,1502.44,0.264,53,0,Apple Pay,Mobile,True,2023-05-23,retailsense_demo,True
+CUST-000030,44.0,Homme,Bruxelles,Belgique,Paid Search,Gold,5.0,64.44,16,1098.66,0.534,78,1,PayPal,Tablet,False,2025-03-24,retailsense_demo,False
+CUST-000031,65.0,Femme,Namur,Belgique,Paid Search,Gold,5.0,34.77,21,687.84,0.17,20,1,Carte,Desktop,True,2022-08-29,retailsense_demo,False
+CUST-000032,34.0,Non renseigné,Paris,France,Referral,Bronze,2.0,74.53,6,472.45,0.163,33,0,PayPal,Desktop,True,2021-08-20,retailsense_demo,False
+CUST-000033,33.0,Homme,Bordeaux,France,Referral,Silver,8.0,56.73,16,861.72,0.579,20,1,Carte,Desktop,False,2024-02-19,retailsense_demo,False
+CUST-000034,29.0,Homme,Lyon,France,Referral,Bronze,6.0,62.4,13,801.55,0.173,17,0,Carte,Desktop,False,2023-02-23,retailsense_demo,False
+CUST-000035,46.0,Non renseigné,Lille,France,Marketplace,Silver,3.0,83.48,12,1079.33,0.284,6,1,Carte,Mobile,False,2021-03-10,retailsense_demo,False
+CUST-000036,53.0,Femme,Bruxelles,Belgique,Paid Search,Bronze,6.0,129.13,9,1087.24,0.131,28,0,PayPal,Mobile,True,2022-07-03,retailsense_demo,False
+CUST-000037,38.0,Femme,Namur,Belgique,Referral,Platinum,5.0,46.65,21,1032.82,0.411,110,2,PayPal,Desktop,False,2023-12-18,retailsense_demo,False
+CUST-000038,29.0,Homme,Lyon,France,Referral,Bronze,2.0,59.65,3,178.79,0.381,24,0,Carte,Mobile,False,2021-08-24,retailsense_demo,False
+CUST-000039,29.0,Femme,Bordeaux,France,Organic,Silver,4.0,48.56,11,500.89,0.191,49,1,Carte,Desktop,True,2025-09-17,retailsense_demo,True
+CUST-000040,47.0,Femme,Paris,France,Organic,Bronze,6.0,47.06,23,1160.85,0.237,72,1,Carte,Mobile,True,2023-01-25,retailsense_demo,True
+CUST-000041,,Femme,Lille,France,Paid Search,Bronze,1.0,52.7,3,159.34,0.242,26,0,PayPal,Mobile,True,2024-09-11,retailsense_demo,False
+CUST-000042,46.0,Femme,Paris,France,Referral,Silver,3.0,63.8,12,812.19,0.246,91,1,Virement,Desktop,True,2025-01-16,retailsense_demo,False
+CUST-000043,31.0,Homme,Bordeaux,France,Paid Search,Silver,9.0,92.87,16,1573.7,0.439,2,2,Virement,Desktop,False,2023-06-01,retailsense_demo,False
+CUST-000044,42.0,Homme,Lausanne,Suisse,Social Media,Platinum,4.0,81.76,12,904.95,0.139,232,0,Apple Pay,Mobile,False,2022-06-18,retailsense_demo,True
+CUST-000045,40.0,Femme,Lille,France,Organic,Bronze,1.0,42.21,3,121.87,0.357,22,0,Virement,Desktop,True,2022-05-05,retailsense_demo,False
+CUST-000046,42.0,Femme,Bordeaux,France,Paid Search,Bronze,6.0,130.48,25,3176.81,0.033,172,2,Apple Pay,Mobile,True,2022-04-18,retailsense_demo,True
+CUST-000047,49.0,Femme,Lille,France,Social Media,Bronze,11.0,110.31,20,2218.56,0.435,62,1,PayPal,Mobile,False,2024-07-09,retailsense_demo,False
+CUST-000048,42.0,Homme,Paris,France,Organic,Bronze,6.0,45.49,15,635.57,0.303,13,1,Carte,Desktop,True,2023-11-30,retailsense_demo,False
+CUST-000049,47.0,Homme,Bruxelles,Belgique,Marketplace,Gold,6.0,126.16,21,2602.35,0.087,33,1,PayPal,Mobile,True,2025-05-15,retailsense_demo,False
+CUST-000050,40.0,Homme,Paris,France,Organic,Gold,8.0,82.02,36,3101.26,0.263,1,4,Carte,Mobile,False,2022-12-06,retailsense_demo,False
+CUST-000051,42.0,Femme,Namur,Belgique,Marketplace,Gold,12.0,65.03,49,3020.01,0.236,42,3,Carte,Mobile,True,2022-01-09,retailsense_demo,False
+CUST-000052,47.0,Femme,Namur,Belgique,Organic,Bronze,5.0,83.25,20,1718.67,0.333,57,3,Carte,Mobile,False,2023-07-28,retailsense_demo,False
+CUST-000053,22.0,Femme,Lyon,France,Marketplace,Bronze,4.0,69.24,12,825.65,0.032,6,0,Carte,Tablet,False,2024-05-27,retailsense_demo,False
+CUST-000054,35.0,Homme,Bordeaux,France,Social Media,Silver,3.0,91.07,10,848.15,0.543,19,1,PayPal,Mobile,True,2024-04-21,retailsense_demo,False
+CUST-000055,33.0,Femme,Genève,Suisse,Organic,Bronze,6.0,76.7,24,1745.79,0.199,40,1,Carte,Desktop,True,2022-10-08,retailsense_demo,False
+CUST-000056,31.0,Homme,Lille,France,Organic,Silver,2.0,59.62,8,449.59,0.091,22,0,Carte,Desktop,False,2022-08-29,retailsense_demo,False
+CUST-000057,36.0,Homme,Lyon,France,Organic,Bronze,8.0,26.51,31,837.62,0.229,16,0,Apple Pay,Mobile,True,2023-08-11,retailsense_demo,False
+CUST-000058,57.0,Femme,Genève,Suisse,Social Media,Bronze,1.0,90.29,4,337.32,0.235,16,0,,Tablet,True,2024-09-20,retailsense_demo,False
+CUST-000059,29.0,Femme,Genève,Suisse,Referral,Gold,2.0,58.59,8,492.99,0.177,9,0,Carte,Mobile,True,2023-12-06,retailsense_demo,False
+CUST-000060,51.0,Femme,Lyon,France,Paid Search,Bronze,11.0,101.84,20,2136.76,0.168,44,1,Carte,Mobile,False,2024-05-01,retailsense_demo,False
+CUST-000061,19.0,Femme,Lyon,France,Paid Search,Platinum,4.0,88.34,10,824.05,0.064,33,1,Carte,Desktop,True,2025-06-11,retailsense_demo,False
+CUST-000062,35.0,Femme,Paris,France,Social Media,Bronze,3.0,59.33,13,819.2,0.372,101,3,Apple Pay,Desktop,True,2023-12-14,retailsense_demo,False
+CUST-000063,41.0,Homme,Liège,Belgique,Social Media,Bronze,4.0,114.55,13,1598.59,0.081,47,0,Carte,Mobile,True,2021-10-21,retailsense_demo,True
+CUST-000064,46.0,Femme,Paris,France,Social Media,Bronze,1.0,77.35,2,143.4,0.235,8,1,Apple Pay,Desktop,True,2022-12-10,retailsense_demo,False
+CUST-000065,48.0,Femme,Bordeaux,France,Paid Search,Bronze,4.0,75.83,12,975.58,0.503,32,2,Carte,Tablet,False,2025-04-09,retailsense_demo,False
+CUST-000066,49.0,Homme,Liège,Belgique,Social Media,Silver,5.0,65.61,17,1075.99,0.178,67,2,Virement,Mobile,False,2021-10-15,retailsense_demo,False
+CUST-000067,35.0,Homme,Genève,Suisse,Marketplace,Bronze,2.0,157.29,8,1291.51,0.362,222,1,Carte,Desktop,True,2024-11-19,retailsense_demo,True
+CUST-000068,33.0,Femme,Liège,Belgique,Paid Search,Silver,4.0,49.78,16,755.05,0.213,1,0,Carte,Mobile,False,2022-12-09,retailsense_demo,False
+CUST-000069,49.0,Homme,Bordeaux,France,Organic,Gold,7.0,60.05,12,757.15,0.4,30,2,Carte,Mobile,False,2023-03-03,retailsense_demo,False
+CUST-000070,37.0,Homme,Lyon,France,Organic,Bronze,4.0,38.71,11,449.1,0.393,16,1,Carte,Mobile,False,2022-05-26,retailsense_demo,False
+CUST-000071,24.0,Homme,Zurich,Suisse,Social Media,Bronze,3.0,99.37,5,534.87,0.418,12,1,Apple Pay,Mobile,True,2022-03-16,retailsense_demo,False
+CUST-000072,25.0,Homme,Lausanne,Suisse,Paid Search,Bronze,4.0,53.01,17,972.27,0.528,35,1,PayPal,Desktop,True,2024-07-01,retailsense_demo,False
+CUST-000073,28.0,Femme,Lille,France,Marketplace,Gold,2.0,55.95,4,208.6,0.154,32,0,Carte,Mobile,False,2022-02-24,retailsense_demo,False
+CUST-000074,45.0,Homme,Lyon,France,Social Media,Silver,8.0,54.7,27,1514.24,0.266,61,1,PayPal,Mobile,True,2023-01-27,retailsense_demo,False
+CUST-000075,41.0,Femme,Paris,France,Social Media,Bronze,5.0,72.25,16,1113.99,0.398,16,1,Carte,Mobile,True,2024-03-23,retailsense_demo,False
+CUST-000076,47.0,Homme,Lyon,France,Referral,Silver,9.0,38.46,30,1084.7,0.09,10,1,Apple Pay,Mobile,True,2025-06-01,retailsense_demo,False
+CUST-000077,34.0,Homme,Bordeaux,France,Organic,Silver,7.0,23.88,22,495.94,0.244,40,3,Carte,Mobile,True,2023-03-01,retailsense_demo,False
+CUST-000078,41.0,Femme,Bordeaux,France,Referral,Bronze,2.0,87.33,7,654.0,0.183,7,0,Carte,Mobile,True,2023-09-04,retailsense_demo,False
+CUST-000079,47.0,Femme,Bordeaux,France,Organic,Bronze,3.0,25.42,10,261.66,0.696,63,0,Carte,Mobile,True,2023-08-22,retailsense_demo,False
+CUST-000080,,Homme,Namur,Belgique,Social Media,Platinum,5.0,105.63,9,882.33,0.75,71,1,Carte,Mobile,True,2022-07-29,retailsense_demo,False
+CUST-000081,44.0,Homme,Lyon,France,Marketplace,Bronze,8.0,148.13,21,3351.75,0.128,124,0,Apple Pay,Mobile,True,2022-06-26,retailsense_demo,False
+CUST-000082,31.0,Femme,Lyon,France,Referral,Bronze,2.0,64.79,6,407.89,0.45,7,0,Carte,Desktop,True,2025-01-17,retailsense_demo,False
+CUST-000083,35.0,Homme,Bordeaux,France,Referral,Bronze,7.0,130.81,17,2155.9,0.227,33,1,Carte,Mobile,True,2024-06-25,retailsense_demo,False
+CUST-000084,34.0,Homme,Lille,France,Paid Search,Silver,4.0,69.29,15,1034.56,0.577,57,5,Virement,Desktop,False,2021-07-19,retailsense_demo,False
+CUST-000085,25.0,Homme,Lyon,France,Referral,Silver,4.0,151.05,10,1565.3,0.358,106,0,Carte,Desktop,True,2023-01-15,retailsense_demo,False
+CUST-000086,45.0,Femme,Lyon,France,Social Media,Bronze,5.0,56.32,20,1158.09,0.332,45,1,Carte,Mobile,True,2023-11-24,retailsense_demo,False
+CUST-000087,33.0,Femme,Bordeaux,France,Social Media,Bronze,9.0,22.53,17,380.75,0.269,26,2,PayPal,Mobile,False,2021-03-16,retailsense_demo,False
+CUST-000088,39.0,Homme,Paris,France,Organic,Silver,5.0,67.47,19,1284.42,0.18,29,0,Carte,Mobile,True,2022-09-01,retailsense_demo,False
+CUST-000089,45.0,Femme,Genève,Suisse,Organic,Bronze,6.0,159.15,12,1770.17,0.329,7,1,Virement,Mobile,True,2021-10-20,retailsense_demo,False
+CUST-000090,44.0,Homme,Lille,France,Social Media,Gold,5.0,90.63,15,1359.59,0.521,131,2,PayPal,Mobile,True,2023-08-23,retailsense_demo,True
+CUST-000091,47.0,Femme,Genève,Suisse,Organic,Bronze,1.0,54.74,2,106.69,0.263,28,0,Carte,Tablet,True,2025-02-15,retailsense_demo,False
+CUST-000092,38.0,Homme,Genève,Suisse,Referral,Bronze,4.0,82.09,14,1109.8,0.426,29,0,Carte,Mobile,True,2022-05-15,retailsense_demo,False
+CUST-000093,34.0,Femme,Namur,Belgique,Referral,Platinum,6.0,111.74,13,1399.03,0.577,5,4,Carte,Mobile,True,2021-12-17,retailsense_demo,False
+CUST-000094,38.0,Femme,Lyon,France,Marketplace,Gold,8.0,67.28,31,2135.47,0.626,78,7,PayPal,Desktop,True,2023-02-01,retailsense_demo,False
+CUST-000095,19.0,Homme,Lille,France,Organic,Bronze,5.0,247.32,16,3912.27,0.318,39,0,PayPal,Desktop,True,2023-10-27,retailsense_demo,False
+CUST-000096,22.0,Homme,Lyon,France,Marketplace,Gold,5.0,54.69,22,1188.85,0.135,213,1,Virement,Mobile,True,2025-04-29,retailsense_demo,True
+CUST-000097,23.0,Homme,Bruxelles,Belgique,Organic,Silver,6.0,113.43,22,2359.43,0.65,29,2,Carte,Mobile,False,2024-09-23,retailsense_demo,False
+CUST-000098,,Homme,Paris,France,Paid Search,Bronze,4.0,101.06,13,1410.89,0.357,69,0,Virement,Mobile,True,2021-06-09,retailsense_demo,False
+CUST-000099,44.0,Homme,Zurich,Suisse,Referral,Gold,4.0,50.1,16,766.24,0.241,135,3,Carte,Desktop,True,2025-02-06,retailsense_demo,False
+CUST-000100,28.0,Homme,Paris,France,Organic,Gold,2.0,57.18,4,225.3,0.203,1,0,Apple Pay,Desktop,True,2022-09-20,retailsense_demo,False
+CUST-000101,34.0,Femme,Liège,Belgique,Organic,Bronze,3.0,114.28,10,1086.19,0.062,1,0,Carte,Mobile,False,2022-09-15,retailsense_demo,False
+CUST-000102,,Homme,Lyon,France,Organic,Silver,8.0,75.15,21,1629.46,0.426,5,0,Virement,Mobile,True,2023-08-19,retailsense_demo,False
+CUST-000103,35.0,Homme,Lyon,France,Paid Search,Bronze,8.0,82.46,30,2448.42,0.196,66,2,Carte,Mobile,False,2021-02-01,retailsense_demo,False
+CUST-000104,48.0,Femme,Bordeaux,France,Referral,Bronze,4.0,31.97,6,189.16,0.24,25,1,Carte,Desktop,True,2022-08-22,retailsense_demo,True
+CUST-000105,28.0,Femme,Lille,France,Organic,Platinum,7.0,96.05,19,1934.49,0.287,27,1,Carte,Mobile,False,2021-03-26,retailsense_demo,False
+CUST-000106,37.0,Homme,Lille,France,Organic,Silver,3.0,80.47,10,838.12,0.63,15,1,Apple Pay,Mobile,True,2024-08-27,retailsense_demo,False
+CUST-000107,28.0,Femme,Lyon,France,Social Media,Silver,4.0,67.99,12,818.44,0.44,151,0,Virement,Mobile,False,2022-04-30,retailsense_demo,True
+CUST-000108,35.0,Homme,Lyon,France,Organic,Silver,8.0,83.36,18,1493.03,0.426,191,2,PayPal,Desktop,True,2022-03-11,retailsense_demo,False
+CUST-000109,49.0,Non renseigné,Lille,France,Referral,Silver,5.0,57.6,14,865.78,0.464,138,1,Carte,Mobile,True,2021-06-19,retailsense_demo,True
+CUST-000110,18.0,Homme,Paris,France,Marketplace,Bronze,3.0,52.77,12,679.45,0.31,48,1,PayPal,Desktop,False,2023-12-05,retailsense_demo,True
+CUST-000111,44.0,Femme,Genève,Suisse,Referral,Platinum,11.0,62.42,23,1482.71,0.148,7,1,Carte,Mobile,False,2024-04-22,retailsense_demo,False
+CUST-000112,42.0,Femme,Lille,France,Referral,Silver,4.0,56.1,10,584.38,0.191,79,2,PayPal,Mobile,False,2022-01-07,retailsense_demo,False
+CUST-000113,32.0,Femme,Lille,France,Paid Search,Silver,5.0,199.67,22,4673.18,0.512,39,3,Carte,Mobile,True,2022-06-08,retailsense_demo,False
+CUST-000114,22.0,Femme,Paris,France,Referral,Silver,5.0,108.6,21,2450.09,0.334,36,2,Virement,Mobile,True,2024-08-03,retailsense_demo,True
+CUST-000115,40.0,Homme,Bordeaux,France,Organic,Bronze,1.0,44.04,2,82.2,0.216,40,0,PayPal,Mobile,True,2024-06-11,retailsense_demo,True
+CUST-000116,33.0,Homme,Lille,France,Organic,Bronze,6.0,186.31,19,3821.61,0.652,7,0,Carte,Mobile,False,2022-02-02,retailsense_demo,False
+CUST-000117,42.0,Femme,Paris,France,Social Media,Bronze,4.0,56.95,7,411.62,0.458,17,1,PayPal,Mobile,True,2023-02-27,retailsense_demo,False
+CUST-000118,39.0,Femme,Zurich,Suisse,Organic,Bronze,6.0,71.1,26,1876.13,0.402,12,3,Carte,Mobile,True,2021-07-11,retailsense_demo,False
+CUST-000119,58.0,Homme,Bordeaux,France,Marketplace,Silver,4.0,107.85,11,1169.89,0.356,16,1,Carte,Desktop,True,2022-11-12,retailsense_demo,False
+CUST-000120,36.0,Femme,Liège,Belgique,Social Media,Gold,3.0,27.23,8,212.16,0.24,9,1,Carte,Mobile,False,2021-03-01,retailsense_demo,False
+CUST-000121,27.0,Homme,Lyon,France,Marketplace,Bronze,4.0,62.57,9,590.51,0.357,3,0,Carte,Desktop,True,2024-05-01,retailsense_demo,False
+CUST-000122,41.0,Femme,Lyon,France,Paid Search,Bronze,3.0,53.24,10,545.55,0.275,8,0,Carte,Desktop,True,2022-02-26,retailsense_demo,False
+CUST-000123,42.0,Homme,Lille,France,Paid Search,Silver,5.0,77.36,10,736.53,0.264,8,0,PayPal,Desktop,True,2024-12-30,retailsense_demo,False
+CUST-000124,55.0,Femme,Paris,France,Referral,Bronze,6.0,83.73,23,1959.71,0.069,54,1,PayPal,Mobile,True,2022-07-04,retailsense_demo,False
+CUST-000125,49.0,Homme,Lyon,France,Organic,Gold,6.0,67.55,18,1146.15,0.537,48,4,Carte,Mobile,True,2023-11-23,retailsense_demo,True
+CUST-000126,43.0,Femme,Paris,France,Social Media,Bronze,3.0,66.07,10,660.33,0.412,127,1,Apple Pay,Desktop,False,2023-05-26,retailsense_demo,False
+CUST-000127,57.0,Homme,Bruxelles,Belgique,Social Media,Bronze,3.0,116.89,12,1421.45,0.355,37,1,Virement,Mobile,True,2022-01-02,retailsense_demo,False
+CUST-000128,25.0,Femme,Lyon,France,Marketplace,Bronze,1.0,81.02,2,165.56,0.415,14,0,Carte,Mobile,True,2025-05-28,retailsense_demo,True
+CUST-000129,31.0,Femme,Lille,France,Referral,Gold,2.0,71.51,4,269.82,0.654,52,0,Carte,Mobile,True,2024-11-01,retailsense_demo,False
+CUST-000130,28.0,Homme,Bordeaux,France,Organic,Bronze,8.0,75.26,22,1548.63,0.273,94,0,Apple Pay,Mobile,True,2023-03-17,retailsense_demo,False
+CUST-000131,34.0,Femme,Paris,France,Paid Search,Silver,3.0,169.22,12,1952.3,0.138,6,0,Carte,Mobile,False,2023-11-29,retailsense_demo,False
+CUST-000132,22.0,Femme,Paris,France,Social Media,Bronze,6.0,76.16,10,774.68,0.492,64,2,Carte,Mobile,True,2023-03-11,retailsense_demo,False
+CUST-000133,47.0,Femme,Lyon,France,Organic,Bronze,6.0,54.77,23,1346.61,0.312,17,0,Apple Pay,Desktop,False,2023-10-31,retailsense_demo,False
+CUST-000134,36.0,Femme,Lausanne,Suisse,Paid Search,Gold,5.0,28.04,15,439.41,0.306,66,1,Virement,Mobile,True,2025-08-09,retailsense_demo,True
+CUST-000135,21.0,Femme,Bordeaux,France,Paid Search,Bronze,7.0,35.22,22,805.38,0.079,0,0,Virement,Mobile,True,2021-05-19,retailsense_demo,False
+CUST-000136,27.0,Homme,Lille,France,Organic,Bronze,1.0,56.03,3,163.51,0.442,37,0,Virement,Tablet,True,2022-07-28,retailsense_demo,True
+CUST-000137,43.0,Femme,Liège,Belgique,Paid Search,Silver,3.0,66.55,5,312.09,0.246,7,0,Carte,Mobile,True,2022-12-18,retailsense_demo,False
+CUST-000138,49.0,Homme,Bruxelles,Belgique,Organic,Gold,7.0,53.69,16,912.98,0.516,13,4,PayPal,Mobile,True,2025-03-13,retailsense_demo,False
+CUST-000139,63.0,Non renseigné,Paris,France,Social Media,Bronze,4.0,82.98,15,1244.81,0.282,6,0,Virement,Mobile,True,2024-12-17,retailsense_demo,False
+CUST-000140,74.0,Femme,Paris,France,Organic,Bronze,6.0,53.36,16,799.23,0.35,58,3,Carte,Mobile,False,2023-01-10,retailsense_demo,False
+CUST-000141,44.0,Homme,Liège,Belgique,Referral,Platinum,6.0,45.2,19,863.56,0.137,1,1,Carte,Mobile,True,2025-08-30,retailsense_demo,False
+CUST-000142,27.0,Homme,Bruxelles,Belgique,Organic,Silver,4.0,94.07,17,1644.12,0.188,75,1,Carte,Mobile,True,2023-08-18,retailsense_demo,False
+CUST-000143,18.0,Homme,Paris,France,Marketplace,Gold,7.0,135.27,11,1445.15,0.52,8,2,PayPal,Desktop,True,2021-08-11,retailsense_demo,False
+CUST-000144,42.0,Femme,Zurich,Suisse,Organic,Gold,8.0,41.2,23,873.3,0.31,18,2,PayPal,Desktop,True,2021-09-05,retailsense_demo,False
+CUST-000145,29.0,Femme,Bordeaux,France,Social Media,Silver,1.0,78.81,3,241.02,0.432,6,0,Virement,Mobile,True,2023-06-04,retailsense_demo,False
+CUST-000146,34.0,Femme,Liège,Belgique,Paid Search,Bronze,6.0,28.1,11,286.31,0.079,59,1,Carte,Desktop,True,2024-10-16,retailsense_demo,False
+CUST-000147,32.0,Homme,Bordeaux,France,Organic,Bronze,2.0,34.54,9,307.55,0.292,63,1,PayPal,Desktop,True,2025-07-24,retailsense_demo,True
+CUST-000148,,Non renseigné,Lille,France,Paid Search,Silver,8.0,52.85,35,1945.74,0.285,4,2,Carte,Desktop,False,2025-02-01,retailsense_demo,False
+CUST-000149,52.0,Homme,Lille,France,Referral,Silver,5.0,120.88,12,1566.27,0.164,4,1,Apple Pay,Mobile,True,2024-07-23,retailsense_demo,False
+CUST-000150,41.0,Femme,Bordeaux,France,Marketplace,Platinum,5.0,48.24,22,1039.29,0.216,12,2,PayPal,Desktop,True,2023-04-01,retailsense_demo,False
+CUST-000151,37.0,Homme,Paris,France,Paid Search,Silver,3.0,47.38,5,218.73,0.147,10,0,PayPal,Mobile,False,2022-05-27,retailsense_demo,False
+CUST-000152,27.0,Femme,Bordeaux,France,Organic,Bronze,4.0,71.33,18,1282.49,0.293,8,1,Carte,Mobile,True,2023-09-09,retailsense_demo,False
+CUST-000153,19.0,Homme,Bordeaux,France,Referral,Silver,2.0,71.36,8,550.48,0.288,7,0,Carte,Desktop,False,2021-11-29,retailsense_demo,False
+CUST-000154,33.0,Femme,Bordeaux,France,Social Media,Silver,3.0,48.09,6,306.69,0.268,8,0,Carte,Mobile,True,2025-02-19,retailsense_demo,False
+CUST-000155,38.0,Homme,Liège,Belgique,Organic,Bronze,4.0,181.89,13,2444.55,0.338,27,0,Virement,Mobile,True,2023-11-13,retailsense_demo,False
+CUST-000156,60.0,Homme,Zurich,Suisse,Referral,Gold,6.0,61.72,23,1397.85,0.181,26,0,Carte,Mobile,True,2022-12-11,retailsense_demo,False
+CUST-000157,41.0,Femme,Bordeaux,France,Paid Search,Silver,1.0,74.03,2,154.28,0.401,44,0,Virement,Desktop,False,2025-08-28,retailsense_demo,False
+CUST-000158,51.0,Femme,Bordeaux,France,Social Media,Bronze,6.0,57.81,15,845.1,0.241,36,0,Carte,Mobile,True,2021-07-12,retailsense_demo,False
+CUST-000159,33.0,Homme,Bordeaux,France,Paid Search,Silver,6.0,86.59,20,1737.83,0.198,59,0,PayPal,Mobile,True,2021-02-04,retailsense_demo,False
+CUST-000160,25.0,Femme,,Suisse,Paid Search,Silver,3.0,126.82,6,812.4,0.349,9,1,Carte,Desktop,True,2022-05-01,retailsense_demo,True
+CUST-000161,27.0,Homme,Lyon,France,Organic,Gold,6.0,155.8,11,1631.56,0.331,95,1,Carte,Mobile,True,2022-07-06,retailsense_demo,False
+CUST-000162,30.0,Homme,Lille,France,Referral,Bronze,3.0,48.62,7,330.19,0.499,9,1,PayPal,Mobile,True,2024-11-26,retailsense_demo,False
+CUST-000163,65.0,Homme,Lausanne,Suisse,Organic,Silver,5.0,118.91,19,2398.71,0.297,42,1,Carte,Desktop,True,2025-01-12,retailsense_demo,False
+CUST-000164,,Femme,Zurich,Suisse,Referral,Silver,5.0,91.27,13,1179.3,0.25,67,1,Carte,Tablet,False,2024-10-06,retailsense_demo,False
+CUST-000165,49.0,Femme,Bordeaux,France,Referral,Silver,12.0,111.92,36,3911.69,0.106,37,4,PayPal,Desktop,False,2025-04-06,retailsense_demo,True
+CUST-000166,28.0,Femme,Bordeaux,France,Referral,Bronze,4.0,67.08,8,496.92,0.236,9,0,Carte,Mobile,False,2023-03-21,retailsense_demo,False
+CUST-000167,50.0,Homme,Lille,France,Organic,Gold,11.0,64.09,23,1454.86,0.55,16,0,PayPal,Mobile,True,2021-04-12,retailsense_demo,False
+CUST-000168,44.0,Femme,Liège,Belgique,Organic,Gold,4.0,109.85,14,1538.09,0.324,61,0,PayPal,Desktop,True,2022-08-20,retailsense_demo,False
+CUST-000169,37.0,Femme,Paris,France,Paid Search,Silver,7.0,110.86,13,1419.56,0.339,88,2,Carte,Mobile,False,2021-08-25,retailsense_demo,True
+CUST-000170,39.0,Femme,Lille,France,Social Media,Silver,1.0,148.64,4,573.4,0.388,0,0,Carte,Desktop,False,2021-03-05,retailsense_demo,False
+CUST-000171,31.0,Homme,Lille,France,Marketplace,Bronze,4.0,77.12,11,830.51,0.292,54,1,Carte,Mobile,True,2022-09-16,retailsense_demo,False
+CUST-000172,44.0,Femme,Lille,France,Paid Search,Silver,5.0,66.6,18,1226.09,0.337,113,1,Carte,Desktop,False,2025-05-30,retailsense_demo,True
+CUST-000173,34.0,Homme,Lille,France,Referral,Bronze,4.0,21.53,11,251.61,0.088,8,2,Carte,Mobile,True,2021-05-30,retailsense_demo,False
+CUST-000174,24.0,Homme,Bordeaux,France,Organic,Silver,2.0,32.35,8,264.99,0.188,14,0,PayPal,Tablet,False,2023-04-09,retailsense_demo,False
+CUST-000175,24.0,Homme,Genève,Suisse,Paid Search,Bronze,5.0,58.02,8,475.0,0.271,57,0,Carte,Mobile,False,2023-04-08,retailsense_demo,True
+CUST-000176,41.0,Non renseigné,Liège,Belgique,Organic,Silver,7.0,41.33,29,1259.22,0.615,11,6,Virement,Desktop,False,2021-02-18,retailsense_demo,False
+CUST-000177,58.0,Homme,Lille,France,Referral,Bronze,5.0,103.63,12,1176.88,0.254,10,0,PayPal,Mobile,True,2022-08-09,retailsense_demo,False
+CUST-000178,41.0,Homme,Namur,Belgique,Organic,Silver,9.0,37.38,15,542.89,0.215,18,1,Carte,Mobile,True,2025-05-19,retailsense_demo,False
+CUST-000179,38.0,Femme,Bordeaux,France,Organic,Silver,5.0,55.11,16,818.39,0.286,4,0,PayPal,Mobile,True,2022-03-19,retailsense_demo,False
+CUST-000180,42.0,Homme,Bordeaux,France,Referral,Bronze,3.0,56.16,7,383.67,0.352,43,0,Carte,Mobile,False,2021-03-16,retailsense_demo,False
+CUST-000181,55.0,Homme,Bordeaux,France,Social Media,Silver,5.0,125.0,14,1889.6,0.419,61,0,Carte,Mobile,True,2024-10-07,retailsense_demo,False
+CUST-000182,42.0,Homme,Namur,Belgique,Organic,Gold,7.0,,27,1374.98,0.246,62,1,Apple Pay,Mobile,True,2023-09-05,retailsense_demo,False
+CUST-000183,34.0,Homme,Liège,Belgique,Organic,Silver,5.0,87.11,19,1750.34,0.277,50,0,Carte,Tablet,True,2025-06-01,retailsense_demo,False
+CUST-000184,52.0,Non renseigné,Genève,Suisse,Paid Search,Bronze,3.0,77.01,10,719.06,0.106,27,1,Carte,Desktop,True,2022-06-11,retailsense_demo,False
+CUST-000185,44.0,Homme,Liège,Belgique,Paid Search,Silver,3.0,108.16,13,1396.97,0.316,154,1,Virement,Desktop,False,2025-03-24,retailsense_demo,True
+CUST-000186,57.0,Femme,Zurich,Suisse,Organic,Bronze,3.0,105.44,9,926.37,0.328,89,0,Apple Pay,Mobile,False,2023-11-10,retailsense_demo,False
+CUST-000187,41.0,Femme,Paris,France,Social Media,Silver,4.0,68.99,6,394.17,0.196,29,0,PayPal,Mobile,True,2022-10-07,retailsense_demo,False
+CUST-000188,24.0,Femme,Zurich,Suisse,Organic,Silver,6.0,31.06,24,730.13,0.263,13,4,PayPal,Mobile,True,2021-11-04,retailsense_demo,False
+CUST-000189,23.0,Femme,Lille,France,Social Media,Bronze,8.0,62.73,17,1092.14,0.588,37,1,Virement,Mobile,True,2024-05-15,retailsense_demo,False
+CUST-000190,59.0,Femme,Bordeaux,France,Paid Search,Silver,8.0,69.44,16,1109.27,0.162,1,0,PayPal,Mobile,True,2021-07-07,retailsense_demo,False
+CUST-000191,60.0,Femme,Paris,France,Organic,Silver,2.0,80.42,3,254.56,0.42,59,0,Carte,Desktop,True,2025-10-20,retailsense_demo,False
+CUST-000192,37.0,Femme,Bordeaux,France,Organic,Gold,5.0,49.2,12,628.7,0.344,29,2,Virement,Mobile,False,2025-02-10,retailsense_demo,False
+CUST-000193,34.0,Homme,Lyon,France,Organic,Bronze,4.0,121.22,10,1208.72,0.603,6,2,PayPal,Mobile,False,2025-05-05,retailsense_demo,False
+CUST-000194,57.0,Femme,Lille,France,Organic,Bronze,1.0,70.57,2,152.01,0.344,44,0,Carte,Mobile,True,2022-04-19,retailsense_demo,False
+CUST-000195,26.0,Homme,Lille,France,Paid Search,Bronze,5.0,45.07,16,671.7,0.104,3,0,Carte,Mobile,False,2024-03-01,retailsense_demo,False
+CUST-000196,28.0,Homme,Lille,France,Marketplace,Bronze,4.0,56.26,15,813.75,0.539,178,1,Carte,Mobile,False,2025-10-26,retailsense_demo,True
+CUST-000197,47.0,Femme,Zurich,Suisse,Referral,Bronze,7.0,176.92,30,5236.88,0.384,8,3,Carte,Mobile,False,2022-02-05,retailsense_demo,False
+CUST-000198,34.0,Femme,Paris,France,Paid Search,Bronze,4.0,96.44,7,684.0,0.515,110,0,Carte,Mobile,False,2024-07-29,retailsense_demo,True
+CUST-000199,39.0,Femme,Lille,France,Social Media,Bronze,3.0,115.96,6,700.88,0.231,48,0,Carte,Mobile,True,2022-08-12,retailsense_demo,True
+CUST-000200,37.0,Non renseigné,Bordeaux,France,Social Media,Silver,6.0,42.52,20,859.7,0.19,15,0,Apple Pay,Desktop,False,2023-03-30,retailsense_demo,False
+CUST-000201,43.0,Femme,Paris,France,Referral,Bronze,2.0,50.37,4,214.25,0.707,100,1,Carte,Tablet,False,2025-05-18,retailsense_demo,True
+CUST-000202,56.0,Homme,Lyon,France,Organic,Silver,6.0,50.55,16,779.98,0.327,3,4,Carte,Mobile,False,2022-12-30,retailsense_demo,False
+CUST-000203,40.0,Homme,Liège,Belgique,Paid Search,Bronze,5.0,76.59,17,1368.1,0.828,24,1,Virement,Mobile,True,2021-09-29,retailsense_demo,False
+CUST-000204,47.0,Non renseigné,Lille,France,Paid Search,Silver,5.0,64.49,19,1236.64,0.247,22,3,Carte,Mobile,True,2024-02-24,retailsense_demo,False
+CUST-000205,18.0,Femme,Namur,Belgique,Organic,Bronze,5.0,55.43,11,608.75,0.464,63,1,PayPal,Desktop,True,2021-11-17,retailsense_demo,False
+CUST-000206,38.0,Femme,Namur,Belgique,Paid Search,Gold,6.0,58.86,21,1196.49,0.363,40,2,PayPal,Mobile,False,2024-08-10,retailsense_demo,False
+CUST-000207,29.0,Femme,Bordeaux,France,Referral,Gold,5.0,47.89,17,788.57,0.298,1,2,PayPal,Mobile,True,2024-07-19,retailsense_demo,False
+CUST-000208,24.0,Femme,Liège,Belgique,Marketplace,Bronze,7.0,64.31,29,1831.64,0.193,44,2,Carte,Mobile,False,2025-02-01,retailsense_demo,True
+CUST-000209,28.0,Femme,Lille,France,Organic,Silver,4.0,119.62,10,1246.66,0.168,36,0,Carte,Tablet,False,2024-11-22,retailsense_demo,False
+CUST-000210,35.0,Homme,Genève,Suisse,Paid Search,Bronze,4.0,33.91,15,506.75,0.466,16,1,PayPal,Mobile,True,2024-10-03,retailsense_demo,False
+CUST-000211,50.0,Homme,Liège,Belgique,Paid Search,Silver,3.0,82.79,11,860.25,0.568,16,2,Carte,Mobile,True,2022-10-09,retailsense_demo,False
+CUST-000212,23.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,1.0,135.97,2,283.25,0.335,46,0,Carte,Mobile,False,2025-04-15,retailsense_demo,False
+CUST-000213,39.0,Homme,Paris,France,Social Media,Bronze,2.0,64.2,7,461.18,0.375,34,0,Carte,Mobile,True,2023-04-13,retailsense_demo,False
+CUST-000214,33.0,Femme,Namur,Belgique,Organic,Bronze,5.0,54.39,18,1049.35,0.507,34,2,PayPal,Mobile,False,2024-08-26,retailsense_demo,False
+CUST-000215,35.0,Homme,Zurich,Suisse,Referral,Gold,4.0,109.25,9,987.87,0.185,46,0,Carte,Desktop,False,2025-03-17,retailsense_demo,False
+CUST-000216,51.0,Homme,Lille,France,Marketplace,Silver,5.0,43.71,14,627.06,0.694,59,1,PayPal,Desktop,True,2021-12-09,retailsense_demo,True
+CUST-000217,45.0,Homme,Bruxelles,Belgique,Social Media,Silver,4.0,69.35,11,760.28,0.636,16,2,PayPal,Tablet,True,2023-04-21,retailsense_demo,False
+CUST-000218,55.0,Homme,Bruxelles,Belgique,Social Media,Bronze,7.0,42.56,27,1182.31,0.566,25,2,Carte,Tablet,False,2024-07-11,retailsense_demo,False
+CUST-000219,37.0,Femme,Paris,France,Social Media,Bronze,5.0,28.57,8,226.22,0.104,31,0,Apple Pay,Mobile,False,2022-10-28,retailsense_demo,False
+CUST-000220,31.0,Femme,Zurich,Suisse,Paid Search,Bronze,5.0,65.17,15,920.95,0.304,56,1,Virement,Desktop,True,2021-07-09,retailsense_demo,False
+CUST-000221,36.0,Femme,Paris,France,Organic,Gold,8.0,38.23,16,659.28,0.283,3,3,Carte,Desktop,False,2024-07-19,retailsense_demo,False
+CUST-000222,42.0,Femme,Lyon,France,Social Media,Gold,2.0,69.71,7,505.2,0.057,36,0,Carte,Mobile,True,2024-09-23,retailsense_demo,False
+CUST-000223,41.0,Homme,Bordeaux,France,Organic,Bronze,2.0,119.73,7,852.66,0.081,14,0,Carte,Desktop,True,2022-08-11,retailsense_demo,False
+CUST-000224,26.0,Femme,Bordeaux,France,Referral,Silver,3.0,170.72,9,1531.94,0.155,62,0,Apple Pay,Tablet,True,2023-07-15,retailsense_demo,False
+CUST-000225,40.0,Homme,Namur,Belgique,Paid Search,Bronze,3.0,73.32,9,682.24,0.261,11,0,Carte,Desktop,False,2022-08-27,retailsense_demo,True
+CUST-000226,42.0,Homme,Lyon,France,Paid Search,Bronze,5.0,114.35,12,1290.21,0.243,8,0,Carte,Desktop,False,2025-02-08,retailsense_demo,False
+CUST-000227,69.0,Femme,Lille,France,Paid Search,Silver,6.0,84.9,15,1238.1,0.585,100,0,Apple Pay,Mobile,True,2021-05-25,retailsense_demo,True
+CUST-000228,62.0,Femme,Paris,France,Marketplace,Bronze,4.0,58.33,15,822.4,0.035,2,0,PayPal,Desktop,True,2025-11-01,retailsense_demo,False
+CUST-000229,29.0,Homme,Bordeaux,France,Organic,Bronze,4.0,27.83,8,209.32,0.551,36,1,Carte,Mobile,True,2024-08-04,retailsense_demo,False
+CUST-000230,36.0,Homme,Bruxelles,Belgique,Organic,Silver,4.0,153.04,15,2119.83,0.116,20,0,PayPal,Desktop,False,2022-11-20,retailsense_demo,False
+CUST-000231,21.0,Femme,Zurich,Suisse,Organic,Bronze,2.0,42.37,7,308.73,0.195,34,0,Virement,Desktop,False,2023-05-26,retailsense_demo,False
+CUST-000232,32.0,Femme,Lille,France,Social Media,Gold,7.0,136.15,29,3775.98,0.468,39,3,Carte,Mobile,True,2024-04-13,retailsense_demo,True
+CUST-000233,43.0,Homme,Bordeaux,France,Marketplace,Silver,12.0,,27,2579.27,0.18,28,0,PayPal,Mobile,False,2021-03-09,retailsense_demo,False
+CUST-000234,53.0,Femme,Lyon,France,Organic,Gold,4.0,43.88,12,560.66,0.159,36,0,PayPal,Desktop,False,2024-03-31,retailsense_demo,True
+CUST-000235,30.0,Homme,Paris,France,Marketplace,Silver,5.0,81.43,8,616.9,0.189,12,3,Carte,Mobile,False,2022-08-19,retailsense_demo,False
+CUST-000236,31.0,Femme,Bordeaux,France,Organic,Gold,10.0,195.16,42,8470.45,0.248,4,3,Apple Pay,Mobile,False,2023-12-11,retailsense_demo,False
+CUST-000237,,Femme,Lille,France,Social Media,Bronze,5.0,146.51,18,2620.48,0.387,9,2,Carte,Mobile,True,2023-10-14,retailsense_demo,False
+CUST-000238,37.0,Homme,,France,Organic,Silver,5.0,54.81,17,994.25,0.502,33,2,PayPal,Desktop,False,2022-02-24,retailsense_demo,False
+CUST-000239,26.0,Homme,Lyon,France,Paid Search,Silver,7.0,49.81,26,1291.87,0.163,1,4,Virement,Mobile,True,2024-03-15,retailsense_demo,True
+CUST-000240,33.0,Homme,Lyon,France,Social Media,Gold,6.0,73.56,14,1009.88,0.517,18,0,Carte,Mobile,False,2023-12-25,retailsense_demo,False
+CUST-000241,28.0,Femme,Lyon,France,Social Media,Bronze,8.0,64.75,26,1628.2,0.375,27,0,Carte,Desktop,True,2022-02-17,retailsense_demo,False
+CUST-000242,38.0,Non renseigné,Bruxelles,Belgique,Organic,Silver,10.0,124.7,39,5177.18,0.087,52,3,Apple Pay,Mobile,False,2025-07-02,retailsense_demo,False
+CUST-000243,18.0,Femme,Bruxelles,Belgique,Referral,Gold,6.0,99.98,11,1051.63,0.28,56,0,PayPal,Desktop,True,2023-10-28,retailsense_demo,True
+CUST-000244,21.0,Femme,Lyon,France,Marketplace,Bronze,6.0,31.12,26,851.44,0.513,62,3,Carte,Mobile,True,2024-07-26,retailsense_demo,False
+CUST-000245,65.0,Femme,Bruxelles,Belgique,Paid Search,Gold,4.0,87.37,17,1412.63,0.374,13,0,Carte,Mobile,False,2023-08-01,retailsense_demo,False
+CUST-000246,24.0,Femme,Namur,Belgique,Social Media,Bronze,3.0,64.33,13,855.49,0.466,9,1,Carte,Desktop,True,2023-02-16,retailsense_demo,False
+CUST-000247,26.0,Homme,Paris,France,Referral,Bronze,4.0,71.37,16,1132.9,0.345,18,1,Carte,Mobile,True,2023-11-03,retailsense_demo,False
+CUST-000248,61.0,Femme,Paris,France,Organic,Silver,2.0,79.0,5,370.03,0.615,51,0,Carte,Tablet,False,2021-02-07,retailsense_demo,False
+CUST-000249,74.0,Homme,Paris,France,Referral,Bronze,3.0,124.64,10,1171.76,0.216,75,1,PayPal,Mobile,True,2021-06-30,retailsense_demo,False
+CUST-000250,25.0,Femme,Namur,Belgique,Paid Search,Bronze,4.0,112.09,7,757.23,0.353,28,0,Carte,Desktop,True,2025-03-23,retailsense_demo,False
+CUST-000251,35.0,Non renseigné,Lyon,France,Referral,Bronze,3.0,48.92,11,561.04,0.461,101,0,PayPal,Mobile,False,2022-10-20,retailsense_demo,False
+CUST-000252,43.0,Femme,Lyon,France,Organic,Bronze,5.0,68.16,10,706.57,0.625,0,2,Apple Pay,Desktop,True,2024-05-08,retailsense_demo,False
+CUST-000253,,Homme,Lyon,France,Paid Search,Gold,8.0,56.53,33,1777.37,0.209,76,0,Apple Pay,Mobile,True,2022-06-15,retailsense_demo,False
+CUST-000254,27.0,Femme,Paris,France,Social Media,Gold,9.0,31.27,20,623.05,0.151,5,1,Virement,Desktop,False,2023-07-26,retailsense_demo,False
+CUST-000255,36.0,Femme,Genève,Suisse,Social Media,Silver,6.0,66.52,12,746.77,0.38,23,1,Carte,Mobile,False,2021-04-19,retailsense_demo,False
+CUST-000256,48.0,Homme,Paris,France,Referral,Bronze,3.0,169.95,5,879.09,0.121,357,0,PayPal,Desktop,True,2021-05-04,retailsense_demo,True
+CUST-000257,44.0,Homme,Namur,Belgique,Marketplace,Silver,5.0,30.82,18,580.83,0.062,1,0,Carte,Mobile,True,2025-08-23,retailsense_demo,False
+CUST-000258,34.0,Homme,Genève,Suisse,Organic,Gold,9.0,69.3,19,1399.61,0.226,87,2,Carte,Mobile,True,2025-05-24,retailsense_demo,False
+CUST-000259,37.0,Femme,Liège,Belgique,Organic,Silver,4.0,68.24,8,579.63,0.469,44,0,Virement,Desktop,True,2025-10-22,retailsense_demo,False
+CUST-000260,23.0,Homme,Bordeaux,France,Paid Search,Bronze,5.0,80.49,10,784.01,0.105,36,0,PayPal,Mobile,True,2022-01-26,retailsense_demo,False
+CUST-000261,36.0,Homme,Namur,Belgique,Paid Search,Bronze,5.0,44.16,12,509.14,0.252,10,2,PayPal,Desktop,False,2024-10-23,retailsense_demo,False
+CUST-000262,36.0,Homme,Lille,France,Paid Search,Gold,8.0,35.37,35,1316.61,0.219,42,1,Carte,Desktop,True,2022-06-01,retailsense_demo,False
+CUST-000263,42.0,Femme,Paris,France,Referral,Gold,8.0,36.17,24,818.95,0.838,9,5,Carte,Mobile,True,2024-04-22,retailsense_demo,False
+CUST-000264,32.0,Homme,Liège,Belgique,Referral,Bronze,6.0,132.8,14,1728.12,0.086,68,0,Virement,Desktop,False,2024-06-07,retailsense_demo,False
+CUST-000265,45.0,Homme,Bruxelles,Belgique,Organic,Gold,4.0,43.74,8,339.54,0.715,5,1,Carte,Mobile,True,2022-12-28,retailsense_demo,False
+CUST-000266,51.0,Homme,Lille,France,Paid Search,Bronze,5.0,55.16,8,459.65,0.267,21,0,Carte,Desktop,False,2022-03-03,retailsense_demo,True
+CUST-000267,41.0,Femme,Lyon,France,Social Media,Bronze,4.0,192.52,10,1985.07,0.209,21,0,PayPal,Mobile,False,2023-03-05,retailsense_demo,False
+CUST-000268,43.0,Femme,Liège,Belgique,Paid Search,Gold,9.0,49.28,16,849.96,0.335,22,2,PayPal,Mobile,True,2023-02-18,retailsense_demo,False
+CUST-000269,40.0,Homme,Liège,Belgique,Organic,Silver,5.0,82.63,8,646.17,0.692,1,0,Carte,Desktop,True,2022-05-08,retailsense_demo,False
+CUST-000270,39.0,Homme,Bordeaux,France,Paid Search,Bronze,6.0,116.82,11,1238.93,0.293,182,1,Carte,Desktop,True,2025-02-01,retailsense_demo,False
+CUST-000271,30.0,Homme,Lausanne,Suisse,Paid Search,Gold,6.0,114.15,15,1678.94,0.51,95,2,Virement,Tablet,True,2023-01-19,retailsense_demo,False
+CUST-000272,43.0,Femme,Bordeaux,France,Organic,Gold,3.0,37.0,11,425.35,0.082,55,0,Apple Pay,Desktop,True,2024-07-14,retailsense_demo,True
+CUST-000273,38.0,Femme,Lyon,France,Referral,Bronze,5.0,49.78,9,427.53,0.068,9,0,Carte,Mobile,True,2025-03-02,retailsense_demo,False
+CUST-000274,64.0,Homme,Lille,France,Paid Search,Silver,5.0,81.06,18,1563.52,0.497,22,1,Virement,Mobile,True,2024-04-29,retailsense_demo,True
+CUST-000275,58.0,Femme,Lausanne,Suisse,Social Media,Gold,9.0,176.96,30,5319.48,0.211,20,0,Carte,Mobile,False,2024-12-26,retailsense_demo,False
+CUST-000276,44.0,Femme,Bordeaux,France,Paid Search,Silver,7.0,48.64,29,1474.51,0.293,29,4,PayPal,Desktop,True,2024-05-09,retailsense_demo,False
+CUST-000277,30.0,Homme,Lyon,France,Referral,Platinum,8.0,55.32,16,931.4,0.686,8,2,PayPal,Mobile,True,2025-10-21,retailsense_demo,False
+CUST-000278,,Homme,Bordeaux,France,Organic,Silver,4.0,85.75,16,1367.29,0.244,17,1,Virement,Tablet,True,2022-04-20,retailsense_demo,False
+CUST-000279,53.0,Homme,Liège,Belgique,Organic,Bronze,4.0,94.39,16,1568.57,0.469,3,1,Virement,Mobile,True,2024-03-25,retailsense_demo,False
+CUST-000280,42.0,Femme,Lyon,France,Paid Search,Bronze,4.0,97.18,18,1711.3,0.213,149,1,Carte,Mobile,False,2022-09-20,retailsense_demo,False
+CUST-000281,45.0,Femme,Lyon,France,Paid Search,Gold,8.0,46.7,31,1519.73,0.326,8,0,Carte,Desktop,False,2022-04-15,retailsense_demo,False
+CUST-000282,18.0,Homme,Zurich,Suisse,Paid Search,Platinum,7.0,54.31,13,742.55,0.079,14,0,Virement,Mobile,True,2021-12-11,retailsense_demo,False
+CUST-000283,50.0,Femme,Lille,France,Referral,Bronze,4.0,77.75,17,1335.67,0.537,20,1,Carte,Mobile,True,2025-07-17,retailsense_demo,False
+CUST-000284,44.0,Femme,Paris,France,Organic,Bronze,6.0,128.5,24,2944.87,0.529,8,1,PayPal,Mobile,True,2023-06-11,retailsense_demo,False
+CUST-000285,26.0,Femme,Bordeaux,France,Organic,Gold,7.0,62.52,15,1008.4,0.537,88,0,Carte,Tablet,False,2023-11-25,retailsense_demo,True
+CUST-000286,33.0,Homme,Namur,Belgique,Paid Search,Bronze,6.0,69.36,12,891.83,0.084,115,0,Carte,Mobile,True,2024-03-21,retailsense_demo,True
+CUST-000287,42.0,Homme,Paris,France,Referral,Bronze,1.0,42.84,4,174.66,0.462,92,0,PayPal,Mobile,False,2022-01-04,retailsense_demo,True
+CUST-000288,40.0,Homme,Bordeaux,France,Referral,Gold,9.0,171.46,18,3325.22,0.484,53,1,Carte,Mobile,True,2025-08-04,retailsense_demo,False
+CUST-000289,,Homme,Lille,France,Referral,Gold,6.0,75.49,23,1737.13,0.144,51,2,Virement,Mobile,True,2024-06-01,retailsense_demo,False
+CUST-000290,38.0,Femme,Bruxelles,Belgique,Social Media,Gold,5.0,117.6,14,1613.65,0.402,33,1,Carte,Mobile,True,2022-01-25,retailsense_demo,False
+CUST-000291,36.0,Femme,Liège,Belgique,Referral,Silver,8.0,71.12,29,2049.41,0.427,1,0,Carte,Desktop,True,2024-01-03,retailsense_demo,False
+CUST-000292,41.0,Femme,Bordeaux,France,Social Media,Bronze,2.0,73.03,4,270.91,0.026,27,0,Carte,Mobile,True,2025-07-22,retailsense_demo,True
+CUST-000293,57.0,Femme,Lyon,France,Organic,Gold,9.0,34.12,33,1134.77,0.223,7,2,Carte,Desktop,True,2025-01-28,retailsense_demo,False
+CUST-000294,18.0,Femme,Zurich,Suisse,Social Media,Bronze,6.0,24.97,18,461.4,0.301,0,1,PayPal,Desktop,True,2024-06-16,retailsense_demo,True
+CUST-000295,36.0,Femme,Lyon,France,Referral,Bronze,9.0,127.86,38,4555.03,0.145,18,4,Carte,Desktop,False,2024-09-18,retailsense_demo,False
+CUST-000296,,Femme,Paris,France,Paid Search,Gold,7.0,72.78,14,979.1,0.067,0,0,Carte,Mobile,True,2022-09-05,retailsense_demo,False
+CUST-000297,43.0,Homme,Lyon,France,Social Media,Silver,7.0,77.41,13,1041.91,0.365,12,1,Apple Pay,Mobile,False,2025-02-01,retailsense_demo,False
+CUST-000298,35.0,Homme,Lille,France,Paid Search,Gold,3.0,38.49,6,241.8,0.091,0,0,Carte,Mobile,True,2022-03-20,retailsense_demo,False
+CUST-000299,18.0,Femme,Lille,France,Paid Search,Bronze,8.0,45.45,14,685.71,0.253,46,0,Carte,Mobile,True,2024-05-29,retailsense_demo,False
+CUST-000300,43.0,Femme,Bordeaux,France,Organic,Platinum,6.0,116.73,27,3027.39,0.707,9,3,Virement,Mobile,True,2025-08-02,retailsense_demo,False
+CUST-000301,60.0,Homme,Paris,France,Social Media,Silver,4.0,161.62,7,1193.17,0.068,102,0,PayPal,Mobile,False,2025-11-11,retailsense_demo,True
+CUST-000302,21.0,Homme,Bordeaux,France,Referral,Silver,6.0,52.03,13,640.88,0.423,9,0,Carte,Mobile,False,2022-12-22,retailsense_demo,False
+CUST-000303,49.0,Homme,Liège,Belgique,Organic,Gold,10.0,,39,3551.05,0.228,103,2,Apple Pay,Mobile,False,2022-05-11,retailsense_demo,False
+CUST-000304,35.0,Femme,Paris,France,Paid Search,Bronze,2.0,76.8,4,318.47,0.19,39,0,Carte,Mobile,True,2025-04-03,retailsense_demo,False
+CUST-000305,38.0,Homme,Bordeaux,France,Organic,Silver,4.0,66.16,9,590.32,0.389,24,0,Carte,Mobile,True,2024-06-03,retailsense_demo,False
+CUST-000306,26.0,Femme,Liège,Belgique,Organic,Silver,2.0,170.53,7,1249.88,0.197,20,0,Carte,Desktop,False,2022-04-01,retailsense_demo,False
+CUST-000307,35.0,Femme,Lille,France,Marketplace,Gold,9.0,56.4,24,1306.5,0.356,12,1,Apple Pay,Mobile,False,2021-09-17,retailsense_demo,False
+CUST-000308,55.0,Femme,Namur,Belgique,Paid Search,Gold,7.0,127.17,28,3397.42,0.555,46,3,Carte,Desktop,True,2022-05-20,retailsense_demo,False
+CUST-000309,46.0,Femme,Paris,France,Paid Search,Silver,2.0,84.19,7,593.94,0.654,16,1,Virement,Mobile,False,2022-12-04,retailsense_demo,False
+CUST-000310,60.0,Femme,Bruxelles,Belgique,Organic,Bronze,4.0,69.54,9,587.33,0.419,13,1,Carte,Tablet,False,2022-04-17,retailsense_demo,False
+CUST-000311,53.0,Femme,Lille,France,Marketplace,Bronze,7.0,135.45,23,3004.96,0.39,3,5,Carte,Mobile,True,2024-06-24,retailsense_demo,False
+CUST-000312,44.0,Homme,,France,Organic,Platinum,8.0,80.58,33,2517.17,0.265,26,0,Virement,Mobile,True,2025-08-11,retailsense_demo,False
+CUST-000313,60.0,Femme,Paris,France,Referral,Platinum,9.0,66.93,23,1495.17,0.219,26,1,Apple Pay,Desktop,True,2023-03-09,retailsense_demo,False
+CUST-000314,44.0,Femme,Paris,France,Paid Search,Platinum,5.0,135.93,19,2692.36,0.192,59,2,Carte,Mobile,True,2023-03-17,retailsense_demo,False
+CUST-000315,49.0,Femme,Bordeaux,France,Organic,Bronze,1.0,127.7,3,359.84,0.159,38,0,Carte,Mobile,False,2022-01-10,retailsense_demo,False
+CUST-000316,35.0,Femme,Bruxelles,Belgique,Social Media,Bronze,6.0,124.83,19,2414.2,0.29,89,4,PayPal,Mobile,False,2024-10-01,retailsense_demo,False
+CUST-000317,40.0,Femme,Bruxelles,Belgique,Organic,Gold,11.0,15.0,41,623.34,0.12,28,3,PayPal,Tablet,True,2021-08-11,retailsense_demo,False
+CUST-000318,31.0,Femme,Lille,France,Social Media,Gold,8.0,86.6,13,1132.65,0.31,90,1,Carte,Desktop,True,2023-07-08,retailsense_demo,False
+CUST-000319,51.0,Femme,Genève,Suisse,Organic,Bronze,6.0,77.62,17,1316.2,0.314,14,0,Carte,Mobile,True,2023-10-11,retailsense_demo,False
+CUST-000320,25.0,Homme,Liège,Belgique,Referral,Silver,4.0,68.94,7,495.25,0.152,8,0,Apple Pay,Desktop,True,2021-02-14,retailsense_demo,False
+CUST-000321,48.0,Homme,,Belgique,Referral,Bronze,1.0,93.94,4,396.93,0.221,15,0,Carte,Mobile,False,2023-04-14,retailsense_demo,False
+CUST-000322,37.0,Homme,Liège,Belgique,Referral,Silver,5.0,,17,1277.54,0.19,54,1,Carte,Mobile,True,2025-06-24,retailsense_demo,False
+CUST-000323,53.0,Homme,Lyon,France,Organic,Bronze,3.0,97.06,7,713.58,0.354,69,1,Carte,Mobile,True,2024-09-08,retailsense_demo,False
+CUST-000324,48.0,Homme,Bordeaux,France,Social Media,Bronze,4.0,61.64,7,401.23,0.473,46,3,Carte,Mobile,False,2023-01-15,retailsense_demo,True
+CUST-000325,61.0,Non renseigné,Lille,France,Marketplace,Bronze,2.0,143.9,9,1291.41,0.243,37,0,PayPal,Desktop,True,2024-10-20,retailsense_demo,False
+CUST-000326,48.0,Homme,Lausanne,Suisse,Organic,Gold,7.0,101.89,17,1735.31,0.289,146,1,Carte,Desktop,True,2025-02-12,retailsense_demo,True
+CUST-000327,20.0,Homme,Paris,France,Organic,Silver,3.0,90.96,7,605.91,0.366,141,1,PayPal,Desktop,False,2024-06-24,retailsense_demo,True
+CUST-000328,38.0,Homme,Lyon,France,Referral,Gold,8.0,88.85,14,1162.27,0.087,3,1,Carte,Desktop,True,2023-06-13,retailsense_demo,False
+CUST-000329,25.0,Homme,Paris,France,Organic,Silver,3.0,122.18,10,1138.7,0.431,29,2,Carte,Mobile,True,2025-06-20,retailsense_demo,False
+CUST-000330,33.0,Femme,Genève,Suisse,Social Media,Bronze,5.0,114.48,11,1166.05,0.129,14,1,Virement,Desktop,True,2023-05-25,retailsense_demo,False
+CUST-000331,57.0,Femme,Lyon,France,Referral,Bronze,3.0,66.41,12,806.32,0.079,63,3,Carte,Mobile,True,2022-05-24,retailsense_demo,False
+CUST-000332,47.0,Femme,Paris,France,Organic,Silver,2.0,112.77,7,745.87,0.285,109,0,Carte,Desktop,False,2023-09-16,retailsense_demo,True
+CUST-000333,31.0,Femme,Bruxelles,Belgique,Social Media,Bronze,2.0,76.21,3,239.94,0.565,60,0,Carte,Mobile,False,2022-07-22,retailsense_demo,True
+CUST-000334,27.0,Homme,Genève,Suisse,Social Media,Silver,4.0,175.94,13,2433.17,0.269,49,0,,Desktop,True,2022-10-26,retailsense_demo,False
+CUST-000335,39.0,Femme,Lille,France,Paid Search,Gold,7.0,118.74,15,1721.9,0.238,60,1,Virement,Desktop,True,2023-07-07,retailsense_demo,False
+CUST-000336,24.0,Homme,Bruxelles,Belgique,Referral,Gold,5.0,51.92,8,393.06,0.513,0,1,PayPal,Mobile,True,2021-03-13,retailsense_demo,False
+CUST-000337,31.0,Homme,Genève,Suisse,Organic,Bronze,5.0,214.59,17,3595.31,0.212,203,1,Virement,Mobile,False,2022-12-15,retailsense_demo,True
+CUST-000338,43.0,Homme,Paris,France,Paid Search,Silver,5.0,25.56,11,298.32,0.188,32,1,Carte,Mobile,False,2022-01-06,retailsense_demo,False
+CUST-000339,53.0,Femme,Bruxelles,Belgique,Referral,Bronze,6.0,95.2,25,2341.73,0.133,31,1,Apple Pay,Mobile,True,2022-10-24,retailsense_demo,False
+CUST-000340,46.0,Femme,Paris,France,Organic,Bronze,4.0,50.19,13,611.57,0.403,17,2,Carte,Desktop,True,2021-04-10,retailsense_demo,False
+CUST-000341,18.0,Homme,Lyon,France,Referral,Silver,2.0,173.03,4,745.78,0.561,48,0,Carte,Mobile,False,2023-10-30,retailsense_demo,False
+CUST-000342,43.0,Homme,Lille,France,Organic,Silver,3.0,79.15,13,1028.9,0.713,31,2,Carte,Mobile,False,2024-12-31,retailsense_demo,False
+CUST-000343,40.0,Non renseigné,Bordeaux,France,Paid Search,Silver,3.0,47.89,9,420.17,0.348,31,0,Carte,Mobile,True,2025-01-14,retailsense_demo,True
+CUST-000344,44.0,Homme,Lille,France,Organic,Bronze,2.0,61.69,4,262.29,0.147,9,0,Carte,Mobile,True,2021-02-07,retailsense_demo,False
+CUST-000345,58.0,Homme,Lille,France,Social Media,Platinum,6.0,49.77,18,957.03,0.341,25,1,Carte,Mobile,True,2022-01-18,retailsense_demo,False
+CUST-000346,18.0,Femme,Bordeaux,France,Referral,Platinum,4.0,60.54,18,1089.08,0.192,4,1,PayPal,Desktop,True,2024-06-09,retailsense_demo,False
+CUST-000347,32.0,Femme,Lyon,France,Referral,Silver,2.0,59.87,6,348.14,0.584,23,0,PayPal,Desktop,True,2023-10-01,retailsense_demo,True
+CUST-000348,46.0,Femme,Bordeaux,France,Marketplace,Gold,2.0,48.88,6,292.49,0.26,11,2,PayPal,Desktop,True,2025-10-02,retailsense_demo,False
+CUST-000349,20.0,Homme,Bordeaux,France,Social Media,Bronze,2.0,79.81,6,457.34,0.275,92,1,Carte,Mobile,False,2021-04-20,retailsense_demo,True
+CUST-000350,57.0,Homme,Liège,Belgique,Referral,Silver,7.0,84.59,16,1348.69,0.465,53,1,Carte,Mobile,False,2023-10-21,retailsense_demo,False
+CUST-000351,43.0,Femme,,Belgique,Paid Search,Gold,6.0,,12,498.91,0.304,10,0,Virement,Mobile,True,2024-01-21,retailsense_demo,False
+CUST-000352,49.0,Homme,Paris,France,Marketplace,Gold,4.0,31.63,13,419.2,0.587,11,0,Carte,Mobile,True,2024-09-22,retailsense_demo,True
+CUST-000353,32.0,Femme,Zurich,Suisse,Social Media,Gold,10.0,81.39,42,3560.55,0.296,6,1,Carte,Mobile,True,2025-07-09,retailsense_demo,False
+CUST-000354,49.0,Femme,Lille,France,Marketplace,Silver,4.0,90.5,15,1459.42,0.577,59,1,Carte,Mobile,True,2022-03-24,retailsense_demo,False
+CUST-000355,52.0,Femme,Bruxelles,Belgique,Organic,Gold,4.0,99.53,7,734.93,0.371,77,1,Carte,Desktop,False,2024-11-02,retailsense_demo,True
+CUST-000356,42.0,Femme,Paris,France,Paid Search,Silver,7.0,91.34,19,1620.5,0.402,14,3,Carte,Mobile,True,2025-07-01,retailsense_demo,True
+CUST-000357,42.0,Homme,Namur,Belgique,Referral,Bronze,5.0,149.14,8,1138.07,0.738,45,0,PayPal,Mobile,False,2021-03-06,retailsense_demo,False
+CUST-000358,42.0,Femme,Lausanne,Suisse,Organic,Bronze,5.0,113.14,12,1364.52,0.094,5,1,Virement,Mobile,False,2023-04-07,retailsense_demo,False
+CUST-000359,29.0,Homme,Bruxelles,Belgique,Organic,Gold,10.0,253.74,35,8536.51,0.161,6,3,Apple Pay,Desktop,False,2025-07-18,retailsense_demo,False
+CUST-000360,37.0,Homme,,France,Marketplace,Silver,6.0,310.54,14,4009.74,0.255,12,0,Carte,Mobile,True,2024-07-07,retailsense_demo,False
+CUST-000361,37.0,Femme,Bordeaux,France,Paid Search,Silver,2.0,30.15,8,251.01,0.388,8,2,Carte,Desktop,True,2023-03-28,retailsense_demo,False
+CUST-000362,44.0,Femme,Lyon,France,Organic,Gold,4.0,24.42,12,286.36,0.378,65,4,PayPal,Mobile,False,2024-12-01,retailsense_demo,False
+CUST-000363,51.0,Homme,Paris,France,Paid Search,Silver,14.0,69.86,49,3185.36,0.065,2,5,Carte,Mobile,False,2021-02-13,retailsense_demo,False
+CUST-000364,26.0,Femme,Bruxelles,Belgique,Paid Search,Bronze,7.0,89.3,29,2593.44,0.189,75,2,PayPal,Mobile,False,2021-09-04,retailsense_demo,False
+CUST-000365,37.0,Homme,Genève,Suisse,Social Media,Bronze,3.0,67.6,11,800.35,0.355,10,0,PayPal,Mobile,True,2021-08-17,retailsense_demo,False
+CUST-000366,57.0,Femme,Lille,France,Marketplace,Silver,3.0,98.27,13,1314.0,0.455,15,0,Carte,Mobile,True,2023-06-03,retailsense_demo,False
+CUST-000367,30.0,Homme,Bordeaux,France,Marketplace,Gold,4.0,61.58,16,931.44,0.461,7,5,Carte,Desktop,True,2021-02-16,retailsense_demo,False
+CUST-000368,29.0,Homme,Bordeaux,France,Social Media,Silver,8.0,50.24,26,1309.35,0.196,3,1,Carte,Desktop,True,2024-05-04,retailsense_demo,False
+CUST-000369,41.0,Femme,Lille,France,Social Media,Silver,6.0,54.02,14,804.94,0.091,75,0,PayPal,Mobile,True,2023-03-24,retailsense_demo,False
+CUST-000370,49.0,Femme,Bordeaux,France,Paid Search,Silver,4.0,63.68,10,591.41,0.381,17,0,Carte,Mobile,False,2022-04-21,retailsense_demo,False
+CUST-000371,39.0,Homme,Lyon,France,Referral,Silver,3.0,105.1,12,1288.99,0.201,23,0,Carte,Mobile,False,2023-06-21,retailsense_demo,False
+CUST-000372,55.0,Femme,Liège,Belgique,Organic,Gold,5.0,55.5,8,459.71,0.42,15,0,Carte,Tablet,True,2021-10-13,retailsense_demo,False
+CUST-000373,49.0,Femme,Paris,France,Organic,Bronze,4.0,61.03,17,1071.3,0.086,16,1,Virement,Mobile,True,2025-06-01,retailsense_demo,False
+CUST-000374,49.0,Femme,Lille,France,Marketplace,Gold,5.0,92.18,12,1044.2,0.665,14,1,Virement,Mobile,True,2023-10-11,retailsense_demo,False
+CUST-000375,46.0,Femme,Lille,France,Referral,Silver,3.0,63.73,11,746.65,0.108,27,0,Apple Pay,Mobile,True,2021-11-24,retailsense_demo,False
+CUST-000376,67.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,5.0,119.82,12,1397.0,0.223,20,0,Virement,Desktop,False,2025-01-13,retailsense_demo,False
+CUST-000377,37.0,Homme,Liège,Belgique,Social Media,Silver,3.0,45.09,13,544.12,0.179,17,1,Carte,Mobile,False,2024-01-20,retailsense_demo,False
+CUST-000378,18.0,Femme,Lille,France,Paid Search,Silver,6.0,40.63,10,379.22,0.481,3,2,Carte,Mobile,True,2021-02-06,retailsense_demo,False
+CUST-000379,58.0,Homme,Lyon,France,Paid Search,Silver,6.0,81.14,15,1208.89,0.315,11,2,Carte,Mobile,False,2022-12-12,retailsense_demo,False
+CUST-000380,34.0,Femme,Lille,France,Paid Search,Gold,8.0,85.12,33,2602.2,0.229,80,3,PayPal,Desktop,True,2024-03-06,retailsense_demo,False
+CUST-000381,40.0,Femme,Lyon,France,Organic,Bronze,6.0,46.29,14,676.97,0.319,48,1,PayPal,Mobile,False,2024-02-28,retailsense_demo,True
+CUST-000382,55.0,Homme,Lyon,France,Social Media,Bronze,5.0,133.61,12,1697.17,0.259,6,2,Carte,Tablet,False,2024-12-03,retailsense_demo,False
+CUST-000383,20.0,Non renseigné,Paris,France,Paid Search,Bronze,1.0,,4,651.45,0.265,26,0,Apple Pay,Desktop,True,2022-05-11,retailsense_demo,False
+CUST-000384,24.0,Femme,Genève,Suisse,Paid Search,Bronze,3.0,51.86,12,653.24,0.179,88,1,Carte,Mobile,False,2025-06-02,retailsense_demo,False
+CUST-000385,20.0,Femme,Bordeaux,France,Organic,Silver,4.0,143.15,7,1079.21,0.497,34,1,PayPal,Tablet,True,2024-11-28,retailsense_demo,False
+CUST-000386,29.0,Homme,Bordeaux,France,Marketplace,Gold,7.0,22.34,23,475.3,0.106,77,1,Virement,Desktop,False,2025-04-26,retailsense_demo,False
+CUST-000387,44.0,Homme,Lille,France,Social Media,Silver,3.0,117.51,7,852.19,0.339,78,0,PayPal,Mobile,True,2022-04-07,retailsense_demo,False
+CUST-000388,45.0,Femme,Lausanne,Suisse,Marketplace,Bronze,5.0,46.45,11,551.7,0.124,5,1,PayPal,Desktop,True,2021-05-07,retailsense_demo,False
+CUST-000389,42.0,Femme,Lausanne,Suisse,Organic,Bronze,4.0,112.0,13,1525.24,0.757,45,1,PayPal,Mobile,False,2025-06-30,retailsense_demo,False
+CUST-000390,22.0,Homme,Liège,Belgique,Social Media,Bronze,3.0,44.19,6,265.39,0.29,22,1,Virement,Mobile,True,2021-05-01,retailsense_demo,True
+CUST-000391,18.0,Femme,Lyon,France,Referral,Silver,2.0,67.84,6,432.09,0.409,11,0,Virement,Mobile,True,2021-06-24,retailsense_demo,False
+CUST-000392,40.0,Femme,,France,Paid Search,Bronze,9.0,47.52,20,982.01,0.093,12,1,Carte,Desktop,False,2023-06-16,retailsense_demo,False
+CUST-000393,33.0,Femme,Namur,Belgique,Organic,Silver,4.0,63.27,16,978.63,0.1,43,1,Carte,Desktop,True,2025-09-27,retailsense_demo,False
+CUST-000394,45.0,Femme,Liège,Belgique,Organic,Gold,9.0,168.74,28,4516.34,0.403,253,0,Virement,Mobile,True,2022-07-25,retailsense_demo,True
+CUST-000395,47.0,Femme,Lille,France,Organic,Silver,2.0,66.57,4,266.8,0.18,17,0,PayPal,Desktop,True,2023-05-18,retailsense_demo,False
+CUST-000396,41.0,Homme,Lyon,France,Paid Search,Bronze,4.0,193.05,17,3215.14,0.465,55,2,,Desktop,True,2021-11-19,retailsense_demo,False
+CUST-000397,48.0,Homme,Lyon,France,Paid Search,Bronze,7.0,58.25,28,1586.6,0.252,31,0,Carte,Desktop,False,2024-06-27,retailsense_demo,False
+CUST-000398,42.0,Homme,Bruxelles,Belgique,Organic,Silver,10.0,143.46,23,3129.52,0.126,18,0,Carte,Mobile,True,2023-03-21,retailsense_demo,False
+CUST-000399,45.0,Non renseigné,Bruxelles,Belgique,Social Media,Silver,5.0,32.13,22,745.82,0.472,7,3,Carte,Mobile,True,2021-08-06,retailsense_demo,False
+CUST-000400,31.0,Femme,Lyon,France,Organic,Bronze,4.0,61.1,9,567.92,0.497,164,0,Apple Pay,Mobile,True,2022-09-08,retailsense_demo,True
+CUST-000401,37.0,Femme,Lille,France,Paid Search,Gold,4.0,54.2,10,527.36,0.41,22,1,Carte,Mobile,True,2022-10-15,retailsense_demo,False
+CUST-000402,41.0,Homme,Lille,France,Social Media,Silver,2.0,146.66,5,702.51,0.454,2,0,Carte,Mobile,True,2021-03-26,retailsense_demo,False
+CUST-000403,,Femme,Bordeaux,France,Organic,Silver,8.0,76.62,16,1153.05,0.198,18,0,Carte,Mobile,True,2023-07-19,retailsense_demo,False
+CUST-000404,34.0,Homme,Paris,France,Organic,Bronze,5.0,25.73,18,434.45,0.146,111,0,Carte,Mobile,True,2025-01-30,retailsense_demo,False
+CUST-000405,45.0,Homme,Namur,Belgique,Organic,Bronze,5.0,37.38,16,610.09,0.172,29,3,Carte,Desktop,False,2021-03-10,retailsense_demo,False
+CUST-000406,36.0,Femme,Bordeaux,France,Organic,Bronze,3.0,43.12,13,525.44,0.24,0,1,PayPal,Mobile,True,2025-03-31,retailsense_demo,False
+CUST-000407,38.0,Femme,Lyon,France,Paid Search,Bronze,5.0,109.77,11,1296.32,0.587,2,1,Carte,Mobile,True,2023-04-01,retailsense_demo,False
+CUST-000408,49.0,Femme,Lyon,France,Organic,Silver,3.0,103.17,6,597.16,0.307,16,0,Carte,Desktop,True,2022-04-09,retailsense_demo,False
+CUST-000409,18.0,Femme,Lyon,France,Organic,Silver,1.0,60.69,3,168.26,0.405,48,0,Carte,Mobile,True,2022-02-07,retailsense_demo,False
+CUST-000410,23.0,Femme,Lille,France,Marketplace,Gold,6.0,53.88,12,683.29,0.407,18,1,Carte,Desktop,False,2022-07-06,retailsense_demo,False
+CUST-000411,21.0,Femme,Bordeaux,France,Marketplace,Platinum,8.0,98.88,35,3387.34,0.094,82,1,Virement,Desktop,True,2023-11-10,retailsense_demo,False
+CUST-000412,18.0,Homme,Lille,France,Organic,Bronze,6.0,40.77,22,874.3,0.349,11,1,Apple Pay,Mobile,True,2025-01-06,retailsense_demo,False
+CUST-000413,31.0,Homme,Liège,Belgique,Paid Search,Bronze,6.0,87.33,23,1886.0,0.063,60,1,PayPal,Mobile,True,2025-09-25,retailsense_demo,False
+CUST-000414,48.0,Homme,Lille,France,Paid Search,Gold,11.0,83.83,41,3525.31,0.345,40,4,Virement,Mobile,True,2024-06-14,retailsense_demo,False
+CUST-000415,36.0,Femme,Paris,France,Referral,Platinum,7.0,61.45,16,960.96,0.397,21,2,Carte,Mobile,True,2021-03-17,retailsense_demo,False
+CUST-000416,41.0,Femme,Lille,France,Referral,Gold,7.0,84.85,13,1160.06,0.222,34,1,Virement,Mobile,True,2022-08-07,retailsense_demo,False
+CUST-000417,52.0,Femme,Bruxelles,Belgique,Organic,Bronze,3.0,73.63,8,601.32,0.071,70,0,Carte,Mobile,False,2023-12-12,retailsense_demo,True
+CUST-000418,55.0,Femme,Bordeaux,France,Organic,Bronze,3.0,89.01,12,1133.06,0.214,15,0,PayPal,Mobile,False,2023-07-10,retailsense_demo,False
+CUST-000419,38.0,Homme,Namur,Belgique,Paid Search,Bronze,6.0,36.95,15,565.16,0.426,45,1,PayPal,Mobile,True,2024-04-19,retailsense_demo,True
+CUST-000420,55.0,Femme,Lausanne,Suisse,Referral,Gold,8.0,94.16,12,1180.37,0.205,17,1,Carte,Mobile,True,2021-08-03,retailsense_demo,False
+CUST-000421,40.0,Femme,Lyon,France,Marketplace,Silver,2.0,114.75,7,828.52,0.022,48,0,Carte,Mobile,True,2023-09-21,retailsense_demo,True
+CUST-000422,29.0,Homme,Lille,France,Organic,Silver,2.0,,4,325.17,0.342,12,1,Carte,Mobile,False,2021-11-11,retailsense_demo,False
+CUST-000423,32.0,Femme,Liège,Belgique,Social Media,Silver,6.0,93.56,19,1831.27,0.468,41,1,Carte,Mobile,True,2025-09-02,retailsense_demo,False
+CUST-000424,21.0,Femme,Lille,France,Organic,Bronze,2.0,66.5,3,204.73,0.133,30,0,Carte,Desktop,True,2023-07-23,retailsense_demo,False
+CUST-000425,28.0,Femme,Lille,France,Social Media,Silver,10.0,107.54,30,2971.5,0.51,13,3,Apple Pay,Desktop,True,2022-12-30,retailsense_demo,False
+CUST-000426,,Homme,Paris,France,Marketplace,Bronze,3.0,72.34,8,597.08,0.239,126,1,Carte,Desktop,True,2022-09-08,retailsense_demo,True
+CUST-000427,49.0,Homme,,France,Paid Search,Silver,5.0,40.41,21,816.24,0.582,41,1,PayPal,Mobile,False,2025-10-20,retailsense_demo,False
+CUST-000428,60.0,Femme,Lyon,France,Organic,Silver,3.0,103.93,11,1150.86,0.467,73,2,PayPal,Mobile,True,2022-10-20,retailsense_demo,False
+CUST-000429,,Homme,Lille,France,Social Media,Silver,5.0,32.0,8,240.05,0.437,185,0,Carte,Desktop,True,2021-11-07,retailsense_demo,True
+CUST-000430,44.0,Homme,Lyon,France,Paid Search,Bronze,1.0,80.3,4,296.68,0.289,88,0,Carte,Desktop,True,2025-06-22,retailsense_demo,False
+CUST-000431,27.0,Homme,Lille,France,Referral,Gold,9.0,58.3,35,1882.14,0.314,97,4,Carte,Tablet,False,2024-04-25,retailsense_demo,False
+CUST-000432,45.0,Femme,Lyon,France,Paid Search,Silver,7.0,56.54,24,1282.69,0.395,25,1,Carte,Mobile,False,2023-11-09,retailsense_demo,False
+CUST-000433,37.0,Femme,Zurich,Suisse,Referral,Bronze,3.0,76.14,13,913.77,0.301,12,1,Carte,Mobile,True,2024-09-07,retailsense_demo,False
+CUST-000434,18.0,Homme,Lyon,France,Organic,Bronze,5.0,49.88,20,938.85,0.18,26,1,Carte,Mobile,True,2023-10-15,retailsense_demo,False
+CUST-000435,50.0,Femme,Bordeaux,France,Organic,Silver,5.0,89.65,11,995.43,0.459,11,3,Carte,Desktop,True,2021-08-04,retailsense_demo,False
+CUST-000436,32.0,Homme,Lyon,France,Paid Search,Bronze,6.0,72.04,16,1134.29,0.499,49,2,Virement,Desktop,False,2021-07-27,retailsense_demo,False
+CUST-000437,33.0,Homme,Lyon,France,Organic,Bronze,5.0,52.13,13,729.79,0.072,56,0,Virement,Desktop,False,2023-01-02,retailsense_demo,False
+CUST-000438,26.0,Femme,Lille,France,Paid Search,Bronze,8.0,133.26,24,3356.29,0.339,23,3,Carte,Desktop,True,2021-08-18,retailsense_demo,False
+CUST-000439,31.0,Homme,Lyon,France,Social Media,Bronze,4.0,77.35,17,1240.58,0.479,36,1,PayPal,Tablet,True,2021-12-20,retailsense_demo,False
+CUST-000440,44.0,Homme,,France,Organic,Silver,6.0,94.9,20,1872.66,0.392,7,2,Apple Pay,Mobile,True,2025-08-21,retailsense_demo,False
+CUST-000441,37.0,Homme,Lyon,France,Organic,Silver,4.0,138.37,10,1368.46,0.326,29,1,Carte,Tablet,True,2024-01-17,retailsense_demo,False
+CUST-000442,43.0,Femme,Bordeaux,France,Organic,Bronze,2.0,137.29,9,1208.34,0.385,3,1,Carte,Desktop,False,2021-10-28,retailsense_demo,False
+CUST-000443,43.0,Homme,Paris,France,Organic,Silver,4.0,92.6,14,1295.5,0.175,45,1,Carte,Desktop,False,2023-10-10,retailsense_demo,False
+CUST-000444,55.0,Homme,Lyon,France,Referral,Bronze,3.0,60.63,7,435.92,0.772,6,2,Carte,Tablet,True,2022-12-15,retailsense_demo,False
+CUST-000445,35.0,Homme,Lille,France,Marketplace,Bronze,4.0,35.3,17,613.54,0.12,72,1,Virement,Mobile,False,2023-12-03,retailsense_demo,False
+CUST-000446,21.0,Homme,,France,Organic,Bronze,5.0,77.42,13,983.42,0.218,48,2,Virement,Desktop,False,2025-11-03,retailsense_demo,False
+CUST-000447,52.0,Homme,Lyon,France,Referral,Gold,8.0,118.56,24,2938.74,0.379,6,1,PayPal,Mobile,True,2023-03-07,retailsense_demo,False
+CUST-000448,35.0,Femme,Paris,France,Referral,Platinum,7.0,83.1,21,1686.37,0.32,20,1,Carte,Desktop,True,2024-01-26,retailsense_demo,False
+CUST-000449,52.0,Femme,Paris,France,Marketplace,Silver,3.0,15.0,13,205.47,0.667,10,2,Virement,Desktop,False,2022-03-03,retailsense_demo,False
+CUST-000450,44.0,Femme,Lyon,France,Paid Search,Bronze,6.0,106.45,14,1600.96,0.195,0,0,Carte,Desktop,True,2021-08-13,retailsense_demo,False
+CUST-000451,37.0,Homme,Bordeaux,France,Paid Search,Bronze,1.0,109.63,2,212.06,0.188,97,0,Carte,Mobile,False,2025-05-30,retailsense_demo,True
+CUST-000452,43.0,Homme,Genève,Suisse,Paid Search,Bronze,1.0,60.67,3,190.29,0.142,1,0,Carte,Desktop,True,2024-03-07,retailsense_demo,False
+CUST-000453,62.0,Homme,Bordeaux,France,Referral,Gold,7.0,112.66,29,3431.12,0.597,17,3,Virement,Desktop,False,2024-01-06,retailsense_demo,True
+CUST-000454,64.0,Femme,Lille,France,Referral,Bronze,7.0,94.77,13,1230.15,0.153,30,0,PayPal,Desktop,True,2022-08-22,retailsense_demo,False
+CUST-000455,40.0,Homme,Paris,France,Paid Search,Platinum,8.0,50.45,17,801.06,0.547,28,1,PayPal,Mobile,True,2023-12-31,retailsense_demo,False
+CUST-000456,41.0,Homme,Lausanne,Suisse,Organic,Silver,8.0,129.05,35,4723.68,0.436,15,2,PayPal,Desktop,False,2023-03-06,retailsense_demo,False
+CUST-000457,52.0,Femme,Paris,France,Referral,Silver,4.0,38.15,15,563.83,0.247,45,0,Carte,Desktop,True,2021-07-08,retailsense_demo,False
+CUST-000458,29.0,Homme,Bordeaux,France,Referral,Gold,8.0,68.21,20,1300.39,0.244,91,0,Carte,Mobile,True,2023-01-22,retailsense_demo,False
+CUST-000459,43.0,Homme,Lausanne,Suisse,Paid Search,Bronze,6.0,65.02,15,995.01,0.295,9,2,Virement,Mobile,True,2025-06-10,retailsense_demo,False
+CUST-000460,39.0,Homme,Lyon,France,Social Media,Gold,10.0,47.17,29,1354.17,0.412,7,1,Apple Pay,Desktop,True,2023-08-03,retailsense_demo,False
+CUST-000461,43.0,Femme,Genève,Suisse,Paid Search,Bronze,4.0,81.11,14,1060.62,0.515,2,2,Carte,Desktop,True,2021-08-15,retailsense_demo,False
+CUST-000462,29.0,Homme,Lille,France,Paid Search,Gold,8.0,131.5,25,3541.81,0.514,5,6,Carte,Mobile,True,2023-08-01,retailsense_demo,True
+CUST-000463,20.0,Homme,Paris,France,Social Media,Silver,5.0,127.6,19,2325.39,0.194,9,0,Apple Pay,Mobile,True,2021-02-26,retailsense_demo,False
+CUST-000464,18.0,Homme,Lyon,France,Referral,Bronze,5.0,99.22,8,795.17,0.657,2,3,Carte,Desktop,True,2021-07-18,retailsense_demo,False
+CUST-000465,26.0,Homme,Paris,France,Marketplace,Gold,9.0,31.06,36,1148.13,0.254,40,1,Carte,Tablet,True,2024-08-21,retailsense_demo,False
+CUST-000466,33.0,Non renseigné,Lausanne,Suisse,Paid Search,Bronze,4.0,36.92,7,1940.16,0.514,38,1,Carte,Mobile,False,2023-11-30,retailsense_demo,False
+CUST-000467,35.0,Femme,Lille,France,Paid Search,Bronze,6.0,75.93,25,1970.86,0.246,9,5,Carte,Desktop,True,2025-01-08,retailsense_demo,False
+CUST-000468,62.0,Homme,Lausanne,Suisse,Paid Search,Gold,5.0,68.96,8,564.79,0.436,35,1,PayPal,Mobile,False,2024-12-28,retailsense_demo,False
+CUST-000469,52.0,Femme,Paris,France,Organic,Silver,4.0,55.2,8,441.14,0.614,21,0,PayPal,Mobile,True,2024-02-20,retailsense_demo,False
+CUST-000470,27.0,Non renseigné,Lyon,France,Paid Search,Gold,5.0,174.96,10,1757.53,0.408,47,0,Carte,Desktop,True,2023-11-20,retailsense_demo,False
+CUST-000471,43.0,Femme,Zurich,Suisse,Organic,Silver,5.0,73.76,11,870.4,0.663,6,1,Carte,Mobile,True,2024-03-21,retailsense_demo,False
+CUST-000472,34.0,Femme,Paris,France,Paid Search,Silver,11.0,90.95,30,2908.02,0.104,78,3,PayPal,Mobile,True,2022-05-14,retailsense_demo,False
+CUST-000473,36.0,Homme,Genève,Suisse,Organic,Bronze,4.0,112.64,14,1479.05,0.256,27,0,Carte,Tablet,True,2025-03-08,retailsense_demo,False
+CUST-000474,41.0,Femme,Paris,France,Paid Search,Bronze,1.0,71.98,4,281.87,0.241,21,0,Carte,Mobile,False,2023-08-13,retailsense_demo,False
+CUST-000475,46.0,Homme,Namur,Belgique,Referral,Platinum,11.0,243.16,34,8289.54,0.557,32,3,Carte,Mobile,True,2021-08-12,retailsense_demo,False
+CUST-000476,35.0,Femme,Paris,France,Organic,Bronze,4.0,44.64,12,571.67,0.397,84,1,Virement,Mobile,True,2022-05-16,retailsense_demo,False
+CUST-000477,,Non renseigné,,France,Social Media,Silver,6.0,52.41,15,825.96,0.233,25,1,Apple Pay,Mobile,False,2024-12-05,retailsense_demo,True
+CUST-000478,25.0,Homme,Bordeaux,France,Marketplace,Bronze,1.0,44.59,4,175.11,0.257,12,0,Carte,Desktop,True,2024-10-03,retailsense_demo,False
+CUST-000479,39.0,Femme,Lille,France,Social Media,Bronze,3.0,148.42,5,787.98,0.736,66,1,,Mobile,False,2021-06-06,retailsense_demo,False
+CUST-000480,70.0,Homme,Lyon,France,Organic,Silver,9.0,103.03,22,2222.43,0.249,19,1,Virement,Mobile,True,2023-02-04,retailsense_demo,False
+CUST-000481,42.0,Femme,Paris,France,Paid Search,Gold,8.0,53.99,14,728.19,0.297,23,1,Carte,Mobile,True,2021-08-27,retailsense_demo,False
+CUST-000482,56.0,Homme,Bruxelles,Belgique,Social Media,Gold,6.0,46.31,13,612.6,0.091,71,0,Apple Pay,Desktop,True,2021-09-24,retailsense_demo,False
+CUST-000483,40.0,Homme,Paris,France,Paid Search,Gold,2.0,136.28,7,932.0,0.589,53,0,Carte,Desktop,True,2023-10-12,retailsense_demo,False
+CUST-000484,46.0,Homme,Namur,Belgique,Organic,Bronze,5.0,83.4,9,765.27,0.358,12,1,PayPal,Mobile,True,2023-05-10,retailsense_demo,False
+CUST-000485,38.0,Femme,Genève,Suisse,Paid Search,Silver,5.0,137.97,9,1223.74,0.248,16,0,PayPal,Desktop,False,2024-02-19,retailsense_demo,False
+CUST-000486,37.0,Femme,Paris,France,Social Media,Bronze,4.0,68.11,16,1141.34,0.2,80,1,Carte,Tablet,True,2022-10-31,retailsense_demo,False
+CUST-000487,30.0,Homme,Bordeaux,France,Organic,Silver,2.0,89.62,4,384.52,0.316,5,0,Virement,Mobile,False,2022-10-08,retailsense_demo,False
+CUST-000488,44.0,Homme,Lyon,France,Social Media,Bronze,2.0,80.97,7,545.98,0.37,22,0,PayPal,Mobile,True,2022-08-18,retailsense_demo,False
+CUST-000489,29.0,Homme,Lyon,France,Organic,Silver,4.0,51.96,10,520.41,0.037,40,1,Carte,Desktop,True,2021-09-30,retailsense_demo,False
+CUST-000490,47.0,Femme,Lille,France,Paid Search,Bronze,4.0,65.42,17,1152.06,0.244,26,2,PayPal,Desktop,True,2022-05-02,retailsense_demo,False
+CUST-000491,52.0,Femme,Liège,Belgique,Referral,Gold,6.0,39.71,22,825.83,0.396,24,1,Apple Pay,Mobile,False,2025-06-04,retailsense_demo,False
+CUST-000492,43.0,Homme,Bordeaux,France,Organic,Gold,7.0,88.87,12,1116.93,0.406,77,1,Virement,Mobile,True,2024-03-21,retailsense_demo,False
+CUST-000493,36.0,Femme,Lyon,France,Social Media,Gold,9.0,101.03,38,3890.04,0.406,24,2,PayPal,Desktop,False,2023-02-27,retailsense_demo,False
+CUST-000494,44.0,Femme,Namur,Belgique,Paid Search,Bronze,1.0,112.76,3,319.33,0.504,45,0,Carte,Desktop,True,2022-11-18,retailsense_demo,False
+CUST-000495,35.0,Homme,Bordeaux,France,Paid Search,Platinum,10.0,96.54,24,2453.43,0.352,80,1,,Mobile,False,2021-09-24,retailsense_demo,False
+CUST-000496,50.0,Femme,Lyon,France,Marketplace,Bronze,7.0,65.92,25,1628.7,0.081,3,3,Carte,Mobile,False,2023-11-26,retailsense_demo,False
+CUST-000497,18.0,Homme,Lyon,France,Paid Search,Bronze,5.0,147.66,18,2520.44,0.458,79,0,Virement,Mobile,False,2021-12-08,retailsense_demo,True
+CUST-000498,35.0,Femme,Zurich,Suisse,Organic,Bronze,4.0,107.59,10,1023.44,0.149,0,2,Virement,Tablet,True,2024-01-10,retailsense_demo,False
+CUST-000499,18.0,Homme,Paris,France,Marketplace,Bronze,5.0,136.52,13,1855.89,0.4,54,0,Apple Pay,Desktop,True,2025-03-18,retailsense_demo,False
+CUST-000500,21.0,Homme,Paris,France,Referral,Silver,6.0,140.7,12,1806.08,0.151,42,0,Carte,Mobile,False,2023-08-13,retailsense_demo,False
+CUST-000501,55.0,Homme,Lille,France,Social Media,Bronze,4.0,66.0,13,841.33,0.36,5,0,Apple Pay,Desktop,True,2025-03-12,retailsense_demo,False
+CUST-000502,50.0,Femme,Bordeaux,France,Organic,Bronze,10.0,84.45,44,3465.48,0.287,44,2,Apple Pay,Mobile,True,2023-12-11,retailsense_demo,False
+CUST-000503,30.0,Homme,Paris,France,Organic,Silver,5.0,101.68,14,1332.55,0.558,49,5,PayPal,Desktop,False,2024-09-28,retailsense_demo,False
+CUST-000504,21.0,Homme,Bordeaux,France,Social Media,Gold,3.0,40.38,13,537.96,0.267,33,1,Virement,Mobile,False,2025-10-17,retailsense_demo,False
+CUST-000505,18.0,Femme,Zurich,Suisse,Organic,Silver,4.0,40.82,8,319.77,0.42,72,0,Carte,Mobile,True,2022-09-14,retailsense_demo,True
+CUST-000506,32.0,Femme,Bordeaux,France,Organic,Silver,3.0,37.57,12,445.57,0.714,19,4,Carte,Mobile,False,2022-04-28,retailsense_demo,False
+CUST-000507,68.0,Femme,Liège,Belgique,Referral,Bronze,3.0,66.56,13,842.73,0.449,0,0,Carte,Mobile,True,2025-04-12,retailsense_demo,False
+CUST-000508,44.0,Homme,Lyon,France,Paid Search,Gold,2.0,59.74,7,415.88,0.194,5,0,Carte,Desktop,True,2023-02-01,retailsense_demo,False
+CUST-000509,32.0,Homme,Lille,France,Organic,Bronze,3.0,35.19,5,180.01,0.146,38,0,Carte,Mobile,True,2023-06-27,retailsense_demo,False
+CUST-000510,45.0,Homme,Paris,France,Organic,Bronze,8.0,75.32,20,1516.23,0.244,128,1,PayPal,Mobile,False,2025-04-02,retailsense_demo,True
+CUST-000511,20.0,Homme,Bordeaux,France,Paid Search,Bronze,2.0,66.96,4,253.45,0.606,136,1,Carte,Desktop,False,2022-12-21,retailsense_demo,True
+CUST-000512,35.0,Homme,Liège,Belgique,Social Media,Silver,1.0,123.65,3,370.44,0.141,87,0,Carte,Mobile,False,2024-08-26,retailsense_demo,False
+CUST-000513,40.0,Femme,Lausanne,Suisse,Referral,Bronze,6.0,184.24,27,4943.09,0.219,11,2,,Mobile,True,2021-12-08,retailsense_demo,False
+CUST-000514,38.0,Femme,Liège,Belgique,Organic,Silver,6.0,87.28,16,1406.66,0.473,29,1,PayPal,Mobile,False,2022-12-16,retailsense_demo,False
+CUST-000515,48.0,Homme,Lille,France,Organic,Bronze,2.0,50.18,4,188.22,0.195,12,0,Apple Pay,Tablet,True,2025-05-18,retailsense_demo,False
+CUST-000516,43.0,Femme,Liège,Belgique,Social Media,Silver,6.0,95.62,14,1264.53,0.291,17,1,Carte,Desktop,True,2023-05-30,retailsense_demo,False
+CUST-000517,47.0,Homme,Bordeaux,France,Paid Search,Silver,9.0,,29,2052.04,0.183,20,2,Virement,Desktop,False,2025-05-09,retailsense_demo,False
+CUST-000518,31.0,Homme,Zurich,Suisse,Paid Search,Bronze,4.0,62.47,13,782.97,0.66,79,2,Apple Pay,Desktop,False,2022-05-31,retailsense_demo,False
+CUST-000519,50.0,Femme,Bordeaux,France,Marketplace,Bronze,2.0,46.36,4,189.27,0.607,69,0,PayPal,Mobile,False,2024-06-23,retailsense_demo,False
+CUST-000520,59.0,Homme,Lille,France,Social Media,Silver,6.0,56.1,23,1264.08,0.381,94,0,PayPal,Mobile,False,2023-07-20,retailsense_demo,False
+CUST-000521,,Femme,Lille,France,Paid Search,Silver,5.0,64.37,9,553.45,0.166,5,1,PayPal,Desktop,True,2022-07-19,retailsense_demo,False
+CUST-000522,28.0,Non renseigné,Lyon,France,Marketplace,Bronze,1.0,103.13,3,317.12,0.574,20,0,Apple Pay,Mobile,True,2021-10-28,retailsense_demo,False
+CUST-000523,55.0,Homme,Paris,France,Organic,Silver,6.0,89.59,17,1497.25,0.058,15,0,Carte,Tablet,False,2023-06-09,retailsense_demo,False
+CUST-000524,37.0,Homme,Lausanne,Suisse,Marketplace,Bronze,4.0,168.39,8,1273.31,0.128,11,0,Virement,Mobile,True,2025-07-17,retailsense_demo,False
+CUST-000525,56.0,Femme,Namur,Belgique,Paid Search,Bronze,3.0,96.9,10,1016.88,0.305,5,1,Carte,Mobile,False,2024-08-30,retailsense_demo,False
+CUST-000526,,Femme,Genève,Suisse,Paid Search,Bronze,1.0,85.94,4,340.01,0.169,34,0,Carte,Mobile,True,2022-12-12,retailsense_demo,False
+CUST-000527,56.0,Femme,Lille,France,Marketplace,Silver,2.0,60.52,6,387.25,0.514,8,1,PayPal,Mobile,True,2025-09-18,retailsense_demo,False
+CUST-000528,41.0,Femme,Paris,France,Paid Search,Bronze,2.0,42.61,8,324.13,0.07,29,0,Virement,Desktop,False,2024-02-13,retailsense_demo,False
+CUST-000529,42.0,Femme,Lyon,France,Paid Search,Silver,6.0,53.33,18,1017.7,0.134,15,0,Virement,Desktop,False,2024-05-08,retailsense_demo,True
+CUST-000530,58.0,Femme,Paris,France,Organic,Bronze,5.0,50.1,12,631.62,0.375,3,1,Apple Pay,Desktop,True,2024-06-06,retailsense_demo,False
+CUST-000531,35.0,Non renseigné,Lille,France,Social Media,Gold,3.0,20.51,13,249.7,0.212,19,1,PayPal,Desktop,True,2021-04-18,retailsense_demo,False
+CUST-000532,28.0,Femme,Bordeaux,France,Social Media,Bronze,7.0,43.2,30,1302.59,0.075,12,1,PayPal,Mobile,True,2021-05-06,retailsense_demo,False
+CUST-000533,34.0,Femme,Bordeaux,France,Organic,Silver,9.0,151.27,16,2479.82,0.355,94,3,Apple Pay,Mobile,True,2021-07-27,retailsense_demo,False
+CUST-000534,44.0,Homme,Lille,France,Social Media,Gold,6.0,83.67,26,2173.95,0.163,45,1,Carte,Desktop,False,2021-09-25,retailsense_demo,False
+CUST-000535,20.0,Homme,Paris,France,Social Media,Bronze,5.0,58.51,19,1092.25,0.529,16,0,Carte,Mobile,True,2021-08-03,retailsense_demo,False
+CUST-000536,47.0,Homme,Lille,France,Paid Search,Bronze,1.0,84.88,2,181.82,0.464,28,0,Carte,Mobile,True,2025-01-10,retailsense_demo,False
+CUST-000537,33.0,Homme,Paris,France,Organic,Silver,3.0,27.45,9,254.99,0.239,110,1,PayPal,Mobile,False,2024-01-05,retailsense_demo,False
+CUST-000538,53.0,Homme,Lausanne,Suisse,Paid Search,Platinum,7.0,80.27,11,948.8,0.295,32,0,PayPal,Desktop,False,2025-08-22,retailsense_demo,False
+CUST-000539,18.0,Homme,Lille,France,Organic,Platinum,3.0,129.44,10,1366.08,0.277,89,1,Virement,Desktop,True,2022-01-20,retailsense_demo,False
+CUST-000540,30.0,Homme,Namur,Belgique,Organic,Bronze,3.0,66.15,13,903.53,0.423,10,0,Carte,Mobile,False,2021-09-18,retailsense_demo,False
+CUST-000541,19.0,Homme,Paris,France,Paid Search,Gold,7.0,29.95,18,558.52,0.435,70,0,Virement,Mobile,True,2025-10-11,retailsense_demo,True
+CUST-000542,29.0,Femme,Namur,Belgique,Organic,Bronze,2.0,57.47,6,352.9,0.344,101,0,PayPal,Mobile,True,2025-02-05,retailsense_demo,False
+CUST-000543,42.0,Femme,Liège,Belgique,Organic,Bronze,6.0,129.55,13,1788.36,0.255,21,2,Apple Pay,Mobile,False,2025-02-06,retailsense_demo,False
+CUST-000544,37.0,Femme,Namur,Belgique,Social Media,Silver,3.0,79.37,9,727.31,0.531,23,1,,Mobile,True,2021-06-02,retailsense_demo,False
+CUST-000545,36.0,Femme,Lille,France,Paid Search,Silver,8.0,35.49,31,1025.39,0.509,34,3,PayPal,Desktop,False,2022-02-02,retailsense_demo,False
+CUST-000546,37.0,Homme,Lille,France,Marketplace,Silver,8.0,218.43,17,3762.35,0.431,42,1,PayPal,Tablet,True,2024-07-29,retailsense_demo,False
+CUST-000547,41.0,Femme,Lille,France,Marketplace,Gold,7.0,38.4,22,791.21,0.048,25,2,Carte,Desktop,False,2025-09-12,retailsense_demo,False
+CUST-000548,27.0,Femme,Bordeaux,France,Social Media,Bronze,4.0,62.39,10,668.75,0.335,7,2,Carte,Desktop,True,2023-12-04,retailsense_demo,False
+CUST-000549,47.0,Femme,Paris,France,Marketplace,Silver,3.0,42.61,11,479.69,0.22,4,0,Carte,Tablet,True,2023-02-01,retailsense_demo,False
+CUST-000550,47.0,Homme,Lille,France,Referral,Bronze,4.0,42.64,14,602.23,0.299,64,2,Carte,Desktop,False,2025-09-13,retailsense_demo,True
+CUST-000551,44.0,Femme,Paris,France,Paid Search,Bronze,3.0,56.43,11,590.7,0.142,8,2,Carte,Mobile,False,2023-08-25,retailsense_demo,False
+CUST-000552,46.0,Homme,Lyon,France,Referral,Bronze,6.0,95.14,16,1526.08,0.523,2,1,PayPal,Desktop,False,2023-04-25,retailsense_demo,False
+CUST-000553,43.0,Homme,Bordeaux,France,Organic,Platinum,6.0,130.25,20,2539.37,0.094,21,0,PayPal,Mobile,True,2021-03-01,retailsense_demo,False
+CUST-000554,63.0,Femme,Bordeaux,France,Social Media,Silver,7.0,58.24,24,1437.08,0.224,19,1,PayPal,Mobile,True,2025-01-01,retailsense_demo,False
+CUST-000555,38.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,3.0,43.17,11,482.8,0.152,77,0,Carte,Mobile,True,2025-01-11,retailsense_demo,False
+CUST-000556,35.0,Femme,Liège,Belgique,Organic,Silver,2.0,88.21,6,529.22,0.138,2,1,Carte,Desktop,True,2023-10-30,retailsense_demo,False
+CUST-000557,30.0,Femme,Lille,France,Organic,Platinum,9.0,89.46,37,3179.17,0.557,52,4,PayPal,Desktop,True,2024-05-15,retailsense_demo,False
+CUST-000558,27.0,Homme,Lyon,France,Marketplace,Gold,5.0,78.68,11,869.04,0.397,27,0,Virement,Desktop,False,2021-06-18,retailsense_demo,False
+CUST-000559,,Homme,Paris,France,Paid Search,Silver,9.0,80.03,15,1193.04,0.55,20,1,PayPal,Mobile,True,2022-02-07,retailsense_demo,False
+CUST-000560,28.0,Femme,Lyon,France,Organic,Bronze,3.0,66.42,13,911.96,0.146,30,1,PayPal,Desktop,True,2024-09-10,retailsense_demo,False
+CUST-000561,38.0,Homme,Lyon,France,Organic,Silver,4.0,73.49,7,546.87,0.335,24,0,Apple Pay,Desktop,False,2024-04-18,retailsense_demo,False
+CUST-000562,43.0,Femme,Lille,France,Paid Search,Gold,3.0,64.25,13,869.92,0.494,6,1,Apple Pay,Desktop,False,2022-11-04,retailsense_demo,False
+CUST-000563,40.0,Homme,Zurich,Suisse,Referral,Gold,6.0,117.18,20,2275.98,0.104,8,0,PayPal,Mobile,True,2021-09-11,retailsense_demo,False
+CUST-000564,30.0,Homme,Lille,France,Referral,Gold,3.0,204.31,13,2459.79,0.14,46,1,Carte,Mobile,False,2024-12-09,retailsense_demo,False
+CUST-000565,50.0,Homme,Liège,Belgique,Paid Search,Silver,5.0,76.42,16,1305.92,0.284,3,0,Carte,Mobile,False,2024-06-25,retailsense_demo,False
+CUST-000566,48.0,Homme,Lille,France,Organic,Bronze,3.0,69.88,12,904.63,0.336,17,0,PayPal,Desktop,True,2022-12-18,retailsense_demo,True
+CUST-000567,37.0,Femme,Bordeaux,France,Organic,Silver,7.0,79.27,26,1937.94,0.023,13,1,Carte,Mobile,False,2021-10-02,retailsense_demo,False
+CUST-000568,31.0,Homme,Liège,Belgique,Paid Search,Bronze,6.0,51.12,18,947.51,0.048,6,0,Carte,Desktop,False,2024-07-08,retailsense_demo,False
+CUST-000569,46.0,Homme,Lyon,France,Referral,Bronze,6.0,101.21,16,1599.95,0.603,42,2,Carte,Mobile,False,2023-08-27,retailsense_demo,True
+CUST-000570,41.0,Homme,Bruxelles,Belgique,Referral,Silver,2.0,86.64,3,245.3,0.059,32,0,Apple Pay,Tablet,True,2022-08-13,retailsense_demo,False
+CUST-000571,22.0,Femme,Bordeaux,France,Paid Search,Silver,2.0,57.29,5,309.29,0.143,74,1,Carte,Mobile,True,2023-11-10,retailsense_demo,False
+CUST-000572,38.0,Femme,Bordeaux,France,Social Media,Gold,3.0,108.09,13,1502.61,0.356,53,0,Virement,Desktop,False,2022-03-08,retailsense_demo,False
+CUST-000573,42.0,Femme,Paris,France,Paid Search,Gold,10.0,70.75,23,1752.84,0.216,14,0,Apple Pay,Desktop,True,2023-06-04,retailsense_demo,False
+CUST-000574,28.0,Femme,Liège,Belgique,Social Media,Gold,6.0,44.01,23,954.51,0.154,26,0,PayPal,Desktop,True,2021-08-26,retailsense_demo,False
+CUST-000575,41.0,Femme,Lyon,France,Paid Search,Gold,6.0,82.99,18,1491.96,0.11,14,2,Carte,Desktop,True,2022-12-22,retailsense_demo,False
+CUST-000576,22.0,Femme,Zurich,Suisse,Social Media,Silver,8.0,78.55,19,1586.99,0.354,23,3,Virement,Mobile,False,2021-06-20,retailsense_demo,False
+CUST-000577,55.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,4.0,111.16,18,2057.02,0.689,3,1,PayPal,Mobile,True,2021-10-02,retailsense_demo,False
+CUST-000578,,Femme,Bruxelles,Belgique,Marketplace,Silver,8.0,104.5,13,1344.23,0.013,74,0,Carte,Mobile,False,2024-09-30,retailsense_demo,False
+CUST-000579,36.0,Homme,Lyon,France,Paid Search,Bronze,5.0,66.52,16,1067.24,0.252,67,0,PayPal,Desktop,True,2021-07-27,retailsense_demo,False
+CUST-000580,43.0,Homme,Liège,Belgique,Organic,Bronze,2.0,55.89,6,310.59,0.717,8,0,Carte,Desktop,False,2025-04-17,retailsense_demo,False
+CUST-000581,18.0,Homme,Genève,Suisse,Organic,Bronze,5.0,70.16,9,642.74,0.477,15,0,PayPal,Mobile,True,2024-07-19,retailsense_demo,False
+CUST-000582,25.0,Femme,Lille,France,Paid Search,Gold,3.0,83.46,6,529.59,0.275,16,1,Apple Pay,Desktop,False,2025-09-07,retailsense_demo,False
+CUST-000583,35.0,Homme,Lille,France,Social Media,Silver,1.0,88.43,4,325.58,0.196,4,0,PayPal,Mobile,False,2025-05-31,retailsense_demo,True
+CUST-000584,26.0,Homme,Bordeaux,France,Social Media,Platinum,8.0,81.02,15,1149.16,0.35,18,2,Apple Pay,Mobile,True,2022-06-05,retailsense_demo,False
+CUST-000585,48.0,Homme,Paris,France,Social Media,Platinum,4.0,67.12,16,1076.96,0.076,34,0,Carte,Mobile,True,2025-05-19,retailsense_demo,False
+CUST-000586,63.0,Homme,Bruxelles,Belgique,Organic,Gold,5.0,113.12,17,1941.84,0.44,2,3,Virement,Desktop,False,2025-01-05,retailsense_demo,False
+CUST-000587,25.0,Homme,Paris,France,Social Media,Bronze,2.0,50.72,4,197.8,0.588,60,0,Virement,Mobile,False,2023-12-10,retailsense_demo,True
+CUST-000588,29.0,Homme,Bordeaux,France,Social Media,Gold,5.0,230.47,12,2556.73,0.655,81,0,Carte,Desktop,True,2022-01-15,retailsense_demo,False
+CUST-000589,42.0,Homme,Lille,France,Paid Search,Gold,7.0,101.12,13,1365.75,0.182,82,1,Apple Pay,Desktop,True,2021-12-27,retailsense_demo,True
+CUST-000590,58.0,Femme,Lille,France,Paid Search,Gold,7.0,40.81,27,1056.42,0.597,47,2,Apple Pay,Mobile,False,2021-03-30,retailsense_demo,False
+CUST-000591,24.0,Homme,Bordeaux,France,Organic,Bronze,4.0,76.62,12,940.76,0.617,14,3,Carte,Mobile,False,2025-08-26,retailsense_demo,False
+CUST-000592,42.0,Femme,Liège,Belgique,Paid Search,Bronze,5.0,101.58,8,820.36,0.445,6,1,Virement,Desktop,True,2025-03-15,retailsense_demo,False
+CUST-000593,61.0,Homme,Paris,France,Referral,Gold,2.0,59.28,6,351.75,0.235,20,2,Carte,Desktop,True,2023-12-27,retailsense_demo,False
+CUST-000594,19.0,Homme,Lille,France,Marketplace,Bronze,3.0,34.2,9,312.28,0.345,38,1,Carte,Mobile,True,2024-07-18,retailsense_demo,False
+CUST-000595,24.0,Femme,Namur,Belgique,Social Media,Bronze,3.0,42.57,10,439.03,0.144,1,0,Carte,Mobile,False,2025-06-12,retailsense_demo,False
+CUST-000596,34.0,Homme,Paris,France,Paid Search,Silver,1.0,90.94,2,183.98,0.324,130,0,Carte,Mobile,False,2023-05-19,retailsense_demo,False
+CUST-000597,33.0,Femme,Lille,France,Social Media,Bronze,6.0,30.2,10,304.76,0.119,76,1,Carte,Mobile,True,2023-08-25,retailsense_demo,False
+CUST-000598,49.0,Femme,Lyon,France,Referral,Bronze,5.0,34.96,13,449.88,0.336,58,0,Carte,Mobile,True,2023-10-31,retailsense_demo,False
+CUST-000599,42.0,Femme,Genève,Suisse,Paid Search,Platinum,4.0,90.71,14,1255.74,0.221,70,1,Apple Pay,Desktop,True,2025-10-23,retailsense_demo,False
+CUST-000600,18.0,Femme,Bruxelles,Belgique,Referral,Gold,4.0,63.0,14,880.76,0.224,15,0,Carte,Mobile,True,2023-11-09,retailsense_demo,False
+CUST-000601,45.0,Femme,Lyon,France,Organic,Gold,9.0,50.2,21,1046.13,0.303,23,2,Virement,Desktop,False,2023-09-13,retailsense_demo,False
+CUST-000602,32.0,Femme,Lyon,France,Organic,Bronze,2.0,55.29,4,218.99,0.296,2,0,Carte,Mobile,False,2024-11-12,retailsense_demo,False
+CUST-000603,54.0,Homme,Lyon,France,Organic,Bronze,4.0,34.61,14,462.02,0.342,32,0,Carte,Desktop,True,2022-01-25,retailsense_demo,True
+CUST-000604,31.0,Homme,Lille,France,Organic,Bronze,4.0,88.46,6,549.85,0.253,4,2,Virement,Tablet,True,2021-08-11,retailsense_demo,False
+CUST-000605,31.0,Femme,Lyon,France,Referral,Silver,1.0,47.6,3,134.42,0.054,0,0,Carte,Mobile,True,2021-06-01,retailsense_demo,False
+CUST-000606,45.0,Homme,Lausanne,Suisse,Paid Search,Bronze,4.0,54.21,11,635.29,0.318,6,0,Carte,Mobile,False,2022-08-13,retailsense_demo,False
+CUST-000607,48.0,Femme,Namur,Belgique,Organic,Gold,8.0,82.8,18,1520.22,0.133,22,0,Apple Pay,Mobile,True,2022-08-23,retailsense_demo,False
+CUST-000608,44.0,Homme,Paris,France,Paid Search,Platinum,9.0,61.98,28,1610.19,0.394,29,3,Carte,Mobile,True,2025-03-04,retailsense_demo,False
+CUST-000609,19.0,Femme,Liège,Belgique,Paid Search,Silver,7.0,49.99,15,768.88,0.269,30,0,Carte,Desktop,False,2024-01-04,retailsense_demo,False
+CUST-000610,45.0,Homme,Genève,Suisse,Paid Search,Bronze,3.0,26.98,10,263.81,0.542,50,1,PayPal,Desktop,True,2025-11-24,retailsense_demo,False
+CUST-000611,27.0,Femme,Bordeaux,France,Organic,Bronze,4.0,83.63,8,715.02,0.346,12,1,Carte,Desktop,False,2023-03-17,retailsense_demo,False
+CUST-000612,42.0,Homme,Paris,France,Social Media,Bronze,5.0,72.81,14,1090.53,0.529,13,1,PayPal,Tablet,True,2022-03-23,retailsense_demo,False
+CUST-000613,22.0,Femme,Zurich,Suisse,Organic,Bronze,4.0,54.69,12,692.59,0.291,87,0,Carte,Mobile,True,2022-09-04,retailsense_demo,False
+CUST-000614,44.0,Homme,Paris,France,Referral,Silver,5.0,42.61,8,344.57,0.131,49,0,Carte,Mobile,False,2025-11-03,retailsense_demo,False
+CUST-000615,29.0,Femme,Genève,Suisse,Organic,Bronze,6.0,70.54,20,1505.34,0.379,59,1,Carte,Mobile,False,2023-03-23,retailsense_demo,False
+CUST-000616,24.0,Homme,Lille,France,Referral,Silver,3.0,88.29,11,994.47,0.658,241,1,Carte,Desktop,False,2021-08-26,retailsense_demo,True
+CUST-000617,48.0,Homme,Bordeaux,France,Referral,Gold,11.0,73.47,48,3738.4,0.593,105,3,PayPal,Mobile,True,2025-06-04,retailsense_demo,False
+CUST-000618,42.0,Homme,Bruxelles,Belgique,Organic,Bronze,2.0,153.9,4,582.1,0.581,117,2,Apple Pay,Mobile,True,2023-05-09,retailsense_demo,True
+CUST-000619,32.0,Homme,Paris,France,Organic,Bronze,2.0,98.33,4,418.74,0.563,162,1,PayPal,Tablet,True,2024-09-15,retailsense_demo,False
+CUST-000620,56.0,Non renseigné,Bordeaux,France,Marketplace,Bronze,4.0,66.59,10,683.08,0.121,32,0,Carte,Mobile,True,2021-05-30,retailsense_demo,False
+CUST-000621,34.0,Femme,Lyon,France,Paid Search,Bronze,6.0,99.92,25,2419.38,0.023,24,1,Apple Pay,Mobile,True,2023-04-02,retailsense_demo,False
+CUST-000622,39.0,Femme,Paris,France,Social Media,Silver,3.0,71.76,8,619.82,0.625,1,1,Virement,Mobile,True,2022-03-06,retailsense_demo,False
+CUST-000623,42.0,Femme,Lille,France,Organic,Gold,10.0,71.64,24,1770.84,0.126,60,1,Carte,Mobile,True,2023-05-18,retailsense_demo,False
+CUST-000624,32.0,Femme,Paris,France,Organic,Gold,8.0,130.62,30,4174.51,0.506,109,3,Carte,Mobile,True,2021-08-02,retailsense_demo,True
+CUST-000625,45.0,Homme,Bordeaux,France,Paid Search,Silver,6.0,45.56,10,419.52,0.124,30,0,Carte,Mobile,True,2024-07-11,retailsense_demo,False
+CUST-000626,33.0,Non renseigné,Bordeaux,France,Marketplace,Bronze,3.0,70.89,9,643.39,0.129,3,0,Carte,Mobile,True,2022-04-25,retailsense_demo,False
+CUST-000627,34.0,Non renseigné,Bordeaux,France,Organic,Bronze,3.0,124.1,9,1154.85,0.141,8,0,Carte,Desktop,False,2023-11-03,retailsense_demo,False
+CUST-000628,55.0,Homme,Genève,Suisse,Referral,Bronze,2.0,81.31,7,524.91,0.09,3,0,Carte,Mobile,False,2023-02-15,retailsense_demo,False
+CUST-000629,27.0,Homme,Paris,France,Social Media,Bronze,5.0,58.72,18,1101.44,0.547,25,2,Apple Pay,Desktop,True,2022-08-05,retailsense_demo,False
+CUST-000630,18.0,Homme,Lyon,France,Organic,Gold,7.0,30.91,17,538.18,0.477,51,5,Carte,Desktop,True,2025-01-29,retailsense_demo,True
+CUST-000631,58.0,Homme,Lyon,France,Paid Search,Silver,7.0,23.58,24,545.43,0.426,71,2,Carte,Desktop,False,2021-09-17,retailsense_demo,False
+CUST-000632,70.0,Femme,Bordeaux,France,Organic,Bronze,4.0,189.91,12,2347.85,0.115,69,2,Apple Pay,Desktop,True,2022-05-24,retailsense_demo,False
+CUST-000633,34.0,Homme,Liège,Belgique,Paid Search,Bronze,1.0,81.3,2,152.99,0.261,2,0,Carte,Mobile,False,2023-12-08,retailsense_demo,False
+CUST-000634,18.0,Homme,Bordeaux,France,Social Media,Bronze,4.0,52.97,17,947.1,0.299,13,0,Carte,Mobile,True,2023-01-18,retailsense_demo,False
+CUST-000635,,Femme,Bordeaux,France,Paid Search,Gold,1.0,82.91,4,351.07,0.122,5,1,Carte,Mobile,False,2022-09-14,retailsense_demo,False
+CUST-000636,36.0,Femme,Zurich,Suisse,Organic,Bronze,3.0,44.48,13,576.94,0.342,23,0,PayPal,Mobile,True,2023-09-19,retailsense_demo,False
+CUST-000637,37.0,Non renseigné,Bruxelles,Belgique,Social Media,Bronze,3.0,59.8,11,658.59,0.296,77,0,Carte,Desktop,False,2022-11-04,retailsense_demo,True
+CUST-000638,26.0,Non renseigné,Bruxelles,Belgique,Social Media,Bronze,3.0,44.63,7,307.5,0.207,5,2,PayPal,Mobile,True,2023-03-19,retailsense_demo,False
+CUST-000639,46.0,Homme,Bruxelles,Belgique,Paid Search,Gold,9.0,35.57,25,867.35,0.27,106,2,Virement,Mobile,True,2022-02-21,retailsense_demo,False
+CUST-000640,45.0,Homme,Lausanne,Suisse,Social Media,Silver,4.0,25.52,11,297.51,0.057,39,1,PayPal,Mobile,True,2024-10-16,retailsense_demo,False
+CUST-000641,21.0,Femme,Paris,France,Organic,Silver,2.0,,3,94.63,0.448,5,0,Virement,Desktop,True,2025-11-24,retailsense_demo,False
+CUST-000642,47.0,Femme,Bordeaux,France,Social Media,Bronze,4.0,114.46,11,1239.48,0.501,4,2,PayPal,Mobile,False,2023-12-17,retailsense_demo,False
+CUST-000643,64.0,Homme,Paris,France,Paid Search,Bronze,4.0,43.65,10,422.57,0.257,3,0,PayPal,Mobile,True,2021-12-03,retailsense_demo,False
+CUST-000644,41.0,Homme,Bordeaux,France,Paid Search,Gold,5.0,90.63,8,743.19,0.149,0,0,Carte,Desktop,True,2025-04-26,retailsense_demo,False
+CUST-000645,35.0,Homme,Lille,France,Organic,Bronze,4.0,110.96,16,1864.66,0.434,132,3,Carte,Desktop,True,2021-09-29,retailsense_demo,False
+CUST-000646,37.0,Homme,Paris,France,Social Media,Bronze,5.0,70.67,10,668.7,0.043,43,0,Carte,Mobile,True,2023-12-07,retailsense_demo,False
+CUST-000647,,Femme,Paris,France,Social Media,Silver,5.0,60.75,15,875.42,0.281,51,1,PayPal,Mobile,False,2024-11-27,retailsense_demo,False
+CUST-000648,18.0,Homme,Liège,Belgique,Paid Search,Bronze,4.0,74.73,15,1049.91,0.107,45,2,Carte,Desktop,False,2023-08-28,retailsense_demo,False
+CUST-000649,41.0,Femme,Liège,Belgique,Referral,Bronze,3.0,57.4,10,542.78,0.081,105,1,PayPal,Mobile,True,2021-12-26,retailsense_demo,False
+CUST-000650,34.0,Femme,Lyon,France,Referral,Gold,10.0,124.95,20,2461.68,0.285,295,0,Carte,Tablet,True,2021-10-05,retailsense_demo,True
+CUST-000651,61.0,Femme,Lille,France,Organic,Silver,5.0,172.56,17,3062.98,0.551,3,0,PayPal,Desktop,False,2022-12-12,retailsense_demo,False
+CUST-000652,37.0,Femme,Paris,France,Social Media,Bronze,1.0,140.6,4,566.14,0.283,36,1,Carte,Desktop,True,2023-05-13,retailsense_demo,False
+CUST-000653,59.0,Homme,Paris,France,Paid Search,Bronze,6.0,24.96,24,556.21,0.2,69,1,Apple Pay,Desktop,False,2022-01-04,retailsense_demo,False
+CUST-000654,26.0,Femme,Zurich,Suisse,Marketplace,Silver,6.0,56.84,15,869.65,0.1,44,0,Carte,Tablet,True,2021-07-07,retailsense_demo,False
+CUST-000655,46.0,Femme,Namur,Belgique,Organic,Bronze,5.0,70.25,8,588.52,0.561,31,0,PayPal,Mobile,True,2022-01-24,retailsense_demo,False
+CUST-000656,43.0,Homme,Genève,Suisse,Paid Search,Bronze,3.0,87.56,10,860.63,0.061,77,0,PayPal,Mobile,True,2021-03-24,retailsense_demo,False
+CUST-000657,29.0,Homme,Namur,Belgique,Paid Search,Silver,8.0,30.6,17,498.92,0.59,1,4,Carte,Desktop,True,2021-11-21,retailsense_demo,False
+CUST-000658,41.0,Femme,Lausanne,Suisse,Organic,Silver,5.0,30.36,19,601.21,0.191,109,1,Virement,Mobile,False,2025-09-06,retailsense_demo,True
+CUST-000659,54.0,Femme,Lyon,France,Social Media,Platinum,9.0,131.27,32,3880.67,0.386,64,4,Apple Pay,Desktop,True,2025-10-28,retailsense_demo,True
+CUST-000660,35.0,Femme,Paris,France,Paid Search,Bronze,6.0,53.6,23,1295.15,0.242,0,0,PayPal,Mobile,False,2023-01-10,retailsense_demo,False
+CUST-000661,19.0,Homme,Lyon,France,Organic,Bronze,5.0,34.33,22,792.05,0.361,100,1,Apple Pay,Mobile,True,2021-04-12,retailsense_demo,True
+CUST-000662,39.0,Femme,Lyon,France,Paid Search,Silver,7.0,41.27,23,1008.25,0.406,27,2,Carte,Mobile,False,2024-06-20,retailsense_demo,False
+CUST-000663,28.0,Femme,Lille,France,Marketplace,Silver,4.0,84.56,17,1343.05,0.344,57,3,Apple Pay,Desktop,True,2021-03-27,retailsense_demo,False
+CUST-000664,35.0,Femme,Paris,France,Referral,Bronze,5.0,47.24,17,752.63,0.313,134,1,Virement,Mobile,True,2021-10-17,retailsense_demo,True
+CUST-000665,38.0,Homme,Genève,Suisse,Paid Search,Silver,5.0,78.73,10,834.22,0.092,2,0,PayPal,Mobile,True,2025-03-27,retailsense_demo,False
+CUST-000666,19.0,Femme,Lyon,France,Paid Search,Bronze,2.0,43.83,8,349.21,0.63,3,1,Virement,Mobile,True,2023-07-11,retailsense_demo,False
+CUST-000667,20.0,Homme,Genève,Suisse,Organic,Gold,11.0,30.35,39,1163.25,0.356,7,0,PayPal,Mobile,True,2024-11-05,retailsense_demo,False
+CUST-000668,45.0,Femme,Bruxelles,Belgique,Referral,Gold,5.0,138.89,22,3091.48,0.661,3,2,Carte,Desktop,True,2025-07-16,retailsense_demo,False
+CUST-000669,33.0,Homme,Lille,France,Social Media,Bronze,9.0,84.87,20,1577.53,0.088,49,1,PayPal,Tablet,True,2022-07-28,retailsense_demo,False
+CUST-000670,18.0,Femme,Bordeaux,France,Social Media,Platinum,8.0,59.73,20,1222.03,0.124,16,0,Carte,Desktop,True,2024-11-16,retailsense_demo,False
+CUST-000671,48.0,Femme,Lille,France,Referral,Platinum,14.0,54.58,56,3274.4,0.076,33,3,PayPal,Desktop,True,2023-03-17,retailsense_demo,False
+CUST-000672,42.0,Femme,Paris,France,Organic,Bronze,3.0,141.62,5,728.01,0.431,63,0,Carte,Mobile,False,2022-08-27,retailsense_demo,True
+CUST-000673,30.0,Homme,Bordeaux,France,Social Media,Bronze,5.0,93.12,17,1574.13,0.673,302,3,PayPal,Tablet,False,2023-10-29,retailsense_demo,True
+CUST-000674,23.0,Homme,Lausanne,Suisse,Organic,Silver,6.0,121.57,19,2480.11,0.443,5,3,Carte,Desktop,False,2025-07-14,retailsense_demo,False
+CUST-000675,49.0,Femme,Lille,France,Organic,Bronze,2.0,52.98,4,218.29,0.455,25,1,Carte,Desktop,False,2025-08-01,retailsense_demo,False
+CUST-000676,43.0,Femme,Paris,France,Paid Search,Bronze,7.0,71.83,14,934.35,0.159,24,1,Carte,Mobile,False,2024-01-31,retailsense_demo,False
+CUST-000677,68.0,Homme,Liège,Belgique,Paid Search,Bronze,9.0,85.03,35,3057.18,0.387,20,3,Carte,Mobile,True,2025-09-17,retailsense_demo,True
+CUST-000678,44.0,Homme,Paris,France,Marketplace,Platinum,7.0,53.84,11,550.49,0.242,35,0,PayPal,Mobile,True,2021-09-11,retailsense_demo,False
+CUST-000679,44.0,Femme,Lille,France,Paid Search,Bronze,6.0,66.96,22,1427.75,0.333,25,1,Carte,Mobile,True,2025-02-10,retailsense_demo,False
+CUST-000680,37.0,Femme,Paris,France,Referral,Gold,9.0,52.98,33,1780.62,0.172,17,0,Carte,Mobile,True,2025-10-11,retailsense_demo,False
+CUST-000681,,Homme,Bordeaux,France,Referral,Bronze,4.0,,14,1134.6,0.139,40,1,Carte,Desktop,False,2025-03-29,retailsense_demo,False
+CUST-000682,47.0,Homme,Paris,France,Social Media,Bronze,3.0,37.18,8,275.45,0.221,12,0,Carte,Mobile,False,2022-07-18,retailsense_demo,False
+CUST-000683,54.0,Homme,Lille,France,Marketplace,Gold,8.0,92.25,13,1221.94,0.34,19,1,Carte,Mobile,True,2023-01-25,retailsense_demo,False
+CUST-000684,33.0,Homme,Paris,France,Paid Search,Bronze,5.0,81.38,20,1571.85,0.643,8,2,Carte,Desktop,False,2022-08-24,retailsense_demo,False
+CUST-000685,34.0,Homme,Lille,France,Paid Search,Bronze,4.0,63.59,8,511.38,0.039,9,0,PayPal,Tablet,False,2024-03-27,retailsense_demo,False
+CUST-000686,33.0,Femme,,France,Organic,Bronze,6.0,86.99,14,1171.29,0.194,9,0,PayPal,Mobile,True,2024-05-13,retailsense_demo,False
+CUST-000687,48.0,Femme,Bordeaux,France,Organic,Silver,4.0,58.84,17,1030.12,0.561,28,1,Apple Pay,Mobile,True,2022-08-31,retailsense_demo,False
+CUST-000688,57.0,Femme,Lille,France,Referral,Bronze,7.0,50.82,17,918.68,0.146,10,1,Carte,Desktop,False,2025-05-16,retailsense_demo,False
+CUST-000689,33.0,Femme,Lyon,France,Paid Search,Bronze,4.0,91.01,9,764.92,0.505,10,2,Carte,Tablet,False,2024-01-04,retailsense_demo,False
+CUST-000690,,Femme,Paris,France,Paid Search,Bronze,3.0,92.92,13,1263.33,0.583,61,2,Carte,Desktop,True,2025-06-03,retailsense_demo,False
+CUST-000691,43.0,Femme,Lille,France,Organic,Bronze,3.0,54.95,5,259.65,0.215,73,0,PayPal,Mobile,True,2023-11-12,retailsense_demo,True
+CUST-000692,36.0,Homme,Lyon,France,Paid Search,Bronze,6.0,,12,615.58,0.568,11,2,Carte,Desktop,False,2021-03-22,retailsense_demo,False
+CUST-000693,50.0,Femme,Bruxelles,Belgique,Social Media,Silver,5.0,64.21,14,878.44,0.281,33,0,Carte,Desktop,False,2021-10-19,retailsense_demo,False
+CUST-000694,18.0,Femme,Lausanne,Suisse,Paid Search,Bronze,5.0,53.79,19,973.94,0.317,35,1,PayPal,Mobile,True,2022-08-21,retailsense_demo,False
+CUST-000695,29.0,Homme,Paris,France,Referral,Bronze,5.0,145.77,21,2853.2,0.296,1,0,Carte,Mobile,False,2022-09-25,retailsense_demo,False
+CUST-000696,30.0,Homme,Genève,Suisse,Social Media,Silver,3.0,81.61,11,936.23,0.456,2,1,PayPal,Desktop,True,2024-02-05,retailsense_demo,False
+CUST-000697,18.0,Homme,Paris,France,Referral,Silver,5.0,70.6,22,1626.13,0.402,41,2,PayPal,Desktop,False,2022-07-02,retailsense_demo,False
+CUST-000698,27.0,Homme,Lyon,France,Organic,Bronze,3.0,44.8,5,241.83,0.433,5,0,Virement,Mobile,False,2021-11-17,retailsense_demo,False
+CUST-000699,28.0,Homme,Bruxelles,Belgique,Social Media,Bronze,3.0,99.95,10,1069.05,0.473,43,2,Carte,Desktop,False,2023-03-18,retailsense_demo,False
+CUST-000700,37.0,Femme,Bruxelles,Belgique,Organic,Bronze,3.0,52.27,6,310.34,0.457,18,0,Carte,Desktop,False,2025-06-02,retailsense_demo,True
+CUST-000701,52.0,Femme,Liège,Belgique,Paid Search,Platinum,8.0,51.25,34,1640.23,0.606,5,2,PayPal,Mobile,False,2022-07-22,retailsense_demo,False
+CUST-000702,36.0,Homme,Paris,France,Referral,Bronze,3.0,101.58,13,1217.17,0.223,77,1,Carte,Mobile,True,2025-04-21,retailsense_demo,False
+CUST-000703,27.0,Femme,,Belgique,Social Media,Bronze,4.0,84.43,10,848.55,0.171,16,1,Carte,Mobile,False,2024-05-07,retailsense_demo,False
+CUST-000704,38.0,Femme,Lyon,France,Organic,Silver,6.0,21.08,24,535.12,0.162,12,1,Carte,Tablet,True,2024-12-17,retailsense_demo,False
+CUST-000705,52.0,Femme,Paris,France,Referral,Bronze,7.0,64.99,24,1501.89,0.366,33,2,Carte,Mobile,True,2025-09-04,retailsense_demo,False
+CUST-000706,27.0,Femme,Bordeaux,France,Organic,Bronze,6.0,74.46,11,779.6,0.243,46,1,Carte,Desktop,False,2022-03-21,retailsense_demo,False
+CUST-000707,28.0,Femme,Lausanne,Suisse,Social Media,Bronze,3.0,59.56,10,589.79,0.282,9,1,PayPal,Mobile,True,2022-10-17,retailsense_demo,False
+CUST-000708,46.0,Femme,Bordeaux,France,Marketplace,Silver,4.0,75.71,18,1448.68,0.335,50,1,Virement,Desktop,True,2023-12-09,retailsense_demo,False
+CUST-000709,36.0,Homme,Namur,Belgique,Social Media,Silver,6.0,,15,437.75,0.446,2,2,Carte,Tablet,True,2024-01-26,retailsense_demo,False
+CUST-000710,47.0,Homme,Bordeaux,France,Referral,Silver,7.0,18.01,11,205.21,0.278,31,0,PayPal,Tablet,True,2022-10-21,retailsense_demo,False
+CUST-000711,39.0,Femme,Liège,Belgique,Social Media,Gold,4.0,43.89,18,785.35,0.304,28,0,,Desktop,True,2023-05-06,retailsense_demo,False
+CUST-000712,47.0,Homme,Liège,Belgique,Referral,Bronze,6.0,80.28,16,1258.32,0.276,38,2,Carte,Mobile,False,2024-10-16,retailsense_demo,True
+CUST-000713,27.0,Femme,Namur,Belgique,Social Media,Gold,4.0,15.0,11,163.44,0.051,68,1,,Mobile,True,2023-08-04,retailsense_demo,False
+CUST-000714,39.0,Homme,Paris,France,Social Media,Silver,3.0,46.76,11,536.49,0.255,78,1,Carte,Mobile,False,2022-02-25,retailsense_demo,True
+CUST-000715,36.0,Homme,Bordeaux,France,Organic,Gold,11.0,27.86,36,1043.66,0.541,255,3,Apple Pay,Desktop,True,2023-03-30,retailsense_demo,True
+CUST-000716,24.0,Femme,Lyon,France,Referral,Silver,5.0,62.4,12,740.61,0.065,54,2,Carte,Mobile,True,2022-01-13,retailsense_demo,False
+CUST-000717,20.0,Homme,Paris,France,Organic,Bronze,7.0,179.43,13,2245.88,0.21,16,0,Carte,Mobile,True,2023-06-16,retailsense_demo,False
+CUST-000718,47.0,Non renseigné,Paris,France,Marketplace,Bronze,4.0,63.17,16,952.29,0.673,63,1,Apple Pay,Mobile,True,2023-12-01,retailsense_demo,False
+CUST-000719,35.0,Homme,,France,Organic,Bronze,10.0,66.58,30,1838.04,0.305,69,2,PayPal,Desktop,False,2022-04-28,retailsense_demo,False
+CUST-000720,27.0,Non renseigné,Paris,France,Organic,Bronze,10.0,104.88,35,3443.7,0.456,69,3,Carte,Mobile,False,2024-11-26,retailsense_demo,False
+CUST-000721,38.0,Homme,Lille,France,Referral,Silver,5.0,70.83,20,1340.52,0.084,3,1,Virement,Mobile,True,2022-11-18,retailsense_demo,False
+CUST-000722,53.0,Femme,Paris,France,Organic,Bronze,8.0,63.23,12,781.84,0.462,99,3,Virement,Desktop,True,2022-11-12,retailsense_demo,False
+CUST-000723,18.0,Homme,Zurich,Suisse,Paid Search,Bronze,4.0,109.38,16,1839.03,0.118,25,0,Carte,Mobile,True,2024-07-29,retailsense_demo,False
+CUST-000724,21.0,Homme,Lyon,France,Social Media,Gold,4.0,87.93,15,1368.9,0.6,45,0,Carte,Desktop,True,2024-09-04,retailsense_demo,False
+CUST-000725,28.0,Homme,Zurich,Suisse,Organic,Silver,6.0,80.52,26,2168.37,0.241,97,1,Carte,Desktop,True,2025-07-06,retailsense_demo,False
+CUST-000726,57.0,Femme,Lausanne,Suisse,Organic,Silver,8.0,65.59,18,1273.95,0.556,41,2,Apple Pay,Desktop,True,2025-03-14,retailsense_demo,False
+CUST-000727,42.0,Homme,Paris,France,Paid Search,Bronze,6.0,59.38,15,956.56,0.136,20,1,Carte,Mobile,False,2025-06-16,retailsense_demo,False
+CUST-000728,48.0,Femme,Bruxelles,Belgique,Organic,Silver,9.0,108.88,31,3250.43,0.376,39,5,,Mobile,True,2022-12-08,retailsense_demo,False
+CUST-000729,25.0,Homme,Lille,France,Organic,Gold,7.0,59.65,30,1687.89,0.482,80,3,Carte,Desktop,False,2025-04-30,retailsense_demo,False
+CUST-000730,26.0,Femme,Namur,Belgique,Organic,Silver,10.0,126.6,45,5380.81,0.291,16,7,Carte,Mobile,True,2023-06-08,retailsense_demo,False
+CUST-000731,44.0,Homme,Lyon,France,Paid Search,Silver,9.0,42.41,25,1127.34,0.517,5,1,PayPal,Desktop,True,2025-05-18,retailsense_demo,False
+CUST-000732,40.0,Homme,Lyon,France,Paid Search,Silver,3.0,139.52,9,1175.8,0.143,9,0,Carte,Tablet,False,2022-02-14,retailsense_demo,False
+CUST-000733,46.0,Femme,Bordeaux,France,Organic,Bronze,5.0,87.93,10,856.84,0.295,104,0,Carte,Mobile,True,2022-08-20,retailsense_demo,True
+CUST-000734,37.0,Homme,Bordeaux,France,Social Media,Silver,4.0,44.04,14,619.56,0.225,14,1,Carte,Desktop,True,2024-07-02,retailsense_demo,False
+CUST-000735,42.0,Femme,Lausanne,Suisse,Social Media,Platinum,8.0,89.51,32,2916.19,0.231,13,1,Carte,Mobile,True,2022-05-10,retailsense_demo,False
+CUST-000736,41.0,Homme,Paris,France,Organic,Bronze,4.0,51.31,16,833.51,0.22,35,0,Carte,Mobile,False,2024-10-29,retailsense_demo,False
+CUST-000737,48.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,5.0,71.24,13,968.55,0.434,12,1,Carte,Mobile,True,2022-11-03,retailsense_demo,False
+CUST-000738,49.0,Femme,Lausanne,Suisse,Referral,Bronze,8.0,55.5,35,1964.85,0.362,47,2,PayPal,Desktop,True,2022-10-25,retailsense_demo,False
+CUST-000739,20.0,Femme,Lille,France,Social Media,Bronze,2.0,65.77,4,277.87,0.234,50,0,,Tablet,True,2023-10-21,retailsense_demo,False
+CUST-000740,18.0,Femme,Paris,France,Paid Search,Platinum,6.0,110.15,18,1851.01,0.474,62,3,Carte,Mobile,True,2022-07-10,retailsense_demo,False
+CUST-000741,51.0,Femme,Bruxelles,Belgique,Paid Search,Silver,7.0,89.92,22,2091.79,0.666,9,1,PayPal,Desktop,True,2021-04-29,retailsense_demo,False
+CUST-000742,53.0,Homme,Lyon,France,Organic,Bronze,3.0,40.85,9,372.91,0.298,12,1,PayPal,Mobile,True,2023-12-01,retailsense_demo,True
+CUST-000743,27.0,Homme,Bordeaux,France,Referral,Bronze,4.0,41.99,15,601.86,0.102,42,0,PayPal,Mobile,True,2024-07-18,retailsense_demo,False
+CUST-000744,18.0,Femme,Paris,France,Marketplace,Bronze,4.0,79.84,13,1117.2,0.221,25,0,Apple Pay,Desktop,True,2023-10-11,retailsense_demo,True
+CUST-000745,40.0,Homme,Lausanne,Suisse,Marketplace,Bronze,4.0,82.66,7,619.33,0.544,20,0,Carte,Desktop,False,2023-03-02,retailsense_demo,True
+CUST-000746,50.0,Femme,Paris,France,Organic,Silver,5.0,50.72,10,535.23,0.051,1,0,Carte,Desktop,False,2025-04-27,retailsense_demo,True
+CUST-000747,61.0,Homme,Paris,France,Paid Search,Gold,8.0,150.48,25,4009.75,0.155,6,1,Carte,Tablet,True,2021-04-07,retailsense_demo,False
+CUST-000748,45.0,Femme,Lille,France,Organic,Silver,3.0,103.59,11,1118.04,0.44,22,1,Carte,Mobile,True,2023-08-24,retailsense_demo,True
+CUST-000749,35.0,Homme,Lyon,France,Paid Search,Bronze,2.0,51.92,6,297.96,0.54,76,1,Apple Pay,Mobile,True,2021-03-31,retailsense_demo,False
+CUST-000750,28.0,Homme,Lyon,France,Paid Search,Silver,3.0,49.57,8,376.41,0.279,86,0,PayPal,Mobile,True,2021-04-05,retailsense_demo,False
+CUST-000751,39.0,Femme,Namur,Belgique,Social Media,Silver,3.0,62.84,5,333.01,0.463,21,1,Virement,Desktop,True,2025-08-11,retailsense_demo,False
+CUST-000752,35.0,Homme,Bruxelles,Belgique,Organic,Bronze,3.0,59.78,12,754.88,0.363,32,1,Apple Pay,Mobile,False,2025-05-14,retailsense_demo,False
+CUST-000753,27.0,Non renseigné,Paris,France,Marketplace,Silver,3.0,128.12,9,1241.8,0.282,36,0,Virement,Mobile,True,2025-01-14,retailsense_demo,False
+CUST-000754,64.0,Femme,Bordeaux,France,Organic,Silver,8.0,112.46,25,2968.08,0.519,11,2,Carte,Desktop,True,2023-03-02,retailsense_demo,False
+CUST-000755,60.0,Femme,Lille,France,Organic,Gold,5.0,71.3,15,1092.08,0.153,4,0,Virement,Mobile,False,2024-03-15,retailsense_demo,False
+CUST-000756,53.0,Homme,Paris,France,Referral,Bronze,3.0,97.07,7,640.58,0.089,14,0,Carte,Desktop,True,2025-10-30,retailsense_demo,False
+CUST-000757,28.0,Femme,Lyon,France,Social Media,Bronze,4.0,104.07,9,886.37,0.209,10,0,Carte,Tablet,True,2023-03-09,retailsense_demo,False
+CUST-000758,49.0,Femme,Liège,Belgique,Paid Search,Silver,5.0,72.09,8,574.32,0.106,31,0,PayPal,Mobile,False,2024-05-05,retailsense_demo,False
+CUST-000759,47.0,Femme,Lyon,France,Social Media,Bronze,2.0,85.05,7,620.87,0.248,36,1,Apple Pay,Mobile,True,2021-10-31,retailsense_demo,False
+CUST-000760,44.0,Homme,Lille,France,Organic,Bronze,3.0,93.24,7,618.58,0.112,19,1,Virement,Tablet,True,2022-03-25,retailsense_demo,False
+CUST-000761,54.0,Femme,Lille,France,Organic,Gold,5.0,88.59,12,1133.79,0.194,30,1,Carte,Desktop,True,2021-10-28,retailsense_demo,False
+CUST-000762,47.0,Femme,Lyon,France,Paid Search,Bronze,3.0,48.24,13,645.55,0.261,19,1,Virement,Mobile,True,2023-03-04,retailsense_demo,False
+CUST-000763,48.0,Homme,Bordeaux,France,Paid Search,Silver,3.0,50.64,8,392.94,0.104,17,3,Carte,Desktop,True,2022-07-19,retailsense_demo,False
+CUST-000764,47.0,Homme,Lausanne,Suisse,Social Media,Platinum,7.0,61.04,21,1360.88,0.058,15,0,PayPal,Mobile,False,2025-07-11,retailsense_demo,False
+CUST-000765,43.0,Homme,Namur,Belgique,Organic,Silver,4.0,49.94,11,558.0,0.518,113,1,Carte,Desktop,False,2022-03-28,retailsense_demo,True
+CUST-000766,18.0,Femme,Genève,Suisse,Social Media,Silver,6.0,34.57,14,502.0,0.186,10,1,Carte,Desktop,True,2023-09-24,retailsense_demo,False
+CUST-000767,40.0,Homme,Genève,Suisse,Referral,Silver,3.0,96.98,5,475.99,0.309,20,1,Carte,Mobile,False,2025-11-24,retailsense_demo,False
+CUST-000768,32.0,Homme,Lille,France,Organic,Bronze,5.0,82.79,20,1627.55,0.46,40,3,Virement,Desktop,False,2025-07-15,retailsense_demo,True
+CUST-000769,24.0,Femme,Zurich,Suisse,Organic,Bronze,4.0,36.86,12,407.82,0.575,2,0,Apple Pay,Mobile,True,2024-06-04,retailsense_demo,False
+CUST-000770,59.0,Homme,Paris,France,Paid Search,Silver,2.0,62.45,7,439.8,0.089,14,0,Carte,Desktop,True,2024-02-09,retailsense_demo,False
+CUST-000771,60.0,Femme,Bordeaux,France,Referral,Bronze,3.0,64.17,13,869.03,0.401,2,0,Carte,Desktop,True,2024-11-27,retailsense_demo,False
+CUST-000772,55.0,Femme,Paris,France,Social Media,Bronze,4.0,76.5,6,493.45,0.577,1,0,Carte,Tablet,True,2022-03-11,retailsense_demo,False
+CUST-000773,42.0,Femme,Lyon,France,Social Media,Bronze,3.0,41.71,11,487.57,0.514,8,1,PayPal,Mobile,False,2023-10-02,retailsense_demo,False
+CUST-000774,55.0,Homme,Lyon,France,Paid Search,Gold,5.0,36.6,9,307.64,0.122,20,1,PayPal,Mobile,False,2024-08-31,retailsense_demo,False
+CUST-000775,39.0,Femme,Lyon,France,Organic,Bronze,2.0,89.97,6,581.32,0.3,52,0,PayPal,Mobile,False,2022-08-27,retailsense_demo,False
+CUST-000776,41.0,Femme,Namur,Belgique,Social Media,Silver,3.0,33.57,12,380.27,0.522,18,1,Carte,Mobile,True,2023-09-21,retailsense_demo,False
+CUST-000777,26.0,Femme,Namur,Belgique,Organic,Bronze,3.0,62.7,5,290.47,0.438,14,1,Carte,Mobile,True,2022-02-22,retailsense_demo,False
+CUST-000778,44.0,Femme,Bordeaux,France,Referral,Silver,6.0,59.95,27,1683.07,0.236,36,0,Apple Pay,Desktop,True,2023-06-30,retailsense_demo,False
+CUST-000779,40.0,Femme,Lyon,France,Organic,Bronze,12.0,66.08,39,2744.37,0.316,92,4,PayPal,Mobile,True,2022-04-15,retailsense_demo,False
+CUST-000780,23.0,Homme,Namur,Belgique,Paid Search,Bronze,2.0,79.15,5,424.21,0.489,8,0,Carte,Tablet,True,2021-10-13,retailsense_demo,False
+CUST-000781,38.0,Femme,Lyon,France,Paid Search,Silver,4.0,151.01,6,953.14,0.488,25,1,Carte,Mobile,True,2025-07-14,retailsense_demo,False
+CUST-000782,38.0,Femme,Lille,France,Paid Search,Silver,3.0,32.53,10,309.97,0.411,2,0,Carte,Mobile,False,2025-04-30,retailsense_demo,False
+CUST-000783,61.0,Homme,Lille,France,Social Media,Bronze,4.0,106.78,12,1210.41,0.172,72,2,Carte,Desktop,True,2022-05-18,retailsense_demo,False
+CUST-000784,50.0,Femme,Lille,France,Paid Search,Bronze,4.0,20.99,9,175.6,0.473,23,2,Carte,Mobile,True,2023-04-02,retailsense_demo,False
+CUST-000785,39.0,Homme,Lille,France,Marketplace,Silver,7.0,136.86,21,2911.82,0.097,6,0,PayPal,Desktop,True,2024-10-01,retailsense_demo,False
+CUST-000786,42.0,Femme,Liège,Belgique,Referral,Bronze,3.0,26.3,5,131.21,0.056,15,0,Carte,Desktop,False,2025-10-08,retailsense_demo,True
+CUST-000787,40.0,Femme,Liège,Belgique,Referral,Silver,3.0,225.76,13,2751.4,0.222,23,1,Carte,Desktop,True,2021-04-15,retailsense_demo,False
+CUST-000788,37.0,Femme,Namur,Belgique,Social Media,Bronze,3.0,58.14,7,404.71,0.108,13,0,PayPal,Desktop,True,2025-06-19,retailsense_demo,False
+CUST-000789,26.0,Femme,Lyon,France,Social Media,Silver,4.0,130.24,12,1579.72,0.418,36,1,Carte,Desktop,True,2023-09-05,retailsense_demo,False
+CUST-000790,37.0,Femme,Liège,Belgique,Social Media,Bronze,2.0,117.97,8,977.39,0.394,47,1,Carte,Tablet,True,2024-11-06,retailsense_demo,False
+CUST-000791,30.0,Homme,Paris,France,Paid Search,Silver,5.0,56.85,18,1009.32,0.348,1,1,Virement,Mobile,True,2024-01-01,retailsense_demo,False
+CUST-000792,24.0,Femme,Lyon,France,Paid Search,Bronze,6.0,58.99,25,1431.82,0.107,18,3,Carte,Mobile,False,2022-06-07,retailsense_demo,False
+CUST-000793,45.0,Homme,Bordeaux,France,Social Media,Silver,5.0,46.91,22,1059.31,0.237,47,0,Virement,Desktop,True,2023-06-14,retailsense_demo,False
+CUST-000794,44.0,Homme,Lille,France,Organic,Bronze,2.0,102.3,4,421.27,0.176,43,1,Carte,Mobile,True,2025-09-20,retailsense_demo,False
+CUST-000795,18.0,Femme,Paris,France,Organic,Gold,6.0,57.21,16,881.74,0.196,33,3,Carte,Mobile,True,2025-06-30,retailsense_demo,False
+CUST-000796,38.0,Homme,Lille,France,Referral,Silver,3.0,47.32,11,480.51,0.137,58,0,Carte,Desktop,True,2021-05-04,retailsense_demo,False
+CUST-000797,51.0,Femme,Bordeaux,France,Organic,Gold,9.0,90.73,15,1458.01,0.156,15,0,PayPal,Mobile,False,2024-09-12,retailsense_demo,False
+CUST-000798,52.0,Femme,Paris,France,Social Media,Bronze,4.0,45.57,15,711.55,0.542,75,2,Carte,Mobile,False,2023-11-06,retailsense_demo,False
+CUST-000799,51.0,Femme,Paris,France,Social Media,Bronze,5.0,59.86,8,456.01,0.355,2,2,Virement,Desktop,True,2022-02-10,retailsense_demo,False
+CUST-000800,39.0,Homme,Lyon,France,Organic,Bronze,1.0,73.8,4,298.32,0.344,9,0,Carte,Mobile,True,2021-11-08,retailsense_demo,False
+CUST-000801,29.0,Homme,Lausanne,Suisse,Marketplace,Bronze,9.0,51.5,33,1725.41,0.165,2,1,PayPal,Mobile,True,2024-07-17,retailsense_demo,False
+CUST-000802,26.0,Femme,Lyon,France,Organic,Silver,2.0,55.37,6,312.35,0.377,26,1,Carte,Desktop,True,2024-11-04,retailsense_demo,False
+CUST-000803,,Homme,Bordeaux,France,Marketplace,Gold,5.0,146.47,14,1949.36,0.637,46,1,Carte,Desktop,True,2023-10-19,retailsense_demo,True
+CUST-000804,44.0,Homme,Bordeaux,France,Referral,Silver,4.0,63.56,18,9821.28,0.091,18,1,PayPal,Desktop,False,2024-04-13,retailsense_demo,False
+CUST-000805,54.0,Femme,Lausanne,Suisse,Organic,Silver,5.0,58.99,19,1122.26,0.354,11,1,Carte,Mobile,False,2022-07-10,retailsense_demo,False
+CUST-000806,52.0,Homme,Lyon,France,Organic,Bronze,1.0,64.45,4,245.08,0.511,10,2,Carte,Mobile,True,2022-05-25,retailsense_demo,False
+CUST-000807,37.0,Homme,Genève,Suisse,Paid Search,Bronze,1.0,87.19,4,365.38,0.225,36,0,PayPal,Desktop,False,2024-08-28,retailsense_demo,False
+CUST-000808,24.0,Homme,Bordeaux,France,Paid Search,Gold,8.0,42.68,13,552.24,0.451,20,3,PayPal,Mobile,True,2024-01-30,retailsense_demo,False
+CUST-000809,35.0,Non renseigné,,France,Organic,Bronze,1.0,86.06,2,175.94,0.634,120,0,PayPal,Desktop,True,2022-05-18,retailsense_demo,True
+CUST-000810,42.0,Femme,Lyon,France,Marketplace,Bronze,2.0,79.26,4,306.79,0.395,33,1,Carte,Desktop,True,2023-06-17,retailsense_demo,False
+CUST-000811,37.0,Femme,Lille,France,Organic,Gold,10.0,29.71,35,966.26,0.628,41,2,Carte,Mobile,True,2023-04-01,retailsense_demo,False
+CUST-000812,32.0,Homme,Namur,Belgique,Referral,Platinum,3.0,165.88,10,1569.84,0.208,2,1,Carte,Desktop,True,2021-12-30,retailsense_demo,False
+CUST-000813,42.0,Femme,Namur,Belgique,Organic,Silver,1.0,141.34,2,304.08,0.275,136,0,Carte,Desktop,False,2022-10-05,retailsense_demo,True
+CUST-000814,33.0,Femme,Paris,France,Marketplace,Bronze,7.0,47.74,31,1509.14,0.108,15,2,Carte,Desktop,True,2022-10-06,retailsense_demo,False
+CUST-000815,31.0,Non renseigné,Zurich,Suisse,Organic,Gold,6.0,40.9,11,473.78,0.268,152,0,Carte,Desktop,True,2023-08-02,retailsense_demo,True
+CUST-000816,43.0,Femme,Bordeaux,France,Paid Search,Bronze,1.0,78.22,4,288.91,0.154,15,0,Carte,Mobile,True,2021-11-13,retailsense_demo,False
+CUST-000817,34.0,Femme,Bordeaux,France,Social Media,Bronze,2.0,35.36,6,221.17,0.447,62,0,Carte,Desktop,True,2025-10-22,retailsense_demo,False
+CUST-000818,42.0,Homme,Lyon,France,Organic,Bronze,6.0,134.94,17,2288.52,0.184,0,0,Carte,Desktop,True,2025-07-01,retailsense_demo,False
+CUST-000819,42.0,Femme,Lille,France,Referral,Gold,3.0,55.99,5,287.35,0.425,18,1,Carte,Mobile,True,2022-08-22,retailsense_demo,False
+CUST-000820,25.0,Femme,Bruxelles,Belgique,Organic,Gold,6.0,152.7,22,3283.16,0.417,12,4,Carte,Mobile,True,2022-12-21,retailsense_demo,False
+CUST-000821,33.0,Non renseigné,Lille,France,Social Media,Silver,6.0,,23,1106.48,0.078,10,1,Carte,Desktop,True,2024-07-24,retailsense_demo,False
+CUST-000822,56.0,Femme,Paris,France,Social Media,Bronze,1.0,66.43,2,122.99,0.279,14,0,Virement,Mobile,True,2023-01-02,retailsense_demo,False
+CUST-000823,25.0,Femme,Lyon,France,Social Media,Silver,7.0,128.8,21,2508.15,0.117,13,0,Carte,Mobile,False,2025-05-26,retailsense_demo,False
+CUST-000824,18.0,Femme,Lyon,France,Organic,Bronze,2.0,60.03,7,440.3,0.473,31,0,Carte,Mobile,False,2022-12-23,retailsense_demo,False
+CUST-000825,18.0,Homme,Lyon,France,Organic,Gold,6.0,79.89,16,1201.38,0.234,9,0,Virement,Mobile,True,2024-03-02,retailsense_demo,False
+CUST-000826,39.0,Femme,Liège,Belgique,Organic,Bronze,6.0,118.45,20,2184.75,0.197,18,2,Carte,Mobile,False,2023-01-24,retailsense_demo,False
+CUST-000827,39.0,Homme,Paris,France,Paid Search,Bronze,4.0,53.68,11,629.48,0.587,7,0,Carte,Mobile,False,2024-04-07,retailsense_demo,False
+CUST-000828,38.0,Femme,Lille,France,Organic,Silver,8.0,38.26,33,1215.17,0.218,11,0,PayPal,Mobile,True,2022-05-30,retailsense_demo,False
+CUST-000829,54.0,Femme,Lyon,France,Marketplace,Silver,3.0,34.81,11,387.92,0.332,55,1,PayPal,Mobile,False,2025-05-18,retailsense_demo,True
+CUST-000830,18.0,Homme,Bordeaux,France,Paid Search,Gold,9.0,92.76,16,1564.69,0.419,0,0,Apple Pay,Mobile,True,2021-10-30,retailsense_demo,False
+CUST-000831,44.0,Homme,Paris,France,Social Media,Bronze,5.0,84.49,19,1668.44,0.209,92,1,Virement,Mobile,False,2023-07-10,retailsense_demo,True
+CUST-000832,58.0,Non renseigné,Namur,Belgique,Paid Search,Gold,6.0,116.7,15,1623.51,0.494,15,1,PayPal,Mobile,True,2024-10-21,retailsense_demo,False
+CUST-000833,25.0,Femme,Genève,Suisse,Organic,Bronze,5.0,61.46,22,1365.4,0.359,17,0,Carte,Mobile,True,2021-04-03,retailsense_demo,False
+CUST-000834,34.0,Homme,Lille,France,Paid Search,Bronze,3.0,35.28,10,355.13,0.451,98,1,Carte,Mobile,False,2025-05-30,retailsense_demo,False
+CUST-000835,30.0,Homme,Lausanne,Suisse,Paid Search,Silver,4.0,22.66,6,132.71,0.335,25,0,Carte,Desktop,False,2023-04-26,retailsense_demo,True
+CUST-000836,28.0,Femme,Lyon,France,Paid Search,Bronze,3.0,277.72,11,3178.89,0.104,102,1,PayPal,Mobile,True,2025-07-24,retailsense_demo,False
+CUST-000837,35.0,Femme,Lille,France,Paid Search,Silver,1.0,90.28,2,193.97,0.416,21,0,,Desktop,False,2021-07-23,retailsense_demo,False
+CUST-000838,56.0,Homme,Namur,Belgique,Paid Search,Bronze,2.0,,8,565.1,0.299,2,0,Carte,Mobile,False,2025-02-24,retailsense_demo,False
+CUST-000839,61.0,Femme,Bruxelles,Belgique,Marketplace,Bronze,4.0,80.14,17,1285.01,0.291,16,1,Virement,Mobile,False,2024-09-12,retailsense_demo,False
+CUST-000840,35.0,Homme,Namur,Belgique,Organic,Silver,5.0,35.27,18,658.65,0.068,23,0,PayPal,Mobile,False,2022-09-27,retailsense_demo,False
+CUST-000841,62.0,Non renseigné,Paris,France,Paid Search,Bronze,4.0,47.87,12,570.23,0.3,86,0,Carte,Mobile,False,2021-08-18,retailsense_demo,True
+CUST-000842,39.0,Femme,Lyon,France,Organic,Silver,5.0,161.87,17,2881.79,0.254,62,0,Virement,Desktop,True,2023-11-25,retailsense_demo,False
+CUST-000843,60.0,Femme,Lyon,France,Paid Search,Silver,7.0,96.16,20,1812.74,0.179,2,0,PayPal,Desktop,False,2024-08-28,retailsense_demo,False
+CUST-000844,38.0,Femme,Bordeaux,France,Social Media,Bronze,4.0,48.59,7,315.11,0.254,24,0,Carte,Mobile,True,2024-03-23,retailsense_demo,False
+CUST-000845,41.0,Femme,Paris,France,Organic,Gold,8.0,38.91,34,1364.67,0.424,74,7,Carte,Mobile,False,2021-06-21,retailsense_demo,False
+CUST-000846,43.0,Femme,Lyon,France,Social Media,Bronze,5.0,54.73,12,708.78,0.412,58,1,Carte,Mobile,False,2021-07-05,retailsense_demo,False
+CUST-000847,77.0,Homme,Lyon,France,Paid Search,Bronze,7.0,60.26,17,957.93,0.109,4,1,Carte,Tablet,False,2025-04-29,retailsense_demo,False
+CUST-000848,49.0,Femme,Bordeaux,France,Organic,Bronze,3.0,187.46,6,1190.36,0.296,44,0,PayPal,Mobile,True,2021-07-22,retailsense_demo,False
+CUST-000849,31.0,Homme,Lyon,France,Marketplace,Gold,7.0,64.05,31,1949.04,0.445,97,0,Virement,Mobile,True,2021-11-04,retailsense_demo,False
+CUST-000850,51.0,Femme,Bordeaux,France,Paid Search,Silver,7.0,39.61,30,1096.36,0.663,46,5,PayPal,Mobile,True,2023-04-23,retailsense_demo,False
+CUST-000851,35.0,Femme,Lille,France,Referral,Silver,6.0,68.16,15,1024.05,0.224,80,1,Virement,Tablet,True,2024-09-05,retailsense_demo,False
+CUST-000852,33.0,Femme,Lille,France,Paid Search,Platinum,9.0,79.59,21,1612.24,0.362,61,4,Virement,Desktop,False,2023-09-12,retailsense_demo,False
+CUST-000853,50.0,Homme,Bordeaux,France,Marketplace,Bronze,3.0,37.91,12,469.05,0.112,27,0,Carte,Mobile,False,2022-02-28,retailsense_demo,False
+CUST-000854,39.0,Femme,Paris,France,Paid Search,Gold,8.0,85.03,22,1807.22,0.393,17,0,Virement,Mobile,False,2024-08-10,retailsense_demo,False
+CUST-000855,42.0,Femme,Lyon,France,Paid Search,Silver,3.0,125.25,13,1623.43,0.5,11,2,Virement,Desktop,True,2024-04-02,retailsense_demo,False
+CUST-000856,39.0,Homme,Liège,Belgique,Referral,Gold,5.0,74.93,21,1498.15,0.492,6,1,Carte,Mobile,False,2023-09-09,retailsense_demo,False
+CUST-000857,43.0,Homme,Paris,France,Paid Search,Gold,10.0,47.82,38,1912.49,0.468,8,1,Carte,Mobile,False,2025-08-04,retailsense_demo,False
+CUST-000858,44.0,Femme,,France,Paid Search,Platinum,9.0,54.39,16,929.44,0.306,63,0,PayPal,Mobile,False,2023-12-05,retailsense_demo,False
+CUST-000859,18.0,Homme,Paris,France,Marketplace,Bronze,6.0,31.62,22,684.86,0.296,15,0,Apple Pay,Mobile,True,2025-04-08,retailsense_demo,False
+CUST-000860,47.0,Femme,Zurich,Suisse,Social Media,Gold,4.0,65.74,18,1173.7,0.363,55,2,Apple Pay,Mobile,False,2025-11-19,retailsense_demo,False
+CUST-000861,27.0,Femme,Liège,Belgique,Social Media,Gold,4.0,81.38,10,876.69,0.479,55,2,Carte,Desktop,True,2024-01-16,retailsense_demo,False
+CUST-000862,22.0,Homme,Lyon,France,Social Media,Silver,5.0,45.59,21,902.5,0.401,27,2,Virement,Desktop,True,2022-03-30,retailsense_demo,False
+CUST-000863,38.0,Femme,Lille,France,Referral,Bronze,1.0,177.87,3,559.96,0.634,72,0,Carte,Mobile,True,2021-02-26,retailsense_demo,True
+CUST-000864,40.0,Femme,Lille,France,Referral,Platinum,8.0,102.54,35,3627.68,0.525,21,5,Virement,Mobile,False,2023-10-17,retailsense_demo,False
+CUST-000865,31.0,Homme,Zurich,Suisse,Social Media,Bronze,5.0,29.65,17,534.76,0.417,51,2,PayPal,Mobile,True,2022-04-07,retailsense_demo,False
+CUST-000866,49.0,Femme,Bordeaux,France,Paid Search,Silver,6.0,29.94,11,318.44,0.524,96,2,,Desktop,False,2024-11-02,retailsense_demo,True
+CUST-000867,23.0,Homme,Bordeaux,France,Organic,Silver,8.0,43.71,23,972.63,0.138,32,1,Apple Pay,Mobile,False,2022-11-01,retailsense_demo,False
+CUST-000868,34.0,Homme,Genève,Suisse,Social Media,Bronze,8.0,149.18,13,1885.25,0.49,24,3,Carte,Mobile,True,2022-09-09,retailsense_demo,False
+CUST-000869,32.0,Homme,Namur,Belgique,Referral,Silver,2.0,107.52,5,496.01,0.377,122,0,Apple Pay,Mobile,True,2024-04-22,retailsense_demo,True
+CUST-000870,38.0,Homme,Lyon,France,Paid Search,Bronze,6.0,152.84,25,3619.15,0.586,100,3,PayPal,Mobile,True,2023-10-01,retailsense_demo,True
+CUST-000871,42.0,Homme,Lyon,France,Organic,Silver,2.0,70.45,4,304.1,0.293,240,1,Carte,Mobile,False,2022-09-03,retailsense_demo,True
+CUST-000872,27.0,Non renseigné,Lille,France,Paid Search,Gold,4.0,63.4,17,1034.49,0.254,24,2,Carte,Mobile,False,2024-05-25,retailsense_demo,False
+CUST-000873,48.0,Femme,Lille,France,Paid Search,Bronze,4.0,38.52,7,248.93,0.562,36,2,PayPal,Desktop,True,2022-12-29,retailsense_demo,False
+CUST-000874,40.0,Femme,Lyon,France,Referral,Silver,8.0,,28,2239.43,0.141,87,1,Carte,Mobile,True,2024-10-19,retailsense_demo,False
+CUST-000875,18.0,Homme,Zurich,Suisse,Organic,Bronze,1.0,63.81,4,251.48,0.247,5,0,Carte,Desktop,True,2023-04-29,retailsense_demo,False
+CUST-000876,18.0,Homme,Genève,Suisse,Social Media,Gold,5.0,62.64,17,1072.97,0.499,31,1,PayPal,Desktop,True,2025-08-19,retailsense_demo,False
+CUST-000877,39.0,Femme,Paris,France,Referral,Platinum,12.0,,50,7095.1,0.302,44,4,Carte,Mobile,False,2023-10-03,retailsense_demo,True
+CUST-000878,36.0,Homme,Paris,France,Marketplace,Bronze,2.0,65.98,9,621.42,0.337,34,0,Carte,Desktop,True,2023-06-25,retailsense_demo,False
+CUST-000879,38.0,Femme,Bordeaux,France,Organic,Silver,1.0,132.8,3,419.16,0.631,27,0,Virement,Tablet,True,2021-11-28,retailsense_demo,False
+CUST-000880,,Homme,Lyon,France,Marketplace,Silver,3.0,32.71,12,374.52,0.374,70,2,Carte,Mobile,True,2024-02-06,retailsense_demo,False
+CUST-000881,42.0,Femme,Liège,Belgique,Social Media,Silver,6.0,254.75,10,2669.17,0.375,7,1,PayPal,Desktop,False,2025-11-21,retailsense_demo,False
+CUST-000882,50.0,Femme,Lille,France,Referral,Silver,4.0,58.61,11,630.37,0.26,12,1,Carte,Desktop,True,2025-09-21,retailsense_demo,True
+CUST-000883,26.0,Femme,Lyon,France,Organic,Silver,4.0,98.44,9,875.06,0.042,66,0,Virement,Desktop,True,2023-04-22,retailsense_demo,False
+CUST-000884,25.0,Femme,Lille,France,Paid Search,Silver,3.0,106.25,12,1364.05,0.037,15,0,Carte,Mobile,True,2021-12-25,retailsense_demo,False
+CUST-000885,26.0,Femme,Paris,France,Social Media,Bronze,4.0,55.22,14,821.51,0.484,70,0,Virement,Mobile,False,2021-08-08,retailsense_demo,True
+CUST-000886,42.0,Femme,Paris,France,Paid Search,Bronze,8.0,103.87,27,2748.43,0.179,0,0,PayPal,Mobile,True,2022-01-01,retailsense_demo,False
+CUST-000887,54.0,Femme,Namur,Belgique,Paid Search,Gold,12.0,106.49,52,5527.11,0.077,21,4,Virement,Mobile,True,2024-04-09,retailsense_demo,False
+CUST-000888,34.0,Femme,Liège,Belgique,Social Media,Bronze,6.0,49.78,11,528.92,0.278,10,1,Carte,Mobile,True,2023-07-18,retailsense_demo,False
+CUST-000889,18.0,Femme,Paris,France,Social Media,Silver,9.0,50.07,39,1957.46,0.476,12,1,Carte,Desktop,True,2021-08-12,retailsense_demo,False
+CUST-000890,19.0,Femme,Liège,Belgique,Organic,Bronze,3.0,71.65,5,368.66,0.268,99,1,Carte,Mobile,False,2021-11-08,retailsense_demo,False
+CUST-000891,29.0,Femme,,France,Paid Search,Gold,8.0,66.32,20,9920.32,0.283,16,0,PayPal,Mobile,False,2023-09-20,retailsense_demo,False
+CUST-000892,32.0,Femme,Bruxelles,Belgique,Organic,Silver,5.0,136.82,17,2482.27,0.699,4,2,PayPal,Mobile,True,2023-08-03,retailsense_demo,False
+CUST-000893,34.0,Femme,Lyon,France,Marketplace,Bronze,3.0,98.23,8,813.33,0.15,65,0,PayPal,Mobile,False,2025-08-01,retailsense_demo,False
+CUST-000894,39.0,Femme,Lille,France,Marketplace,Bronze,5.0,67.78,18,1141.24,0.103,80,0,Carte,Desktop,False,2025-02-06,retailsense_demo,False
+CUST-000895,35.0,Femme,Genève,Suisse,Paid Search,Bronze,3.0,93.78,11,1092.45,0.402,21,1,PayPal,Desktop,True,2023-05-10,retailsense_demo,False
+CUST-000896,52.0,Homme,Lyon,France,Organic,Platinum,7.0,26.25,28,763.61,0.144,12,2,Carte,Mobile,True,2023-05-30,retailsense_demo,False
+CUST-000897,31.0,Non renseigné,Lyon,France,Organic,Silver,2.0,52.18,4,202.47,0.079,2,0,PayPal,Mobile,False,2023-02-18,retailsense_demo,False
+CUST-000898,29.0,Homme,Lille,France,Paid Search,Silver,7.0,80.49,14,1130.75,0.456,62,2,PayPal,Mobile,False,2024-05-27,retailsense_demo,False
+CUST-000899,45.0,Homme,Bordeaux,France,Referral,Silver,5.0,119.75,8,1013.17,0.293,46,2,Carte,Tablet,True,2024-10-26,retailsense_demo,False
+CUST-000900,21.0,Homme,Bordeaux,France,Paid Search,Bronze,3.0,77.16,9,746.46,0.47,32,2,Carte,Mobile,True,2023-09-23,retailsense_demo,True
+CUST-000901,44.0,Femme,Lyon,France,Organic,Bronze,5.0,141.17,10,1362.24,0.23,31,2,Carte,Mobile,False,2021-08-29,retailsense_demo,False
+CUST-000902,40.0,Homme,Lausanne,Suisse,Organic,Bronze,2.0,106.34,5,544.49,0.109,66,1,PayPal,Mobile,True,2021-03-19,retailsense_demo,True
+CUST-000903,37.0,Homme,Paris,France,Organic,Bronze,4.0,55.46,16,938.45,0.139,7,2,Virement,Mobile,True,2025-08-31,retailsense_demo,False
+CUST-000904,58.0,Homme,Lille,France,Referral,Silver,4.0,65.55,17,1201.35,0.538,24,1,Carte,Mobile,True,2024-03-12,retailsense_demo,False
+CUST-000905,32.0,Homme,Paris,France,Social Media,Gold,9.0,85.29,36,2859.5,0.374,50,1,Carte,Tablet,False,2023-05-24,retailsense_demo,False
+CUST-000906,64.0,Femme,Bruxelles,Belgique,Social Media,Gold,7.0,56.52,11,622.12,0.374,17,1,PayPal,Mobile,False,2024-11-14,retailsense_demo,False
+CUST-000907,36.0,Homme,Lille,France,Paid Search,Gold,5.0,146.21,16,2479.16,0.299,68,2,Virement,Mobile,True,2024-03-16,retailsense_demo,False
+CUST-000908,24.0,Homme,Paris,France,Marketplace,Silver,4.0,41.17,8,303.21,0.15,24,1,Carte,Mobile,True,2025-04-18,retailsense_demo,False
+CUST-000909,40.0,Femme,Lyon,France,Paid Search,Bronze,6.0,81.59,16,1292.36,0.334,28,1,Carte,Mobile,True,2023-09-02,retailsense_demo,False
+CUST-000910,26.0,Homme,Paris,France,Referral,Silver,5.0,99.78,14,1415.81,0.747,36,3,Carte,Tablet,False,2021-08-20,retailsense_demo,False
+CUST-000911,30.0,Femme,Namur,Belgique,Marketplace,Platinum,7.0,60.31,30,1817.05,0.193,73,2,PayPal,Desktop,True,2021-06-02,retailsense_demo,False
+CUST-000912,44.0,Non renseigné,Bordeaux,France,Paid Search,Silver,8.0,54.13,27,1515.92,0.622,3,4,Carte,Desktop,True,2025-11-05,retailsense_demo,True
+CUST-000913,46.0,Homme,Liège,Belgique,Marketplace,Silver,5.0,67.59,12,754.71,0.468,71,0,Virement,Desktop,True,2022-11-01,retailsense_demo,False
+CUST-000914,32.0,Femme,Bordeaux,France,Organic,Silver,5.0,103.52,17,1840.2,0.591,0,2,PayPal,Desktop,True,2021-07-09,retailsense_demo,False
+CUST-000915,51.0,Homme,Lyon,France,Social Media,Gold,5.0,55.15,22,1171.23,0.705,53,0,Virement,Mobile,True,2022-03-13,retailsense_demo,False
+CUST-000916,53.0,Femme,Paris,France,Organic,Gold,7.0,41.97,12,529.75,0.181,3,0,Apple Pay,Mobile,False,2025-08-14,retailsense_demo,False
+CUST-000917,56.0,Homme,Paris,France,Paid Search,Gold,4.0,121.79,16,1923.5,0.112,87,1,Carte,Desktop,False,2024-01-12,retailsense_demo,False
+CUST-000918,45.0,Homme,Paris,France,Organic,Bronze,4.0,84.92,9,708.35,0.455,60,0,PayPal,Desktop,True,2022-04-09,retailsense_demo,False
+CUST-000919,55.0,Homme,Paris,France,Organic,Bronze,4.0,113.72,8,977.32,0.443,17,2,PayPal,Desktop,False,2021-03-04,retailsense_demo,True
+CUST-000920,18.0,Homme,Lyon,France,Organic,Silver,6.0,100.94,25,2636.65,0.149,65,1,Virement,Mobile,False,2024-06-30,retailsense_demo,False
+CUST-000921,35.0,Femme,Paris,France,Paid Search,Bronze,5.0,199.61,8,1557.97,0.533,17,1,Carte,Desktop,False,2024-07-18,retailsense_demo,False
+CUST-000922,29.0,Femme,Lille,France,Social Media,Platinum,9.0,119.72,34,3920.83,0.412,85,1,Carte,Mobile,False,2024-09-15,retailsense_demo,False
+CUST-000923,40.0,Femme,Paris,France,Paid Search,Silver,3.0,49.52,5,251.14,0.371,97,1,Apple Pay,Mobile,True,2021-07-31,retailsense_demo,False
+CUST-000924,32.0,Femme,Lille,France,Paid Search,Silver,7.0,87.86,23,2178.3,0.122,16,1,Carte,Mobile,True,2025-01-17,retailsense_demo,False
+CUST-000925,37.0,Femme,Lyon,France,Marketplace,Bronze,2.0,53.65,7,362.91,0.583,14,1,Apple Pay,Mobile,True,2024-02-23,retailsense_demo,False
+CUST-000926,62.0,Femme,Lille,France,Marketplace,Silver,3.0,56.37,12,725.02,0.728,31,2,Carte,Mobile,True,2025-04-07,retailsense_demo,False
+CUST-000927,37.0,Femme,Lille,France,Organic,Silver,7.0,35.59,28,969.41,0.324,4,2,Carte,Desktop,True,2021-05-13,retailsense_demo,False
+CUST-000928,44.0,Femme,Bordeaux,France,Paid Search,Bronze,5.0,61.11,18,1135.89,0.352,105,1,Apple Pay,Desktop,False,2025-08-06,retailsense_demo,False
+CUST-000929,36.0,Homme,Lyon,France,Social Media,Gold,6.0,91.07,16,1429.53,0.286,53,2,PayPal,Mobile,True,2023-06-18,retailsense_demo,False
+CUST-000930,40.0,Femme,Lyon,France,Referral,Bronze,2.0,67.92,4,253.64,0.44,57,1,PayPal,Mobile,False,2025-03-02,retailsense_demo,False
+CUST-000931,39.0,Homme,Liège,Belgique,Paid Search,Bronze,2.0,41.36,7,309.72,0.055,49,0,Carte,Mobile,False,2023-12-12,retailsense_demo,True
+CUST-000932,44.0,Femme,Lille,France,Referral,Bronze,2.0,33.75,6,191.61,0.297,0,1,Carte,Mobile,True,2023-01-25,retailsense_demo,False
+CUST-000933,53.0,Femme,Lyon,France,Organic,Silver,6.0,193.19,10,2069.38,0.501,58,0,Carte,Mobile,False,2022-07-14,retailsense_demo,True
+CUST-000934,59.0,Homme,Lille,France,Paid Search,Silver,6.0,,26,1995.4,0.21,39,1,PayPal,Desktop,False,2023-02-27,retailsense_demo,False
+CUST-000935,43.0,Femme,Lausanne,Suisse,Social Media,Gold,5.0,47.2,12,545.31,0.569,103,1,Carte,Desktop,True,2023-11-06,retailsense_demo,True
+CUST-000936,46.0,Femme,Lyon,France,Social Media,Bronze,8.0,87.5,12,1120.73,0.716,39,1,Carte,Mobile,False,2024-07-22,retailsense_demo,False
+CUST-000937,25.0,Homme,Bruxelles,Belgique,Referral,Platinum,7.0,200.5,29,5961.96,0.565,11,2,Carte,Desktop,True,2022-01-11,retailsense_demo,False
+CUST-000938,38.0,Femme,Bordeaux,France,Organic,Silver,7.0,94.43,23,2063.91,0.324,58,3,Apple Pay,Mobile,True,2022-08-16,retailsense_demo,True
+CUST-000939,50.0,Femme,Lille,France,Organic,Bronze,6.0,18.4,22,410.71,0.445,31,2,Virement,Desktop,True,2022-08-30,retailsense_demo,False
+CUST-000940,49.0,Homme,Paris,France,Organic,Bronze,3.0,250.41,6,1425.63,0.229,29,2,Carte,Mobile,True,2022-03-10,retailsense_demo,False
+CUST-000941,42.0,Femme,Bordeaux,France,Organic,Bronze,2.0,28.86,5,152.93,0.812,11,0,Apple Pay,Desktop,True,2024-11-06,retailsense_demo,False
+CUST-000942,50.0,Homme,Zurich,Suisse,Organic,Gold,3.0,63.5,10,589.31,0.12,96,0,Carte,Mobile,False,2021-03-03,retailsense_demo,False
+CUST-000943,45.0,Femme,Paris,France,Paid Search,Bronze,4.0,40.69,9,367.95,0.712,18,0,Carte,Mobile,True,2021-06-18,retailsense_demo,False
+CUST-000944,53.0,Homme,Zurich,Suisse,Social Media,Silver,3.0,49.15,11,502.85,0.552,3,1,Carte,Mobile,True,2023-10-15,retailsense_demo,False
+CUST-000945,42.0,Homme,Lille,France,Social Media,Silver,1.0,80.36,2,165.74,0.164,9,0,Virement,Desktop,True,2024-12-06,retailsense_demo,False
+CUST-000946,35.0,Homme,Namur,Belgique,Paid Search,Gold,5.0,25.94,11,305.27,0.498,6,1,Carte,Desktop,True,2024-02-07,retailsense_demo,False
+CUST-000947,43.0,Homme,Lausanne,Suisse,Organic,Silver,7.0,67.13,11,777.58,0.345,2,1,Carte,Desktop,True,2024-01-13,retailsense_demo,False
+CUST-000948,18.0,Femme,Lille,France,Social Media,Gold,8.0,121.6,19,2262.95,0.288,4,0,Apple Pay,Desktop,True,2021-03-15,retailsense_demo,False
+CUST-000949,44.0,Homme,Lyon,France,Organic,Bronze,4.0,46.77,9,403.21,0.275,13,0,PayPal,Mobile,True,2024-07-08,retailsense_demo,False
+CUST-000950,18.0,Femme,Bruxelles,Belgique,Referral,Gold,4.0,35.97,15,506.82,0.284,7,1,PayPal,Desktop,False,2021-05-09,retailsense_demo,False
+CUST-000951,18.0,Homme,Lille,France,Organic,Bronze,6.0,65.57,19,1320.33,0.38,20,1,PayPal,Desktop,False,2024-10-18,retailsense_demo,False
+CUST-000952,44.0,Homme,Zurich,Suisse,Social Media,Bronze,5.0,59.6,10,556.02,0.662,106,2,PayPal,Mobile,True,2021-06-05,retailsense_demo,False
+CUST-000953,45.0,Femme,Bordeaux,France,Marketplace,Platinum,9.0,52.68,29,1559.3,0.067,55,1,Carte,Mobile,False,2021-05-30,retailsense_demo,False
+CUST-000954,25.0,Homme,Bordeaux,France,Social Media,Bronze,3.0,39.63,7,271.52,0.13,50,1,PayPal,Mobile,False,2022-12-20,retailsense_demo,True
+CUST-000955,,Femme,Lille,France,Social Media,Bronze,4.0,89.95,11,1067.89,0.098,4,2,Carte,Mobile,True,2025-05-25,retailsense_demo,False
+CUST-000956,55.0,Homme,Liège,Belgique,Social Media,Silver,5.0,93.29,21,1961.88,0.548,23,2,Carte,Mobile,True,2022-12-04,retailsense_demo,False
+CUST-000957,33.0,Homme,Lausanne,Suisse,Organic,Bronze,5.0,42.03,18,762.53,0.358,38,3,Apple Pay,Desktop,True,2021-07-02,retailsense_demo,True
+CUST-000958,66.0,Femme,Bordeaux,France,Social Media,Bronze,4.0,44.92,14,670.95,0.159,29,1,Carte,Desktop,True,2021-06-03,retailsense_demo,False
+CUST-000959,39.0,Homme,Bruxelles,Belgique,Marketplace,Silver,5.0,74.85,12,965.72,0.302,35,0,Carte,Mobile,True,2023-09-14,retailsense_demo,False
+CUST-000960,44.0,Homme,Genève,Suisse,Marketplace,Gold,9.0,44.12,17,760.0,0.413,30,3,Carte,Desktop,True,2023-08-05,retailsense_demo,False
+CUST-000961,58.0,Femme,,France,Paid Search,Gold,5.0,76.38,19,1520.05,0.156,44,1,Virement,Desktop,True,2024-01-22,retailsense_demo,False
+CUST-000962,41.0,Homme,Lille,France,Paid Search,Bronze,2.0,141.83,6,869.36,0.346,109,1,Apple Pay,Mobile,True,2024-11-19,retailsense_demo,True
+CUST-000963,27.0,Femme,Liège,Belgique,Referral,Silver,8.0,68.12,27,1817.9,0.393,13,3,Carte,Tablet,True,2022-10-02,retailsense_demo,False
+CUST-000964,38.0,Homme,Bordeaux,France,Social Media,Gold,7.0,39.15,31,1127.76,0.04,12,2,Carte,Desktop,True,2021-02-22,retailsense_demo,False
+CUST-000965,39.0,Femme,Bordeaux,France,Organic,Bronze,2.0,84.62,5,437.86,0.475,8,1,PayPal,Mobile,True,2024-08-16,retailsense_demo,False
+CUST-000966,23.0,Homme,Bruxelles,Belgique,Organic,Bronze,3.0,64.38,12,797.25,0.599,11,2,PayPal,Tablet,True,2021-11-02,retailsense_demo,False
+CUST-000967,36.0,Homme,Lille,France,Organic,Bronze,6.0,65.23,19,1163.37,0.439,17,1,Carte,Mobile,True,2025-06-15,retailsense_demo,False
+CUST-000968,30.0,Femme,Lausanne,Suisse,Paid Search,Silver,9.0,88.07,20,1685.37,0.249,41,4,Carte,Mobile,True,2025-08-24,retailsense_demo,False
+CUST-000969,50.0,Femme,Namur,Belgique,Organic,Bronze,3.0,97.68,5,506.54,0.321,24,0,PayPal,Mobile,False,2021-07-21,retailsense_demo,False
+CUST-000970,39.0,Homme,Namur,Belgique,Organic,Silver,1.0,71.31,3,201.94,0.2,81,0,Carte,Desktop,True,2025-05-16,retailsense_demo,False
+CUST-000971,36.0,Homme,Lille,France,Organic,Platinum,8.0,68.09,19,1333.29,0.426,12,3,PayPal,Tablet,False,2023-11-30,retailsense_demo,False
+CUST-000972,38.0,Femme,Bordeaux,France,Marketplace,Bronze,4.0,188.76,14,2734.87,0.543,50,0,Carte,Mobile,False,2021-08-23,retailsense_demo,True
+CUST-000973,42.0,Femme,Lille,France,Organic,Silver,6.0,124.74,22,2679.98,0.207,32,1,Virement,Mobile,True,2024-03-24,retailsense_demo,False
+CUST-000974,46.0,Femme,Bordeaux,France,Organic,Bronze,5.0,104.6,14,1407.68,0.357,6,2,PayPal,Mobile,True,2024-06-17,retailsense_demo,False
+CUST-000975,27.0,Non renseigné,Lyon,France,Paid Search,Bronze,6.0,74.66,19,1389.77,0.304,45,3,PayPal,Desktop,True,2025-09-20,retailsense_demo,False
+CUST-000976,27.0,Femme,Lyon,France,Organic,Gold,5.0,43.26,17,718.86,0.446,30,2,PayPal,Mobile,True,2022-07-18,retailsense_demo,False
+CUST-000977,52.0,Homme,Lyon,France,Marketplace,Bronze,4.0,120.44,12,1470.02,0.479,52,1,Carte,Mobile,False,2024-05-14,retailsense_demo,False
+CUST-000978,34.0,Femme,Bordeaux,France,Marketplace,Platinum,4.0,75.13,17,1327.1,0.335,66,0,Carte,Mobile,False,2025-05-07,retailsense_demo,True
+CUST-000979,22.0,Homme,Lille,France,Paid Search,Silver,8.0,53.14,14,787.04,0.159,10,1,PayPal,Mobile,True,2023-08-14,retailsense_demo,False
+CUST-000980,44.0,Femme,Paris,France,Paid Search,Bronze,6.0,62.38,27,1557.68,0.216,47,1,Virement,Tablet,True,2025-02-03,retailsense_demo,False
+CUST-000981,45.0,Femme,Paris,France,Paid Search,Silver,1.0,44.09,2,91.38,0.322,22,1,Virement,Tablet,False,2021-10-21,retailsense_demo,False
+CUST-000982,21.0,Homme,Liège,Belgique,Organic,Bronze,6.0,116.46,13,1468.93,0.441,1,1,Carte,Mobile,True,2022-04-19,retailsense_demo,False
+CUST-000983,42.0,Homme,Bordeaux,France,Paid Search,Gold,4.0,97.31,14,1436.09,0.625,2,1,Virement,Desktop,True,2021-03-03,retailsense_demo,True
+CUST-000984,48.0,Femme,Liège,Belgique,Organic,Silver,5.0,76.49,9,641.69,0.715,57,1,Carte,Desktop,False,2021-03-04,retailsense_demo,False
+CUST-000985,43.0,Femme,Liège,Belgique,Organic,Bronze,1.0,68.68,2,138.49,0.133,56,1,Carte,Mobile,True,2021-11-11,retailsense_demo,False
+CUST-000986,47.0,Femme,Bordeaux,France,Social Media,Silver,5.0,50.57,10,509.6,0.564,3,1,Carte,Mobile,False,2023-06-27,retailsense_demo,False
+CUST-000987,22.0,Femme,Lille,France,Organic,Silver,2.0,25.22,7,171.63,0.334,28,0,Apple Pay,Desktop,False,2025-02-03,retailsense_demo,False
+CUST-000988,43.0,Femme,Bordeaux,France,Organic,Gold,7.0,35.58,23,879.93,0.767,26,3,PayPal,Mobile,True,2025-09-17,retailsense_demo,False
+CUST-000989,35.0,Homme,Lille,France,Paid Search,Bronze,3.0,49.08,5,229.98,0.279,92,0,Carte,Desktop,True,2025-06-22,retailsense_demo,False
+CUST-000990,33.0,Femme,Lille,France,Paid Search,Bronze,4.0,45.67,12,516.12,0.043,43,0,PayPal,Mobile,True,2024-10-13,retailsense_demo,False
+CUST-000991,49.0,Homme,Bordeaux,France,Organic,Bronze,5.0,80.55,11,906.51,0.304,83,1,Carte,Desktop,False,2021-08-22,retailsense_demo,True
+CUST-000992,57.0,Femme,Liège,Belgique,Organic,Bronze,5.0,103.49,22,2282.08,0.449,61,1,Carte,Mobile,True,2024-11-20,retailsense_demo,True
+CUST-000993,61.0,Femme,Genève,Suisse,Organic,Silver,7.0,65.91,13,824.59,0.381,16,1,Carte,Mobile,True,2025-06-20,retailsense_demo,False
+CUST-000994,55.0,Homme,Liège,Belgique,Organic,Bronze,3.0,137.87,10,1335.48,0.494,11,1,Carte,Mobile,False,2021-05-21,retailsense_demo,False
+CUST-000995,38.0,Femme,Paris,France,Referral,Bronze,4.0,48.14,12,546.03,0.065,5,0,Carte,Mobile,True,2023-10-23,retailsense_demo,False
+CUST-000996,43.0,Homme,Lille,France,Marketplace,Silver,7.0,65.69,23,1599.77,0.198,29,1,Carte,Desktop,True,2023-11-21,retailsense_demo,False
+CUST-000997,48.0,Femme,Genève,Suisse,Paid Search,Bronze,5.0,68.41,22,1521.77,0.274,2,2,Virement,Desktop,False,2024-06-16,retailsense_demo,False
+CUST-000998,40.0,Homme,Lille,France,Paid Search,Gold,6.0,118.42,15,1703.8,0.226,109,0,Virement,Mobile,True,2021-04-29,retailsense_demo,False
+CUST-000999,41.0,Homme,Lyon,France,Social Media,Silver,10.0,73.76,37,2682.61,0.173,54,1,Apple Pay,Desktop,True,2024-03-25,retailsense_demo,True
+CUST-001000,49.0,Homme,Paris,France,Social Media,Bronze,6.0,74.75,17,1353.39,0.145,32,1,Carte,Mobile,True,2021-10-02,retailsense_demo,True
+CUST-001001,38.0,Femme,Paris,France,Organic,Silver,7.0,31.68,24,807.37,0.528,10,4,Carte,Mobile,True,2021-02-09,retailsense_demo,False
+CUST-001002,30.0,Femme,Lille,France,Organic,Bronze,5.0,45.52,13,550.9,0.391,80,0,Carte,Tablet,True,2023-09-26,retailsense_demo,False
+CUST-001003,34.0,Femme,Paris,France,Paid Search,Gold,11.0,118.64,24,2917.46,0.076,66,0,Carte,Mobile,True,2022-07-10,retailsense_demo,False
+CUST-001004,47.0,Homme,Bordeaux,France,Social Media,Silver,5.0,25.89,9,220.07,0.338,1,2,PayPal,Desktop,False,2025-10-18,retailsense_demo,True
+CUST-001005,39.0,Femme,Bordeaux,France,Organic,Silver,6.0,133.57,11,1401.32,0.236,51,0,Carte,Mobile,True,2022-02-17,retailsense_demo,False
+CUST-001006,43.0,Femme,Lille,France,Paid Search,Gold,5.0,89.11,22,2074.59,0.391,14,5,PayPal,Mobile,True,2021-03-15,retailsense_demo,False
+CUST-001007,47.0,Femme,Paris,France,Paid Search,Gold,4.0,48.97,15,780.98,0.772,85,3,Virement,Desktop,False,2024-12-21,retailsense_demo,False
+CUST-001008,35.0,Femme,Bordeaux,France,Organic,Gold,8.0,47.02,18,789.88,0.153,3,0,Carte,Desktop,True,2025-11-14,retailsense_demo,False
+CUST-001009,48.0,Femme,Liège,Belgique,Paid Search,Bronze,2.0,174.17,6,1107.57,0.233,10,0,Apple Pay,Desktop,False,2025-09-15,retailsense_demo,False
+CUST-001010,44.0,Femme,Lyon,France,Social Media,Bronze,5.0,138.03,18,2575.38,0.213,130,3,Carte,Desktop,True,2021-10-08,retailsense_demo,True
+CUST-001011,24.0,Femme,Paris,France,Paid Search,Silver,3.0,66.2,8,552.96,0.223,17,0,Apple Pay,Desktop,True,2024-09-26,retailsense_demo,False
+CUST-001012,56.0,Homme,Liège,Belgique,Organic,Silver,5.0,74.78,14,1095.86,0.102,14,0,PayPal,Desktop,True,2023-12-01,retailsense_demo,False
+CUST-001013,33.0,Femme,Bordeaux,France,Organic,Silver,3.0,51.41,11,566.16,0.366,0,0,Carte,Mobile,True,2024-04-16,retailsense_demo,False
+CUST-001014,19.0,Femme,Bruxelles,Belgique,Referral,Gold,6.0,74.79,13,1041.81,0.21,39,1,,Mobile,False,2024-06-16,retailsense_demo,False
+CUST-001015,26.0,Homme,Bruxelles,Belgique,Paid Search,Bronze,9.0,50.73,28,1352.35,0.304,3,3,Carte,Desktop,False,2025-02-12,retailsense_demo,False
+CUST-001016,27.0,Homme,Lyon,France,Organic,Bronze,3.0,67.51,6,405.39,0.211,37,0,Virement,Desktop,True,2023-12-10,retailsense_demo,False
+CUST-001017,40.0,Femme,Lille,France,Organic,Silver,5.0,167.16,8,1298.47,0.762,17,0,Carte,Mobile,True,2021-06-09,retailsense_demo,False
+CUST-001018,36.0,Homme,Lyon,France,Referral,Bronze,3.0,66.96,11,774.57,0.411,21,1,Virement,Mobile,True,2024-03-10,retailsense_demo,False
+CUST-001019,35.0,Homme,Lausanne,Suisse,Referral,Silver,3.0,42.39,11,435.17,0.393,18,1,Carte,Mobile,True,2022-01-13,retailsense_demo,False
+CUST-001020,46.0,Homme,Bruxelles,Belgique,Referral,Silver,2.0,36.38,9,323.99,0.471,22,0,Apple Pay,Mobile,True,2022-07-31,retailsense_demo,False
+CUST-001021,43.0,Homme,Genève,Suisse,Social Media,Silver,6.0,74.52,12,933.32,0.35,50,1,Carte,Mobile,True,2022-01-20,retailsense_demo,False
+CUST-001022,43.0,Homme,Genève,Suisse,Paid Search,Silver,9.0,48.66,33,1557.43,0.802,27,5,PayPal,Desktop,True,2023-02-22,retailsense_demo,False
+CUST-001023,44.0,Femme,Paris,France,Paid Search,Silver,4.0,78.91,17,1285.85,0.395,102,0,Virement,Desktop,True,2024-02-13,retailsense_demo,False
+CUST-001024,46.0,Femme,Namur,Belgique,Organic,Silver,4.0,32.22,14,433.96,0.208,87,2,Carte,Tablet,False,2024-09-03,retailsense_demo,True
+CUST-001025,18.0,Homme,Bordeaux,France,Social Media,Bronze,4.0,97.64,18,1817.64,0.262,89,1,Carte,Desktop,True,2024-07-24,retailsense_demo,False
+CUST-001026,35.0,Non renseigné,Liège,Belgique,Social Media,Silver,6.0,42.15,27,1099.1,0.599,128,2,PayPal,Mobile,True,2023-05-13,retailsense_demo,True
+CUST-001027,18.0,Femme,Paris,France,Organic,Silver,2.0,71.68,8,564.52,0.164,3,0,PayPal,Desktop,True,2023-12-17,retailsense_demo,False
+CUST-001028,39.0,Femme,Lyon,France,Marketplace,Bronze,3.0,59.6,13,780.43,0.043,69,0,Virement,Desktop,False,2023-12-16,retailsense_demo,True
+CUST-001029,39.0,Homme,Namur,Belgique,Paid Search,Silver,2.0,159.94,7,1198.57,0.211,5,0,Carte,Desktop,False,2024-02-18,retailsense_demo,False
+CUST-001030,52.0,Femme,Bruxelles,Belgique,Organic,Gold,3.0,,9,717.35,0.575,13,0,Virement,Mobile,True,2021-06-16,retailsense_demo,False
+CUST-001031,53.0,Homme,Lyon,France,Paid Search,Bronze,4.0,178.36,17,2879.5,0.477,6,2,Apple Pay,Desktop,False,2022-10-20,retailsense_demo,True
+CUST-001032,41.0,Homme,Lille,France,Referral,Silver,8.0,91.76,32,3116.23,0.472,14,3,Virement,Mobile,False,2021-08-05,retailsense_demo,False
+CUST-001033,33.0,Homme,Lyon,France,Marketplace,Platinum,2.0,138.96,4,586.51,0.114,6,0,Carte,Mobile,True,2021-06-03,retailsense_demo,False
+CUST-001034,45.0,Homme,Lausanne,Suisse,Paid Search,Gold,7.0,63.42,17,1120.44,0.105,57,1,Carte,Mobile,True,2022-12-05,retailsense_demo,False
+CUST-001035,33.0,Homme,Lyon,France,Marketplace,Bronze,4.0,82.75,9,746.78,0.17,76,1,Apple Pay,Mobile,False,2025-06-22,retailsense_demo,False
+CUST-001036,39.0,Homme,Lyon,France,Referral,Silver,4.0,125.83,16,1874.74,0.432,82,1,PayPal,Desktop,True,2021-03-29,retailsense_demo,False
+CUST-001037,51.0,Homme,,France,Referral,Platinum,8.0,108.24,18,2014.31,0.411,33,5,PayPal,Mobile,True,2023-08-08,retailsense_demo,False
+CUST-001038,32.0,Homme,Lille,France,Referral,Silver,5.0,90.46,12,1088.67,0.07,44,0,Apple Pay,Mobile,True,2024-02-07,retailsense_demo,False
+CUST-001039,49.0,Homme,Paris,France,Paid Search,Bronze,4.0,59.89,12,696.86,0.384,43,0,Carte,Desktop,True,2023-11-30,retailsense_demo,False
+CUST-001040,47.0,Femme,Paris,France,Referral,Bronze,2.0,64.96,3,179.6,0.537,38,0,PayPal,Desktop,False,2025-06-29,retailsense_demo,False
+CUST-001041,,Homme,Liège,Belgique,Social Media,Gold,8.0,121.03,35,4053.92,0.751,8,3,PayPal,Mobile,False,2022-09-13,retailsense_demo,False
+CUST-001042,51.0,Femme,Zurich,Suisse,Social Media,Bronze,3.0,133.76,9,1224.19,0.266,48,0,Virement,Mobile,False,2025-09-08,retailsense_demo,False
+CUST-001043,47.0,Homme,Genève,Suisse,Organic,Bronze,4.0,52.74,8,395.77,0.13,1,0,Virement,Mobile,True,2022-06-05,retailsense_demo,False
+CUST-001044,40.0,Homme,Paris,France,Referral,Bronze,3.0,49.06,7,351.94,0.246,89,0,Carte,Desktop,False,2021-11-17,retailsense_demo,True
+CUST-001045,30.0,Femme,Lille,France,Marketplace,Gold,8.0,45.42,31,1480.13,0.307,2,4,Carte,Desktop,True,2023-11-15,retailsense_demo,False
+CUST-001046,29.0,Femme,Liège,Belgique,Paid Search,Silver,4.0,104.4,14,1419.12,0.742,75,3,Apple Pay,Mobile,False,2024-01-23,retailsense_demo,False
+CUST-001047,33.0,Femme,Bruxelles,Belgique,Marketplace,Gold,5.0,44.87,14,586.21,0.139,75,1,PayPal,Desktop,True,2022-08-28,retailsense_demo,False
+CUST-001048,46.0,Homme,Paris,France,Paid Search,Silver,4.0,103.8,10,978.15,0.614,81,1,Carte,Desktop,True,2021-10-01,retailsense_demo,False
+CUST-001049,28.0,Femme,Liège,Belgique,Organic,Platinum,11.0,91.1,46,4095.22,0.281,78,4,Apple Pay,Desktop,False,2025-06-15,retailsense_demo,False
+CUST-001050,44.0,Femme,Liège,Belgique,Organic,Gold,9.0,53.97,34,1926.86,0.388,30,3,Carte,Mobile,False,2023-09-12,retailsense_demo,False
+CUST-001051,24.0,Homme,Lille,France,Referral,Bronze,4.0,148.51,15,2275.51,0.313,1,1,Carte,Desktop,True,2024-05-09,retailsense_demo,False
+CUST-001052,37.0,Homme,Bruxelles,Belgique,Social Media,Silver,4.0,34.75,11,404.72,0.936,122,1,Apple Pay,Mobile,True,2025-11-12,retailsense_demo,True
+CUST-001053,40.0,Femme,Lille,France,Paid Search,Bronze,7.0,155.49,31,5201.48,0.335,3,1,PayPal,Mobile,True,2025-11-16,retailsense_demo,False
+CUST-001054,68.0,Femme,Bordeaux,France,Social Media,Platinum,5.0,81.7,18,1400.63,0.088,32,1,Virement,Mobile,False,2023-05-11,retailsense_demo,False
+CUST-001055,22.0,Non renseigné,Lyon,France,Paid Search,Bronze,6.0,25.91,17,454.25,0.379,59,1,Virement,Mobile,True,2022-03-21,retailsense_demo,True
+CUST-001056,57.0,Homme,,France,Paid Search,Silver,6.0,150.52,26,3892.58,0.295,23,0,PayPal,Mobile,True,2023-01-14,retailsense_demo,False
+CUST-001057,41.0,Homme,Bruxelles,Belgique,Referral,Gold,8.0,111.79,33,3685.37,0.231,15,1,Carte,Mobile,True,2024-09-17,retailsense_demo,False
+CUST-001058,44.0,Femme,Lille,France,Social Media,Bronze,4.0,57.08,15,832.31,0.216,10,2,Virement,Mobile,False,2023-09-24,retailsense_demo,False
+CUST-001059,40.0,Femme,Paris,France,Referral,Gold,10.0,44.12,38,1634.35,0.411,22,2,Carte,Mobile,False,2021-03-28,retailsense_demo,False
+CUST-001060,44.0,Femme,Bruxelles,Belgique,Social Media,Bronze,2.0,,6,203.65,0.633,7,0,PayPal,Desktop,False,2021-11-09,retailsense_demo,False
+CUST-001061,37.0,Homme,Namur,Belgique,Marketplace,Silver,4.0,223.5,12,2733.85,0.17,122,0,PayPal,Desktop,False,2025-05-03,retailsense_demo,False
+CUST-001062,56.0,Femme,Bruxelles,Belgique,Organic,Silver,5.0,45.01,10,436.98,0.19,0,0,Carte,Desktop,True,2022-10-19,retailsense_demo,False
+CUST-001063,34.0,Femme,Bordeaux,France,Organic,Bronze,5.0,38.22,16,574.27,0.464,7,2,Carte,Mobile,True,2022-11-22,retailsense_demo,False
+CUST-001064,53.0,Homme,Liège,Belgique,Organic,Silver,5.0,79.73,13,1049.42,0.499,30,0,PayPal,Mobile,True,2024-02-25,retailsense_demo,False
+CUST-001065,31.0,Homme,Lyon,France,Social Media,Gold,10.0,31.94,25,829.05,0.555,32,2,Virement,Desktop,True,2024-02-25,retailsense_demo,False
+CUST-001066,38.0,Homme,Lille,France,Social Media,Bronze,6.0,43.77,26,1148.59,0.181,63,4,Carte,Desktop,False,2022-06-08,retailsense_demo,False
+CUST-001067,26.0,Femme,Lille,France,Referral,Silver,4.0,113.02,8,832.37,0.433,82,0,Carte,Mobile,True,2021-05-22,retailsense_demo,False
+CUST-001068,44.0,Femme,Lyon,France,Paid Search,Gold,6.0,87.6,24,2029.26,0.424,13,2,Carte,Desktop,False,2024-05-15,retailsense_demo,False
+CUST-001069,56.0,Femme,Namur,Belgique,Organic,Gold,3.0,58.24,7,425.84,0.303,48,1,PayPal,Desktop,True,2021-06-04,retailsense_demo,True
+CUST-001070,38.0,Femme,Bordeaux,France,Social Media,Bronze,2.0,70.72,3,220.41,0.575,29,0,Carte,Desktop,True,2021-11-08,retailsense_demo,False
+CUST-001071,37.0,Homme,Paris,France,Marketplace,Platinum,3.0,56.69,5,261.25,0.352,32,0,PayPal,Desktop,False,2025-08-30,retailsense_demo,False
+CUST-001072,26.0,Femme,Namur,Belgique,Paid Search,Bronze,6.0,68.05,17,1151.35,0.14,14,0,PayPal,Mobile,True,2024-07-24,retailsense_demo,False
+CUST-001073,36.0,Homme,Bruxelles,Belgique,Organic,Silver,7.0,48.63,20,962.93,0.662,38,1,Carte,Tablet,True,2023-10-13,retailsense_demo,False
+CUST-001074,20.0,Homme,Bordeaux,France,Paid Search,Silver,3.0,53.06,7,380.49,0.111,13,0,PayPal,Desktop,False,2022-09-09,retailsense_demo,False
+CUST-001075,28.0,Non renseigné,Genève,Suisse,Paid Search,Gold,2.0,52.29,7,344.09,0.344,7,1,Virement,Desktop,True,2024-10-26,retailsense_demo,False
+CUST-001076,42.0,Femme,Bruxelles,Belgique,Organic,Bronze,7.0,49.48,21,1059.28,0.571,13,1,Carte,Desktop,True,2023-11-28,retailsense_demo,False
+CUST-001077,55.0,Femme,Zurich,Suisse,Paid Search,Bronze,1.0,115.71,2,247.97,0.263,12,0,Carte,Desktop,True,2025-06-21,retailsense_demo,False
+CUST-001078,73.0,Femme,Zurich,Suisse,Social Media,Gold,6.0,101.46,15,1490.66,0.158,92,1,Carte,Desktop,False,2025-06-05,retailsense_demo,False
+CUST-001079,32.0,Femme,Genève,Suisse,Paid Search,Bronze,1.0,44.81,2,87.29,0.258,9,0,PayPal,Mobile,True,2023-10-24,retailsense_demo,False
+CUST-001080,56.0,Femme,Liège,Belgique,Paid Search,Silver,9.0,39.52,15,547.99,0.589,1,2,Apple Pay,Mobile,True,2022-11-13,retailsense_demo,False
+CUST-001081,42.0,Femme,Lyon,France,Organic,Silver,6.0,65.01,13,785.25,0.173,7,0,PayPal,Desktop,True,2023-09-23,retailsense_demo,False
+CUST-001082,37.0,Homme,Lille,France,Marketplace,Silver,4.0,197.26,14,2952.38,0.449,17,2,Apple Pay,Desktop,True,2024-01-23,retailsense_demo,False
+CUST-001083,44.0,Homme,Lille,France,Paid Search,Bronze,3.0,42.81,11,506.7,0.47,57,2,PayPal,Mobile,False,2023-07-04,retailsense_demo,False
+CUST-001084,40.0,Homme,Namur,Belgique,Paid Search,Bronze,3.0,64.88,12,717.03,0.256,13,1,Carte,Mobile,True,2022-11-05,retailsense_demo,False
+CUST-001085,40.0,Femme,Bordeaux,France,Organic,Platinum,7.0,73.16,26,2023.98,0.286,13,3,Carte,Tablet,False,2022-06-17,retailsense_demo,False
+CUST-001086,34.0,Femme,Liège,Belgique,Social Media,Silver,1.0,66.54,3,189.22,0.623,2,0,,Mobile,False,2023-04-21,retailsense_demo,True
+CUST-001087,22.0,Femme,Lille,France,Referral,Bronze,6.0,56.26,15,852.25,0.659,24,0,PayPal,Mobile,True,2025-06-22,retailsense_demo,False
+CUST-001088,20.0,Femme,Bordeaux,France,Organic,Bronze,6.0,122.05,9,1129.77,0.391,25,0,PayPal,Desktop,False,2025-09-19,retailsense_demo,True
+CUST-001089,47.0,Femme,Paris,France,Organic,Bronze,4.0,87.19,14,1193.19,0.528,14,1,PayPal,Mobile,False,2024-04-03,retailsense_demo,False
+CUST-001090,36.0,Non renseigné,Lille,France,Organic,Platinum,7.0,105.21,17,1796.92,0.289,12,2,Carte,Mobile,False,2024-12-04,retailsense_demo,False
+CUST-001091,32.0,Femme,Bordeaux,France,Social Media,Bronze,3.0,93.03,7,664.49,0.028,67,0,Carte,Desktop,True,2023-04-26,retailsense_demo,False
+CUST-001092,39.0,Femme,Paris,France,Marketplace,Bronze,4.0,107.67,18,1843.19,0.055,27,0,PayPal,Tablet,True,2022-07-11,retailsense_demo,False
+CUST-001093,49.0,Homme,Namur,Belgique,Paid Search,Silver,8.0,149.98,16,2589.48,0.665,16,3,,Mobile,True,2024-09-11,retailsense_demo,False
+CUST-001094,41.0,Homme,Lille,France,Paid Search,Bronze,1.0,132.81,2,253.03,0.351,1,0,Virement,Mobile,True,2023-08-27,retailsense_demo,True
+CUST-001095,31.0,Homme,Lyon,France,Referral,Bronze,4.0,213.98,17,3352.74,0.695,5,2,Carte,Mobile,True,2024-11-10,retailsense_demo,False
+CUST-001096,54.0,Femme,Lyon,France,Referral,Platinum,7.0,125.75,17,2289.78,0.75,52,1,Virement,Desktop,True,2023-08-29,retailsense_demo,False
+CUST-001097,58.0,Homme,Lyon,France,Organic,Silver,3.0,50.84,8,402.1,0.379,29,2,Carte,Mobile,False,2024-02-01,retailsense_demo,False
+CUST-001098,45.0,Femme,Bordeaux,France,Organic,Bronze,4.0,105.29,7,725.07,0.16,54,0,Carte,Mobile,False,2025-11-27,retailsense_demo,True
+CUST-001099,51.0,Femme,Namur,Belgique,Paid Search,Silver,3.0,98.59,8,760.44,0.077,36,1,Virement,Desktop,True,2022-09-11,retailsense_demo,False
+CUST-001100,,Homme,Namur,Belgique,Referral,Bronze,2.0,176.22,9,1465.67,0.438,8,1,Apple Pay,Tablet,False,2024-06-14,retailsense_demo,True
+CUST-001101,53.0,Homme,Lille,France,Social Media,Bronze,4.0,44.07,14,593.73,0.254,177,3,Apple Pay,Mobile,True,2022-04-18,retailsense_demo,False
+CUST-001102,46.0,Femme,Paris,France,Social Media,Silver,2.0,91.64,6,540.43,0.269,9,2,Carte,Mobile,True,2022-09-04,retailsense_demo,False
+CUST-001103,46.0,Homme,Bordeaux,France,Referral,Silver,2.0,50.56,5,253.6,0.212,50,1,Carte,Desktop,False,2024-12-21,retailsense_demo,False
+CUST-001104,45.0,Femme,Paris,France,Organic,Silver,6.0,89.66,16,1424.83,0.532,12,0,PayPal,Mobile,True,2021-08-15,retailsense_demo,False
+CUST-001105,26.0,Femme,Genève,Suisse,Paid Search,Gold,10.0,63.24,33,2213.45,0.353,49,2,Virement,Desktop,True,2025-10-23,retailsense_demo,False
+CUST-001106,47.0,Femme,Paris,France,Organic,Bronze,5.0,88.25,11,1034.61,0.184,49,1,Carte,Mobile,False,2023-02-20,retailsense_demo,False
+CUST-001107,23.0,Homme,Zurich,Suisse,Referral,Gold,9.0,35.62,18,622.48,0.23,42,1,Carte,Mobile,False,2022-01-11,retailsense_demo,False
+CUST-001108,29.0,Femme,Lyon,France,Social Media,Silver,3.0,102.59,11,1211.48,0.309,184,2,Carte,Mobile,False,2023-04-20,retailsense_demo,False
+CUST-001109,55.0,Homme,Paris,France,Paid Search,Bronze,3.0,77.39,12,982.96,0.318,14,2,Carte,Mobile,True,2023-03-21,retailsense_demo,False
+CUST-001110,49.0,Femme,Paris,France,Organic,Gold,7.0,75.42,29,2336.78,0.551,1,2,Carte,Desktop,True,2023-08-22,retailsense_demo,False
+CUST-001111,57.0,Homme,Lyon,France,Referral,Bronze,3.0,178.77,12,2216.08,0.263,13,0,PayPal,Desktop,True,2025-08-17,retailsense_demo,False
+CUST-001112,36.0,Homme,Zurich,Suisse,Referral,Silver,4.0,58.35,12,666.36,0.164,19,0,Carte,Desktop,True,2022-08-19,retailsense_demo,False
+CUST-001113,25.0,Femme,Bordeaux,France,Social Media,Silver,3.0,82.62,12,943.13,0.136,16,1,PayPal,Desktop,False,2021-04-20,retailsense_demo,False
+CUST-001114,36.0,Femme,Liège,Belgique,Organic,Bronze,5.0,73.56,21,1645.81,0.129,88,1,PayPal,Mobile,True,2022-01-19,retailsense_demo,False
+CUST-001115,40.0,Femme,Liège,Belgique,Marketplace,Gold,10.0,77.1,16,1234.94,0.42,103,0,Carte,Tablet,False,2025-08-20,retailsense_demo,False
+CUST-001116,40.0,Homme,Bordeaux,France,Referral,Bronze,11.0,203.66,30,6491.6,0.822,31,5,Carte,Desktop,True,2024-11-06,retailsense_demo,False
+CUST-001117,,Femme,Bordeaux,France,Social Media,Gold,2.0,72.29,4,299.35,0.434,80,0,Apple Pay,Mobile,True,2021-11-19,retailsense_demo,True
+CUST-001118,35.0,Homme,Lyon,France,Social Media,Bronze,8.0,53.39,36,1833.78,0.485,31,3,PayPal,Desktop,True,2022-06-17,retailsense_demo,False
+CUST-001119,43.0,Femme,Bordeaux,France,Marketplace,Bronze,3.0,172.09,13,2195.95,0.32,66,1,Virement,Desktop,True,2024-02-22,retailsense_demo,False
+CUST-001120,27.0,Homme,Liège,Belgique,Marketplace,Bronze,2.0,60.48,8,520.05,0.191,5,0,Carte,Mobile,True,2024-09-26,retailsense_demo,False
+CUST-001121,44.0,Femme,Bordeaux,France,Social Media,Gold,6.0,32.44,14,419.3,0.165,68,0,PayPal,Mobile,False,2023-09-05,retailsense_demo,False
+CUST-001122,39.0,Homme,Genève,Suisse,Paid Search,Bronze,1.0,49.13,4,203.25,0.27,28,0,Apple Pay,Mobile,False,2025-10-06,retailsense_demo,True
+CUST-001123,30.0,Non renseigné,Paris,France,Paid Search,Gold,8.0,38.54,13,539.37,0.616,180,3,Carte,Tablet,False,2025-06-26,retailsense_demo,True
+CUST-001124,36.0,Femme,Bordeaux,France,Referral,Bronze,4.0,29.55,8,221.41,0.301,8,1,Carte,Desktop,True,2025-07-22,retailsense_demo,False
+CUST-001125,37.0,Homme,Namur,Belgique,Social Media,Silver,3.0,58.89,10,567.46,0.409,63,2,Apple Pay,Desktop,False,2021-12-02,retailsense_demo,True
+CUST-001126,36.0,Femme,Paris,France,Organic,Bronze,1.0,67.78,4,273.17,0.4,44,0,Carte,Desktop,False,2025-09-10,retailsense_demo,False
+CUST-001127,60.0,Femme,Zurich,Suisse,Organic,Bronze,1.0,123.55,4,521.39,0.078,31,0,Carte,Mobile,True,2023-03-29,retailsense_demo,False
+CUST-001128,38.0,Homme,Paris,France,Marketplace,Platinum,13.0,94.83,31,2942.87,0.221,10,0,Apple Pay,Tablet,False,2024-07-24,retailsense_demo,False
+CUST-001129,36.0,Homme,Zurich,Suisse,Marketplace,Bronze,2.0,92.78,5,431.22,0.263,58,1,Carte,Mobile,False,2022-04-02,retailsense_demo,False
+CUST-001130,18.0,Homme,Bruxelles,Belgique,Marketplace,Silver,1.0,45.66,3,128.81,0.391,7,0,PayPal,Desktop,False,2025-04-20,retailsense_demo,False
+CUST-001131,28.0,Femme,Bruxelles,Belgique,Paid Search,Silver,5.0,107.21,8,840.64,0.273,4,2,Virement,Mobile,False,2021-07-04,retailsense_demo,False
+CUST-001132,36.0,Femme,Bordeaux,France,Referral,Silver,3.0,136.7,12,1593.83,0.587,12,1,Virement,Mobile,True,2025-07-04,retailsense_demo,False
+CUST-001133,31.0,Femme,Namur,Belgique,Referral,Silver,8.0,84.72,20,1618.47,0.255,9,2,Carte,Mobile,True,2021-10-25,retailsense_demo,False
+CUST-001134,56.0,Homme,Paris,France,Paid Search,Gold,3.0,85.87,6,543.24,0.167,11,0,,Mobile,True,2025-03-15,retailsense_demo,False
+CUST-001135,37.0,Femme,Bruxelles,Belgique,Organic,Silver,7.0,38.2,19,670.93,0.431,48,2,Virement,Mobile,True,2025-10-10,retailsense_demo,False
+CUST-001136,54.0,Femme,Lille,France,Marketplace,Silver,3.0,116.29,11,1346.65,0.444,8,1,,Mobile,True,2025-09-25,retailsense_demo,False
+CUST-001137,40.0,Femme,Paris,France,Organic,Silver,4.0,164.81,16,2814.89,0.655,95,2,Carte,Desktop,True,2022-02-18,retailsense_demo,True
+CUST-001138,39.0,Femme,Lille,France,Social Media,Silver,3.0,81.86,6,501.39,0.631,55,1,Carte,Desktop,False,2024-04-02,retailsense_demo,True
+CUST-001139,38.0,Femme,Bordeaux,France,Social Media,Bronze,2.0,52.7,4,215.05,0.097,11,0,Carte,Mobile,True,2023-11-25,retailsense_demo,False
+CUST-001140,39.0,Femme,Bordeaux,France,Social Media,Silver,5.0,64.86,22,1346.8,0.434,18,4,Carte,Mobile,False,2021-12-06,retailsense_demo,True
+CUST-001141,60.0,Homme,Bruxelles,Belgique,Organic,Silver,7.0,57.29,22,1274.25,0.589,41,3,Virement,Desktop,False,2024-08-25,retailsense_demo,False
+CUST-001142,18.0,Homme,Paris,France,Referral,Gold,8.0,58.97,21,1213.58,0.221,8,2,Apple Pay,Desktop,True,2023-03-27,retailsense_demo,False
+CUST-001143,18.0,Femme,Namur,Belgique,Organic,Platinum,8.0,,17,1556.08,0.637,158,1,Carte,Desktop,True,2024-06-21,retailsense_demo,False
+CUST-001144,32.0,Homme,Paris,France,Referral,Platinum,7.0,80.17,31,2518.39,0.295,11,0,Apple Pay,Tablet,False,2025-08-09,retailsense_demo,False
+CUST-001145,39.0,Homme,,Belgique,Organic,Gold,6.0,113.51,22,2297.91,0.156,3,0,Virement,Mobile,True,2021-02-07,retailsense_demo,False
+CUST-001146,47.0,Femme,Liège,Belgique,Social Media,Silver,4.0,83.77,9,726.93,0.32,130,1,PayPal,Mobile,True,2024-02-07,retailsense_demo,True
+CUST-001147,45.0,Femme,Lille,France,Referral,Silver,4.0,46.3,7,332.22,0.274,35,0,Apple Pay,Desktop,False,2021-10-24,retailsense_demo,False
+CUST-001148,34.0,Femme,Bruxelles,Belgique,Organic,Bronze,3.0,55.13,6,328.39,0.287,2,3,Carte,Desktop,True,2023-11-02,retailsense_demo,False
+CUST-001149,51.0,Femme,Zurich,Suisse,Organic,Silver,2.0,53.51,4,201.9,0.566,55,2,Apple Pay,Mobile,True,2021-09-19,retailsense_demo,False
+CUST-001150,51.0,Homme,Namur,Belgique,Referral,Bronze,7.0,64.1,13,766.85,0.099,3,0,Carte,Tablet,False,2025-01-30,retailsense_demo,False
+CUST-001151,41.0,Non renseigné,Paris,France,Organic,Bronze,2.0,165.91,4,639.28,0.412,6,1,Carte,Mobile,True,2023-04-21,retailsense_demo,False
+CUST-001152,51.0,Femme,Lyon,France,Organic,Platinum,10.0,179.17,19,3431.01,0.189,9,0,PayPal,Mobile,True,2024-02-10,retailsense_demo,False
+CUST-001153,42.0,Homme,Bruxelles,Belgique,Paid Search,Gold,5.0,104.75,13,1369.27,0.106,19,0,Carte,Mobile,True,2021-02-09,retailsense_demo,False
+CUST-001154,32.0,Femme,Lyon,France,Marketplace,Silver,4.0,74.22,12,838.04,0.316,3,0,PayPal,Desktop,True,2024-04-14,retailsense_demo,False
+CUST-001155,47.0,Homme,,Belgique,Social Media,Bronze,5.0,36.47,14,519.83,0.513,24,2,Carte,Desktop,True,2022-03-07,retailsense_demo,False
+CUST-001156,40.0,Homme,Paris,France,Paid Search,Silver,4.0,77.91,16,1346.14,0.125,38,2,Carte,Mobile,True,2023-07-11,retailsense_demo,False
+CUST-001157,39.0,Femme,Liège,Belgique,Marketplace,Bronze,5.0,47.98,11,534.95,0.448,18,0,PayPal,Mobile,True,2023-12-23,retailsense_demo,False
+CUST-001158,57.0,Femme,Lille,France,Paid Search,Gold,4.0,153.34,17,2618.29,0.146,0,0,Carte,Mobile,False,2022-07-16,retailsense_demo,False
+CUST-001159,18.0,Homme,Paris,France,Paid Search,Platinum,9.0,32.43,38,1256.5,0.41,58,3,Carte,Mobile,False,2022-10-17,retailsense_demo,False
+CUST-001160,22.0,Non renseigné,Genève,Suisse,Paid Search,Bronze,3.0,84.31,13,1162.67,0.381,18,1,Carte,Desktop,True,2023-08-07,retailsense_demo,False
+CUST-001161,25.0,Femme,Bruxelles,Belgique,Paid Search,Bronze,4.0,46.08,8,394.94,0.291,86,0,Apple Pay,Mobile,False,2025-08-26,retailsense_demo,False
+CUST-001162,35.0,Femme,Zurich,Suisse,Paid Search,Bronze,2.0,69.79,4,258.64,0.38,17,1,Virement,Desktop,True,2025-07-24,retailsense_demo,False
+CUST-001163,36.0,Femme,Lausanne,Suisse,Social Media,Bronze,4.0,96.52,13,1195.49,0.065,2,2,PayPal,Desktop,False,2023-01-07,retailsense_demo,False
+CUST-001164,21.0,Homme,Paris,France,Organic,Bronze,4.0,114.5,8,859.66,0.081,23,0,PayPal,Mobile,True,2025-08-26,retailsense_demo,False
+CUST-001165,27.0,Homme,Paris,France,Social Media,Bronze,3.0,68.09,5,355.3,0.106,91,1,PayPal,Desktop,False,2022-12-25,retailsense_demo,False
+CUST-001166,29.0,Homme,Bordeaux,France,Organic,Bronze,3.0,101.03,5,468.4,0.263,78,0,Carte,Desktop,False,2021-08-13,retailsense_demo,False
+CUST-001167,68.0,Homme,Lyon,France,Paid Search,Bronze,2.0,51.01,7,380.07,0.605,61,1,Carte,Mobile,True,2022-02-04,retailsense_demo,True
+CUST-001168,61.0,Homme,Lille,France,Organic,Bronze,8.0,78.87,31,2257.54,0.361,23,4,PayPal,Mobile,True,2022-07-21,retailsense_demo,False
+CUST-001169,34.0,Homme,Lausanne,Suisse,Social Media,Silver,8.0,113.42,18,2074.98,0.485,8,1,Carte,Desktop,True,2024-08-04,retailsense_demo,False
+CUST-001170,35.0,Femme,Paris,France,Referral,Bronze,2.0,82.22,9,713.42,0.247,10,0,Virement,Desktop,True,2022-09-25,retailsense_demo,True
+CUST-001171,25.0,Homme,Lyon,France,Paid Search,Gold,7.0,54.38,27,1461.23,0.081,0,0,Carte,Desktop,True,2025-01-11,retailsense_demo,False
+CUST-001172,18.0,Femme,Paris,France,Organic,Bronze,2.0,61.32,3,182.24,0.278,16,0,PayPal,Mobile,False,2021-06-29,retailsense_demo,False
+CUST-001173,38.0,Femme,Lille,France,Organic,Bronze,2.0,114.15,5,593.48,0.34,2,0,Carte,Desktop,True,2025-06-25,retailsense_demo,False
+CUST-001174,27.0,Homme,Lyon,France,Referral,Bronze,8.0,41.51,14,580.82,0.443,42,0,PayPal,Desktop,True,2023-04-18,retailsense_demo,False
+CUST-001175,38.0,Homme,Lyon,France,Organic,Silver,2.0,44.56,8,351.95,0.291,29,0,Apple Pay,Mobile,False,2023-07-25,retailsense_demo,False
+CUST-001176,20.0,Non renseigné,Paris,France,Referral,Bronze,5.0,93.57,19,1843.43,0.204,12,1,Carte,Mobile,False,2025-07-24,retailsense_demo,False
+CUST-001177,30.0,Femme,Bordeaux,France,Paid Search,Silver,7.0,56.78,25,1516.25,0.106,61,0,Carte,Mobile,True,2025-01-05,retailsense_demo,False
+CUST-001178,41.0,Homme,Genève,Suisse,Organic,Bronze,2.0,34.9,7,255.8,0.41,3,0,PayPal,Desktop,False,2022-06-16,retailsense_demo,False
+CUST-001179,43.0,Femme,Lille,France,Referral,Platinum,3.0,,7,974.07,0.201,48,1,Carte,Mobile,False,2023-01-12,retailsense_demo,False
+CUST-001180,44.0,Femme,Namur,Belgique,Paid Search,Bronze,3.0,41.35,13,536.56,0.209,48,1,Carte,Desktop,False,2025-02-17,retailsense_demo,False
+CUST-001181,23.0,Femme,Lille,France,Organic,Bronze,4.0,63.71,17,1152.35,0.342,21,1,PayPal,Mobile,True,2025-03-28,retailsense_demo,False
+CUST-001182,49.0,Homme,Lille,France,Marketplace,Gold,6.0,52.07,22,1143.08,0.476,83,3,Carte,Desktop,True,2022-09-09,retailsense_demo,False
+CUST-001183,29.0,Femme,Bordeaux,France,Organic,Bronze,5.0,60.77,15,974.32,0.246,44,2,Carte,Mobile,True,2022-09-19,retailsense_demo,False
+CUST-001184,47.0,Homme,Genève,Suisse,Paid Search,Bronze,9.0,45.85,15,721.09,0.106,47,0,Carte,Desktop,False,2023-12-23,retailsense_demo,False
+CUST-001185,39.0,Femme,Bordeaux,France,Paid Search,Gold,7.0,98.78,11,1025.73,0.202,127,1,Carte,Mobile,False,2025-10-27,retailsense_demo,False
+CUST-001186,22.0,Femme,Lille,France,Paid Search,Bronze,2.0,73.94,4,274.31,0.303,77,0,Apple Pay,Desktop,False,2025-10-13,retailsense_demo,False
+CUST-001187,35.0,Homme,Lyon,France,Referral,Bronze,4.0,112.41,13,1517.65,0.311,29,1,Carte,Tablet,True,2025-03-09,retailsense_demo,False
+CUST-001188,43.0,Femme,,Belgique,Organic,Bronze,2.0,52.33,8,431.1,0.189,1,1,Carte,Mobile,True,2025-08-25,retailsense_demo,False
+CUST-001189,46.0,Homme,Lille,France,Marketplace,Bronze,2.0,195.17,9,1785.18,0.134,0,0,PayPal,Mobile,False,2023-03-22,retailsense_demo,False
+CUST-001190,37.0,Homme,Bordeaux,France,Social Media,Gold,4.0,28.1,8,241.93,0.349,75,0,Virement,Mobile,True,2024-01-07,retailsense_demo,False
+CUST-001191,57.0,Femme,Zurich,Suisse,Marketplace,Silver,3.0,32.76,7,230.97,0.253,41,0,Carte,Mobile,True,2024-11-12,retailsense_demo,False
+CUST-001192,51.0,Homme,Paris,France,Referral,Silver,3.0,162.63,5,793.36,0.508,130,0,PayPal,Desktop,False,2023-01-14,retailsense_demo,True
+CUST-001193,36.0,Homme,Lyon,France,Marketplace,Bronze,3.0,88.02,13,1156.13,0.074,34,0,PayPal,Mobile,False,2022-07-04,retailsense_demo,False
+CUST-001194,48.0,Homme,Lille,France,Social Media,Silver,6.0,82.59,23,1756.2,0.254,51,2,Carte,Desktop,True,2025-02-02,retailsense_demo,False
+CUST-001195,62.0,Homme,Lyon,France,Paid Search,Silver,3.0,86.23,9,785.91,0.335,134,1,Carte,Mobile,False,2022-11-21,retailsense_demo,False
+CUST-001196,63.0,Homme,Zurich,Suisse,Paid Search,Bronze,6.0,92.22,19,1865.01,0.273,45,0,PayPal,Tablet,True,2025-05-27,retailsense_demo,False
+CUST-001197,24.0,Homme,Lille,France,Social Media,Gold,12.0,80.95,38,2832.3,0.381,30,4,Carte,Mobile,True,2023-01-05,retailsense_demo,False
+CUST-001198,28.0,Femme,Paris,France,Paid Search,Silver,8.0,44.1,18,837.58,0.222,23,0,Carte,Tablet,True,2024-02-05,retailsense_demo,False
+CUST-001199,57.0,Homme,Lille,France,Referral,Gold,7.0,103.83,14,1523.81,0.208,78,1,PayPal,Mobile,True,2025-05-21,retailsense_demo,False
+CUST-001200,26.0,Homme,Paris,France,Organic,Bronze,4.0,96.27,10,902.0,0.54,18,1,Carte,Tablet,True,2022-01-08,retailsense_demo,False
+CUST-001179,43.0,Femme,Lille,France,Referral,Platinum,3.0,,7,974.07,0.201,48,1,Carte,Mobile,False,2023-01-12,retailsense_demo,False
+CUST-000866,49.0,Femme,Bordeaux,France,Paid Search,Silver,6.0,29.94,11,318.44,0.524,96,2,,Desktop,False,2024-11-02,retailsense_demo,True
+CUST-000102,,Homme,Lyon,France,Organic,Silver,8.0,75.15,21,1629.46,0.426,5,0,Virement,Mobile,True,2023-08-19,retailsense_demo,False
+CUST-000440,44.0,Homme,,France,Organic,Silver,6.0,94.9,20,1872.66,0.392,7,2,Apple Pay,Mobile,True,2025-08-21,retailsense_demo,False
+CUST-000059,29.0,Femme,Genève,Suisse,Referral,Gold,2.0,58.59,8,492.99,0.177,9,0,Carte,Mobile,True,2023-12-06,retailsense_demo,False
+CUST-001121,44.0,Femme,Bordeaux,France,Social Media,Gold,6.0,32.44,14,419.3,0.165,68,0,PayPal,Mobile,False,2023-09-05,retailsense_demo,False
+CUST-000324,48.0,Homme,Bordeaux,France,Social Media,Bronze,4.0,61.64,7,401.23,0.473,46,3,Carte,Mobile,False,2023-01-15,retailsense_demo,True
+CUST-000975,27.0,Non renseigné,Lyon,France,Paid Search,Bronze,6.0,74.66,19,1389.77,0.304,45,3,PayPal,Desktop,True,2025-09-20,retailsense_demo,False

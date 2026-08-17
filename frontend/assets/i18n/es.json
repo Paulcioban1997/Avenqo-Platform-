@@ -1,0 +1,327 @@
+{
+  "common": {
+    "login": "Iniciar sesión",
+    "tryFree": "Probar gratis",
+    "watchDemo": "Ver una demostración",
+    "noCreditCard": "Sin tarjeta de crédito",
+    "guidedSetup": "Configuración guiada",
+    "isolatedData": "Datos aislados"
+  },
+  "nav": {
+    "features": "Funciones",
+    "modules": "Módulos",
+    "pricing": "Precios",
+    "enterprise": "Empresa",
+    "docs": "Documentación"
+  },
+  "hero": {
+    "eyebrow": "La plataforma de IA todo en uno para empresas",
+    "titleLine1": "Toda tu empresa.",
+    "titleLine2": "Una sola inteligencia.",
+    "subtitle": "Avenqo unifica ventas, relación con el cliente, finanzas, documentos y operaciones en una plataforma de IA modular, diseñada para impulsar el crecimiento de pymes y grandes empresas.",
+    "trustLabel": "Una sola plataforma para",
+    "trustSell": "Vender",
+    "trustUnderstand": "Comprender",
+    "trustAutomate": "Automatizar",
+    "trustDecide": "Decidir"
+  },
+  "dashboard": {
+    "greeting": "Hola, Paul",
+    "subtitle": "Tu actividad de hoy",
+    "askAvenqo": "Preguntar a Avenqo",
+    "salesLabel": "Ventas del mes",
+    "activeClientsLabel": "Clientes activos",
+    "opportunitiesLabel": "Oportunidades",
+    "opportunitiesHint": "Por priorizar",
+    "performanceLabel": "Rendimiento comercial",
+    "performancePeriod": "6 meses",
+    "recommendationLabel": "Recomendación",
+    "recommendationTitle": "Reactiva 42 clientes de alto valor.",
+    "recommendationText": "Una campaña dirigida podría generar hasta 18 400 $ este mes.",
+    "recommendationAction": "Ver acción",
+    "quickModulesLabel": "Tus módulos",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Inteligencia útil",
+    "title": "De la pregunta a la acción, sin complicaciones.",
+    "subtitle": "Avenqo convierte tu actividad en decisiones claras, en un solo lugar.",
+    "assistantLabel": "Asistente Avenqo",
+    "assistantTitle": "Habla con tu empresa.",
+    "assistantText": "Haz una pregunta como se la harías a un colega. Avenqo reúne el contexto y responde directamente.",
+    "demoQuestion": "¿Por qué bajan mis ventas este mes?",
+    "demoAnswer": "La caída proviene principalmente del segmento Hogar, con un descenso del 14 %. Recomiendo una campaña dirigida a 126 clientes.",
+    "demoAction1": "Preparar la campaña",
+    "demoAction2": "Ver el análisis",
+    "actionsTitle": "Acciones, no pantallas.",
+    "actionsText": "Cada recomendación indica qué hacer, por qué y qué resultado esperar.",
+    "actionsPriority": "Prioridad alta",
+    "actionsLine": "Reactivar 42 cuentas",
+    "securityTitle": "Tu empresa sigue siendo tuya.",
+    "securityText": "Espacios aislados, accesos controlados y una arquitectura pensada para crecer.",
+    "securityItem1": "Acceso por rol",
+    "securityItem2": "Trazabilidad",
+    "securityItem3": "Alojamiento escalable"
+  },
+  "modulesSection": {
+    "kicker": "La suite Avenqo",
+    "title": "Un módulo para cada prioridad de negocio.",
+    "subtitle": "Construye tu entorno a medida. Todos los módulos comparten la misma experiencia y trabajan juntos.",
+    "discover": "Descubrir",
+    "items": [
+      {
+        "name": "Avenqo Retail",
+        "description": "Gestiona ventas, productos y fidelización desde una vista unificada."
+      },
+      {
+        "name": "Avenqo CRM",
+        "description": "Prioriza relaciones, oportunidades y próximas acciones."
+      },
+      {
+        "name": "Avenqo Accounting",
+        "description": "Acelera el seguimiento financiero y el cierre contable."
+      },
+      {
+        "name": "Avenqo Documents",
+        "description": "Convierte los documentos entrantes en operaciones estructuradas."
+      },
+      {
+        "name": "Avenqo Analytics",
+        "description": "Comprende las tendencias y desviaciones que realmente importan."
+      },
+      {
+        "name": "Avenqo Marketing",
+        "description": "Orquesta campañas más relevantes y medibles."
+      },
+      {
+        "name": "Avenqo Knowledge",
+        "description": "Ofrece respuestas fiables a partir del conocimiento de la empresa."
+      },
+      {
+        "name": "Avenqo Voice",
+        "description": "Automatiza las interacciones de voz sin perder el contexto del cliente."
+      },
+      {
+        "name": "Avenqo Workflow",
+        "description": "Conecta equipos y automatiza tareas repetitivas."
+      },
+      {
+        "name": "Avenqo Media",
+        "description": "Produce y organiza tus contenidos desde un solo espacio."
+      },
+      {
+        "name": "Avenqo Support",
+        "description": "Reduce los tiempos de respuesta y mejora cada resolución."
+      },
+      {
+        "name": "Avenqo Chat",
+        "description": "Despliega un asistente conversacional al servicio de tus clientes."
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Simple desde el primer día",
+    "title": "Operativo en cuatro pasos.",
+    "ctaLabel": "¿Listo para empezar?",
+    "ctaButton": "Crear mi espacio",
+    "items": [
+      {
+        "number": "01",
+        "title": "Crea tu espacio",
+        "text": "Configura tu empresa en pocos minutos."
+      },
+      {
+        "number": "02",
+        "title": "Elige tus módulos",
+        "text": "Activa solo las soluciones que necesitas."
+      },
+      {
+        "number": "03",
+        "title": "Conecta tus herramientas",
+        "text": "Vincula tus ventas, tu CRM o tus documentos."
+      },
+      {
+        "number": "04",
+        "title": "Deja que Avenqo actúe",
+        "text": "Recibe respuestas y acciones listas para ejecutar."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Para toda la empresa",
+    "title": "Una visión compartida. Equipos más rápidos.",
+    "subtitle": "Dirección, ventas, finanzas y operaciones comparten por fin la misma lectura del negocio.",
+    "direction": {
+      "title": "Dirección",
+      "text": "Sigue las prioridades y los resultados en tiempo real."
+    },
+    "finance": {
+      "title": "Finanzas",
+      "text": "Anticipa desviaciones y acelera el seguimiento."
+    },
+    "commerce": {
+      "title": "Comercial",
+      "text": "Identifica los clientes y productos con más potencial."
+    },
+    "operations": {
+      "title": "Operaciones",
+      "text": "Automatiza las tareas que ralentizan a tus equipos."
+    }
+  },
+  "why": {
+    "kicker": "Por qué Avenqo",
+    "title": "Diseñado para crecer contigo.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modular por naturaleza",
+        "text": "Empieza por una prioridad y amplía la plataforma sin volver a empezar."
+      },
+      {
+        "number": "02",
+        "title": "Una experiencia unificada",
+        "text": "Un solo acceso, una interfaz y un asistente comunes a todos tus módulos."
+      },
+      {
+        "number": "03",
+        "title": "Acompañamiento humano",
+        "text": "PMC Solutions AI te acompaña desde la conexión hasta la adopción."
+      },
+      {
+        "number": "04",
+        "title": "Listo para la empresa",
+        "text": "Gestión de accesos, espacios aislados e infraestructura escalable."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Precios claros",
+    "title": "Empieza ahora. Crece a tu ritmo.",
+    "subtitle": "Cada plan incluye la plataforma, el asistente Avenqo y un espacio seguro.",
+    "popular": "El más elegido",
+    "priceLabel": "A medida",
+    "plans": [
+      {
+        "tier": "Esencial",
+        "title": "Para empezar",
+        "items": [
+          "1 módulo Avenqo",
+          "Hasta 5 usuarios",
+          "Asistente integrado",
+          "Soporte estándar"
+        ],
+        "action": "Hablar con un asesor"
+      },
+      {
+        "tier": "Profesional",
+        "title": "Para acelerar",
+        "items": [
+          "Hasta 5 módulos",
+          "Hasta 25 usuarios",
+          "Automatizaciones avanzadas",
+          "Soporte prioritario"
+        ],
+        "action": "Probar gratis"
+      },
+      {
+        "tier": "Empresa",
+        "title": "Para orquestar",
+        "items": [
+          "Módulos ilimitados",
+          "Usuarios a medida",
+          "Conexiones personalizadas",
+          "Gobernanza dedicada"
+        ],
+        "action": "Contactar con ventas"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Preguntas frecuentes",
+    "title": "Todo lo que necesitas saber.",
+    "subtitle": "¿Tienes otra pregunta? Nuestro equipo te responderá directamente.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "¿Avenqo reemplaza mis herramientas actuales?",
+        "answer": "Avenqo se conecta a tu entorno y reúne decisiones, recomendaciones y automatizaciones en una sola experiencia."
+      },
+      {
+        "question": "¿Puedo empezar con un solo módulo?",
+        "answer": "Sí. Empieza por tu prioridad y añade capacidades al ritmo de tu empresa."
+      },
+      {
+        "question": "¿Mis datos están aislados?",
+        "answer": "Sí. Cada empresa tiene su propio espacio, sus propios accesos y su información estrictamente separada."
+      },
+      {
+        "question": "¿Avenqo es adecuado para pymes?",
+        "answer": "Sí. Los planes acompañan tanto a un equipo en crecimiento como a una organización multisede."
+      },
+      {
+        "question": "¿Cuánto tiempo se tarda en empezar?",
+        "answer": "La creación del espacio es inmediata. El tiempo de conexión depende luego de las herramientas elegidas."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Tu próximo paso",
+    "title": "Haz que tu empresa funcione de otra manera.",
+    "tryFree": "Probar gratis",
+    "scheduleDemo": "Planificar una demostración"
+  },
+  "footer": {
+    "tagline": "Una plataforma. Todas tus soluciones de IA.",
+    "platformTitle": "Plataforma",
+    "platformLinks": [
+      "Funciones",
+      "Módulos",
+      "Precios",
+      "Cómo funciona"
+    ],
+    "companyTitle": "Empresa",
+    "companyLinks": [
+      "Acerca de",
+      "Contacto",
+      "Seguridad",
+      "Socios"
+    ],
+    "resourcesTitle": "Recursos",
+    "resourcesLinks": [
+      "Documentación",
+      "Preguntas frecuentes",
+      "Privacidad",
+      "Condiciones"
+    ],
+    "copyright": "© 2026 Avenqo. Una plataforma de PMC Solutions AI."
+  }
+}
