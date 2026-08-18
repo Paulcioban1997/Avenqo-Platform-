@@ -9,6 +9,7 @@ from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
+from backend.app.services.capability_execution_gate import CapabilityExecutionGate
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.dataset_import_service import DatasetImportService
 from modules.entitlements import ModuleAccessService
@@ -35,3 +36,9 @@ def get_company_dataset_ingestion_service(
         access=ModuleAccessService(SQLAlchemyModuleEntitlements(db)),
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
     )
+
+
+def get_capability_execution_gate(
+    service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+) -> CapabilityExecutionGate:
+    return CapabilityExecutionGate(service)

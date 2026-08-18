@@ -7,11 +7,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.datasets import (
+    get_capability_execution_gate,
     get_company_dataset_ingestion_service,
     get_dataset_import_service,
 )
 from backend.app.dependencies.training import get_training_dispatcher
 from backend.app.schemas.company_datasets import (
+    CapabilityDatasetResponse,
     CapabilityReadinessResponse,
     ColumnMappingSuggestionResponse,
     ColumnProfileResponse,
@@ -21,6 +23,7 @@ from backend.app.schemas.company_datasets import (
     MappingOverrideResponse,
 )
 from backend.app.schemas.datasets import DatasetResponse
+from backend.app.services.capability_execution_gate import CapabilityExecutionGate
 from backend.app.services.company_dataset_ingestion_service import (
     CompanyDatasetIngestionService,
     DatasetNotFoundError as CompanyDatasetNotFoundError,
@@ -33,6 +36,7 @@ from backend.app.services.dataset_import_service import (
 )
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from modules.entitlements import ModuleAccessDenied
+from shared.ai_engine.capability_dataset.exceptions import CapabilityNotReady, UnknownCapability
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.exceptions import DatasetIngestionError
 
@@ -212,6 +216,48 @@ def submit_company_dataset_mapping(
         status=dataset.status,
         mapping=accepted,
         approved=approved,
+    )
+
+
+@router.post(
+    "/{dataset_id}/capabilities/{capability}/prepare",
+    response_model=CapabilityDatasetResponse,
+)
+def prepare_capability_dataset(
+    dataset_id: UUID,
+    capability: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    gate: CapabilityExecutionGate = Depends(get_capability_execution_gate),
+) -> CapabilityDatasetResponse:
+    """Phase 27 — prépare l'entrée canonique d'UNE capacité (aucun entraînement ici).
+
+    `tenant` vient exclusivement du contexte serveur authentifié (jamais du
+    corps de la requête) : aucun `company_id` client n'est jamais accepté, et
+    aucun accès cross-tenant n'est possible (`get_prepared_dataset` masque
+    déjà les datasets appartenant à un autre tenant derrière un 404, comme le
+    reste de l'API Phase 26).
+    """
+
+    try:
+        capability_dataset = gate.prepare(tenant, dataset_id, capability)
+    except CompanyDatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except UnknownCapability as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except DatasetIngestionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CapabilityNotReady as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    return CapabilityDatasetResponse(
+        dataset_id=capability_dataset.dataset_id,
+        dataset_version=capability_dataset.dataset_version,
+        capability=capability_dataset.capability,
+        required_fields=capability_dataset.required_fields,
+        available_fields=capability_dataset.available_fields,
+        row_count=capability_dataset.row_count,
+        warnings=capability_dataset.warnings,
+        adapter_version=capability_dataset.adapter_version,
     )
 
 

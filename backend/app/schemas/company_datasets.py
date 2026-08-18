@@ -74,3 +74,20 @@ class MappingOverrideResponse(BaseModel):
     status: DatasetStatus
     mapping: dict[str, str]
     approved: bool
+
+
+class CapabilityDatasetResponse(BaseModel):
+    """Réponse Phase 27 : confirmation que `capability` est prête à consommer
+
+    ce dataset, sans jamais exposer les lignes brutes ni un objet technique
+    (pandas/sklearn) au client.
+    """
+
+    dataset_id: UUID
+    dataset_version: int
+    capability: str
+    required_fields: tuple[str, ...]
+    available_fields: tuple[str, ...]
+    row_count: int
+    warnings: tuple[str, ...]
+    adapter_version: str
