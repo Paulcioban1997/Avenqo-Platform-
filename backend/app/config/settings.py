@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     artifact_root: str = Field(default="var/artifacts", alias="ARTIFACT_ROOT")
     model_registry_root: str = Field(default="var/models", alias="MODEL_REGISTRY_ROOT")
     dataset_max_upload_mb: int = Field(default=50, alias="DATASET_MAX_UPLOAD_MB")
+    llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
+    llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
+    llm_temperature: float = Field(default=0.2, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
+    llm_max_tokens: int = Field(default=800, ge=1, le=8192, alias="LLM_MAX_TOKENS")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    google_ai_api_key: str | None = Field(default=None, alias="GOOGLE_AI_API_KEY")
     auth_access_minutes: int = Field(default=15, alias="AUTH_ACCESS_MINUTES")
     auth_refresh_days: int = Field(default=30, alias="AUTH_REFRESH_DAYS")
     auth_jwt_secret: str = Field(
@@ -62,6 +69,9 @@ class Settings(BaseSettings):
     stripe_price_starter: str | None = Field(default=None, alias="STRIPE_PRICE_STARTER")
     stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
     stripe_price_enterprise: str | None = Field(default=None, alias="STRIPE_PRICE_ENTERPRISE")
+    ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
+    ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
+    ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
 
     @field_validator("debug", mode="before")
     @classmethod

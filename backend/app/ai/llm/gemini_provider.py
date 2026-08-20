@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+
+from backend.app.ai.llm.base import LLMProvider
+from backend.app.ai.llm.exceptions import LLMProviderError
+from backend.app.ai.llm.schemas import LLMGeneration, LLMMessage, LLMToolResponse, ToolDefinition
+from backend.app.ai.tools.contracts import ToolCall
+
+
+class GeminiProvider(LLMProvider):
+    name = "gemini"
+    supports_tool_calling = True
+
+    def __init__(self, api_key: str | None, model: str, temperature: float, max_tokens: int) -> None:
+        self._api_key, self._model = api_key, model
+        self._temperature, self._max_tokens = temperature, max_tokens
+
+    def _client(self):
+        if not self._api_key:
+            raise LLMProviderError("Le fournisseur IA n'est pas configuré")
+        try:
+            from google import genai
+        except ImportError as exc:
+            raise LLMProviderError("La dépendance Google GenAI n'est pas installée") from exc
+        return genai.Client(api_key=self._api_key)
+
+    async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
+        try:
+            from google.genai import types
+            response = await self._client().aio.models.generate_content(model=self._model, contents=prompt,
+                config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=self._temperature,
+                max_output_tokens=self._max_tokens))
+            return LLMGeneration(response.text or "", self.name, self._model)
+        except LLMProviderError:
+            raise
+        except Exception as exc:
+            raise LLMProviderError("Le fournisseur IA est temporairement indisponible") from exc
+
+    async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
+        try:
+            from google.genai import types
+            stream = await self._client().aio.models.generate_content_stream(model=self._model, contents=prompt,
+                config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=self._temperature,
+                max_output_tokens=self._max_tokens))
+            async for event in stream:
+                if event.text:
+                    yield event.text
+        except LLMProviderError:
+            raise
+        except Exception as exc:
+            raise LLMProviderError("Le fournisseur IA est temporairement indisponible") from exc
+
+    async def generate_with_tools(
+        self,
+        *,
+        system_instruction: str,
+        messages: list[LLMMessage],
+        tools: list[ToolDefinition],
+    ) -> LLMToolResponse:
+        try:
+            from google.genai import types
+
+            contents = []
+            for message in messages:
+                if message.role == "tool":
+                    contents.append(types.Content(role="function", parts=[
+                        types.Part.from_function_response(name=message.name or "", response={"result": message.content})
+                    ]))
+                else:
+                    role = "model" if message.role == "assistant" else "user"
+                    contents.append(types.Content(role=role, parts=[types.Part(text=message.content)]))
+
+            declarations = [
+                types.FunctionDeclaration(name=tool.name, description=tool.description, parameters=tool.parameters_schema)
+                for tool in tools
+            ]
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=self._temperature,
+                max_output_tokens=self._max_tokens,
+                tools=[types.Tool(function_declarations=declarations)] if declarations else None,
+            )
+            response = await self._client().aio.models.generate_content(model=self._model, contents=contents, config=config)
+
+            tool_calls: list[ToolCall] = []
+            text_parts: list[str] = []
+            candidate = response.candidates[0] if response.candidates else None
+            for part in (candidate.content.parts if candidate else []):
+                if getattr(part, "function_call", None) is not None:
+                    call = part.function_call
+                    tool_calls.append(ToolCall(id=call.name, name=call.name, arguments=dict(call.args or {})))
+                elif getattr(part, "text", None):
+                    text_parts.append(part.text)
+
+            return LLMToolResponse(
+                content="".join(text_parts) or None,
+                tool_calls=tuple(tool_calls),
+                provider=self.name,
+                model=self._model,
+            )
+        except LLMProviderError:
+            raise
+        except Exception as exc:
+            raise LLMProviderError("Le fournisseur IA est temporairement indisponible") from exc

@@ -67,6 +67,45 @@ class ApiClient {
     return _request('PATCH', path, body: body, authenticated: true);
   }
 
+  Future<dynamic> delete(String path) {
+    return _request('DELETE', path, authenticated: true);
+  }
+
+  Stream<Map<String, dynamic>> postSseEvents(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async* {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    if (_accessToken != null) {
+      headers['Authorization'] = 'Bearer $_accessToken';
+    }
+    final request = http.Request('POST', Uri.parse('$_baseUrl$path'))
+      ..headers.addAll(headers)
+      ..body = jsonEncode(body);
+    final response = await _httpClient.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = await http.Response.fromStream(response);
+      _decode(error);
+      return;
+    }
+
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) continue;
+      final payload = jsonDecode(line.substring(6));
+      if (payload is Map<String, dynamic> && payload['detail'] != null) {
+        throw ApiException(payload['detail'].toString(), statusCode: response.statusCode);
+      }
+      if (payload is Map<String, dynamic>) {
+        yield payload;
+      }
+    }
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {

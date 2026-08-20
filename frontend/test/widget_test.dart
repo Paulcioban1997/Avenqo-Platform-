@@ -68,7 +68,7 @@ void main() {
 
     expect(appDestinations.map((item) => item.label), containsAll([
       'Vue d’ensemble',
-      'Assistant Avenqo',
+      'AI Assistant',
       'Ventes',
       'Clients',
       'Produits',
@@ -103,7 +103,7 @@ void main() {
     await auth.initialize();
 
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: AssistantPage(api: auth.api))));
-    expect(find.text('Assistant Avenqo'), findsOneWidget);
-    expect(find.text('Pourquoi les ventes baissent ?'), findsOneWidget);
+    expect(find.text('Ask Avenqo about your business'), findsOneWidget);
+    expect(find.text('How are my sales performing?'), findsOneWidget);
   });
 }

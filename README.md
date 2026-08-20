@@ -87,6 +87,28 @@ uvicorn backend.main:app --reload
 pytest
 ```
 
+## Phase 28 - Avenqo AI Chat
+
+`/api/v1/ai/chat` provides tenant-isolated conversations, recent-message memory,
+retrieval over authorized tenant resources, source traceability, and SSE streaming.
+The provider abstraction supports OpenAI, Anthropic, and Gemini through environment
+configuration; provider SDKs remain optional until a provider is selected.
+
+```mermaid
+flowchart TD
+	User --> FastAPI
+	FastAPI --> TenantSecurity[Tenant security]
+	TenantSecurity --> ChatService
+	ChatService --> Retrieval
+	Retrieval --> TenantData[Tenant data]
+	ChatService --> LLM[LLM provider]
+	LLM --> Response[Response and sources]
+```
+
+Tenant identity comes only from authenticated server-side context. Conversation,
+message, source, and retrieval queries are always scoped by `company_id`; retrieved
+documents are explicitly treated as untrusted data and cannot override system rules.
+
 ## Local demo account
 
 Create or refresh the verified demo tenant by providing its password through the environment:

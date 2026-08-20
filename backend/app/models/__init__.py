@@ -1,5 +1,6 @@
 from backend.app.models.account_token import AccountToken
 from backend.app.models.ai_job import AIJob
+from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.auth_session import AuthSession
 from backend.app.models.base import (
     AccountTokenPurpose,
@@ -30,6 +31,10 @@ __all__ = [
     "AccountToken",
     "AccountTokenPurpose",
     "AIJob",
+    "AIConversation",
+    "AIMessage",
+    "AIMessageRole",
+    "AIMessageSource",
     "AuthSession",
     "Base",
     "BillingAccount",

@@ -23,7 +23,7 @@ const appDestinations = <AppDestination>[
   ),
   AppDestination(
     path: '/assistant',
-    label: 'Assistant Avenqo',
+    label: 'AI Assistant',
     description: 'Posez vos questions et passez à l’action.',
     icon: Icons.auto_awesome_outlined,
   ),
