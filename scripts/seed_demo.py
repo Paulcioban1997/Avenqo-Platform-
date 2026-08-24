@@ -24,7 +24,7 @@ def seed_demo(session: Session, password: str) -> User:
             country="Canada",
             timezone="America/Toronto",
             industry="Technology",
-            subscription_plan="starter",
+            subscription_plan="demo",
             status=CompanyStatus.ACTIVE,
         )
         session.add(company)

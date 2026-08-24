@@ -25,6 +25,7 @@ from backend.app.models import (
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
@@ -92,7 +93,7 @@ def dataset_environment(
             yield DatasetImportService(
                 session=session,
                 artifacts=ArtifactService(artifact_root),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=1024 * 1024,
             )
 
@@ -153,7 +154,9 @@ def test_dataset_routes_hide_other_tenants(dataset_environment) -> None:
     assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 404
 
 
-def test_csv_import_requires_active_module(dataset_environment) -> None:
+def test_csv_import_succeeds_without_active_module_core_capability(dataset_environment) -> None:
+    """L'ingestion de données est une capacité CORE Avenqo : une entreprise
+    sans module optionnel actif peut tout de même importer un CSV."""
     client, _, tenants, _ = dataset_environment
     tenants["current"]["tenant"] = tenants["no_access"]
 
@@ -163,4 +166,4 @@ def test_csv_import_requires_active_module(dataset_environment) -> None:
         files={"file": ("customers.csv", CSV_CONTENT, "text/csv")},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 201

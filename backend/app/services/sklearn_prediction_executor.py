@@ -11,6 +11,7 @@ from typing import Any, Mapping
 import joblib
 import pandas as pd
 
+from backend.app.services.prediction_compatibility import validate_input_compatibility
 from shared.ai_engine.contracts import ModelArtifact
 
 
@@ -19,6 +20,7 @@ class SklearnPredictionExecutor:
 
     def predict(self, artifact: ModelArtifact, features: Mapping[str, Any]) -> dict[str, Any]:
         pipeline = joblib.load(artifact.path / "model.joblib")
+        validate_input_compatibility(pipeline, features)
         frame = pd.DataFrame([features])
         raw_prediction = pipeline.predict(frame)[0]
         confidence: float | None = None

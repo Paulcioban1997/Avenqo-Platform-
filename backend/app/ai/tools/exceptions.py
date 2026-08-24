@@ -33,3 +33,38 @@ class ToolTimeoutError(ToolError):
 
 class ToolUnavailableError(ToolError):
     """L'outil existe mais la capacité/donnée requise n'est pas disponible pour ce tenant."""
+
+
+# --- Phase 31 : Predictive Intelligence -------------------------------------
+# Hiérarchie dédiée aux outils prédictifs (`PredictiveAITool`). Chacune de ces
+# erreurs hérite d'une erreur Phase 30 déjà gérée par `ToolExecutor`/
+# `ToolOrchestrator` (jamais de stack trace ni de détail fournisseur/modèle
+# exposé au LLM — uniquement le message métier porté par l'exception).
+
+
+class ModelNotFoundError(ToolUnavailableError):
+    """Aucun modèle actif n'existe pour ce tenant/tâche prédictive."""
+
+
+class ModelUnavailableError(ToolUnavailableError):
+    """Le modèle existe mais n'est pas utilisable actuellement (ex. supprimé/désactivé)."""
+
+
+class ModelNotReadyError(ToolUnavailableError):
+    """Le modèle est encore en cours d'entraînement, pas encore prêt pour l'inférence."""
+
+
+class ModelInputIncompatibleError(ToolUnavailableError):
+    """Les données du tenant ne contiennent pas les colonnes attendues par le modèle."""
+
+
+class InferenceError(ToolExecutionError):
+    """L'inférence a échoué de façon inattendue (jamais de détail technique exposé)."""
+
+
+class PredictionUnavailableError(ToolUnavailableError):
+    """Aucune prédiction exploitable n'a pu être produite (ex. aucune ligne, résultat vide)."""
+
+
+class StalePredictionError(ToolUnavailableError):
+    """Le modèle/la prédiction est considéré(e) comme périmé(e)."""

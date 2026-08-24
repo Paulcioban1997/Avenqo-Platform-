@@ -68,8 +68,13 @@ cd frontend
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1
+flutter run -d chrome --web-port=8080 --dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
+
+`--web-port=8080` est requis : `CORS_ORIGINS` (backend/.env) autorise explicitement
+`http://localhost:8080`. Sans ce port fixe, Chrome choisit un port aléatoire et le
+backend rejette silencieusement les requêtes (erreur CORS visible uniquement dans
+la console navigateur).
 
 ## Running the backend
 

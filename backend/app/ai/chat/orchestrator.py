@@ -176,6 +176,13 @@ class ToolOrchestrator:
             yield OrchestrationEvent(kind="status", status=STATUS_ANALYZING_BUSINESS_DATA)
 
             calls = response.tool_calls[: max(0, self._max_tools_per_request - tools_called)]
+            # Rejoue le tour "assistant" tel que produit par le mod\u00e8le AVANT les
+            # r\u00e9sultats d'outils : les 3 fournisseurs (OpenAI/Anthropic/Gemini)
+            # rejettent un message role="tool" qui ne suit pas imm\u00e9diatement un
+            # message assistant portant les m\u00eames tool_calls.
+            messages.append(
+                LLMMessage(role="assistant", content=response.content or "", tool_calls=calls)
+            )
             for call in calls:
                 if await check_cancelled():
                     yield OrchestrationEvent(

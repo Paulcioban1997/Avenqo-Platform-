@@ -27,7 +27,7 @@ class BillingAccount(TimestampMixin, Base):
     )
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
-    plan_code: Mapped[str] = mapped_column(String(64), nullable=False, default="starter")
+    plan_code: Mapped[str] = mapped_column(String(64), nullable=False, default="demo")
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="inactive")
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end: Mapped[bool] = mapped_column(nullable=False, default=False)

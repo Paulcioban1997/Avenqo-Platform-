@@ -18,8 +18,13 @@ Le client utilise la même API FastAPI sur toutes les plateformes. Le JWT d'acc�
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1
+flutter run -d chrome --web-port=8080 --dart-define=API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
+
+`--web-port=8080` est requis en développement local : `CORS_ORIGINS` (backend/.env)
+n'autorise que `http://localhost:8080` (et 3000/5173) pour l'origine Flutter Web.
+Sans port fixe, Chrome démarre sur un port aléatoire et les appels API échouent
+silencieusement (CORS).
 
 Pour Android Emulator, utiliser généralement `http://10.0.2.2:8000/api/v1`. Pour un appareil physique, utiliser l'adresse IP locale de la machine backend.
 

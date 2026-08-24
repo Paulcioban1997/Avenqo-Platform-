@@ -38,6 +38,7 @@ from backend.app.services.company_dataset_ingestion_service import (
     DatasetNotFoundError,
 )
 from backend.main import create_application
+from backend.app.services.data_import_policy import DataImportPolicy
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.capability_dataset.adapter import CapabilityDatasetAdapter
 from shared.ai_engine.capability_dataset.contracts import CapabilityDataset, CapabilityDatasetValidation
@@ -652,7 +653,7 @@ def phase27_environment(
             yield CompanyDatasetIngestionService(
                 session=session,
                 storage=LocalDatasetStorage(artifact_root / "company_datasets"),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=5 * 1024 * 1024,
             )
 
@@ -661,7 +662,7 @@ def phase27_environment(
             service = CompanyDatasetIngestionService(
                 session=session,
                 storage=LocalDatasetStorage(artifact_root / "company_datasets"),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=5 * 1024 * 1024,
             )
             yield CapabilityExecutionGate(service)
@@ -782,7 +783,7 @@ def test_gate_direct_cross_tenant_a_dataset_b_refused(phase27_environment) -> No
         service = CompanyDatasetIngestionService(
             session=session,
             storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
-            access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+            quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
         )
         gate = CapabilityExecutionGate(service)
@@ -798,7 +799,7 @@ def test_gate_direct_cross_tenant_b_dataset_a_refused(phase27_environment) -> No
         service = CompanyDatasetIngestionService(
             session=session,
             storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
-            access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+            quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
         )
         gate = CapabilityExecutionGate(service)
@@ -814,7 +815,7 @@ def test_gate_direct_same_tenant_own_dataset_succeeds(phase27_environment) -> No
         service = CompanyDatasetIngestionService(
             session=session,
             storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
-            access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+            quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
         )
         gate = CapabilityExecutionGate(service)
@@ -835,7 +836,7 @@ def test_prepare_training_input_returns_capability_dataset(phase27_environment) 
         service = CompanyDatasetIngestionService(
             session=session,
             storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
-            access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+            quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
         )
         gate = CapabilityExecutionGate(service)

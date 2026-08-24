@@ -11,6 +11,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.business.customer_tools import GetCustomerSegmentsTool, GetCustomerSummaryTool
 from backend.app.ai.tools.business.inventory_tools import GetInventorySummaryTool
+from backend.app.ai.tools.business.predictive_tools import (
+    GetAnomaliesTool,
+    GetChurnRiskTool,
+    GetDemandForecastTool,
+    GetPredictionSummaryTool,
+    GetSalesForecastTool,
+    GetSegmentInsightsTool,
+)
 from backend.app.ai.tools.business.sales_tools import (
     GetBusinessOverviewTool,
     GetSalesComparisonTool,
@@ -19,6 +27,7 @@ from backend.app.ai.tools.business.sales_tools import (
     GetTopProductsTool,
 )
 from backend.app.ai.tools.registry import ToolRegistry
+from backend.app.models.enterprise_override import EnterpriseOverride
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.prediction_runtime import resolve_active_model_type
 from shared.ai_engine.contracts import TenantContext
@@ -43,6 +52,14 @@ def build_business_tool_registry(
     registry.register(GetCustomerSummaryTool(session, ingestion))
     registry.register(GetCustomerSegmentsTool(session, prediction_service))
     registry.register(GetInventorySummaryTool())  # prepared, always unavailable today
+    # Phase 31 — Avenqo Predictive Intelligence : réutilise EXACTEMENT le
+    # même Model Registry/PredictionService, jamais un second moteur.
+    registry.register(GetChurnRiskTool(session, prediction_service))
+    registry.register(GetSegmentInsightsTool(session, prediction_service))
+    registry.register(GetDemandForecastTool(session, prediction_service))
+    registry.register(GetSalesForecastTool(session, prediction_service))
+    registry.register(GetAnomaliesTool(session, prediction_service))
+    registry.register(GetPredictionSummaryTool(session))
     return registry
 
 
@@ -54,4 +71,21 @@ def resolve_tenant_capabilities(
     capabilities: set[str] = set()
     if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "segmentation") is not None:
         capabilities.add("segmentation")
+    if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "churn") is not None:
+        capabilities.add("churn")
+    if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "demand") is not None:
+        capabilities.add("demand_forecast")
+    if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "weekly_forecast") is not None:
+        capabilities.add("sales_forecast")
+    if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "anomaly") is not None:
+        capabilities.add("anomaly_detection")
+    override = session.query(EnterpriseOverride).filter(
+        EnterpriseOverride.company_id == tenant.company_id
+    ).one_or_none()
+    if override is not None:
+        for capability, enabled in (override.capability_overrides or {}).items():
+            if enabled:
+                capabilities.add(capability)
+            else:
+                capabilities.discard(capability)
     return frozenset(capabilities)

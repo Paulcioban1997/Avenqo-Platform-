@@ -8,6 +8,8 @@ from backend.app.ai.llm.factory import LLMProviderFactory
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
+from backend.app.ai.usage.policy import AIQuotaPolicy
+from backend.app.ai.usage.service import AIUsageService
 from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.ai_engine import get_prediction_service
@@ -18,6 +20,13 @@ from shared.ai_engine.prediction.service import PredictionService
 
 def get_conversation_service(db: Session = Depends(get_db)) -> ConversationService:
     return ConversationService(db)
+
+
+def get_ai_usage_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AIUsageService:
+    return AIUsageService(db, AIQuotaPolicy(settings))
 
 
 def get_business_tool_registry(
@@ -37,11 +46,13 @@ def get_chat_service(
     settings: Settings = Depends(get_settings),
     registry: ToolRegistry = Depends(get_business_tool_registry),
     executor: ToolExecutor = Depends(get_tool_executor),
+    usage_service: AIUsageService = Depends(get_ai_usage_service),
 ) -> ChatService:
     return ChatService(
         ConversationService(db),
         RetrievalService(db),
-        LLMProviderFactory.create(settings),
+        LLMProviderFactory.create_gateway(settings),
         tool_registry=registry,
         tool_executor=executor,
+        usage_service=usage_service,
     )

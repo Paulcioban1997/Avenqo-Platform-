@@ -52,6 +52,7 @@ from backend.app.models import (
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
@@ -188,7 +189,7 @@ def phase22_environment(tmp_path: Path):
             yield DatasetImportService(
                 session=session,
                 artifacts=ArtifactService(artifact_root),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=1024 * 1024,
             )
 

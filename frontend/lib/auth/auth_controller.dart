@@ -16,6 +16,7 @@ class AuthController extends ChangeNotifier {
   Map<String, dynamic>? get user => _account?['user'] as Map<String, dynamic>?;
   Map<String, dynamic>? get company =>
       _account?['company'] as Map<String, dynamic>?;
+  bool get isPlatformAdmin => user?['is_platform_admin'] == true;
 
   Future<void> initialize() async {
     await api.initialize();
@@ -80,6 +81,19 @@ class AuthController extends ChangeNotifier {
       await api.clearSession();
       _account = null;
       notifyListeners();
+    }
+  }
+
+  /// Recharge `/auth/me` pour refléter un changement côté serveur qui n'est
+  /// pas issu de `login` (ex. : complétion/abandon de l'onboarding), sans
+  /// exiger de nouvelle authentification.
+  Future<void> refreshAccount() async {
+    if (!api.hasSession) return;
+    try {
+      _account = await api.get('/auth/me') as Map<String, dynamic>;
+      notifyListeners();
+    } on ApiException {
+      // Best-effort : on garde l'état local précédent si le rafraîchissement échoue.
     }
   }
 

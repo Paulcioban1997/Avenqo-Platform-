@@ -12,6 +12,8 @@ from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
+from backend.app.ai.usage.exceptions import AIQuotaExceededError
+from backend.app.ai.usage.service import AIUsageService, tokens_from_usage
 from backend.app.models import AIMessageRole
 from shared.ai_engine.contracts import TenantContext
 
@@ -43,10 +45,12 @@ class ChatService:
         provider: LLMProvider,
         tool_registry: ToolRegistry | None = None,
         tool_executor: ToolExecutor | None = None,
+        usage_service: AIUsageService | None = None,
     ) -> None:
         self._conversations, self._retrieval, self._provider = conversations, retrieval, provider
         self._tool_registry = tool_registry
         self._orchestrator = ToolOrchestrator(provider, tool_executor) if tool_executor is not None else None
+        self._usage_service = usage_service
         self.last_stream_sources = []
         self.last_tool_call_results = ()
 
@@ -67,6 +71,9 @@ class ChatService:
         capabilities: frozenset[str] = frozenset(),
         request_id: str = "",
     ):
+        if self._usage_service is not None:
+            self._usage_service.ensure_quota_available(tenant_id, plan_code)
+
         self._conversations.get(tenant_id, user_id, conversation_id)
         self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.USER, query)
         sources = self._retrieval.retrieve_context(tenant_id, query)
@@ -99,6 +106,14 @@ class ChatService:
         except LLMProviderError as exc:
             raise AIServiceUnavailableError("Le service IA est temporairement indisponible") from exc
 
+        if self._usage_service is not None:
+            self._usage_service.record_usage(
+                tenant_id,
+                plan_code,
+                tokens=tokens_from_usage(token_usage),
+                tool_calls=len(self.last_tool_call_results),
+            )
+
         sources = sources + _tool_sources(self.last_tool_call_results)
         message = self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.ASSISTANT, content, provider_name, model_name, token_usage)
         self._conversations.add_sources(tenant_id, message.id, sources)
@@ -124,6 +139,13 @@ class ChatService:
         implémentation de tool calling. `is_cancelled` est vérifié entre
         chaque étape ; si le client s'est déconnecté, rien n'est persisté.
         """
+
+        if self._usage_service is not None:
+            try:
+                self._usage_service.ensure_quota_available(tenant_id, plan_code)
+            except AIQuotaExceededError as exc:
+                yield ChatStreamEvent("error", {"detail": str(exc)})
+                return
 
         self._conversations.get(tenant_id, user_id, conversation_id)
         self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.USER, query)
@@ -187,6 +209,13 @@ class ChatService:
         if cancelled or not content:
             # Ne jamais persister une réponse incomplète après annulation client.
             return
+
+        if self._usage_service is not None:
+            self._usage_service.record_usage(
+                tenant_id,
+                plan_code,
+                tool_calls=len(tool_call_results),
+            )
 
         all_sources = sources + _tool_sources(tool_call_results)
         message = self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.ASSISTANT, content, provider_name)

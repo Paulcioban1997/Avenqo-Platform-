@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from backend.app.dependencies.auth import CurrentIdentity, require_permission
 from backend.app.dependencies.billing import get_billing_service
+from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     ChangePlanRequest,
     CheckoutRequest,
@@ -49,7 +50,11 @@ def subscription(
     return subscription_response(service.get_account(identity.user.company_id))
 
 
-@router.post("/checkout", response_model=RedirectResponse)
+@router.post(
+    "/checkout",
+    response_model=RedirectResponse,
+    dependencies=[Depends(rate_limit("billing_checkout", "rate_limit_billing_per_minute"))],
+)
 def checkout(
     request: CheckoutRequest,
     identity: CurrentIdentity = Depends(manage_billing),
@@ -103,8 +108,13 @@ def portal(
 def invoices(
     identity: CurrentIdentity = Depends(manage_billing),
     service: BillingService = Depends(get_billing_service),
+    skip: int = 0,
+    limit: int = 50,
 ) -> list[InvoiceResponse]:
-    return [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
+    limit = min(max(limit, 1), 200)
+    skip = max(skip, 0)
+    items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
+    return items[skip : skip + limit]
 
 
 @router.post("/webhook", include_in_schema=False)

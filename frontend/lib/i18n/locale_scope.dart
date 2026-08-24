@@ -24,4 +24,12 @@ class AvenqoLocaleScope extends InheritedNotifier<LocaleController> {
     assert(translations != null, 'LocaleController.initialize() doit être appelé avant le premier build.');
     return translations!;
   }
+
+  /// Comme [translationsOf], mais retourne `null` (au lieu de planter) si le
+  /// scope est absent — utile pour des widgets réutilisés dans des tests
+  /// isolés qui ne montent pas toute l'app (ex. `AssistantPage` seul).
+  static Translations? maybeTranslationsOf(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<AvenqoLocaleScope>();
+    return scope?.notifier?.translations;
+  }
 }

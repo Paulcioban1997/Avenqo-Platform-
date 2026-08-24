@@ -1,107 +1,584 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
 
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key, required this.auth});
+/// Palette de marque Avenqo (alignée sur home_page.dart / auth_page.dart).
+/// `blue`/`blueDark` sont l'accent de marque fixe (identique clair/sombre) ;
+/// le texte/fond de contenu passe par [AvenqoColors.of] pour le mode sombre.
+class _Brand {
+  const _Brand._();
+
+  static const blue = Color(0xFF087CF0);
+  static const blueDark = Color(0xFF0757C9);
+  static const ink = Color(0xFF080B12);
+}
+
+class DashboardData {
+  const DashboardData({
+    required this.hasReadyDataset,
+    required this.planCode,
+    this.datasetName,
+    this.datasetStatus,
+    this.datasetUpdatedAt,
+  });
+
+  final bool hasReadyDataset;
+  final String? planCode;
+  final String? datasetName;
+  final String? datasetStatus;
+  final DateTime? datasetUpdatedAt;
+}
+
+/// Point d'injection pour les tests : évite tout appel réseau réel dans les
+/// widget tests, sans changer le comportement par défaut en production.
+typedef DashboardDataLoader = Future<DashboardData> Function(AuthController auth);
+
+Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
+  bool hasReadyDataset = false;
+  String? planCode;
+  String? datasetName;
+  String? datasetStatus;
+  DateTime? datasetUpdatedAt;
+  try {
+    final datasets = await auth.api
+        .get('/datasets')
+        .timeout(const Duration(seconds: 6)) as List<dynamic>;
+    hasReadyDataset = datasets.any(
+      (item) => (item as Map<String, dynamic>)['status']?.toString().toUpperCase() == 'READY',
+    );
+    if (datasets.isNotEmpty) {
+      final latest = datasets.first as Map<String, dynamic>;
+      datasetName = latest['name']?.toString();
+      datasetStatus = latest['status']?.toString();
+      final rawUpdatedAt = (latest['uploaded_at'] ?? latest['updated_at'])?.toString();
+      if (rawUpdatedAt != null) datasetUpdatedAt = DateTime.tryParse(rawUpdatedAt);
+    }
+  } catch (_) {
+    // Pas de données disponibles ou service indisponible : on retombe sur l'état vide.
+  }
+  try {
+    final subscription = await auth.api
+        .get('/billing/subscription')
+        .timeout(const Duration(seconds: 6)) as Map<String, dynamic>;
+    planCode = subscription['plan_code']?.toString();
+  } catch (_) {
+    // Le badge de plan est facultatif : on l'omet simplement en cas d'échec.
+  }
+  return DashboardData(
+    hasReadyDataset: hasReadyDataset,
+    planCode: planCode,
+    datasetName: datasetName,
+    datasetStatus: datasetStatus,
+    datasetUpdatedAt: datasetUpdatedAt,
+  );
+}
+
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({super.key, required this.auth, DashboardDataLoader? loader})
+      : loader = loader ?? _defaultDashboardLoader;
 
   final AuthController auth;
+  final DashboardDataLoader loader;
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  late final Future<DashboardData> _future = widget.loader(widget.auth);
 
   @override
   Widget build(BuildContext context) {
-    final company = auth.company ?? const <String, dynamic>{};
-    final user = auth.user ?? const <String, dynamic>{};
+    final t = AvenqoLocaleScope.translationsOf(context).dashboardHome;
+    final colors = AvenqoColors.of(context);
+    final company = widget.auth.company ?? const <String, dynamic>{};
+    final user = widget.auth.user ?? const <String, dynamic>{};
     final wide = MediaQuery.sizeOf(context).width >= 1080;
-    return ListView(
-      padding: EdgeInsets.all(wide ? 32 : 20),
-      children: [
-        Text(
-          user['first_name'] == null ? 'Bonjour' : 'Bonjour ${user['first_name']}',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-        const SizedBox(height: 6),
-        Text('Voici ce qui mérite votre attention chez ${company['name'] ?? 'votre entreprise'}.'),
-        const SizedBox(height: 24),
-        Material(
-          color: const Color(0xFF16324F),
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            onTap: () => context.go('/assistant'),
-            borderRadius: BorderRadius.circular(8),
-            child: const Padding(
-              padding: EdgeInsets.all(22),
-              child: Row(
+    final companyName = company['name']?.toString() ?? '';
+    final firstName = user['first_name']?.toString();
+
+    return Container(
+      color: colors.canvas,
+      child: FutureBuilder<DashboardData>(
+        future: _future,
+        builder: (context, snapshot) {
+          final loading = snapshot.connectionState != ConnectionState.done;
+          final data = snapshot.data ?? const DashboardData(hasReadyDataset: false, planCode: null);
+          return ListView(
+            padding: EdgeInsets.all(wide ? 32 : 20),
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.auto_awesome, color: Color(0xFF65D1C8)),
-                  SizedBox(width: 16),
                   Expanded(
-                    child: Text(
-                      'Que souhaitez-vous comprendre aujourd’hui ?',
-                      style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          firstName == null ? t.hello : '${t.hello}, $firstName',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: colors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          t.subtitleForCompany.replaceFirst(
+                            '{company}',
+                            companyName.isEmpty ? '—' : companyName,
+                          ),
+                          style: TextStyle(color: colors.muted, fontSize: 15),
+                        ),
+                      ],
                     ),
                   ),
-                  Icon(Icons.arrow_forward, color: Colors.white),
+                  if (!loading && data.planCode != null) _PlanBadge(label: t.planLabel, plan: data.planCode!),
                 ],
               ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(18),
+              if (company['onboarding_status'] == 'skipped') ...[
+                const SizedBox(height: 16),
+                _ResumeOnboardingBanner(),
+              ],
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 760;
+                  final askCard = _HeroCard(
+                    icon: Icons.auto_awesome,
+                    title: t.askAvenqo,
+                    subtitle: t.askAvenqoSubtitle,
+                    cta: t.askAvenqoCta,
+                    dark: true,
+                    onTap: () => context.go('/assistant'),
+                  );
+                  final importCard = _HeroCard(
+                    icon: Icons.upload_file_outlined,
+                    title: t.importDataTitle,
+                    subtitle: t.importDataSubtitle,
+                    cta: t.importDataCta,
+                    dark: false,
+                    onTap: () => context.go('/connections'),
+                  );
+                  if (stacked) {
+                    return Column(children: [askCard, const SizedBox(height: 16), importCard]);
+                  }
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: askCard),
+                        const SizedBox(width: 16),
+                        Expanded(child: importCard),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              if (loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (!data.hasReadyDataset)
+                _EmptyDataBanner(title: t.connectDataTitle, cta: t.connectDataCta)
+              else ...[
+                Text(t.thisMonth, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: wide
+                      ? 4
+                      : MediaQuery.sizeOf(context).width >= 620
+                          ? 2
+                          : 1,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: wide ? 1.65 : 2.2,
+                  children: [
+                    _Metric(label: t.salesLabel, value: '—'),
+                    _Metric(label: t.ordersLabel, value: '—'),
+                    _Metric(label: t.customersLabel, value: '—'),
+                    _Metric(label: t.avgOrderLabel, value: '—'),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 28),
+              Text(t.prioritiesTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border.all(color: colors.line),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lightbulb_outline, color: _Brand.blue),
+                      const SizedBox(width: 14),
+                      Expanded(child: Text(t.prioritiesEmpty, style: TextStyle(color: colors.muted))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(t.connectionsTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              const SizedBox(height: 12),
+              if (!loading && data.datasetName != null)
+                _ConnectionStatusCard(
+                  name: data.datasetName!,
+                  status: data.datasetStatus ?? '',
+                  updatedAt: data.datasetUpdatedAt,
+                  readyLabel: t.connectionsReadyLabel,
+                  lastUpdateLabel: t.connectionsLastUpdate,
+                )
+              else if (!loading)
+                _EmptyDataBanner(title: t.connectionsEmpty, cta: t.connectionsEmptyCta),
+              const SizedBox(height: 28),
+              Text(t.activityTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border.all(color: colors.line),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: !loading && data.datasetName != null
+                      ? Row(
+                          children: [
+                            const Icon(Icons.history, color: _Brand.blue),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                '${data.datasetName} \u2014 ${data.datasetStatus ?? ''}'
+                                '${data.datasetUpdatedAt != null ? ' \u00b7 ${_formatDate(data.datasetUpdatedAt!)}' : ''}',
+                                style: TextStyle(color: colors.ink),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            const Icon(Icons.history, color: _Brand.blue),
+                            const SizedBox(width: 14),
+                            Expanded(child: Text(t.activityEmpty, style: TextStyle(color: colors.muted))),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(t.stepsTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              const SizedBox(height: 12),
+              _RecommendedSteps(
+                orgDone: company['onboarding_status'] != null && company['onboarding_status'] != 'pending',
+                dataDone: !loading && data.hasReadyDataset,
+                orgLabel: t.stepOrgLabel,
+                dataLabel: t.stepDataLabel,
+                insightsLabel: t.stepInsightsLabel,
+                askLabel: t.stepAskLabel,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+String _formatDate(DateTime date) {
+  final local = date.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  return '$day/$month/${local.year}';
+}
+
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.cta,
+    required this.dark,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String cta;
+  final bool dark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final background = dark ? _Brand.ink : colors.surface;
+    final textColor = dark ? Colors.white : colors.ink;
+    final subtitleColor = dark ? Colors.white.withValues(alpha: 0.75) : colors.muted;
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF7E8),
-            border: Border.all(color: const Color(0xFFE8C77B)),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
+            border: dark ? null : Border.all(color: colors.line),
           ),
-          child: Wrap(
-            spacing: 14,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.sync_alt, color: Color(0xFF8A5B00)),
-              const Text('Connectez vos ventes pour obtenir vos premiers indicateurs et recommandations.'),
-              OutlinedButton.icon(
-                onPressed: () => context.go('/connections'),
-                icon: const Icon(Icons.add_link),
-                label: const Text('Connecter mes ventes'),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: _Brand.blue, borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(height: 16),
+              Text(title, style: TextStyle(color: textColor, fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text(subtitle, style: TextStyle(color: subtitleColor, fontSize: 13.5)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(cta, style: const TextStyle(color: _Brand.blue, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.arrow_forward, size: 16, color: _Brand.blue),
+                ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 28),
-        Text('Ce mois-ci', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: wide ? 4 : MediaQuery.sizeOf(context).width >= 620 ? 2 : 1,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: wide ? 1.65 : 2.2,
-          children: const [
-            _Metric(label: 'Chiffre d’affaires', value: '—'),
-            _Metric(label: 'Commandes', value: '—'),
-            _Metric(label: 'Clients actifs', value: '—'),
-            _Metric(label: 'Panier moyen', value: '—'),
-          ],
-        ),
-        const SizedBox(height: 28),
-        Text('Priorités recommandées', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Row(
+      ),
+    );
+  }
+}
+
+class _ConnectionStatusCard extends StatelessWidget {
+  const _ConnectionStatusCard({
+    required this.name,
+    required this.status,
+    required this.updatedAt,
+    required this.readyLabel,
+    required this.lastUpdateLabel,
+  });
+
+  final String name;
+  final String status;
+  final DateTime? updatedAt;
+  final String readyLabel;
+  final String lastUpdateLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final ready = status.toUpperCase() == 'READY';
+    final statusColor = ready ? const Color(0xFF1B9E5A) : _Brand.blue;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(22),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            child: Icon(ready ? Icons.check_circle_outline : Icons.sync, color: statusColor),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.lightbulb_outline, color: Theme.of(context).colorScheme.secondary),
-                const SizedBox(width: 14),
-                const Expanded(child: Text('Vos priorités apparaîtront ici dès que vos ventes seront connectées.')),
+                Text(name, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  updatedAt == null
+                      ? (ready ? readyLabel : status)
+                      : '${ready ? readyLabel : status} \u00b7 $lastUpdateLabel ${_formatDate(updatedAt!)}',
+                  style: TextStyle(color: colors.muted, fontSize: 13),
+                ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecommendedSteps extends StatelessWidget {
+  const _RecommendedSteps({
+    required this.orgDone,
+    required this.dataDone,
+    required this.orgLabel,
+    required this.dataLabel,
+    required this.insightsLabel,
+    required this.askLabel,
+  });
+
+  final bool orgDone;
+  final bool dataDone;
+  final String orgLabel;
+  final String dataLabel;
+  final String insightsLabel;
+  final String askLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final steps = [
+      (orgLabel, orgDone),
+      (dataLabel, dataDone),
+      (insightsLabel, dataDone),
+      (askLabel, false),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (var i = 0; i < steps.length; i++)
+              ListTile(
+                leading: Icon(
+                  steps[i].$2 ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: steps[i].$2 ? const Color(0xFF1B9E5A) : colors.muted,
+                ),
+                title: Text(
+                  steps[i].$1,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w600,
+                    decoration: steps[i].$2 ? TextDecoration.lineThrough : null,
+                    decorationColor: colors.muted,
+                  ),
+                ),
+              ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _ResumeOnboardingBanner extends StatelessWidget {
+  const _ResumeOnboardingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).onboarding;
+    final colors = AvenqoColors.of(context);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _Brand.blue.withValues(alpha: 0.06),
+        border: Border.all(color: _Brand.blue.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Icon(Icons.rocket_launch_outlined, color: _Brand.blue),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Text(t.title, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+          ),
+          OutlinedButton(
+            onPressed: () => context.go('/onboarding'),
+            child: Text(t.continueCta),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanBadge extends StatelessWidget {
+  const _PlanBadge({required this.label, required this.plan});
+
+  final String label;
+  final String plan;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _Brand.blue.withValues(alpha: 0.08),
+        border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label \u00b7 ${plan[0].toUpperCase()}${plan.substring(1)}',
+        style: const TextStyle(color: _Brand.blueDark, fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+    );
+  }
+}
+
+class _EmptyDataBanner extends StatelessWidget {
+  const _EmptyDataBanner({required this.title, required this.cta});
+
+  final String title;
+  final String cta;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 14,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _Brand.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.sync_alt, color: _Brand.blue),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Text(title, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+          ),
+          FilledButton.icon(
+            onPressed: () => context.go('/connections'),
+            style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
+            icon: const Icon(Icons.add_link, size: 18),
+            label: Text(cta),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -113,16 +590,22 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final colors = AvenqoColors.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(label),
+            Text(label, style: TextStyle(color: colors.muted)),
             const SizedBox(height: 4),
-            Text(value, style: Theme.of(context).textTheme.titleLarge),
+            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: colors.ink)),
           ],
         ),
       ),

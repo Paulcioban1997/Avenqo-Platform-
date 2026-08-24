@@ -1,11 +1,11 @@
 ﻿from __future__ import annotations
 
 from functools import lru_cache
-from typing import List
+from typing import Annotated, List
 
 from pydantic import Field
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,9 +29,15 @@ class Settings(BaseSettings):
     host: str = Field(default="127.0.0.1", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    cors_origins: List[str] = Field(
+    cors_origins: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"],
         alias="CORS_ORIGINS",
+    )
+    # Hôtes HTTP autorisés (TrustedHostMiddleware). "*" en développement ; à
+    # restreindre explicitement (ex. api.avenqo.ca) en production.
+    allowed_hosts: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: ["*"],
+        alias="ALLOWED_HOSTS",
     )
     database_url: str = Field(
         default="sqlite:///./var/avenqo.db",
@@ -42,6 +48,14 @@ class Settings(BaseSettings):
     dataset_max_upload_mb: int = Field(default=50, alias="DATASET_MAX_UPLOAD_MB")
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
+    # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles
+    # OpenAI ne sont pas valides pour Anthropic ou Gemini, et inversement) —
+    # `llm_model` reste le défaut/rétrocompatible pour le fournisseur unique
+    # (Phase 28), mais le Resilient AI Gateway (Phase 32) utilise ces valeurs
+    # spécifiques par fournisseur pour éviter les erreurs "modèle inconnu".
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", alias="ANTHROPIC_MODEL")
+    gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
     llm_temperature: float = Field(default=0.2, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=800, ge=1, le=8192, alias="LLM_MAX_TOKENS")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -66,12 +80,70 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
-    stripe_price_starter: str | None = Field(default=None, alias="STRIPE_PRICE_STARTER")
+    stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
     stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
     stripe_price_enterprise: str | None = Field(default=None, alias="STRIPE_PRICE_ENTERPRISE")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
+    # Quotas d'usage IA configurables par plan Avenqo (demo/professional/enterprise/
+    # custom_enterprise). Format : {"<plan_code>": {"<metric>": <int>}}. Aucune valeur
+    # commerciale n'est définie par défaut ({} = aucune limite tant que non configurée) :
+    # voir backend/app/ai/usage/policy.py pour les noms de métriques reconnus.
+    ai_quota_limits: dict[str, dict[str, int]] = Field(default_factory=dict, alias="AI_QUOTA_LIMITS")
+    # Politique de fraîcheur des modèles/prédictions (Phase 31.1) : défaut TECHNIQUE
+    # configurable (pas un engagement commercial) — voir backend/app/services/prediction_freshness.py.
+    ai_freshness_stale_after_days: int = Field(default=7, ge=0, alias="AI_FRESHNESS_STALE_AFTER_DAYS")
+    ai_freshness_expired_after_days: int = Field(default=30, ge=0, alias="AI_FRESHNESS_EXPIRED_AFTER_DAYS")
+    ai_freshness_block_on_expired: bool = Field(default=True, alias="AI_FRESHNESS_BLOCK_ON_EXPIRED")
+    # Resilient AI Gateway (Phase 32) : ordre de fournisseurs primaire/fallback
+    # (aucun engagement commercial — défauts techniques). Un fallback sans clé
+    # API configurée est simplement ignoré par `LLMProviderFactory.create_gateway`.
+    ai_primary_provider: str = Field(default="openai", alias="AI_PRIMARY_PROVIDER")
+    ai_fallback_provider_1: str | None = Field(default=None, alias="AI_FALLBACK_PROVIDER_1")
+    ai_fallback_provider_2: str | None = Field(default=None, alias="AI_FALLBACK_PROVIDER_2")
+    ai_gateway_max_retries: int = Field(default=2, ge=0, le=10, alias="AI_GATEWAY_MAX_RETRIES")
+    ai_gateway_base_delay_seconds: float = Field(default=0.5, ge=0.0, le=30.0, alias="AI_GATEWAY_BASE_DELAY_SECONDS")
+    ai_gateway_max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0, alias="AI_GATEWAY_MAX_DELAY_SECONDS")
+    ai_gateway_circuit_failure_threshold: int = Field(default=3, ge=1, le=20, alias="AI_GATEWAY_CIRCUIT_FAILURE_THRESHOLD")
+    ai_gateway_circuit_cooldown_seconds: float = Field(default=30.0, ge=1.0, le=600.0, alias="AI_GATEWAY_CIRCUIT_COOLDOWN_SECONDS")
+    # Avenqo Platform Support AI (Phase 32) : dossier de la base de connaissances
+    # produit (jamais les données métier d'un tenant — voir backend/app/ai/support/).
+    ai_support_knowledge_root: str = Field(default="platform_knowledge", alias="AI_SUPPORT_KNOWLEDGE_ROOT")
+    # Rate limiting (Phase 34) : limites TECHNIQUES par défaut (pas un engagement
+    # commercial), configurables par déploiement. Fenêtre glissante en mémoire —
+    # voir backend/app/core/rate_limit.py (limitation : par process, non partagée
+    # entre plusieurs workers/instances ; acceptable pour ce stade du produit).
+    rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_auth_per_minute: int = Field(default=10, ge=1, alias="RATE_LIMIT_AUTH_PER_MINUTE")
+    rate_limit_ai_per_minute: int = Field(default=30, ge=1, alias="RATE_LIMIT_AI_PER_MINUTE")
+    rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
+    rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
+    rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+
+    # Sauvegarde/restauration (remédiation post-Phase 34) : répertoire local de
+    # stockage des archives et politique de rétention par défaut (technique,
+    # pas un engagement commercial) — voir backend/app/services/backup_service.py
+    # et docs/backup-and-disaster-recovery.md.
+    backup_root: str = Field(default="var/backups", alias="BACKUP_ROOT")
+    backup_retention_days: int = Field(default=30, ge=1, alias="BACKUP_RETENTION_DAYS")
+
+    # Bootstrap sécurisé du compte platform_admin propriétaire (scripts/bootstrap_platform_admin.py).
+    # Jamais loggé ni exposé via une réponse API. Voir docs/platform-admin-setup.md.
+    platform_admin_email: str | None = Field(default=None, alias="PLATFORM_ADMIN_EMAIL")
+    platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
+
+    @field_validator("cors_origins", "allowed_hosts", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> object:
+        """Accepte une liste JSON ou une chaîne séparée par des virgules (`.env`)."""
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                return value
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -96,7 +168,7 @@ class Settings(BaseSettings):
             stripe_values = (
                 self.stripe_secret_key,
                 self.stripe_webhook_secret,
-                self.stripe_price_starter,
+                self.stripe_price_demo,
                 self.stripe_price_professional,
                 self.stripe_price_enterprise,
             )
@@ -110,14 +182,14 @@ class Settings(BaseSettings):
 
     def stripe_price_id(self, plan_code: str) -> str | None:
         return {
-            "starter": self.stripe_price_starter,
+            "demo": self.stripe_price_demo,
             "professional": self.stripe_price_professional,
             "enterprise": self.stripe_price_enterprise,
         }.get(plan_code)
 
     def stripe_plan_code(self, price_id: str) -> str | None:
         prices = {
-            self.stripe_price_starter: "starter",
+            self.stripe_price_demo: "demo",
             self.stripe_price_professional: "professional",
             self.stripe_price_enterprise: "enterprise",
         }

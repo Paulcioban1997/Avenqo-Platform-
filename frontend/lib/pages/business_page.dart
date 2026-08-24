@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/destinations.dart';
+
+class _Brand {
+  const _Brand._();
+  static const blue = Color(0xFF087CF0);
+}
 
 class BusinessPage extends StatelessWidget {
   const BusinessPage({super.key, required this.destination});
@@ -8,6 +14,7 @@ class BusinessPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
     final content = _content[destination.path] ?? const ('Votre espace est prêt', 'Connectez vos outils pour afficher ici des informations à jour.');
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -19,21 +26,26 @@ class BusinessPage extends StatelessWidget {
             children: [
               Text(destination.label, style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 6),
-              Text(destination.description),
+              Text(destination.description, style: TextStyle(color: colors.muted)),
               const SizedBox(height: 28),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFFDDE5E8)), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: colors.surface, border: Border.all(color: colors.line), borderRadius: BorderRadius.circular(12)),
                 child: Column(
                   children: [
-                    Icon(destination.icon, size: 36, color: const Color(0xFF007C83)),
+                    Icon(destination.icon, size: 36, color: _Brand.blue),
                     const SizedBox(height: 14),
                     Text(content.$1, style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
-                    Text(content.$2, textAlign: TextAlign.center),
+                    Text(content.$2, textAlign: TextAlign.center, style: TextStyle(color: colors.muted)),
                     const SizedBox(height: 20),
-                    FilledButton.icon(onPressed: () => context.go('/connections'), icon: const Icon(Icons.add_link), label: const Text('Connecter mes outils')),
+                    FilledButton.icon(
+                      onPressed: () => context.go('/connections'),
+                      style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
+                      icon: const Icon(Icons.add_link),
+                      label: const Text('Connecter mes outils'),
+                    ),
                   ],
                 ),
               ),

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/translations.dart';
 
@@ -12,8 +13,11 @@ import 'package:avenqo/i18n/translations.dart';
 /// se reconstruisent via [AvenqoLocaleScope] (InheritedNotifier), jamais par
 /// prop-drilling manuel à travers toute la page.
 class LocaleController extends ChangeNotifier {
-  LocaleController({String initialCode = defaultLocaleCode}) : _code = initialCode;
+  LocaleController({String initialCode = defaultLocaleCode, LocalePreferenceStore? store})
+      : _code = initialCode,
+        _store = store ?? const SecureLocalePreferenceStore();
 
+  final LocalePreferenceStore _store;
   String _code;
   List<LocaleInfo> _availableLocales = const [];
   Translations? _translations;
@@ -28,15 +32,57 @@ class LocaleController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await _loadCatalog();
-    await setLocale(_code);
+    final startCode = await _resolveInitialLocale();
+    await setLocale(startCode);
+  }
+
+  /// Ordre de résolution : préférence persistée > langue détectée du
+  /// navigateur (si supportée) > locale par défaut de l'app. La lecture du
+  /// stockage est "best effort" (timeout court + catch) : une erreur ne doit
+  /// jamais bloquer ou planter le démarrage de l'app.
+  Future<String> _resolveInitialLocale() async {
+    final persisted = await _readPersistedLocale();
+    if (persisted != null && _availableLocales.any((locale) => locale.code == persisted)) {
+      return persisted;
+    }
+    final browserCode = PlatformDispatcher.instance.locale.languageCode;
+    if (_availableLocales.any((locale) => locale.code == browserCode)) {
+      return browserCode;
+    }
+    return defaultLocaleCode;
+  }
+
+  Future<String?> _readPersistedLocale() async {
+    try {
+      return await _store.read().timeout(const Duration(seconds: 2));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistLocale(String code) async {
+    try {
+      await _store.write(code).timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Persistance best-effort : une erreur de stockage ne doit pas casser le changement de langue.
+    }
   }
 
   Future<void> _loadCatalog() async {
-    final raw = await rootBundle.loadString('assets/i18n/_locales.json');
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    _availableLocales = decoded
-        .map((e) => LocaleInfo.fromJson(e as Map<String, dynamic>))
-        .toList(growable: false);
+    try {
+      final raw = await rootBundle
+          .loadString('assets/i18n/_locales.json')
+          .timeout(const Duration(seconds: 5));
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      _availableLocales = decoded
+          .map((e) => LocaleInfo.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false);
+    } catch (_) {
+      // Best-effort : si le catalogue ne charge pas (asset manquant, bundle
+      // bloqué), on continue avec une liste vide plutôt que de bloquer
+      // indéfiniment le démarrage de l'app.
+      _availableLocales = const [];
+    }
   }
 
   Future<void> setLocale(String code) async {
@@ -45,6 +91,7 @@ class LocaleController extends ChangeNotifier {
     try {
       _translations = await _load(code);
       _code = code;
+      await _persistLocale(code);
     } finally {
       _loading = false;
       notifyListeners();
@@ -57,7 +104,9 @@ class LocaleController extends ChangeNotifier {
       return cached;
     }
     try {
-      final raw = await rootBundle.loadString('assets/i18n/$code.json');
+      final raw = await rootBundle
+          .loadString('assets/i18n/$code.json')
+          .timeout(const Duration(seconds: 5));
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       final translations = Translations.fromJson(decoded);
       _cache[code] = translations;

@@ -7,7 +7,7 @@ from enum import StrEnum
 class PlanCode(StrEnum):
     """Codes stables utilisÃ©s par Avenqo et les futurs adaptateurs de paiement."""
 
-    STARTER = "starter"
+    DEMO = "demo"
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
     CUSTOM_ENTERPRISE = "custom_enterprise"
@@ -31,7 +31,7 @@ class SubscriptionPlan:
 RETAIL_MODULES = frozenset({"retail"})
 
 PLANS: tuple[SubscriptionPlan, ...] = (
-    SubscriptionPlan(PlanCode.STARTER, "Starter", RETAIL_MODULES),
+    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES),
     SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES),
     SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES),
     SubscriptionPlan(
@@ -52,3 +52,33 @@ def get_plan(code: PlanCode | str) -> SubscriptionPlan:
         return PLANS_BY_CODE[PlanCode(code)]
     except (KeyError, ValueError) as exc:
         raise ValueError(f"Offre Avenqo inconnue : {code}") from exc
+
+@dataclass(frozen=True, slots=True)
+class DataImportLimits:
+    """Limites CORE d'import de données (indépendantes des modules optionnels).
+
+    L'import de données est une capacité de plateforme disponible sur toute
+    offre payante (Demo compris) ; seules ces limites varient par offre.
+    Valeurs par défaut techniques, ajustables sans changement de code via
+    `Settings` — pas des tarifs commerciaux définitifs.
+    """
+
+    max_datasets: int
+    max_file_mb: int
+
+
+DATA_IMPORT_LIMITS_BY_PLAN: dict[PlanCode, DataImportLimits] = {
+    PlanCode.DEMO: DataImportLimits(max_datasets=5, max_file_mb=10),
+    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=50, max_file_mb=100),
+    PlanCode.ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
+    PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
+}
+
+
+def data_import_limits_for(code: PlanCode | str) -> DataImportLimits:
+    """Retourne les limites d'import pour une offre ; retombe sur Demo si inconnue."""
+
+    try:
+        return DATA_IMPORT_LIMITS_BY_PLAN[PlanCode(code)]
+    except (KeyError, ValueError):
+        return DATA_IMPORT_LIMITS_BY_PLAN[PlanCode.DEMO]

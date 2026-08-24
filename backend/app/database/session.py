@@ -26,7 +26,9 @@ def _build_engine():
         if database_url.startswith("sqlite")
         else {}
     )
-    return create_engine(database_url, connect_args=connect_args)
+    # pool_pre_ping évite de réutiliser une connexion morte (coupure réseau,
+    # redémarrage DB) — sans impact notable en dev/SQLite.
+    return create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 
 
 engine = _build_engine()

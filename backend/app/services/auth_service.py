@@ -61,7 +61,7 @@ class AuthService:
             country=request.country.strip(),
             timezone=request.timezone.strip(),
             industry=request.industry.strip(),
-            subscription_plan="starter",
+            subscription_plan="demo",
             status=CompanyStatus.ACTIVE,
         )
         user = User(

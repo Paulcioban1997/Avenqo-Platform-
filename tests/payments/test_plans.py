@@ -5,7 +5,7 @@ from payments import PLANS, PlanCode, SubscriptionPlan, get_plan
 
 def test_catalogue_contient_les_quatre_offres_avenqo() -> None:
     assert [plan.code for plan in PLANS] == [
-        PlanCode.STARTER,
+        PlanCode.DEMO,
         PlanCode.PROFESSIONAL,
         PlanCode.ENTERPRISE,
         PlanCode.CUSTOM_ENTERPRISE,

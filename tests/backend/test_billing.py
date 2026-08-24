@@ -67,7 +67,7 @@ def billing_environment(
 ) -> Generator[tuple[TestClient, FakeStripeProvider, RecordingNotifier], None, None]:
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_avenqo")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_avenqo")
-    monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter")
+    monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_professional")
     monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_enterprise")
     get_settings.cache_clear()
@@ -151,7 +151,7 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     plans = client.get("/api/v1/billing/plans")
     assert plans.status_code == 200
     assert [plan["code"] for plan in plans.json()] == [
-        "starter", "professional", "enterprise", "custom_enterprise"
+        "demo", "professional", "enterprise", "custom_enterprise"
     ]
     checkout = client.post(
         "/api/v1/billing/checkout",

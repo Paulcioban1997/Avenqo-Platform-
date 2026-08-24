@@ -68,6 +68,19 @@ class OpenAIProvider(LLMProvider):
                 openai_messages.append(
                     {"role": "tool", "tool_call_id": message.tool_call_id, "content": message.content}
                 )
+            elif message.role == "assistant" and message.tool_calls:
+                openai_messages.append({
+                    "role": "assistant",
+                    "content": message.content or None,
+                    "tool_calls": [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+                        }
+                        for call in message.tool_calls
+                    ],
+                })
             else:
                 openai_messages.append({"role": message.role, "content": message.content})
 

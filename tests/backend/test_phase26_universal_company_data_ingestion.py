@@ -38,6 +38,7 @@ from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
@@ -170,7 +171,7 @@ def phase26_environment(
             yield CompanyDatasetIngestionService(
                 session=session,
                 storage=LocalDatasetStorage(artifact_root / "company_datasets"),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=5 * 1024 * 1024,
             )
 
@@ -179,7 +180,7 @@ def phase26_environment(
             yield DatasetImportService(
                 session=session,
                 artifacts=ArtifactService(artifact_root),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=5 * 1024 * 1024,
             )
 
@@ -303,11 +304,13 @@ def test_cross_tenant_mapping_submit_refused(phase26_environment) -> None:
     assert response.status_code == 404
 
 
-def test_no_module_access_upload_refused(phase26_environment) -> None:
+def test_no_module_access_upload_still_succeeds_core_capability(phase26_environment) -> None:
+    """L'ingestion universelle est CORE Avenqo : aucune activation de module
+    optionnel n'est requise pour importer des données (Demo inclus)."""
     client, _, tenants = phase26_environment
     tenants["current"]["tenant"] = tenants["no_access"]
     response = _upload(client, "company_a.csv", COMPANY_A_CSV)
-    assert response.status_code == 403
+    assert response.status_code == 201
 
 
 def test_path_traversal_filename_rejected(phase26_environment) -> None:
@@ -700,7 +703,7 @@ def test_training_handoff_returns_prepared_dataset(phase26_environment) -> None:
         service = CompanyDatasetIngestionService(
             session=session,
             storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
-            access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+            quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
         )
         prepared = service.get_prepared_dataset(tenants["company_a"], dataset_id)

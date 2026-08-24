@@ -34,7 +34,7 @@ class BillingService:
             BillingAccount.company_id == company_id,
         ))
         if account is None:
-            account = BillingAccount(company_id=company_id, plan_code="starter", status="inactive")
+            account = BillingAccount(company_id=company_id, plan_code="demo", status="inactive")
             self._session.add(account)
             self._session.flush()
         return account

@@ -56,6 +56,11 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any]
+    # Opaque, propre au fournisseur (ex. Gemini `thought_signature`) : à
+    # rejouer TEL QUEL par le MÊME fournisseur lors du tour assistant suivant
+    # (obligatoire pour les modèles Gemini "thinking" — jamais interprété ni
+    # modifié, jamais transmis à un autre fournisseur).
+    provider_metadata: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)

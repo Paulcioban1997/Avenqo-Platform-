@@ -70,6 +70,7 @@ class CompanyResponse(BaseModel):
     name: str
     slug: str
     subscription_plan: str
+    onboarding_status: str
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +84,7 @@ class UserResponse(BaseModel):
     role: UserRole
     permissions: tuple[str, ...]
     is_active: bool
+    is_platform_admin: bool = False
     email_verified_at: datetime | None
 
 

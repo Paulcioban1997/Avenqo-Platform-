@@ -146,7 +146,7 @@ def db_session(tmp_path: Path):
 def tenant_with_ready_dataset(db_session):
     company = Company(
         name="Company A", slug="company-a", email="a@example.com", country="CA",
-        timezone="America/Toronto", industry="Retail", subscription_plan="starter",
+        timezone="America/Toronto", industry="Retail", subscription_plan="demo",
     )
     db_session.add(company); db_session.flush()
     user = User(company_id=company.id, first_name="Ana", last_name="Lyst", email="analyst@example.com", password_hash="hash", role=UserRole.ANALYST)
@@ -242,7 +242,7 @@ def test_registry_available_for_filters_by_permission_plan_and_capability() -> N
     registry.register(_DummyTool())
 
     assert registry.available_for(permissions=frozenset({"ai:use"}), plan_code="professional", capabilities=frozenset({"segmentation"})) == ()
-    assert registry.available_for(permissions=frozenset({"ai:use", "data:read"}), plan_code="starter", capabilities=frozenset({"segmentation"})) == ()
+    assert registry.available_for(permissions=frozenset({"ai:use", "data:read"}), plan_code="demo", capabilities=frozenset({"segmentation"})) == ()
     assert registry.available_for(permissions=frozenset({"ai:use", "data:read"}), plan_code="professional", capabilities=frozenset()) == ()
 
     available = registry.available_for(permissions=frozenset({"ai:use", "data:read"}), plan_code="professional", capabilities=frozenset({"segmentation"}))
@@ -251,11 +251,11 @@ def test_registry_available_for_filters_by_permission_plan_and_capability() -> N
 
 def test_plan_meets_minimum_rank_semantics() -> None:
     assert plan_meets_minimum(None, None) is True
-    assert plan_meets_minimum("starter", None) is True
-    assert plan_meets_minimum("starter", "professional") is False
+    assert plan_meets_minimum("demo", None) is True
+    assert plan_meets_minimum("demo", "professional") is False
     assert plan_meets_minimum("enterprise", "professional") is True
     assert plan_meets_minimum("custom_enterprise", "enterprise") is True
-    assert plan_meets_minimum(None, "starter") is True
+    assert plan_meets_minimum(None, "demo") is True
     assert plan_meets_minimum(None, "professional") is False
 
 
@@ -449,7 +449,7 @@ async def test_get_customer_summary_counts_returning_customers(tenant_with_ready
 
 
 async def test_tool_raises_unavailable_when_no_ready_dataset_exists(db_session) -> None:
-    company = Company(name="Empty Co", slug="empty-co", email="empty@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="starter")
+    company = Company(name="Empty Co", slug="empty-co", email="empty@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
     db_session.add(company); db_session.commit()
     tenant = TenantContext(company_id=company.id)
     context = ToolExecutionContext(tenant=tenant, user_id=uuid4(), permissions=frozenset({"ai:use"}), request_id="r")
@@ -460,8 +460,8 @@ async def test_tool_raises_unavailable_when_no_ready_dataset_exists(db_session) 
 
 
 async def test_latest_ready_dataset_is_tenant_scoped(db_session) -> None:
-    company_a = Company(name="A", slug="a", email="a2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="starter")
-    company_b = Company(name="B", slug="b", email="b2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="starter")
+    company_a = Company(name="A", slug="a", email="a2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
+    company_b = Company(name="B", slug="b", email="b2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
     db_session.add_all([company_a, company_b]); db_session.flush()
     dataset_b = Dataset(company_id=company_b.id, name="B data", type="csv", source="b.csv", rows_count=1, columns_count=1, status=DatasetStatus.READY)
     db_session.add(dataset_b); db_session.commit()
@@ -532,17 +532,19 @@ def test_resolve_tenant_capabilities_never_includes_inventory(db_session, monkey
     monkeypatch.setattr(registry_factory, "resolve_active_model_type", lambda *a, **k: "segmentation")
     capabilities = resolve_tenant_capabilities(db_session, TenantContext(company_id=uuid4()), prediction_service=object())
 
-    assert capabilities == frozenset({"segmentation"})
+    assert capabilities == frozenset({"segmentation", "churn", "demand_forecast", "sales_forecast", "anomaly_detection"})
     assert "inventory" not in capabilities
 
 
-def test_build_business_tool_registry_registers_all_eight_tools(db_session) -> None:
+def test_build_business_tool_registry_registers_all_fourteen_tools(db_session) -> None:
     registry = build_business_tool_registry(db_session, EmptyIngestionService(), prediction_service=object())
 
     names = {tool.name for tool in registry.list_tools()}
     assert names == {
         "get_business_overview", "get_sales_summary", "get_sales_trend", "get_sales_comparison",
         "get_top_products", "get_customer_summary", "get_customer_segments", "get_inventory_summary",
+        "get_churn_risk", "get_segment_insights", "get_demand_forecast", "get_sales_forecast",
+        "get_anomalies", "get_prediction_summary",
     }
 
 
@@ -697,7 +699,7 @@ async def test_chat_service_send_with_permissions_uses_tools_and_persists_source
 
     message, sources = await service.send(
         company.id, user.id, conversation.id, "How is business?",
-        permissions=frozenset(permissions_for(UserRole.ANALYST)), plan_code="starter", request_id="r1",
+        permissions=frozenset(permissions_for(UserRole.ANALYST)), plan_code="demo", request_id="r1",
     )
 
     assert message.content == "Revenue is $210."

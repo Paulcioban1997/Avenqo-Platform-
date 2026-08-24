@@ -29,6 +29,7 @@ from backend.app.services.company_dataset_ingestion_service import (
     DatasetNotFoundError as CompanyDatasetNotFoundError,
     InvalidMappingError,
 )
+from backend.app.services.data_import_policy import DataImportQuotaExceeded
 from backend.app.services.dataset_import_service import (
     DatasetImportError,
     DatasetImportService,
@@ -84,6 +85,8 @@ async def upload_csv(
         )
     except ModuleAccessDenied as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except DataImportQuotaExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DatasetImportError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -119,6 +122,8 @@ async def upload_company_dataset(
             await file.read(),
         )
     except ModuleAccessDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except DataImportQuotaExceeded as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DatasetIngestionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -242,6 +247,8 @@ def prepare_capability_dataset(
         capability_dataset = gate.prepare(tenant, dataset_id, capability)
     except CompanyDatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ModuleAccessDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except UnknownCapability as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except DatasetIngestionError as exc:

@@ -1,0 +1,39 @@
+# Docker Compose — ENVIRONNEMENT DE DÉVELOPPEMENT LOCAL UNIQUEMENT.
+#
+# NE PAS utiliser tel quel en production : les identifiants Postgres ci-dessous
+# sont des valeurs de développement par défaut, le code est monté en volume
+# avec --reload, et aucun secret réel n'est injecté. Voir
+# docs/production-deployment.md pour le déploiement de production réel.
+
+# Docker Compose — ENVIRONNEMENT DE DÉVELOPPEMENT LOCAL UNIQUEMENT.
+#
+# NE PAS utiliser tel quel en production : le code est monté en volume avec
+# --reload, aucun secret réel n'est injecté, et la base de données reste
+# SQLite (le pilote Postgres/psycopg n'est PAS encore une dépendance du
+# backend — voir docs/production-deployment.md, section Base de données,
+# pour le plan de migration vers Postgres avant un vrai lancement production).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: sqlite:////srv/var/avenqo-dev.db
+      AUTH_JWT_SECRET: dev-only-secret-change-me-please-32chars
+      CORS_ORIGINS: http://localhost:5173
+      ALLOWED_HOSTS: "*"
+      RATE_LIMIT_ENABLED: "true"
+    volumes:
+      - ./backend:/srv/backend:ro
+      - ./shared:/srv/shared:ro
+      - ./payments:/srv/payments:ro
+      - avenqo-dev-db:/srv/var
+
+volumes:
+  avenqo-dev-db:
+

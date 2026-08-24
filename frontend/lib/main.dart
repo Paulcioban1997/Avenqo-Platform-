@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:avenqo/app/avenqo_app.dart';
+import 'package:avenqo/app/theme_controller.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/token_store.dart';
@@ -10,6 +11,7 @@ Future<void> main() async {
   final api = ApiClient(tokenStore: const SecureTokenStore());
   final auth = AuthController(api);
   final locale = LocaleController();
-  await Future.wait([auth.initialize(), locale.initialize()]);
-  runApp(AvenqoApp(auth: auth, locale: locale));
+  final theme = ThemeController();
+  await Future.wait([auth.initialize(), locale.initialize(), theme.initialize()]);
+  runApp(AvenqoApp(auth: auth, locale: locale, theme: theme));
 }

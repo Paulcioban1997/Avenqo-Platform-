@@ -71,6 +71,62 @@ class ApiClient {
     return _request('DELETE', path, authenticated: true);
   }
 
+  /// Envoi multipart authentifié (ex. `/datasets/upload`) : `fields` devient
+  /// des champs de formulaire, `fileBytes`/`fileName` le fichier joint.
+  /// `onProgress` reçoit `(bytesEnvoyés, totalBytes)` pendant l'envoi.
+  Future<dynamic> postMultipart(
+    String path, {
+    required Map<String, String> fields,
+    required List<int> fileBytes,
+    required String fileName,
+    String fileField = 'file',
+    void Function(int sent, int total)? onProgress,
+    bool retryAfterRefresh = true,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final request = http.MultipartRequest('POST', uri)
+      ..fields.addAll(fields)
+      ..files.add(
+        http.MultipartFile.fromBytes(fileField, fileBytes, filename: fileName),
+      );
+    if (_accessToken != null) {
+      request.headers['Authorization'] = 'Bearer $_accessToken';
+    }
+
+    final total = request.contentLength;
+    var sent = 0;
+    final byteStream = request.finalize().map((chunk) {
+      sent += chunk.length;
+      onProgress?.call(sent, total);
+      return chunk;
+    });
+    final streamedRequest = http.StreamedRequest(request.method, uri)
+      ..headers.addAll(request.headers)
+      ..contentLength = total;
+    byteStream.listen(
+      streamedRequest.sink.add,
+      onDone: streamedRequest.sink.close,
+      onError: streamedRequest.sink.addError,
+    );
+
+    final streamed = await _httpClient.send(streamedRequest);
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode == 401 && retryAfterRefresh) {
+      if (await _refresh()) {
+        return postMultipart(
+          path,
+          fields: fields,
+          fileBytes: fileBytes,
+          fileName: fileName,
+          fileField: fileField,
+          onProgress: onProgress,
+          retryAfterRefresh: false,
+        );
+      }
+    }
+    return _decode(response);
+  }
+
   Stream<Map<String, dynamic>> postSseEvents(
     String path, {
     required Map<String, dynamic> body,

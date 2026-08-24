@@ -48,6 +48,7 @@ from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.business_signal_bridge import signal_from_sentiment
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services.portfolio_decision_service import (
     PortfolioAnalysisUnavailable,
     build_sentiment_signal,
@@ -195,7 +196,7 @@ def phase23_environment(tmp_path: Path):
             yield DatasetImportService(
                 session=session,
                 artifacts=ArtifactService(artifact_root),
-                access=ModuleAccessService(SQLAlchemyModuleEntitlements(session)),
+                quota=DataImportPolicy(session),
                 max_upload_bytes=1024 * 1024,
             )
 

@@ -6,12 +6,14 @@ class AppDestination {
     required this.label,
     required this.description,
     required this.icon,
+    this.sectionBreakBefore = false,
   });
 
   final String path;
   final String label;
   final String description;
   final IconData icon;
+  final bool sectionBreakBefore;
 }
 
 const appDestinations = <AppDestination>[
@@ -68,6 +70,7 @@ const appDestinations = <AppDestination>[
     label: 'Connexions',
     description: 'Reliez vos outils de ventes et de gestion.',
     icon: Icons.sync_alt,
+    sectionBreakBefore: true,
   ),
   AppDestination(
     path: '/team',
@@ -86,6 +89,13 @@ const appDestinations = <AppDestination>[
     label: 'Paramètres',
     description: 'Préférences de votre entreprise et de votre compte.',
     icon: Icons.settings_outlined,
+  ),
+  AppDestination(
+    path: '/support',
+    label: 'Avenqo Support',
+    description: "Besoin d'aide pour utiliser Avenqo ? Posez votre question ici.",
+    icon: Icons.help_outline,
+    sectionBreakBefore: true,
   ),
 ];
 

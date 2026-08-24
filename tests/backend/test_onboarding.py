@@ -1,0 +1,198 @@
+"""Tests du questionnaire d'onboarding post-inscription (scopé au tenant)."""
+
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from backend.app.database import get_db
+from backend.app.dependencies.auth import get_account_notifier
+from backend.app.models import Base
+from backend.main import create_application
+
+from tests.backend.test_auth import RecordingNotifier, registration_payload, verify_and_login
+
+
+@pytest.fixture
+def onboarding_environment(
+    tmp_path: Path,
+) -> Generator[tuple[TestClient, RecordingNotifier], None, None]:
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'onboarding.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    Base.metadata.create_all(engine)
+    notifier = RecordingNotifier()
+    app = create_application()
+
+    def override_db() -> Generator[Session, None, None]:
+        session = testing_session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_account_notifier] = lambda: notifier
+    with TestClient(app) as client:
+        yield client, notifier
+
+
+def _register_and_login(client: TestClient, notifier: RecordingNotifier) -> str:
+    email = "owner@onboarding-test.ca"
+    response = client.post(
+        "/api/v1/auth/register",
+        json=registration_payload(email=email, company_name="Onboarding Test Co"),
+    )
+    assert response.status_code == 201
+    session = verify_and_login(client, notifier, email)
+    assert session["company"]["onboarding_status"] == "pending"
+    return session["access_token"]
+
+
+def test_new_company_defaults_to_pending(onboarding_environment) -> None:
+    client, notifier = onboarding_environment
+    token = _register_and_login(client, notifier)
+
+    response = client.get(
+        "/api/v1/onboarding", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["business_goals"] == []
+    assert body["current_tools"] == []
+    assert body["team_size"] is None
+
+
+def test_complete_onboarding_persists_answers(onboarding_environment) -> None:
+    client, notifier = onboarding_environment
+    token = _register_and_login(client, notifier)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/api/v1/onboarding/complete",
+        headers=headers,
+        json={
+            "business_goals": ["increase_sales", "reduce_churn"],
+            "current_tools": ["pos", "spreadsheets"],
+            "team_size": "2_10",
+            "refined_industry": "Specialty retail",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["business_goals"] == ["increase_sales", "reduce_churn"]
+    assert body["team_size"] == "2_10"
+    assert body["refined_industry"] == "Specialty retail"
+    assert body["completed_at"] is not None
+
+    # Le statut se propage à /auth/me, source de vérité pour le frontend.
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["company"]["onboarding_status"] == "completed"
+
+
+def test_skip_onboarding_marks_status_skipped(onboarding_environment) -> None:
+    client, notifier = onboarding_environment
+    token = _register_and_login(client, notifier)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post("/api/v1/onboarding/skip", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "skipped"
+
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.json()["company"]["onboarding_status"] == "skipped"
+
+
+def test_onboarding_requires_authentication(onboarding_environment) -> None:
+    client, _notifier = onboarding_environment
+    response = client.get("/api/v1/onboarding")
+    assert response.status_code == 401
+
+
+def test_onboarding_is_tenant_isolated(onboarding_environment) -> None:
+    client, notifier = onboarding_environment
+    token_a = _register_and_login(client, notifier)
+
+    response_b = client.post(
+        "/api/v1/auth/register",
+        json=registration_payload(email="owner-b@onboarding-test.ca", company_name="Other Co"),
+    )
+    assert response_b.status_code == 201
+    token_b = verify_and_login(client, notifier, "owner-b@onboarding-test.ca")["access_token"]
+
+    client.post(
+        "/api/v1/onboarding/complete",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={"business_goals": ["increase_sales"], "team_size": "solo"},
+    )
+
+    status_b = client.get(
+        "/api/v1/onboarding", headers={"Authorization": f"Bearer {token_b}"}
+    )
+    assert status_b.json()["status"] == "pending"
+
+
+def test_onboarding_activates_selected_module_allowed_by_plan(onboarding_environment) -> None:
+    """L'offre Demo autorise le module "retail" (voir `payments/plans.py`) :
+    le sélectionner à l'onboarding doit créer un `CompanyModule` actif."""
+    client, notifier = onboarding_environment
+    token = _register_and_login(client, notifier)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/api/v1/onboarding/complete",
+        headers=headers,
+        json={
+            "business_goals": ["increase_sales"],
+            "team_size": "solo",
+            "selected_modules": ["retail"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["activated_modules"] == ["retail"]
+    assert body["unavailable_modules"] == []
+
+    upload = client.post(
+        "/api/v1/datasets/upload",
+        headers=headers,
+        data={"module_code": "retail"},
+        files={"file": ("data.csv", b"id,age\n1,20\n2,30\n", "text/csv")},
+    )
+    dataset_id = upload.json()["dataset_id"]
+    prepare = client.post(
+        f"/api/v1/datasets/{dataset_id}/capabilities/churn/prepare",
+        headers=headers,
+    )
+    assert prepare.status_code != 403
+
+
+def test_onboarding_reports_module_unavailable_for_plan(onboarding_environment) -> None:
+    """Un module hors des modules sélectionnables du plan n'est jamais
+    activé en contournement de la facturation."""
+    client, notifier = onboarding_environment
+    token = _register_and_login(client, notifier)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/api/v1/onboarding/complete",
+        headers=headers,
+        json={
+            "business_goals": ["increase_sales"],
+            "team_size": "solo",
+            "selected_modules": ["crm"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["activated_modules"] == []
+    assert body["unavailable_modules"] == ["crm"]
+

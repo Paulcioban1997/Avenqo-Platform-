@@ -354,6 +354,115 @@ def build_segmentation_signal(
     )
 
 
+# Nombre maximal d'identifiants de prédiction (client/enregistrement) exposés
+# dans les métadonnées d'un signal — jamais des milliers de lignes envoyées
+# au LLM (voir `ToolExecutor.MAX_TOOL_RESULT_CHARS`, même principe de
+# troncature défensive appliqué en amont, côté métier).
+_MAX_EXPOSED_RECORD_IDS = 20
+
+
+def build_sales_forecast_signal(
+    session: Session,
+    tenant: TenantContext,
+    module_code: str,
+    prediction_service: PredictionService,
+    horizon: int | None = None,
+) -> BusinessSignal:
+    """Prévision de ventes (Phase 31) via le modèle "weekly_forecast" déjà entraîné.
+
+    Réutilise tel quel `PredictionService`/`ForecastingPredictionExecutor` :
+    aucun second moteur de prévision, aucun réentraînement. L'horizon
+    demandé ne dépasse jamais celui convenu à l'entraînement (voir
+    `ForecastingTrainingSpec.horizon`) sauf si explicitement fourni par
+    l'appelant (ex. l'utilisateur demande un horizon plus court).
+    """
+
+    model_type = resolve_active_model_type(session, tenant, module_code, "weekly_forecast")
+    if model_type is None:
+        raise PortfolioAnalysisUnavailable("No active sales forecast model for this company.")
+
+    spec = MODULE_TRAINING_SPECS[module_code]["weekly_forecast"]
+    effective_horizon = horizon if horizon and horizon > 0 else spec.horizon
+    executor = resolve_executor(model_type)
+    outcome = prediction_service.predict(
+        tenant, module_code, "weekly_forecast", {"horizon": effective_horizon}, executor
+    )
+    result = outcome.get("result") or {}
+    forecast_points = list(result.get("forecast") or [])
+    if not forecast_points:
+        raise PortfolioAnalysisUnavailable("No sales forecast could be produced for this company.")
+
+    forecast_values = [float(point) for point in forecast_points]
+    return BusinessSignal(
+        company_id=tenant.company_id,
+        module_code=module_code,
+        task_code="weekly_forecast",
+        capability="forecasting",
+        entity=f"next {len(forecast_values)} periods",
+        metric="forecasted_total",
+        value=sum(forecast_values),
+        direction=SignalDirection.STABLE,
+        confidence=0.6,
+        metadata={
+            "forecast_points": tuple(forecast_values),
+            "horizon": effective_horizon,
+        },
+    )
+
+
+def build_anomaly_signal(
+    session: Session,
+    tenant: TenantContext,
+    module_code: str,
+    prediction_service: PredictionService,
+) -> BusinessSignal:
+    """Détecte les enregistrements anormaux (Phase 31) via le modèle "anomaly" actif.
+
+    Même principe que `build_churn_segmentation_signals` : jamais une décision
+    par enregistrement isolé, un seul signal agrégé (nombre d'anomalies), avec
+    au plus `_MAX_EXPOSED_RECORD_IDS` identifiants exposés en métadonnée.
+    """
+
+    model_type = resolve_active_model_type(session, tenant, module_code, "anomaly")
+    if model_type is None:
+        raise PortfolioAnalysisUnavailable("No active anomaly detection model for this company.")
+
+    dataset = _latest_dataset(session, tenant, module_code)
+    if dataset is None:
+        raise PortfolioAnalysisUnavailable("No dataset available to analyze this company's data.")
+
+    data = pd.read_csv(dataset.source)
+    executor = resolve_executor(model_type)
+
+    anomalous_ids: list[str] = []
+    total = 0
+    for row_index, row in data.iterrows():
+        outcome = prediction_service.predict(tenant, module_code, "anomaly", row.to_dict(), executor)
+        total += 1
+        if outcome.get("result") in (-1, -1.0, "-1"):
+            identifier = row.get("order_id", row.get("customer_id", row_index))
+            anomalous_ids.append(str(identifier))
+
+    if not anomalous_ids:
+        raise PortfolioAnalysisUnavailable("No anomalies detected in this company's data.")
+
+    return BusinessSignal(
+        company_id=tenant.company_id,
+        module_code=module_code,
+        task_code="anomaly",
+        capability="anomaly_detection",
+        entity=f"{len(anomalous_ids)} records",
+        metric="anomalies_count",
+        value=float(len(anomalous_ids)),
+        direction=SignalDirection.RISK,
+        confidence=0.6,
+        metadata={
+            "anomalous_record_ids": tuple(anomalous_ids[:_MAX_EXPOSED_RECORD_IDS]),
+            "total_records_scanned": total,
+        },
+    )
+
+
 # Alias de colonnes texte (Phase 23) : jamais une colonne inventée, uniquement
 # les noms réels observés chez différentes entreprises. Résolue par alias
 # exact/sous-chaîne (même principe que `_has_sentiment_signal`), PAS par la

@@ -136,7 +136,7 @@ def db_session(tmp_path: Path):
 def _make_tenant(db_session, seed: int):
     company = Company(
         name=f"Company {seed}", slug=f"company-{seed}", email=f"c{seed}@example.com", country="CA",
-        timezone="America/Toronto", industry="Retail", subscription_plan="starter",
+        timezone="America/Toronto", industry="Retail", subscription_plan="demo",
     )
     db_session.add(company); db_session.flush()
     user = User(company_id=company.id, first_name="Ana", last_name="Lyst", email=f"analyst{seed}@example.com", password_hash="hash", role=UserRole.ANALYST)
@@ -166,7 +166,7 @@ async def test_sse_happy_path_emits_status_delta_sources_done_and_persists_once(
 
     events = await _drain(service.stream(
         company.id, user.id, conversation.id, "How were my sales this month?",
-        permissions=permissions, plan_code="starter", request_id="req-sse-1",
+        permissions=permissions, plan_code="demo", request_id="req-sse-1",
     ))
 
     kinds = [event.kind for event in events]
@@ -209,7 +209,7 @@ async def test_sse_cross_tenant_isolation_never_leaks_other_tenant_data(db_sessi
 
     events = await _drain(service.stream(
         company_a.id, user_a.id, conversation.id, "How were my sales this month?",
-        permissions=permissions, plan_code="starter", request_id="req-sse-2",
+        permissions=permissions, plan_code="demo", request_id="req-sse-2",
     ))
 
     sources_event = next(event for event in events if event.kind == "sources")
@@ -244,7 +244,7 @@ async def test_sse_cancellation_stops_and_does_not_persist(db_session) -> None:
         collected = []
         async for event in service.stream(
             company.id, user.id, conversation.id, "How were my sales this month?",
-            permissions=permissions, plan_code="starter", request_id="req-sse-3",
+            permissions=permissions, plan_code="demo", request_id="req-sse-3",
             is_cancelled=is_cancelled,
         ):
             collected.append(event)

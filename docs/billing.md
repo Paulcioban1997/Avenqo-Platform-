@@ -10,7 +10,7 @@ Les modules restent dans `company_modules`. Ils n'importent jamais le SDK Stripe
 
 | Code | Nom | Parcours |
 | --- | --- | --- |
-| `starter` | Starter | Stripe Checkout |
+| `demo` | Demo | Stripe Checkout |
 | `professional` | Professional | Stripe Checkout |
 | `enterprise` | Enterprise | Stripe Checkout |
 | `custom_enterprise` | Custom Enterprise | Contact commercial |
@@ -38,7 +38,7 @@ Les variables sont listÃ©es dans `backend/.env.example`:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_STARTER`
+- `STRIPE_PRICE_DEMO`
 - `STRIPE_PRICE_PROFESSIONAL`
 - `STRIPE_PRICE_ENTERPRISE`
 

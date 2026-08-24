@@ -3,8 +3,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.core.permissions import permissions_for
+from backend.app.core.rate_limit import rate_limit
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
 from backend.app.models import Company, User
+from backend.app.models.base import OnboardingStatus
 from backend.app.schemas.auth import (
     AuthResponse,
     CompanyResponse,
@@ -33,15 +35,28 @@ def _user_response(user: User) -> UserResponse:
         role=user.role,
         permissions=permissions_for(user.role),
         is_active=user.is_active,
+        is_platform_admin=user.is_platform_admin,
         email_verified_at=user.email_verified_at,
     )
 
 
 def _company_response(company: Company) -> CompanyResponse:
-    return CompanyResponse.model_validate(company)
+    onboarding_status = company.onboarding.status if company.onboarding else OnboardingStatus.PENDING
+    return CompanyResponse(
+        id=company.id,
+        name=company.name,
+        slug=company.slug,
+        subscription_plan=company.subscription_plan,
+        onboarding_status=onboarding_status.value,
+    )
 
 
-@router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute"))],
+)
 def register(
     request: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
@@ -67,7 +82,11 @@ def verify_email(
     return MessageResponse(message="Adresse email vÃ©rifiÃ©e.")
 
 
-@router.post("/email/resend", response_model=MessageResponse)
+@router.post(
+    "/email/resend",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+)
 def resend_verification(
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
@@ -76,7 +95,11 @@ def resend_verification(
     return MessageResponse(message="Si le compte existe, un email a Ã©tÃ© envoyÃ©.")
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    dependencies=[Depends(rate_limit("auth_login", "rate_limit_auth_per_minute"))],
+)
 def login(
     request: LoginRequest,
     service: AuthService = Depends(get_auth_service),
@@ -131,7 +154,11 @@ def logout(
     return MessageResponse(message="Session fermÃ©e.")
 
 
-@router.post("/password/forgot", response_model=MessageResponse)
+@router.post(
+    "/password/forgot",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute"))],
+)
 def forgot_password(
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
@@ -140,7 +167,11 @@ def forgot_password(
     return MessageResponse(message="Si le compte existe, un email a Ã©tÃ© envoyÃ©.")
 
 
-@router.post("/password/reset", response_model=MessageResponse)
+@router.post(
+    "/password/reset",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit("auth_password_reset", "rate_limit_auth_per_minute"))],
+)
 def reset_password(
     request: ResetPasswordRequest,
     service: AuthService = Depends(get_auth_service),

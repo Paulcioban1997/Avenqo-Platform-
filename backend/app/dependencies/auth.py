@@ -88,3 +88,21 @@ def require_permission(permission: str) -> Callable[..., CurrentIdentity]:
         return identity
 
     return dependency
+
+
+def require_platform_admin(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Réserve l'accès aux comptes explicitement marqués `is_platform_admin`.
+
+    Indépendant du rôle tenant (owner/admin/...) : un propriétaire ou
+    administrateur d'entreprise n'obtient jamais automatiquement l'accès
+    plateforme Avenqo.
+    """
+
+    if not identity.user.is_platform_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé aux administrateurs Avenqo",
+        )
+    return identity

@@ -10,7 +10,9 @@ from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError, ConversationNotFoundError
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
+from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.core.permissions import permissions_for
+from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.ai_chat import get_chat_service, get_conversation_service
 from backend.app.dependencies.ai_engine import get_prediction_service
@@ -32,8 +34,16 @@ def create(request: CreateConversationRequest, tenant: TenantContext = Depends(g
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])
-def list_items(tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
-    return [response(item) for item in service.list(tenant.company_id, identity.user.id)]
+def list_items(
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ConversationService = Depends(get_conversation_service),
+    skip: int = 0,
+    limit: int = 50,
+):
+    limit = min(max(limit, 1), 200)
+    skip = max(skip, 0)
+    return [response(item) for item in service.list(tenant.company_id, identity.user.id)][skip : skip + limit]
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
@@ -46,7 +56,11 @@ def detail(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_con
     return ConversationDetailResponse(**response(item).model_dump(), messages=messages)
 
 
-@router.post("/conversations/{conversation_id}/messages", response_model=ChatMessageResponse)
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    response_model=ChatMessageResponse,
+    dependencies=[Depends(rate_limit("ai_chat_message", "rate_limit_ai_per_minute"))],
+)
 async def message(
     conversation_id: UUID,
     request: SendMessageRequest,
@@ -71,12 +85,17 @@ async def message(
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
+    except AIQuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except AIServiceUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ChatMessageResponse(id=item.id, role=item.role.value, content=item.content, created_at=item.created_at, sources=[SourceResponse(type=source.source_type, identifier=source.identifier, name=source.name, metadata=source.metadata) for source in sources])
 
 
-@router.post("/conversations/{conversation_id}/messages/stream")
+@router.post(
+    "/conversations/{conversation_id}/messages/stream",
+    dependencies=[Depends(rate_limit("ai_chat_message_stream", "rate_limit_ai_per_minute"))],
+)
 async def stream(
     conversation_id: UUID,
     request: SendMessageRequest,
@@ -118,7 +137,7 @@ async def stream(
                     yield f"event: done\ndata: {json.dumps(event.payload)}\n\n"
                 elif event.kind == "error":
                     yield f"event: error\ndata: {json.dumps(event.payload)}\n\n"
-        except (ConversationNotFoundError, AIServiceUnavailableError) as exc:
+        except (ConversationNotFoundError, AIServiceUnavailableError, AIQuotaExceededError) as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
     return StreamingResponse(events(), media_type="text/event-stream")
 

@@ -1,0 +1,51 @@
+name: CI
+
+# Phase 34 — pipeline minimal : tests backend (pytest) + analyse/tests Flutter.
+# N'utilise AUCUN secret réel : les tests backend fournissent leurs propres
+# valeurs factices (AUTH_JWT_SECRET, etc.) via fixtures/monkeypatch, jamais
+# via ce fichier.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run backend test suite
+        run: python -m pytest tests/backend tests/security tests/payments -q
+        env:
+          ENVIRONMENT: test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Static analysis
+        working-directory: frontend
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: frontend
+        run: flutter test

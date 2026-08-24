@@ -11,34 +11,47 @@ from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.capability_execution_gate import CapabilityExecutionGate
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services.dataset_import_service import DatasetImportService
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 
 
-def get_dataset_import_service(db: Session = Depends(get_db)) -> DatasetImportService:
+def get_data_import_policy(db: Session = Depends(get_db)) -> DataImportPolicy:
+    return DataImportPolicy(db)
+
+
+def get_dataset_import_service(
+    db: Session = Depends(get_db),
+    quota: DataImportPolicy = Depends(get_data_import_policy),
+) -> DatasetImportService:
     settings = get_settings()
     return DatasetImportService(
         session=db,
         artifacts=ArtifactService(Path(settings.artifact_root)),
-        access=ModuleAccessService(SQLAlchemyModuleEntitlements(db)),
+        quota=quota,
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
     )
 
 
 def get_company_dataset_ingestion_service(
     db: Session = Depends(get_db),
+    quota: DataImportPolicy = Depends(get_data_import_policy),
 ) -> CompanyDatasetIngestionService:
     settings = get_settings()
     return CompanyDatasetIngestionService(
         session=db,
         storage=LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets"),
-        access=ModuleAccessService(SQLAlchemyModuleEntitlements(db)),
+        quota=quota,
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
     )
 
 
 def get_capability_execution_gate(
+    db: Session = Depends(get_db),
     service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
 ) -> CapabilityExecutionGate:
-    return CapabilityExecutionGate(service)
+    return CapabilityExecutionGate(
+        service,
+        access=ModuleAccessService(SQLAlchemyModuleEntitlements(db)),
+    )

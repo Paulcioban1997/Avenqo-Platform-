@@ -36,6 +36,9 @@ class User(TimestampMixin, Base):
         default=UserRole.USER,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Indépendant du rôle tenant (owner/admin/...) : jamais activé automatiquement,
+    # doit être positionné explicitement (ex. script d'exploitation Avenqo).
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

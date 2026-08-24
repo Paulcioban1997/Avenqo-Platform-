@@ -61,6 +61,15 @@ class AnthropicProvider(LLMProvider):
                     "role": "user",
                     "content": [{"type": "tool_result", "tool_use_id": message.tool_call_id, "content": message.content}],
                 })
+            elif message.role == "assistant" and message.tool_calls:
+                blocks: list[dict] = []
+                if message.content:
+                    blocks.append({"type": "text", "text": message.content})
+                blocks.extend(
+                    {"type": "tool_use", "id": call.id, "name": call.name, "input": call.arguments}
+                    for call in message.tool_calls
+                )
+                anthropic_messages.append({"role": "assistant", "content": blocks})
             else:
                 anthropic_messages.append({"role": message.role, "content": message.content})
 

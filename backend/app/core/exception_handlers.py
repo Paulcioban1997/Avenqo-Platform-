@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from backend.app.core.logging import configure_logging
+logger = logging.getLogger("avenqo.errors")
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -41,8 +43,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 async def internal_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Renvoie une réponse JSON uniforme pour les erreurs inattendues."""
-    configure_logging()
+    """Renvoie une réponse JSON uniforme pour les erreurs inattendues.
+
+    La trace complète est journalisée côté serveur uniquement (jamais dans la
+    réponse client) — voir docs/production-deployment.md § Observabilité.
+    """
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception("Unhandled exception (request_id=%s)", request_id)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -52,7 +59,7 @@ async def internal_exception_handler(request: Request, exc: Exception) -> JSONRe
                 "message": "An unexpected internal error occurred",
                 "details": None,
             },
-            "request_id": getattr(request.state, "request_id", None),
+            "request_id": request_id,
         },
     )
 

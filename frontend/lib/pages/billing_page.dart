@@ -68,7 +68,7 @@ class BillingPage extends StatelessWidget {
               Card(
                 child: ListTile(
                   title: Text(
-                    'Plan ${subscription?['plan_code'] ?? 'starter'}',
+                    'Plan ${subscription?['plan_code'] ?? 'demo'}',
                   ),
                   subtitle: Text(
                     'État: ${subscription?['status'] ?? 'inactive'}',

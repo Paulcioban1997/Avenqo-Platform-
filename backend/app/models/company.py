@@ -61,3 +61,8 @@ class Company(TimestampMixin, Base):
         back_populates="company",
         cascade="all, delete-orphan",
     )
+    onboarding: Mapped["CompanyOnboarding | None"] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )

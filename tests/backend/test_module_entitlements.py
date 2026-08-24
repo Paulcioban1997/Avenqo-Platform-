@@ -23,7 +23,7 @@ def test_sqlalchemy_entitlements_require_active_company_module() -> None:
             country="FR",
             timezone="Europe/Paris",
             industry="retail",
-            subscription_plan="starter",
+            subscription_plan="demo",
         )
         module = Module(name="RetailSenseAI", code="retail")
         session.add_all([company, module])

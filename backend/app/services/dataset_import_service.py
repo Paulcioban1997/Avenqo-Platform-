@@ -19,8 +19,8 @@ from backend.app.models import (
     DatasetVersionStatus,
 )
 from backend.app.services.artifact_service import ArtifactService
+from backend.app.services.data_import_policy import DataImportPolicy
 from modules.catalog import MODULES_BY_CODE
-from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_management.service import DatasetManagementService
 from shared.ai_engine.schema_detection.detector import SchemaDetector
@@ -41,12 +41,12 @@ class DatasetImportService:
         self,
         session: Session,
         artifacts: ArtifactService,
-        access: ModuleAccessService,
+        quota: DataImportPolicy,
         max_upload_bytes: int,
     ) -> None:
         self._session = session
         self._artifacts = artifacts
-        self._access = access
+        self._quota = quota
         self._max_upload_bytes = max_upload_bytes
 
     def import_csv(
@@ -58,10 +58,14 @@ class DatasetImportService:
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetImportError("Module Avenqo inconnu")
-        self._access.require_active(tenant, module_code)
+        # L'ingestion de données est une capacité CORE Avenqo : jamais
+        # subordonnée à l'activation d'un module optionnel. Seule une limite
+        # de plan (nombre de datasets) s'applique ici.
+        self._quota.check_dataset_quota(tenant)
         if not filename.lower().endswith(".csv"):
             raise DatasetImportError("Seuls les fichiers CSV sont acceptÃ©s Ã  cette Ã©tape")
-        if not content or len(content) > self._max_upload_bytes:
+        max_upload_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
+        if not content or len(content) > max_upload_bytes:
             raise DatasetImportError("Fichier vide ou taille maximale dÃ©passÃ©e")
         try:
             rows = list(csv.DictReader(StringIO(content.decode("utf-8-sig"))))

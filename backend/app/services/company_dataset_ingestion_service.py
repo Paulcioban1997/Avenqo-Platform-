@@ -25,8 +25,8 @@ from backend.app.models import (
     DatasetVersionStatus,
     Mapping as MappingModel,
 )
+from backend.app.services.data_import_policy import DataImportPolicy
 from modules.catalog import MODULES_BY_CODE
-from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELDS
 from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
@@ -87,12 +87,13 @@ class CompanyDatasetIngestionService:
         self,
         session: Session,
         storage: LocalDatasetStorage,
-        access: ModuleAccessService,
+        quota: DataImportPolicy,
         max_upload_bytes: int,
     ) -> None:
         self._session = session
         self._storage = storage
-        self._access = access
+        self._quota = quota
+        self._max_upload_bytes = max_upload_bytes
         self._loader = CompanyDatasetLoader(max_upload_bytes)
         self._mapper = SemanticColumnMapper()
         self._profiler = DatasetProfiler()
@@ -107,12 +108,21 @@ class CompanyDatasetIngestionService:
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetIngestionError("Module Avenqo inconnu")
-        self._access.require_active(tenant, module_code)
+        plan_max_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
+        if not content or len(content) > plan_max_bytes:
+            raise DatasetIngestionError("Fichier vide ou taille maximale dépassée pour votre offre")
 
         loaded = self._loader.load(filename, content)
         rows = [dict(row) for row in loaded.rows]
 
         existing = self._find_existing_dataset(tenant, Path(filename).name)
+        # L'ingestion de données est une capacité CORE Avenqo : jamais
+        # subordonnée à l'activation d'un module optionnel (retail/crm/
+        # accounting). Seule une limite de plan s'applique, et uniquement
+        # pour un NOUVEAU dataset (un nouvel import de fichier existant
+        # crée une nouvelle version, pas une nouvelle entrée de quota).
+        if existing is None:
+            self._quota.check_dataset_quota(tenant)
         version_number = 1
         dataset_id = uuid4()
         if existing is not None:
@@ -250,6 +260,14 @@ class CompanyDatasetIngestionService:
         if dataset is None:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
+
+    def get_module_code(self, tenant: TenantContext, dataset_id: UUID) -> str | None:
+        """Module Avenqo associé à l'import, utilisé uniquement pour gérer
+        l'exécution de capacités métier optionnelles sur ce dataset
+        (voir `CapabilityExecutionGate`) — jamais pour l'ingestion elle-même.
+        """
+        dataset = self.get(tenant, dataset_id)
+        return dataset.profile.module_code if dataset.profile else None
 
     def get_profile_summary(self, tenant: TenantContext, dataset_id: UUID) -> DatasetProfileSummary:
         dataset = self.get(tenant, dataset_id)

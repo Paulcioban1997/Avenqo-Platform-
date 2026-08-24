@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/destinations.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/widgets/language_selector.dart';
+import 'package:avenqo/widgets/theme_toggle_button.dart';
+
+class _Brand {
+  const _Brand._();
+  static const blue = Color(0xFF087CF0);
+}
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -22,9 +30,9 @@ class AppShell extends StatelessWidget {
     );
     final index = selected < 0 ? 0 : selected;
     final compact = MediaQuery.sizeOf(context).width < 960;
+    final showAskCta = currentPath != '/assistant';
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -39,17 +47,32 @@ class AppShell extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             const Text('Avenqo', style: TextStyle(fontWeight: FontWeight.w700)),
-            if (!compact) ...[
-              const SizedBox(width: 10),
-              const Text('RetailSense', style: TextStyle(fontSize: 14, color: Color(0xFF647476))),
-            ],
           ],
         ),
         actions: [
+          if (showAskCta && !compact)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton.icon(
+                onPressed: () => context.go('/assistant'),
+                style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: const Text('Ask Avenqo AI'),
+              ),
+            ),
+          const ThemeToggleButton(),
+          const LanguageSelector(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Center(
-              child: Text(auth.company?['name']?.toString() ?? 'Avenqo'),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  auth.company?['name']?.toString() ?? 'Avenqo',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ),
           IconButton(
@@ -61,15 +84,25 @@ class AppShell extends StatelessWidget {
       ),
       drawer: compact
           ? Drawer(
-              child: _DestinationList(index: index, onSelect: context.go),
+              child: _SidebarContent(
+                index: index,
+                onSelect: context.go,
+                showAdminEntry: auth.isPlatformAdmin,
+                auth: auth,
+              ),
             )
           : null,
       body: Row(
         children: [
           if (!compact)
             SizedBox(
-              width: 232,
-              child: _DestinationList(index: index, onSelect: context.go),
+              width: 260,
+              child: _SidebarContent(
+                index: index,
+                onSelect: context.go,
+                showAdminEntry: auth.isPlatformAdmin,
+                auth: auth,
+              ),
             ),
           const VerticalDivider(width: 1),
           Expanded(child: child),
@@ -79,34 +112,167 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _DestinationList extends StatelessWidget {
-  const _DestinationList({required this.index, required this.onSelect});
+class _SidebarContent extends StatelessWidget {
+  const _SidebarContent({
+    required this.index,
+    required this.onSelect,
+    required this.auth,
+    this.showAdminEntry = false,
+  });
 
   final int index;
   final void Function(String) onSelect;
+  final AuthController auth;
+  final bool showAdminEntry;
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
-        itemCount: appDestinations.length,
-        itemBuilder: (context, itemIndex) {
-          final destination = appDestinations[itemIndex];
-          final selected = itemIndex == index;
-          return Padding(
+      child: _DestinationList(
+        index: index,
+        onSelect: onSelect,
+        showAdminEntry: showAdminEntry,
+        auth: auth,
+      ),
+    );
+  }
+}
+
+class _CompanyIdentityCard extends StatelessWidget {
+  const _CompanyIdentityCard({required this.auth, required this.onSelect});
+
+  final AuthController auth;
+  final void Function(String) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final company = auth.company ?? const <String, dynamic>{};
+    final planCode = company['subscription_plan']?.toString();
+    final companyName = company['name']?.toString() ?? 'Avenqo';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: _Brand.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
+                child: const Icon(Icons.apartment, color: _Brand.blue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  companyName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+              ),
+            ],
+          ),
+          if (planCode != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _Brand.blue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${planCode[0].toUpperCase()}${planCode.substring(1)}',
+                style: const TextStyle(color: _Brand.blue, fontWeight: FontWeight.w700, fontSize: 11),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextButton(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
+            onPressed: () => onSelect('/billing'),
+            child: const Text('Gérer l\u2019abonnement', style: TextStyle(fontSize: 12.5)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DestinationList extends StatelessWidget {
+  const _DestinationList({
+    required this.index,
+    required this.onSelect,
+    required this.auth,
+    this.showAdminEntry = false,
+  });
+
+  final int index;
+  final void Function(String) onSelect;
+  final AuthController auth;
+  final bool showAdminEntry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
+      children: [
+        for (var itemIndex = 0; itemIndex < appDestinations.length; itemIndex++) ...[
+          if (appDestinations[itemIndex].sectionBreakBefore)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+          _buildTile(context, appDestinations[itemIndex], itemIndex == index),
+        ],
+        if (showAdminEntry) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Divider(),
+          ),
+          Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: ListTile(
-              selected: selected,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-              leading: Icon(destination.icon, size: 21),
-              title: Text(destination.label, style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+              leading: const Icon(Icons.admin_panel_settings_outlined, size: 21),
+              title: const Text('Avenqo Admin', style: TextStyle(fontWeight: FontWeight.w700)),
               onTap: () {
                 if (Scaffold.maybeOf(context)?.hasDrawer ?? false) Navigator.pop(context);
-                onSelect(destination.path);
+                onSelect('/admin');
               },
             ),
-          );
+          ),
+        ],
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Divider(),
+        ),
+        _CompanyIdentityCard(auth: auth, onSelect: onSelect),
+      ],
+    );
+  }
+
+  Widget _buildTile(BuildContext context, AppDestination destination, bool selected) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        selected: selected,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        leading: Icon(destination.icon, size: 21),
+        title: Text(
+          destination.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+          style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
+        ),
+        onTap: () {
+          if (Scaffold.maybeOf(context)?.hasDrawer ?? false) Navigator.pop(context);
+          onSelect(destination.path);
         },
       ),
     );
