@@ -530,7 +530,7 @@ class _AuthPageState extends State<AuthPage> {
       Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
       const SizedBox(height: 8),
       const Text(
-        'Your workspace will be created securely through Avenqo FastAPI.',
+        'Your Avenqo workspace is ready to be created.',
       ),
     ],
   );
