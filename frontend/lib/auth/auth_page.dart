@@ -198,7 +198,7 @@ class _AuthPageState extends State<AuthPage> {
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(32),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 460),
+                        constraints: const BoxConstraints(maxWidth: 760),
                         child: form,
                       ),
                     ),
@@ -399,7 +399,7 @@ class _AuthPageState extends State<AuthPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _field(_company, t.organisation, t: t),
-          _field(_website, 'Website (optional)', t: t),
+          _field(_website, 'Website (optional)', t: t, optional: true),
           DropdownButtonFormField<String>(
             initialValue: _signupIndustry,
             decoration: InputDecoration(
@@ -541,6 +541,7 @@ class _AuthPageState extends State<AuthPage> {
     required AuthStrings t,
     bool email = false,
     bool password = false,
+    bool optional = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -563,8 +564,22 @@ class _AuthPageState extends State<AuthPage> {
                 )
               : null,
         ),
-        validator: (value) =>
-            value == null || value.trim().isEmpty ? t.requiredField : null,
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (text.isEmpty && optional) return null;
+          if (text.isEmpty) return t.requiredField;
+          if (controller == _website) {
+            final candidate =
+                text.startsWith('http://') || text.startsWith('https://')
+                ? text
+                : 'https://$text';
+            final uri = Uri.tryParse(candidate);
+            if (uri == null || uri.host.isEmpty || !uri.host.contains('.')) {
+              return t.genericError;
+            }
+          }
+          return null;
+        },
       ),
     );
   }

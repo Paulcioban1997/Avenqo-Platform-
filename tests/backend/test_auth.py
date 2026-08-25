@@ -151,7 +151,7 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
     with session_factory() as session:
         company = session.scalar(select(Company).where(Company.name == "Profile Company"))
         assert company is not None
-        assert company.website == "https://profile.example"
+        assert company.website == "https://profile.example/"
         assert company.region == "Europe"
         assert company.company_size == "11-50"
         assert company.billing_email == "billing@profile.example"
@@ -164,6 +164,20 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
         assert onboarding is not None
         assert onboarding.business_goals == ["increase_sales", "reduce_churn"]
         assert onboarding.current_tools == ["csv", "crm"]
+
+
+def test_inscription_sans_site_web_est_valide(auth_environment) -> None:
+    client, session_factory, _ = auth_environment
+    payload = registration_payload("no-site@acme.ca", "No Site Company")
+    payload["website"] = ""
+
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 201
+    with session_factory() as session:
+        company = session.scalar(select(Company).where(Company.name == "No Site Company"))
+        assert company is not None
+        assert company.website is None
 
 
 def test_refresh_token_est_rotatif_et_jwt_altere_est_refuse(auth_environment) -> None:

@@ -31,6 +31,18 @@ class RegisterRequest(BaseModel):
     business_goals: list[str] = Field(default_factory=list, max_length=20)
     current_tools: list[str] = Field(default_factory=list, max_length=20)
 
+    @field_validator("website", mode="before")
+    @classmethod
+    def normalize_website(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        candidate = value.strip()
+        if not candidate.startswith(("http://", "https://")):
+            candidate = f"https://{candidate}"
+        from pydantic import AnyHttpUrl, TypeAdapter
+
+        return str(TypeAdapter(AnyHttpUrl).validate_python(candidate))
+
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
