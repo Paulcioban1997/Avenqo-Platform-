@@ -24,11 +24,10 @@ Future<void> _contactByEmail() async {
 
 /// Conteneur de section centré, aligné sur .page-shell / .section du site web.
 class _Section extends StatelessWidget {
-  const _Section({required this.child, this.color, this.padding});
+  const _Section({required this.child, this.color});
 
   final Widget child;
   final Color? color;
-  final EdgeInsets? padding;
 
   @override
   Widget build(BuildContext context) {
@@ -36,8 +35,7 @@ class _Section extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: color ?? colors.surface,
-      padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1180),
@@ -54,14 +52,12 @@ class _SectionHeading extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.dark = false,
-    this.center = false,
   });
 
   final String kicker;
   final String title;
   final String? subtitle;
   final bool dark;
-  final bool center;
 
   @override
   Widget build(BuildContext context) {
@@ -69,13 +65,10 @@ class _SectionHeading extends StatelessWidget {
     final titleColor = dark ? colors.surface : colors.ink;
     final subtitleColor = dark ? colors.muted : colors.muted;
     return Column(
-      crossAxisAlignment: center
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           kicker.toUpperCase(),
-          textAlign: center ? TextAlign.center : TextAlign.start,
           style: const TextStyle(
             color: _Brand.blue,
             fontSize: 12,
@@ -86,7 +79,6 @@ class _SectionHeading extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           title,
-          textAlign: center ? TextAlign.center : TextAlign.start,
           style: TextStyle(
             color: titleColor,
             fontSize: 32,
@@ -100,7 +92,6 @@ class _SectionHeading extends StatelessWidget {
             width: 620,
             child: Text(
               subtitle!,
-              textAlign: center ? TextAlign.center : TextAlign.start,
               style: TextStyle(color: subtitleColor, fontSize: 15, height: 1.6),
             ),
           ),
