@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     smtp_from_email: str = Field(default="noreply@avenqo.ca", alias="SMTP_FROM_EMAIL")
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    avenqo_owner_notification_email: str | None = Field(default=None, alias="AVENQO_OWNER_NOTIFICATION_EMAIL")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")

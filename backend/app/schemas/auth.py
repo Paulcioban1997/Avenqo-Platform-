@@ -20,6 +20,16 @@ class RegisterRequest(BaseModel):
     country: str = Field(min_length=2, max_length=100)
     timezone: str = Field(default="America/Toronto", min_length=3, max_length=100)
     industry: str = Field(min_length=2, max_length=120)
+    website: str | None = Field(default=None, max_length=255)
+    region: str = Field(default="North America", min_length=2, max_length=100)
+    company_size: str = Field(default="1-10", min_length=1, max_length=50)
+    preferred_language: str = Field(default="fr", min_length=2, max_length=10)
+    billing_email: EmailStr | None = None
+    job_title: str = Field(default="Owner", min_length=1, max_length=120)
+    phone: str | None = Field(default=None, max_length=32)
+    plan_code: str = Field(default="demo", pattern="^(demo|professional|enterprise)$")
+    business_goals: list[str] = Field(default_factory=list, max_length=20)
+    current_tools: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("password")
     @classmethod
@@ -71,6 +81,7 @@ class CompanyResponse(BaseModel):
     slug: str
     subscription_plan: str
     onboarding_status: str
+    billing_email: str
 
     model_config = {"from_attributes": True}
 

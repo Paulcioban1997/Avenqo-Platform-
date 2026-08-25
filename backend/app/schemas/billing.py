@@ -10,6 +10,7 @@ class PlanResponse(BaseModel):
     code: str
     name: str
     requires_sales_contact: bool
+    monthly_price_usd: int | None
 
 
 class CheckoutRequest(BaseModel):

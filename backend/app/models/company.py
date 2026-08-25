@@ -22,10 +22,15 @@ class Company(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    billing_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
     industry: Mapped[str] = mapped_column(String(120), nullable=False)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    region: Mapped[str] = mapped_column(String(100), nullable=False, default="North America")
+    company_size: Mapped[str] = mapped_column(String(50), nullable=False, default="1-10")
+    preferred_language: Mapped[str] = mapped_column(String(10), nullable=False, default="fr")
     subscription_plan: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[CompanyStatus] = mapped_column(
         SAEnum(CompanyStatus, name="company_status"),

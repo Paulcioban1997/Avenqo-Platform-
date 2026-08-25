@@ -21,6 +21,7 @@ class SubscriptionPlan:
     name: str
     selectable_modules: frozenset[str]
     requires_sales_contact: bool = False
+    monthly_price_usd: int | None = None
 
     def allows_module(self, module_code: str) -> bool:
         """Indique si le module peut Ãªtre choisi avec cette offre."""
@@ -31,9 +32,9 @@ class SubscriptionPlan:
 RETAIL_MODULES = frozenset({"retail"})
 
 PLANS: tuple[SubscriptionPlan, ...] = (
-    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES),
-    SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES),
-    SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES),
+    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=29),
+    SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES, monthly_price_usd=99),
+    SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES, monthly_price_usd=None),
     SubscriptionPlan(
         PlanCode.CUSTOM_ENTERPRISE,
         "Custom Enterprise",

@@ -41,6 +41,18 @@ class _AuthPageState extends State<AuthPage> {
   final _companyEmail = TextEditingController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+  final _website = TextEditingController();
+  final _country = TextEditingController(text: 'Canada');
+  final _region = TextEditingController(text: 'North America');
+  final _companySize = TextEditingController();
+  final _jobTitle = TextEditingController();
+  final _phone = TextEditingController();
+  final _passwordConfirmation = TextEditingController();
+  int _signupStep = 0;
+  String _signupIndustry = 'Retail';
+  String _signupPlan = 'demo';
+  final _signupGoals = <String>{};
+  final _signupTools = <String>{};
   String? _message;
   bool _isError = false;
   bool _obscurePassword = true;
@@ -55,15 +67,26 @@ class _AuthPageState extends State<AuthPage> {
       _companyEmail,
       _firstName,
       _lastName,
+      _website,
+      _country,
+      _region,
+      _companySize,
+      _jobTitle,
+      _phone,
+      _passwordConfirmation,
     ]) {
       controller.dispose();
     }
     super.dispose();
   }
 
-  ({String title, String subtitle}) _copy(AuthStrings t) => switch (widget.mode) {
+  ({String title, String subtitle}) _copy(AuthStrings t) =>
+      switch (widget.mode) {
         AuthMode.login => (title: t.loginTitle, subtitle: t.loginSubtitle),
-        AuthMode.register => (title: t.registerTitle, subtitle: t.registerSubtitle),
+        AuthMode.register => (
+          title: t.registerTitle,
+          subtitle: t.registerSubtitle,
+        ),
         AuthMode.forgot => (title: t.forgotTitle, subtitle: t.forgotSubtitle),
         AuthMode.verify => (title: t.verifyTitle, subtitle: t.verifySubtitle),
         AuthMode.reset => (title: t.resetTitle, subtitle: t.resetSubtitle),
@@ -71,6 +94,12 @@ class _AuthPageState extends State<AuthPage> {
 
   Future<void> _submit(AuthStrings t) async {
     if (!_formKey.currentState!.validate()) return;
+    if (widget.mode == AuthMode.register &&
+        _signupStep == 2 &&
+        _password.text != _passwordConfirmation.text) {
+      _show(t.genericError, isError: true);
+      return;
+    }
     setState(() => _message = null);
     try {
       switch (widget.mode) {
@@ -78,17 +107,11 @@ class _AuthPageState extends State<AuthPage> {
           await widget.auth.login(_email.text, _password.text);
           if (mounted) context.go('/dashboard');
         case AuthMode.register:
-          await widget.auth.register({
-            'company_name': _company.text,
-            'company_email': _companyEmail.text,
-            'first_name': _firstName.text,
-            'last_name': _lastName.text,
-            'email': _email.text,
-            'password': _password.text,
-            'country': 'Canada',
-            'timezone': 'America/Toronto',
-            'industry': 'Technology',
-          });
+          if (_signupStep < 4) {
+            setState(() => _signupStep++);
+            return;
+          }
+          await widget.auth.register(_signupPayload());
           _show(t.registerSuccess);
         case AuthMode.forgot:
           await widget.auth.forgotPassword(_email.text);
@@ -109,6 +132,27 @@ class _AuthPageState extends State<AuthPage> {
       _show(t.genericError, isError: true);
     }
   }
+
+  Map<String, dynamic> _signupPayload() => {
+    'company_name': _company.text,
+    'company_email': _companyEmail.text,
+    'billing_email': _companyEmail.text,
+    'first_name': _firstName.text,
+    'last_name': _lastName.text,
+    'job_title': _jobTitle.text,
+    'phone': _phone.text,
+    'email': _email.text,
+    'password': _password.text,
+    'country': _country.text,
+    'region': _region.text,
+    'company_size': _companySize.text,
+    'preferred_language': Localizations.localeOf(context).languageCode,
+    'timezone': 'America/Toronto',
+    'industry': _signupIndustry,
+    'plan_code': _signupPlan,
+    'business_goals': _signupGoals.toList(),
+    'current_tools': _signupTools.toList(),
+  };
 
   void _show(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -169,6 +213,7 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Widget _buildForm(AuthStrings t) {
+    if (widget.mode == AuthMode.register) return _buildSignupForm(t);
     return Form(
       key: _formKey,
       child: Column(
@@ -197,22 +242,23 @@ class _AuthPageState extends State<AuthPage> {
             AuthMode.reset,
           ].contains(widget.mode))
             _field(_password, t.password, t: t, password: true),
-          if ([
-            AuthMode.verify,
-            AuthMode.reset,
-          ].contains(widget.mode))
+          if ([AuthMode.verify, AuthMode.reset].contains(widget.mode))
             _field(_token, t.emailToken, t: t),
           if (_message != null) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: _isError ? const Color(0xFFFFF4F2) : const Color(0xFFF0FBF6),
+                color: _isError
+                    ? const Color(0xFFFFF4F2)
+                    : const Color(0xFFF0FBF6),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 _message!,
                 style: TextStyle(
-                  color: _isError ? const Color(0xFFB42318) : const Color(0xFF1B7A4A),
+                  color: _isError
+                      ? const Color(0xFFB42318)
+                      : const Color(0xFF1B7A4A),
                   fontSize: 13,
                 ),
               ),
@@ -225,37 +271,269 @@ class _AuthPageState extends State<AuthPage> {
               backgroundColor: _Brand.blue,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             child: widget.auth.busy
                 ? const SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : Text(_copy(t).title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                : Text(
+                    _copy(t).title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
           ),
           if (widget.mode == AuthMode.login) ...[
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => context.go('/forgot-password'),
-              child: Text(t.forgotPassword, style: TextStyle(color: AvenqoColors.of(context).muted)),
+              child: Text(
+                t.forgotPassword,
+                style: TextStyle(color: AvenqoColors.of(context).muted),
+              ),
             ),
             TextButton(
               onPressed: () => context.go('/register'),
-              child: Text(t.createOrganisation, style: const TextStyle(color: _Brand.blueDark, fontWeight: FontWeight.w700)),
+              child: Text(
+                t.createOrganisation,
+                style: const TextStyle(
+                  color: _Brand.blueDark,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
           if (widget.mode != AuthMode.login) ...[
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => context.go('/login'),
-              child: Text(t.backToLogin, style: const TextStyle(color: _Brand.blueDark, fontWeight: FontWeight.w700)),
+              child: Text(
+                t.backToLogin,
+                style: const TextStyle(
+                  color: _Brand.blueDark,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
         ],
       ),
     );
   }
+
+  Widget _buildSignupForm(AuthStrings t) {
+    final onboarding = AvenqoLocaleScope.translationsOf(context).onboarding;
+    final steps = [
+      t.organisation,
+      onboarding.goalsLabel,
+      t.createOrganisation,
+      'Plan',
+      'Confirmation',
+    ];
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SignupProgress(step: _signupStep, labels: steps),
+          const SizedBox(height: 24),
+          switch (_signupStep) {
+            0 => _signupOrganisation(t, onboarding),
+            1 => _signupNeeds(onboarding),
+            2 => _signupOwner(t),
+            3 => _signupPlans(
+              AvenqoLocaleScope.translationsOf(context).pricing,
+            ),
+            _ => _signupConfirmation(t),
+          },
+          const SizedBox(height: 24),
+          if (_message != null) ...[
+            Text(
+              _message!,
+              style: TextStyle(
+                color: _isError ? Colors.redAccent : Colors.green,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              if (_signupStep > 0)
+                TextButton(
+                  onPressed: widget.auth.busy
+                      ? null
+                      : () => setState(() => _signupStep--),
+                  child: Text(t.backToLogin),
+                ),
+              const Spacer(),
+              FilledButton(
+                onPressed: widget.auth.busy ? null : () => _submit(t),
+                child: widget.auth.busy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _signupStep == 4
+                            ? t.registerTitle
+                            : onboarding.continueCta,
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _signupOrganisation(AuthStrings t, OnboardingStrings onboarding) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _field(_company, t.organisation, t: t),
+          _field(_website, 'Website (optional)', t: t),
+          DropdownButtonFormField<String>(
+            initialValue: _signupIndustry,
+            decoration: InputDecoration(
+              labelText: onboarding.refineIndustryLabel,
+            ),
+            items:
+                const [
+                      'Retail',
+                      'E-commerce',
+                      'Professional Services',
+                      'Technology',
+                      'Manufacturing',
+                      'Healthcare',
+                      'Other',
+                    ]
+                    .map(
+                      (value) =>
+                          DropdownMenuItem(value: value, child: Text(value)),
+                    )
+                    .toList(),
+            onChanged: (value) =>
+                setState(() => _signupIndustry = value ?? _signupIndustry),
+          ),
+          const SizedBox(height: 14),
+          _field(_companySize, onboarding.teamSizeLabel, t: t),
+          _field(_country, 'Country', t: t),
+          _field(_region, 'Region', t: t),
+          _field(_companyEmail, t.billingEmail, t: t, email: true),
+        ],
+      );
+
+  Widget _signupNeeds(OnboardingStrings t) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(t.goalsLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 12),
+      _choiceWrap([
+        ("increase_sales", t.goalIncreaseSales),
+        ("reduce_churn", t.goalReduceChurn),
+        ("optimize_pricing", t.goalOptimizePricing),
+        ("understand_customers", t.goalUnderstandCustomers),
+        ("automate_reports", t.goalAutomateReports),
+      ], _signupGoals),
+      const SizedBox(height: 24),
+      Text(t.toolsLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 12),
+      _choiceWrap([
+        ("csv", t.toolSpreadsheets),
+        ("ecommerce", t.toolEcommerce),
+        ("pos", t.toolPos),
+        ("accounting", t.toolAccounting),
+        ("crm", t.toolCrm),
+      ], _signupTools),
+    ],
+  );
+
+  Widget _choiceWrap(List<(String, String)> choices, Set<String> selected) =>
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final choice in choices)
+            FilterChip(
+              label: Text(choice.$2),
+              selected: selected.contains(choice.$1),
+              onSelected: (value) => setState(
+                () => value
+                    ? selected.add(choice.$1)
+                    : selected.remove(choice.$1),
+              ),
+            ),
+        ],
+      );
+
+  Widget _signupOwner(AuthStrings t) => Column(
+    children: [
+      Row(
+        children: [
+          Expanded(child: _field(_firstName, t.firstName, t: t)),
+          const SizedBox(width: 12),
+          Expanded(child: _field(_lastName, t.lastName, t: t)),
+        ],
+      ),
+      _field(_jobTitle, 'Role / title', t: t),
+      _field(_email, t.email, t: t, email: true),
+      _field(_password, t.password, t: t, password: true),
+      _field(_passwordConfirmation, 'Confirm password', t: t, password: true),
+      _field(_phone, 'Phone (optional)', t: t),
+    ],
+  );
+
+  Widget _signupPlans(PricingStrings pricing) => Column(
+    children: [
+      for (final plan in pricing.plans)
+        Card(
+          color: _signupPlan == plan.tier.toLowerCase()
+              ? Theme.of(context).colorScheme.primaryContainer
+              : null,
+          child: ListTile(
+            onTap: () => setState(() => _signupPlan = plan.tier.toLowerCase()),
+            leading: Icon(
+              _signupPlan == plan.tier.toLowerCase()
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            title: Text(
+              plan.tier,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(plan.priceLabel),
+          ),
+        ),
+    ],
+  );
+
+  Widget _signupConfirmation(AuthStrings t) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        t.registerTitle,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        '${_company.text} · $_signupIndustry · ${_signupPlan.toUpperCase()}',
+      ),
+      Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
+      const SizedBox(height: 8),
+      const Text(
+        'Your workspace will be created securely through Avenqo FastAPI.',
+      ),
+    ],
+  );
 
   Widget _field(
     TextEditingController controller,
@@ -274,14 +552,47 @@ class _AuthPageState extends State<AuthPage> {
           labelText: label,
           suffixIcon: password
               ? IconButton(
-                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
                   color: AvenqoColors.of(context).muted,
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 )
               : null,
         ),
-        validator: (value) => value == null || value.trim().isEmpty ? t.requiredField : null,
+        validator: (value) =>
+            value == null || value.trim().isEmpty ? t.requiredField : null,
       ),
+    );
+  }
+}
+
+class _SignupProgress extends StatelessWidget {
+  const _SignupProgress({required this.step, required this.labels});
+
+  final int step;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 8,
+      children: [
+        for (var index = 0; index < labels.length; index++)
+          Text(
+            '${index + 1}. ${labels[index]}',
+            style: TextStyle(
+              color: index == step ? colors.ink : colors.muted,
+              fontWeight: index == step ? FontWeight.w800 : FontWeight.w500,
+              fontSize: 11,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -307,7 +618,12 @@ class _BrandPanel extends StatelessWidget {
               height: 240,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [_Brand.blue.withValues(alpha: 0.25), Colors.transparent]),
+                gradient: RadialGradient(
+                  colors: [
+                    _Brand.blue.withValues(alpha: 0.25),
+                    Colors.transparent,
+                  ],
+                ),
               ),
             ),
           ),
@@ -321,19 +637,35 @@ class _BrandPanel extends StatelessWidget {
                   children: [
                     Icon(Icons.change_history, color: _Brand.blue, size: 26),
                     SizedBox(width: 10),
-                    Text('Avenqo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 26)),
+                    Text(
+                      'Avenqo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 26,
+                      ),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 28),
               Text(
                 tagline,
-                style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, height: 1.25),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  height: 1.25,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
                 t.common.isolatedData,
-                style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.6),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  height: 1.6,
+                ),
               ),
             ],
           ),
@@ -359,7 +691,14 @@ class _CompactHeader extends StatelessWidget {
             children: [
               const Icon(Icons.change_history, color: _Brand.blue, size: 22),
               const SizedBox(width: 8),
-              Text('Avenqo', style: TextStyle(color: colors.ink, fontWeight: FontWeight.w800, fontSize: 20)),
+              Text(
+                'Avenqo',
+                style: TextStyle(
+                  color: colors.ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
+              ),
             ],
           ),
         ),
@@ -372,7 +711,11 @@ class _CompactHeader extends StatelessWidget {
 }
 
 class _FormCard extends StatelessWidget {
-  const _FormCard({required this.title, required this.subtitle, required this.child});
+  const _FormCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
 
   final String title;
   final String subtitle;
@@ -390,7 +733,11 @@ class _FormCard extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(color: colors.ink, fontSize: 26, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: colors.ink,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
             ThemeToggleButton(foregroundColor: colors.muted),
@@ -398,7 +745,10 @@ class _FormCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text(subtitle, style: TextStyle(color: colors.muted, fontSize: 14, height: 1.5)),
+        Text(
+          subtitle,
+          style: TextStyle(color: colors.muted, fontSize: 14, height: 1.5),
+        ),
         const SizedBox(height: 28),
         Card(
           elevation: 0,
@@ -421,4 +771,3 @@ class _FormCard extends StatelessWidget {
     );
   }
 }
-

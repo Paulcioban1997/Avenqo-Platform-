@@ -39,6 +39,7 @@ def plans() -> list[PlanResponse]:
         code=plan.code.value,
         name=plan.name,
         requires_sales_contact=plan.requires_sales_contact,
+        monthly_price_usd=plan.monthly_price_usd,
     ) for plan in PLANS]
 
 

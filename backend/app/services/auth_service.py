@@ -17,7 +17,17 @@ from backend.app.core.security import (
     hash_token,
     verify_password,
 )
-from backend.app.models import AccountToken, AccountTokenPurpose, AuthSession, Company, CompanyStatus, User, UserRole
+from backend.app.models import (
+    AccountToken,
+    AccountTokenPurpose,
+    AuthSession,
+    Company,
+    CompanyOnboarding,
+    CompanyStatus,
+    OnboardingStatus,
+    User,
+    UserRole,
+)
 from backend.app.schemas.auth import RegisterRequest
 from backend.app.services.account_notifications import AccountNotifier
 
@@ -58,16 +68,23 @@ class AuthService:
             name=request.company_name.strip(),
             slug=self._unique_slug(request.company_name),
             email=company_email,
+            billing_email=str(request.billing_email or request.company_email).strip().lower(),
             country=request.country.strip(),
             timezone=request.timezone.strip(),
             industry=request.industry.strip(),
-            subscription_plan="demo",
+            website=request.website.strip() if request.website else None,
+            region=request.region.strip(),
+            company_size=request.company_size.strip(),
+            preferred_language=request.preferred_language.strip(),
+            subscription_plan=request.plan_code,
             status=CompanyStatus.ACTIVE,
         )
         user = User(
             company=company,
             first_name=request.first_name.strip(),
             last_name=request.last_name.strip(),
+            job_title=request.job_title.strip(),
+            phone=request.phone.strip() if request.phone else None,
             email=email,
             password_hash=hash_password(request.password),
             role=UserRole.OWNER,
@@ -75,9 +92,32 @@ class AuthService:
         )
         self._session.add_all((company, user))
         self._session.flush()
+        if request.business_goals or request.current_tools:
+            self._session.add(
+                CompanyOnboarding(
+                    company_id=company.id,
+                    status=OnboardingStatus.PENDING,
+                    business_goals=request.business_goals,
+                    current_tools=request.current_tools,
+                    team_size=request.company_size,
+                    refined_industry=request.industry.strip(),
+                )
+            )
+            self._session.flush()
         token = self._create_account_token(user, AccountTokenPurpose.EMAIL_VERIFICATION, 24)
         self._session.commit()
-        self._notifier.send_email_verification(user.email, token)
+        try:
+            self._notifier.send_email_verification(user.email, token)
+        except Exception:
+            # SMTP is an external side effect; never undo a committed account.
+            pass
+        try:
+            notify = getattr(self._notifier, "send_new_company", None)
+            if notify:
+                notify(company, user, request)
+        except Exception:
+            # Account creation remains successful when owner SMTP is unavailable.
+            pass
         return company, user
 
     def login(self, email: str, password: str) -> AuthResult:

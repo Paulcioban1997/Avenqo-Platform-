@@ -48,6 +48,7 @@ def _company_response(company: Company) -> CompanyResponse:
         slug=company.slug,
         subscription_plan=company.subscription_plan,
         onboarding_status=onboarding_status.value,
+        billing_email=company.billing_email,
     )
 
 

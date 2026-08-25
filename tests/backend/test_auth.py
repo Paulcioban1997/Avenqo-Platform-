@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.app.core.security import decode_access_token, verify_password
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
-from backend.app.models import Base, Company, User
+from backend.app.models import Base, Company, CompanyOnboarding, User
 from backend.main import create_application
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 
@@ -128,6 +128,42 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
         "/api/v1/auth/refresh",
         json={"refresh_token": login["refresh_token"]},
     ).status_code == 401
+
+
+def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:
+    client, session_factory, _ = auth_environment
+    payload = registration_payload("profile@acme.ca", "Profile Company") | {
+        "website": "https://profile.example",
+        "region": "Europe",
+        "company_size": "11-50",
+        "preferred_language": "fr",
+        "billing_email": "billing@profile.example",
+        "job_title": "General Manager",
+        "phone": "+33123456789",
+        "plan_code": "professional",
+        "business_goals": ["increase_sales", "reduce_churn"],
+        "current_tools": ["csv", "crm"],
+    }
+
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 201
+    with session_factory() as session:
+        company = session.scalar(select(Company).where(Company.name == "Profile Company"))
+        assert company is not None
+        assert company.website == "https://profile.example"
+        assert company.region == "Europe"
+        assert company.company_size == "11-50"
+        assert company.billing_email == "billing@profile.example"
+        assert company.subscription_plan == "professional"
+        user = session.scalar(select(User).where(User.email == "profile@acme.ca"))
+        assert user is not None
+        assert user.job_title == "General Manager"
+        assert user.phone == "+33123456789"
+        onboarding = session.get(CompanyOnboarding, company.id)
+        assert onboarding is not None
+        assert onboarding.business_goals == ["increase_sales", "reduce_churn"]
+        assert onboarding.current_tools == ["csv", "crm"]
 
 
 def test_refresh_token_est_rotatif_et_jwt_altere_est_refuse(auth_environment) -> None:
