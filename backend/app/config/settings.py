@@ -17,7 +17,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = Field(default="PMC Solutions AI Platform", alias="APP_NAME")
+    app_name: str = Field(default="Avenqo", alias="APP_NAME")
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     app_description: str = Field(
         default="Enterprise-grade SaaS AI Platform foundation",
