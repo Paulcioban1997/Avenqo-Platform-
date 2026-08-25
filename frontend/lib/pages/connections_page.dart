@@ -48,7 +48,11 @@ Future<List<PickedFile>> _defaultFilePicker() async {
 /// Réutilise exclusivement les endpoints existants (`/datasets`,
 /// `/datasets/upload`, `/datasets/{id}/profile`, `/datasets/{id}/mapping`).
 class ConnectionsPage extends StatefulWidget {
-  const ConnectionsPage({super.key, required this.api, this.pickFiles = _defaultFilePicker});
+  const ConnectionsPage({
+    super.key,
+    required this.api,
+    this.pickFiles = _defaultFilePicker,
+  });
   final ApiClient api;
   final FilePickerFn pickFiles;
 
@@ -83,7 +87,18 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       });
     } on ApiException catch (exc) {
       setState(() {
-        _errorMessage = exc.message;
+        _errorMessage = exc.isTimeout
+            ? AvenqoLocaleScope.translationsOf(
+                context,
+              ).company.connectionsGenericError
+            : exc.message;
+        _state = _ViewState.error;
+      });
+    } on Object {
+      setState(() {
+        _errorMessage = AvenqoLocaleScope.translationsOf(
+          context,
+        ).company.connectionsGenericError;
         _state = _ViewState.error;
       });
     }
@@ -94,7 +109,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   Future<void> _refreshDatasetsInBackground() async {
     try {
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
-      if (mounted) setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+      if (mounted) {
+        setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+      }
     } on ApiException {
       // Le résumé d'import reste affiché ; la liste sera retentée à la prochaine visite de l'écran.
     }
@@ -102,7 +119,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
   Future<void> _loadProfile(String datasetId) async {
     try {
-      _profile = await widget.api.get('/datasets/$datasetId/profile') as Map<String, dynamic>;
+      _profile =
+          await widget.api.get('/datasets/$datasetId/profile')
+              as Map<String, dynamic>;
       _mappingOverrides.clear();
     } on ApiException catch (exc) {
       setState(() {
@@ -140,14 +159,18 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
     if (_pending.isEmpty) {
       setState(() {
-        _errorMessage = AvenqoLocaleScope.translationsOf(context).company.connectionsFileEmptyError;
+        _errorMessage = AvenqoLocaleScope.translationsOf(
+          context,
+        ).company.connectionsFileEmptyError;
         _state = _ViewState.error;
       });
       return;
     }
     setState(() {
       _duplicateNotice = duplicateFound
-          ? AvenqoLocaleScope.translationsOf(context).company.connectionsDuplicateFileNotice
+          ? AvenqoLocaleScope.translationsOf(
+              context,
+            ).company.connectionsDuplicateFileNotice
           : null;
       _state = _ViewState.selecting;
     });
@@ -163,7 +186,8 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       _pending.clear();
       _duplicateNotice = null;
       _uploadItems = [
-        for (final file in files) _UploadItem(fileName: file.fileName, fileSize: file.bytes.length),
+        for (final file in files)
+          _UploadItem(fileName: file.fileName, fileSize: file.bytes.length),
       ];
       _state = _ViewState.uploading;
     });
@@ -171,24 +195,27 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     for (var i = 0; i < files.length; i++) {
       final file = files[i];
       try {
-        final response = await widget.api.postMultipart(
-          '/datasets/upload',
-          fields: const {'module_code': _defaultModuleCode},
-          fileBytes: file.bytes,
-          fileName: file.fileName,
-          onProgress: (sent, total) {
-            if (total > 0 && mounted) {
-              setState(() => _uploadItems[i].progress = sent / total);
-            }
-          },
-        ) as Map<String, dynamic>;
+        final response =
+            await widget.api.postMultipart(
+                  '/datasets/upload',
+                  fields: const {'module_code': _defaultModuleCode},
+                  fileBytes: file.bytes,
+                  fileName: file.fileName,
+                  onProgress: (sent, total) {
+                    if (total > 0 && mounted) {
+                      setState(() => _uploadItems[i].progress = sent / total);
+                    }
+                  },
+                )
+                as Map<String, dynamic>;
         final datasetId = response['dataset_id']?.toString();
         if (mounted) {
           setState(() {
             _uploadItems[i].progress = 1;
             _uploadItems[i].done = true;
             _uploadItems[i].datasetId = datasetId;
-            _uploadItems[i].mappingRequired = response['status']?.toString() == 'mapping_required';
+            _uploadItems[i].mappingRequired =
+                response['status']?.toString() == 'mapping_required';
           });
         }
       } on ApiException catch (exc) {
@@ -210,7 +237,10 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         if (entry.value != null) entry.key: entry.value!,
     };
     try {
-      await widget.api.post('/datasets/$datasetId/mapping', body: {'mapping': overrides});
+      await widget.api.post(
+        '/datasets/$datasetId/mapping',
+        body: {'mapping': overrides},
+      );
       await _loadDatasets();
     } on ApiException catch (exc) {
       setState(() {
@@ -232,44 +262,47 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 900),
             child: switch (_state) {
-              _ViewState.loading => _CenteredSpinner(label: t.connectionsLoading),
+              _ViewState.loading => _CenteredSpinner(
+                label: t.connectionsLoading,
+              ),
               _ViewState.idle => _ConnectedDataView(
-                  datasets: _datasets,
-                  onAddFiles: _addFiles,
-                  onCompleteMapping: _openMapping,
-                  onGoToDashboard: () => context.go('/dashboard'),
-                  onAskAvenqo: () => context.go('/assistant'),
-                  t: t,
-                ),
+                datasets: _datasets,
+                onAddFiles: _addFiles,
+                onCompleteMapping: _openMapping,
+                onGoToDashboard: () => context.go('/dashboard'),
+                onAskAvenqo: () => context.go('/assistant'),
+                t: t,
+              ),
               _ViewState.selecting => _SelectingView(
-                  pending: _pending,
-                  duplicateNotice: _duplicateNotice,
-                  onAddMore: _addFiles,
-                  onRemove: _removePending,
-                  onUpload: _uploadPending,
-                  t: t,
-                ),
+                pending: _pending,
+                duplicateNotice: _duplicateNotice,
+                onAddMore: _addFiles,
+                onRemove: _removePending,
+                onUpload: _uploadPending,
+                t: t,
+              ),
               _ViewState.uploading => _UploadingView(items: _uploadItems, t: t),
               _ViewState.summary => _SummaryView(
-                  items: _uploadItems,
-                  onContinue: () => setState(() => _state = _ViewState.idle),
-                  onGoToDashboard: () => context.go('/dashboard'),
-                  onAskAvenqo: () => context.go('/assistant'),
-                  onAddFiles: _addFiles,
-                  t: t,
-                ),
+                items: _uploadItems,
+                onContinue: () => setState(() => _state = _ViewState.idle),
+                onGoToDashboard: () => context.go('/dashboard'),
+                onAskAvenqo: () => context.go('/assistant'),
+                onAddFiles: _addFiles,
+                t: t,
+              ),
               _ViewState.mapping => _MappingView(
-                  profile: _profile,
-                  overrides: _mappingOverrides,
-                  onChanged: (column, field) => setState(() => _mappingOverrides[column] = field),
-                  onSubmit: _submitMapping,
-                  t: t,
-                ),
+                profile: _profile,
+                overrides: _mappingOverrides,
+                onChanged: (column, field) =>
+                    setState(() => _mappingOverrides[column] = field),
+                onSubmit: _submitMapping,
+                t: t,
+              ),
               _ViewState.error => _ErrorView(
-                  message: _errorMessage ?? t.connectionsGenericError,
-                  onRetry: _loadDatasets,
-                  retryLabel: t.connectionsRetry,
-                ),
+                message: _errorMessage ?? t.connectionsGenericError,
+                onRetry: _loadDatasets,
+                retryLabel: t.connectionsRetry,
+              ),
             },
           ),
         ],
@@ -369,16 +402,27 @@ class _ConnectedDataView extends StatelessWidget {
                   color: _Brand.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.cloud_upload_outlined, color: _Brand.blue, size: 28),
+                child: const Icon(
+                  Icons.cloud_upload_outlined,
+                  color: _Brand.blue,
+                  size: 28,
+                ),
               ),
               const SizedBox(height: 18),
               Text(
                 t.connectionsNoDataTitle,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: colors.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
-              Text(t.connectionsNoDataFormats, style: TextStyle(color: colors.muted)),
+              Text(
+                t.connectionsNoDataFormats,
+                style: TextStyle(color: colors.muted),
+              ),
               const SizedBox(height: 22),
               FilledButton.icon(
                 onPressed: onAddFiles,
@@ -393,7 +437,11 @@ class _ConnectedDataView extends StatelessWidget {
           const SizedBox(height: 20),
           Text(
             t.connectionsConnectedDataTitle,
-            style: TextStyle(color: colors.ink, fontSize: 16, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: colors.ink,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 12),
           Container(
@@ -446,7 +494,8 @@ class _DatasetRow extends StatelessWidget {
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
     final isMappingRequired = status == 'mapping_required';
-    final isError = status == 'failed' || status == 'invalid' || status == 'rejected';
+    final isError =
+        status == 'failed' || status == 'invalid' || status == 'rejected';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -458,11 +507,13 @@ class _DatasetRow extends StatelessWidget {
             isError
                 ? Icons.error_outline
                 : isMappingRequired
-                    ? Icons.rule_outlined
-                    : isReady
-                        ? Icons.check_circle
-                        : Icons.hourglass_top,
-            color: isError ? _Brand.red : (isReady ? _Brand.green : _Brand.blue),
+                ? Icons.rule_outlined
+                : isReady
+                ? Icons.check_circle
+                : Icons.hourglass_top,
+            color: isError
+                ? _Brand.red
+                : (isReady ? _Brand.green : _Brand.blue),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -471,14 +522,19 @@ class _DatasetRow extends StatelessWidget {
               children: [
                 Text(
                   dataset['name']?.toString() ?? '—',
-                  style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   [
-                    if (dataset['rows_count'] != null) '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
-                    if (dataset['columns_count'] != null) '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
+                    if (dataset['rows_count'] != null)
+                      '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
+                    if (dataset['columns_count'] != null)
+                      '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
                     if (dataset['uploaded_at'] != null)
                       '${t.connectionsImportedAtLabel} ${dataset['uploaded_at'].toString().split('T').first}',
                   ].join(' · '),
@@ -551,7 +607,10 @@ class _SelectingView extends StatelessWidget {
                 color: _Brand.blue.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(duplicateNotice!, style: const TextStyle(color: _Brand.blue)),
+              child: Text(
+                duplicateNotice!,
+                style: const TextStyle(color: _Brand.blue),
+              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -560,7 +619,10 @@ class _SelectingView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  const Icon(Icons.insert_drive_file_outlined, color: _Brand.blue),
+                  const Icon(
+                    Icons.insert_drive_file_outlined,
+                    color: _Brand.blue,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -568,7 +630,10 @@ class _SelectingView extends StatelessWidget {
                       children: [
                         Text(
                           file.fileName,
-                          style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w600,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
@@ -600,7 +665,11 @@ class _SelectingView extends StatelessWidget {
                 onPressed: pending.isEmpty ? null : onUpload,
                 style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
                 child: Text(
-                  _pluralize(pending.length, t.connectionsUploadCountOne, t.connectionsUploadCountOther),
+                  _pluralize(
+                    pending.length,
+                    t.connectionsUploadCountOne,
+                    t.connectionsUploadCountOther,
+                  ),
                 ),
               ),
             ],
@@ -637,15 +706,20 @@ class _UploadingView extends StatelessWidget {
                   item.error != null
                       ? Icons.error_outline
                       : item.done
-                          ? Icons.check_circle_outline
-                          : Icons.insert_drive_file_outlined,
-                  color: item.error != null ? _Brand.red : (item.done ? _Brand.green : _Brand.blue),
+                      ? Icons.check_circle_outline
+                      : Icons.insert_drive_file_outlined,
+                  color: item.error != null
+                      ? _Brand.red
+                      : (item.done ? _Brand.green : _Brand.blue),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     '${item.fileName} · ${_formatSize(item.fileSize)}',
-                    style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w600,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -653,13 +727,20 @@ class _UploadingView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             LinearProgressIndicator(
-              value: item.done || item.error != null ? 1 : (item.progress > 0 ? item.progress : null),
+              value: item.done || item.error != null
+                  ? 1
+                  : (item.progress > 0 ? item.progress : null),
               color: item.error != null ? _Brand.red : null,
             ),
             const SizedBox(height: 4),
             Text(
-              item.error ?? (item.done ? t.connectionsUploadedFileSuccessLabel : t.connectionsUploadingLabel),
-              style: TextStyle(color: item.error != null ? _Brand.red : colors.muted),
+              item.error ??
+                  (item.done
+                      ? t.connectionsUploadedFileSuccessLabel
+                      : t.connectionsUploadingLabel),
+              style: TextStyle(
+                color: item.error != null ? _Brand.red : colors.muted,
+              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -706,24 +787,38 @@ class _SummaryView extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(errorCount == 0 ? Icons.check_circle : Icons.info_outline,
-                  color: errorCount == 0 ? _Brand.green : _Brand.blue),
+              Icon(
+                errorCount == 0 ? Icons.check_circle : Icons.info_outline,
+                color: errorCount == 0 ? _Brand.green : _Brand.blue,
+              ),
               const SizedBox(width: 10),
               Text(
                 t.connectionsImportCompleteTitle,
-                style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: colors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
-            _pluralize(successCount, t.connectionsImportSummarySuccessOne, t.connectionsImportSummarySuccessOther),
+            _pluralize(
+              successCount,
+              t.connectionsImportSummarySuccessOne,
+              t.connectionsImportSummarySuccessOther,
+            ),
             style: TextStyle(color: colors.ink),
           ),
           if (errorCount > 0) ...[
             const SizedBox(height: 4),
             Text(
-              _pluralize(errorCount, t.connectionsImportSummaryErrorsOne, t.connectionsImportSummaryErrorsOther),
+              _pluralize(
+                errorCount,
+                t.connectionsImportSummaryErrorsOne,
+                t.connectionsImportSummaryErrorsOther,
+              ),
               style: const TextStyle(color: _Brand.red),
             ),
           ],
@@ -734,7 +829,9 @@ class _SummaryView extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    item.error != null ? Icons.error_outline : Icons.check_circle_outline,
+                    item.error != null
+                        ? Icons.error_outline
+                        : Icons.check_circle_outline,
                     color: item.error != null ? _Brand.red : _Brand.green,
                     size: 18,
                   ),
@@ -760,10 +857,19 @@ class _SummaryView extends StatelessWidget {
                   style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
                   child: Text(t.connectionsGoDashboard),
                 ),
-                OutlinedButton(onPressed: onAskAvenqo, child: Text(t.connectionsAskAvenqo)),
+                OutlinedButton(
+                  onPressed: onAskAvenqo,
+                  child: Text(t.connectionsAskAvenqo),
+                ),
               ],
-              OutlinedButton(onPressed: onAddFiles, child: Text(t.connectionsAddFiles)),
-              TextButton(onPressed: onContinue, child: Text(t.connectionsContinueLabel)),
+              OutlinedButton(
+                onPressed: onAddFiles,
+                child: Text(t.connectionsAddFiles),
+              ),
+              TextButton(
+                onPressed: onContinue,
+                child: Text(t.connectionsContinueLabel),
+              ),
             ],
           ),
         ],
@@ -788,15 +894,24 @@ class _MappingView extends StatelessWidget {
   final CompanyStrings t;
 
   static const _canonicalFields = [
-    'customer_id', 'order_id', 'product_id', 'order_timestamp', 'quantity',
-    'unit_price', 'total_amount', 'review_text', 'review_score', 'churn_flag',
+    'customer_id',
+    'order_id',
+    'product_id',
+    'order_timestamp',
+    'quantity',
+    'unit_price',
+    'total_amount',
+    'review_text',
+    'review_score',
+    'churn_flag',
   ];
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final suggestions = (profile?['mapping_suggestions'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
+    final suggestions =
+        (profile?['mapping_suggestions'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(28),
@@ -810,7 +925,11 @@ class _MappingView extends StatelessWidget {
         children: [
           Text(
             t.connectionsMappingTitle,
-            style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: colors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -818,14 +937,17 @@ class _MappingView extends StatelessWidget {
             style: TextStyle(color: colors.muted),
           ),
           const SizedBox(height: 20),
-          for (final suggestion in suggestions) _MappingRow(
-            suggestion: suggestion,
-            canonicalFields: _canonicalFields,
-            selected: overrides[suggestion['original_column']?.toString()] ??
-                suggestion['suggested_field']?.toString(),
-            onChanged: (field) => onChanged(suggestion['original_column'].toString(), field),
-            ignoreLabel: t.connectionsMappingIgnore,
-          ),
+          for (final suggestion in suggestions)
+            _MappingRow(
+              suggestion: suggestion,
+              canonicalFields: _canonicalFields,
+              selected:
+                  overrides[suggestion['original_column']?.toString()] ??
+                  suggestion['suggested_field']?.toString(),
+              onChanged: (field) =>
+                  onChanged(suggestion['original_column'].toString(), field),
+              ignoreLabel: t.connectionsMappingIgnore,
+            ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: onSubmit,
@@ -862,13 +984,18 @@ class _MappingRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(column, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+            child: Text(
+              column,
+              style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+            ),
           ),
           const Icon(Icons.arrow_forward, size: 16),
           const SizedBox(width: 12),
           Expanded(
             child: DropdownButtonFormField<String>(
-              initialValue: canonicalFields.contains(selected) ? selected : null,
+              initialValue: canonicalFields.contains(selected)
+                  ? selected
+                  : null,
               hint: Text(ignoreLabel),
               isExpanded: true,
               items: [
@@ -885,7 +1012,11 @@ class _MappingRow extends StatelessWidget {
 }
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry, required this.retryLabel});
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+    required this.retryLabel,
+  });
   final String message;
   final VoidCallback onRetry;
   final String retryLabel;
@@ -905,7 +1036,11 @@ class _ErrorView extends StatelessWidget {
         children: [
           const Icon(Icons.error_outline, color: _Brand.red, size: 32),
           const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center, style: TextStyle(color: colors.ink)),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.ink),
+          ),
           const SizedBox(height: 16),
           OutlinedButton(onPressed: onRetry, child: Text(retryLabel)),
         ],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -34,6 +35,12 @@ class _MemoryLocalePreferenceStore implements LocalePreferenceStore {
   Future<void> write(String code) async {}
 }
 
+class _HangingHttpClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Completer<http.StreamedResponse>().future;
+}
+
 ApiClient _api(http.Client client) => ApiClient(
   tokenStore: _TestTokenStore(),
   httpClient: client,
@@ -68,6 +75,29 @@ void main() {
     );
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
+
+  test(
+    'ApiClient converts a stalled request into a timeout ApiException',
+    () async {
+      final api = ApiClient(
+        tokenStore: _TestTokenStore(),
+        httpClient: _HangingHttpClient(),
+        baseUrl: 'https://avenqo.test/api/v1',
+        requestTimeout: const Duration(milliseconds: 10),
+      );
+
+      await expectLater(
+        api.get('/datasets'),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.isTimeout,
+            'isTimeout',
+            true,
+          ),
+        ),
+      );
+    },
+  );
 
   testWidgets('Connections lists an existing ready dataset with its metadata', (
     tester,

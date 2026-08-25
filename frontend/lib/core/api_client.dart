@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -5,10 +6,11 @@ import 'package:avenqo/core/app_config.dart';
 import 'package:avenqo/core/token_store.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.isTimeout = false});
 
   final String message;
   final int? statusCode;
+  final bool isTimeout;
 
   @override
   String toString() => message;
@@ -19,12 +21,14 @@ class ApiClient {
     required this.tokenStore,
     http.Client? httpClient,
     String baseUrl = AppConfig.apiBaseUrl,
+    this._requestTimeout = const Duration(seconds: 15),
   }) : _httpClient = httpClient ?? http.Client(),
        _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), '');
 
   final TokenStore tokenStore;
   final http.Client _httpClient;
   final String _baseUrl;
+  final Duration _requestTimeout;
   String? _accessToken;
   String? _refreshToken;
 
@@ -99,8 +103,18 @@ class ApiClient {
 
     final total = request.contentLength;
     onProgress?.call(0, total);
-    final streamed = await _httpClient.send(request);
-    final response = await http.Response.fromStream(streamed);
+    late final http.Response response;
+    try {
+      final streamed = await _httpClient.send(request).timeout(_requestTimeout);
+      response = await http.Response.fromStream(
+        streamed,
+      ).timeout(_requestTimeout);
+    } on TimeoutException {
+      throw const ApiException('Avenqo request timed out', isTimeout: true);
+    } on Object catch (error) {
+      if (error is ApiException) rethrow;
+      throw const ApiException('Avenqo request failed');
+    }
     onProgress?.call(total, total);
     if (response.statusCode == 401 && retryAfterRefresh) {
       if (await _refresh()) {
@@ -132,20 +146,32 @@ class ApiClient {
     final request = http.Request('POST', Uri.parse('$_baseUrl$path'))
       ..headers.addAll(headers)
       ..body = jsonEncode(body);
-    final response = await _httpClient.send(request);
+    late final http.StreamedResponse response;
+    try {
+      response = await _httpClient.send(request).timeout(_requestTimeout);
+    } on TimeoutException {
+      throw const ApiException('Avenqo request timed out', isTimeout: true);
+    } on Object catch (error) {
+      if (error is ApiException) rethrow;
+      throw const ApiException('Avenqo request failed');
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final error = await http.Response.fromStream(response);
       _decode(error);
       return;
     }
 
-    await for (final line in response.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line
+        in response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
       if (!line.startsWith('data: ')) continue;
       final payload = jsonDecode(line.substring(6));
       if (payload is Map<String, dynamic> && payload['detail'] != null) {
-        throw ApiException(payload['detail'].toString(), statusCode: response.statusCode);
+        throw ApiException(
+          payload['detail'].toString(),
+          statusCode: response.statusCode,
+        );
       }
       if (payload is Map<String, dynamic>) {
         yield payload;
@@ -169,8 +195,18 @@ class ApiClient {
     if (body != null) {
       request.body = jsonEncode(body);
     }
-    final streamed = await _httpClient.send(request);
-    final response = await http.Response.fromStream(streamed);
+    late final http.Response response;
+    try {
+      final streamed = await _httpClient.send(request).timeout(_requestTimeout);
+      response = await http.Response.fromStream(
+        streamed,
+      ).timeout(_requestTimeout);
+    } on TimeoutException {
+      throw const ApiException('Avenqo request timed out', isTimeout: true);
+    } on Object catch (error) {
+      if (error is ApiException) rethrow;
+      throw const ApiException('Avenqo request failed');
+    }
     if (response.statusCode == 401 && authenticated && retryAfterRefresh) {
       if (await _refresh()) {
         return _request(
@@ -187,11 +223,22 @@ class ApiClient {
 
   Future<bool> _refresh() async {
     if (_refreshToken == null) return false;
-    final response = await _httpClient.post(
-      Uri.parse('$_baseUrl/auth/refresh'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'refresh_token': _refreshToken}),
-    );
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .post(
+            Uri.parse('$_baseUrl/auth/refresh'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': _refreshToken}),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      await clearSession();
+      return false;
+    } on Object {
+      await clearSession();
+      return false;
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await clearSession();
       return false;
