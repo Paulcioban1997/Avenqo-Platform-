@@ -73,7 +73,11 @@ class ApiClient {
 
   /// Envoi multipart authentifié (ex. `/datasets/upload`) : `fields` devient
   /// des champs de formulaire, `fileBytes`/`fileName` le fichier joint.
-  /// `onProgress` reçoit `(bytesEnvoyés, totalBytes)` pendant l'envoi.
+  /// `onProgress` reçoit `(bytesEnvoyés, totalBytes)` (avant/après l'envoi :
+  /// le client `http` (notamment sur le Web) ne remonte pas la progression
+  /// intermédiaire d'un `MultipartRequest`, donc on rapporte un état
+  /// "démarré" puis "terminé" plutôt que de tenter un ré-empaquetage manuel
+  /// du flux, source d'un blocage indéfini observé en production).
   Future<dynamic> postMultipart(
     String path, {
     required Map<String, String> fields,
@@ -94,23 +98,10 @@ class ApiClient {
     }
 
     final total = request.contentLength;
-    var sent = 0;
-    final byteStream = request.finalize().map((chunk) {
-      sent += chunk.length;
-      onProgress?.call(sent, total);
-      return chunk;
-    });
-    final streamedRequest = http.StreamedRequest(request.method, uri)
-      ..headers.addAll(request.headers)
-      ..contentLength = total;
-    byteStream.listen(
-      streamedRequest.sink.add,
-      onDone: streamedRequest.sink.close,
-      onError: streamedRequest.sink.addError,
-    );
-
-    final streamed = await _httpClient.send(streamedRequest);
+    onProgress?.call(0, total);
+    final streamed = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamed);
+    onProgress?.call(total, total);
     if (response.statusCode == 401 && retryAfterRefresh) {
       if (await _refresh()) {
         return postMultipart(

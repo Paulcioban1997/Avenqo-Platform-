@@ -603,6 +603,24 @@
     "settingsThemeLight": "Світла",
     "settingsThemeDark": "Темна",
     "settingsThemeSystem": "Системна",
-    "settingsLogout": "Вийти"
+    "settingsLogout": "Вийти",
+    "connectionsAddFiles": "Додати файли",
+    "connectionsAddMoreFiles": "Додати ще файли",
+    "connectionsReadyToUpload": "Готово до завантаження",
+    "connectionsUploadCountOne": "Завантажити {n} файл",
+    "connectionsUploadCountOther": "Завантажити {n} файлів",
+    "connectionsRemoveFile": "Видалити",
+    "connectionsDuplicateFileNotice": "Цей файл уже вибрано.",
+    "connectionsImportCompleteTitle": "Імпорт завершено",
+    "connectionsImportSummarySuccessOne": "{n} файл успішно імпортовано.",
+    "connectionsImportSummarySuccessOther": "{n} файлів успішно імпортовано.",
+    "connectionsImportSummaryErrorsOne": "{n} файл із помилкою.",
+    "connectionsImportSummaryErrorsOther": "{n} файлів із помилкою.",
+    "connectionsMappingRequiredBadge": "Потрібне зіставлення",
+    "connectionsCompleteMapping": "Завершити зіставлення",
+    "connectionsConnectedDataTitle": "Підключені дані",
+    "connectionsContinueLabel": "Продовжити",
+    "connectionsImportedAtLabel": "Імпортовано",
+    "connectionsUploadedFileSuccessLabel": "Дані успішно імпортовано"
   }
 }

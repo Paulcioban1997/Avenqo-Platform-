@@ -603,6 +603,24 @@
     "settingsThemeLight": "Licht",
     "settingsThemeDark": "Donker",
     "settingsThemeSystem": "Systeem",
-    "settingsLogout": "Afmelden"
+    "settingsLogout": "Afmelden",
+    "connectionsAddFiles": "Bestanden toevoegen",
+    "connectionsAddMoreFiles": "Meer bestanden toevoegen",
+    "connectionsReadyToUpload": "Klaar om te uploaden",
+    "connectionsUploadCountOne": "{n} bestand uploaden",
+    "connectionsUploadCountOther": "{n} bestanden uploaden",
+    "connectionsRemoveFile": "Verwijderen",
+    "connectionsDuplicateFileNotice": "Dit bestand is al geselecteerd.",
+    "connectionsImportCompleteTitle": "Import voltooid",
+    "connectionsImportSummarySuccessOne": "{n} bestand succesvol geïmporteerd.",
+    "connectionsImportSummarySuccessOther": "{n} bestanden succesvol geïmporteerd.",
+    "connectionsImportSummaryErrorsOne": "{n} bestand mislukt.",
+    "connectionsImportSummaryErrorsOther": "{n} bestanden mislukt.",
+    "connectionsMappingRequiredBadge": "Mapping vereist",
+    "connectionsCompleteMapping": "Mapping voltooien",
+    "connectionsConnectedDataTitle": "Gekoppelde gegevens",
+    "connectionsContinueLabel": "Doorgaan",
+    "connectionsImportedAtLabel": "Geïmporteerd",
+    "connectionsUploadedFileSuccessLabel": "Gegevens succesvol geïmporteerd"
   }
 }

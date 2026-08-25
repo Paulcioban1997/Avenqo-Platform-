@@ -603,6 +603,24 @@
     "settingsThemeLight": "Haske",
     "settingsThemeDark": "Duhu",
     "settingsThemeSystem": "Tsarin",
-    "settingsLogout": "Fita"
+    "settingsLogout": "Fita",
+    "connectionsAddFiles": "Ƙara fayiloli",
+    "connectionsAddMoreFiles": "Ƙara ƙarin fayiloli",
+    "connectionsReadyToUpload": "A shirye don ɗorawa",
+    "connectionsUploadCountOne": "Ɗora fayil {n}",
+    "connectionsUploadCountOther": "Ɗora fayiloli {n}",
+    "connectionsRemoveFile": "Cire",
+    "connectionsDuplicateFileNotice": "An riga an zaɓi wannan fayil.",
+    "connectionsImportCompleteTitle": "Shigo da ya cika",
+    "connectionsImportSummarySuccessOne": "An shigo da fayil {n} cikin nasara.",
+    "connectionsImportSummarySuccessOther": "An shigo da fayiloli {n} cikin nasara.",
+    "connectionsImportSummaryErrorsOne": "Fayil {n} ya gaza.",
+    "connectionsImportSummaryErrorsOther": "Fayiloli {n} sun gaza.",
+    "connectionsMappingRequiredBadge": "Ana buƙatar tsarawa",
+    "connectionsCompleteMapping": "Kammala tsarawa",
+    "connectionsConnectedDataTitle": "Bayanan da aka haɗa",
+    "connectionsContinueLabel": "Ci gaba",
+    "connectionsImportedAtLabel": "An shigo da shi",
+    "connectionsUploadedFileSuccessLabel": "An shigo da bayanai cikin nasara"
   }
 }

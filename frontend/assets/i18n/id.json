@@ -603,6 +603,24 @@
     "settingsThemeLight": "Terang",
     "settingsThemeDark": "Gelap",
     "settingsThemeSystem": "Ikuti sistem",
-    "settingsLogout": "Keluar"
+    "settingsLogout": "Keluar",
+    "connectionsAddFiles": "Tambahkan file",
+    "connectionsAddMoreFiles": "Tambahkan file lagi",
+    "connectionsReadyToUpload": "Siap diunggah",
+    "connectionsUploadCountOne": "Unggah {n} file",
+    "connectionsUploadCountOther": "Unggah {n} file",
+    "connectionsRemoveFile": "Hapus",
+    "connectionsDuplicateFileNotice": "File ini sudah dipilih.",
+    "connectionsImportCompleteTitle": "Impor selesai",
+    "connectionsImportSummarySuccessOne": "{n} file berhasil diimpor.",
+    "connectionsImportSummarySuccessOther": "{n} file berhasil diimpor.",
+    "connectionsImportSummaryErrorsOne": "{n} file gagal.",
+    "connectionsImportSummaryErrorsOther": "{n} file gagal.",
+    "connectionsMappingRequiredBadge": "Pemetaan diperlukan",
+    "connectionsCompleteMapping": "Selesaikan pemetaan",
+    "connectionsConnectedDataTitle": "Data terhubung",
+    "connectionsContinueLabel": "Lanjutkan",
+    "connectionsImportedAtLabel": "Diimpor",
+    "connectionsUploadedFileSuccessLabel": "Data berhasil diimpor"
   }
 }

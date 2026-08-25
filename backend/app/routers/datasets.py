@@ -4,6 +4,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.datasets import (
@@ -77,7 +78,11 @@ async def upload_csv(
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
 ) -> DatasetResponse:
     try:
-        dataset = service.import_csv(
+        # Le parsing/profilage CSV est CPU-bound et bloquerait la boucle
+        # asyncio (donc TOUTE requête concurrente, ex. GET /datasets) si
+        # appelé directement depuis une route async.
+        dataset = await run_in_threadpool(
+            service.import_csv,
             tenant,
             module_code,
             file.filename or "dataset.csv",
@@ -115,7 +120,10 @@ async def upload_company_dataset(
     """Ingestion universelle CSV/XLSX/JSON/Parquet (Phase 26)."""
 
     try:
-        dataset = service.upload(
+        # Idem : l'ingestion universelle (parsing XLSX/JSON/Parquet, mapping
+        # sémantique, profilage) est CPU-bound et doit tourner hors event loop.
+        dataset = await run_in_threadpool(
+            service.upload,
             tenant,
             module_code,
             file.filename or "dataset",

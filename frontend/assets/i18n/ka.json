@@ -603,6 +603,24 @@
     "settingsThemeLight": "ღია",
     "settingsThemeDark": "მუქი",
     "settingsThemeSystem": "სისტემა",
-    "settingsLogout": "გასვლა"
+    "settingsLogout": "გასვლა",
+    "connectionsAddFiles": "ფაილების დამატება",
+    "connectionsAddMoreFiles": "მეტი ფაილის დამატება",
+    "connectionsReadyToUpload": "მზადაა ატვირთვისთვის",
+    "connectionsUploadCountOne": "ატვირთვა {n} ფაილი",
+    "connectionsUploadCountOther": "ატვირთვა {n} ფაილი",
+    "connectionsRemoveFile": "წაშლა",
+    "connectionsDuplicateFileNotice": "ეს ფაილი უკვე არჩეულია.",
+    "connectionsImportCompleteTitle": "იმპორტი დასრულდა",
+    "connectionsImportSummarySuccessOne": "{n} ფაილი წარმატებით შემოტანილია.",
+    "connectionsImportSummarySuccessOther": "{n} ფაილი წარმატებით შემოტანილია.",
+    "connectionsImportSummaryErrorsOne": "{n} ფაილი ვერ აიტვირთა.",
+    "connectionsImportSummaryErrorsOther": "{n} ფაილი ვერ აიტვირთა.",
+    "connectionsMappingRequiredBadge": "საჭიროა მიბმა",
+    "connectionsCompleteMapping": "მიბმის დასრულება",
+    "connectionsConnectedDataTitle": "დაკავშირებული მონაცემები",
+    "connectionsContinueLabel": "გაგრძელება",
+    "connectionsImportedAtLabel": "შემოტანილია",
+    "connectionsUploadedFileSuccessLabel": "მონაცემები წარმატებით შემოტანილია"
   }
 }

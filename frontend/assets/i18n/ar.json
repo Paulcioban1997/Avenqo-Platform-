@@ -603,6 +603,24 @@
     "settingsThemeLight": "فاتح",
     "settingsThemeDark": "داكن",
     "settingsThemeSystem": "النظام",
-    "settingsLogout": "تسجيل الخروج"
+    "settingsLogout": "تسجيل الخروج",
+    "connectionsAddFiles": "إضافة ملفات",
+    "connectionsAddMoreFiles": "إضافة ملفات أخرى",
+    "connectionsReadyToUpload": "جاهز للاستيراد",
+    "connectionsUploadCountOne": "استيراد {n} ملف",
+    "connectionsUploadCountOther": "استيراد {n} ملفات",
+    "connectionsRemoveFile": "إزالة",
+    "connectionsDuplicateFileNotice": "هذا الملف محدد بالفعل.",
+    "connectionsImportCompleteTitle": "اكتمل الاستيراد",
+    "connectionsImportSummarySuccessOne": "تم استيراد {n} ملف بنجاح.",
+    "connectionsImportSummarySuccessOther": "تم استيراد {n} ملفات بنجاح.",
+    "connectionsImportSummaryErrorsOne": "{n} ملف فشل.",
+    "connectionsImportSummaryErrorsOther": "{n} ملفات فشلت.",
+    "connectionsMappingRequiredBadge": "التخطيط مطلوب",
+    "connectionsCompleteMapping": "إكمال التخطيط",
+    "connectionsConnectedDataTitle": "البيانات المتصلة",
+    "connectionsContinueLabel": "متابعة",
+    "connectionsImportedAtLabel": "تم الاستيراد",
+    "connectionsUploadedFileSuccessLabel": "تم استيراد البيانات بنجاح"
   }
 }

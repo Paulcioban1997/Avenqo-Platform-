@@ -603,6 +603,24 @@
     "settingsThemeLight": "Lig",
     "settingsThemeDark": "Donker",
     "settingsThemeSystem": "Stelsel",
-    "settingsLogout": "Meld af"
+    "settingsLogout": "Meld af",
+    "connectionsAddFiles": "Voeg lêers by",
+    "connectionsAddMoreFiles": "Voeg nog lêers by",
+    "connectionsReadyToUpload": "Gereed om op te laai",
+    "connectionsUploadCountOne": "Laai {n} lêer op",
+    "connectionsUploadCountOther": "Laai {n} lêers op",
+    "connectionsRemoveFile": "Verwyder",
+    "connectionsDuplicateFileNotice": "Hierdie lêer is reeds gekies.",
+    "connectionsImportCompleteTitle": "Invoer voltooi",
+    "connectionsImportSummarySuccessOne": "{n} lêer suksesvol ingevoer.",
+    "connectionsImportSummarySuccessOther": "{n} lêers suksesvol ingevoer.",
+    "connectionsImportSummaryErrorsOne": "{n} lêer het misluk.",
+    "connectionsImportSummaryErrorsOther": "{n} lêers het misluk.",
+    "connectionsMappingRequiredBadge": "Kartering vereis",
+    "connectionsCompleteMapping": "Voltooi kartering",
+    "connectionsConnectedDataTitle": "Gekoppelde data",
+    "connectionsContinueLabel": "Gaan voort",
+    "connectionsImportedAtLabel": "Ingevoer",
+    "connectionsUploadedFileSuccessLabel": "Data suksesvol ingevoer"
   }
 }

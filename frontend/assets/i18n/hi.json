@@ -603,6 +603,24 @@
     "settingsThemeLight": "हल्का",
     "settingsThemeDark": "गहरा",
     "settingsThemeSystem": "सिस्टम के अनुसार",
-    "settingsLogout": "लॉग आउट"
+    "settingsLogout": "लॉग आउट",
+    "connectionsAddFiles": "फ़ाइलें जोड़ें",
+    "connectionsAddMoreFiles": "और फ़ाइलें जोड़ें",
+    "connectionsReadyToUpload": "अपलोड के लिए तैयार",
+    "connectionsUploadCountOne": "{n} फ़ाइल अपलोड करें",
+    "connectionsUploadCountOther": "{n} फ़ाइलें अपलोड करें",
+    "connectionsRemoveFile": "हटाएं",
+    "connectionsDuplicateFileNotice": "यह फ़ाइल पहले से चुनी गई है।",
+    "connectionsImportCompleteTitle": "आयात पूर्ण",
+    "connectionsImportSummarySuccessOne": "{n} फ़ाइल सफलतापूर्वक आयात हुई।",
+    "connectionsImportSummarySuccessOther": "{n} फ़ाइलें सफलतापूर्वक आयात हुईं।",
+    "connectionsImportSummaryErrorsOne": "{n} फ़ाइल विफल रही।",
+    "connectionsImportSummaryErrorsOther": "{n} फ़ाइलें विफल रहीं।",
+    "connectionsMappingRequiredBadge": "मैपिंग आवश्यक",
+    "connectionsCompleteMapping": "मैपिंग पूर्ण करें",
+    "connectionsConnectedDataTitle": "जुड़ा हुआ डेटा",
+    "connectionsContinueLabel": "जारी रखें",
+    "connectionsImportedAtLabel": "आयातित",
+    "connectionsUploadedFileSuccessLabel": "डेटा सफलतापूर्वक आयात हुआ"
   }
 }

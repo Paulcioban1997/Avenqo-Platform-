@@ -603,6 +603,24 @@
     "settingsThemeLight": "روشن",
     "settingsThemeDark": "تیره",
     "settingsThemeSystem": "سیستم",
-    "settingsLogout": "خروج از حساب"
+    "settingsLogout": "خروج از حساب",
+    "connectionsAddFiles": "افزودن فایل‌ها",
+    "connectionsAddMoreFiles": "افزودن فایل‌های بیشتر",
+    "connectionsReadyToUpload": "آماده بارگذاری",
+    "connectionsUploadCountOne": "بارگذاری {n} فایل",
+    "connectionsUploadCountOther": "بارگذاری {n} فایل",
+    "connectionsRemoveFile": "حذف",
+    "connectionsDuplicateFileNotice": "این فایل قبلاً انتخاب شده است.",
+    "connectionsImportCompleteTitle": "وارد کردن کامل شد",
+    "connectionsImportSummarySuccessOne": "{n} فایل با موفقیت وارد شد.",
+    "connectionsImportSummarySuccessOther": "{n} فایل با موفقیت وارد شد.",
+    "connectionsImportSummaryErrorsOne": "{n} فایل ناموفق بود.",
+    "connectionsImportSummaryErrorsOther": "{n} فایل ناموفق بود.",
+    "connectionsMappingRequiredBadge": "نگاشت لازم است",
+    "connectionsCompleteMapping": "تکمیل نگاشت",
+    "connectionsConnectedDataTitle": "داده‌های متصل",
+    "connectionsContinueLabel": "ادامه",
+    "connectionsImportedAtLabel": "وارد شد",
+    "connectionsUploadedFileSuccessLabel": "داده‌ها با موفقیت وارد شدند"
   }
 }

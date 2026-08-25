@@ -20,14 +20,37 @@ class _Brand {
 const _acceptedExtensions = ['csv', 'xlsx', 'json', 'parquet'];
 const _defaultModuleCode = 'retail';
 
-enum _ViewState { loading, noData, uploading, mapping, processing, ready, error }
+enum _ViewState { loading, idle, selecting, uploading, summary, mapping, error }
+
+/// Fichier choisi par l'utilisateur, découplé de `PlatformFile` (classe `base`
+/// non sous-classable hors de son package) afin de rester injectable en test.
+class PickedFile {
+  const PickedFile(this.name, this.bytes);
+  final String name;
+  final Uint8List bytes;
+}
+
+typedef FilePickerFn = Future<List<PickedFile>> Function();
+
+Future<List<PickedFile>> _defaultFilePicker() async {
+  final result = await FilePicker.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: _acceptedExtensions,
+  );
+  final files = <PickedFile>[];
+  for (final platformFile in result) {
+    files.add(PickedFile(platformFile.name, await platformFile.readAsBytes()));
+  }
+  return files;
+}
 
 /// Centre de gestion des données Avenqo (remplace le placeholder générique).
 /// Réutilise exclusivement les endpoints existants (`/datasets`,
 /// `/datasets/upload`, `/datasets/{id}/profile`, `/datasets/{id}/mapping`).
 class ConnectionsPage extends StatefulWidget {
-  const ConnectionsPage({super.key, required this.api});
+  const ConnectionsPage({super.key, required this.api, this.pickFiles = _defaultFilePicker});
   final ApiClient api;
+  final FilePickerFn pickFiles;
 
   @override
   State<ConnectionsPage> createState() => _ConnectionsPageState();
@@ -35,12 +58,13 @@ class ConnectionsPage extends StatefulWidget {
 
 class _ConnectionsPageState extends State<ConnectionsPage> {
   _ViewState _state = _ViewState.loading;
-  Map<String, dynamic>? _dataset;
+  List<Map<String, dynamic>> _datasets = [];
   Map<String, dynamic>? _profile;
+  String? _mappingDatasetId;
   String? _errorMessage;
-  String? _selectedFileName;
-  int? _selectedFileSize;
-  double? _uploadProgress;
+  String? _duplicateNotice;
+  final List<_PendingFile> _pending = [];
+  List<_UploadItem> _uploadItems = [];
   final Map<String, String?> _mappingOverrides = {};
 
   @override
@@ -53,15 +77,10 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     setState(() => _state = _ViewState.loading);
     try {
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
-      if (datasets.isEmpty) {
-        setState(() {
-          _dataset = null;
-          _state = _ViewState.noData;
-        });
-        return;
-      }
-      final latest = datasets.first as Map<String, dynamic>;
-      await _applyDatasetStatus(latest);
+      setState(() {
+        _datasets = datasets.cast<Map<String, dynamic>>();
+        _state = _ViewState.idle;
+      });
     } on ApiException catch (exc) {
       setState(() {
         _errorMessage = exc.message;
@@ -70,25 +89,14 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
-  Future<void> _applyDatasetStatus(Map<String, dynamic> dataset) async {
-    _dataset = dataset;
-    final status = dataset['status']?.toString();
-    switch (status) {
-      case 'mapping_required':
-        await _loadProfile(dataset['id'].toString());
-        setState(() => _state = _ViewState.mapping);
-      case 'ready':
-      case 'validated':
-        setState(() => _state = _ViewState.ready);
-      case 'failed':
-      case 'invalid':
-      case 'rejected':
-        setState(() {
-          _errorMessage = AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError;
-          _state = _ViewState.error;
-        });
-      default:
-        setState(() => _state = _ViewState.processing);
+  /// Rafraîchit la liste des jeux de données sans changer l'écran affiché
+  /// (utilisé après un import pour ne pas écraser le résumé de succès).
+  Future<void> _refreshDatasetsInBackground() async {
+    try {
+      final datasets = await widget.api.get('/datasets') as List<dynamic>;
+      if (mounted) setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+    } on ApiException {
+      // Le résumé d'import reste affiché ; la liste sera retentée à la prochaine visite de l'écran.
     }
   }
 
@@ -104,70 +112,106 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
-  Future<void> _pickAndUploadFile() async {
-    final picked = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: _acceptedExtensions,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    if (bytes.isEmpty) {
+  Future<void> _openMapping(String datasetId) async {
+    setState(() => _mappingDatasetId = datasetId);
+    await _loadProfile(datasetId);
+    if (mounted) setState(() => _state = _ViewState.mapping);
+  }
+
+  /// Ouvre le sélecteur natif en mode multi-sélection : l'utilisateur peut
+  /// choisir plusieurs fichiers en une seule fois. Les fichiers déjà présents
+  /// dans la sélection en attente (même nom + même taille) ne sont pas
+  /// ajoutés une seconde fois.
+  Future<void> _addFiles() async {
+    final picked = await widget.pickFiles();
+    if (picked.isEmpty) return;
+
+    var duplicateFound = false;
+    for (final file in picked) {
+      if (file.bytes.isEmpty) continue;
+      final isDuplicate = _pending.any(
+        (p) => p.fileName == file.name && p.bytes.length == file.bytes.length,
+      );
+      if (isDuplicate) {
+        duplicateFound = true;
+        continue;
+      }
+      _pending.add(_PendingFile(fileName: file.name, bytes: file.bytes));
+    }
+    if (_pending.isEmpty) {
       setState(() {
         _errorMessage = AvenqoLocaleScope.translationsOf(context).company.connectionsFileEmptyError;
         _state = _ViewState.error;
       });
       return;
     }
-    await _upload(picked.name, bytes);
+    setState(() {
+      _duplicateNotice = duplicateFound
+          ? AvenqoLocaleScope.translationsOf(context).company.connectionsDuplicateFileNotice
+          : null;
+      _state = _ViewState.selecting;
+    });
   }
 
-  Future<void> _upload(String fileName, Uint8List bytes) async {
+  void _removePending(_PendingFile file) {
+    setState(() => _pending.remove(file));
+  }
+
+  Future<void> _uploadPending() async {
+    final files = List<_PendingFile>.from(_pending);
     setState(() {
-      _selectedFileName = fileName;
-      _selectedFileSize = bytes.length;
-      _uploadProgress = 0;
-      _errorMessage = null;
+      _pending.clear();
+      _duplicateNotice = null;
+      _uploadItems = [
+        for (final file in files) _UploadItem(fileName: file.fileName, fileSize: file.bytes.length),
+      ];
       _state = _ViewState.uploading;
     });
-    try {
-      final response = await widget.api.postMultipart(
-        '/datasets/upload',
-        fields: const {'module_code': _defaultModuleCode},
-        fileBytes: bytes,
-        fileName: fileName,
-        onProgress: (sent, total) {
-          if (total > 0 && mounted) {
-            setState(() => _uploadProgress = sent / total);
-          }
-        },
-      ) as Map<String, dynamic>;
-      final datasetId = response['dataset_id']?.toString();
-      if (datasetId == null) {
-        setState(() => _state = _ViewState.error);
-        return;
+
+    for (var i = 0; i < files.length; i++) {
+      final file = files[i];
+      try {
+        final response = await widget.api.postMultipart(
+          '/datasets/upload',
+          fields: const {'module_code': _defaultModuleCode},
+          fileBytes: file.bytes,
+          fileName: file.fileName,
+          onProgress: (sent, total) {
+            if (total > 0 && mounted) {
+              setState(() => _uploadItems[i].progress = sent / total);
+            }
+          },
+        ) as Map<String, dynamic>;
+        final datasetId = response['dataset_id']?.toString();
+        if (mounted) {
+          setState(() {
+            _uploadItems[i].progress = 1;
+            _uploadItems[i].done = true;
+            _uploadItems[i].datasetId = datasetId;
+            _uploadItems[i].mappingRequired = response['status']?.toString() == 'mapping_required';
+          });
+        }
+      } on ApiException catch (exc) {
+        if (mounted) {
+          setState(() => _uploadItems[i].error = exc.message);
+        }
       }
-      final dataset = await widget.api.get('/datasets/$datasetId') as Map<String, dynamic>;
-      await _applyDatasetStatus(dataset);
-    } on ApiException catch (exc) {
-      setState(() {
-        _errorMessage = exc.message;
-        _state = _ViewState.error;
-      });
     }
+
+    if (mounted) setState(() => _state = _ViewState.summary);
+    await _refreshDatasetsInBackground();
   }
 
   Future<void> _submitMapping() async {
-    final datasetId = _dataset?['id']?.toString();
+    final datasetId = _mappingDatasetId;
     if (datasetId == null) return;
     final overrides = <String, String>{
       for (final entry in _mappingOverrides.entries)
         if (entry.value != null) entry.key: entry.value!,
     };
-    setState(() => _state = _ViewState.processing);
     try {
       await widget.api.post('/datasets/$datasetId/mapping', body: {'mapping': overrides});
-      final dataset = await widget.api.get('/datasets/$datasetId') as Map<String, dynamic>;
-      await _applyDatasetStatus(dataset);
+      await _loadDatasets();
     } on ApiException catch (exc) {
       setState(() {
         _errorMessage = exc.message;
@@ -189,28 +233,36 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
             constraints: const BoxConstraints(maxWidth: 900),
             child: switch (_state) {
               _ViewState.loading => _CenteredSpinner(label: t.connectionsLoading),
-              _ViewState.noData => _NoDataView(onImport: _pickAndUploadFile, t: t),
-              _ViewState.uploading => _UploadingView(
-                  fileName: _selectedFileName,
-                  fileSize: _selectedFileSize,
-                  progress: _uploadProgress,
+              _ViewState.idle => _ConnectedDataView(
+                  datasets: _datasets,
+                  onAddFiles: _addFiles,
+                  onCompleteMapping: _openMapping,
+                  onGoToDashboard: () => context.go('/dashboard'),
+                  onAskAvenqo: () => context.go('/assistant'),
                   t: t,
                 ),
-              _ViewState.processing => _CenteredSpinner(
-                  label: t.connectionsAnalyzing,
+              _ViewState.selecting => _SelectingView(
+                  pending: _pending,
+                  duplicateNotice: _duplicateNotice,
+                  onAddMore: _addFiles,
+                  onRemove: _removePending,
+                  onUpload: _uploadPending,
+                  t: t,
+                ),
+              _ViewState.uploading => _UploadingView(items: _uploadItems, t: t),
+              _ViewState.summary => _SummaryView(
+                  items: _uploadItems,
+                  onContinue: () => setState(() => _state = _ViewState.idle),
+                  onGoToDashboard: () => context.go('/dashboard'),
+                  onAskAvenqo: () => context.go('/assistant'),
+                  onAddFiles: _addFiles,
+                  t: t,
                 ),
               _ViewState.mapping => _MappingView(
                   profile: _profile,
                   overrides: _mappingOverrides,
                   onChanged: (column, field) => setState(() => _mappingOverrides[column] = field),
                   onSubmit: _submitMapping,
-                  t: t,
-                ),
-              _ViewState.ready => _ReadyView(
-                  dataset: _dataset,
-                  onGoToDashboard: () => context.go('/dashboard'),
-                  onAskAvenqo: () => context.go('/assistant'),
-                  onImportAnother: _pickAndUploadFile,
                   t: t,
                 ),
               _ViewState.error => _ErrorView(
@@ -246,69 +298,236 @@ class _CenteredSpinner extends StatelessWidget {
   }
 }
 
-class _NoDataView extends StatelessWidget {
-  const _NoDataView({required this.onImport, required this.t});
-  final VoidCallback onImport;
+String _formatSize(int bytes) {
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} Ko';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+}
+
+String _pluralize(int n, String one, String other) {
+  final template = n == 1 ? one : other;
+  return template.replaceAll('{n}', '$n');
+}
+
+class _PendingFile {
+  _PendingFile({required this.fileName, required this.bytes});
+  final String fileName;
+  final Uint8List bytes;
+}
+
+class _UploadItem {
+  _UploadItem({required this.fileName, required this.fileSize});
+  final String fileName;
+  final int fileSize;
+  double progress = 0;
+  bool done = false;
+  bool mappingRequired = false;
+  String? datasetId;
+  String? error;
+}
+
+/// Panneau principal : liste des données déjà connectées pour ce tenant
+/// (jamais masquée, même vide) et bouton "Ajouter des fichiers" toujours
+/// disponible pour permettre l'import de plusieurs jeux de données distincts
+/// (ventes, clients, produits...).
+class _ConnectedDataView extends StatelessWidget {
+  const _ConnectedDataView({
+    required this.datasets,
+    required this.onAddFiles,
+    required this.onCompleteMapping,
+    required this.onGoToDashboard,
+    required this.onAskAvenqo,
+    required this.t,
+  });
+
+  final List<Map<String, dynamic>> datasets;
+  final VoidCallback onAddFiles;
+  final void Function(String datasetId) onCompleteMapping;
+  final VoidCallback onGoToDashboard;
+  final VoidCallback onAskAvenqo;
   final CompanyStrings t;
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border.all(color: colors.line),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            border: Border.all(color: colors.line),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.cloud_upload_outlined, color: _Brand.blue, size: 28),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                t.connectionsNoDataTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(t.connectionsNoDataFormats, style: TextStyle(color: colors.muted)),
+              const SizedBox(height: 22),
+              FilledButton.icon(
+                onPressed: onAddFiles,
+                style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
+                icon: const Icon(Icons.upload_file, size: 18),
+                label: Text(t.connectionsAddFiles),
+              ),
+            ],
+          ),
+        ),
+        if (datasets.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text(
+            t.connectionsConnectedDataTitle,
+            style: TextStyle(color: colors.ink, fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
           Container(
-            width: 56,
-            height: 56,
             decoration: BoxDecoration(
-              color: _Brand.blue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
+              color: colors.surface,
+              border: Border.all(color: colors.line),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.cloud_upload_outlined, color: _Brand.blue, size: 28),
+            child: Column(
+              children: [
+                for (var i = 0; i < datasets.length; i++)
+                  _DatasetRow(
+                    dataset: datasets[i],
+                    isLast: i == datasets.length - 1,
+                    onCompleteMapping: onCompleteMapping,
+                    onGoToDashboard: onGoToDashboard,
+                    onAskAvenqo: onAskAvenqo,
+                    t: t,
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 18),
-          Text(
-            t.connectionsNoDataTitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w700),
+        ],
+      ],
+    );
+  }
+}
+
+class _DatasetRow extends StatelessWidget {
+  const _DatasetRow({
+    required this.dataset,
+    required this.isLast,
+    required this.onCompleteMapping,
+    required this.onGoToDashboard,
+    required this.onAskAvenqo,
+    required this.t,
+  });
+
+  final Map<String, dynamic> dataset;
+  final bool isLast;
+  final void Function(String datasetId) onCompleteMapping;
+  final VoidCallback onGoToDashboard;
+  final VoidCallback onAskAvenqo;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final status = dataset['status']?.toString();
+    final id = dataset['id']?.toString();
+    final isReady = status == 'ready' || status == 'validated';
+    final isMappingRequired = status == 'mapping_required';
+    final isError = status == 'failed' || status == 'invalid' || status == 'rejected';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        border: isLast ? null : Border(bottom: BorderSide(color: colors.line)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isError
+                ? Icons.error_outline
+                : isMappingRequired
+                    ? Icons.rule_outlined
+                    : isReady
+                        ? Icons.check_circle
+                        : Icons.hourglass_top,
+            color: isError ? _Brand.red : (isReady ? _Brand.green : _Brand.blue),
           ),
-          const SizedBox(height: 8),
-          Text(
-            t.connectionsNoDataFormats,
-            style: TextStyle(color: colors.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  dataset['name']?.toString() ?? '—',
+                  style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (dataset['rows_count'] != null) '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
+                    if (dataset['columns_count'] != null) '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
+                    if (dataset['uploaded_at'] != null)
+                      '${t.connectionsImportedAtLabel} ${dataset['uploaded_at'].toString().split('T').first}',
+                  ].join(' · '),
+                  style: TextStyle(color: colors.muted, fontSize: 12),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 22),
-          FilledButton.icon(
-            onPressed: onImport,
-            style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-            icon: const Icon(Icons.upload_file, size: 18),
-            label: Text(t.connectionsImportButton),
-          ),
+          if (isMappingRequired && id != null)
+            TextButton(
+              onPressed: () => onCompleteMapping(id),
+              child: Text(t.connectionsMappingRequiredBadge),
+            )
+          else if (isReady) ...[
+            IconButton(
+              tooltip: t.connectionsGoDashboard,
+              onPressed: onGoToDashboard,
+              icon: const Icon(Icons.dashboard_outlined),
+            ),
+            IconButton(
+              tooltip: t.connectionsAskAvenqo,
+              onPressed: onAskAvenqo,
+              icon: const Icon(Icons.smart_toy_outlined),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _UploadingView extends StatelessWidget {
-  const _UploadingView({required this.fileName, required this.fileSize, required this.progress, required this.t});
-  final String? fileName;
-  final int? fileSize;
-  final double? progress;
-  final CompanyStrings t;
+/// Étape de revue avant envoi : les fichiers choisis restent modifiables
+/// (ajout/suppression) tant que l'utilisateur n'a pas cliqué sur "Importer".
+class _SelectingView extends StatelessWidget {
+  const _SelectingView({
+    required this.pending,
+    required this.duplicateNotice,
+    required this.onAddMore,
+    required this.onRemove,
+    required this.onUpload,
+    required this.t,
+  });
 
-  String _formatSize(int? bytes) {
-    if (bytes == null) return '';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} Ko';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
-  }
+  final List<_PendingFile> pending;
+  final String? duplicateNotice;
+  final VoidCallback onAddMore;
+  final void Function(_PendingFile file) onRemove;
+  final VoidCallback onUpload;
+  final CompanyStrings t;
 
   @override
   Widget build(BuildContext context) {
@@ -324,23 +543,229 @@ class _UploadingView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          if (duplicateNotice != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _Brand.blue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(duplicateNotice!, style: const TextStyle(color: _Brand.blue)),
+            ),
+            const SizedBox(height: 16),
+          ],
+          for (final file in pending)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.insert_drive_file_outlined, color: _Brand.blue),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          file.fileName,
+                          style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${_formatSize(file.bytes.length)} · ${t.connectionsReadyToUpload}',
+                          style: TextStyle(color: colors.muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: t.connectionsRemoveFile,
+                    onPressed: () => onRemove(file),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
-              const Icon(Icons.insert_drive_file_outlined, color: _Brand.blue),
-              const SizedBox(width: 10),
-              Expanded(
+              OutlinedButton.icon(
+                onPressed: onAddMore,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(t.connectionsAddMoreFiles),
+              ),
+              FilledButton(
+                onPressed: pending.isEmpty ? null : onUpload,
+                style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
                 child: Text(
-                  '${fileName ?? "—"} · ${_formatSize(fileSize)}',
-                  style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
+                  _pluralize(pending.length, t.connectionsUploadCountOne, t.connectionsUploadCountOther),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(value: progress != null && progress! > 0 ? progress : null),
-          const SizedBox(height: 12),
-          Text(t.connectionsUploadingLabel, style: TextStyle(color: colors.muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _UploadingView extends StatelessWidget {
+  const _UploadingView({required this.items, required this.t});
+  final List<_UploadItem> items;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final item in items) ...[
+            Row(
+              children: [
+                Icon(
+                  item.error != null
+                      ? Icons.error_outline
+                      : item.done
+                          ? Icons.check_circle_outline
+                          : Icons.insert_drive_file_outlined,
+                  color: item.error != null ? _Brand.red : (item.done ? _Brand.green : _Brand.blue),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${item.fileName} · ${_formatSize(item.fileSize)}',
+                    style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            LinearProgressIndicator(
+              value: item.done || item.error != null ? 1 : (item.progress > 0 ? item.progress : null),
+              color: item.error != null ? _Brand.red : null,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              item.error ?? (item.done ? t.connectionsUploadedFileSuccessLabel : t.connectionsUploadingLabel),
+              style: TextStyle(color: item.error != null ? _Brand.red : colors.muted),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Résumé final visible (pas une simple snackbar) : succès/échecs par
+/// fichier, actions utiles uniquement si au moins un dataset est prêt.
+class _SummaryView extends StatelessWidget {
+  const _SummaryView({
+    required this.items,
+    required this.onContinue,
+    required this.onGoToDashboard,
+    required this.onAskAvenqo,
+    required this.onAddFiles,
+    required this.t,
+  });
+
+  final List<_UploadItem> items;
+  final VoidCallback onContinue;
+  final VoidCallback onGoToDashboard;
+  final VoidCallback onAskAvenqo;
+  final VoidCallback onAddFiles;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final successCount = items.where((i) => i.done && i.error == null).length;
+    final errorCount = items.where((i) => i.error != null).length;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(errorCount == 0 ? Icons.check_circle : Icons.info_outline,
+                  color: errorCount == 0 ? _Brand.green : _Brand.blue),
+              const SizedBox(width: 10),
+              Text(
+                t.connectionsImportCompleteTitle,
+                style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _pluralize(successCount, t.connectionsImportSummarySuccessOne, t.connectionsImportSummarySuccessOther),
+            style: TextStyle(color: colors.ink),
+          ),
+          if (errorCount > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              _pluralize(errorCount, t.connectionsImportSummaryErrorsOne, t.connectionsImportSummaryErrorsOther),
+              style: const TextStyle(color: _Brand.red),
+            ),
+          ],
+          const SizedBox(height: 18),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    item.error != null ? Icons.error_outline : Icons.check_circle_outline,
+                    color: item.error != null ? _Brand.red : _Brand.green,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.fileName,
+                      style: TextStyle(color: colors.ink),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              if (successCount > 0) ...[
+                FilledButton(
+                  onPressed: onGoToDashboard,
+                  style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
+                  child: Text(t.connectionsGoDashboard),
+                ),
+                OutlinedButton(onPressed: onAskAvenqo, child: Text(t.connectionsAskAvenqo)),
+              ],
+              OutlinedButton(onPressed: onAddFiles, child: Text(t.connectionsAddFiles)),
+              TextButton(onPressed: onContinue, child: Text(t.connectionsContinueLabel)),
+            ],
+          ),
         ],
       ),
     );
@@ -455,96 +880,6 @@ class _MappingRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ReadyView extends StatelessWidget {
-  const _ReadyView({
-    required this.dataset,
-    required this.onGoToDashboard,
-    required this.onAskAvenqo,
-    required this.onImportAnother,
-    required this.t,
-  });
-
-  final Map<String, dynamic>? dataset;
-  final VoidCallback onGoToDashboard;
-  final VoidCallback onAskAvenqo;
-  final VoidCallback onImportAnother;
-  final CompanyStrings t;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    final data = dataset ?? const <String, dynamic>{};
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border.all(color: colors.line),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.check_circle, color: _Brand.green),
-              const SizedBox(width: 10),
-              Text(
-                t.connectionsReadyTitle,
-                style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 24,
-            runSpacing: 12,
-            children: [
-              _Stat(label: t.connectionsStatNameLabel, value: data['name']?.toString() ?? '—'),
-              _Stat(label: t.connectionsStatRowsLabel, value: '${data['rows_count'] ?? '—'}'),
-              _Stat(label: t.connectionsStatColumnsLabel, value: '${data['columns_count'] ?? '—'}'),
-              _Stat(label: t.connectionsStatUpdatedLabel, value: data['uploaded_at']?.toString().split('T').first ?? '—'),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              FilledButton(
-                onPressed: onGoToDashboard,
-                style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-                child: Text(t.connectionsGoDashboard),
-              ),
-              OutlinedButton(onPressed: onAskAvenqo, child: Text(t.connectionsAskAvenqo)),
-              OutlinedButton(onPressed: onImportAnother, child: Text(t.connectionsImportAnother)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: colors.muted, fontSize: 12)),
-        const SizedBox(height: 2),
-        Text(value, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700)),
-      ],
     );
   }
 }

@@ -603,6 +603,24 @@
     "settingsThemeLight": "Цайвар",
     "settingsThemeDark": "Бараан",
     "settingsThemeSystem": "Системийн дагуу",
-    "settingsLogout": "Гарах"
+    "settingsLogout": "Гарах",
+    "connectionsAddFiles": "Файл нэмэх",
+    "connectionsAddMoreFiles": "Өөр файл нэмэх",
+    "connectionsReadyToUpload": "Илгээхэд бэлэн",
+    "connectionsUploadCountOne": "{n} файл илгээх",
+    "connectionsUploadCountOther": "{n} файл илгээх",
+    "connectionsRemoveFile": "Устгах",
+    "connectionsDuplicateFileNotice": "Энэ файлыг аль хэдийн сонгосон байна.",
+    "connectionsImportCompleteTitle": "Импорт дууслаа",
+    "connectionsImportSummarySuccessOne": "{n} файлыг амжилттай импортлолоо.",
+    "connectionsImportSummarySuccessOther": "{n} файлыг амжилттай импортлолоо.",
+    "connectionsImportSummaryErrorsOne": "{n} файл амжилтгүй боллоо.",
+    "connectionsImportSummaryErrorsOther": "{n} файл амжилтгүй боллоо.",
+    "connectionsMappingRequiredBadge": "Харгалзуулалт шаардлагатай",
+    "connectionsCompleteMapping": "Харгалзуулалтыг дуусгах",
+    "connectionsConnectedDataTitle": "Холбогдсон өгөгдөл",
+    "connectionsContinueLabel": "Үргэлжлүүлэх",
+    "connectionsImportedAtLabel": "Импортлосон",
+    "connectionsUploadedFileSuccessLabel": "Өгөгдлийг амжилттай импортлолоо"
   }
 }

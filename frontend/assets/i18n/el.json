@@ -603,6 +603,24 @@
     "settingsThemeLight": "Ανοιχτό",
     "settingsThemeDark": "Σκούρο",
     "settingsThemeSystem": "Σύστημα",
-    "settingsLogout": "Αποσύνδεση"
+    "settingsLogout": "Αποσύνδεση",
+    "connectionsAddFiles": "Προσθήκη αρχείων",
+    "connectionsAddMoreFiles": "Προσθήκη περισσότερων αρχείων",
+    "connectionsReadyToUpload": "Έτοιμο για μεταφόρτωση",
+    "connectionsUploadCountOne": "Μεταφόρτωση {n} αρχείου",
+    "connectionsUploadCountOther": "Μεταφόρτωση {n} αρχείων",
+    "connectionsRemoveFile": "Αφαίρεση",
+    "connectionsDuplicateFileNotice": "Αυτό το αρχείο έχει ήδη επιλεγεί.",
+    "connectionsImportCompleteTitle": "Η εισαγωγή ολοκληρώθηκε",
+    "connectionsImportSummarySuccessOne": "{n} αρχείο εισήχθη με επιτυχία.",
+    "connectionsImportSummarySuccessOther": "{n} αρχεία εισήχθησαν με επιτυχία.",
+    "connectionsImportSummaryErrorsOne": "{n} αρχείο απέτυχε.",
+    "connectionsImportSummaryErrorsOther": "{n} αρχεία απέτυχαν.",
+    "connectionsMappingRequiredBadge": "Απαιτείται αντιστοίχιση",
+    "connectionsCompleteMapping": "Ολοκλήρωση αντιστοίχισης",
+    "connectionsConnectedDataTitle": "Συνδεδεμένα δεδομένα",
+    "connectionsContinueLabel": "Συνέχεια",
+    "connectionsImportedAtLabel": "Εισήχθη",
+    "connectionsUploadedFileSuccessLabel": "Τα δεδομένα εισήχθησαν με επιτυχία"
   }
 }

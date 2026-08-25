@@ -603,6 +603,24 @@
     "settingsThemeLight": "Luminos",
     "settingsThemeDark": "Întunecat",
     "settingsThemeSystem": "Sistem",
-    "settingsLogout": "Deconectare"
+    "settingsLogout": "Deconectare",
+    "connectionsAddFiles": "Adăugați fișiere",
+    "connectionsAddMoreFiles": "Adăugați mai multe fișiere",
+    "connectionsReadyToUpload": "Gata de încărcare",
+    "connectionsUploadCountOne": "Încarcă {n} fișier",
+    "connectionsUploadCountOther": "Încarcă {n} fișiere",
+    "connectionsRemoveFile": "Elimină",
+    "connectionsDuplicateFileNotice": "Acest fișier este deja selectat.",
+    "connectionsImportCompleteTitle": "Import finalizat",
+    "connectionsImportSummarySuccessOne": "{n} fișier importat cu succes.",
+    "connectionsImportSummarySuccessOther": "{n} fișiere importate cu succes.",
+    "connectionsImportSummaryErrorsOne": "{n} fișier eșuat.",
+    "connectionsImportSummaryErrorsOther": "{n} fișiere eșuate.",
+    "connectionsMappingRequiredBadge": "Mapare necesară",
+    "connectionsCompleteMapping": "Finalizează maparea",
+    "connectionsConnectedDataTitle": "Date conectate",
+    "connectionsContinueLabel": "Continuă",
+    "connectionsImportedAtLabel": "Importat",
+    "connectionsUploadedFileSuccessLabel": "Date importate cu succes"
   }
 }

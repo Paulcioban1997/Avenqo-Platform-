@@ -603,6 +603,24 @@
     "settingsThemeLight": "ភ្លឺ",
     "settingsThemeDark": "ងងឹត",
     "settingsThemeSystem": "តាមប្រព័ន្ធ",
-    "settingsLogout": "ចាកចេញ"
+    "settingsLogout": "ចាកចេញ",
+    "connectionsAddFiles": "បន្ថែមឯកសារ",
+    "connectionsAddMoreFiles": "បន្ថែមឯកសារបន្ថែមទៀត",
+    "connectionsReadyToUpload": "ត្រៀមខ្លួនផ្ទុកឡើង",
+    "connectionsUploadCountOne": "ផ្ទុកឡើងឯកសារ {n}",
+    "connectionsUploadCountOther": "ផ្ទុកឡើងឯកសារ {n}",
+    "connectionsRemoveFile": "លុបចេញ",
+    "connectionsDuplicateFileNotice": "ឯកសារនេះត្រូវបានជ្រើសរើសរួចហើយ។",
+    "connectionsImportCompleteTitle": "នាំចូលបានបញ្ចប់",
+    "connectionsImportSummarySuccessOne": "ឯកសារ {n} បាននាំចូលដោយជោគជ័យ។",
+    "connectionsImportSummarySuccessOther": "ឯកសារ {n} បាននាំចូលដោយជោគជ័យ។",
+    "connectionsImportSummaryErrorsOne": "ឯកសារ {n} បរាជ័យ។",
+    "connectionsImportSummaryErrorsOther": "ឯកសារ {n} បរាជ័យ។",
+    "connectionsMappingRequiredBadge": "ត្រូវការគូសផែនទី",
+    "connectionsCompleteMapping": "បញ្ចប់ការគូសផែនទី",
+    "connectionsConnectedDataTitle": "ទិន្នន័យបានភ្ជាប់",
+    "connectionsContinueLabel": "បន្ត",
+    "connectionsImportedAtLabel": "បាននាំចូល",
+    "connectionsUploadedFileSuccessLabel": "ទិន្នន័យបាននាំចូលដោយជោគជ័យ"
   }
 }

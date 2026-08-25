@@ -603,6 +603,24 @@
     "settingsThemeLight": "Açık",
     "settingsThemeDark": "Koyu",
     "settingsThemeSystem": "Sistem",
-    "settingsLogout": "Çıkış yap"
+    "settingsLogout": "Çıkış yap",
+    "connectionsAddFiles": "Dosya ekle",
+    "connectionsAddMoreFiles": "Daha fazla dosya ekle",
+    "connectionsReadyToUpload": "Yüklemeye hazır",
+    "connectionsUploadCountOne": "{n} dosya yükle",
+    "connectionsUploadCountOther": "{n} dosya yükle",
+    "connectionsRemoveFile": "Kaldır",
+    "connectionsDuplicateFileNotice": "Bu dosya zaten seçildi.",
+    "connectionsImportCompleteTitle": "İçe aktarma tamamlandı",
+    "connectionsImportSummarySuccessOne": "{n} dosya başarıyla içe aktarıldı.",
+    "connectionsImportSummarySuccessOther": "{n} dosya başarıyla içe aktarıldı.",
+    "connectionsImportSummaryErrorsOne": "{n} dosya başarısız oldu.",
+    "connectionsImportSummaryErrorsOther": "{n} dosya başarısız oldu.",
+    "connectionsMappingRequiredBadge": "Eşleme gerekli",
+    "connectionsCompleteMapping": "Eşlemeyi tamamla",
+    "connectionsConnectedDataTitle": "Bağlı veriler",
+    "connectionsContinueLabel": "Devam et",
+    "connectionsImportedAtLabel": "İçe aktarıldı",
+    "connectionsUploadedFileSuccessLabel": "Veriler başarıyla içe aktarıldı"
   }
 }

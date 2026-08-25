@@ -603,6 +603,24 @@
     "settingsThemeLight": "สว่าง",
     "settingsThemeDark": "มืด",
     "settingsThemeSystem": "ตามระบบ",
-    "settingsLogout": "ออกจากระบบ"
+    "settingsLogout": "ออกจากระบบ",
+    "connectionsAddFiles": "เพิ่มไฟล์",
+    "connectionsAddMoreFiles": "เพิ่มไฟล์อีก",
+    "connectionsReadyToUpload": "พร้อมอัปโหลด",
+    "connectionsUploadCountOne": "อัปโหลด {n} ไฟล์",
+    "connectionsUploadCountOther": "อัปโหลด {n} ไฟล์",
+    "connectionsRemoveFile": "ลบออก",
+    "connectionsDuplicateFileNotice": "ไฟล์นี้ถูกเลือกแล้ว",
+    "connectionsImportCompleteTitle": "นำเข้าเสร็จสมบูรณ์",
+    "connectionsImportSummarySuccessOne": "นำเข้าไฟล์ {n} ไฟล์สำเร็จแล้ว",
+    "connectionsImportSummarySuccessOther": "นำเข้าไฟล์ {n} ไฟล์สำเร็จแล้ว",
+    "connectionsImportSummaryErrorsOne": "ไฟล์ {n} ไฟล์ล้มเหลว",
+    "connectionsImportSummaryErrorsOther": "ไฟล์ {n} ไฟล์ล้มเหลว",
+    "connectionsMappingRequiredBadge": "ต้องแมปข้อมูล",
+    "connectionsCompleteMapping": "ทำการแมปให้เสร็จ",
+    "connectionsConnectedDataTitle": "ข้อมูลที่เชื่อมต่อ",
+    "connectionsContinueLabel": "ดำเนินการต่อ",
+    "connectionsImportedAtLabel": "นำเข้าแล้ว",
+    "connectionsUploadedFileSuccessLabel": "นำเข้าข้อมูลสำเร็จแล้ว"
   }
 }

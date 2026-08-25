@@ -1462,6 +1462,24 @@ class CompanyStrings {
     required this.connectionsGenericError,
     required this.connectionsFileEmptyError,
     required this.connectionsProcessingError,
+    required this.connectionsAddFiles,
+    required this.connectionsAddMoreFiles,
+    required this.connectionsReadyToUpload,
+    required this.connectionsUploadCountOne,
+    required this.connectionsUploadCountOther,
+    required this.connectionsRemoveFile,
+    required this.connectionsDuplicateFileNotice,
+    required this.connectionsImportCompleteTitle,
+    required this.connectionsImportSummarySuccessOne,
+    required this.connectionsImportSummarySuccessOther,
+    required this.connectionsImportSummaryErrorsOne,
+    required this.connectionsImportSummaryErrorsOther,
+    required this.connectionsMappingRequiredBadge,
+    required this.connectionsCompleteMapping,
+    required this.connectionsConnectedDataTitle,
+    required this.connectionsContinueLabel,
+    required this.connectionsImportedAtLabel,
+    required this.connectionsUploadedFileSuccessLabel,
     required this.businessDefaultTitle,
     required this.businessDefaultDescription,
     required this.businessConnectButton,
@@ -1563,6 +1581,24 @@ class CompanyStrings {
       connectionsGenericError: s('connectionsGenericError'),
       connectionsFileEmptyError: s('connectionsFileEmptyError'),
       connectionsProcessingError: s('connectionsProcessingError'),
+      connectionsAddFiles: s('connectionsAddFiles'),
+      connectionsAddMoreFiles: s('connectionsAddMoreFiles'),
+      connectionsReadyToUpload: s('connectionsReadyToUpload'),
+      connectionsUploadCountOne: s('connectionsUploadCountOne'),
+      connectionsUploadCountOther: s('connectionsUploadCountOther'),
+      connectionsRemoveFile: s('connectionsRemoveFile'),
+      connectionsDuplicateFileNotice: s('connectionsDuplicateFileNotice'),
+      connectionsImportCompleteTitle: s('connectionsImportCompleteTitle'),
+      connectionsImportSummarySuccessOne: s('connectionsImportSummarySuccessOne'),
+      connectionsImportSummarySuccessOther: s('connectionsImportSummarySuccessOther'),
+      connectionsImportSummaryErrorsOne: s('connectionsImportSummaryErrorsOne'),
+      connectionsImportSummaryErrorsOther: s('connectionsImportSummaryErrorsOther'),
+      connectionsMappingRequiredBadge: s('connectionsMappingRequiredBadge'),
+      connectionsCompleteMapping: s('connectionsCompleteMapping'),
+      connectionsConnectedDataTitle: s('connectionsConnectedDataTitle'),
+      connectionsContinueLabel: s('connectionsContinueLabel'),
+      connectionsImportedAtLabel: s('connectionsImportedAtLabel'),
+      connectionsUploadedFileSuccessLabel: s('connectionsUploadedFileSuccessLabel'),
       businessDefaultTitle: s('businessDefaultTitle'),
       businessDefaultDescription: s('businessDefaultDescription'),
       businessConnectButton: s('businessConnectButton'),
@@ -1662,6 +1698,24 @@ class CompanyStrings {
         connectionsGenericError: 'An unexpected error occurred.',
         connectionsFileEmptyError: 'The selected file is empty or unreadable.',
         connectionsProcessingError: 'This file could not be processed.',
+        connectionsAddFiles: 'Add files',
+        connectionsAddMoreFiles: 'Add more files',
+        connectionsReadyToUpload: 'Ready to upload',
+        connectionsUploadCountOne: 'Upload {n} file',
+        connectionsUploadCountOther: 'Upload {n} files',
+        connectionsRemoveFile: 'Remove',
+        connectionsDuplicateFileNotice: 'This file is already selected.',
+        connectionsImportCompleteTitle: 'Import complete',
+        connectionsImportSummarySuccessOne: '{n} file imported successfully.',
+        connectionsImportSummarySuccessOther: '{n} files imported successfully.',
+        connectionsImportSummaryErrorsOne: '{n} file failed.',
+        connectionsImportSummaryErrorsOther: '{n} files failed.',
+        connectionsMappingRequiredBadge: 'Mapping required',
+        connectionsCompleteMapping: 'Complete mapping',
+        connectionsConnectedDataTitle: 'Connected data',
+        connectionsContinueLabel: 'Continue',
+        connectionsImportedAtLabel: 'Imported',
+        connectionsUploadedFileSuccessLabel: 'Data imported successfully',
         businessDefaultTitle: 'Your space is ready',
         businessDefaultDescription: 'Connect your tools to see up-to-date information here.',
         businessConnectButton: 'Connect my tools',
@@ -1760,6 +1814,24 @@ class CompanyStrings {
         'connectionsGenericError' => connectionsGenericError,
         'connectionsFileEmptyError' => connectionsFileEmptyError,
         'connectionsProcessingError' => connectionsProcessingError,
+        'connectionsAddFiles' => connectionsAddFiles,
+        'connectionsAddMoreFiles' => connectionsAddMoreFiles,
+        'connectionsReadyToUpload' => connectionsReadyToUpload,
+        'connectionsUploadCountOne' => connectionsUploadCountOne,
+        'connectionsUploadCountOther' => connectionsUploadCountOther,
+        'connectionsRemoveFile' => connectionsRemoveFile,
+        'connectionsDuplicateFileNotice' => connectionsDuplicateFileNotice,
+        'connectionsImportCompleteTitle' => connectionsImportCompleteTitle,
+        'connectionsImportSummarySuccessOne' => connectionsImportSummarySuccessOne,
+        'connectionsImportSummarySuccessOther' => connectionsImportSummarySuccessOther,
+        'connectionsImportSummaryErrorsOne' => connectionsImportSummaryErrorsOne,
+        'connectionsImportSummaryErrorsOther' => connectionsImportSummaryErrorsOther,
+        'connectionsMappingRequiredBadge' => connectionsMappingRequiredBadge,
+        'connectionsCompleteMapping' => connectionsCompleteMapping,
+        'connectionsConnectedDataTitle' => connectionsConnectedDataTitle,
+        'connectionsContinueLabel' => connectionsContinueLabel,
+        'connectionsImportedAtLabel' => connectionsImportedAtLabel,
+        'connectionsUploadedFileSuccessLabel' => connectionsUploadedFileSuccessLabel,
         'businessDefaultTitle' => businessDefaultTitle,
         'businessDefaultDescription' => businessDefaultDescription,
         'businessConnectButton' => businessConnectButton,
@@ -1858,6 +1930,24 @@ class CompanyStrings {
   final String connectionsGenericError;
   final String connectionsFileEmptyError;
   final String connectionsProcessingError;
+  final String connectionsAddFiles;
+  final String connectionsAddMoreFiles;
+  final String connectionsReadyToUpload;
+  final String connectionsUploadCountOne;
+  final String connectionsUploadCountOther;
+  final String connectionsRemoveFile;
+  final String connectionsDuplicateFileNotice;
+  final String connectionsImportCompleteTitle;
+  final String connectionsImportSummarySuccessOne;
+  final String connectionsImportSummarySuccessOther;
+  final String connectionsImportSummaryErrorsOne;
+  final String connectionsImportSummaryErrorsOther;
+  final String connectionsMappingRequiredBadge;
+  final String connectionsCompleteMapping;
+  final String connectionsConnectedDataTitle;
+  final String connectionsContinueLabel;
+  final String connectionsImportedAtLabel;
+  final String connectionsUploadedFileSuccessLabel;
   final String businessDefaultTitle;
   final String businessDefaultDescription;
   final String businessConnectButton;

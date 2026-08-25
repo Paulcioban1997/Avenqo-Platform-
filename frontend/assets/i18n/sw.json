@@ -603,6 +603,24 @@
     "settingsThemeLight": "Nyepesi",
     "settingsThemeDark": "Giza",
     "settingsThemeSystem": "Mfumo",
-    "settingsLogout": "Toka"
+    "settingsLogout": "Toka",
+    "connectionsAddFiles": "Ongeza faili",
+    "connectionsAddMoreFiles": "Ongeza faili zaidi",
+    "connectionsReadyToUpload": "Tayari kupakia",
+    "connectionsUploadCountOne": "Pakia faili {n}",
+    "connectionsUploadCountOther": "Pakia faili {n}",
+    "connectionsRemoveFile": "Ondoa",
+    "connectionsDuplicateFileNotice": "Faili hii tayari imechaguliwa.",
+    "connectionsImportCompleteTitle": "Uingizaji umekamilika",
+    "connectionsImportSummarySuccessOne": "Faili {n} imeingizwa kwa mafanikio.",
+    "connectionsImportSummarySuccessOther": "Faili {n} zimeingizwa kwa mafanikio.",
+    "connectionsImportSummaryErrorsOne": "Faili {n} imeshindwa.",
+    "connectionsImportSummaryErrorsOther": "Faili {n} zimeshindwa.",
+    "connectionsMappingRequiredBadge": "Uunganishaji unahitajika",
+    "connectionsCompleteMapping": "Kamilisha uunganishaji",
+    "connectionsConnectedDataTitle": "Data iliyounganishwa",
+    "connectionsContinueLabel": "Endelea",
+    "connectionsImportedAtLabel": "Imeingizwa",
+    "connectionsUploadedFileSuccessLabel": "Data imeingizwa kwa mafanikio"
   }
 }

@@ -603,6 +603,24 @@
     "settingsThemeLight": "בהיר",
     "settingsThemeDark": "כהה",
     "settingsThemeSystem": "מערכת",
-    "settingsLogout": "התנתקות"
+    "settingsLogout": "התנתקות",
+    "connectionsAddFiles": "הוספת קבצים",
+    "connectionsAddMoreFiles": "הוספת קבצים נוספים",
+    "connectionsReadyToUpload": "מוכן להעלאה",
+    "connectionsUploadCountOne": "העלאת {n} קובץ",
+    "connectionsUploadCountOther": "העלאת {n} קבצים",
+    "connectionsRemoveFile": "הסרה",
+    "connectionsDuplicateFileNotice": "הקובץ הזה כבר נבחר.",
+    "connectionsImportCompleteTitle": "הייבוא הושלם",
+    "connectionsImportSummarySuccessOne": "{n} קובץ יובא בהצלחה.",
+    "connectionsImportSummarySuccessOther": "{n} קבצים יובאו בהצלחה.",
+    "connectionsImportSummaryErrorsOne": "{n} קובץ נכשל.",
+    "connectionsImportSummaryErrorsOther": "{n} קבצים נכשלו.",
+    "connectionsMappingRequiredBadge": "נדרשת מיפוי",
+    "connectionsCompleteMapping": "השלמת מיפוי",
+    "connectionsConnectedDataTitle": "נתונים מחוברים",
+    "connectionsContinueLabel": "המשך",
+    "connectionsImportedAtLabel": "יובא",
+    "connectionsUploadedFileSuccessLabel": "הנתונים יובאו בהצלחה"
   }
 }

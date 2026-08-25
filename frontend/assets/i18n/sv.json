@@ -603,6 +603,24 @@
     "settingsThemeLight": "Ljust",
     "settingsThemeDark": "Mörkt",
     "settingsThemeSystem": "System",
-    "settingsLogout": "Logga ut"
+    "settingsLogout": "Logga ut",
+    "connectionsAddFiles": "Lägg till filer",
+    "connectionsAddMoreFiles": "Lägg till fler filer",
+    "connectionsReadyToUpload": "Redo att ladda upp",
+    "connectionsUploadCountOne": "Ladda upp {n} fil",
+    "connectionsUploadCountOther": "Ladda upp {n} filer",
+    "connectionsRemoveFile": "Ta bort",
+    "connectionsDuplicateFileNotice": "Den här filen är redan vald.",
+    "connectionsImportCompleteTitle": "Import klar",
+    "connectionsImportSummarySuccessOne": "{n} fil importerad.",
+    "connectionsImportSummarySuccessOther": "{n} filer importerade.",
+    "connectionsImportSummaryErrorsOne": "{n} fil misslyckades.",
+    "connectionsImportSummaryErrorsOther": "{n} filer misslyckades.",
+    "connectionsMappingRequiredBadge": "Mappning krävs",
+    "connectionsCompleteMapping": "Slutför mappning",
+    "connectionsConnectedDataTitle": "Anslutna data",
+    "connectionsContinueLabel": "Fortsätt",
+    "connectionsImportedAtLabel": "Importerad",
+    "connectionsUploadedFileSuccessLabel": "Data importerade"
   }
 }

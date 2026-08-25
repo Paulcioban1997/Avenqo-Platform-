@@ -603,6 +603,24 @@
     "settingsThemeLight": "ライト",
     "settingsThemeDark": "ダーク",
     "settingsThemeSystem": "システムに従う",
-    "settingsLogout": "ログアウト"
+    "settingsLogout": "ログアウト",
+    "connectionsAddFiles": "ファイルを追加",
+    "connectionsAddMoreFiles": "さらにファイルを追加",
+    "connectionsReadyToUpload": "アップロード準備完了",
+    "connectionsUploadCountOne": "{n} 件のファイルをアップロード",
+    "connectionsUploadCountOther": "{n} 件のファイルをアップロード",
+    "connectionsRemoveFile": "削除",
+    "connectionsDuplicateFileNotice": "このファイルは既に選択されています。",
+    "connectionsImportCompleteTitle": "インポート完了",
+    "connectionsImportSummarySuccessOne": "{n} 件のファイルをインポートしました。",
+    "connectionsImportSummarySuccessOther": "{n} 件のファイルをインポートしました。",
+    "connectionsImportSummaryErrorsOne": "{n} 件のファイルが失敗しました。",
+    "connectionsImportSummaryErrorsOther": "{n} 件のファイルが失敗しました。",
+    "connectionsMappingRequiredBadge": "マッピングが必要です",
+    "connectionsCompleteMapping": "マッピングを完了",
+    "connectionsConnectedDataTitle": "接続済みのデータ",
+    "connectionsContinueLabel": "続ける",
+    "connectionsImportedAtLabel": "インポート済み",
+    "connectionsUploadedFileSuccessLabel": "データのインポートに成功しました"
   }
 }

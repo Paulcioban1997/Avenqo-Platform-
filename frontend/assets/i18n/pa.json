@@ -603,6 +603,24 @@
     "settingsThemeLight": "ਹਲਕਾ",
     "settingsThemeDark": "ਗੂੜ੍ਹਾ",
     "settingsThemeSystem": "ਸਿਸਟਮ ਅਨੁਸਾਰ",
-    "settingsLogout": "ਲੌਗ ਆਊਟ"
+    "settingsLogout": "ਲੌਗ ਆਊਟ",
+    "connectionsAddFiles": "ਫਾਈਲਾਂ ਸ਼ਾਮਲ ਕਰੋ",
+    "connectionsAddMoreFiles": "ਹੋਰ ਫਾਈਲਾਂ ਸ਼ਾਮਲ ਕਰੋ",
+    "connectionsReadyToUpload": "ਅੱਪਲੋਡ ਲਈ ਤਿਆਰ",
+    "connectionsUploadCountOne": "{n} ਫਾਈਲ ਅੱਪਲੋਡ ਕਰੋ",
+    "connectionsUploadCountOther": "{n} ਫਾਈਲਾਂ ਅੱਪਲੋਡ ਕਰੋ",
+    "connectionsRemoveFile": "ਹਟਾਓ",
+    "connectionsDuplicateFileNotice": "ਇਹ ਫਾਈਲ ਪਹਿਲਾਂ ਹੀ ਚੁਣੀ ਗਈ ਹੈ।",
+    "connectionsImportCompleteTitle": "ਇੰਪੋਰਟ ਪੂਰਾ ਹੋਇਆ",
+    "connectionsImportSummarySuccessOne": "{n} ਫਾਈਲ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਈ।",
+    "connectionsImportSummarySuccessOther": "{n} ਫਾਈਲਾਂ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਈਆਂ।",
+    "connectionsImportSummaryErrorsOne": "{n} ਫਾਈਲ ਅਸਫਲ ਰਹੀ।",
+    "connectionsImportSummaryErrorsOther": "{n} ਫਾਈਲਾਂ ਅਸਫਲ ਰਹੀਆਂ।",
+    "connectionsMappingRequiredBadge": "ਮੈਪਿੰਗ ਲੋੜੀਂਦੀ ਹੈ",
+    "connectionsCompleteMapping": "ਮੈਪਿੰਗ ਪੂਰੀ ਕਰੋ",
+    "connectionsConnectedDataTitle": "ਕਨੈਕਟ ਕੀਤਾ ਡਾਟਾ",
+    "connectionsContinueLabel": "ਜਾਰੀ ਰੱਖੋ",
+    "connectionsImportedAtLabel": "ਇੰਪੋਰਟ ਕੀਤਾ",
+    "connectionsUploadedFileSuccessLabel": "ਡਾਟਾ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਇਆ"
   }
 }

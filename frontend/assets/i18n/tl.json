@@ -603,6 +603,24 @@
     "settingsThemeLight": "Maliwanag",
     "settingsThemeDark": "Madilim",
     "settingsThemeSystem": "Sundin ang system",
-    "settingsLogout": "Mag-logout"
+    "settingsLogout": "Mag-logout",
+    "connectionsAddFiles": "Magdagdag ng mga file",
+    "connectionsAddMoreFiles": "Magdagdag pa ng mga file",
+    "connectionsReadyToUpload": "Handa nang i-upload",
+    "connectionsUploadCountOne": "I-upload ang {n} file",
+    "connectionsUploadCountOther": "I-upload ang {n} na file",
+    "connectionsRemoveFile": "Alisin",
+    "connectionsDuplicateFileNotice": "Napili na ang file na ito.",
+    "connectionsImportCompleteTitle": "Tapos na ang pag-import",
+    "connectionsImportSummarySuccessOne": "{n} file ang matagumpay na na-import.",
+    "connectionsImportSummarySuccessOther": "{n} na file ang matagumpay na na-import.",
+    "connectionsImportSummaryErrorsOne": "{n} file ang nabigo.",
+    "connectionsImportSummaryErrorsOther": "{n} na file ang nabigo.",
+    "connectionsMappingRequiredBadge": "Kailangan ng mapping",
+    "connectionsCompleteMapping": "Kumpletuhin ang mapping",
+    "connectionsConnectedDataTitle": "Nakakonektang data",
+    "connectionsContinueLabel": "Magpatuloy",
+    "connectionsImportedAtLabel": "Na-import",
+    "connectionsUploadedFileSuccessLabel": "Matagumpay na na-import ang data"
   }
 }

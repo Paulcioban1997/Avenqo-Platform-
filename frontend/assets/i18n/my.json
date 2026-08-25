@@ -603,6 +603,24 @@
     "settingsThemeLight": "အလင်း",
     "settingsThemeDark": "အမှောင်",
     "settingsThemeSystem": "စနစ်အတိုင်း",
-    "settingsLogout": "ထွက်ရန်"
+    "settingsLogout": "ထွက်ရန်",
+    "connectionsAddFiles": "ဖိုင်များထည့်ရန်",
+    "connectionsAddMoreFiles": "နောက်ထပ်ဖိုင်များထည့်ရန်",
+    "connectionsReadyToUpload": "အပ်လုဒ်တင်ရန်အသင့်",
+    "connectionsUploadCountOne": "ဖိုင် {n} ခုအပ်လုဒ်တင်ရန်",
+    "connectionsUploadCountOther": "ဖိုင် {n} ခုအပ်လုဒ်တင်ရန်",
+    "connectionsRemoveFile": "ဖယ်ရှားရန်",
+    "connectionsDuplicateFileNotice": "ဤဖိုင်ကို ရွေးချယ်ပြီးဖြစ်သည်။",
+    "connectionsImportCompleteTitle": "တင်သွင်းမှု ပြီးဆုံးပါပြီ",
+    "connectionsImportSummarySuccessOne": "ဖိုင် {n} ခု အောင်မြင်စွာတင်သွင်းပြီးပါပြီ။",
+    "connectionsImportSummarySuccessOther": "ဖိုင် {n} ခု အောင်မြင်စွာတင်သွင်းပြီးပါပြီ။",
+    "connectionsImportSummaryErrorsOne": "ဖိုင် {n} ခု မအောင်မြင်ပါ။",
+    "connectionsImportSummaryErrorsOther": "ဖိုင် {n} ခု မအောင်မြင်ပါ။",
+    "connectionsMappingRequiredBadge": "မြေပုံဆွဲရန် လိုအပ်သည်",
+    "connectionsCompleteMapping": "မြေပုံဆွဲခြင်းပြီးမြောက်ရန်",
+    "connectionsConnectedDataTitle": "ချိတ်ဆက်ထားသော ဒေတာ",
+    "connectionsContinueLabel": "ဆက်လက်ရန်",
+    "connectionsImportedAtLabel": "တင်သွင်းပြီး",
+    "connectionsUploadedFileSuccessLabel": "ဒေတာအောင်မြင်စွာတင်သွင်းပြီးပါပြီ"
   }
 }

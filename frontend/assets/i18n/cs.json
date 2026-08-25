@@ -603,6 +603,24 @@
     "settingsThemeLight": "Světlý",
     "settingsThemeDark": "Tmavý",
     "settingsThemeSystem": "Systémový",
-    "settingsLogout": "Odhlásit se"
+    "settingsLogout": "Odhlásit se",
+    "connectionsAddFiles": "Přidat soubory",
+    "connectionsAddMoreFiles": "Přidat další soubory",
+    "connectionsReadyToUpload": "Připraveno k nahrání",
+    "connectionsUploadCountOne": "Nahrát {n} soubor",
+    "connectionsUploadCountOther": "Nahrát {n} souborů",
+    "connectionsRemoveFile": "Odebrat",
+    "connectionsDuplicateFileNotice": "Tento soubor je již vybrán.",
+    "connectionsImportCompleteTitle": "Import dokončen",
+    "connectionsImportSummarySuccessOne": "{n} soubor úspěšně importován.",
+    "connectionsImportSummarySuccessOther": "{n} souborů úspěšně importováno.",
+    "connectionsImportSummaryErrorsOne": "{n} soubor selhal.",
+    "connectionsImportSummaryErrorsOther": "{n} souborů selhalo.",
+    "connectionsMappingRequiredBadge": "Vyžadováno mapování",
+    "connectionsCompleteMapping": "Dokončit mapování",
+    "connectionsConnectedDataTitle": "Připojená data",
+    "connectionsContinueLabel": "Pokračovat",
+    "connectionsImportedAtLabel": "Importováno",
+    "connectionsUploadedFileSuccessLabel": "Data úspěšně importována"
   }
 }

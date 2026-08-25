@@ -603,6 +603,24 @@
     "settingsThemeLight": "Sáng",
     "settingsThemeDark": "Tối",
     "settingsThemeSystem": "Theo hệ thống",
-    "settingsLogout": "Đăng xuất"
+    "settingsLogout": "Đăng xuất",
+    "connectionsAddFiles": "Thêm tệp",
+    "connectionsAddMoreFiles": "Thêm tệp khác",
+    "connectionsReadyToUpload": "Sẵn sàng tải lên",
+    "connectionsUploadCountOne": "Tải lên {n} tệp",
+    "connectionsUploadCountOther": "Tải lên {n} tệp",
+    "connectionsRemoveFile": "Xóa",
+    "connectionsDuplicateFileNotice": "Tệp này đã được chọn.",
+    "connectionsImportCompleteTitle": "Nhập hoàn tất",
+    "connectionsImportSummarySuccessOne": "Đã nhập thành công {n} tệp.",
+    "connectionsImportSummarySuccessOther": "Đã nhập thành công {n} tệp.",
+    "connectionsImportSummaryErrorsOne": "{n} tệp thất bại.",
+    "connectionsImportSummaryErrorsOther": "{n} tệp thất bại.",
+    "connectionsMappingRequiredBadge": "Cần ánh xạ",
+    "connectionsCompleteMapping": "Hoàn tất ánh xạ",
+    "connectionsConnectedDataTitle": "Dữ liệu đã kết nối",
+    "connectionsContinueLabel": "Tiếp tục",
+    "connectionsImportedAtLabel": "Đã nhập",
+    "connectionsUploadedFileSuccessLabel": "Đã nhập dữ liệu thành công"
   }
 }

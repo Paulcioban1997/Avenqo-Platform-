@@ -603,6 +603,24 @@
     "settingsThemeLight": "Բաց",
     "settingsThemeDark": "Մուգ",
     "settingsThemeSystem": "Համակարգային",
-    "settingsLogout": "Ելք"
+    "settingsLogout": "Ելք",
+    "connectionsAddFiles": "Ավելացնել ֆայլեր",
+    "connectionsAddMoreFiles": "Ավելացնել ևս ֆայլեր",
+    "connectionsReadyToUpload": "Պատրաստ է վերբեռնման",
+    "connectionsUploadCountOne": "Վերբեռնել {n} ֆայլ",
+    "connectionsUploadCountOther": "Վերբեռնել {n} ֆայլ",
+    "connectionsRemoveFile": "Հեռացնել",
+    "connectionsDuplicateFileNotice": "Այս ֆայլն արդեն ընտրված է։",
+    "connectionsImportCompleteTitle": "Ներմուծումն ավարտված է",
+    "connectionsImportSummarySuccessOne": "{n} ֆայլը հաջողությամբ ներմուծվեց։",
+    "connectionsImportSummarySuccessOther": "{n} ֆայլերը հաջողությամբ ներմուծվեցին։",
+    "connectionsImportSummaryErrorsOne": "{n} ֆայլը ձախողվեց։",
+    "connectionsImportSummaryErrorsOther": "{n} ֆայլերը ձախողվեցին։",
+    "connectionsMappingRequiredBadge": "Անհրաժեշտ է քարտեզագրում",
+    "connectionsCompleteMapping": "Ավարտել քարտեզագրումը",
+    "connectionsConnectedDataTitle": "Կապակցված տվյալներ",
+    "connectionsContinueLabel": "Շարունակել",
+    "connectionsImportedAtLabel": "Ներմուծված է",
+    "connectionsUploadedFileSuccessLabel": "Տվյալները հաջողությամբ ներմուծվեցին"
   }
 }

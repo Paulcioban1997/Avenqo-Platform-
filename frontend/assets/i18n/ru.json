@@ -603,6 +603,24 @@
     "settingsThemeLight": "Светлая",
     "settingsThemeDark": "Тёмная",
     "settingsThemeSystem": "Системная",
-    "settingsLogout": "Выйти"
+    "settingsLogout": "Выйти",
+    "connectionsAddFiles": "Добавить файлы",
+    "connectionsAddMoreFiles": "Добавить ещё файлы",
+    "connectionsReadyToUpload": "Готово к загрузке",
+    "connectionsUploadCountOne": "Загрузить {n} файл",
+    "connectionsUploadCountOther": "Загрузить {n} файлов",
+    "connectionsRemoveFile": "Удалить",
+    "connectionsDuplicateFileNotice": "Этот файл уже выбран.",
+    "connectionsImportCompleteTitle": "Импорт завершён",
+    "connectionsImportSummarySuccessOne": "{n} файл успешно импортирован.",
+    "connectionsImportSummarySuccessOther": "{n} файлов успешно импортировано.",
+    "connectionsImportSummaryErrorsOne": "{n} файл с ошибкой.",
+    "connectionsImportSummaryErrorsOther": "{n} файлов с ошибкой.",
+    "connectionsMappingRequiredBadge": "Требуется сопоставление",
+    "connectionsCompleteMapping": "Завершить сопоставление",
+    "connectionsConnectedDataTitle": "Подключённые данные",
+    "connectionsContinueLabel": "Продолжить",
+    "connectionsImportedAtLabel": "Импортировано",
+    "connectionsUploadedFileSuccessLabel": "Данные успешно импортированы"
   }
 }

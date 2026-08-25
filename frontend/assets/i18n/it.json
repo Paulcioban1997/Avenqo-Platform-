@@ -603,6 +603,24 @@
     "settingsThemeLight": "Chiaro",
     "settingsThemeDark": "Scuro",
     "settingsThemeSystem": "Sistema",
-    "settingsLogout": "Disconnetti"
+    "settingsLogout": "Disconnetti",
+    "connectionsAddFiles": "Aggiungi file",
+    "connectionsAddMoreFiles": "Aggiungi altri file",
+    "connectionsReadyToUpload": "Pronto per il caricamento",
+    "connectionsUploadCountOne": "Carica {n} file",
+    "connectionsUploadCountOther": "Carica {n} file",
+    "connectionsRemoveFile": "Rimuovi",
+    "connectionsDuplicateFileNotice": "Questo file è già selezionato.",
+    "connectionsImportCompleteTitle": "Importazione completata",
+    "connectionsImportSummarySuccessOne": "{n} file importato con successo.",
+    "connectionsImportSummarySuccessOther": "{n} file importati con successo.",
+    "connectionsImportSummaryErrorsOne": "{n} file non riuscito.",
+    "connectionsImportSummaryErrorsOther": "{n} file non riusciti.",
+    "connectionsMappingRequiredBadge": "Mappatura richiesta",
+    "connectionsCompleteMapping": "Completa mappatura",
+    "connectionsConnectedDataTitle": "Dati collegati",
+    "connectionsContinueLabel": "Continua",
+    "connectionsImportedAtLabel": "Importato",
+    "connectionsUploadedFileSuccessLabel": "Dati importati con successo"
   }
 }

@@ -603,6 +603,24 @@
     "settingsThemeLight": "ብሩህ",
     "settingsThemeDark": "ጨለማ",
     "settingsThemeSystem": "ስርዓት",
-    "settingsLogout": "ውጣ"
+    "settingsLogout": "ውጣ",
+    "connectionsAddFiles": "ፋይሎችን ጨምር",
+    "connectionsAddMoreFiles": "ተጨማሪ ፋይሎችን ጨምር",
+    "connectionsReadyToUpload": "ለመስቀል ዝግጁ",
+    "connectionsUploadCountOne": "{n} ፋይል ስቀል",
+    "connectionsUploadCountOther": "{n} ፋይሎችን ስቀል",
+    "connectionsRemoveFile": "አስወግድ",
+    "connectionsDuplicateFileNotice": "ይህ ፋይል አስቀድሞ ተመርጧል።",
+    "connectionsImportCompleteTitle": "ማስመጣት ተጠናቅቋል",
+    "connectionsImportSummarySuccessOne": "{n} ፋይል በተሳካ ሁኔታ ገብቷል።",
+    "connectionsImportSummarySuccessOther": "{n} ፋይሎች በተሳካ ሁኔታ ገብተዋል።",
+    "connectionsImportSummaryErrorsOne": "{n} ፋይል አልተሳካም።",
+    "connectionsImportSummaryErrorsOther": "{n} ፋይሎች አልተሳኩም።",
+    "connectionsMappingRequiredBadge": "ካርታ ስራ ያስፈልጋል",
+    "connectionsCompleteMapping": "ካርታ ስራ ጨርስ",
+    "connectionsConnectedDataTitle": "የተገናኙ ውሂቦች",
+    "connectionsContinueLabel": "ቀጥል",
+    "connectionsImportedAtLabel": "ገብቷል",
+    "connectionsUploadedFileSuccessLabel": "ውሂብ በተሳካ ሁኔታ ገብቷል"
   }
 }

@@ -603,6 +603,24 @@
     "settingsThemeLight": "라이트",
     "settingsThemeDark": "다크",
     "settingsThemeSystem": "시스템 설정 따르기",
-    "settingsLogout": "로그아웃"
+    "settingsLogout": "로그아웃",
+    "connectionsAddFiles": "파일 추가",
+    "connectionsAddMoreFiles": "파일 더 추가",
+    "connectionsReadyToUpload": "업로드 준비됨",
+    "connectionsUploadCountOne": "파일 {n}개 업로드",
+    "connectionsUploadCountOther": "파일 {n}개 업로드",
+    "connectionsRemoveFile": "제거",
+    "connectionsDuplicateFileNotice": "이 파일은 이미 선택되었습니다.",
+    "connectionsImportCompleteTitle": "가져오기 완료",
+    "connectionsImportSummarySuccessOne": "파일 {n}개를 가져왔습니다.",
+    "connectionsImportSummarySuccessOther": "파일 {n}개를 가져왔습니다.",
+    "connectionsImportSummaryErrorsOne": "파일 {n}개 실패.",
+    "connectionsImportSummaryErrorsOther": "파일 {n}개 실패.",
+    "connectionsMappingRequiredBadge": "매핑 필요",
+    "connectionsCompleteMapping": "매핑 완료",
+    "connectionsConnectedDataTitle": "연결된 데이터",
+    "connectionsContinueLabel": "계속",
+    "connectionsImportedAtLabel": "가져옴",
+    "connectionsUploadedFileSuccessLabel": "데이터를 성공적으로 가져왔습니다"
   }
 }

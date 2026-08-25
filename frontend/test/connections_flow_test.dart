@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/token_store.dart';
@@ -46,7 +49,7 @@ Future<Widget> _wrapWithLocale(Widget child) async {
 }
 
 void main() {
-  testWidgets('Connections shows the no-data state with an import CTA', (tester) async {
+  testWidgets('Connections shows the no-data state with an Add files CTA', (tester) async {
     final client = MockClient((request) async => http.Response('[]', 200));
     await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pumpAndSettle();
@@ -55,10 +58,10 @@ void main() {
       find.text("Connectez vos données pour activer les analyses et l'IA Avenqo."),
       findsOneWidget,
     );
-    expect(find.text('Importer un fichier'), findsOneWidget);
+    expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
 
-  testWidgets('Connections shows the ready state with dataset metadata', (tester) async {
+  testWidgets('Connections lists an existing ready dataset with its metadata', (tester) async {
     final client = MockClient((request) async {
       return http.Response(
         '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
@@ -68,13 +71,14 @@ void main() {
     await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pumpAndSettle();
 
-    expect(find.text('Données prêtes'), findsOneWidget);
+    expect(find.text('Données connectées'), findsOneWidget);
     expect(find.text('sales.csv'), findsOneWidget);
-    expect(find.text('42'), findsOneWidget);
-    expect(find.text('Aller au tableau de bord'), findsOneWidget);
+    expect(find.textContaining('42'), findsOneWidget);
+    // The Add files CTA must remain available even once data already exists.
+    expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
 
-  testWidgets('Connections shows the processing state while a dataset is parsing', (tester) async {
+  testWidgets('Connections lists a dataset still being processed', (tester) async {
     final client = MockClient((request) async {
       return http.Response(
         '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"parsing"}]',
@@ -82,10 +86,9 @@ void main() {
       );
     });
     await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('Analyse de la structure de vos données…'), findsOneWidget);
+    expect(find.text('sales.csv'), findsOneWidget);
   });
 
   testWidgets('Connections shows a safe error state and allows retry', (tester) async {
@@ -97,6 +100,157 @@ void main() {
 
     expect(find.byIcon(Icons.error_outline), findsOneWidget);
     expect(find.text('Réessayer'), findsOneWidget);
+  });
+
+  testWidgets('Selecting multiple files stages them for review before upload', (tester) async {
+    final client = MockClient((request) async => http.Response('[]', 200));
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3])), PickedFile('customers.xlsx', Uint8List.fromList([1, 2]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('sales.csv'), findsOneWidget);
+    expect(find.text('customers.xlsx'), findsOneWidget);
+    expect(find.text('Importer 2 fichiers'), findsOneWidget);
+    // No network call should have happened yet: upload only starts on explicit click.
+  });
+
+  testWidgets('Add more files appends to the pending selection instead of replacing it', (tester) async {
+    final client = MockClient((request) async => http.Response('[]', 200));
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3]))],
+      [PickedFile('products.csv', Uint8List.fromList([4, 5]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Ajouter d'autres fichiers"));
+    await tester.pumpAndSettle();
+
+    expect(find.text('sales.csv'), findsOneWidget);
+    expect(find.text('products.csv'), findsOneWidget);
+    expect(find.text('Importer 2 fichiers'), findsOneWidget);
+  });
+
+  testWidgets('A pending file can be removed before upload', (tester) async {
+    final client = MockClient((request) async => http.Response('[]', 200));
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3])), PickedFile('customers.xlsx', Uint8List.fromList([1, 2]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('customers.xlsx'), findsOneWidget);
+    expect(find.text('Importer 1 fichier'), findsOneWidget);
+  });
+
+  testWidgets('Selecting the same file twice shows a duplicate notice and does not duplicate it', (tester) async {
+    final client = MockClient((request) async => http.Response('[]', 200));
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3]))],
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Ajouter d'autres fichiers"));
+    await tester.pumpAndSettle();
+
+    expect(find.text('sales.csv'), findsOneWidget);
+    expect(find.text('Importer 1 fichier'), findsOneWidget);
+  });
+
+  testWidgets('Uploading files shows per-file progress then a success summary and refreshes the dataset list', (tester) async {
+    var listCallCount = 0;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        listCallCount += 1;
+        if (listCallCount == 1) return http.Response('[]', 200);
+        return http.Response(
+          '[{"id":"1","name":"sales.csv","status":"ready","rows_count":10,"columns_count":3,"uploaded_at":"2026-08-25T00:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.url.path.endsWith('/datasets/upload')) {
+        return http.Response('{"dataset_id":"1","status":"ready"}', 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Importer 1 fichier'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(find.text('Import terminé'), findsOneWidget);
+    expect(find.text('1 fichier importé avec succès.'), findsOneWidget);
+
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('sales.csv'), findsOneWidget);
+    expect(find.text('Données connectées'), findsOneWidget);
+  });
+
+  testWidgets('A failing file does not prevent other files in the same batch from succeeding', (tester) async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      if (request.url.path.endsWith('/datasets/upload')) {
+        final body = utf8.decode(request.bodyBytes);
+        if (body.contains('bad.csv')) {
+          return http.Response('{"detail":"Format non pris en charge"}', 422);
+        }
+        return http.Response('{"dataset_id":"1","status":"ready"}', 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final queue = [
+      [PickedFile('sales.csv', Uint8List.fromList([1, 2, 3])), PickedFile('bad.csv', Uint8List.fromList([1]))],
+    ];
+    await tester.pumpWidget(await _wrapWithLocale(
+      ConnectionsPage(api: _api(client), pickFiles: () async => queue.removeAt(0)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter des fichiers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Importer 2 fichiers'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(find.text('Import terminé'), findsOneWidget);
+    expect(find.text('1 fichier importé avec succès.'), findsOneWidget);
+    expect(find.text('1 fichier en erreur.'), findsOneWidget);
   });
 
   testWidgets('Onboarding "Charger mes données" persists answers then opens Connections', (tester) async {

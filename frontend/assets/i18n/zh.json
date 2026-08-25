@@ -603,6 +603,24 @@
     "settingsThemeLight": "浅色",
     "settingsThemeDark": "深色",
     "settingsThemeSystem": "跟随系统",
-    "settingsLogout": "退出登录"
+    "settingsLogout": "退出登录",
+    "connectionsAddFiles": "添加文件",
+    "connectionsAddMoreFiles": "添加更多文件",
+    "connectionsReadyToUpload": "准备导入",
+    "connectionsUploadCountOne": "上传 {n} 个文件",
+    "connectionsUploadCountOther": "上传 {n} 个文件",
+    "connectionsRemoveFile": "移除",
+    "connectionsDuplicateFileNotice": "该文件已被选择。",
+    "connectionsImportCompleteTitle": "导入完成",
+    "connectionsImportSummarySuccessOne": "已成功导入 {n} 个文件。",
+    "connectionsImportSummarySuccessOther": "已成功导入 {n} 个文件。",
+    "connectionsImportSummaryErrorsOne": "{n} 个文件失败。",
+    "connectionsImportSummaryErrorsOther": "{n} 个文件失败。",
+    "connectionsMappingRequiredBadge": "需要字段映射",
+    "connectionsCompleteMapping": "完成字段映射",
+    "connectionsConnectedDataTitle": "已连接的数据",
+    "connectionsContinueLabel": "继续",
+    "connectionsImportedAtLabel": "已导入",
+    "connectionsUploadedFileSuccessLabel": "数据导入成功"
   }
 }
