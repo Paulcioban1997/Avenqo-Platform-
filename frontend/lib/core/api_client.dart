@@ -260,12 +260,35 @@ class ApiClient {
     var message = 'Erreur API';
     if (data is Map<String, dynamic>) {
       final error = data['error'];
-      if (error is Map<String, dynamic> && error['message'] != null) {
-        message = error['message'].toString();
+      if (error is Map<String, dynamic>) {
+        final fieldMessage = _fieldValidationMessage(error['details']);
+        if (fieldMessage != null) {
+          message = fieldMessage;
+        } else if (error['message'] != null) {
+          message = error['message'].toString();
+        }
       } else if (data['detail'] != null) {
         message = data['detail'].toString();
       }
     }
     throw ApiException(message, statusCode: response.statusCode);
+  }
+
+  /// Transforme les erreurs de validation Pydantic (`error.details`, ex.
+  /// `[{"loc": ["body", "password"], "msg": "..."}]`) en message lisible,
+  /// plutôt que le message générique "Request validation failed" qui masque
+  /// le champ réellement en cause à l'utilisateur.
+  String? _fieldValidationMessage(dynamic details) {
+    if (details is! List || details.isEmpty) return null;
+    final lines = <String>[];
+    for (final detail in details) {
+      if (detail is! Map<String, dynamic>) continue;
+      final loc = detail['loc'];
+      final field = loc is List && loc.isNotEmpty ? loc.last.toString() : null;
+      final msg = detail['msg']?.toString();
+      if (msg == null) continue;
+      lines.add(field != null ? '$field: $msg' : msg);
+    }
+    return lines.isEmpty ? null : lines.join('\n');
   }
 }
