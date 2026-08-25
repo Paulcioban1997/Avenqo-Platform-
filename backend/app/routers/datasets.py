@@ -50,6 +50,43 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 def dataset_response(dataset) -> DatasetResponse:
     profile = dataset.profile
     quality = dataset.quality_report
+    
+    # Handle case where profile or quality_report might be None
+    if profile is None:
+        logger.warning(f"Dataset {dataset.id} has no profile")
+        # Return minimal response without profile data
+        return DatasetResponse(
+            id=dataset.id,
+            name=dataset.name,
+            type=dataset.type,
+            module_code="unknown",
+            rows_count=dataset.rows_count,
+            columns_count=dataset.columns_count,
+            numerical_columns=[],
+            categorical_columns=[],
+            missing_values=0,
+            duplicates=0,
+            quality_score=0.0,
+            status=dataset.status,
+            uploaded_at=dataset.uploaded_at,
+            columns=[],
+            distributions={},
+        )
+    
+    if quality is None:
+        logger.warning(f"Dataset {dataset.id} has no quality report")
+        quality_data = {
+            "missing_values": 0,
+            "duplicates": 0,
+            "quality_score": 0.0,
+        }
+    else:
+        quality_data = {
+            "missing_values": quality.missing_values,
+            "duplicates": quality.duplicates,
+            "quality_score": quality.quality_score,
+        }
+    
     return DatasetResponse(
         id=dataset.id,
         name=dataset.name,
@@ -59,9 +96,9 @@ def dataset_response(dataset) -> DatasetResponse:
         columns_count=dataset.columns_count,
         numerical_columns=profile.numerical_columns,
         categorical_columns=profile.categorical_columns,
-        missing_values=quality.missing_values,
-        duplicates=quality.duplicates,
-        quality_score=quality.quality_score,
+        missing_values=quality_data["missing_values"],
+        duplicates=quality_data["duplicates"],
+        quality_score=quality_data["quality_score"],
         status=dataset.status,
         uploaded_at=dataset.uploaded_at,
         columns=profile.schema_json["columns"],
@@ -281,7 +318,13 @@ def list_datasets(
     tenant: TenantContext = Depends(get_tenant_context),
     service: DatasetImportService = Depends(get_dataset_import_service),
 ) -> list[DatasetResponse]:
-    return [dataset_response(dataset) for dataset in service.list(tenant)]
+    try:
+        datasets = service.list(tenant)
+        logger.info(f"List datasets: found {len(datasets)} datasets for tenant {tenant.company_id}")
+        return [dataset_response(dataset) for dataset in datasets]
+    except Exception as exc:
+        logger.exception(f"Error listing datasets: {exc}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)
