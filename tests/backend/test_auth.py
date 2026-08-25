@@ -130,6 +130,35 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
     ).status_code == 401
 
 
+def test_inscription_signale_une_erreur_smtp_sans_effacer_le_compte(auth_environment) -> None:
+    client, _, notifier = auth_environment
+    app = client.app
+
+    class FailingNotifier:
+        def send_email_verification(self, email: str, token: str) -> None:
+            raise RuntimeError("smtp unavailable")
+
+        def send_password_reset(self, email: str, token: str) -> None:
+            return None
+
+        def send_new_company(self, company: object, user: object, request: object) -> None:
+            return None
+
+    app.dependency_overrides[get_account_notifier] = lambda: FailingNotifier()
+    payload = registration_payload("smtpfail@acme.ca", "SMTP Company")
+
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["email_delivery_configured"] is False
+    assert "n'a pas pu être envoyé" in response.json()["message"].lower()
+
+    token = notifier.verification_tokens.get(payload["email"])
+    assert token is None
+    verify = client.post("/api/v1/auth/verify-email", json={"token": "deadbeef" * 4})
+    assert verify.status_code == 400
+
+
 def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     payload = registration_payload("profile@acme.ca", "Profile Company") | {

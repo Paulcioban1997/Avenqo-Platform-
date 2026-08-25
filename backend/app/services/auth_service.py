@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 import re
 from uuid import UUID, uuid4
 
@@ -31,6 +32,8 @@ from backend.app.models import (
 from backend.app.schemas.auth import RegisterRequest
 from backend.app.services.account_notifications import AccountNotifier
 
+logger = logging.getLogger(__name__)
+
 
 class AuthenticationError(ValueError):
     """Erreur volontairement générique pour ne pas révéler les comptes."""
@@ -56,7 +59,7 @@ class AuthService:
         self._session = session
         self._notifier = notifier
 
-    def register(self, request: RegisterRequest) -> tuple[Company, User]:
+    def register(self, request: RegisterRequest) -> tuple[Company, User, bool]:
         email = str(request.email).strip().lower()
         company_email = str(request.company_email).strip().lower()
         if self._session.scalar(select(User).where(User.email == email)):
@@ -106,19 +109,21 @@ class AuthService:
             self._session.flush()
         token = self._create_account_token(user, AccountTokenPurpose.EMAIL_VERIFICATION, 24)
         self._session.commit()
+        verification_email_sent = False
         try:
             self._notifier.send_email_verification(user.email, token)
+            verification_email_sent = True
         except Exception:
             # SMTP is an external side effect; never undo a committed account.
-            pass
+            logger.exception("Verification email delivery failed for %s", user.email)
         try:
             notify = getattr(self._notifier, "send_new_company", None)
             if notify:
                 notify(company, user, request)
         except Exception:
             # Account creation remains successful when owner SMTP is unavailable.
-            pass
-        return company, user
+            logger.exception("Owner notification failed for company %s", company.id)
+        return company, user, verification_email_sent
 
     def login(self, email: str, password: str) -> AuthResult:
         user = self._session.scalar(select(User).where(User.email == email.strip().lower()))

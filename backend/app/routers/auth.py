@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from backend.app.config.settings import get_settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
@@ -62,15 +63,25 @@ def register(
     request: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
-    """CrÃ©e atomiquement une organisation et son propriÃ©taire."""
+    """Crée atomiquement une organisation et son propriétaire."""
 
     try:
-        service.register(request)
+        _, _, verification_email_sent = service.register(request)
     except ConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return MessageResponse(message="Compte crÃ©Ã©. VÃ©rifiez votre adresse email.")
+
+    email_delivery_configured = get_settings().smtp_host is not None
+    if verification_email_sent:
+        message = "Compte créé. Vérifiez votre adresse email."
+    else:
+        message = "Compte créé. L'email de vérification n'a pas pu être envoyé. Vous pouvez demander un renvoi."
+    return MessageResponse(
+        message=message,
+        email_delivery_configured=email_delivery_configured and verification_email_sent,
+    )
 
 
+@router.post("/verify-email", response_model=MessageResponse)
 @router.post("/email/verify", response_model=MessageResponse)
 def verify_email(
     request: TokenRequest,
@@ -83,6 +94,11 @@ def verify_email(
     return MessageResponse(message="Adresse email vÃ©rifiÃ©e.")
 
 
+@router.post(
+    "/resend-verification",
+    response_model=MessageResponse,
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+)
 @router.post(
     "/email/resend",
     response_model=MessageResponse,

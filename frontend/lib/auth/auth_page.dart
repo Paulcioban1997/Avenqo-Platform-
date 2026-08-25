@@ -487,7 +487,7 @@ class _AuthPageState extends State<AuthPage> {
       _field(_email, t.email, t: t, email: true),
       _field(_password, t.password, t: t, password: true),
       _field(_passwordConfirmation, 'Confirm password', t: t, password: true),
-      _field(_phone, 'Phone (optional)', t: t),
+      _field(_phone, 'Phone (optional)', t: t, optional: true),
     ],
   );
 

@@ -443,6 +443,9 @@ class AuthStrings {
     required this.backToLogin,
     required this.home,
     required this.registerSuccess,
+    required this.registerPendingVerification,
+    required this.workspaceReadyMessage,
+    required this.continueLabel,
     required this.forgotSuccess,
     required this.verifySuccess,
     required this.resetSuccess,
@@ -474,6 +477,9 @@ class AuthStrings {
         backToLogin: json['backToLogin'] as String,
         home: json['home'] as String,
         registerSuccess: json['registerSuccess'] as String,
+        registerPendingVerification: json['registerPendingVerification'] as String,
+        workspaceReadyMessage: json['workspaceReadyMessage'] as String,
+        continueLabel: json['continueLabel'] as String,
         forgotSuccess: json['forgotSuccess'] as String,
         verifySuccess: json['verifySuccess'] as String,
         resetSuccess: json['resetSuccess'] as String,
@@ -505,6 +511,9 @@ class AuthStrings {
         backToLogin: 'Back to login',
         home: 'Home',
         registerSuccess: 'Account created. Check your email address.',
+        registerPendingVerification: 'Account created. An administrator will confirm your access shortly.',
+        workspaceReadyMessage: 'Your Avenqo workspace is ready to be created.',
+        continueLabel: 'Continue',
         forgotSuccess: 'If the account exists, an email has been sent.',
         verifySuccess: 'Email verified. You can now log in.',
         resetSuccess: 'Password changed. You can now log in.',
@@ -535,6 +544,9 @@ class AuthStrings {
   final String backToLogin;
   final String home;
   final String registerSuccess;
+  final String registerPendingVerification;
+  final String workspaceReadyMessage;
+  final String continueLabel;
   final String forgotSuccess;
   final String verifySuccess;
   final String resetSuccess;

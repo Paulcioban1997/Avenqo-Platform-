@@ -128,3 +128,6 @@ class CurrentAccountResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+    # Frontend must not claim an email was sent when SMTP isn't configured
+    # (LoggingAccountNotifier only logs locally, never delivers).
+    email_delivery_configured: bool = False
