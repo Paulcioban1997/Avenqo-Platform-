@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from backend.app.routers.ai_chat import router as ai_chat_router
 from backend.app.routers.ai_support import router as ai_support_router
 from backend.app.routers.admin import router as admin_router
+from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
 from backend.app.routers.datasets import router as datasets_router
@@ -19,6 +20,7 @@ api_router.include_router(health_router, prefix="/api/v1")
 api_router.include_router(ai_chat_router, prefix="/api/v1")
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")
+api_router.include_router(assistants_router, prefix="/api/v1")
 api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
 api_router.include_router(datasets_router, prefix="/api/v1")

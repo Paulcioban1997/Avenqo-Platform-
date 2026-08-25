@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/theme_scope.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/widgets/language_selector.dart';
 
 class _Brand {
@@ -21,6 +23,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     final user = auth.user ?? const <String, dynamic>{};
     final company = auth.company ?? const <String, dynamic>{};
     final fullName = [user['first_name'], user['last_name']]
@@ -37,30 +40,30 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Paramètres', style: Theme.of(context).textTheme.headlineMedium),
+              Text(t.settingsTitle, style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 6),
               Text(
-                'Vos informations de compte, votre entreprise et vos préférences.',
+                t.settingsSubtitle,
                 style: TextStyle(color: colors.muted),
               ),
               const SizedBox(height: 28),
               _SettingsSection(
-                title: 'Compte',
+                title: t.settingsAccountSection,
                 colors: colors,
                 children: [
-                  _InfoRow(label: 'Nom', value: fullName.isEmpty ? '—' : fullName, colors: colors),
-                  _InfoRow(label: 'E-mail', value: user['email']?.toString() ?? '—', colors: colors),
-                  _InfoRow(label: 'Rôle', value: user['role']?.toString() ?? '—', colors: colors),
+                  _InfoRow(label: t.settingsNameLabel, value: fullName.isEmpty ? '—' : fullName, colors: colors),
+                  _InfoRow(label: t.settingsEmailLabel, value: user['email']?.toString() ?? '—', colors: colors),
+                  _InfoRow(label: t.settingsRoleLabel, value: user['role']?.toString() ?? '—', colors: colors),
                 ],
               ),
               const SizedBox(height: 20),
               _SettingsSection(
-                title: 'Entreprise',
+                title: t.settingsCompanySection,
                 colors: colors,
                 children: [
-                  _InfoRow(label: 'Nom', value: company['name']?.toString() ?? '—', colors: colors),
+                  _InfoRow(label: t.settingsNameLabel, value: company['name']?.toString() ?? '—', colors: colors),
                   _InfoRow(
-                    label: 'Plan',
+                    label: t.settingsPlanLabel,
                     value: planCode == null ? '—' : '${planCode[0].toUpperCase()}${planCode.substring(1)}',
                     colors: colors,
                   ),
@@ -68,25 +71,25 @@ class SettingsPage extends StatelessWidget {
                   TextButton.icon(
                     onPressed: () => context.go('/billing'),
                     icon: const Icon(Icons.credit_card, size: 18, color: _Brand.blue),
-                    label: const Text('Gérer l\u2019abonnement', style: TextStyle(color: _Brand.blue)),
+                    label: Text(t.settingsManageSubscription, style: const TextStyle(color: _Brand.blue)),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
               _SettingsSection(
-                title: 'Apparence',
+                title: t.settingsAppearanceSection,
                 colors: colors,
                 children: [
                   Row(
                     children: [
-                      Expanded(child: Text('Thème', style: TextStyle(color: colors.ink))),
-                      const _ThemeModeSelector(),
+                      Expanded(child: Text(t.settingsThemeLabel, style: TextStyle(color: colors.ink))),
+                      _ThemeModeSelector(t: t),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: Text('Langue', style: TextStyle(color: colors.ink))),
+                      Expanded(child: Text(t.settingsLanguageLabel, style: TextStyle(color: colors.ink))),
                       const LanguageSelector(foregroundColor: _Brand.blue),
                     ],
                   ),
@@ -94,13 +97,13 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               _SettingsSection(
-                title: 'Session',
+                title: t.settingsSessionSection,
                 colors: colors,
                 children: [
                   OutlinedButton.icon(
                     onPressed: auth.busy ? null : auth.logout,
                     icon: const Icon(Icons.logout),
-                    label: const Text('Déconnexion'),
+                    label: Text(t.settingsLogout),
                   ),
                 ],
               ),
@@ -113,12 +116,14 @@ class SettingsPage extends StatelessWidget {
 }
 
 class _ThemeModeSelector extends StatelessWidget {
-  const _ThemeModeSelector();
+  const _ThemeModeSelector({required this.t});
+
+  final CompanyStrings t;
 
   String _labelFor(ThemeMode mode) => switch (mode) {
-        ThemeMode.light => 'Clair',
-        ThemeMode.dark => 'Sombre',
-        ThemeMode.system => 'Système',
+        ThemeMode.light => t.settingsThemeLight,
+        ThemeMode.dark => t.settingsThemeDark,
+        ThemeMode.system => t.settingsThemeSystem,
       };
 
   @override

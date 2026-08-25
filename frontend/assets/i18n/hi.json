@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "लॉग इन करें",
-    "tryFree": "मुफ़्त में आज़माएं",
+    "tryFree": "Avenqo आज़माएं",
     "watchDemo": "डेमो देखें",
-    "noCreditCard": "क्रेडिट कार्ड की आवश्यकता नहीं",
+    "noCreditCard": "व्यक्तिगत सेटअप",
     "guidedSetup": "निर्देशित सेटअप",
     "isolatedData": "पृथक डेटा"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "स्केलेबल होस्टिंग"
   },
   "modulesSection": {
-    "kicker": "Avenqo सुइट",
-    "title": "हर व्यावसायिक प्राथमिकता के लिए एक मॉड्यूल।",
-    "subtitle": "अपना अनुकूलित वातावरण बनाएं। सभी मॉड्यूल एक ही अनुभव साझा करते हैं और साथ काम करते हैं।",
-    "discover": "खोजें",
+    "kicker": "Avenqo मॉड्यूल",
+    "title": "एक मॉड्यूलर प्लेटफ़ॉर्म, आवश्यकतानुसार बढ़ता है",
+    "subtitle": "आज आपको जिन मॉड्यूल की आवश्यकता है उन्हें सक्रिय करें, और बाद में उपकरण बदले बिना विस्तार करें।",
+    "discover": "और जानें",
+    "availableNow": "अभी उपलब्ध है",
+    "comingSoon": "जल्द आ रहा है",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "एक ही दृश्य से बिक्री, उत्पादों और वफादारी का प्रबंधन करें।"
+        "name": "Retail Intelligence",
+        "description": "खुदरा व्यापार के लिए वास्तविक समय बिक्री और इन्वेंट्री विश्लेषण।",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "संबंधों, अवसरों और अगले सर्वोत्तम कार्यों को प्राथमिकता दें।"
+        "name": "CRM AI",
+        "description": "स्मार्ट बिक्री पाइपलाइन के लिए AI-संचालित ग्राहक संबंध प्रबंधन।",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "वित्तीय निगरानी और लेखा समापन को तेज़ करें।"
+        "name": "OCR AI",
+        "description": "चालान और स्कैन किए गए दस्तावेज़ों से स्वचालित डेटा निष्कर्षण।",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "आने वाले दस्तावेज़ों को संरचित प्रक्रियाओं में बदलें।"
+        "name": "Voice AI",
+        "description": "ग्राहक कॉल की प्रतिलेखन और ट्रैकिंग के लिए वॉयस असिस्टेंट।",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "उन रुझानों और विचलनों को समझें जो वास्तव में मायने रखते हैं।"
+        "name": "Media AI",
+        "description": "दृश्य और विपणन सामग्री का निर्माण और विश्लेषण।",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "अधिक प्रासंगिक और मापने योग्य अभियानों को व्यवस्थित करें।"
+        "name": "Accounting AI",
+        "description": "लेखांकन और वित्तीय सामंजस्य का स्वचालन।",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "कंपनी के ज्ञान पर आधारित विश्वसनीय उत्तर प्रदान करें।"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "संदर्भ खोए बिना वॉयस इंटरैक्शन को स्वचालित करें।"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "टीमों को जोड़ें और दोहराए जाने वाले कार्यों को स्वचालित करें।"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "एक ही कार्यक्षेत्र से अपनी सामग्री बनाएं और व्यवस्थित करें।"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "प्रतिक्रिया समय कम करें और हर समाधान में सुधार करें।"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "अपने ग्राहकों के लिए एक संवादी सहायक तैनात करें।"
+        "name": "Legal AI",
+        "description": "AI सहायता से अनुबंधों की समीक्षा और सारांश।",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "पारदर्शी मूल्य निर्धारण",
-    "title": "अभी शुरू करें। अपनी गति से बढ़ें।",
-    "subtitle": "हर योजना में प्लेटफ़ॉर्म, Avenqo सहायक और एक सुरक्षित कार्यक्षेत्र शामिल है।",
+    "kicker": "मूल्य निर्धारण",
+    "title": "आपके विकास के हर चरण के लिए एक योजना",
+    "subtitle": "डेमो से शुरू करें, फिर अपनी कंपनी के आकार के अनुरूप योजना चुनें।",
     "popular": "सबसे लोकप्रिय",
-    "priceLabel": "अनुरोध पर",
+    "priceLabel": "अनुरोध पर मूल्य",
     "plans": [
       {
-        "tier": "आवश्यक",
-        "title": "शुरू करने के लिए",
+        "tier": "Demo",
+        "title": "अपने डेटा के साथ Avenqo आज़माएं",
+        "priceLabel": "मुफ़्त",
         "items": [
-          "1 Avenqo मॉड्यूल",
-          "5 उपयोगकर्ताओं तक",
-          "अंतर्निहित सहायक",
-          "मानक समर्थन"
+          "समय-सीमित पहुंच",
+          "डेमो या अपना डेटा",
+          "ईमेल सहायता"
         ],
-        "action": "सलाहकार से बात करें"
+        "action": "डेमो का अनुरोध करें"
       },
       {
-        "tier": "पेशेवर",
-        "title": "तेज़ करने के लिए",
+        "tier": "Professional",
+        "title": "विकास चाहने वाली कंपनियों के लिए",
+        "priceLabel": "अनुरोध पर मूल्य",
         "items": [
-          "5 मॉड्यूल तक",
-          "25 उपयोगकर्ताओं तक",
-          "उन्नत स्वचालन",
-          "प्राथमिकता समर्थन"
+          "सभी मुख्य मॉड्यूल",
+          "स्केलेबल उपयोगकर्ता संख्या",
+          "प्राथमिकता सहायता"
         ],
-        "action": "मुफ़्त में आज़माएं"
+        "action": "हमसे संपर्क करें"
       },
       {
-        "tier": "उद्यम",
-        "title": "समन्वय के लिए",
+        "tier": "Enterprise",
+        "title": "उन्नत आवश्यकताओं वाले संगठनों के लिए",
+        "priceLabel": "अनुरोध पर मूल्य",
         "items": [
-          "असीमित मॉड्यूल",
-          "अनुरोध पर उपयोगकर्ता",
           "कस्टम एकीकरण",
-          "समर्पित प्रशासन"
+          "समर्पित खाता प्रबंधक",
+          "सेवा स्तर समझौता"
         ],
-        "action": "बिक्री टीम से संपर्क करें"
+        "action": "बिक्री से संपर्क करें"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "आपका अगला कदम",
     "title": "अपने व्यवसाय को अलग तरीके से प्रबंधित करें।",
-    "tryFree": "मुफ़्त में आज़माएं",
+    "tryFree": "Avenqo आज़माएं",
     "scheduleDemo": "एक डेमो शेड्यूल करें"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "स्रोत",
     "newest": "नवीनतम",
     "you": "आप",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "इस महीने मेरे सबसे अधिक बिकने वाले उत्पाद कौन से हैं?",
+      "कौन से ग्राहक खरीदारी बंद करने के जोखिम में हैं?",
+      "इस सप्ताह मेरे व्यवसाय के प्रदर्शन का सारांश दें।",
+      "अभी सबसे उच्च प्राथमिकता वाले अवसर कौन से हैं?"
+    ]
   },
   "auth": {
     "tagline": "आपकी कंपनी के कामकाज के लिए AI प्लेटफॉर्म",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "औसत ऑर्डर मूल्य",
     "prioritiesTitle": "अनुशंसित प्राथमिकताएं",
     "prioritiesEmpty": "आपका डेटा कनेक्ट होते ही आपकी प्राथमिकताएं यहां दिखेंगी।",
-    "planLabel": "योजना"
+    "planLabel": "योजना",
+    "askAvenqoSubtitle": "अपने व्यवसाय के बारे में कोई भी प्रश्न पूछें",
+    "askAvenqoCta": "बातचीत शुरू करें",
+    "importDataTitle": "अपना डेटा आयात करें",
+    "importDataSubtitle": "जानकारी प्राप्त करने के लिए अपना डेटा स्रोत कनेक्ट करें",
+    "importDataCta": "डेटा आयात करें",
+    "connectionsTitle": "कनेक्शन",
+    "connectionsEmpty": "अभी तक कोई कनेक्शन नहीं है",
+    "connectionsEmptyCta": "कनेक्शन जोड़ें",
+    "connectionsReadyLabel": "तैयार",
+    "connectionsLastUpdate": "अंतिम अपडेट: ",
+    "activityTitle": "हाल की गतिविधि",
+    "activityEmpty": "अभी तक कोई हाल की गतिविधि नहीं है",
+    "stepsTitle": "शुरुआत करें",
+    "stepOrgLabel": "अपना संगठन सेट करें",
+    "stepDataLabel": "अपना डेटा कनेक्ट करें",
+    "stepInsightsLabel": "जानकारी का पता लगाएं",
+    "stepAskLabel": "Avenqo से पूछें"
   },
   "admin": {
     "commandCenterTitle": "Avenqo कमांड सेंटर",
@@ -465,5 +477,132 @@
     "settingsTitle": "सेटिंग्स",
     "signedInAs": "इस रूप में साइन इन किया गया",
     "noSettingsMessage": "प्लेटफॉर्म के लिए कोई वैश्विक कॉन्फ़िगरेशन यहां नहीं दिखाया जाता — खाता पहचान के अलावा कुछ दिखाने की आवश्यकता नहीं।"
+  },
+  "onboarding": {
+    "title": "आइए अपना Avenqo वर्कस्पेस सेट करें",
+    "subtitle": "आपकी प्राथमिकताओं और सिफारिशों को व्यक्तिगत बनाने के लिए कुछ त्वरित प्रश्न।",
+    "goalsLabel": "आपके मुख्य लक्ष्य क्या हैं?",
+    "goalIncreaseSales": "बिक्री बढ़ाएं",
+    "goalReduceChurn": "ग्राहक हानि कम करें",
+    "goalOptimizePricing": "मूल्य निर्धारण अनुकूलित करें",
+    "goalImproveInventory": "इन्वेंट्री प्रबंधन सुधारें",
+    "goalUnderstandCustomers": "ग्राहकों को बेहतर समझें",
+    "goalAutomateReports": "रिपोर्टिंग स्वचालित करें",
+    "toolsLabel": "आप वर्तमान में कौन से उपकरण उपयोग करते हैं?",
+    "toolPos": "पीओएस सिस्टम",
+    "toolEcommerce": "ई-कॉमर्स प्लेटफ़ॉर्म",
+    "toolSpreadsheets": "स्प्रेडशीट",
+    "toolAccounting": "लेखा सॉफ्टवेयर",
+    "toolCrm": "सीआरएम सिस्टम",
+    "toolNone": "इनमें से कोई नहीं",
+    "teamSizeLabel": "आपकी टीम का आकार क्या है?",
+    "teamSizeSolo": "केवल मैं",
+    "teamSizeSmall": "2-10 लोग",
+    "teamSizeMedium": "11-50 लोग",
+    "teamSizeLarge": "50+ लोग",
+    "refineIndustryLabel": "आप किस उद्योग में हैं?",
+    "refineIndustryHint": "यह हमें सिफारिशों को परिष्कृत करने में मदद करता है",
+    "continueCta": "जारी रखें",
+    "skipCta": "अभी के लिए छोड़ें",
+    "genericError": "एक त्रुटि हुई, कृपया पुनः प्रयास करें।",
+    "goalsRequired": "कृपया कम से कम एक लक्ष्य चुनें।",
+    "teamSizeRequired": "कृपया अपनी टीम का आकार चुनें।"
+  },
+  "company": {
+    "navOverviewLabel": "अवलोकन",
+    "navOverviewDescription": "आपके व्यवसाय का स्नैपशॉट",
+    "navAssistantLabel": "AI सहायक",
+    "navAssistantDescription": "अपने डेटा के बारे में पूछें",
+    "navSalesLabel": "बिक्री",
+    "navSalesDescription": "राजस्व और रुझान ट्रैक करें",
+    "navCustomersLabel": "ग्राहक",
+    "navCustomersDescription": "अपने ग्राहक आधार को समझें",
+    "navProductsLabel": "उत्पाद",
+    "navProductsDescription": "उत्पाद प्रदर्शन का विश्लेषण करें",
+    "navRecommendationsLabel": "सिफारिशें",
+    "navRecommendationsDescription": "AI-जनित सुझाव",
+    "navAlertsLabel": "अलर्ट",
+    "navAlertsDescription": "महत्वपूर्ण सूचनाएं",
+    "navReportsLabel": "रिपोर्ट",
+    "navReportsDescription": "विस्तृत रिपोर्ट जनरेट करें",
+    "navConnectionsLabel": "कनेक्शन",
+    "navConnectionsDescription": "अपने डेटा स्रोत प्रबंधित करें",
+    "navTeamLabel": "टीम",
+    "navTeamDescription": "टीम सदस्यों का प्रबंधन करें",
+    "navBillingLabel": "बिलिंग",
+    "navBillingDescription": "अपनी सदस्यता प्रबंधित करें",
+    "navSettingsLabel": "सेटिंग्स",
+    "navSettingsDescription": "खाता और प्राथमिकताएं",
+    "navSupportLabel": "सहायता",
+    "navSupportDescription": "मदद प्राप्त करें",
+    "connectionsLoading": "आपके कनेक्शन लोड हो रहे हैं...",
+    "connectionsNoDataTitle": "अभी तक कोई डेटा कनेक्ट नहीं है",
+    "connectionsNoDataFormats": "CSV, Excel, और अधिक समर्थित हैं",
+    "connectionsImportButton": "डेटा आयात करें",
+    "connectionsUploadingLabel": "अपलोड हो रहा है...",
+    "connectionsAnalyzing": "आपके डेटा का विश्लेषण हो रहा है...",
+    "connectionsMappingTitle": "अपने कॉलम मैप करें",
+    "connectionsMappingSubtitle": "अपने कॉलम को हमारे फ़ील्ड से मिलाएं",
+    "connectionsMappingIgnore": "इस कॉलम को अनदेखा करें",
+    "connectionsConfirmMapping": "मैपिंग की पुष्टि करें",
+    "connectionsReadyTitle": "आपका डेटा तैयार है!",
+    "connectionsStatNameLabel": "नाम",
+    "connectionsStatRowsLabel": "पंक्तियां",
+    "connectionsStatColumnsLabel": "कॉलम",
+    "connectionsStatUpdatedLabel": "अपडेट किया गया",
+    "connectionsGoDashboard": "डैशबोर्ड पर जाएं",
+    "connectionsAskAvenqo": "Avenqo से पूछें",
+    "connectionsImportAnother": "एक और फ़ाइल आयात करें",
+    "connectionsRetry": "पुनः प्रयास करें",
+    "connectionsGenericError": "एक त्रुटि हुई।",
+    "connectionsFileEmptyError": "फ़ाइल खाली प्रतीत होती है।",
+    "connectionsProcessingError": "आपकी फ़ाइल संसाधित करने में त्रुटि हुई।",
+    "businessDefaultTitle": "अपना डेटा कनेक्ट करें",
+    "businessDefaultDescription": "आरंभ करने के लिए अपना डेटा स्रोत कनेक्ट करें",
+    "businessConnectButton": "कनेक्ट करें",
+    "businessSalesTitle": "बिक्री डेटा",
+    "businessSalesDescription": "प्रदर्शन ट्रैक करने के लिए अपना बिक्री डेटा कनेक्ट करें",
+    "businessCustomersTitle": "ग्राहक डेटा",
+    "businessCustomersDescription": "जानकारी प्राप्त करने के लिए ग्राहक डेटा कनेक्ट करें",
+    "businessProductsTitle": "उत्पाद डेटा",
+    "businessProductsDescription": "प्रदर्शन का विश्लेषण करने के लिए उत्पाद डेटा कनेक्ट करें",
+    "businessRecommendationsTitle": "सिफारिशें",
+    "businessRecommendationsDescription": "AI सिफारिशें प्राप्त करने के लिए डेटा कनेक्ट करें",
+    "businessAlertsTitle": "अलर्ट",
+    "businessAlertsDescription": "अलर्ट प्राप्त करने के लिए डेटा कनेक्ट करें",
+    "businessReportsTitle": "रिपोर्ट",
+    "businessReportsDescription": "रिपोर्ट जनरेट करने के लिए डेटा कनेक्ट करें",
+    "billingTitle": "बिलिंग",
+    "billingPortalButton": "बिलिंग पोर्टल खोलें",
+    "billingUnavailable": "बिलिंग जानकारी अभी उपलब्ध नहीं है",
+    "billingPlanPrefix": "योजना: ",
+    "billingStatusPrefix": "स्थिति: ",
+    "billingCancelScheduled": "रद्दीकरण निर्धारित है",
+    "billingInvoicesTitle": "चालान",
+    "billingInvoiceFallback": "कोई चालान उपलब्ध नहीं है",
+    "employeesTitle": "टीम सदस्य",
+    "employeesRefreshTooltip": "सूची ताज़ा करें",
+    "employeesUnavailable": "टीम सदस्य जानकारी उपलब्ध नहीं है",
+    "employeesColumnName": "नाम",
+    "employeesColumnEmail": "ईमेल",
+    "employeesColumnRole": "भूमिका",
+    "employeesColumnStatus": "स्थिति",
+    "settingsTitle": "सेटिंग्स",
+    "settingsSubtitle": "अपना खाता और प्राथमिकताएं प्रबंधित करें",
+    "settingsAccountSection": "खाता",
+    "settingsCompanySection": "कंपनी",
+    "settingsAppearanceSection": "स्वरूप",
+    "settingsSessionSection": "सत्र",
+    "settingsNameLabel": "नाम",
+    "settingsEmailLabel": "ईमेल",
+    "settingsRoleLabel": "भूमिका",
+    "settingsPlanLabel": "योजना",
+    "settingsManageSubscription": "सदस्यता प्रबंधित करें",
+    "settingsThemeLabel": "थीम",
+    "settingsLanguageLabel": "भाषा",
+    "settingsThemeLight": "हल्का",
+    "settingsThemeDark": "गहरा",
+    "settingsThemeSystem": "सिस्टम के अनुसार",
+    "settingsLogout": "लॉग आउट"
   }
 }

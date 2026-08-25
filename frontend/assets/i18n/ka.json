@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "შესვლა",
-    "tryFree": "უფასოდ სცადეთ",
+    "tryFree": "სცადეთ Avenqo",
     "watchDemo": "დემოს ნახვა",
-    "noCreditCard": "საკრედიტო ბარათი არ არის საჭირო",
+    "noCreditCard": "პერსონალიზებული დაყენება",
     "guidedSetup": "მართული დაყენება",
     "isolatedData": "იზოლირებული მონაცემები"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "მასშტაბირებადი ჰოსტინგი"
   },
   "modulesSection": {
-    "kicker": "Avenqo პაკეტი",
-    "title": "მოდული ყოველი ბიზნეს პრიორიტეტისთვის.",
-    "subtitle": "ააშენეთ თქვენი გარემო მორგებულად. ყველა მოდული იზიარებს ერთსა და იმავე გამოცდილებას და მუშაობს ერთად.",
-    "discover": "აღმოაჩინეთ",
+    "kicker": "Avenqo მოდულები",
+    "title": "ერთი მოდულური პლატფორმა, იზრდება საჭიროებისამებრ",
+    "subtitle": "ჩართეთ მოდულები, რომლებიც დღეს გჭირდებათ, და გააფართოვეთ მოგვიანებით ხელსაწყოების შეცვლის გარეშე.",
+    "discover": "გაიგეთ მეტი",
+    "availableNow": "ხელმისაწვდომია ახლა",
+    "comingSoon": "მალე",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "მართეთ გაყიდვები, პროდუქტები და ლოიალობა ერთი ხედვიდან."
+        "name": "Retail Intelligence",
+        "description": "გაყიდვებისა და მარაგის რეალურ დროში ანალიტიკა საცალო ვაჭრობისთვის.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "პრიორიტეტიზაცია გაუწიეთ ურთიერთობებს, შესაძლებლობებსა და შემდეგ საუკეთესო ქმედებებს."
+        "name": "CRM AI",
+        "description": "AI-ზე დაფუძნებული მომხმარებელთან ურთიერთობის მართვა უფრო ჭკვიანი გაყიდვების ხაზისთვის.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "დააჩქარეთ ფინანსური მონიტორინგი და საბუღალტრო დახურვა."
+        "name": "OCR AI",
+        "description": "ავტომატური მონაცემთა ამოღება ინვოისებიდან და სკანირებული დოკუმენტებიდან.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "გადააქციეთ შემომავალი დოკუმენტები სტრუქტურირებულ პროცესებად."
+        "name": "Voice AI",
+        "description": "ხმოვანი ასისტენტი მომხმარებელთა ზარების ჩაწერისა და თვალყურის დევნებისთვის.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "გაიგეთ ტენდენციები და გადახრები, რომლებსაც რეალურად აქვს მნიშვნელობა."
+        "name": "Media AI",
+        "description": "ვიზუალური და მარკეტინგული კონტენტის შექმნა და ანალიზი.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "მოაწყვეთ უფრო რელევანტური და გაზომვადი კამპანიები."
+        "name": "Accounting AI",
+        "description": "ბუღალტერიისა და ფინანსური შეჯერების ავტომატიზაცია.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "მიაწოდეთ სანდო პასუხები კომპანიის ცოდნაზე დაყრდნობით."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "ავტომატიზირება გაუწიეთ ხმოვან ურთიერთქმედებებს კონტექსტის დაკარგვის გარეშე."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "დააკავშირეთ გუნდები და ავტომატიზირება გაუწიეთ განმეორებით ამოცანებს."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "შექმენით და მოაწესრიგეთ თქვენი კონტენტი ერთი სამუშაო სივრციდან."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "შეამცირეთ საპასუხო დრო და გააუმჯობესეთ ყოველი გადაწყვეტა."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "დანერგეთ სასაუბრო ასისტენტი თქვენი კლიენტებისთვის."
+        "name": "Legal AI",
+        "description": "ხელშეკრულებების AI-ით განხილვა და შეჯამება.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "გამჭვირვალე ფასები",
-    "title": "დაიწყეთ ახლავე. გაიზარდეთ თქვენი ტემპით.",
-    "subtitle": "ყოველი გეგმა მოიცავს პლატფორმას, Avenqo ასისტენტს და დაცულ სამუშაო სივრცეს.",
+    "kicker": "ფასები",
+    "title": "გეგმა თქვენი ზრდის ყოველი ეტაპისთვის",
+    "subtitle": "დაიწყეთ დემოთი, შემდეგ აირჩიეთ თქვენი კომპანიის ზომის შესაბამისი გეგმა.",
     "popular": "ყველაზე პოპულარული",
-    "priceLabel": "ინდივიდუალური",
+    "priceLabel": "ფასი მოთხოვნით",
     "plans": [
       {
-        "tier": "საბაზისო",
-        "title": "დასაწყებად",
+        "tier": "Demo",
+        "title": "სცადეთ Avenqo თქვენი მონაცემებით",
+        "priceLabel": "უფასო",
         "items": [
-          "1 Avenqo მოდული",
-          "5 მომხმარებლამდე",
-          "ჩაშენებული ასისტენტი",
-          "სტანდარტული მხარდაჭერა"
+          "შეზღუდული დროით წვდომა",
+          "სადემონსტრაციო ან საკუთარი მონაცემები",
+          "მხარდაჭერა ელფოსტით"
         ],
-        "action": "ესაუბრეთ კონსულტანტს"
+        "action": "მოითხოვეთ დემო"
       },
       {
-        "tier": "პროფესიონალური",
-        "title": "დასაჩქარებლად",
+        "tier": "Professional",
+        "title": "იმ კომპანიებისთვის, ვინც სურს გაფართოება",
+        "priceLabel": "ფასი მოთხოვნით",
         "items": [
-          "5 მოდულამდე",
-          "25 მომხმარებლამდე",
-          "მოწინავე ავტომატიზაცია",
+          "ყველა ძირითადი მოდული",
+          "მასშტაბირებადი მომხმარებელთა რაოდენობა",
           "პრიორიტეტული მხარდაჭერა"
         ],
-        "action": "უფასოდ სცადეთ"
+        "action": "დაგვიკავშირდით"
       },
       {
-        "tier": "საწარმო",
-        "title": "ორკესტრირებისთვის",
+        "tier": "Enterprise",
+        "title": "მოწინავე მოთხოვნების მქონე ორგანიზაციებისთვის",
+        "priceLabel": "ფასი მოთხოვნით",
         "items": [
-          "შეუზღუდავი მოდულები",
-          "ინდივიდუალური მომხმარებლები",
-          "მორგებული ინტეგრაციები",
-          "სპეციალური მართვა"
+          "მორგებული ინტეგრაცია",
+          "პერსონალური ანგარიშის მენეჯერი",
+          "მომსახურების დონის შეთანხმება"
         ],
-        "action": "დაუკავშირდით გაყიდვების გუნდს"
+        "action": "დაუკავშირდით გაყიდვებს"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "თქვენი შემდეგი ნაბიჯი",
     "title": "მართეთ თქვენი ბიზნესი განსხვავებულად.",
-    "tryFree": "უფასოდ სცადეთ",
+    "tryFree": "სცადეთ Avenqo",
     "scheduleDemo": "დანიშნეთ დემო"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "წყაროები",
     "newest": "უახლესი",
     "you": "თქვენ",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "რომელი პროდუქტები მაქვს ყველაზე გაყიდვადი ამ თვეში?",
+      "რომელი მომხმარებლები არიან შეწყვეტის რისკის ქვეშ?",
+      "შემაჯამეთ ჩემი ბიზნესის შედეგები ამ კვირაში.",
+      "რომელია ყველაზე მაღალი პრიორიტეტის შესაძლებლობები ახლა?"
+    ]
   },
   "auth": {
     "tagline": "AI პლატფორმა თქვენი ბიზნესისთვის",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "საშუალო შეკვეთის ღირებულება",
     "prioritiesTitle": "რეკომენდებული პრიორიტეტები",
     "prioritiesEmpty": "მონაცემების დაკავშირების შემდეგ თქვენი პრიორიტეტები აქ გამოჩნდება.",
-    "planLabel": "გეგმა"
+    "planLabel": "გეგმა",
+    "askAvenqoSubtitle": "დასვით კითხვები თქვენი ბიზნესის მონაცემებზე და მიიღეთ კონტექსტური ინფორმაცია.",
+    "askAvenqoCta": "ჰკითხეთ Avenqo AI-ს",
+    "importDataTitle": "შემოიტანეთ თქვენი მონაცემები",
+    "importDataSubtitle": "დააკავშირეთ ან შემოიტანეთ თქვენი ბიზნეს წყაროები Avenqo-ს ინტელექტის განსაბლოკად.",
+    "importDataCta": "ჩემი მონაცემების შემოტანა",
+    "connectionsTitle": "კავშირები",
+    "connectionsEmpty": "ჯერ არცერთი მონაცემი არ არის დაკავშირებული",
+    "connectionsEmptyCta": "ჩემი მონაცემების შემოტანა",
+    "connectionsReadyLabel": "მზადაა",
+    "connectionsLastUpdate": "ბოლო განახლება",
+    "activityTitle": "ბოლო აქტივობა",
+    "activityEmpty": "ჯერ არ არის ბოლო აქტივობა.",
+    "stepsTitle": "რეკომენდებული შემდეგი ნაბიჯები",
+    "stepOrgLabel": "დაასრულეთ თქვენი კომპანიის მორგება",
+    "stepDataLabel": "დააკავშირეთ ან შემოიტანეთ თქვენი მონაცემები",
+    "stepInsightsLabel": "გამოიკვლიეთ თქვენი ინსაითები",
+    "stepAskLabel": "ჰკითხეთ Avenqo AI-ს"
   },
   "admin": {
     "commandCenterTitle": "Avenqo-ს სამართავი ცენტრი",
@@ -465,5 +477,132 @@
     "settingsTitle": "პარამეტრები",
     "signedInAs": "შესული ხართ როგორც",
     "noSettingsMessage": "პლატფორმის ზოგადი კონფიგურაცია აქ არ ჩანს — ანგარიშის ვინაობის გარდა არაფრის ჩვენება არ სჭირდება."
+  },
+  "onboarding": {
+    "title": "მოდით, დავაყენოთ თქვენი Avenqo სამუშაო სივრცე",
+    "subtitle": "რამდენიმე სწრაფი კითხვა თქვენი პრიორიტეტებისა და რეკომენდაციების პერსონალიზაციისთვის.",
+    "goalsLabel": "რა არის თქვენი მთავარი მიზნები?",
+    "goalIncreaseSales": "გაყიდვების ზრდა",
+    "goalReduceChurn": "მომხმარებელთა დაკარგვის შემცირება",
+    "goalOptimizePricing": "ფასწარმოქმნის ოპტიმიზაცია",
+    "goalImproveInventory": "მარაგის მართვის გაუმჯობესება",
+    "goalUnderstandCustomers": "ჩემი მომხმარებლების უკეთ გაგება",
+    "goalAutomateReports": "ჩემი ანგარიშების ავტომატიზაცია",
+    "toolsLabel": "რა ხელსაწყოებს იყენებთ ამჟამად?",
+    "toolPos": "სალარო სისტემა (POS)",
+    "toolEcommerce": "ელექტრონული კომერციის პლატფორმა",
+    "toolSpreadsheets": "ცხრილები (Excel/Sheets)",
+    "toolAccounting": "ბუღალტრული პროგრამა",
+    "toolCrm": "CRM",
+    "toolNone": "ჯერ არცერთი ხელსაწყო",
+    "teamSizeLabel": "რა ზომისაა თქვენი გუნდი?",
+    "teamSizeSolo": "მხოლოდ მე",
+    "teamSizeSmall": "2-დან 10 ადამიანამდე",
+    "teamSizeMedium": "11-დან 50 ადამიანამდე",
+    "teamSizeLarge": "50-ზე მეტი ადამიანი",
+    "refineIndustryLabel": "დააზუსტეთ თქვენი სფერო (არასავალდებულო)",
+    "refineIndustryHint": "მაგ. სპეციალიზებული ვაჭრობა, სწრაფი კვება, ბუღალტრული ფირმა...",
+    "continueCta": "გაგრძელება",
+    "skipCta": "ჯერჯერობით გამოტოვება",
+    "genericError": "ვერ შევძელით თქვენი პასუხების შენახვა ახლა.",
+    "goalsRequired": "აირჩიეთ მინიმუმ ერთი მიზანი.",
+    "teamSizeRequired": "აირჩიეთ თქვენი გუნდის ზომა."
+  },
+  "company": {
+    "navOverviewLabel": "მიმოხილვა",
+    "navOverviewDescription": "თქვენი ბიზნესის ძირითადი მაჩვენებლები.",
+    "navAssistantLabel": "AI ასისტენტი",
+    "navAssistantDescription": "დასვით კითხვები და იმოქმედეთ.",
+    "navSalesLabel": "გაყიდვები",
+    "navSalesDescription": "თვალყური ადევნეთ შემოსავალსა და ტენდენციებს.",
+    "navCustomersLabel": "მომხმარებლები",
+    "navCustomersDescription": "გაიგეთ ლოიალობა და დაკარგვის რისკი.",
+    "navProductsLabel": "პროდუქტები",
+    "navProductsDescription": "თვალყური ადევნეთ მოთხოვნას და კატალოგის შესრულებას.",
+    "navRecommendationsLabel": "რეკომენდაციები",
+    "navRecommendationsDescription": "იპოვეთ ყველაზე პრიორიტეტული შესაძლებლობები.",
+    "navAlertsLabel": "შეტყობინებები",
+    "navAlertsDescription": "თვალყური ადევნეთ ცვლილებებს, რომლებიც თქვენს ყურადღებას საჭიროებს.",
+    "navReportsLabel": "ანგარიშები",
+    "navReportsDescription": "იხილეთ და გააზიარეთ თქვენი ხელმძღვანელობის ანგარიშები.",
+    "navConnectionsLabel": "კავშირები",
+    "navConnectionsDescription": "დააკავშირეთ თქვენი გაყიდვებისა და მართვის ხელსაწყოები.",
+    "navTeamLabel": "გუნდი",
+    "navTeamDescription": "მართეთ თქვენი გუნდის წევრების წვდომა.",
+    "navBillingLabel": "ბილინგი",
+    "navBillingDescription": "მართეთ თქვენი გამოწერა და ინვოისები.",
+    "navSettingsLabel": "პარამეტრები",
+    "navSettingsDescription": "თქვენი ანგარიშისა და კომპანიის ინფორმაცია.",
+    "navSupportLabel": "Avenqo მხარდაჭერა",
+    "navSupportDescription": "გჭირდებათ დახმარება Avenqo-სთან დაკავშირებით? დასვით კითხვა აქ.",
+    "connectionsLoading": "იტვირთება…",
+    "connectionsNoDataTitle": "დააკავშირეთ თქვენი მონაცემები ანალიტიკისა და Avenqo AI-ს განსაბლოკად.",
+    "connectionsNoDataFormats": "მისაღები ფორმატები: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "ფაილის იმპორტი",
+    "connectionsUploadingLabel": "იტვირთება…",
+    "connectionsAnalyzing": "თქვენი მონაცემების სტრუქტურის ანალიზი…",
+    "connectionsMappingTitle": "დაადასტურეთ თქვენი სვეტების მიბმა",
+    "connectionsMappingSubtitle": "ზოგიერთი სვეტი მოითხოვს ხელით დადასტურებას ანალიტიკის გააქტიურებამდე.",
+    "connectionsMappingIgnore": "ამ სვეტის იგნორირება",
+    "connectionsConfirmMapping": "მიბმის დადასტურება",
+    "connectionsReadyTitle": "მონაცემები მზადაა",
+    "connectionsStatNameLabel": "სახელი",
+    "connectionsStatRowsLabel": "მწკრივები",
+    "connectionsStatColumnsLabel": "სვეტები",
+    "connectionsStatUpdatedLabel": "ბოლო განახლება",
+    "connectionsGoDashboard": "პანელზე გადასვლა",
+    "connectionsAskAvenqo": "ჰკითხეთ Avenqo AI-ს",
+    "connectionsImportAnother": "სხვა მონაცემთა ნაკრების იმპორტი",
+    "connectionsRetry": "ხელახლა ცდა",
+    "connectionsGenericError": "მოხდა მოულოდნელი შეცდომა.",
+    "connectionsFileEmptyError": "არჩეული ფაილი ცარიელია ან წაუკითხავია.",
+    "connectionsProcessingError": "ამ ფაილის დამუშავება ვერ მოხერხდა.",
+    "businessDefaultTitle": "თქვენი სივრცე მზადაა",
+    "businessDefaultDescription": "დააკავშირეთ თქვენი ხელსაწყოები, რომ ნახოთ განახლებული ინფორმაცია აქ.",
+    "businessConnectButton": "ჩემი ხელსაწყოების დაკავშირება",
+    "businessSalesTitle": "თვალყური ადევნეთ ყოველ ცვლილებას",
+    "businessSalesDescription": "თქვენი გაყიდვების ტენდენციები, შედარებები და პროგნოზები აქ გამოჩნდება.",
+    "businessCustomersTitle": "შეინარჩუნეთ სწორი მომხმარებლები",
+    "businessCustomersDescription": "აქ იპოვით მომხმარებლებს, ვისთვისაც საჭიროა პრიორიტეტების მინიჭება, ხელახალი გააქტიურება ან თანხლება.",
+    "businessProductsTitle": "მართეთ თქვენი კატალოგი",
+    "businessProductsDescription": "საუკეთესო პროდუქტები, მოსალოდნელი მოთხოვნა და დასაკვირვებელი მარაგი აქ იქნება თავმოყრილი.",
+    "businessRecommendationsTitle": "იმოქმედეთ პირდაპირ შესაძლებლობებზე",
+    "businessRecommendationsDescription": "Avenqo დაალაგებს შესაძლებლობებს თქვენს ბიზნესზე პოტენციური გავლენის მიხედვით.",
+    "businessAlertsTitle": "დარჩით ინფორმირებული ხმაურის გარეშე",
+    "businessAlertsDescription": "მნიშვნელოვანი ცვლილებები და რისკები მონიშნული იქნება რეკომენდებული მოქმედებით.",
+    "businessReportsTitle": "თქვენი ხელმძღვანელობის ანგარიშები",
+    "businessReportsDescription": "შექმენით და გააზიარეთ ნათელი ანგარიშები თქვენი კომპანიის შედეგების შესახებ.",
+    "billingTitle": "ბილინგი",
+    "billingPortalButton": "Stripe პორტალი",
+    "billingUnavailable": "ბილინგი დროებით მიუწვდომელია.",
+    "billingPlanPrefix": "გეგმა ",
+    "billingStatusPrefix": "სტატუსი: ",
+    "billingCancelScheduled": "გაუქმება დაგეგმილია",
+    "billingInvoicesTitle": "ინვოისები",
+    "billingInvoiceFallback": "ინვოისი",
+    "employeesTitle": "მომხმარებლები",
+    "employeesRefreshTooltip": "განახლება",
+    "employeesUnavailable": "მომხმარებელთა წვდომა დროებით მიუწვდომელია.",
+    "employeesColumnName": "სახელი",
+    "employeesColumnEmail": "ელფოსტა",
+    "employeesColumnRole": "როლი",
+    "employeesColumnStatus": "სტატუსი",
+    "settingsTitle": "პარამეტრები",
+    "settingsSubtitle": "თქვენი ანგარიშის, კომპანიისა და პრეფერენციების ინფორმაცია.",
+    "settingsAccountSection": "ანგარიში",
+    "settingsCompanySection": "კომპანია",
+    "settingsAppearanceSection": "გარეგნობა",
+    "settingsSessionSection": "სესია",
+    "settingsNameLabel": "სახელი",
+    "settingsEmailLabel": "ელფოსტა",
+    "settingsRoleLabel": "როლი",
+    "settingsPlanLabel": "გეგმა",
+    "settingsManageSubscription": "გამოწერის მართვა",
+    "settingsThemeLabel": "თემა",
+    "settingsLanguageLabel": "ენა",
+    "settingsThemeLight": "ღია",
+    "settingsThemeDark": "მუქი",
+    "settingsThemeSystem": "სისტემა",
+    "settingsLogout": "გასვლა"
   }
 }

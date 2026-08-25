@@ -775,32 +775,18 @@ class _SecurityItem extends StatelessWidget {
 class _ModulesSection extends StatelessWidget {
   const _ModulesSection();
 
-  static const _modules = [
-    ('Avenqo Retail', 'Pilotez ventes, produits et fidélisation depuis une vue unifiée.'),
-    ('Avenqo CRM', 'Priorisez les relations, opportunités et prochaines actions.'),
-    ('Avenqo Accounting', 'Accélérez le suivi financier et la préparation comptable.'),
-    ('Avenqo Documents', 'Transformez les documents entrants en opérations structurées.'),
-    ('Avenqo Analytics', 'Comprenez les tendances et les écarts qui comptent vraiment.'),
-    ('Avenqo Marketing', 'Orchestrez des campagnes plus pertinentes et mesurables.'),
-    ('Avenqo Knowledge', 'Donnez des réponses fiables à partir du savoir de l\u2019entreprise.'),
-    ('Avenqo Voice', 'Automatisez les échanges vocaux sans perdre le contexte client.'),
-    ('Avenqo Workflow', 'Reliez les équipes et automatisez les tâches répétitives.'),
-    ('Avenqo Media', 'Produisez et organisez vos contenus depuis un espace unique.'),
-    ('Avenqo Support', 'Réduisez les délais de réponse et améliorez chaque résolution.'),
-    ('Avenqo Chat', 'Déployez un assistant conversationnel au service de vos clients.'),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).modulesSection;
     return _Section(
       color: _Brand.canvas,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(
-            kicker: 'La suite Avenqo',
-            title: 'Un module pour chaque priorité métier.',
-            subtitle: 'Construisez votre environnement sur mesure. Tous les modules partagent la même expérience et travaillent ensemble.',
+          _SectionHeading(
+            kicker: t.kicker,
+            title: t.title,
+            subtitle: t.subtitle,
           ),
           const SizedBox(height: 32),
           LayoutBuilder(
@@ -811,8 +797,18 @@ class _ModulesSection extends StatelessWidget {
                 spacing: 20,
                 runSpacing: 20,
                 children: [
-                  for (final module in _modules)
-                    SizedBox(width: cardWidth, child: _ModuleCard(name: module.$1, description: module.$2)),
+                  for (final module in t.items)
+                    SizedBox(
+                      width: cardWidth,
+                      child: _ModuleCard(
+                        name: module.name,
+                        description: module.description,
+                        available: module.available,
+                        discoverLabel: t.discover,
+                        availableNowLabel: t.availableNow,
+                        comingSoonLabel: t.comingSoon,
+                      ),
+                    ),
                 ],
               );
             },
@@ -824,10 +820,21 @@ class _ModulesSection extends StatelessWidget {
 }
 
 class _ModuleCard extends StatelessWidget {
-  const _ModuleCard({required this.name, required this.description});
+  const _ModuleCard({
+    required this.name,
+    required this.description,
+    required this.available,
+    required this.discoverLabel,
+    required this.availableNowLabel,
+    required this.comingSoonLabel,
+  });
 
   final String name;
   final String description;
+  final bool available;
+  final String discoverLabel;
+  final String availableNowLabel;
+  final String comingSoonLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -842,17 +849,31 @@ class _ModuleCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(description, style: const TextStyle(color: _Brand.muted, fontSize: 13, height: 1.5)),
           const SizedBox(height: 14),
-          InkWell(
-            onTap: () => context.go('/pricing'),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Découvrir', style: TextStyle(color: _Brand.blue, fontSize: 13, fontWeight: FontWeight.w700)),
-                SizedBox(width: 4),
-                Icon(Icons.arrow_forward, size: 14, color: _Brand.blue),
-              ],
+          if (available)
+            InkWell(
+              onTap: () => context.go('/pricing'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      discoverLabel,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _Brand.blue, fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward, size: 14, color: _Brand.blue),
+                ],
+              ),
+            )
+          else
+            Text(comingSoonLabel, style: const TextStyle(color: _Brand.muted, fontSize: 13, fontWeight: FontWeight.w600)),
+          if (available)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(availableNowLabel, style: const TextStyle(color: _Brand.blue, fontSize: 11, fontWeight: FontWeight.w600)),
             ),
-          ),
         ],
       ),
     );
@@ -1136,42 +1157,34 @@ class _PricingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).pricing;
     return _Section(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(
-            kicker: 'Tarification claire',
-            title: 'Commencez maintenant. Évoluez à votre rythme.',
-            subtitle: 'Chaque offre inclut la plateforme, l\u2019assistant Avenqo et un espace sécurisé.',
+          _SectionHeading(
+            kicker: t.kicker,
+            title: t.title,
+            subtitle: t.subtitle,
           ),
           const SizedBox(height: 32),
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 900;
               final cards = [
-                _PricingCard(
-                  tier: 'Essentiel',
-                  title: 'Pour démarrer',
-                  items: const ['1 module Avenqo', 'Jusqu\u2019à 5 utilisateurs', 'Assistant intégré', 'Support standard'],
-                  action: 'Parler à un conseiller',
-                  onAction: _contactByEmail,
-                ),
-                _PricingCard(
-                  tier: 'Professionnel',
-                  title: 'Pour accélérer',
-                  items: const ['Jusqu\u2019à 5 modules', 'Jusqu\u2019à 25 utilisateurs', 'Automatisations avancées', 'Accompagnement prioritaire'],
-                  action: 'Essayer gratuitement',
-                  onAction: () => context.go('/register'),
-                  featured: true,
-                ),
-                _PricingCard(
-                  tier: 'Entreprise',
-                  title: 'Pour orchestrer',
-                  items: const ['Modules illimités', 'Utilisateurs sur mesure', 'Connexions personnalisées', 'Gouvernance dédiée'],
-                  action: 'Contacter les ventes',
-                  onAction: _contactByEmail,
-                ),
+                for (var i = 0; i < t.plans.length; i++)
+                  _PricingCard(
+                    tier: t.plans[i].tier,
+                    title: t.plans[i].title,
+                    priceLabel: t.plans[i].priceLabel,
+                    items: t.plans[i].items,
+                    action: t.plans[i].action,
+                    onAction: t.plans[i].tier.toLowerCase() == 'professional' || t.plans[i].tier.toLowerCase() == 'professionnel'
+                        ? () => context.go('/register')
+                        : _contactByEmail,
+                    featured: i == 1,
+                    popularLabel: t.popular,
+                  ),
               ];
               if (!wide) {
                 return Column(
@@ -1201,17 +1214,21 @@ class _PricingCard extends StatelessWidget {
   const _PricingCard({
     required this.tier,
     required this.title,
+    required this.priceLabel,
     required this.items,
     required this.action,
     required this.onAction,
+    required this.popularLabel,
     this.featured = false,
   });
 
   final String tier;
   final String title;
+  final String priceLabel;
   final List<String> items;
   final String action;
   final VoidCallback onAction;
+  final String popularLabel;
   final bool featured;
 
   @override
@@ -1235,13 +1252,13 @@ class _PricingCard extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(color: _Brand.blue, borderRadius: BorderRadius.circular(4)),
-              child: const Text('LE PLUS CHOISI', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+              child: Text(popularLabel.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
             ),
           Text(tier.toUpperCase(), style: TextStyle(color: _Brand.blue, fontSize: 12, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(title, style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('Sur mesure', style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(priceLabel, style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
           Divider(color: featured ? const Color(0xFF2A2E38) : _Brand.line),
           const SizedBox(height: 12),
@@ -1374,6 +1391,7 @@ class _FinalCtaSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).finalCta;
     return _Section(
       color: _Brand.blue,
       child: LayoutBuilder(
@@ -1382,10 +1400,10 @@ class _FinalCtaSection extends StatelessWidget {
           final copy = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text('VOTRE PROCHAINE ÉTAPE', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
-              SizedBox(height: 10),
-              Text('Faites travailler votre entreprise autrement.', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
+            children: [
+              Text(t.label.toUpperCase(), style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
+              const SizedBox(height: 10),
+              Text(t.title, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
             ],
           );
           final actions = Column(
@@ -1396,12 +1414,12 @@ class _FinalCtaSection extends StatelessWidget {
                 onPressed: () => context.go('/register'),
                 style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: _Brand.blueDark),
                 icon: const Icon(Icons.arrow_forward, size: 16),
-                label: const Text('Essayer gratuitement'),
+                label: Text(t.tryFree),
               ),
               const SizedBox(height: 10),
               InkWell(
                 onTap: _contactByEmail,
-                child: const Text('Planifier une démonstration', style: TextStyle(color: Colors.white, decoration: TextDecoration.underline, fontSize: 13)),
+                child: Text(t.scheduleDemo, style: const TextStyle(color: Colors.white, decoration: TextDecoration.underline, fontSize: 13)),
               ),
             ],
           );

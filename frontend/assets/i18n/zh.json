@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "登录",
-    "tryFree": "免费试用",
+    "tryFree": "试用 Avenqo",
     "watchDemo": "观看演示",
-    "noCreditCard": "无需信用卡",
+    "noCreditCard": "个性化设置",
     "guidedSetup": "引导式设置",
     "isolatedData": "数据隔离"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "可扩展托管"
   },
   "modulesSection": {
-    "kicker": "Avenqo 套件",
-    "title": "每一项业务优先事项都有对应模块。",
-    "subtitle": "按需构建您的专属环境。所有模块共享同一体验并协同工作。",
-    "discover": "了解详情",
+    "kicker": "Avenqo 模块",
+    "title": "一个模块化平台，按需扩展",
+    "subtitle": "立即启用您需要的模块，以后可以在不更换工具的情况下扩展。",
+    "discover": "了解更多",
+    "availableNow": "现已可用",
+    "comingSoon": "即将推出",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "在统一视图中管理销售、产品与客户忠诚度。"
+        "name": "Retail Intelligence",
+        "description": "零售业的实时销售和库存分析。",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "优先处理客户关系、商机与下一步行动。"
+        "name": "CRM AI",
+        "description": "由人工智能驱动的客户关系管理，实现更智能的销售流程。",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "加速财务跟踪与账务结算。"
+        "name": "OCR AI",
+        "description": "从发票和扫描文档中自动提取数据。",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "将收到的文档转化为结构化操作。"
+        "name": "Voice AI",
+        "description": "用于转录和跟踪客户通话的语音助手。",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "洞察真正重要的趋势与偏差。"
+        "name": "Media AI",
+        "description": "创建和分析视觉与营销内容。",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "编排更相关、更可衡量的营销活动。"
+        "name": "Accounting AI",
+        "description": "会计和财务对账自动化。",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "基于企业知识库提供可靠答案。"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "自动化语音交互，同时保留客户上下文。"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "连接团队并自动化重复性任务。"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "在统一空间中制作并管理内容。"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "缩短响应时间，提升每一次解决效率。"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "为客户部署对话式智能助手。"
+        "name": "Legal AI",
+        "description": "借助人工智能审查和总结合同。",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "清晰的定价",
-    "title": "现在开始，按自己的节奏成长。",
-    "subtitle": "每个方案均包含平台、Avenqo 助手与安全的工作空间。",
+    "kicker": "定价",
+    "title": "适合您成长每个阶段的方案",
+    "subtitle": "从演示开始，然后选择适合您公司规模的方案。",
     "popular": "最受欢迎",
-    "priceLabel": "按需定制",
+    "priceLabel": "价格面议",
     "plans": [
       {
-        "tier": "基础版",
-        "title": "适合起步",
+        "tier": "Demo",
+        "title": "使用您的数据试用Avenqo",
+        "priceLabel": "免费",
         "items": [
-          "1 个 Avenqo 模块",
-          "最多 5 位用户",
-          "内置智能助手",
-          "标准支持"
+          "有限时间访问",
+          "演示数据或您自己的数据",
+          "电子邮件支持"
         ],
-        "action": "联系顾问"
+        "action": "申请演示"
       },
       {
-        "tier": "专业版",
-        "title": "适合加速",
+        "tier": "Professional",
+        "title": "适合希望发展的公司",
+        "priceLabel": "价格面议",
         "items": [
-          "最多 5 个模块",
-          "最多 25 位用户",
-          "高级自动化",
+          "所有核心模块",
+          "可扩展的用户数量",
           "优先支持"
         ],
-        "action": "免费试用"
+        "action": "联系我们"
       },
       {
-        "tier": "企业版",
-        "title": "适合统筹",
+        "tier": "Enterprise",
+        "title": "适合有高级需求的组织",
+        "priceLabel": "价格面议",
         "items": [
-          "模块无限制",
-          "用户数量按需定制",
-          "定制化集成",
-          "专属治理"
+          "定制集成",
+          "专属客户经理",
+          "服务等级协议"
         ],
-        "action": "联系销售团队"
+        "action": "联系销售"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "您的下一步",
     "title": "以不同的方式运营您的企业。",
-    "tryFree": "免费试用",
+    "tryFree": "试用 Avenqo",
     "scheduleDemo": "预约演示"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "来源",
     "newest": "最新",
     "you": "您",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "本月我的畅销产品是什么？",
+      "哪些客户有停止购买的风险？",
+      "总结我本周的业务表现。",
+      "目前最优先的机会是什么？"
+    ]
   },
   "auth": {
     "tagline": "为您公司业务提供服务的 AI 平台",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "平均订单价值",
     "prioritiesTitle": "建议优先事项",
     "prioritiesEmpty": "一旦连接数据，您的优先事项将显示在这里。",
-    "planLabel": "套餐"
+    "planLabel": "套餐",
+    "askAvenqoSubtitle": "询问有关您业务的任何问题",
+    "askAvenqoCta": "开始对话",
+    "importDataTitle": "导入您的数据",
+    "importDataSubtitle": "连接您的数据源以获得洞察",
+    "importDataCta": "导入数据",
+    "connectionsTitle": "连接",
+    "connectionsEmpty": "尚未建立连接",
+    "connectionsEmptyCta": "添加连接",
+    "connectionsReadyLabel": "就绪",
+    "connectionsLastUpdate": "最后更新：",
+    "activityTitle": "近期活动",
+    "activityEmpty": "尚无近期活动",
+    "stepsTitle": "开始使用",
+    "stepOrgLabel": "设置您的组织",
+    "stepDataLabel": "连接您的数据",
+    "stepInsightsLabel": "探索洞察",
+    "stepAskLabel": "询问Avenqo"
   },
   "admin": {
     "commandCenterTitle": "Avenqo 指挥中心",
@@ -465,5 +477,132 @@
     "settingsTitle": "设置",
     "signedInAs": "当前登录身份",
     "noSettingsMessage": "此处未显示平台的任何通用配置 — 除账户身份外无需显示其他内容。"
+  },
+  "onboarding": {
+    "title": "让我们设置您的Avenqo工作区",
+    "subtitle": "几个简单的问题，帮助我们个性化您的优先事项和推荐。",
+    "goalsLabel": "您的主要目标是什么？",
+    "goalIncreaseSales": "提高销售额",
+    "goalReduceChurn": "降低客户流失率",
+    "goalOptimizePricing": "优化定价",
+    "goalImproveInventory": "改善库存管理",
+    "goalUnderstandCustomers": "更好地了解客户",
+    "goalAutomateReports": "自动化报告",
+    "toolsLabel": "您目前使用哪些工具？",
+    "toolPos": "销售终端 (POS)",
+    "toolEcommerce": "电子商务平台",
+    "toolSpreadsheets": "电子表格",
+    "toolAccounting": "会计软件",
+    "toolCrm": "CRM系统",
+    "toolNone": "以上都没有",
+    "teamSizeLabel": "您的团队规模是多少？",
+    "teamSizeSolo": "仅我一人",
+    "teamSizeSmall": "2-10人",
+    "teamSizeMedium": "11-50人",
+    "teamSizeLarge": "50人以上",
+    "refineIndustryLabel": "您所在的行业是？",
+    "refineIndustryHint": "这有助于我们微调建议",
+    "continueCta": "继续",
+    "skipCta": "暂时跳过",
+    "genericError": "发生错误，请重试。",
+    "goalsRequired": "请至少选择一个目标。",
+    "teamSizeRequired": "请选择您的团队规模。"
+  },
+  "company": {
+    "navOverviewLabel": "概览",
+    "navOverviewDescription": "您业务的快照",
+    "navAssistantLabel": "AI助手",
+    "navAssistantDescription": "询问您的数据",
+    "navSalesLabel": "销售",
+    "navSalesDescription": "跟踪收入和趋势",
+    "navCustomersLabel": "客户",
+    "navCustomersDescription": "了解您的客户群",
+    "navProductsLabel": "产品",
+    "navProductsDescription": "分析产品表现",
+    "navRecommendationsLabel": "推荐",
+    "navRecommendationsDescription": "人工智能生成的建议",
+    "navAlertsLabel": "提醒",
+    "navAlertsDescription": "重要通知",
+    "navReportsLabel": "报告",
+    "navReportsDescription": "生成详细报告",
+    "navConnectionsLabel": "连接",
+    "navConnectionsDescription": "管理您的数据源",
+    "navTeamLabel": "团队",
+    "navTeamDescription": "管理团队成员",
+    "navBillingLabel": "账单",
+    "navBillingDescription": "管理您的订阅",
+    "navSettingsLabel": "设置",
+    "navSettingsDescription": "账户和偏好设置",
+    "navSupportLabel": "支持",
+    "navSupportDescription": "获取帮助",
+    "connectionsLoading": "正在加载您的连接...",
+    "connectionsNoDataTitle": "尚未连接数据",
+    "connectionsNoDataFormats": "支持CSV、Excel等格式",
+    "connectionsImportButton": "导入数据",
+    "connectionsUploadingLabel": "正在上传...",
+    "connectionsAnalyzing": "正在分析您的数据...",
+    "connectionsMappingTitle": "映射您的列",
+    "connectionsMappingSubtitle": "将您的列与我们的字段匹配",
+    "connectionsMappingIgnore": "忽略此列",
+    "connectionsConfirmMapping": "确认映射",
+    "connectionsReadyTitle": "您的数据已准备就绪！",
+    "connectionsStatNameLabel": "名称",
+    "connectionsStatRowsLabel": "行数",
+    "connectionsStatColumnsLabel": "列数",
+    "connectionsStatUpdatedLabel": "更新时间",
+    "connectionsGoDashboard": "前往仪表板",
+    "connectionsAskAvenqo": "询问Avenqo",
+    "connectionsImportAnother": "导入另一个文件",
+    "connectionsRetry": "重试",
+    "connectionsGenericError": "发生了一个错误。",
+    "connectionsFileEmptyError": "文件似乎是空的。",
+    "connectionsProcessingError": "处理您的文件时出错。",
+    "businessDefaultTitle": "连接您的数据",
+    "businessDefaultDescription": "连接您的数据源以开始使用",
+    "businessConnectButton": "连接",
+    "businessSalesTitle": "销售数据",
+    "businessSalesDescription": "连接您的销售数据以跟踪表现",
+    "businessCustomersTitle": "客户数据",
+    "businessCustomersDescription": "连接客户数据以获得洞察",
+    "businessProductsTitle": "产品数据",
+    "businessProductsDescription": "连接产品数据以分析表现",
+    "businessRecommendationsTitle": "推荐",
+    "businessRecommendationsDescription": "连接数据以获取AI推荐",
+    "businessAlertsTitle": "提醒",
+    "businessAlertsDescription": "连接数据以接收提醒",
+    "businessReportsTitle": "报告",
+    "businessReportsDescription": "连接数据以生成报告",
+    "billingTitle": "账单",
+    "billingPortalButton": "打开账单门户",
+    "billingUnavailable": "账单信息暂不可用",
+    "billingPlanPrefix": "方案：",
+    "billingStatusPrefix": "状态：",
+    "billingCancelScheduled": "已安排取消",
+    "billingInvoicesTitle": "发票",
+    "billingInvoiceFallback": "无可用发票",
+    "employeesTitle": "团队成员",
+    "employeesRefreshTooltip": "刷新列表",
+    "employeesUnavailable": "暂无团队成员信息",
+    "employeesColumnName": "姓名",
+    "employeesColumnEmail": "电子邮件",
+    "employeesColumnRole": "角色",
+    "employeesColumnStatus": "状态",
+    "settingsTitle": "设置",
+    "settingsSubtitle": "管理您的账户和偏好设置",
+    "settingsAccountSection": "账户",
+    "settingsCompanySection": "公司",
+    "settingsAppearanceSection": "外观",
+    "settingsSessionSection": "会话",
+    "settingsNameLabel": "姓名",
+    "settingsEmailLabel": "电子邮件",
+    "settingsRoleLabel": "角色",
+    "settingsPlanLabel": "方案",
+    "settingsManageSubscription": "管理订阅",
+    "settingsThemeLabel": "主题",
+    "settingsLanguageLabel": "语言",
+    "settingsThemeLight": "浅色",
+    "settingsThemeDark": "深色",
+    "settingsThemeSystem": "跟随系统",
+    "settingsLogout": "退出登录"
   }
 }

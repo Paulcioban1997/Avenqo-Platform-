@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 
 class _Brand {
   const _Brand._();
@@ -82,7 +84,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       case 'invalid':
       case 'rejected':
         setState(() {
-          _errorMessage = "Ce fichier n'a pas pu être traité.";
+          _errorMessage = AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError;
           _state = _ViewState.error;
         });
       default:
@@ -103,17 +105,15 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   }
 
   Future<void> _pickAndUploadFile() async {
-    final files = await FilePicker.pickFiles(
+    final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: _acceptedExtensions,
-      allowMultiple: false,
     );
-    if (files.isEmpty) return;
-    final picked = files.first;
+    if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (bytes.isEmpty) {
       setState(() {
-        _errorMessage = 'Le fichier sélectionné est vide ou illisible.';
+        _errorMessage = AvenqoLocaleScope.translationsOf(context).company.connectionsFileEmptyError;
         _state = _ViewState.error;
       });
       return;
@@ -179,6 +179,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     return Container(
       color: colors.canvas,
       child: ListView(
@@ -187,31 +188,35 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 900),
             child: switch (_state) {
-              _ViewState.loading => const _CenteredSpinner(label: 'Chargement…'),
-              _ViewState.noData => _NoDataView(onImport: _pickAndUploadFile),
+              _ViewState.loading => _CenteredSpinner(label: t.connectionsLoading),
+              _ViewState.noData => _NoDataView(onImport: _pickAndUploadFile, t: t),
               _ViewState.uploading => _UploadingView(
                   fileName: _selectedFileName,
                   fileSize: _selectedFileSize,
                   progress: _uploadProgress,
+                  t: t,
                 ),
-              _ViewState.processing => const _CenteredSpinner(
-                  label: 'Analyse de la structure de vos données…',
+              _ViewState.processing => _CenteredSpinner(
+                  label: t.connectionsAnalyzing,
                 ),
               _ViewState.mapping => _MappingView(
                   profile: _profile,
                   overrides: _mappingOverrides,
                   onChanged: (column, field) => setState(() => _mappingOverrides[column] = field),
                   onSubmit: _submitMapping,
+                  t: t,
                 ),
               _ViewState.ready => _ReadyView(
                   dataset: _dataset,
                   onGoToDashboard: () => context.go('/dashboard'),
                   onAskAvenqo: () => context.go('/assistant'),
                   onImportAnother: _pickAndUploadFile,
+                  t: t,
                 ),
               _ViewState.error => _ErrorView(
-                  message: _errorMessage ?? 'Une erreur inattendue est survenue.',
+                  message: _errorMessage ?? t.connectionsGenericError,
                   onRetry: _loadDatasets,
+                  retryLabel: t.connectionsRetry,
                 ),
             },
           ),
@@ -242,8 +247,9 @@ class _CenteredSpinner extends StatelessWidget {
 }
 
 class _NoDataView extends StatelessWidget {
-  const _NoDataView({required this.onImport});
+  const _NoDataView({required this.onImport, required this.t});
   final VoidCallback onImport;
+  final CompanyStrings t;
 
   @override
   Widget build(BuildContext context) {
@@ -269,13 +275,13 @@ class _NoDataView extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Connectez vos données pour activer les analyses et l\'IA Avenqo.',
+            t.connectionsNoDataTitle,
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
-            'Formats acceptés : CSV, XLSX, JSON, Parquet.',
+            t.connectionsNoDataFormats,
             style: TextStyle(color: colors.muted),
           ),
           const SizedBox(height: 22),
@@ -283,7 +289,7 @@ class _NoDataView extends StatelessWidget {
             onPressed: onImport,
             style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
             icon: const Icon(Icons.upload_file, size: 18),
-            label: const Text('Importer un fichier'),
+            label: Text(t.connectionsImportButton),
           ),
         ],
       ),
@@ -292,10 +298,11 @@ class _NoDataView extends StatelessWidget {
 }
 
 class _UploadingView extends StatelessWidget {
-  const _UploadingView({required this.fileName, required this.fileSize, required this.progress});
+  const _UploadingView({required this.fileName, required this.fileSize, required this.progress, required this.t});
   final String? fileName;
   final int? fileSize;
   final double? progress;
+  final CompanyStrings t;
 
   String _formatSize(int? bytes) {
     if (bytes == null) return '';
@@ -323,7 +330,7 @@ class _UploadingView extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '${fileName ?? "fichier"} · ${_formatSize(fileSize)}',
+                  '${fileName ?? "—"} · ${_formatSize(fileSize)}',
                   style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -333,7 +340,7 @@ class _UploadingView extends StatelessWidget {
           const SizedBox(height: 16),
           LinearProgressIndicator(value: progress != null && progress! > 0 ? progress : null),
           const SizedBox(height: 12),
-          Text('Envoi en cours…', style: TextStyle(color: colors.muted)),
+          Text(t.connectionsUploadingLabel, style: TextStyle(color: colors.muted)),
         ],
       ),
     );
@@ -346,12 +353,14 @@ class _MappingView extends StatelessWidget {
     required this.overrides,
     required this.onChanged,
     required this.onSubmit,
+    required this.t,
   });
 
   final Map<String, dynamic>? profile;
   final Map<String, String?> overrides;
   final void Function(String column, String? field) onChanged;
   final VoidCallback onSubmit;
+  final CompanyStrings t;
 
   static const _canonicalFields = [
     'customer_id', 'order_id', 'product_id', 'order_timestamp', 'quantity',
@@ -375,12 +384,12 @@ class _MappingView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Confirmez la correspondance de vos colonnes',
+            t.connectionsMappingTitle,
             style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
           Text(
-            "Certaines colonnes nécessitent une confirmation manuelle avant l'activation des analyses.",
+            t.connectionsMappingSubtitle,
             style: TextStyle(color: colors.muted),
           ),
           const SizedBox(height: 20),
@@ -390,12 +399,13 @@ class _MappingView extends StatelessWidget {
             selected: overrides[suggestion['original_column']?.toString()] ??
                 suggestion['suggested_field']?.toString(),
             onChanged: (field) => onChanged(suggestion['original_column'].toString(), field),
+            ignoreLabel: t.connectionsMappingIgnore,
           ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: onSubmit,
             style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-            child: const Text('Confirmer la correspondance'),
+            child: Text(t.connectionsConfirmMapping),
           ),
         ],
       ),
@@ -409,12 +419,14 @@ class _MappingRow extends StatelessWidget {
     required this.canonicalFields,
     required this.selected,
     required this.onChanged,
+    required this.ignoreLabel,
   });
 
   final Map<String, dynamic> suggestion;
   final List<String> canonicalFields;
   final String? selected;
   final void Function(String? field) onChanged;
+  final String ignoreLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -432,7 +444,7 @@ class _MappingRow extends StatelessWidget {
           Expanded(
             child: DropdownButtonFormField<String>(
               initialValue: canonicalFields.contains(selected) ? selected : null,
-              hint: const Text('Ignorer cette colonne'),
+              hint: Text(ignoreLabel),
               isExpanded: true,
               items: [
                 for (final field in canonicalFields)
@@ -453,12 +465,14 @@ class _ReadyView extends StatelessWidget {
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.onImportAnother,
+    required this.t,
   });
 
   final Map<String, dynamic>? dataset;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final VoidCallback onImportAnother;
+  final CompanyStrings t;
 
   @override
   Widget build(BuildContext context) {
@@ -480,7 +494,7 @@ class _ReadyView extends StatelessWidget {
               const Icon(Icons.check_circle, color: _Brand.green),
               const SizedBox(width: 10),
               Text(
-                'Données prêtes',
+                t.connectionsReadyTitle,
                 style: TextStyle(color: colors.ink, fontSize: 18, fontWeight: FontWeight.w800),
               ),
             ],
@@ -490,10 +504,10 @@ class _ReadyView extends StatelessWidget {
             spacing: 24,
             runSpacing: 12,
             children: [
-              _Stat(label: 'Nom', value: data['name']?.toString() ?? '—'),
-              _Stat(label: 'Lignes', value: '${data['rows_count'] ?? '—'}'),
-              _Stat(label: 'Colonnes', value: '${data['columns_count'] ?? '—'}'),
-              _Stat(label: 'Dernière mise à jour', value: data['uploaded_at']?.toString().split('T').first ?? '—'),
+              _Stat(label: t.connectionsStatNameLabel, value: data['name']?.toString() ?? '—'),
+              _Stat(label: t.connectionsStatRowsLabel, value: '${data['rows_count'] ?? '—'}'),
+              _Stat(label: t.connectionsStatColumnsLabel, value: '${data['columns_count'] ?? '—'}'),
+              _Stat(label: t.connectionsStatUpdatedLabel, value: data['uploaded_at']?.toString().split('T').first ?? '—'),
             ],
           ),
           const SizedBox(height: 24),
@@ -504,10 +518,10 @@ class _ReadyView extends StatelessWidget {
               FilledButton(
                 onPressed: onGoToDashboard,
                 style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-                child: const Text("Aller au tableau de bord"),
+                child: Text(t.connectionsGoDashboard),
               ),
-              OutlinedButton(onPressed: onAskAvenqo, child: const Text('Demander à Avenqo AI')),
-              OutlinedButton(onPressed: onImportAnother, child: const Text('Importer un autre dataset')),
+              OutlinedButton(onPressed: onAskAvenqo, child: Text(t.connectionsAskAvenqo)),
+              OutlinedButton(onPressed: onImportAnother, child: Text(t.connectionsImportAnother)),
             ],
           ),
         ],
@@ -536,9 +550,10 @@ class _Stat extends StatelessWidget {
 }
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({required this.message, required this.onRetry, required this.retryLabel});
   final String message;
   final VoidCallback onRetry;
+  final String retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -557,7 +572,7 @@ class _ErrorView extends StatelessWidget {
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center, style: TextStyle(color: colors.ink)),
           const SizedBox(height: 16),
-          OutlinedButton(onPressed: onRetry, child: const Text('Réessayer')),
+          OutlinedButton(onPressed: onRetry, child: Text(retryLabel)),
         ],
       ),
     );

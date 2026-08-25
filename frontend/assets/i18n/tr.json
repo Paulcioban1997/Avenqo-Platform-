@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Giriş yap",
-    "tryFree": "Ücretsiz deneyin",
+    "tryFree": "Avenqo'yu deneyin",
     "watchDemo": "Demoyu izleyin",
-    "noCreditCard": "Kredi kartı gerekmez",
+    "noCreditCard": "Kişiselleştirilmiş katılım",
     "guidedSetup": "Rehberli kurulum",
     "isolatedData": "İzole veri"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Ölçeklenebilir barındırma"
   },
   "modulesSection": {
-    "kicker": "Avenqo paketi",
-    "title": "Her iş önceliği için bir modül.",
-    "subtitle": "Kendi ortamınızı oluşturun. Tüm modüller aynı deneyimi paylaşır ve birlikte çalışır.",
-    "discover": "Keşfedin",
+    "kicker": "Avenqo Modülleri",
+    "title": "Kademeli olarak genişleyen modüllere sahip tek bir platform.",
+    "subtitle": "Avenqo modüler bir yapay zekâ platformudur. Retail Intelligence şu anda kullanılabilir, yeni modüller kademeli olarak eklenecektir.",
+    "discover": "Keşfet",
+    "availableNow": "Şimdi kullanılabilir",
+    "comingSoon": "Yakında",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Satışları, ürünleri ve sadakati tek bir görünümden yönetin."
+        "name": "Retail Intelligence",
+        "description": "Satışları, ürünleri ve sadakati tek bir birleşik görünümden yönetin.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "İlişkileri, fırsatları ve en iyi sonraki eylemleri önceliklendirin."
+        "name": "CRM AI",
+        "description": "İlişkileri, fırsatları ve en iyi sonraki adımları önceliklendirin.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Finansal takibi ve muhasebe kapanışını hızlandırın."
+        "name": "OCR AI",
+        "description": "Gelen belgeleri yapılandırılmış işlemlere dönüştürün.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Gelen belgeleri yapılandırılmış işlemlere dönüştürün."
+        "name": "Voice AI",
+        "description": "Bağlamı kaybetmeden sesli etkileşimleri otomatikleştirin.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Gerçekten önemli olan eğilimleri ve sapmaları anlayın."
+        "name": "Media AI",
+        "description": "İçeriğinizi tek bir çalışma alanından üretin ve düzenleyin.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Daha alakalı ve ölçülebilir kampanyalar düzenleyin."
+        "name": "Accounting AI",
+        "description": "Finansal takibi ve muhasebe kapanışını hızlandırın.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Şirket bilgisine dayalı güvenilir yanıtlar sunun."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Bağlamı kaybetmeden sesli etkileşimleri otomatikleştirin."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Ekipleri birbirine bağlayın ve tekrarlayan görevleri otomatikleştirin."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "İçeriğinizi tek bir çalışma alanından üretin ve düzenleyin."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Yanıt sürelerini kısaltın ve her çözümü iyileştirin."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Müşterileriniz için bir sohbet asistanı devreye alın."
+        "name": "Legal AI",
+        "description": "Sözleşme belgelerinizi analiz edin ve güvence altına alın.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Şeffaf fiyatlandırma",
+    "kicker": "Fiyatlandırma",
     "title": "Şimdi başlayın. Kendi hızınızda büyüyün.",
     "subtitle": "Her plan platformu, Avenqo asistanını ve güvenli bir çalışma alanını içerir.",
-    "popular": "En çok tercih edilen",
-    "priceLabel": "Özel fiyatlandırma",
+    "popular": "En popüler",
+    "priceLabel": "Fiyat onaylanacak",
     "plans": [
       {
-        "tier": "Temel",
-        "title": "Başlamak için",
+        "tier": "Demo",
+        "title": "Avenqo'yu keşfetmek için",
+        "priceLabel": "Fiyat onaylanacak",
         "items": [
-          "1 Avenqo modülü",
-          "5 kullanıcıya kadar",
-          "Entegre asistan",
-          "Standart destek"
+          "Retail Intelligence erişimi",
+          "Yerleşik Avenqo asistanı",
+          "Güvenli çalışma alanı"
         ],
-        "action": "Bir danışmanla konuşun"
+        "action": "Avenqo'yu deneyin"
       },
       {
-        "tier": "Profesyonel",
-        "title": "Hızlanmak için",
+        "tier": "Professional",
+        "title": "Daha ileri gitmek isteyen işletmeler için",
+        "priceLabel": "Fiyat onaylanacak",
         "items": [
-          "5 modüle kadar",
-          "25 kullanıcıya kadar",
+          "Tam Retail Intelligence",
           "Gelişmiş otomasyonlar",
           "Öncelikli destek"
         ],
-        "action": "Ücretsiz deneyin"
+        "action": "Başlayın"
       },
       {
-        "tier": "Kurumsal",
-        "title": "Yönetmek için",
+        "tier": "Enterprise",
+        "title": "Özel",
+        "priceLabel": "Satış ekibiyle iletişime geçin",
         "items": [
-          "Sınırsız modül",
-          "Özel kullanıcı sayısı",
           "Özel entegrasyonlar",
-          "Özel yönetişim"
+          "Özel yönetişim",
+          "Özel destek"
         ],
         "action": "Satış ekibiyle iletişime geçin"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Sıradaki adımınız",
     "title": "İşletmenizi farklı yönetin.",
-    "tryFree": "Ücretsiz deneyin",
+    "tryFree": "Avenqo'yu deneyin",
     "scheduleDemo": "Bir demo planlayın"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Kaynaklar",
     "newest": "En yeni",
     "you": "Siz",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Satışlarım nasıl gidiyor?",
+      "Hangi müşterilerin ilgiye ihtiyacı var?",
+      "Bu ay ne değişti?",
+      "İşletmemin performansını özetle."
+    ]
   },
   "auth": {
     "tagline": "Şirketinizin kararları için yapay zeka platformu",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Ortalama sipariş",
     "prioritiesTitle": "Önerilen öncelikler",
     "prioritiesEmpty": "Verileriniz bağlanır bağlanmaz öncelikleriniz burada görünecek.",
-    "planLabel": "Plan"
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "İşletme verileriniz hakkında sorular sorun ve bağlamsal bilgiler alın.",
+    "askAvenqoCta": "Avenqo AI'ya sor",
+    "importDataTitle": "Verilerinizi içe aktarın",
+    "importDataSubtitle": "Avenqo zekasını açmak için işletme kaynaklarınızı bağlayın veya içe aktarın.",
+    "importDataCta": "Verilerimi içe aktar",
+    "connectionsTitle": "Bağlantılar",
+    "connectionsEmpty": "Henüz bağlı veri yok",
+    "connectionsEmptyCta": "Verilerimi içe aktar",
+    "connectionsReadyLabel": "Hazır",
+    "connectionsLastUpdate": "Son güncelleme",
+    "activityTitle": "Son etkinlik",
+    "activityEmpty": "Henüz son etkinlik yok.",
+    "stepsTitle": "Önerilen sonraki adımlar",
+    "stepOrgLabel": "Şirket kurulumunuzu tamamlayın",
+    "stepDataLabel": "Verilerinizi bağlayın veya içe aktarın",
+    "stepInsightsLabel": "İçgörülerinizi keşfedin",
+    "stepAskLabel": "Avenqo AI'ya sor"
   },
   "admin": {
     "commandCenterTitle": "Avenqo Kontrol Merkezi",
@@ -465,5 +477,132 @@
     "settingsTitle": "Ayarlar",
     "signedInAs": "Şu şekilde giriş yapıldı",
     "noSettingsMessage": "Şu anda burada hiçbir küresel platform yapılandırması gösterilmiyor — hesap kimliği dışında dürüstçe gösterilecek bir şey yok."
+  },
+  "onboarding": {
+    "title": "Avenqo çalışma alanınızı ayarlayalım",
+    "subtitle": "Önceliklerinizi ve önerilerinizi kişiselleştirmek için birkaç hızlı soru.",
+    "goalsLabel": "Ana hedefleriniz nelerdir?",
+    "goalIncreaseSales": "Satışları artırmak",
+    "goalReduceChurn": "Müşteri kaybını azaltmak",
+    "goalOptimizePricing": "Fiyatlandırmayı optimize etmek",
+    "goalImproveInventory": "Envanter yönetimini iyileştirmek",
+    "goalUnderstandCustomers": "Müşterilerimi daha iyi anlamak",
+    "goalAutomateReports": "Raporlarımı otomatikleştirmek",
+    "toolsLabel": "Şu anda hangi araçları kullanıyorsunuz?",
+    "toolPos": "Satış noktası (POS) sistemi",
+    "toolEcommerce": "E-ticaret platformu",
+    "toolSpreadsheets": "Hesap tabloları (Excel/Sheets)",
+    "toolAccounting": "Muhasebe yazılımı",
+    "toolCrm": "CRM",
+    "toolNone": "Henüz araç yok",
+    "teamSizeLabel": "Ekibinizin büyüklüğü nedir?",
+    "teamSizeSolo": "Sadece ben",
+    "teamSizeSmall": "2 ila 10 kişi",
+    "teamSizeMedium": "11 ila 50 kişi",
+    "teamSizeLarge": "50'den fazla kişi",
+    "refineIndustryLabel": "Sektörünüzü belirtin (isteğe bağlı)",
+    "refineIndustryHint": "Örn. özel perakende, fast food, muhasebe bürosu...",
+    "continueCta": "Devam et",
+    "skipCta": "Şimdilik atla",
+    "genericError": "Yanıtlarınızı şu anda kaydedemedik.",
+    "goalsRequired": "En az bir hedef seçin.",
+    "teamSizeRequired": "Ekip büyüklüğünüzü seçin."
+  },
+  "company": {
+    "navOverviewLabel": "Genel Bakış",
+    "navOverviewDescription": "İşletmenizin temel göstergeleri.",
+    "navAssistantLabel": "Yapay Zeka Asistanı",
+    "navAssistantDescription": "Sorular sorun ve harekete geçin.",
+    "navSalesLabel": "Satışlar",
+    "navSalesDescription": "Geliri ve trendleri takip edin.",
+    "navCustomersLabel": "Müşteriler",
+    "navCustomersDescription": "Sadakati ve kayıp riskini anlayın.",
+    "navProductsLabel": "Ürünler",
+    "navProductsDescription": "Talebi ve katalog performansını izleyin.",
+    "navRecommendationsLabel": "Öneriler",
+    "navRecommendationsDescription": "En yüksek öncelikli fırsatları bulun.",
+    "navAlertsLabel": "Uyarılar",
+    "navAlertsDescription": "Dikkatinizi gerektiren değişiklikleri izleyin.",
+    "navReportsLabel": "Raporlar",
+    "navReportsDescription": "Yönetici özetlerinizi görüntüleyin ve paylaşın.",
+    "navConnectionsLabel": "Bağlantılar",
+    "navConnectionsDescription": "Satış ve yönetim araçlarınızı bağlayın.",
+    "navTeamLabel": "Ekip",
+    "navTeamDescription": "Ekip üyelerinizin erişimini yönetin.",
+    "navBillingLabel": "Faturalandırma",
+    "navBillingDescription": "Aboneliğinizi ve faturalarınızı yönetin.",
+    "navSettingsLabel": "Ayarlar",
+    "navSettingsDescription": "Hesap ve şirket bilgileriniz.",
+    "navSupportLabel": "Avenqo Desteği",
+    "navSupportDescription": "Avenqo ile ilgili yardıma mı ihtiyacınız var? Sorunuzu burada sorun.",
+    "connectionsLoading": "Yükleniyor…",
+    "connectionsNoDataTitle": "Analizleri ve Avenqo AI'yı açmak için verilerinizi bağlayın.",
+    "connectionsNoDataFormats": "Kabul edilen formatlar: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Bir dosya içe aktar",
+    "connectionsUploadingLabel": "Yükleniyor…",
+    "connectionsAnalyzing": "Verilerinizin yapısı analiz ediliyor…",
+    "connectionsMappingTitle": "Sütun eşlemenizi onaylayın",
+    "connectionsMappingSubtitle": "Bazı sütunlar analizler etkinleştirilmeden önce manuel onay gerektirir.",
+    "connectionsMappingIgnore": "Bu sütunu yoksay",
+    "connectionsConfirmMapping": "Eşlemeyi onayla",
+    "connectionsReadyTitle": "Veriler hazır",
+    "connectionsStatNameLabel": "Ad",
+    "connectionsStatRowsLabel": "Satırlar",
+    "connectionsStatColumnsLabel": "Sütunlar",
+    "connectionsStatUpdatedLabel": "Son güncelleme",
+    "connectionsGoDashboard": "Panele git",
+    "connectionsAskAvenqo": "Avenqo AI'ya sor",
+    "connectionsImportAnother": "Başka bir veri kümesi içe aktar",
+    "connectionsRetry": "Tekrar dene",
+    "connectionsGenericError": "Beklenmeyen bir hata oluştu.",
+    "connectionsFileEmptyError": "Seçilen dosya boş veya okunamıyor.",
+    "connectionsProcessingError": "Bu dosya işlenemedi.",
+    "businessDefaultTitle": "Alanınız hazır",
+    "businessDefaultDescription": "Güncel bilgileri burada görmek için araçlarınızı bağlayın.",
+    "businessConnectButton": "Araçlarımı bağla",
+    "businessSalesTitle": "Her değişikliği takip edin",
+    "businessSalesDescription": "Satış trendleriniz, karşılaştırmalarınız ve tahminleriniz burada görünecek.",
+    "businessCustomersTitle": "Doğru müşterileri elde tutun",
+    "businessCustomersDescription": "Burada önceliklendirilecek, yeniden etkinleştirilecek veya desteklenecek müşterileri bulacaksınız.",
+    "businessProductsTitle": "Kataloğunuzu yönetin",
+    "businessProductsDescription": "En çok satan ürünler, beklenen talep ve izlenecek stok burada toplanacak.",
+    "businessRecommendationsTitle": "Fırsatlar üzerinde doğrudan harekete geçin",
+    "businessRecommendationsDescription": "Avenqo, fırsatları işletmeniz üzerindeki potansiyel etkilerine göre sıralayacaktır.",
+    "businessAlertsTitle": "Gürültü olmadan bilgi sahibi olun",
+    "businessAlertsDescription": "Önemli değişiklikler ve riskler önerilen bir eylemle işaretlenecektir.",
+    "businessReportsTitle": "Yönetici özetleriniz",
+    "businessReportsDescription": "Şirketinizin sonuçları hakkında net raporlar oluşturun ve paylaşın.",
+    "billingTitle": "Faturalandırma",
+    "billingPortalButton": "Stripe portalı",
+    "billingUnavailable": "Faturalandırma geçici olarak kullanılamıyor.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "Durum: ",
+    "billingCancelScheduled": "İptal planlandı",
+    "billingInvoicesTitle": "Faturalar",
+    "billingInvoiceFallback": "Fatura",
+    "employeesTitle": "Kullanıcılar",
+    "employeesRefreshTooltip": "Yenile",
+    "employeesUnavailable": "Kullanıcı erişimi geçici olarak kullanılamıyor.",
+    "employeesColumnName": "Ad",
+    "employeesColumnEmail": "E-posta",
+    "employeesColumnRole": "Rol",
+    "employeesColumnStatus": "Durum",
+    "settingsTitle": "Ayarlar",
+    "settingsSubtitle": "Hesap, şirket ve tercih bilgileriniz.",
+    "settingsAccountSection": "Hesap",
+    "settingsCompanySection": "Şirket",
+    "settingsAppearanceSection": "Görünüm",
+    "settingsSessionSection": "Oturum",
+    "settingsNameLabel": "Ad",
+    "settingsEmailLabel": "E-posta",
+    "settingsRoleLabel": "Rol",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Aboneliği yönet",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Dil",
+    "settingsThemeLight": "Açık",
+    "settingsThemeDark": "Koyu",
+    "settingsThemeSystem": "Sistem",
+    "settingsLogout": "Çıkış yap"
   }
 }

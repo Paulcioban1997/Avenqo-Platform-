@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Mag-log in",
-    "tryFree": "Subukan nang libre",
+    "tryFree": "Subukan ang Avenqo",
     "watchDemo": "Panoorin ang demo",
-    "noCreditCard": "Walang kailangang credit card",
+    "noCreditCard": "Personalized na pag-setup",
     "guidedSetup": "Ginagabayang setup",
     "isolatedData": "Nakahiwalay na data"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Nagsu-scale na hosting"
   },
   "modulesSection": {
-    "kicker": "Ang Avenqo suite",
-    "title": "Isang module para sa bawat prayoridad ng negosyo.",
-    "subtitle": "Buuin ang iyong pasadyang kapaligiran. Lahat ng module ay may parehong karanasan at magkasamang gumagana.",
-    "discover": "Tuklasin",
+    "kicker": "Mga Module ng Avenqo",
+    "title": "Isang modular na platform na lumalago ayon sa pangangailangan",
+    "subtitle": "I-activate ang mga module na kailangan mo ngayon, at palawakin sa hinaharap nang hindi nagpapalit ng mga tool.",
+    "discover": "Alamin pa",
+    "availableNow": "Available na ngayon",
+    "comingSoon": "Malapit na",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Pamahalaan ang benta, produkto, at katapatan mula sa iisang view."
+        "name": "Retail Intelligence",
+        "description": "Real-time na pagsusuri ng benta at imbentaryo para sa retail.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Unahin ang mga relasyon, oportunidad, at pinakamahusay na susunod na hakbang."
+        "name": "CRM AI",
+        "description": "Pinapatakbo ng AI na pamamahala ng relasyon sa kustomer para sa mas matalinong sales pipeline.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Pabilisin ang financial monitoring at accounting closing."
+        "name": "OCR AI",
+        "description": "Awtomatikong pagkuha ng datos mula sa mga invoice at na-scan na dokumento.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Gawing structured process ang mga papasok na dokumento."
+        "name": "Voice AI",
+        "description": "Voice assistant para sa pag-transcribe at pagsubaybay sa mga tawag ng kustomer.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Unawain ang mga trend at deviation na talagang mahalaga."
+        "name": "Media AI",
+        "description": "Paglikha at pagsusuri ng visual at marketing content.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Ayusin ang mas relevant at masusukat na mga kampanya."
+        "name": "Accounting AI",
+        "description": "Automation ng accounting at financial reconciliation.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Magbigay ng maaasahang sagot batay sa kaalaman ng kumpanya."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "I-automate ang voice interaction nang hindi nawawala ang konteksto."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Ikonekta ang mga team at i-automate ang paulit-ulit na gawain."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Gumawa at ayusin ang iyong content mula sa iisang workspace."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Bawasan ang response time at pagbutihin ang bawat solusyon."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Mag-deploy ng conversational assistant para sa iyong mga kliyente."
+        "name": "Legal AI",
+        "description": "Pagsusuri at pagbubuod ng mga kontrata gamit ang tulong ng AI.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Transparent na pagpepresyo",
-    "title": "Magsimula ngayon. Lumago sa iyong sariling bilis.",
-    "subtitle": "Kasama sa bawat plano ang platform, ang Avenqo assistant, at isang secure na workspace.",
+    "kicker": "Presyo",
+    "title": "Isang plano para sa bawat yugto ng iyong paglago",
+    "subtitle": "Magsimula sa demo, pagkatapos ay pumili ng plano na akma sa laki ng iyong kompanya.",
     "popular": "Pinakasikat",
-    "priceLabel": "Ayon sa hiling",
+    "priceLabel": "Presyo kapag hiniling",
     "plans": [
       {
-        "tier": "Essential",
-        "title": "Para magsimula",
+        "tier": "Demo",
+        "title": "Subukan ang Avenqo gamit ang iyong datos",
+        "priceLabel": "Libre",
         "items": [
-          "1 Avenqo module",
-          "Hanggang 5 user",
-          "Built-in na assistant",
-          "Standard na suporta"
+          "Limitadong oras na access",
+          "Demo o sariling datos",
+          "Email support"
         ],
-        "action": "Kausapin ang isang consultant"
+        "action": "Humiling ng demo"
       },
       {
         "tier": "Professional",
-        "title": "Para pabilisin",
+        "title": "Para sa mga kompanyang gustong lumago",
+        "priceLabel": "Presyo kapag hiniling",
         "items": [
-          "Hanggang 5 module",
-          "Hanggang 25 user",
-          "Advanced na automation",
-          "Priyoridad na suporta"
+          "Lahat ng core module",
+          "Nasusukat na bilang ng user",
+          "Priority support"
         ],
-        "action": "Subukan nang libre"
+        "action": "Kontakin kami"
       },
       {
         "tier": "Enterprise",
-        "title": "Para mag-orkestra",
+        "title": "Para sa mga organisasyong may advanced na pangangailangan",
+        "priceLabel": "Presyo kapag hiniling",
         "items": [
-          "Walang limitasyong module",
-          "Mga user ayon sa hiling",
-          "Custom na integration",
-          "Dedikadong governance"
+          "Custom na integrasyon",
+          "Dedikadong account manager",
+          "Service level agreement"
         ],
-        "action": "Makipag-ugnayan sa sales"
+        "action": "Kontakin ang sales"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Ang iyong susunod na hakbang",
     "title": "Pamahalaan ang iyong negosyo sa ibang paraan.",
-    "tryFree": "Subukan nang libre",
+    "tryFree": "Subukan ang Avenqo",
     "scheduleDemo": "Mag-iskedyul ng demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Mga pinagmulan",
     "newest": "Pinakabago",
     "you": "Ikaw",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Ano ang pinakamabentang produkto ko ngayong buwan?",
+      "Aling mga kustomer ang nasa peligro na huminto sa pagbili?",
+      "Ibuod ang performance ng aking negosyo ngayong linggo.",
+      "Ano ang pinakamataas na prioridad na oportunidad ngayon?"
+    ]
   },
   "auth": {
     "tagline": "Ang AI platform para sa negosyo mo",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Average na halaga ng order",
     "prioritiesTitle": "Mga inirerekomendang priyoridad",
     "prioritiesEmpty": "Kapag naikonekta na ang data, lalabas dito ang iyong mga priyoridad.",
-    "planLabel": "Plano"
+    "planLabel": "Plano",
+    "askAvenqoSubtitle": "Magtanong ng anumang bagay tungkol sa iyong negosyo",
+    "askAvenqoCta": "Simulan ang usapan",
+    "importDataTitle": "I-import ang iyong datos",
+    "importDataSubtitle": "Ikonekta ang iyong pinagmulan ng datos para makakuha ng insight",
+    "importDataCta": "I-import ang datos",
+    "connectionsTitle": "Mga Koneksyon",
+    "connectionsEmpty": "Wala pang koneksyon",
+    "connectionsEmptyCta": "Magdagdag ng koneksyon",
+    "connectionsReadyLabel": "Handa na",
+    "connectionsLastUpdate": "Huling na-update: ",
+    "activityTitle": "Kamakailang aktibidad",
+    "activityEmpty": "Wala pang kamakailang aktibidad",
+    "stepsTitle": "Pagsisimula",
+    "stepOrgLabel": "I-setup ang iyong organisasyon",
+    "stepDataLabel": "Ikonekta ang iyong datos",
+    "stepInsightsLabel": "Galugarin ang mga insight",
+    "stepAskLabel": "Tanungin si Avenqo"
   },
   "admin": {
     "commandCenterTitle": "Command Center ng Avenqo",
@@ -412,7 +424,7 @@
     "noProviderStatus": "Walang naiulat na status ng provider.",
     "companiesTitle": "Mga kumpanya",
     "companiesSubtitle": "Mga kumpanya sa platform",
-    "searchCompaniesHint": "Maghanap ng kumpanya\u2026",
+    "searchCompaniesHint": "Maghanap ng kumpanya…",
     "companiesError": "Pansamantalang hindi available ang listahan ng kumpanya.",
     "noCompaniesMatch": "Walang tumugmang kumpanya",
     "companyFallbackName": "Kumpanya",
@@ -430,11 +442,11 @@
     "enterpriseOverride": "Enterprise override",
     "active": "Aktibo",
     "auditLogTitle": "Audit log",
-    "auditLogSubtitle": "Mga kamakailang entry \u00b7 read-only",
+    "auditLogSubtitle": "Mga kamakailang entry · read-only",
     "auditLogError": "Pansamantalang hindi available ang audit log.",
     "noAuditEntries": "Wala pang entry sa audit.",
     "subscriptionsTitle": "Mga subscription",
-    "subscriptionsSubtitle": "Kumpanya \u00b7 Demo / Professional / Enterprise",
+    "subscriptionsSubtitle": "Kumpanya · Demo / Professional / Enterprise",
     "subscriptionsError": "Pansamantalang hindi available ang data ng subscription.",
     "noSubscriptionsYet": "Wala pang subscription.",
     "billingTitle": "Billing",
@@ -448,7 +460,7 @@
     "providersLabel": "Mga provider",
     "noCostBreakdownMessage": "Ang breakdown ng token at tinatayang gastos ayon sa provider ay nangangailangan ng dedikadong endpoint para sa pagsasama-sama ng paggamit na wala pa sa backend. Walang ipinapakita rito.",
     "providersTitle": "Mga provider",
-    "providersSubtitle": "Real-time na status ng mga AI provider \u2014 walang ipinapakitang key o hilaw na lihim.",
+    "providersSubtitle": "Real-time na status ng mga AI provider — walang ipinapakitang key o hilaw na lihim.",
     "providersError": "Pansamantalang hindi available ang status ng provider.",
     "systemHealthTitle": "Kalusugan ng sistema",
     "systemHealthSubtitle": "Real-time na availability ng mga pangunahing serbisyo ng Avenqo.",
@@ -461,9 +473,136 @@
     "unknownStatus": "Hindi alam",
     "supportTitle": "Suporta",
     "supportSubtitle": "Mga escalation, mahahalagang insidente, at insidente sa buong kumpanya.",
-    "noSupportMessage": "Wala pang sistema ng suporta/ticket \u2014 walang pekeng ticket na ipinapakita sa page na ito.",
+    "noSupportMessage": "Wala pang sistema ng suporta/ticket — walang pekeng ticket na ipinapakita sa page na ito.",
     "settingsTitle": "Mga setting",
     "signedInAs": "Naka-log in bilang",
-    "noSettingsMessage": "Walang pangkalahatang configuration ng platform na ipinapakita rito \u2014 walang kailangang ipakita bukod sa identidad ng account."
+    "noSettingsMessage": "Walang pangkalahatang configuration ng platform na ipinapakita rito — walang kailangang ipakita bukod sa identidad ng account."
+  },
+  "onboarding": {
+    "title": "Simulan nating i-setup ang iyong Avenqo workspace",
+    "subtitle": "Ilang mabilis na tanong para i-personalize ang iyong mga prioridad at rekomendasyon.",
+    "goalsLabel": "Ano ang iyong mga pangunahing layunin?",
+    "goalIncreaseSales": "Dagdagan ang benta",
+    "goalReduceChurn": "Bawasan ang churn ng kustomer",
+    "goalOptimizePricing": "I-optimize ang pagpepresyo",
+    "goalImproveInventory": "Pahusayin ang pamamahala ng imbentaryo",
+    "goalUnderstandCustomers": "Mas maunawaan ang mga kustomer",
+    "goalAutomateReports": "I-automate ang pag-uulat",
+    "toolsLabel": "Anong mga tool ang kasalukuyan mong ginagamit?",
+    "toolPos": "POS system",
+    "toolEcommerce": "E-commerce platform",
+    "toolSpreadsheets": "Spreadsheets",
+    "toolAccounting": "Accounting software",
+    "toolCrm": "CRM system",
+    "toolNone": "Wala sa mga ito",
+    "teamSizeLabel": "Ano ang laki ng iyong team?",
+    "teamSizeSolo": "Ako lang",
+    "teamSizeSmall": "2-10 katao",
+    "teamSizeMedium": "11-50 katao",
+    "teamSizeLarge": "50+ katao",
+    "refineIndustryLabel": "Anong industriya ka nasasakupan?",
+    "refineIndustryHint": "Nakakatulong ito sa amin na pinuhin ang mga rekomendasyon",
+    "continueCta": "Magpatuloy",
+    "skipCta": "Laktawan muna",
+    "genericError": "May naganap na error, pakisubukang muli.",
+    "goalsRequired": "Mangyaring pumili ng kahit isang layunin.",
+    "teamSizeRequired": "Mangyaring piliin ang laki ng iyong team."
+  },
+  "company": {
+    "navOverviewLabel": "Pangkalahatang-ideya",
+    "navOverviewDescription": "Isang snapshot ng iyong negosyo",
+    "navAssistantLabel": "AI Assistant",
+    "navAssistantDescription": "Magtanong tungkol sa iyong datos",
+    "navSalesLabel": "Benta",
+    "navSalesDescription": "Subaybayan ang kita at mga uso",
+    "navCustomersLabel": "Mga Kustomer",
+    "navCustomersDescription": "Unawain ang iyong customer base",
+    "navProductsLabel": "Mga Produkto",
+    "navProductsDescription": "Suriin ang performance ng produkto",
+    "navRecommendationsLabel": "Mga Rekomendasyon",
+    "navRecommendationsDescription": "Mga mungkahing likha ng AI",
+    "navAlertsLabel": "Mga Alerto",
+    "navAlertsDescription": "Mahahalagang notipikasyon",
+    "navReportsLabel": "Mga Ulat",
+    "navReportsDescription": "Bumuo ng detalyadong ulat",
+    "navConnectionsLabel": "Mga Koneksyon",
+    "navConnectionsDescription": "Pamahalaan ang iyong mga pinagmulan ng datos",
+    "navTeamLabel": "Team",
+    "navTeamDescription": "Pamahalaan ang mga miyembro ng team",
+    "navBillingLabel": "Billing",
+    "navBillingDescription": "Pamahalaan ang iyong subscription",
+    "navSettingsLabel": "Mga Setting",
+    "navSettingsDescription": "Account at mga kagustuhan",
+    "navSupportLabel": "Suporta",
+    "navSupportDescription": "Kumuha ng tulong",
+    "connectionsLoading": "Nilo-load ang iyong mga koneksyon...",
+    "connectionsNoDataTitle": "Wala pang nakakonektang datos",
+    "connectionsNoDataFormats": "Suportado ang CSV, Excel, at iba pa",
+    "connectionsImportButton": "I-import ang datos",
+    "connectionsUploadingLabel": "Ina-upload...",
+    "connectionsAnalyzing": "Sinusuri ang iyong datos...",
+    "connectionsMappingTitle": "I-mapa ang iyong mga column",
+    "connectionsMappingSubtitle": "Itugma ang iyong mga column sa aming mga field",
+    "connectionsMappingIgnore": "Balewalain ang column na ito",
+    "connectionsConfirmMapping": "Kumpirmahin ang mapping",
+    "connectionsReadyTitle": "Handa na ang iyong datos!",
+    "connectionsStatNameLabel": "Pangalan",
+    "connectionsStatRowsLabel": "Mga Row",
+    "connectionsStatColumnsLabel": "Mga Column",
+    "connectionsStatUpdatedLabel": "Na-update",
+    "connectionsGoDashboard": "Pumunta sa dashboard",
+    "connectionsAskAvenqo": "Tanungin si Avenqo",
+    "connectionsImportAnother": "Mag-import ng ibang file",
+    "connectionsRetry": "Subukan muli",
+    "connectionsGenericError": "May naganap na error.",
+    "connectionsFileEmptyError": "Mukhang walang laman ang file.",
+    "connectionsProcessingError": "Error sa pagproseso ng iyong file.",
+    "businessDefaultTitle": "Ikonekta ang iyong datos",
+    "businessDefaultDescription": "Ikonekta ang iyong pinagmulan ng datos para magsimula",
+    "businessConnectButton": "Ikonekta",
+    "businessSalesTitle": "Datos ng benta",
+    "businessSalesDescription": "Ikonekta ang iyong sales data para subaybayan ang performance",
+    "businessCustomersTitle": "Datos ng kustomer",
+    "businessCustomersDescription": "Ikonekta ang customer data para makakuha ng insight",
+    "businessProductsTitle": "Datos ng produkto",
+    "businessProductsDescription": "Ikonekta ang product data para suriin ang performance",
+    "businessRecommendationsTitle": "Mga Rekomendasyon",
+    "businessRecommendationsDescription": "Ikonekta ang datos para makakuha ng AI recommendations",
+    "businessAlertsTitle": "Mga Alerto",
+    "businessAlertsDescription": "Ikonekta ang datos para makatanggap ng mga alerto",
+    "businessReportsTitle": "Mga Ulat",
+    "businessReportsDescription": "Ikonekta ang datos para makabuo ng mga ulat",
+    "billingTitle": "Billing",
+    "billingPortalButton": "Buksan ang billing portal",
+    "billingUnavailable": "Hindi available ang impormasyon sa billing sa ngayon",
+    "billingPlanPrefix": "Plano: ",
+    "billingStatusPrefix": "Katayuan: ",
+    "billingCancelScheduled": "Naka-schedule ang pagkansela",
+    "billingInvoicesTitle": "Mga Invoice",
+    "billingInvoiceFallback": "Walang available na invoice",
+    "employeesTitle": "Mga Miyembro ng Team",
+    "employeesRefreshTooltip": "I-refresh ang listahan",
+    "employeesUnavailable": "Hindi available ang impormasyon ng miyembro ng team",
+    "employeesColumnName": "Pangalan",
+    "employeesColumnEmail": "Email",
+    "employeesColumnRole": "Tungkulin",
+    "employeesColumnStatus": "Katayuan",
+    "settingsTitle": "Mga Setting",
+    "settingsSubtitle": "Pamahalaan ang iyong account at mga kagustuhan",
+    "settingsAccountSection": "Account",
+    "settingsCompanySection": "Kompanya",
+    "settingsAppearanceSection": "Hitsura",
+    "settingsSessionSection": "Sesyon",
+    "settingsNameLabel": "Pangalan",
+    "settingsEmailLabel": "Email",
+    "settingsRoleLabel": "Tungkulin",
+    "settingsPlanLabel": "Plano",
+    "settingsManageSubscription": "Pamahalaan ang subscription",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Wika",
+    "settingsThemeLight": "Maliwanag",
+    "settingsThemeDark": "Madilim",
+    "settingsThemeSystem": "Sundin ang system",
+    "settingsLogout": "Mag-logout"
   }
 }

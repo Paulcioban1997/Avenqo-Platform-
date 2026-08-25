@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Inloggen",
-    "tryFree": "Gratis proberen",
+    "tryFree": "Avenqo proberen",
     "watchDemo": "Bekijk een demo",
-    "noCreditCard": "Geen creditcard",
+    "noCreditCard": "Persoonlijke begeleiding",
     "guidedSetup": "Begeleide installatie",
     "isolatedData": "Geïsoleerde gegevens"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Schaalbare hosting"
   },
   "modulesSection": {
-    "kicker": "De Avenqo-suite",
-    "title": "Een module voor elke bedrijfsprioriteit.",
-    "subtitle": "Bouw uw omgeving op maat. Alle modules delen dezelfde ervaring en werken samen.",
+    "kicker": "Avenqo-modules",
+    "title": "Eén platform, met modules die geleidelijk worden uitgebreid.",
+    "subtitle": "Avenqo is een modulair AI-platform. Retail Intelligence is nu beschikbaar, met nieuwe modules die geleidelijk worden toegevoegd.",
     "discover": "Ontdekken",
+    "availableNow": "Nu beschikbaar",
+    "comingSoon": "Binnenkort",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Beheer verkoop, producten en loyaliteit vanuit één overzicht."
+        "name": "Retail Intelligence",
+        "description": "Beheer verkoop, producten en loyaliteit vanuit één centraal overzicht.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Prioriteer relaties, kansen en de beste vervolgacties."
+        "name": "CRM AI",
+        "description": "Geef prioriteit aan relaties, kansen en de beste volgende acties.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Versnel financiële opvolging en boekhoudkundige afsluiting."
+        "name": "OCR AI",
+        "description": "Zet binnenkomende documenten om in gestructureerde processen.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Zet binnenkomende documenten om in gestructureerde processen."
+        "name": "Voice AI",
+        "description": "Automatiseer spraakinteracties zonder de context te verliezen.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Begrijp de trends en afwijkingen die er echt toe doen."
+        "name": "Media AI",
+        "description": "Produceer en organiseer je content vanuit één werkruimte.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Orkestreer relevantere en meetbare campagnes."
+        "name": "Accounting AI",
+        "description": "Versnel financiële opvolging en de boekhoudkundige afsluiting.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Geef betrouwbare antwoorden op basis van bedrijfskennis."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Automatiseer spraakinteracties zonder de context te verliezen."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Verbind teams en automatiseer repetitieve taken."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Produceer en organiseer uw content vanuit één werkruimte."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Verkort reactietijden en verbeter elke oplossing."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Zet een conversatie-assistent in voor uw klanten."
+        "name": "Legal AI",
+        "description": "Analyseer en beveilig je contractdocumenten.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Heldere prijzen",
-    "title": "Begin nu. Groei op uw tempo.",
+    "kicker": "Prijzen",
+    "title": "Begin nu. Groei in je eigen tempo.",
     "subtitle": "Elk plan omvat het platform, de Avenqo-assistent en een beveiligde werkruimte.",
     "popular": "Meest gekozen",
-    "priceLabel": "Op maat",
+    "priceLabel": "Prijs nog te bevestigen",
     "plans": [
       {
-        "tier": "Essentieel",
-        "title": "Om te beginnen",
+        "tier": "Demo",
+        "title": "Om Avenqo te ontdekken",
+        "priceLabel": "Prijs nog te bevestigen",
         "items": [
-          "1 Avenqo-module",
-          "Tot 5 gebruikers",
-          "Ingebouwde assistent",
-          "Standaard support"
+          "Toegang tot Retail Intelligence",
+          "Ingebouwde Avenqo-assistent",
+          "Beveiligde werkruimte"
         ],
-        "action": "Praat met een adviseur"
+        "action": "Avenqo proberen"
       },
       {
-        "tier": "Professioneel",
-        "title": "Om te versnellen",
+        "tier": "Professional",
+        "title": "Voor bedrijven die verder willen gaan",
+        "priceLabel": "Prijs nog te bevestigen",
         "items": [
-          "Tot 5 modules",
-          "Tot 25 gebruikers",
+          "Volledige Retail Intelligence",
           "Geavanceerde automatiseringen",
-          "Prioritaire support"
+          "Prioritaire ondersteuning"
         ],
-        "action": "Gratis proberen"
+        "action": "Aan de slag"
       },
       {
-        "tier": "Onderneming",
-        "title": "Om te orkestreren",
+        "tier": "Enterprise",
+        "title": "Op maat",
+        "priceLabel": "Contact met sales",
         "items": [
-          "Onbeperkte modules",
-          "Gebruikers op maat",
-          "Aangepaste integraties",
-          "Toegewijde governance"
+          "Integraties op maat",
+          "Toegewijde governance",
+          "Toegewijde ondersteuning"
         ],
-        "action": "Contacteer sales"
+        "action": "Contact met sales"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Uw volgende stap",
     "title": "Laat uw bedrijf anders werken.",
-    "tryFree": "Gratis proberen",
+    "tryFree": "Avenqo proberen",
     "scheduleDemo": "Plan een demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Bronnen",
     "newest": "Nieuwste",
     "you": "U",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Hoe presteren mijn verkopen?",
+      "Welke klanten hebben aandacht nodig?",
+      "Wat is er deze maand veranderd?",
+      "Vat de prestaties van mijn bedrijf samen."
+    ]
   },
   "auth": {
     "tagline": "Het AI-platform voor de beslissingen van uw bedrijf",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Gemiddelde bestelling",
     "prioritiesTitle": "Aanbevolen prioriteiten",
     "prioritiesEmpty": "Uw prioriteiten verschijnen hier zodra uw gegevens zijn verbonden.",
-    "planLabel": "Plan"
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "Stel vragen over je bedrijfsgegevens en ontvang contextuele inzichten.",
+    "askAvenqoCta": "Avenqo AI vragen",
+    "importDataTitle": "Importeer je gegevens",
+    "importDataSubtitle": "Verbind of importeer je bedrijfsbronnen om Avenqo-intelligentie te ontgrendelen.",
+    "importDataCta": "Mijn gegevens importeren",
+    "connectionsTitle": "Verbindingen",
+    "connectionsEmpty": "Nog geen gegevens verbonden",
+    "connectionsEmptyCta": "Mijn gegevens importeren",
+    "connectionsReadyLabel": "Gereed",
+    "connectionsLastUpdate": "Laatst bijgewerkt",
+    "activityTitle": "Recente activiteit",
+    "activityEmpty": "Nog geen recente activiteit.",
+    "stepsTitle": "Aanbevolen volgende stappen",
+    "stepOrgLabel": "Voltooi de instelling van je bedrijf",
+    "stepDataLabel": "Verbind of importeer je gegevens",
+    "stepInsightsLabel": "Verken je inzichten",
+    "stepAskLabel": "Avenqo AI vragen"
   },
   "admin": {
     "commandCenterTitle": "Avenqo Commandocentrum",
@@ -465,5 +477,132 @@
     "settingsTitle": "Instellingen",
     "signedInAs": "Ingelogd als",
     "noSettingsMessage": "Er wordt hier momenteel geen globale platformconfiguratie weergegeven — niets om eerlijk te tonen buiten de accountidentiteit."
+  },
+  "onboarding": {
+    "title": "Laten we je Avenqo-werkruimte instellen",
+    "subtitle": "Een paar korte vragen om je prioriteiten en aanbevelingen te personaliseren.",
+    "goalsLabel": "Wat zijn je belangrijkste doelen?",
+    "goalIncreaseSales": "Verkoop verhogen",
+    "goalReduceChurn": "Klantverloop verminderen",
+    "goalOptimizePricing": "Prijzen optimaliseren",
+    "goalImproveInventory": "Voorraadbeheer verbeteren",
+    "goalUnderstandCustomers": "Mijn klanten beter begrijpen",
+    "goalAutomateReports": "Mijn rapporten automatiseren",
+    "toolsLabel": "Welke tools gebruik je momenteel?",
+    "toolPos": "Kassasysteem (POS)",
+    "toolEcommerce": "E-commerceplatform",
+    "toolSpreadsheets": "Spreadsheets (Excel/Sheets)",
+    "toolAccounting": "Boekhoudsoftware",
+    "toolCrm": "CRM",
+    "toolNone": "Nog geen tools",
+    "teamSizeLabel": "Hoe groot is je team?",
+    "teamSizeSolo": "Alleen ik",
+    "teamSizeSmall": "2 tot 10 personen",
+    "teamSizeMedium": "11 tot 50 personen",
+    "teamSizeLarge": "Meer dan 50 personen",
+    "refineIndustryLabel": "Verfijn je sector (optioneel)",
+    "refineIndustryHint": "Bijv. gespecialiseerde retail, fastfood, boekhoudkantoor...",
+    "continueCta": "Doorgaan",
+    "skipCta": "Voorlopig overslaan",
+    "genericError": "We konden je antwoorden nu niet opslaan.",
+    "goalsRequired": "Selecteer minstens één doel.",
+    "teamSizeRequired": "Selecteer je teamgrootte."
+  },
+  "company": {
+    "navOverviewLabel": "Overzicht",
+    "navOverviewDescription": "De belangrijkste indicatoren van je bedrijf.",
+    "navAssistantLabel": "AI-assistent",
+    "navAssistantDescription": "Stel vragen en onderneem actie.",
+    "navSalesLabel": "Verkoop",
+    "navSalesDescription": "Volg omzet en trends.",
+    "navCustomersLabel": "Klanten",
+    "navCustomersDescription": "Begrijp loyaliteit en verlooprisico.",
+    "navProductsLabel": "Producten",
+    "navProductsDescription": "Volg vraag en catalogusprestaties.",
+    "navRecommendationsLabel": "Aanbevelingen",
+    "navRecommendationsDescription": "Vind de kansen met de hoogste prioriteit.",
+    "navAlertsLabel": "Meldingen",
+    "navAlertsDescription": "Houd wijzigingen in de gaten die je aandacht vereisen.",
+    "navReportsLabel": "Rapporten",
+    "navReportsDescription": "Bekijk en deel je managementsamenvattingen.",
+    "navConnectionsLabel": "Verbindingen",
+    "navConnectionsDescription": "Verbind je verkoop- en beheertools.",
+    "navTeamLabel": "Team",
+    "navTeamDescription": "Beheer de toegang van je teamleden.",
+    "navBillingLabel": "Facturatie",
+    "navBillingDescription": "Beheer je abonnement en facturen.",
+    "navSettingsLabel": "Instellingen",
+    "navSettingsDescription": "Je account- en bedrijfsinformatie.",
+    "navSupportLabel": "Avenqo-ondersteuning",
+    "navSupportDescription": "Hulp nodig met Avenqo? Stel hier je vraag.",
+    "connectionsLoading": "Bezig met laden…",
+    "connectionsNoDataTitle": "Verbind je gegevens om analyses en Avenqo AI te ontgrendelen.",
+    "connectionsNoDataFormats": "Geaccepteerde formaten: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Een bestand importeren",
+    "connectionsUploadingLabel": "Bezig met uploaden…",
+    "connectionsAnalyzing": "Structuur van je gegevens wordt geanalyseerd…",
+    "connectionsMappingTitle": "Bevestig de mapping van je kolommen",
+    "connectionsMappingSubtitle": "Sommige kolommen vereisen handmatige bevestiging voordat analyses kunnen worden geactiveerd.",
+    "connectionsMappingIgnore": "Deze kolom negeren",
+    "connectionsConfirmMapping": "Mapping bevestigen",
+    "connectionsReadyTitle": "Gegevens gereed",
+    "connectionsStatNameLabel": "Naam",
+    "connectionsStatRowsLabel": "Rijen",
+    "connectionsStatColumnsLabel": "Kolommen",
+    "connectionsStatUpdatedLabel": "Laatst bijgewerkt",
+    "connectionsGoDashboard": "Naar dashboard",
+    "connectionsAskAvenqo": "Avenqo AI vragen",
+    "connectionsImportAnother": "Nog een dataset importeren",
+    "connectionsRetry": "Opnieuw proberen",
+    "connectionsGenericError": "Er is een onverwachte fout opgetreden.",
+    "connectionsFileEmptyError": "Het geselecteerde bestand is leeg of onleesbaar.",
+    "connectionsProcessingError": "Dit bestand kon niet worden verwerkt.",
+    "businessDefaultTitle": "Je werkruimte is klaar",
+    "businessDefaultDescription": "Verbind je tools om hier actuele informatie te zien.",
+    "businessConnectButton": "Mijn tools verbinden",
+    "businessSalesTitle": "Volg elke verandering",
+    "businessSalesDescription": "Je verkooptrends, vergelijkingen en prognoses verschijnen hier.",
+    "businessCustomersTitle": "Behoud de juiste klanten",
+    "businessCustomersDescription": "Hier vind je klanten om te prioriteren, reactiveren of ondersteunen.",
+    "businessProductsTitle": "Beheer je catalogus",
+    "businessProductsDescription": "Best presterende producten, verwachte vraag en te bewaken voorraad worden hier verzameld.",
+    "businessRecommendationsTitle": "Onderneem direct actie op kansen",
+    "businessRecommendationsDescription": "Avenqo rangschikt kansen op basis van hun potentiële impact op je bedrijf.",
+    "businessAlertsTitle": "Blijf geïnformeerd zonder ruis",
+    "businessAlertsDescription": "Belangrijke veranderingen en risico's worden gemarkeerd met een aanbevolen actie.",
+    "businessReportsTitle": "Je managementsamenvattingen",
+    "businessReportsDescription": "Maak en deel duidelijke rapporten over de resultaten van je bedrijf.",
+    "billingTitle": "Facturatie",
+    "billingPortalButton": "Stripe-portaal",
+    "billingUnavailable": "Facturatie is tijdelijk niet beschikbaar.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "Status: ",
+    "billingCancelScheduled": "Annulering gepland",
+    "billingInvoicesTitle": "Facturen",
+    "billingInvoiceFallback": "Factuur",
+    "employeesTitle": "Gebruikers",
+    "employeesRefreshTooltip": "Vernieuwen",
+    "employeesUnavailable": "Gebruikerstoegang is tijdelijk niet beschikbaar.",
+    "employeesColumnName": "Naam",
+    "employeesColumnEmail": "E-mail",
+    "employeesColumnRole": "Rol",
+    "employeesColumnStatus": "Status",
+    "settingsTitle": "Instellingen",
+    "settingsSubtitle": "Je account-, bedrijfs- en voorkeursinformatie.",
+    "settingsAccountSection": "Account",
+    "settingsCompanySection": "Bedrijf",
+    "settingsAppearanceSection": "Uiterlijk",
+    "settingsSessionSection": "Sessie",
+    "settingsNameLabel": "Naam",
+    "settingsEmailLabel": "E-mail",
+    "settingsRoleLabel": "Rol",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Abonnement beheren",
+    "settingsThemeLabel": "Thema",
+    "settingsLanguageLabel": "Taal",
+    "settingsThemeLight": "Licht",
+    "settingsThemeDark": "Donker",
+    "settingsThemeSystem": "Systeem",
+    "settingsLogout": "Afmelden"
   }
 }

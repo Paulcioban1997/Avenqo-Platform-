@@ -48,12 +48,6 @@ class _AssistantPageState extends State<AssistantPage> {
   String? _error;
   String? _statusMessage;
 
-  static const suggestions = <String>[
-    'How are my sales performing?',
-    'Which customers need attention?',
-    'What changed this month?',
-    'Summarize my business performance.',
-  ];
 
   @override
   void initState() {
@@ -378,7 +372,7 @@ class EmptyChatState extends StatelessWidget {
       Container(width: 52, height: 52, decoration: BoxDecoration(color: _Brand.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.auto_awesome, color: _Brand.blue)),
       const SizedBox(height: 18), Text(t.title, style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
       const SizedBox(height: 10), Text(t.subtitle, textAlign: TextAlign.center),
-      const SizedBox(height: 22), Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [for (final item in _AssistantPageState.suggestions) ActionChip(avatar: const Icon(Icons.arrow_outward, size: 16), label: Text(item), onPressed: () => onSuggestion(item))]),
+      const SizedBox(height: 22), Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [for (final item in t.suggestions) ActionChip(avatar: const Icon(Icons.arrow_outward, size: 16), label: Text(item), onPressed: () => onSuggestion(item))]),
       const SizedBox(height: 20), TextButton.icon(onPressed: () => context.go('/connections'), icon: const Icon(Icons.sync_alt), label: Text(t.connectData)),
     ]))));
   }

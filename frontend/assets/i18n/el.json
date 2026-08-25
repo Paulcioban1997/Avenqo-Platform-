@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Σύνδεση",
-    "tryFree": "Δοκιμάστε δωρεάν",
+    "tryFree": "Δοκιμάστε το Avenqo",
     "watchDemo": "Δείτε μια επίδειξη",
-    "noCreditCard": "Χωρίς πιστωτική κάρτα",
+    "noCreditCard": "Εξατομικευμένη υποστήριξη",
     "guidedSetup": "Καθοδηγούμενη ρύθμιση",
     "isolatedData": "Απομονωμένα δεδομένα"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Κλιμακούμενη φιλοξενία"
   },
   "modulesSection": {
-    "kicker": "Η σουίτα Avenqo",
-    "title": "Μια ενότητα για κάθε επιχειρηματική προτεραιότητα.",
-    "subtitle": "Χτίστε το δικό σας περιβάλλον. Όλες οι ενότητες μοιράζονται την ίδια εμπειρία και λειτουργούν μαζί.",
+    "kicker": "Ενότητες Avenqo",
+    "title": "Μία πλατφόρμα, με ενότητες που επεκτείνονται σταδιακά.",
+    "subtitle": "Το Avenqo είναι μια αρθρωτή πλατφόρμα AI. Το Retail Intelligence είναι ήδη διαθέσιμο, με νέες ενότητες να προστίθενται σταδιακά.",
     "discover": "Ανακαλύψτε",
+    "availableNow": "Διαθέσιμο τώρα",
+    "comingSoon": "Σύντομα",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Διαχειριστείτε πωλήσεις, προϊόντα και πιστότητα από μία ενιαία προβολή."
+        "name": "Retail Intelligence",
+        "description": "Διαχειριστείτε πωλήσεις, προϊόντα και πιστότητα από μία ενιαία προβολή.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Ιεραρχήστε σχέσεις, ευκαιρίες και τις καλύτερες επόμενες ενέργειες."
+        "name": "CRM AI",
+        "description": "Δώστε προτεραιότητα σε σχέσεις, ευκαιρίες και στις καλύτερες επόμενες ενέργειες.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Επιταχύνετε την οικονομική παρακολούθηση και το λογιστικό κλείσιμο."
+        "name": "OCR AI",
+        "description": "Μετατρέψτε τα εισερχόμενα έγγραφα σε δομημένες λειτουργίες.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Μετατρέψτε τα εισερχόμενα έγγραφα σε δομημένες διαδικασίες."
+        "name": "Voice AI",
+        "description": "Αυτοματοποιήστε τις φωνητικές αλληλεπιδράσεις χωρίς απώλεια πλαισίου.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Κατανοήστε τις τάσεις και τις αποκλίσεις που πραγματικά έχουν σημασία."
+        "name": "Media AI",
+        "description": "Παράγετε και οργανώστε το περιεχόμενό σας από έναν ενιαίο χώρο εργασίας.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Οργανώστε πιο σχετικές και μετρήσιμες καμπάνιες."
+        "name": "Accounting AI",
+        "description": "Επιταχύνετε την οικονομική παρακολούθηση και το λογιστικό κλείσιμο.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Παρέχετε αξιόπιστες απαντήσεις βασισμένες στη γνώση της εταιρείας."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Αυτοματοποιήστε τις φωνητικές αλληλεπιδράσεις χωρίς απώλεια πλαισίου."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Συνδέστε ομάδες και αυτοματοποιήστε επαναλαμβανόμενες εργασίες."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Παράγετε και οργανώστε το περιεχόμενό σας από έναν ενιαίο χώρο."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Μειώστε τους χρόνους απόκρισης και βελτιώστε κάθε επίλυση."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Αναπτύξτε έναν συνομιλιακό βοηθό για τους πελάτες σας."
+        "name": "Legal AI",
+        "description": "Αναλύστε και ασφαλίστε τα συμβατικά σας έγγραφα.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Διαφανής τιμολόγηση",
+    "kicker": "Τιμές",
     "title": "Ξεκινήστε τώρα. Αναπτυχθείτε με τον δικό σας ρυθμό.",
     "subtitle": "Κάθε πλάνο περιλαμβάνει την πλατφόρμα, τον βοηθό Avenqo και έναν ασφαλή χώρο εργασίας.",
-    "popular": "Το πιο δημοφιλές",
-    "priceLabel": "Κατά παραγγελία",
+    "popular": "Πιο δημοφιλές",
+    "priceLabel": "Τιμή προς επιβεβαίωση",
     "plans": [
       {
-        "tier": "Βασικό",
-        "title": "Για να ξεκινήσετε",
+        "tier": "Demo",
+        "title": "Για να ανακαλύψετε το Avenqo",
+        "priceLabel": "Τιμή προς επιβεβαίωση",
         "items": [
-          "1 ενότητα Avenqo",
-          "Έως 5 χρήστες",
-          "Ενσωματωμένος βοηθός",
-          "Τυπική υποστήριξη"
+          "Πρόσβαση στο Retail Intelligence",
+          "Ενσωματωμένος βοηθός Avenqo",
+          "Ασφαλής χώρος εργασίας"
         ],
-        "action": "Μιλήστε με έναν σύμβουλο"
+        "action": "Δοκιμάστε το Avenqo"
       },
       {
-        "tier": "Επαγγελματικό",
-        "title": "Για να επιταχύνετε",
+        "tier": "Professional",
+        "title": "Για επιχειρήσεις που θέλουν να προχωρήσουν παραπέρα",
+        "priceLabel": "Τιμή προς επιβεβαίωση",
         "items": [
-          "Έως 5 ενότητες",
-          "Έως 25 χρήστες",
-          "Προηγμένες αυτοματοποιήσεις",
-          "Προτεραιότητα υποστήριξης"
+          "Πλήρες Retail Intelligence",
+          "Προηγμένοι αυτοματισμοί",
+          "Υποστήριξη προτεραιότητας"
         ],
-        "action": "Δοκιμάστε δωρεάν"
+        "action": "Ξεκινήστε"
       },
       {
-        "tier": "Επιχειρηματικό",
-        "title": "Για να οργανώσετε",
+        "tier": "Enterprise",
+        "title": "Κατά παραγγελία",
+        "priceLabel": "Επικοινωνήστε με τις πωλήσεις",
         "items": [
-          "Απεριόριστες ενότητες",
-          "Χρήστες κατά παραγγελία",
           "Προσαρμοσμένες ενσωματώσεις",
-          "Αφιερωμένη διακυβέρνηση"
+          "Αποκλειστική διακυβέρνηση",
+          "Αποκλειστική υποστήριξη"
         ],
         "action": "Επικοινωνήστε με τις πωλήσεις"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Το επόμενο βήμα σας",
     "title": "Διαχειριστείτε την επιχείρησή σας διαφορετικά.",
-    "tryFree": "Δοκιμάστε δωρεάν",
+    "tryFree": "Δοκιμάστε το Avenqo",
     "scheduleDemo": "Προγραμματίστε μια επίδειξη"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Πηγές",
     "newest": "Πιο πρόσφατα",
     "you": "Εσείς",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Πώς πάνε οι πωλήσεις μου;",
+      "Ποιοι πελάτες χρειάζονται προσοχή;",
+      "Τι άλλαξε αυτόν τον μήνα;",
+      "Συνοψίστε την απόδοση της επιχείρησής μου."
+    ]
   },
   "auth": {
     "tagline": "Η πλατφόρμα τεχνητής νοημοσύνης για τις αποφάσεις της εταιρείας σας",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Μέση παραγγελία",
     "prioritiesTitle": "Συνιστώμενες προτεραιότητες",
     "prioritiesEmpty": "Οι προτεραιότητές σας θα εμφανιστούν εδώ μόλις συνδεθούν τα δεδομένα σας.",
-    "planLabel": "Πλάνο"
+    "planLabel": "Πλάνο",
+    "askAvenqoSubtitle": "Κάντε ερωτήσεις σχετικά με τα δεδομένα της επιχείρησής σας και λάβετε συμφραζόμενες πληροφορίες.",
+    "askAvenqoCta": "Ρωτήστε το Avenqo AI",
+    "importDataTitle": "Εισαγωγή δεδομένων σας",
+    "importDataSubtitle": "Συνδέστε ή εισαγάγετε τις πηγές της επιχείρησής σας για να ξεκλειδώσετε την ευφυΐα της Avenqo.",
+    "importDataCta": "Εισαγωγή των δεδομένων μου",
+    "connectionsTitle": "Συνδέσεις",
+    "connectionsEmpty": "Δεν υπάρχουν ακόμη συνδεδεμένα δεδομένα",
+    "connectionsEmptyCta": "Εισαγωγή των δεδομένων μου",
+    "connectionsReadyLabel": "Έτοιμο",
+    "connectionsLastUpdate": "Τελευταία ενημέρωση",
+    "activityTitle": "Πρόσφατη δραστηριότητα",
+    "activityEmpty": "Δεν υπάρχει ακόμη πρόσφατη δραστηριότητα.",
+    "stepsTitle": "Προτεινόμενα επόμενα βήματα",
+    "stepOrgLabel": "Ολοκληρώστε τη ρύθμιση της εταιρείας σας",
+    "stepDataLabel": "Συνδέστε ή εισαγάγετε τα δεδομένα σας",
+    "stepInsightsLabel": "Εξερευνήστε τις πληροφορίες σας",
+    "stepAskLabel": "Ρωτήστε το Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Κέντρο Ελέγχου Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Ρυθμίσεις",
     "signedInAs": "Συνδεδεμένος ως",
     "noSettingsMessage": "Καμία καθολική ρύθμιση πλατφόρμας δεν εμφανίζεται εδώ προς το παρόν — τίποτα άλλο δεν υπάρχει για τίμια παρουσίαση πέρα από την ταυτότητα λογαριασμού."
+  },
+  "onboarding": {
+    "title": "Ας ρυθμίσουμε τον χώρο εργασίας σας στο Avenqo",
+    "subtitle": "Μερικές γρήγορες ερωτήσεις για να εξατομικεύσουμε τις προτεραιότητες και τις προτάσεις σας.",
+    "goalsLabel": "Ποιοι είναι οι κύριοι στόχοι σας;",
+    "goalIncreaseSales": "Αύξηση πωλήσεων",
+    "goalReduceChurn": "Μείωση απώλειας πελατών",
+    "goalOptimizePricing": "Βελτιστοποίηση τιμολόγησης",
+    "goalImproveInventory": "Βελτίωση διαχείρισης αποθέματος",
+    "goalUnderstandCustomers": "Καλύτερη κατανόηση των πελατών μου",
+    "goalAutomateReports": "Αυτοματοποίηση των αναφορών μου",
+    "toolsLabel": "Ποια εργαλεία χρησιμοποιείτε αυτή τη στιγμή;",
+    "toolPos": "Σύστημα σημείου πώλησης (POS)",
+    "toolEcommerce": "Πλατφόρμα ηλεκτρονικού εμπορίου",
+    "toolSpreadsheets": "Υπολογιστικά φύλλα (Excel/Sheets)",
+    "toolAccounting": "Λογισμικό λογιστικής",
+    "toolCrm": "CRM",
+    "toolNone": "Κανένα εργαλείο ακόμα",
+    "teamSizeLabel": "Ποιο είναι το μέγεθος της ομάδας σας;",
+    "teamSizeSolo": "Μόνο εγώ",
+    "teamSizeSmall": "2 έως 10 άτομα",
+    "teamSizeMedium": "11 έως 50 άτομα",
+    "teamSizeLarge": "Περισσότερα από 50 άτομα",
+    "refineIndustryLabel": "Προσδιορίστε τον κλάδο σας (προαιρετικό)",
+    "refineIndustryHint": "Π.χ. εξειδικευμένο λιανικό εμπόριο, fast food, λογιστικό γραφείο...",
+    "continueCta": "Συνέχεια",
+    "skipCta": "Παράλειψη προς το παρόν",
+    "genericError": "Δεν μπορέσαμε να αποθηκεύσουμε τις απαντήσεις σας αυτήν τη στιγμή.",
+    "goalsRequired": "Επιλέξτε τουλάχιστον έναν στόχο.",
+    "teamSizeRequired": "Επιλέξτε το μέγεθος της ομάδας σας."
+  },
+  "company": {
+    "navOverviewLabel": "Επισκόπηση",
+    "navOverviewDescription": "Οι βασικοί δείκτες της επιχείρησής σας.",
+    "navAssistantLabel": "Βοηθός AI",
+    "navAssistantDescription": "Κάντε ερωτήσεις και δράστε.",
+    "navSalesLabel": "Πωλήσεις",
+    "navSalesDescription": "Παρακολουθήστε έσοδα και τάσεις.",
+    "navCustomersLabel": "Πελάτες",
+    "navCustomersDescription": "Κατανοήστε την πιστότητα και τον κίνδυνο απώλειας.",
+    "navProductsLabel": "Προϊόντα",
+    "navProductsDescription": "Παρακολουθήστε τη ζήτηση και την απόδοση του καταλόγου.",
+    "navRecommendationsLabel": "Προτάσεις",
+    "navRecommendationsDescription": "Βρείτε τις ευκαιρίες με τη μεγαλύτερη προτεραιότητα.",
+    "navAlertsLabel": "Ειδοποιήσεις",
+    "navAlertsDescription": "Παρακολουθήστε αλλαγές που χρειάζονται την προσοχή σας.",
+    "navReportsLabel": "Αναφορές",
+    "navReportsDescription": "Δείτε και μοιραστείτε τις περιληπτικές σας αναφορές.",
+    "navConnectionsLabel": "Συνδέσεις",
+    "navConnectionsDescription": "Συνδέστε τα εργαλεία πωλήσεων και διαχείρισής σας.",
+    "navTeamLabel": "Ομάδα",
+    "navTeamDescription": "Διαχειριστείτε την πρόσβαση των συνεργατών σας.",
+    "navBillingLabel": "Χρέωση",
+    "navBillingDescription": "Διαχειριστείτε τη συνδρομή και τα τιμολόγιά σας.",
+    "navSettingsLabel": "Ρυθμίσεις",
+    "navSettingsDescription": "Οι πληροφορίες λογαριασμού και εταιρείας σας.",
+    "navSupportLabel": "Υποστήριξη Avenqo",
+    "navSupportDescription": "Χρειάζεστε βοήθεια με το Avenqo; Κάντε την ερώτησή σας εδώ.",
+    "connectionsLoading": "Φόρτωση…",
+    "connectionsNoDataTitle": "Συνδέστε τα δεδομένα σας για να ξεκλειδώσετε αναλύσεις και το Avenqo AI.",
+    "connectionsNoDataFormats": "Αποδεκτές μορφές: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Εισαγωγή αρχείου",
+    "connectionsUploadingLabel": "Μεταφόρτωση…",
+    "connectionsAnalyzing": "Ανάλυση της δομής των δεδομένων σας…",
+    "connectionsMappingTitle": "Επιβεβαιώστε την αντιστοίχιση των στηλών σας",
+    "connectionsMappingSubtitle": "Ορισμένες στήλες απαιτούν χειροκίνητη επιβεβαίωση πριν ενεργοποιηθούν οι αναλύσεις.",
+    "connectionsMappingIgnore": "Αγνόηση αυτής της στήλης",
+    "connectionsConfirmMapping": "Επιβεβαίωση αντιστοίχισης",
+    "connectionsReadyTitle": "Τα δεδομένα είναι έτοιμα",
+    "connectionsStatNameLabel": "Όνομα",
+    "connectionsStatRowsLabel": "Γραμμές",
+    "connectionsStatColumnsLabel": "Στήλες",
+    "connectionsStatUpdatedLabel": "Τελευταία ενημέρωση",
+    "connectionsGoDashboard": "Μετάβαση στον πίνακα ελέγχου",
+    "connectionsAskAvenqo": "Ρωτήστε το Avenqo AI",
+    "connectionsImportAnother": "Εισαγωγή άλλου συνόλου δεδομένων",
+    "connectionsRetry": "Δοκιμάστε ξανά",
+    "connectionsGenericError": "Παρουσιάστηκε μη αναμενόμενο σφάλμα.",
+    "connectionsFileEmptyError": "Το επιλεγμένο αρχείο είναι κενό ή μη αναγνώσιμο.",
+    "connectionsProcessingError": "Δεν ήταν δυνατή η επεξεργασία αυτού του αρχείου.",
+    "businessDefaultTitle": "Ο χώρος σας είναι έτοιμος",
+    "businessDefaultDescription": "Συνδέστε τα εργαλεία σας για να δείτε ενημερωμένες πληροφορίες εδώ.",
+    "businessConnectButton": "Σύνδεση εργαλείων μου",
+    "businessSalesTitle": "Παρακολουθήστε κάθε αλλαγή",
+    "businessSalesDescription": "Οι τάσεις, συγκρίσεις και προβλέψεις των πωλήσεών σας θα εμφανίζονται εδώ.",
+    "businessCustomersTitle": "Διατηρήστε τους σωστούς πελάτες",
+    "businessCustomersDescription": "Εδώ θα βρείτε πελάτες προς ιεράρχηση, επανενεργοποίηση ή υποστήριξη.",
+    "businessProductsTitle": "Διαχειριστείτε τον κατάλογό σας",
+    "businessProductsDescription": "Τα κορυφαία προϊόντα, η αναμενόμενη ζήτηση και το απόθεμα προς παρακολούθηση θα συγκεντρωθούν εδώ.",
+    "businessRecommendationsTitle": "Δράστε απευθείας στις ευκαιρίες",
+    "businessRecommendationsDescription": "Το Avenqo θα ταξινομήσει τις ευκαιρίες βάσει του δυνητικού τους αντικτύπου στην επιχείρησή σας.",
+    "businessAlertsTitle": "Μείνετε ενημερωμένοι χωρίς θόρυβο",
+    "businessAlertsDescription": "Σημαντικές αλλαγές και κίνδυνοι θα επισημαίνονται με μια προτεινόμενη ενέργεια.",
+    "businessReportsTitle": "Οι περιληπτικές σας αναφορές",
+    "businessReportsDescription": "Δημιουργήστε και μοιραστείτε σαφείς αναφορές σχετικά με τα αποτελέσματα της εταιρείας σας.",
+    "billingTitle": "Χρέωση",
+    "billingPortalButton": "Πύλη Stripe",
+    "billingUnavailable": "Η χρέωση δεν είναι προσωρινά διαθέσιμη.",
+    "billingPlanPrefix": "Πλάνο ",
+    "billingStatusPrefix": "Κατάσταση: ",
+    "billingCancelScheduled": "Προγραμματισμένη ακύρωση",
+    "billingInvoicesTitle": "Τιμολόγια",
+    "billingInvoiceFallback": "Τιμολόγιο",
+    "employeesTitle": "Χρήστες",
+    "employeesRefreshTooltip": "Ανανέωση",
+    "employeesUnavailable": "Η πρόσβαση χρηστών δεν είναι προσωρινά διαθέσιμη.",
+    "employeesColumnName": "Όνομα",
+    "employeesColumnEmail": "Email",
+    "employeesColumnRole": "Ρόλος",
+    "employeesColumnStatus": "Κατάσταση",
+    "settingsTitle": "Ρυθμίσεις",
+    "settingsSubtitle": "Οι πληροφορίες λογαριασμού, εταιρείας και προτιμήσεών σας.",
+    "settingsAccountSection": "Λογαριασμός",
+    "settingsCompanySection": "Εταιρεία",
+    "settingsAppearanceSection": "Εμφάνιση",
+    "settingsSessionSection": "Συνεδρία",
+    "settingsNameLabel": "Όνομα",
+    "settingsEmailLabel": "Email",
+    "settingsRoleLabel": "Ρόλος",
+    "settingsPlanLabel": "Πλάνο",
+    "settingsManageSubscription": "Διαχείριση συνδρομής",
+    "settingsThemeLabel": "Θέμα",
+    "settingsLanguageLabel": "Γλώσσα",
+    "settingsThemeLight": "Ανοιχτό",
+    "settingsThemeDark": "Σκούρο",
+    "settingsThemeSystem": "Σύστημα",
+    "settingsLogout": "Αποσύνδεση"
   }
 }

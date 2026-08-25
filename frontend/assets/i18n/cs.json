@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Přihlásit se",
-    "tryFree": "Vyzkoušet zdarma",
+    "tryFree": "Vyzkoušet Avenqo",
     "watchDemo": "Zhlédnout demo",
-    "noCreditCard": "Bez kreditní karty",
+    "noCreditCard": "Osobní onboarding",
     "guidedSetup": "Asistované nastavení",
     "isolatedData": "Izolovaná data"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Škálovatelný hosting"
   },
   "modulesSection": {
-    "kicker": "Sada Avenqo",
-    "title": "Modul pro každou firemní prioritu.",
-    "subtitle": "Vybudujte si prostředí na míru. Všechny moduly sdílejí stejný zážitek a spolupracují.",
+    "kicker": "Moduly Avenqo",
+    "title": "Jedna platforma s moduly, které se postupně rozšiřují.",
+    "subtitle": "Avenqo je modulární AI platforma. Retail Intelligence je již k dispozici, další moduly budou přidávány postupně.",
     "discover": "Objevit",
+    "availableNow": "Dostupné nyní",
+    "comingSoon": "Již brzy",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Spravujte prodej, produkty a věrnost z jednoho přehledu."
+        "name": "Retail Intelligence",
+        "description": "Spravujte prodej, produkty a věrnost z jednoho jednotného pohledu.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Určujte priority vztahů, příležitostí a dalších nejlepších kroků."
+        "name": "CRM AI",
+        "description": "Stanovte priority vztahů, příležitostí a nejlepších dalších kroků.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Zrychlete finanční sledování a účetní uzávěrku."
+        "name": "OCR AI",
+        "description": "Přeměňte příchozí dokumenty na strukturované operace.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Přeměňte příchozí dokumenty na strukturované procesy."
+        "name": "Voice AI",
+        "description": "Automatizujte hlasové interakce, aniž byste ztratili kontext.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Pochopte trendy a odchylky, na kterých skutečně záleží."
+        "name": "Media AI",
+        "description": "Vytvářejte a organizujte svůj obsah z jednoho pracovního prostoru.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Organizujte relevantnější a měřitelné kampaně."
+        "name": "Accounting AI",
+        "description": "Zrychlete finanční sledování a účetní uzávěrku.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Poskytujte spolehlivé odpovědi založené na firemních znalostech."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Automatizujte hlasové interakce bez ztráty kontextu."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Propojte týmy a automatizujte opakující se úkoly."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Vytvářejte a organizujte svůj obsah z jednoho pracovního prostoru."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Zkraťte dobu odezvy a zlepšete každé řešení."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Nasaďte konverzačního asistenta pro vaše zákazníky."
+        "name": "Legal AI",
+        "description": "Analyzujte a zabezpečte své smluvní dokumenty.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Transparentní ceny",
-    "title": "Začněte nyní. Rosťte svým tempem.",
+    "kicker": "Ceník",
+    "title": "Začněte hned. Rosťte svým tempem.",
     "subtitle": "Každý plán zahrnuje platformu, asistenta Avenqo a zabezpečený pracovní prostor.",
     "popular": "Nejoblíbenější",
-    "priceLabel": "Na míru",
+    "priceLabel": "Cena bude upřesněna",
     "plans": [
       {
-        "tier": "Základní",
-        "title": "Pro začátek",
+        "tier": "Demo",
+        "title": "Chcete-li objevit Avenqo",
+        "priceLabel": "Cena bude upřesněna",
         "items": [
-          "1 modul Avenqo",
-          "Až 5 uživatelů",
-          "Vestavěný asistent",
-          "Standardní podpora"
+          "Přístup k Retail Intelligence",
+          "Vestavěný asistent Avenqo",
+          "Zabezpečený pracovní prostor"
         ],
-        "action": "Promluvte si s poradcem"
+        "action": "Vyzkoušet Avenqo"
       },
       {
-        "tier": "Profesionální",
-        "title": "Pro zrychlení",
+        "tier": "Professional",
+        "title": "Pro firmy, které chtějí jít dál",
+        "priceLabel": "Cena bude upřesněna",
         "items": [
-          "Až 5 modulů",
-          "Až 25 uživatelů",
+          "Kompletní Retail Intelligence",
           "Pokročilé automatizace",
           "Prioritní podpora"
         ],
-        "action": "Vyzkoušet zdarma"
+        "action": "Začít"
       },
       {
-        "tier": "Podnikový",
-        "title": "Pro orchestraci",
+        "tier": "Enterprise",
+        "title": "Na míru",
+        "priceLabel": "Kontaktovat obchod",
         "items": [
-          "Neomezené moduly",
-          "Uživatelé na míru",
-          "Vlastní integrace",
-          "Vyhrazené řízení"
+          "Integrace na míru",
+          "Dedikované řízení",
+          "Dedikovaná podpora"
         ],
-        "action": "Kontaktujte obchodní tým"
+        "action": "Kontaktovat obchod"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Váš další krok",
     "title": "Řiďte svou firmu jinak.",
-    "tryFree": "Vyzkoušet zdarma",
+    "tryFree": "Vyzkoušet Avenqo",
     "scheduleDemo": "Naplánovat demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Zdroje",
     "newest": "Nejnovější",
     "you": "Vy",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Jak si vedou mé prodeje?",
+      "Kteří zákazníci potřebují pozornost?",
+      "Co se změnilo tento měsíc?",
+      "Shrňte výkonnost mého podnikání."
+    ]
   },
   "auth": {
     "tagline": "AI platforma pro rozhodování vaší firmy",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Průměrná objednávka",
     "prioritiesTitle": "Doporučené priority",
     "prioritiesEmpty": "Vaše priority se zde zobrazí, jakmile budou vaše data připojena.",
-    "planLabel": "Plán"
+    "planLabel": "Plán",
+    "askAvenqoSubtitle": "Pokládejte otázky o datech vaší firmy a získejte kontextové poznatky.",
+    "askAvenqoCta": "Zeptat se Avenqo AI",
+    "importDataTitle": "Importujte svá data",
+    "importDataSubtitle": "Připojte nebo importujte zdroje své firmy a odemkněte inteligenci Avenqo.",
+    "importDataCta": "Importovat má data",
+    "connectionsTitle": "Připojení",
+    "connectionsEmpty": "Zatím žádná připojená data",
+    "connectionsEmptyCta": "Importovat má data",
+    "connectionsReadyLabel": "Připraveno",
+    "connectionsLastUpdate": "Poslední aktualizace",
+    "activityTitle": "Nedávná aktivita",
+    "activityEmpty": "Zatím žádná nedávná aktivita.",
+    "stepsTitle": "Doporučené další kroky",
+    "stepOrgLabel": "Dokončete nastavení své společnosti",
+    "stepDataLabel": "Připojte nebo importujte svá data",
+    "stepInsightsLabel": "Prozkoumejte své poznatky",
+    "stepAskLabel": "Zeptat se Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Řídicí centrum Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Nastavení",
     "signedInAs": "Přihlášen jako",
     "noSettingsMessage": "Zatím zde není zobrazena žádná globální konfigurace platformy — není co čestně zobrazit kromě identity účtu."
+  },
+  "onboarding": {
+    "title": "Nastavme váš pracovní prostor Avenqo",
+    "subtitle": "Několik rychlých otázek pro přizpůsobení vašich priorit a doporučení.",
+    "goalsLabel": "Jaké jsou vaše hlavní cíle?",
+    "goalIncreaseSales": "Zvýšit prodeje",
+    "goalReduceChurn": "Snížit odliv zákazníků",
+    "goalOptimizePricing": "Optimalizovat ceny",
+    "goalImproveInventory": "Zlepšit řízení zásob",
+    "goalUnderstandCustomers": "Lépe porozumět svým zákazníkům",
+    "goalAutomateReports": "Automatizovat své reporty",
+    "toolsLabel": "Jaké nástroje aktuálně používáte?",
+    "toolPos": "Pokladní systém (POS)",
+    "toolEcommerce": "E-commerce platforma",
+    "toolSpreadsheets": "Tabulkové procesory (Excel/Sheets)",
+    "toolAccounting": "Účetní software",
+    "toolCrm": "CRM",
+    "toolNone": "Zatím žádné nástroje",
+    "teamSizeLabel": "Jak velký je váš tým?",
+    "teamSizeSolo": "Jen já",
+    "teamSizeSmall": "2 až 10 lidí",
+    "teamSizeMedium": "11 až 50 lidí",
+    "teamSizeLarge": "Více než 50 lidí",
+    "refineIndustryLabel": "Upřesněte své odvětví (volitelné)",
+    "refineIndustryHint": "Např. specializovaný obchod, rychlé občerstvení, účetní firma...",
+    "continueCta": "Pokračovat",
+    "skipCta": "Zatím přeskočit",
+    "genericError": "Vaše odpovědi se nyní nepodařilo uložit.",
+    "goalsRequired": "Vyberte alespoň jeden cíl.",
+    "teamSizeRequired": "Vyberte velikost svého týmu."
+  },
+  "company": {
+    "navOverviewLabel": "Přehled",
+    "navOverviewDescription": "Klíčové ukazatele vašeho podnikání.",
+    "navAssistantLabel": "AI asistent",
+    "navAssistantDescription": "Pokládejte otázky a jednejte.",
+    "navSalesLabel": "Prodeje",
+    "navSalesDescription": "Sledujte tržby a trendy.",
+    "navCustomersLabel": "Zákazníci",
+    "navCustomersDescription": "Pochopte loajalitu a riziko odchodu.",
+    "navProductsLabel": "Produkty",
+    "navProductsDescription": "Sledujte poptávku a výkon katalogu.",
+    "navRecommendationsLabel": "Doporučení",
+    "navRecommendationsDescription": "Najděte nejvýznamnější příležitosti.",
+    "navAlertsLabel": "Upozornění",
+    "navAlertsDescription": "Sledujte změny, které vyžadují vaši pozornost.",
+    "navReportsLabel": "Reporty",
+    "navReportsDescription": "Prohlížejte a sdílejte své manažerské souhrny.",
+    "navConnectionsLabel": "Připojení",
+    "navConnectionsDescription": "Připojte své nástroje pro prodej a řízení.",
+    "navTeamLabel": "Tým",
+    "navTeamDescription": "Spravujte přístup svých kolegů.",
+    "navBillingLabel": "Fakturace",
+    "navBillingDescription": "Spravujte své předplatné a faktury.",
+    "navSettingsLabel": "Nastavení",
+    "navSettingsDescription": "Informace o vašem účtu a společnosti.",
+    "navSupportLabel": "Podpora Avenqo",
+    "navSupportDescription": "Potřebujete pomoc s Avenqo? Zeptejte se zde.",
+    "connectionsLoading": "Načítání…",
+    "connectionsNoDataTitle": "Připojte svá data a odemkněte analýzy a Avenqo AI.",
+    "connectionsNoDataFormats": "Přijímané formáty: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Importovat soubor",
+    "connectionsUploadingLabel": "Nahrávání…",
+    "connectionsAnalyzing": "Analyzuje se struktura vašich dat…",
+    "connectionsMappingTitle": "Potvrďte mapování sloupců",
+    "connectionsMappingSubtitle": "Některé sloupce vyžadují ruční potvrzení před aktivací analýz.",
+    "connectionsMappingIgnore": "Ignorovat tento sloupec",
+    "connectionsConfirmMapping": "Potvrdit mapování",
+    "connectionsReadyTitle": "Data jsou připravena",
+    "connectionsStatNameLabel": "Název",
+    "connectionsStatRowsLabel": "Řádky",
+    "connectionsStatColumnsLabel": "Sloupce",
+    "connectionsStatUpdatedLabel": "Poslední aktualizace",
+    "connectionsGoDashboard": "Přejít na dashboard",
+    "connectionsAskAvenqo": "Zeptat se Avenqo AI",
+    "connectionsImportAnother": "Importovat další datovou sadu",
+    "connectionsRetry": "Zkusit znovu",
+    "connectionsGenericError": "Došlo k neočekávané chybě.",
+    "connectionsFileEmptyError": "Vybraný soubor je prázdný nebo nečitelný.",
+    "connectionsProcessingError": "Tento soubor se nepodařilo zpracovat.",
+    "businessDefaultTitle": "Váš prostor je připraven",
+    "businessDefaultDescription": "Připojte své nástroje, abyste zde viděli aktuální informace.",
+    "businessConnectButton": "Připojit mé nástroje",
+    "businessSalesTitle": "Sledujte každou změnu",
+    "businessSalesDescription": "Zde se zobrazí trendy, srovnání a předpovědi vašich prodejů.",
+    "businessCustomersTitle": "Udržte si správné zákazníky",
+    "businessCustomersDescription": "Zde najdete zákazníky k prioritizaci, reaktivaci nebo podpoře.",
+    "businessProductsTitle": "Spravujte svůj katalog",
+    "businessProductsDescription": "Zde budou shromážděny nejlépe prodávané produkty, očekávaná poptávka a zásoby ke sledování.",
+    "businessRecommendationsTitle": "Jednejte přímo na základě příležitostí",
+    "businessRecommendationsDescription": "Avenqo seřadí příležitosti podle jejich potenciálního dopadu na vaše podnikání.",
+    "businessAlertsTitle": "Zůstaňte informováni bez šumu",
+    "businessAlertsDescription": "Důležité změny a rizika budou označeny doporučenou akcí.",
+    "businessReportsTitle": "Vaše manažerské souhrny",
+    "businessReportsDescription": "Vytvářejte a sdílejte jasné zprávy o výsledcích vaší společnosti.",
+    "billingTitle": "Fakturace",
+    "billingPortalButton": "Portál Stripe",
+    "billingUnavailable": "Fakturace je dočasně nedostupná.",
+    "billingPlanPrefix": "Plán ",
+    "billingStatusPrefix": "Stav: ",
+    "billingCancelScheduled": "Naplánováno zrušení",
+    "billingInvoicesTitle": "Faktury",
+    "billingInvoiceFallback": "Faktura",
+    "employeesTitle": "Uživatelé",
+    "employeesRefreshTooltip": "Obnovit",
+    "employeesUnavailable": "Přístup uživatelů je dočasně nedostupný.",
+    "employeesColumnName": "Jméno",
+    "employeesColumnEmail": "E-mail",
+    "employeesColumnRole": "Role",
+    "employeesColumnStatus": "Stav",
+    "settingsTitle": "Nastavení",
+    "settingsSubtitle": "Informace o vašem účtu, společnosti a preferencích.",
+    "settingsAccountSection": "Účet",
+    "settingsCompanySection": "Společnost",
+    "settingsAppearanceSection": "Vzhled",
+    "settingsSessionSection": "Relace",
+    "settingsNameLabel": "Jméno",
+    "settingsEmailLabel": "E-mail",
+    "settingsRoleLabel": "Role",
+    "settingsPlanLabel": "Plán",
+    "settingsManageSubscription": "Spravovat předplatné",
+    "settingsThemeLabel": "Motiv",
+    "settingsLanguageLabel": "Jazyk",
+    "settingsThemeLight": "Světlý",
+    "settingsThemeDark": "Tmavý",
+    "settingsThemeSystem": "Systémový",
+    "settingsLogout": "Odhlásit se"
   }
 }

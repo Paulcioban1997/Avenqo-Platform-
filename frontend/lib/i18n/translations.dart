@@ -20,6 +20,7 @@ class Translations {
     required this.dashboardHome,
     required this.admin,
     required this.onboarding,
+    required this.company,
   });
 
   factory Translations.fromJson(Map<String, dynamic> json) {
@@ -59,6 +60,10 @@ class Translations {
       onboarding: json['onboarding'] != null
           ? OnboardingStrings.fromJson(json['onboarding'] as Map<String, dynamic>)
           : OnboardingStrings.fallback(),
+      // Même logique de repli : fr/en traduits, le reste en anglais.
+      company: json['company'] != null
+          ? CompanyStrings.fromJson(json['company'] as Map<String, dynamic>)
+          : CompanyStrings.fallback(),
     );
   }
 
@@ -80,6 +85,7 @@ class Translations {
   final DashboardHomeStrings dashboardHome;
   final AdminStrings admin;
   final OnboardingStrings onboarding;
+  final CompanyStrings company;
 }
 
 class OnboardingStrings {
@@ -352,6 +358,7 @@ class AssistantStrings {
     required this.newest,
     required this.you,
     required this.avenqoAi,
+    required this.suggestions,
   });
 
   factory AssistantStrings.fromJson(Map<String, dynamic> json) => AssistantStrings(
@@ -367,6 +374,9 @@ class AssistantStrings {
         newest: json['newest'] as String,
         you: json['you'] as String,
         avenqoAi: json['avenqoAi'] as String,
+        suggestions: json['suggestions'] != null
+            ? (json['suggestions'] as List<dynamic>).cast<String>()
+            : AssistantStrings.fallback().suggestions,
       );
 
   /// Anglais par d\u00e9faut : m\u00eame texte que l'ancien code en dur, utilis\u00e9 par
@@ -384,6 +394,12 @@ class AssistantStrings {
         newest: 'Newest',
         you: 'You',
         avenqoAi: 'Avenqo AI',
+        suggestions: [
+          'How are my sales performing?',
+          'Which customers need attention?',
+          'What changed this month?',
+          'Summarize my business performance.',
+        ],
       );
 
   final String title;
@@ -398,6 +414,7 @@ class AssistantStrings {
   final String newest;
   final String you;
   final String avenqoAi;
+  final List<String> suggestions;
 }
 
 class AuthStrings {
@@ -1090,15 +1107,17 @@ class FeaturesStrings {
 }
 
 class ModuleItem {
-  const ModuleItem({required this.name, required this.description});
+  const ModuleItem({required this.name, required this.description, required this.available});
 
   factory ModuleItem.fromJson(Map<String, dynamic> json) => ModuleItem(
         name: json['name'] as String,
         description: json['description'] as String,
+        available: json['available'] as bool? ?? false,
       );
 
   final String name;
   final String description;
+  final bool available;
 }
 
 class ModulesSectionStrings {
@@ -1107,6 +1126,8 @@ class ModulesSectionStrings {
     required this.title,
     required this.subtitle,
     required this.discover,
+    required this.availableNow,
+    required this.comingSoon,
     required this.items,
   });
 
@@ -1115,6 +1136,8 @@ class ModulesSectionStrings {
         title: json['title'] as String,
         subtitle: json['subtitle'] as String,
         discover: json['discover'] as String,
+        availableNow: json['availableNow'] as String,
+        comingSoon: json['comingSoon'] as String,
         items: (json['items'] as List<dynamic>)
             .map((e) => ModuleItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -1124,6 +1147,8 @@ class ModulesSectionStrings {
   final String title;
   final String subtitle;
   final String discover;
+  final String availableNow;
+  final String comingSoon;
   final List<ModuleItem> items;
 }
 
@@ -1243,6 +1268,7 @@ class PricingPlan {
   const PricingPlan({
     required this.tier,
     required this.title,
+    required this.priceLabel,
     required this.items,
     required this.action,
   });
@@ -1250,12 +1276,14 @@ class PricingPlan {
   factory PricingPlan.fromJson(Map<String, dynamic> json) => PricingPlan(
         tier: json['tier'] as String,
         title: json['title'] as String,
+        priceLabel: json['priceLabel'] as String,
         items: (json['items'] as List<dynamic>).cast<String>(),
         action: json['action'] as String,
       );
 
   final String tier;
   final String title;
+  final String priceLabel;
   final List<String> items;
   final String action;
 }
@@ -1380,3 +1408,502 @@ class FooterStrings {
   final List<String> resourcesLinks;
   final String copyright;
 }
+
+/// Espace de travail client authentifié (sidebar, Connexions, Facturation,
+/// Équipe, Paramètres, pages métier). Comme [AssistantStrings]/[AuthStrings] :
+/// fr/en traduits, le reste retombe sur l'anglais via [CompanyStrings.fallback].
+class CompanyStrings {
+  const CompanyStrings({
+    required this.navOverviewLabel,
+    required this.navOverviewDescription,
+    required this.navAssistantLabel,
+    required this.navAssistantDescription,
+    required this.navSalesLabel,
+    required this.navSalesDescription,
+    required this.navCustomersLabel,
+    required this.navCustomersDescription,
+    required this.navProductsLabel,
+    required this.navProductsDescription,
+    required this.navRecommendationsLabel,
+    required this.navRecommendationsDescription,
+    required this.navAlertsLabel,
+    required this.navAlertsDescription,
+    required this.navReportsLabel,
+    required this.navReportsDescription,
+    required this.navConnectionsLabel,
+    required this.navConnectionsDescription,
+    required this.navTeamLabel,
+    required this.navTeamDescription,
+    required this.navBillingLabel,
+    required this.navBillingDescription,
+    required this.navSettingsLabel,
+    required this.navSettingsDescription,
+    required this.navSupportLabel,
+    required this.navSupportDescription,
+    required this.connectionsLoading,
+    required this.connectionsNoDataTitle,
+    required this.connectionsNoDataFormats,
+    required this.connectionsImportButton,
+    required this.connectionsUploadingLabel,
+    required this.connectionsAnalyzing,
+    required this.connectionsMappingTitle,
+    required this.connectionsMappingSubtitle,
+    required this.connectionsMappingIgnore,
+    required this.connectionsConfirmMapping,
+    required this.connectionsReadyTitle,
+    required this.connectionsStatNameLabel,
+    required this.connectionsStatRowsLabel,
+    required this.connectionsStatColumnsLabel,
+    required this.connectionsStatUpdatedLabel,
+    required this.connectionsGoDashboard,
+    required this.connectionsAskAvenqo,
+    required this.connectionsImportAnother,
+    required this.connectionsRetry,
+    required this.connectionsGenericError,
+    required this.connectionsFileEmptyError,
+    required this.connectionsProcessingError,
+    required this.businessDefaultTitle,
+    required this.businessDefaultDescription,
+    required this.businessConnectButton,
+    required this.businessSalesTitle,
+    required this.businessSalesDescription,
+    required this.businessCustomersTitle,
+    required this.businessCustomersDescription,
+    required this.businessProductsTitle,
+    required this.businessProductsDescription,
+    required this.businessRecommendationsTitle,
+    required this.businessRecommendationsDescription,
+    required this.businessAlertsTitle,
+    required this.businessAlertsDescription,
+    required this.businessReportsTitle,
+    required this.businessReportsDescription,
+    required this.billingTitle,
+    required this.billingPortalButton,
+    required this.billingUnavailable,
+    required this.billingPlanPrefix,
+    required this.billingStatusPrefix,
+    required this.billingCancelScheduled,
+    required this.billingInvoicesTitle,
+    required this.billingInvoiceFallback,
+    required this.employeesTitle,
+    required this.employeesRefreshTooltip,
+    required this.employeesUnavailable,
+    required this.employeesColumnName,
+    required this.employeesColumnEmail,
+    required this.employeesColumnRole,
+    required this.employeesColumnStatus,
+    required this.settingsTitle,
+    required this.settingsSubtitle,
+    required this.settingsAccountSection,
+    required this.settingsCompanySection,
+    required this.settingsAppearanceSection,
+    required this.settingsSessionSection,
+    required this.settingsNameLabel,
+    required this.settingsEmailLabel,
+    required this.settingsRoleLabel,
+    required this.settingsPlanLabel,
+    required this.settingsManageSubscription,
+    required this.settingsThemeLabel,
+    required this.settingsLanguageLabel,
+    required this.settingsThemeLight,
+    required this.settingsThemeDark,
+    required this.settingsThemeSystem,
+    required this.settingsLogout,
+  });
+
+  factory CompanyStrings.fromJson(Map<String, dynamic> json) {
+    final fallback = CompanyStrings.fallback();
+    String s(String key) => json[key] as String? ?? fallback._byKey(key);
+    return CompanyStrings(
+      navOverviewLabel: s('navOverviewLabel'),
+      navOverviewDescription: s('navOverviewDescription'),
+      navAssistantLabel: s('navAssistantLabel'),
+      navAssistantDescription: s('navAssistantDescription'),
+      navSalesLabel: s('navSalesLabel'),
+      navSalesDescription: s('navSalesDescription'),
+      navCustomersLabel: s('navCustomersLabel'),
+      navCustomersDescription: s('navCustomersDescription'),
+      navProductsLabel: s('navProductsLabel'),
+      navProductsDescription: s('navProductsDescription'),
+      navRecommendationsLabel: s('navRecommendationsLabel'),
+      navRecommendationsDescription: s('navRecommendationsDescription'),
+      navAlertsLabel: s('navAlertsLabel'),
+      navAlertsDescription: s('navAlertsDescription'),
+      navReportsLabel: s('navReportsLabel'),
+      navReportsDescription: s('navReportsDescription'),
+      navConnectionsLabel: s('navConnectionsLabel'),
+      navConnectionsDescription: s('navConnectionsDescription'),
+      navTeamLabel: s('navTeamLabel'),
+      navTeamDescription: s('navTeamDescription'),
+      navBillingLabel: s('navBillingLabel'),
+      navBillingDescription: s('navBillingDescription'),
+      navSettingsLabel: s('navSettingsLabel'),
+      navSettingsDescription: s('navSettingsDescription'),
+      navSupportLabel: s('navSupportLabel'),
+      navSupportDescription: s('navSupportDescription'),
+      connectionsLoading: s('connectionsLoading'),
+      connectionsNoDataTitle: s('connectionsNoDataTitle'),
+      connectionsNoDataFormats: s('connectionsNoDataFormats'),
+      connectionsImportButton: s('connectionsImportButton'),
+      connectionsUploadingLabel: s('connectionsUploadingLabel'),
+      connectionsAnalyzing: s('connectionsAnalyzing'),
+      connectionsMappingTitle: s('connectionsMappingTitle'),
+      connectionsMappingSubtitle: s('connectionsMappingSubtitle'),
+      connectionsMappingIgnore: s('connectionsMappingIgnore'),
+      connectionsConfirmMapping: s('connectionsConfirmMapping'),
+      connectionsReadyTitle: s('connectionsReadyTitle'),
+      connectionsStatNameLabel: s('connectionsStatNameLabel'),
+      connectionsStatRowsLabel: s('connectionsStatRowsLabel'),
+      connectionsStatColumnsLabel: s('connectionsStatColumnsLabel'),
+      connectionsStatUpdatedLabel: s('connectionsStatUpdatedLabel'),
+      connectionsGoDashboard: s('connectionsGoDashboard'),
+      connectionsAskAvenqo: s('connectionsAskAvenqo'),
+      connectionsImportAnother: s('connectionsImportAnother'),
+      connectionsRetry: s('connectionsRetry'),
+      connectionsGenericError: s('connectionsGenericError'),
+      connectionsFileEmptyError: s('connectionsFileEmptyError'),
+      connectionsProcessingError: s('connectionsProcessingError'),
+      businessDefaultTitle: s('businessDefaultTitle'),
+      businessDefaultDescription: s('businessDefaultDescription'),
+      businessConnectButton: s('businessConnectButton'),
+      businessSalesTitle: s('businessSalesTitle'),
+      businessSalesDescription: s('businessSalesDescription'),
+      businessCustomersTitle: s('businessCustomersTitle'),
+      businessCustomersDescription: s('businessCustomersDescription'),
+      businessProductsTitle: s('businessProductsTitle'),
+      businessProductsDescription: s('businessProductsDescription'),
+      businessRecommendationsTitle: s('businessRecommendationsTitle'),
+      businessRecommendationsDescription: s('businessRecommendationsDescription'),
+      businessAlertsTitle: s('businessAlertsTitle'),
+      businessAlertsDescription: s('businessAlertsDescription'),
+      businessReportsTitle: s('businessReportsTitle'),
+      businessReportsDescription: s('businessReportsDescription'),
+      billingTitle: s('billingTitle'),
+      billingPortalButton: s('billingPortalButton'),
+      billingUnavailable: s('billingUnavailable'),
+      billingPlanPrefix: s('billingPlanPrefix'),
+      billingStatusPrefix: s('billingStatusPrefix'),
+      billingCancelScheduled: s('billingCancelScheduled'),
+      billingInvoicesTitle: s('billingInvoicesTitle'),
+      billingInvoiceFallback: s('billingInvoiceFallback'),
+      employeesTitle: s('employeesTitle'),
+      employeesRefreshTooltip: s('employeesRefreshTooltip'),
+      employeesUnavailable: s('employeesUnavailable'),
+      employeesColumnName: s('employeesColumnName'),
+      employeesColumnEmail: s('employeesColumnEmail'),
+      employeesColumnRole: s('employeesColumnRole'),
+      employeesColumnStatus: s('employeesColumnStatus'),
+      settingsTitle: s('settingsTitle'),
+      settingsSubtitle: s('settingsSubtitle'),
+      settingsAccountSection: s('settingsAccountSection'),
+      settingsCompanySection: s('settingsCompanySection'),
+      settingsAppearanceSection: s('settingsAppearanceSection'),
+      settingsSessionSection: s('settingsSessionSection'),
+      settingsNameLabel: s('settingsNameLabel'),
+      settingsEmailLabel: s('settingsEmailLabel'),
+      settingsRoleLabel: s('settingsRoleLabel'),
+      settingsPlanLabel: s('settingsPlanLabel'),
+      settingsManageSubscription: s('settingsManageSubscription'),
+      settingsThemeLabel: s('settingsThemeLabel'),
+      settingsLanguageLabel: s('settingsLanguageLabel'),
+      settingsThemeLight: s('settingsThemeLight'),
+      settingsThemeDark: s('settingsThemeDark'),
+      settingsThemeSystem: s('settingsThemeSystem'),
+      settingsLogout: s('settingsLogout'),
+    );
+  }
+
+  factory CompanyStrings.fallback() => const CompanyStrings(
+        navOverviewLabel: 'Overview',
+        navOverviewDescription: 'The key indicators of your business.',
+        navAssistantLabel: 'AI Assistant',
+        navAssistantDescription: 'Ask questions and take action.',
+        navSalesLabel: 'Sales',
+        navSalesDescription: 'Track revenue and trends.',
+        navCustomersLabel: 'Customers',
+        navCustomersDescription: 'Understand loyalty and churn risk.',
+        navProductsLabel: 'Products',
+        navProductsDescription: 'Monitor demand and catalog performance.',
+        navRecommendationsLabel: 'Recommendations',
+        navRecommendationsDescription: 'Find the highest priority opportunities.',
+        navAlertsLabel: 'Alerts',
+        navAlertsDescription: 'Watch for changes that need your attention.',
+        navReportsLabel: 'Reports',
+        navReportsDescription: 'View and share your executive summaries.',
+        navConnectionsLabel: 'Connections',
+        navConnectionsDescription: 'Connect your sales and management tools.',
+        navTeamLabel: 'Team',
+        navTeamDescription: "Manage your teammates' access.",
+        navBillingLabel: 'Billing',
+        navBillingDescription: 'Manage your subscription and invoices.',
+        navSettingsLabel: 'Settings',
+        navSettingsDescription: 'Your account and company preferences.',
+        navSupportLabel: 'Avenqo Support',
+        navSupportDescription: 'Need help using Avenqo? Ask your question here.',
+        connectionsLoading: 'Loading…',
+        connectionsNoDataTitle: 'Connect your data to unlock analytics and Avenqo AI.',
+        connectionsNoDataFormats: 'Accepted formats: CSV, XLSX, JSON, Parquet.',
+        connectionsImportButton: 'Import a file',
+        connectionsUploadingLabel: 'Uploading…',
+        connectionsAnalyzing: 'Analyzing the structure of your data…',
+        connectionsMappingTitle: 'Confirm your column mapping',
+        connectionsMappingSubtitle: 'Some columns need manual confirmation before analytics can be activated.',
+        connectionsMappingIgnore: 'Ignore this column',
+        connectionsConfirmMapping: 'Confirm mapping',
+        connectionsReadyTitle: 'Data ready',
+        connectionsStatNameLabel: 'Name',
+        connectionsStatRowsLabel: 'Rows',
+        connectionsStatColumnsLabel: 'Columns',
+        connectionsStatUpdatedLabel: 'Last updated',
+        connectionsGoDashboard: 'Go to dashboard',
+        connectionsAskAvenqo: 'Ask Avenqo AI',
+        connectionsImportAnother: 'Import another dataset',
+        connectionsRetry: 'Retry',
+        connectionsGenericError: 'An unexpected error occurred.',
+        connectionsFileEmptyError: 'The selected file is empty or unreadable.',
+        connectionsProcessingError: 'This file could not be processed.',
+        businessDefaultTitle: 'Your space is ready',
+        businessDefaultDescription: 'Connect your tools to see up-to-date information here.',
+        businessConnectButton: 'Connect my tools',
+        businessSalesTitle: 'Track every change',
+        businessSalesDescription: 'Your sales trends, comparisons and forecasts will appear here.',
+        businessCustomersTitle: 'Retain the right customers',
+        businessCustomersDescription: "You'll find customers to prioritize, re-engage or support here.",
+        businessProductsTitle: 'Manage your catalog',
+        businessProductsDescription: 'Top-performing products, expected demand and stock to watch will be gathered here.',
+        businessRecommendationsTitle: 'Act directly on opportunities',
+        businessRecommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
+        businessAlertsTitle: 'Stay informed without the noise',
+        businessAlertsDescription: 'Important changes and risks will be flagged with a recommended action.',
+        businessReportsTitle: 'Your executive summaries',
+        businessReportsDescription: "Create and share clear reports on your company's results.",
+        billingTitle: 'Billing',
+        billingPortalButton: 'Stripe portal',
+        billingUnavailable: 'Billing is temporarily unavailable.',
+        billingPlanPrefix: 'Plan ',
+        billingStatusPrefix: 'Status: ',
+        billingCancelScheduled: 'Cancellation scheduled',
+        billingInvoicesTitle: 'Invoices',
+        billingInvoiceFallback: 'Invoice',
+        employeesTitle: 'Users',
+        employeesRefreshTooltip: 'Refresh',
+        employeesUnavailable: 'User access is temporarily unavailable.',
+        employeesColumnName: 'Name',
+        employeesColumnEmail: 'Email',
+        employeesColumnRole: 'Role',
+        employeesColumnStatus: 'Status',
+        settingsTitle: 'Settings',
+        settingsSubtitle: 'Your account, company and preference information.',
+        settingsAccountSection: 'Account',
+        settingsCompanySection: 'Company',
+        settingsAppearanceSection: 'Appearance',
+        settingsSessionSection: 'Session',
+        settingsNameLabel: 'Name',
+        settingsEmailLabel: 'Email',
+        settingsRoleLabel: 'Role',
+        settingsPlanLabel: 'Plan',
+        settingsManageSubscription: 'Manage subscription',
+        settingsThemeLabel: 'Theme',
+        settingsLanguageLabel: 'Language',
+        settingsThemeLight: 'Light',
+        settingsThemeDark: 'Dark',
+        settingsThemeSystem: 'System',
+        settingsLogout: 'Log out',
+      );
+
+  String _byKey(String key) => switch (key) {
+        'navOverviewLabel' => navOverviewLabel,
+        'navOverviewDescription' => navOverviewDescription,
+        'navAssistantLabel' => navAssistantLabel,
+        'navAssistantDescription' => navAssistantDescription,
+        'navSalesLabel' => navSalesLabel,
+        'navSalesDescription' => navSalesDescription,
+        'navCustomersLabel' => navCustomersLabel,
+        'navCustomersDescription' => navCustomersDescription,
+        'navProductsLabel' => navProductsLabel,
+        'navProductsDescription' => navProductsDescription,
+        'navRecommendationsLabel' => navRecommendationsLabel,
+        'navRecommendationsDescription' => navRecommendationsDescription,
+        'navAlertsLabel' => navAlertsLabel,
+        'navAlertsDescription' => navAlertsDescription,
+        'navReportsLabel' => navReportsLabel,
+        'navReportsDescription' => navReportsDescription,
+        'navConnectionsLabel' => navConnectionsLabel,
+        'navConnectionsDescription' => navConnectionsDescription,
+        'navTeamLabel' => navTeamLabel,
+        'navTeamDescription' => navTeamDescription,
+        'navBillingLabel' => navBillingLabel,
+        'navBillingDescription' => navBillingDescription,
+        'navSettingsLabel' => navSettingsLabel,
+        'navSettingsDescription' => navSettingsDescription,
+        'navSupportLabel' => navSupportLabel,
+        'navSupportDescription' => navSupportDescription,
+        'connectionsLoading' => connectionsLoading,
+        'connectionsNoDataTitle' => connectionsNoDataTitle,
+        'connectionsNoDataFormats' => connectionsNoDataFormats,
+        'connectionsImportButton' => connectionsImportButton,
+        'connectionsUploadingLabel' => connectionsUploadingLabel,
+        'connectionsAnalyzing' => connectionsAnalyzing,
+        'connectionsMappingTitle' => connectionsMappingTitle,
+        'connectionsMappingSubtitle' => connectionsMappingSubtitle,
+        'connectionsMappingIgnore' => connectionsMappingIgnore,
+        'connectionsConfirmMapping' => connectionsConfirmMapping,
+        'connectionsReadyTitle' => connectionsReadyTitle,
+        'connectionsStatNameLabel' => connectionsStatNameLabel,
+        'connectionsStatRowsLabel' => connectionsStatRowsLabel,
+        'connectionsStatColumnsLabel' => connectionsStatColumnsLabel,
+        'connectionsStatUpdatedLabel' => connectionsStatUpdatedLabel,
+        'connectionsGoDashboard' => connectionsGoDashboard,
+        'connectionsAskAvenqo' => connectionsAskAvenqo,
+        'connectionsImportAnother' => connectionsImportAnother,
+        'connectionsRetry' => connectionsRetry,
+        'connectionsGenericError' => connectionsGenericError,
+        'connectionsFileEmptyError' => connectionsFileEmptyError,
+        'connectionsProcessingError' => connectionsProcessingError,
+        'businessDefaultTitle' => businessDefaultTitle,
+        'businessDefaultDescription' => businessDefaultDescription,
+        'businessConnectButton' => businessConnectButton,
+        'businessSalesTitle' => businessSalesTitle,
+        'businessSalesDescription' => businessSalesDescription,
+        'businessCustomersTitle' => businessCustomersTitle,
+        'businessCustomersDescription' => businessCustomersDescription,
+        'businessProductsTitle' => businessProductsTitle,
+        'businessProductsDescription' => businessProductsDescription,
+        'businessRecommendationsTitle' => businessRecommendationsTitle,
+        'businessRecommendationsDescription' => businessRecommendationsDescription,
+        'businessAlertsTitle' => businessAlertsTitle,
+        'businessAlertsDescription' => businessAlertsDescription,
+        'businessReportsTitle' => businessReportsTitle,
+        'businessReportsDescription' => businessReportsDescription,
+        'billingTitle' => billingTitle,
+        'billingPortalButton' => billingPortalButton,
+        'billingUnavailable' => billingUnavailable,
+        'billingPlanPrefix' => billingPlanPrefix,
+        'billingStatusPrefix' => billingStatusPrefix,
+        'billingCancelScheduled' => billingCancelScheduled,
+        'billingInvoicesTitle' => billingInvoicesTitle,
+        'billingInvoiceFallback' => billingInvoiceFallback,
+        'employeesTitle' => employeesTitle,
+        'employeesRefreshTooltip' => employeesRefreshTooltip,
+        'employeesUnavailable' => employeesUnavailable,
+        'employeesColumnName' => employeesColumnName,
+        'employeesColumnEmail' => employeesColumnEmail,
+        'employeesColumnRole' => employeesColumnRole,
+        'employeesColumnStatus' => employeesColumnStatus,
+        'settingsTitle' => settingsTitle,
+        'settingsSubtitle' => settingsSubtitle,
+        'settingsAccountSection' => settingsAccountSection,
+        'settingsCompanySection' => settingsCompanySection,
+        'settingsAppearanceSection' => settingsAppearanceSection,
+        'settingsSessionSection' => settingsSessionSection,
+        'settingsNameLabel' => settingsNameLabel,
+        'settingsEmailLabel' => settingsEmailLabel,
+        'settingsRoleLabel' => settingsRoleLabel,
+        'settingsPlanLabel' => settingsPlanLabel,
+        'settingsManageSubscription' => settingsManageSubscription,
+        'settingsThemeLabel' => settingsThemeLabel,
+        'settingsLanguageLabel' => settingsLanguageLabel,
+        'settingsThemeLight' => settingsThemeLight,
+        'settingsThemeDark' => settingsThemeDark,
+        'settingsThemeSystem' => settingsThemeSystem,
+        'settingsLogout' => settingsLogout,
+        _ => '',
+      };
+
+  final String navOverviewLabel;
+  final String navOverviewDescription;
+  final String navAssistantLabel;
+  final String navAssistantDescription;
+  final String navSalesLabel;
+  final String navSalesDescription;
+  final String navCustomersLabel;
+  final String navCustomersDescription;
+  final String navProductsLabel;
+  final String navProductsDescription;
+  final String navRecommendationsLabel;
+  final String navRecommendationsDescription;
+  final String navAlertsLabel;
+  final String navAlertsDescription;
+  final String navReportsLabel;
+  final String navReportsDescription;
+  final String navConnectionsLabel;
+  final String navConnectionsDescription;
+  final String navTeamLabel;
+  final String navTeamDescription;
+  final String navBillingLabel;
+  final String navBillingDescription;
+  final String navSettingsLabel;
+  final String navSettingsDescription;
+  final String navSupportLabel;
+  final String navSupportDescription;
+  final String connectionsLoading;
+  final String connectionsNoDataTitle;
+  final String connectionsNoDataFormats;
+  final String connectionsImportButton;
+  final String connectionsUploadingLabel;
+  final String connectionsAnalyzing;
+  final String connectionsMappingTitle;
+  final String connectionsMappingSubtitle;
+  final String connectionsMappingIgnore;
+  final String connectionsConfirmMapping;
+  final String connectionsReadyTitle;
+  final String connectionsStatNameLabel;
+  final String connectionsStatRowsLabel;
+  final String connectionsStatColumnsLabel;
+  final String connectionsStatUpdatedLabel;
+  final String connectionsGoDashboard;
+  final String connectionsAskAvenqo;
+  final String connectionsImportAnother;
+  final String connectionsRetry;
+  final String connectionsGenericError;
+  final String connectionsFileEmptyError;
+  final String connectionsProcessingError;
+  final String businessDefaultTitle;
+  final String businessDefaultDescription;
+  final String businessConnectButton;
+  final String businessSalesTitle;
+  final String businessSalesDescription;
+  final String businessCustomersTitle;
+  final String businessCustomersDescription;
+  final String businessProductsTitle;
+  final String businessProductsDescription;
+  final String businessRecommendationsTitle;
+  final String businessRecommendationsDescription;
+  final String businessAlertsTitle;
+  final String businessAlertsDescription;
+  final String businessReportsTitle;
+  final String businessReportsDescription;
+  final String billingTitle;
+  final String billingPortalButton;
+  final String billingUnavailable;
+  final String billingPlanPrefix;
+  final String billingStatusPrefix;
+  final String billingCancelScheduled;
+  final String billingInvoicesTitle;
+  final String billingInvoiceFallback;
+  final String employeesTitle;
+  final String employeesRefreshTooltip;
+  final String employeesUnavailable;
+  final String employeesColumnName;
+  final String employeesColumnEmail;
+  final String employeesColumnRole;
+  final String employeesColumnStatus;
+  final String settingsTitle;
+  final String settingsSubtitle;
+  final String settingsAccountSection;
+  final String settingsCompanySection;
+  final String settingsAppearanceSection;
+  final String settingsSessionSection;
+  final String settingsNameLabel;
+  final String settingsEmailLabel;
+  final String settingsRoleLabel;
+  final String settingsPlanLabel;
+  final String settingsManageSubscription;
+  final String settingsThemeLabel;
+  final String settingsLanguageLabel;
+  final String settingsThemeLight;
+  final String settingsThemeDark;
+  final String settingsThemeSystem;
+  final String settingsLogout;
+}
+

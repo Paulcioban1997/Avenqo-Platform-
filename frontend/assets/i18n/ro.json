@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Conectare",
-    "tryFree": "Încearcă gratuit",
+    "tryFree": "Încearcă Avenqo",
     "watchDemo": "Vezi o demonstrație",
-    "noCreditCard": "Fără card de credit",
+    "noCreditCard": "Asistență personalizată",
     "guidedSetup": "Configurare ghidată",
     "isolatedData": "Date izolate"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Găzduire scalabilă"
   },
   "modulesSection": {
-    "kicker": "Suita Avenqo",
-    "title": "Un modul pentru fiecare prioritate de business.",
-    "subtitle": "Construiește-ți mediul pe măsură. Toate modulele împărtășesc aceeași experiență și lucrează împreună.",
+    "kicker": "Module Avenqo",
+    "title": "O singură platformă, cu module care se extind progresiv.",
+    "subtitle": "Avenqo este o platformă AI modulară. Retail Intelligence este disponibil acum, iar module noi vor fi introduse progresiv.",
     "discover": "Descoperă",
+    "availableNow": "Disponibil acum",
+    "comingSoon": "În curând",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Gestionează vânzări, produse și fidelizare dintr-o vizualizare unificată."
+        "name": "Retail Intelligence",
+        "description": "Gestionează vânzările, produsele și loialitatea dintr-o singură vizualizare unificată.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Prioritizează relațiile, oportunitățile și următoarele acțiuni."
+        "name": "CRM AI",
+        "description": "Prioritizează relațiile, oportunitățile și cele mai bune acțiuni următoare.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Accelerează urmărirea financiară și închiderea contabilă."
+        "name": "OCR AI",
+        "description": "Transformă documentele primite în operațiuni structurate.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Transformă documentele primite în operațiuni structurate."
+        "name": "Voice AI",
+        "description": "Automatizează interacțiunile vocale fără a pierde contextul.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Înțelege tendințele și abaterile care contează cu adevărat."
+        "name": "Media AI",
+        "description": "Produce și organizează conținutul tău dintr-un singur spațiu de lucru.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Orchestrează campanii mai relevante și mai ușor de măsurat."
+        "name": "Accounting AI",
+        "description": "Accelerează urmărirea financiară și închiderea contabilă.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Oferă răspunsuri fiabile din cunoștințele companiei."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Automatizează interacțiunile vocale fără a pierde contextul clientului."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Conectează echipele și automatizează sarcinile repetitive."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Produce și organizează conținutul dintr-un singur spațiu."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Reduce timpii de răspuns și îmbunătățește fiecare rezolvare."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Implementează un asistent conversațional în slujba clienților tăi."
+        "name": "Legal AI",
+        "description": "Analizează și securizează documentele tale contractuale.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Prețuri clare",
+    "kicker": "Prețuri",
     "title": "Începe acum. Crește în ritmul tău.",
-    "subtitle": "Fiecare plan include platforma, asistentul Avenqo și un spațiu securizat.",
-    "popular": "Cel mai ales",
-    "priceLabel": "Personalizat",
+    "subtitle": "Fiecare plan include platforma, asistentul Avenqo și un spațiu de lucru securizat.",
+    "popular": "Cel mai popular",
+    "priceLabel": "Preț de confirmat",
     "plans": [
       {
-        "tier": "Esențial",
-        "title": "Pentru început",
+        "tier": "Demo",
+        "title": "Pentru a descoperi Avenqo",
+        "priceLabel": "Preț de confirmat",
         "items": [
-          "1 modul Avenqo",
-          "Până la 5 utilizatori",
-          "Asistent integrat",
-          "Suport standard"
+          "Acces la Retail Intelligence",
+          "Asistent Avenqo integrat",
+          "Spațiu de lucru securizat"
         ],
-        "action": "Vorbește cu un consilier"
+        "action": "Încearcă Avenqo"
       },
       {
-        "tier": "Profesional",
-        "title": "Pentru accelerare",
+        "tier": "Professional",
+        "title": "Pentru companii care vor să meargă mai departe",
+        "priceLabel": "Preț de confirmat",
         "items": [
-          "Până la 5 module",
-          "Până la 25 de utilizatori",
+          "Retail Intelligence complet",
           "Automatizări avansate",
           "Suport prioritar"
         ],
-        "action": "Încearcă gratuit"
+        "action": "Începe"
       },
       {
         "tier": "Enterprise",
-        "title": "Pentru orchestrare",
+        "title": "Personalizat",
+        "priceLabel": "Contactează vânzările",
         "items": [
-          "Module nelimitate",
-          "Utilizatori personalizați",
           "Integrări personalizate",
-          "Guvernanță dedicată"
+          "Guvernanță dedicată",
+          "Suport dedicat"
         ],
         "action": "Contactează vânzările"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Următorul tău pas",
     "title": "Fă-ți compania să funcționeze altfel.",
-    "tryFree": "Încearcă gratuit",
+    "tryFree": "Încearcă Avenqo",
     "scheduleDemo": "Programează o demonstrație"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Surse",
     "newest": "Cele mai recente",
     "you": "Dvs.",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Cum merg vânzările mele?",
+      "Ce clienți au nevoie de atenție?",
+      "Ce s-a schimbat luna aceasta?",
+      "Rezumă performanța afacerii mele."
+    ]
   },
   "auth": {
     "tagline": "Platforma AI pentru deciziile companiei dvs.",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Comandă medie",
     "prioritiesTitle": "Priorități recomandate",
     "prioritiesEmpty": "Prioritățile dvs. vor apărea aici imediat ce datele dvs. sunt conectate.",
-    "planLabel": "Plan"
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "Pune întrebări despre datele afacerii tale și primește informații contextuale.",
+    "askAvenqoCta": "Întreabă Avenqo AI",
+    "importDataTitle": "Importă-ți datele",
+    "importDataSubtitle": "Conectează sau importă sursele afacerii tale pentru a debloca inteligența Avenqo.",
+    "importDataCta": "Importă datele mele",
+    "connectionsTitle": "Conexiuni",
+    "connectionsEmpty": "Niciun date conectate încă",
+    "connectionsEmptyCta": "Importă datele mele",
+    "connectionsReadyLabel": "Gata",
+    "connectionsLastUpdate": "Ultima actualizare",
+    "activityTitle": "Activitate recentă",
+    "activityEmpty": "Nicio activitate recentă încă.",
+    "stepsTitle": "Pașii următori recomandați",
+    "stepOrgLabel": "Finalizează configurarea companiei tale",
+    "stepDataLabel": "Conectează sau importă datele tale",
+    "stepInsightsLabel": "Explorează perspectivele tale",
+    "stepAskLabel": "Întreabă Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Centrul de control Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Setări",
     "signedInAs": "Conectat ca",
     "noSettingsMessage": "Nicio configurație globală a platformei nu este expusă aici momentan — nimic de afișat onest dincolo de identitatea contului."
+  },
+  "onboarding": {
+    "title": "Să configurăm spațiul tău de lucru Avenqo",
+    "subtitle": "Câteva întrebări rapide pentru a personaliza prioritățile și recomandările tale.",
+    "goalsLabel": "Care sunt principalele tale obiective?",
+    "goalIncreaseSales": "Creșterea vânzărilor",
+    "goalReduceChurn": "Reducerea pierderii de clienți",
+    "goalOptimizePricing": "Optimizarea prețurilor",
+    "goalImproveInventory": "Îmbunătățirea gestiunii stocurilor",
+    "goalUnderstandCustomers": "Înțelegerea mai bună a clienților mei",
+    "goalAutomateReports": "Automatizarea rapoartelor mele",
+    "toolsLabel": "Ce instrumente folosești în prezent?",
+    "toolPos": "Sistem de vânzare (POS)",
+    "toolEcommerce": "Platformă de comerț electronic",
+    "toolSpreadsheets": "Foi de calcul (Excel/Sheets)",
+    "toolAccounting": "Software de contabilitate",
+    "toolCrm": "CRM",
+    "toolNone": "Niciun instrument momentan",
+    "teamSizeLabel": "Care este dimensiunea echipei tale?",
+    "teamSizeSolo": "Doar eu",
+    "teamSizeSmall": "2 până la 10 persoane",
+    "teamSizeMedium": "11 până la 50 de persoane",
+    "teamSizeLarge": "Peste 50 de persoane",
+    "refineIndustryLabel": "Precizează domeniul tău (opțional)",
+    "refineIndustryHint": "Ex. comerț specializat, fast-food, firmă de contabilitate...",
+    "continueCta": "Continuă",
+    "skipCta": "Omite deocamdată",
+    "genericError": "Nu am putut salva răspunsurile tale acum.",
+    "goalsRequired": "Selectează cel puțin un obiectiv.",
+    "teamSizeRequired": "Selectează dimensiunea echipei tale."
+  },
+  "company": {
+    "navOverviewLabel": "Prezentare generală",
+    "navOverviewDescription": "Indicatorii cheie ai afacerii tale.",
+    "navAssistantLabel": "Asistent AI",
+    "navAssistantDescription": "Pune întrebări și acționează.",
+    "navSalesLabel": "Vânzări",
+    "navSalesDescription": "Urmărește veniturile și tendințele.",
+    "navCustomersLabel": "Clienți",
+    "navCustomersDescription": "Înțelege loialitatea și riscul de pierdere.",
+    "navProductsLabel": "Produse",
+    "navProductsDescription": "Monitorizează cererea și performanța catalogului.",
+    "navRecommendationsLabel": "Recomandări",
+    "navRecommendationsDescription": "Găsește oportunitățile cu cea mai mare prioritate.",
+    "navAlertsLabel": "Alerte",
+    "navAlertsDescription": "Urmărește schimbările care necesită atenția ta.",
+    "navReportsLabel": "Rapoarte",
+    "navReportsDescription": "Vizualizează și partajează rezumatele executive.",
+    "navConnectionsLabel": "Conexiuni",
+    "navConnectionsDescription": "Conectează instrumentele tale de vânzări și gestiune.",
+    "navTeamLabel": "Echipă",
+    "navTeamDescription": "Gestionează accesul colegilor tăi.",
+    "navBillingLabel": "Facturare",
+    "navBillingDescription": "Gestionează abonamentul și facturile.",
+    "navSettingsLabel": "Setări",
+    "navSettingsDescription": "Informațiile contului și companiei tale.",
+    "navSupportLabel": "Suport Avenqo",
+    "navSupportDescription": "Ai nevoie de ajutor cu Avenqo? Pune întrebarea aici.",
+    "connectionsLoading": "Se încarcă…",
+    "connectionsNoDataTitle": "Conectează-ți datele pentru a debloca analizele și Avenqo AI.",
+    "connectionsNoDataFormats": "Formate acceptate: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Importă un fișier",
+    "connectionsUploadingLabel": "Se încarcă…",
+    "connectionsAnalyzing": "Se analizează structura datelor tale…",
+    "connectionsMappingTitle": "Confirmă maparea coloanelor tale",
+    "connectionsMappingSubtitle": "Unele coloane necesită confirmare manuală înainte de activarea analizelor.",
+    "connectionsMappingIgnore": "Ignoră această coloană",
+    "connectionsConfirmMapping": "Confirmă maparea",
+    "connectionsReadyTitle": "Date pregătite",
+    "connectionsStatNameLabel": "Nume",
+    "connectionsStatRowsLabel": "Rânduri",
+    "connectionsStatColumnsLabel": "Coloane",
+    "connectionsStatUpdatedLabel": "Ultima actualizare",
+    "connectionsGoDashboard": "Mergi la tabloul de bord",
+    "connectionsAskAvenqo": "Întreabă Avenqo AI",
+    "connectionsImportAnother": "Importă alt set de date",
+    "connectionsRetry": "Reîncearcă",
+    "connectionsGenericError": "A apărut o eroare neașteptată.",
+    "connectionsFileEmptyError": "Fișierul selectat este gol sau nu poate fi citit.",
+    "connectionsProcessingError": "Acest fișier nu a putut fi procesat.",
+    "businessDefaultTitle": "Spațiul tău este pregătit",
+    "businessDefaultDescription": "Conectează-ți instrumentele pentru a vedea informații actualizate aici.",
+    "businessConnectButton": "Conectează-mi instrumentele",
+    "businessSalesTitle": "Urmărește fiecare schimbare",
+    "businessSalesDescription": "Tendințele, comparațiile și previziunile vânzărilor tale vor apărea aici.",
+    "businessCustomersTitle": "Reține clienții potriviți",
+    "businessCustomersDescription": "Aici vei găsi clienți de prioritizat, reactivat sau susținut.",
+    "businessProductsTitle": "Gestionează-ți catalogul",
+    "businessProductsDescription": "Produsele de top, cererea așteptată și stocul de urmărit vor fi adunate aici.",
+    "businessRecommendationsTitle": "Acționează direct asupra oportunităților",
+    "businessRecommendationsDescription": "Avenqo va clasifica oportunitățile după impactul lor potențial asupra afacerii tale.",
+    "businessAlertsTitle": "Rămâi informat fără zgomot",
+    "businessAlertsDescription": "Schimbările și riscurile importante vor fi semnalate cu o acțiune recomandată.",
+    "businessReportsTitle": "Rezumatele tale executive",
+    "businessReportsDescription": "Creează și partajează rapoarte clare despre rezultatele companiei tale.",
+    "billingTitle": "Facturare",
+    "billingPortalButton": "Portal Stripe",
+    "billingUnavailable": "Facturarea nu este disponibilă temporar.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "Stare: ",
+    "billingCancelScheduled": "Anulare programată",
+    "billingInvoicesTitle": "Facturi",
+    "billingInvoiceFallback": "Factură",
+    "employeesTitle": "Utilizatori",
+    "employeesRefreshTooltip": "Reîmprospătează",
+    "employeesUnavailable": "Accesul utilizatorilor nu este disponibil temporar.",
+    "employeesColumnName": "Nume",
+    "employeesColumnEmail": "Email",
+    "employeesColumnRole": "Rol",
+    "employeesColumnStatus": "Stare",
+    "settingsTitle": "Setări",
+    "settingsSubtitle": "Informațiile contului, companiei și preferințelor tale.",
+    "settingsAccountSection": "Cont",
+    "settingsCompanySection": "Companie",
+    "settingsAppearanceSection": "Aspect",
+    "settingsSessionSection": "Sesiune",
+    "settingsNameLabel": "Nume",
+    "settingsEmailLabel": "Email",
+    "settingsRoleLabel": "Rol",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Gestionează abonamentul",
+    "settingsThemeLabel": "Temă",
+    "settingsLanguageLabel": "Limbă",
+    "settingsThemeLight": "Luminos",
+    "settingsThemeDark": "Întunecat",
+    "settingsThemeSystem": "Sistem",
+    "settingsLogout": "Deconectare"
   }
 }

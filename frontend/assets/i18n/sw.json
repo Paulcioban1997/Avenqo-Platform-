@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Ingia",
-    "tryFree": "Jaribu bila malipo",
+    "tryFree": "Jaribu Avenqo",
     "watchDemo": "Angalia onyesho",
-    "noCreditCard": "Hakuna kadi ya mkopo",
+    "noCreditCard": "Uwekaji wa kibinafsi",
     "guidedSetup": "Usanidi wa uongozwa",
     "isolatedData": "Data iliyotengwa"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Uwekaji hosti unaoweza kupanuka"
   },
   "modulesSection": {
-    "kicker": "Kifurushi cha Avenqo",
-    "title": "Moduli kwa kila kipaumbele cha biashara.",
-    "subtitle": "Jenga mazingira yako maalum. Moduli zote zinashiriki uzoefu sawa na kufanya kazi pamoja.",
+    "kicker": "Moduli za Avenqo",
+    "title": "Jukwaa moja la moduli, linalokua kulingana na mahitaji",
+    "subtitle": "Washa moduli unazohitaji leo, na uongeze baadaye bila kubadilisha zana.",
     "discover": "Gundua",
+    "availableNow": "Inapatikana sasa",
+    "comingSoon": "Inakuja hivi karibuni",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Simamia mauzo, bidhaa na uaminifu kutoka mtazamo mmoja."
+        "name": "Retail Intelligence",
+        "description": "Uchambuzi wa mauzo na hisa kwa wakati halisi kwa biashara ya rejareja.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Weka vipaumbele vya uhusiano, fursa na hatua bora zifuatazo."
+        "name": "CRM AI",
+        "description": "Usimamizi wa uhusiano na wateja unaotumia AI kwa mauzo bora zaidi.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Harakisha ufuatiliaji wa fedha na kufunga hesabu."
+        "name": "OCR AI",
+        "description": "Uchimbaji wa data kiotomatiki kutoka kwa ankara na hati zilizochanganuliwa.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Badilisha hati zinazoingia kuwa taratibu zilizopangwa."
+        "name": "Voice AI",
+        "description": "Msaidizi wa sauti kwa kunakili na kufuatilia simu za wateja.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Elewa mienendo na tofauti zinazofaa kweli."
+        "name": "Media AI",
+        "description": "Uundaji na uchambuzi wa maudhui ya kuona na ya uuzaji.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Panga kampeni zinazofaa zaidi na zinazoweza kupimwa."
+        "name": "Accounting AI",
+        "description": "Uendeshaji kiotomatiki wa uhasibu na upatanisho wa kifedha.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Toa majibu ya kuaminika kulingana na ujuzi wa kampuni."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Jiendeshe mwingiliano wa sauti bila kupoteza muktadha."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Unganisha timu na jiendeshe kazi zinazojirudia."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Tengeneza na panga maudhui yako kutoka nafasi moja ya kazi."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Punguza muda wa majibu na uboreshe kila suluhisho."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Weka msaidizi wa mazungumzo kwa wateja wako."
+        "name": "Legal AI",
+        "description": "Ukaguzi na muhtasari wa mikataba kwa msaada wa AI.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Bei wazi",
-    "title": "Anza sasa. Kua kwa kasi yako.",
-    "subtitle": "Kila mpango unajumuisha jukwaa, msaidizi wa Avenqo na nafasi ya kazi salama.",
-    "popular": "Inayopendwa zaidi",
-    "priceLabel": "Kwa mahitaji",
+    "kicker": "Bei",
+    "title": "Mpango kwa kila hatua ya ukuaji wako",
+    "subtitle": "Anza na onyesho, kisha chagua mpango unaofaa ukubwa wa kampuni yako.",
+    "popular": "Maarufu zaidi",
+    "priceLabel": "Bei kwa ombi",
     "plans": [
       {
-        "tier": "Msingi",
-        "title": "Kuanza",
+        "tier": "Demo",
+        "title": "Jaribu Avenqo na data yako",
+        "priceLabel": "Bure",
         "items": [
-          "Moduli 1 ya Avenqo",
-          "Hadi watumiaji 5",
-          "Msaidizi aliyojengwa ndani",
-          "Msaada wa kawaida"
+          "Ufikiaji wa muda mfupi",
+          "Data ya onyesho au yako mwenyewe",
+          "Msaada kwa barua pepe"
         ],
-        "action": "Zungumza na mshauri"
+        "action": "Omba onyesho"
       },
       {
-        "tier": "Kitaalamu",
-        "title": "Kuharakisha",
+        "tier": "Professional",
+        "title": "Kwa makampuni yanayotaka kukua",
+        "priceLabel": "Bei kwa ombi",
         "items": [
-          "Hadi moduli 5",
-          "Hadi watumiaji 25",
-          "Uendeshaji wa kina wa kiotomatiki",
+          "Moduli zote za msingi",
+          "Idadi ya watumiaji inayoweza kupanuka",
           "Msaada wa kipaumbele"
         ],
-        "action": "Jaribu bila malipo"
+        "action": "Wasiliana nasi"
       },
       {
-        "tier": "Biashara Kubwa",
-        "title": "Kuratibu",
+        "tier": "Enterprise",
+        "title": "Kwa mashirika yenye mahitaji ya kina",
+        "priceLabel": "Bei kwa ombi",
         "items": [
-          "Moduli zisizo na kikomo",
-          "Watumiaji kwa mahitaji",
-          "Uunganishaji maalum",
-          "Utawala maalum"
+          "Ushirikiano maalum",
+          "Meneja wa akaunti maalum",
+          "Mkataba wa kiwango cha huduma"
         ],
         "action": "Wasiliana na mauzo"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Hatua yako inayofuata",
     "title": "Simamia biashara yako tofauti.",
-    "tryFree": "Jaribu bila malipo",
+    "tryFree": "Jaribu Avenqo",
     "scheduleDemo": "Panga onyesho"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Vyanzo",
     "newest": "Mpya zaidi",
     "you": "Wewe",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Ni bidhaa zipi zinazouzwa zaidi mwezi huu?",
+      "Ni wateja gani walio hatarini kuacha kununua?",
+      "Fanya muhtasari wa utendaji wa biashara yangu wiki hii.",
+      "Ni fursa zipi za kipaumbele cha juu zaidi sasa?"
+    ]
   },
   "auth": {
     "tagline": "Jukwaa la AI kwa biashara yako",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Wastani wa thamani ya agizo",
     "prioritiesTitle": "Vipaumbele vilivyopendekezwa",
     "prioritiesEmpty": "Baada ya data kuunganishwa, vipaumbele vyako vitaonekana hapa.",
-    "planLabel": "Mpango"
+    "planLabel": "Mpango",
+    "askAvenqoSubtitle": "Uliza maswali kuhusu data ya biashara yako na upate maarifa yenye muktadha.",
+    "askAvenqoCta": "Uliza Avenqo AI",
+    "importDataTitle": "Leta data yako",
+    "importDataSubtitle": "Unganisha au leta vyanzo vya biashara yako ili kufungua akili ya Avenqo.",
+    "importDataCta": "Leta data yangu",
+    "connectionsTitle": "Miunganisho",
+    "connectionsEmpty": "Hakuna data iliyounganishwa bado",
+    "connectionsEmptyCta": "Leta data yangu",
+    "connectionsReadyLabel": "Tayari",
+    "connectionsLastUpdate": "Sasisho la mwisho",
+    "activityTitle": "Shughuli za hivi karibuni",
+    "activityEmpty": "Hakuna shughuli za hivi karibuni bado.",
+    "stepsTitle": "Hatua zinazofuata zinazopendekezwa",
+    "stepOrgLabel": "Kamilisha usanidi wa kampuni yako",
+    "stepDataLabel": "Unganisha au leta data yako",
+    "stepInsightsLabel": "Chunguza maarifa yako",
+    "stepAskLabel": "Uliza Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Kituo cha Amri cha Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Mipangilio",
     "signedInAs": "Umeingia kama",
     "noSettingsMessage": "Hakuna usanidi wa jumla wa jukwaa unaoonyeshwa hapa — hakuna haja ya kuonyesha chochote zaidi ya utambulisho wa akaunti."
+  },
+  "onboarding": {
+    "title": "Hebu tuweke nafasi yako ya kazi ya Avenqo",
+    "subtitle": "Maswali machache ya haraka ili kubinafsisha vipaumbele na mapendekezo yako.",
+    "goalsLabel": "Malengo yako makuu ni yapi?",
+    "goalIncreaseSales": "Kuongeza mauzo",
+    "goalReduceChurn": "Kupunguza upotevu wa wateja",
+    "goalOptimizePricing": "Kuboresha bei",
+    "goalImproveInventory": "Kuboresha usimamizi wa hisa",
+    "goalUnderstandCustomers": "Kuelewa wateja wangu vizuri zaidi",
+    "goalAutomateReports": "Kuweka ripoti zangu kiotomatiki",
+    "toolsLabel": "Unatumia zana zipi kwa sasa?",
+    "toolPos": "Mfumo wa mauzo (POS)",
+    "toolEcommerce": "Jukwaa la biashara mtandaoni",
+    "toolSpreadsheets": "Lahajedwali (Excel/Sheets)",
+    "toolAccounting": "Programu ya uhasibu",
+    "toolCrm": "CRM",
+    "toolNone": "Bado hakuna zana",
+    "teamSizeLabel": "Timu yako ina ukubwa gani?",
+    "teamSizeSolo": "Mimi tu",
+    "teamSizeSmall": "Watu 2 hadi 10",
+    "teamSizeMedium": "Watu 11 hadi 50",
+    "teamSizeLarge": "Zaidi ya watu 50",
+    "refineIndustryLabel": "Bainisha sekta yako (si lazima)",
+    "refineIndustryHint": "Mfano: rejareja maalum, chakula cha haraka, ofisi ya uhasibu...",
+    "continueCta": "Endelea",
+    "skipCta": "Ruka kwa sasa",
+    "genericError": "Hatukuweza kuhifadhi majibu yako kwa sasa.",
+    "goalsRequired": "Chagua angalau lengo moja.",
+    "teamSizeRequired": "Chagua ukubwa wa timu yako."
+  },
+  "company": {
+    "navOverviewLabel": "Muhtasari",
+    "navOverviewDescription": "Viashiria muhimu vya biashara yako.",
+    "navAssistantLabel": "Msaidizi wa AI",
+    "navAssistantDescription": "Uliza maswali na uchukue hatua.",
+    "navSalesLabel": "Mauzo",
+    "navSalesDescription": "Fuatilia mapato na mienendo.",
+    "navCustomersLabel": "Wateja",
+    "navCustomersDescription": "Elewa uaminifu na hatari ya kupoteza wateja.",
+    "navProductsLabel": "Bidhaa",
+    "navProductsDescription": "Fuatilia mahitaji na utendaji wa katalogi.",
+    "navRecommendationsLabel": "Mapendekezo",
+    "navRecommendationsDescription": "Pata fursa zenye kipaumbele cha juu zaidi.",
+    "navAlertsLabel": "Arifa",
+    "navAlertsDescription": "Fuatilia mabadiliko yanayohitaji uangalifu wako.",
+    "navReportsLabel": "Ripoti",
+    "navReportsDescription": "Angalia na shiriki muhtasari wako wa uongozi.",
+    "navConnectionsLabel": "Miunganisho",
+    "navConnectionsDescription": "Unganisha zana zako za mauzo na usimamizi.",
+    "navTeamLabel": "Timu",
+    "navTeamDescription": "Simamia ufikiaji wa wenzako.",
+    "navBillingLabel": "Malipo",
+    "navBillingDescription": "Simamia usajili wako na ankara.",
+    "navSettingsLabel": "Mipangilio",
+    "navSettingsDescription": "Taarifa za akaunti na kampuni yako.",
+    "navSupportLabel": "Msaada wa Avenqo",
+    "navSupportDescription": "Unahitaji msaada na Avenqo? Uliza swali lako hapa.",
+    "connectionsLoading": "Inapakia…",
+    "connectionsNoDataTitle": "Unganisha data yako ili kufungua uchambuzi na Avenqo AI.",
+    "connectionsNoDataFormats": "Miundo inayokubalika: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Leta faili",
+    "connectionsUploadingLabel": "Inapakia…",
+    "connectionsAnalyzing": "Inachambua muundo wa data yako…",
+    "connectionsMappingTitle": "Thibitisha ramani ya safu wima zako",
+    "connectionsMappingSubtitle": "Baadhi ya safu wima zinahitaji uthibitisho wa mkono kabla ya kuwezesha uchambuzi.",
+    "connectionsMappingIgnore": "Puuza safu wima hii",
+    "connectionsConfirmMapping": "Thibitisha ramani",
+    "connectionsReadyTitle": "Data iko tayari",
+    "connectionsStatNameLabel": "Jina",
+    "connectionsStatRowsLabel": "Safu",
+    "connectionsStatColumnsLabel": "Safu wima",
+    "connectionsStatUpdatedLabel": "Sasisho la mwisho",
+    "connectionsGoDashboard": "Nenda kwenye dashibodi",
+    "connectionsAskAvenqo": "Uliza Avenqo AI",
+    "connectionsImportAnother": "Leta seti nyingine ya data",
+    "connectionsRetry": "Jaribu tena",
+    "connectionsGenericError": "Hitilafu isiyotarajiwa imetokea.",
+    "connectionsFileEmptyError": "Faili uliyochagua ni tupu au haisomeki.",
+    "connectionsProcessingError": "Faili hii haikuweza kuchakatwa.",
+    "businessDefaultTitle": "Nafasi yako iko tayari",
+    "businessDefaultDescription": "Unganisha zana zako ili kuona taarifa zilizosasishwa hapa.",
+    "businessConnectButton": "Unganisha zana zangu",
+    "businessSalesTitle": "Fuatilia kila mabadiliko",
+    "businessSalesDescription": "Mienendo, kulinganisha na utabiri wa mauzo yako itaonekana hapa.",
+    "businessCustomersTitle": "Weka wateja sahihi",
+    "businessCustomersDescription": "Hapa utapata wateja wa kupewa kipaumbele, kuamsha upya au kufuatiliwa.",
+    "businessProductsTitle": "Simamia katalogi yako",
+    "businessProductsDescription": "Bidhaa zinazouzwa zaidi, mahitaji yanayotarajiwa na hisa za kufuatilia zitakusanywa hapa.",
+    "businessRecommendationsTitle": "Chukua hatua moja kwa moja kwenye fursa",
+    "businessRecommendationsDescription": "Avenqo itapanga fursa kulingana na athari zake zinazowezekana kwa biashara yako.",
+    "businessAlertsTitle": "Baki na taarifa bila kelele",
+    "businessAlertsDescription": "Mabadiliko na hatari muhimu zitaonyeshwa na hatua inayopendekezwa.",
+    "businessReportsTitle": "Muhtasari wako wa uongozi",
+    "businessReportsDescription": "Unda na shiriki ripoti wazi kuhusu matokeo ya kampuni yako.",
+    "billingTitle": "Malipo",
+    "billingPortalButton": "Lango la Stripe",
+    "billingUnavailable": "Malipo hayapatikani kwa muda.",
+    "billingPlanPrefix": "Mpango ",
+    "billingStatusPrefix": "Hali: ",
+    "billingCancelScheduled": "Kufutwa kumepangwa",
+    "billingInvoicesTitle": "Ankara",
+    "billingInvoiceFallback": "Ankara",
+    "employeesTitle": "Watumiaji",
+    "employeesRefreshTooltip": "Onyesha upya",
+    "employeesUnavailable": "Ufikiaji wa watumiaji haupatikani kwa muda.",
+    "employeesColumnName": "Jina",
+    "employeesColumnEmail": "Barua pepe",
+    "employeesColumnRole": "Jukumu",
+    "employeesColumnStatus": "Hali",
+    "settingsTitle": "Mipangilio",
+    "settingsSubtitle": "Taarifa za akaunti, kampuni na mapendeleo yako.",
+    "settingsAccountSection": "Akaunti",
+    "settingsCompanySection": "Kampuni",
+    "settingsAppearanceSection": "Muonekano",
+    "settingsSessionSection": "Kipindi",
+    "settingsNameLabel": "Jina",
+    "settingsEmailLabel": "Barua pepe",
+    "settingsRoleLabel": "Jukumu",
+    "settingsPlanLabel": "Mpango",
+    "settingsManageSubscription": "Simamia usajili",
+    "settingsThemeLabel": "Mandhari",
+    "settingsLanguageLabel": "Lugha",
+    "settingsThemeLight": "Nyepesi",
+    "settingsThemeDark": "Giza",
+    "settingsThemeSystem": "Mfumo",
+    "settingsLogout": "Toka"
   }
 }

@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Войти",
-    "tryFree": "Попробовать бесплатно",
+    "tryFree": "Попробовать Avenqo",
     "watchDemo": "Смотреть демо",
-    "noCreditCard": "Без банковской карты",
+    "noCreditCard": "Персональное сопровождение",
     "guidedSetup": "Настройка с сопровождением",
     "isolatedData": "Изолированные данные"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Масштабируемый хостинг"
   },
   "modulesSection": {
-    "kicker": "Пакет Avenqo",
-    "title": "Модуль для каждого бизнес-приоритета.",
-    "subtitle": "Постройте свою среду по индивидуальным потребностям. Все модули имеют единый опыт и работают вместе.",
+    "kicker": "Модули Avenqo",
+    "title": "Единая платформа с постепенно расширяющимися модулями.",
+    "subtitle": "Avenqo — модульная платформа ИИ. Retail Intelligence уже доступен, новые модули будут добавляться постепенно.",
     "discover": "Узнать больше",
+    "availableNow": "Доступно сейчас",
+    "comingSoon": "Скоро",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Управляйте продажами, товарами и лояльностью из единого представления."
+        "name": "Retail Intelligence",
+        "description": "Управляйте продажами, товарами и лояльностью из единого окна.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Расставляйте приоритеты в отношениях, возможностях и лучших следующих шагах."
+        "name": "CRM AI",
+        "description": "Расставляйте приоритеты в отношениях, возможностях и следующих действиях.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Ускорьте финансовый мониторинг и бухгалтерское закрытие."
+        "name": "OCR AI",
+        "description": "Превращайте входящие документы в структурированные операции.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Превращайте входящие документы в структурированные операции."
+        "name": "Voice AI",
+        "description": "Автоматизируйте голосовые взаимодействия, не теряя контекст.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Понимайте тенденции и отклонения, которые действительно важны."
+        "name": "Media AI",
+        "description": "Создавайте и организуйте контент в едином рабочем пространстве.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Организуйте более релевантные и измеримые кампании."
+        "name": "Accounting AI",
+        "description": "Ускорьте финансовый учёт и закрытие бухгалтерии.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Предоставляйте достоверные ответы на основе знаний компании."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Автоматизируйте голосовые взаимодействия, не теряя контекст."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Соединяйте команды и автоматизируйте повторяющиеся задачи."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Создавайте и организуйте контент из единого рабочего пространства."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Сокращайте время ответа и улучшайте каждое решение."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Внедрите диалогового ассистента для ваших клиентов."
+        "name": "Legal AI",
+        "description": "Анализируйте и защищайте свои договорные документы.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Прозрачные тарифы",
+    "kicker": "Тарифы",
     "title": "Начните сейчас. Растите в своём темпе.",
     "subtitle": "Каждый тариф включает платформу, ассистента Avenqo и защищённое рабочее пространство.",
     "popular": "Самый популярный",
-    "priceLabel": "Индивидуально",
+    "priceLabel": "Цена уточняется",
     "plans": [
       {
-        "tier": "Базовый",
-        "title": "Чтобы начать",
+        "tier": "Demo",
+        "title": "Чтобы познакомиться с Avenqo",
+        "priceLabel": "Цена уточняется",
         "items": [
-          "1 модуль Avenqo",
-          "До 5 пользователей",
-          "Встроенный ассистент",
-          "Стандартная поддержка"
+          "Доступ к Retail Intelligence",
+          "Встроенный ассистент Avenqo",
+          "Защищённое рабочее пространство"
         ],
-        "action": "Поговорить с консультантом"
+        "action": "Попробовать Avenqo"
       },
       {
-        "tier": "Профессиональный",
-        "title": "Чтобы ускориться",
+        "tier": "Professional",
+        "title": "Для компаний, которые хотят большего",
+        "priceLabel": "Цена уточняется",
         "items": [
-          "До 5 модулей",
-          "До 25 пользователей",
-          "Продвинутая автоматизация",
+          "Полный Retail Intelligence",
+          "Расширенные автоматизации",
           "Приоритетная поддержка"
         ],
-        "action": "Попробовать бесплатно"
+        "action": "Начать"
       },
       {
-        "tier": "Корпоративный",
-        "title": "Чтобы оркестрировать",
+        "tier": "Enterprise",
+        "title": "Индивидуально",
+        "priceLabel": "Связаться с отделом продаж",
         "items": [
-          "Неограниченные модули",
-          "Индивидуальное число пользователей",
           "Индивидуальные интеграции",
-          "Выделенное управление"
+          "Выделенное управление",
+          "Выделенная поддержка"
         ],
         "action": "Связаться с отделом продаж"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Ваш следующий шаг",
     "title": "Управляйте бизнесом по-другому.",
-    "tryFree": "Попробовать бесплатно",
+    "tryFree": "Попробовать Avenqo",
     "scheduleDemo": "Запланировать демо"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Источники",
     "newest": "Новейшие",
     "you": "Вы",
-    "avenqoAi": "Avenqo ИИ"
+    "avenqoAi": "Avenqo ИИ",
+    "suggestions": [
+      "Как обстоят дела с продажами?",
+      "Каким клиентам нужно внимание?",
+      "Что изменилось в этом месяце?",
+      "Подведите итоги работы моего бизнеса."
+    ]
   },
   "auth": {
     "tagline": "Платформа ИИ для решений вашей компании",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Средний чек",
     "prioritiesTitle": "Рекомендуемые приоритеты",
     "prioritiesEmpty": "Ваши приоритеты появятся здесь, как только ваши данные будут подключены.",
-    "planLabel": "Тариф"
+    "planLabel": "Тариф",
+    "askAvenqoSubtitle": "Задавайте вопросы о данных вашего бизнеса и получайте контекстные сведения.",
+    "askAvenqoCta": "Спросить Avenqo AI",
+    "importDataTitle": "Импортируйте свои данные",
+    "importDataSubtitle": "Подключите или импортируйте источники вашего бизнеса, чтобы разблокировать аналитику Avenqo.",
+    "importDataCta": "Импортировать мои данные",
+    "connectionsTitle": "Подключения",
+    "connectionsEmpty": "Данные ещё не подключены",
+    "connectionsEmptyCta": "Импортировать мои данные",
+    "connectionsReadyLabel": "Готово",
+    "connectionsLastUpdate": "Последнее обновление",
+    "activityTitle": "Недавняя активность",
+    "activityEmpty": "Пока нет недавней активности.",
+    "stepsTitle": "Рекомендуемые следующие шаги",
+    "stepOrgLabel": "Завершите настройку вашей компании",
+    "stepDataLabel": "Подключите или импортируйте свои данные",
+    "stepInsightsLabel": "Изучите свою аналитику",
+    "stepAskLabel": "Спросить Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Центр управления Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Настройки",
     "signedInAs": "Вошли как",
     "noSettingsMessage": "Здесь пока не отображается глобальная конфигурация платформы — нечего честно показать, кроме идентичности аккаунта."
+  },
+  "onboarding": {
+    "title": "Настроим ваше рабочее пространство Avenqo",
+    "subtitle": "Несколько быстрых вопросов, чтобы персонализировать ваши приоритеты и рекомендации.",
+    "goalsLabel": "Каковы ваши основные цели?",
+    "goalIncreaseSales": "Увеличить продажи",
+    "goalReduceChurn": "Снизить отток клиентов",
+    "goalOptimizePricing": "Оптимизировать ценообразование",
+    "goalImproveInventory": "Улучшить управление запасами",
+    "goalUnderstandCustomers": "Лучше понимать своих клиентов",
+    "goalAutomateReports": "Автоматизировать отчёты",
+    "toolsLabel": "Какие инструменты вы используете сейчас?",
+    "toolPos": "Кассовая система (POS)",
+    "toolEcommerce": "Платформа электронной коммерции",
+    "toolSpreadsheets": "Электронные таблицы (Excel/Sheets)",
+    "toolAccounting": "Бухгалтерское ПО",
+    "toolCrm": "CRM",
+    "toolNone": "Пока нет инструментов",
+    "teamSizeLabel": "Какой размер вашей команды?",
+    "teamSizeSolo": "Только я",
+    "teamSizeSmall": "От 2 до 10 человек",
+    "teamSizeMedium": "От 11 до 50 человек",
+    "teamSizeLarge": "Более 50 человек",
+    "refineIndustryLabel": "Уточните отрасль (необязательно)",
+    "refineIndustryHint": "Напр. специализированная торговля, фастфуд, бухгалтерская фирма...",
+    "continueCta": "Продолжить",
+    "skipCta": "Пропустить пока",
+    "genericError": "Не удалось сохранить ваши ответы сейчас.",
+    "goalsRequired": "Выберите хотя бы одну цель.",
+    "teamSizeRequired": "Выберите размер вашей команды."
+  },
+  "company": {
+    "navOverviewLabel": "Обзор",
+    "navOverviewDescription": "Ключевые показатели вашего бизнеса.",
+    "navAssistantLabel": "ИИ-ассистент",
+    "navAssistantDescription": "Задавайте вопросы и действуйте.",
+    "navSalesLabel": "Продажи",
+    "navSalesDescription": "Отслеживайте выручку и тенденции.",
+    "navCustomersLabel": "Клиенты",
+    "navCustomersDescription": "Понимайте лояльность и риск оттока.",
+    "navProductsLabel": "Товары",
+    "navProductsDescription": "Следите за спросом и эффективностью каталога.",
+    "navRecommendationsLabel": "Рекомендации",
+    "navRecommendationsDescription": "Находите приоритетные возможности.",
+    "navAlertsLabel": "Оповещения",
+    "navAlertsDescription": "Следите за изменениями, требующими внимания.",
+    "navReportsLabel": "Отчёты",
+    "navReportsDescription": "Просматривайте и делитесь сводками для руководства.",
+    "navConnectionsLabel": "Подключения",
+    "navConnectionsDescription": "Подключите инструменты продаж и управления.",
+    "navTeamLabel": "Команда",
+    "navTeamDescription": "Управляйте доступом сотрудников.",
+    "navBillingLabel": "Оплата",
+    "navBillingDescription": "Управляйте подпиской и счетами.",
+    "navSettingsLabel": "Настройки",
+    "navSettingsDescription": "Информация об аккаунте и компании.",
+    "navSupportLabel": "Поддержка Avenqo",
+    "navSupportDescription": "Нужна помощь с Avenqo? Задайте вопрос здесь.",
+    "connectionsLoading": "Загрузка…",
+    "connectionsNoDataTitle": "Подключите данные, чтобы разблокировать аналитику и Avenqo AI.",
+    "connectionsNoDataFormats": "Принимаемые форматы: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Импортировать файл",
+    "connectionsUploadingLabel": "Загрузка…",
+    "connectionsAnalyzing": "Анализ структуры ваших данных…",
+    "connectionsMappingTitle": "Подтвердите сопоставление столбцов",
+    "connectionsMappingSubtitle": "Некоторые столбцы требуют ручного подтверждения перед активацией аналитики.",
+    "connectionsMappingIgnore": "Игнорировать этот столбец",
+    "connectionsConfirmMapping": "Подтвердить сопоставление",
+    "connectionsReadyTitle": "Данные готовы",
+    "connectionsStatNameLabel": "Название",
+    "connectionsStatRowsLabel": "Строки",
+    "connectionsStatColumnsLabel": "Столбцы",
+    "connectionsStatUpdatedLabel": "Последнее обновление",
+    "connectionsGoDashboard": "Перейти к панели",
+    "connectionsAskAvenqo": "Спросить Avenqo AI",
+    "connectionsImportAnother": "Импортировать другой набор данных",
+    "connectionsRetry": "Повторить",
+    "connectionsGenericError": "Произошла непредвиденная ошибка.",
+    "connectionsFileEmptyError": "Выбранный файл пуст или не может быть прочитан.",
+    "connectionsProcessingError": "Не удалось обработать этот файл.",
+    "businessDefaultTitle": "Ваше пространство готово",
+    "businessDefaultDescription": "Подключите инструменты, чтобы видеть здесь актуальную информацию.",
+    "businessConnectButton": "Подключить мои инструменты",
+    "businessSalesTitle": "Отслеживайте каждое изменение",
+    "businessSalesDescription": "Здесь появятся тенденции, сравнения и прогнозы продаж.",
+    "businessCustomersTitle": "Удерживайте нужных клиентов",
+    "businessCustomersDescription": "Здесь вы найдёте клиентов для приоритизации, реактивации или сопровождения.",
+    "businessProductsTitle": "Управляйте каталогом",
+    "businessProductsDescription": "Здесь будут собраны лучшие товары, ожидаемый спрос и запасы для отслеживания.",
+    "businessRecommendationsTitle": "Действуйте напрямую по возможностям",
+    "businessRecommendationsDescription": "Avenqo ранжирует возможности по их потенциальному влиянию на ваш бизнес.",
+    "businessAlertsTitle": "Будьте в курсе без лишнего шума",
+    "businessAlertsDescription": "Важные изменения и риски будут отмечены рекомендуемым действием.",
+    "businessReportsTitle": "Ваши сводки для руководства",
+    "businessReportsDescription": "Создавайте и делитесь понятными отчётами о результатах вашей компании.",
+    "billingTitle": "Оплата",
+    "billingPortalButton": "Портал Stripe",
+    "billingUnavailable": "Оплата временно недоступна.",
+    "billingPlanPrefix": "Тариф ",
+    "billingStatusPrefix": "Статус: ",
+    "billingCancelScheduled": "Запланирована отмена",
+    "billingInvoicesTitle": "Счета",
+    "billingInvoiceFallback": "Счёт",
+    "employeesTitle": "Пользователи",
+    "employeesRefreshTooltip": "Обновить",
+    "employeesUnavailable": "Доступ пользователей временно недоступен.",
+    "employeesColumnName": "Имя",
+    "employeesColumnEmail": "Эл. почта",
+    "employeesColumnRole": "Роль",
+    "employeesColumnStatus": "Статус",
+    "settingsTitle": "Настройки",
+    "settingsSubtitle": "Информация об аккаунте, компании и предпочтениях.",
+    "settingsAccountSection": "Аккаунт",
+    "settingsCompanySection": "Компания",
+    "settingsAppearanceSection": "Внешний вид",
+    "settingsSessionSection": "Сессия",
+    "settingsNameLabel": "Имя",
+    "settingsEmailLabel": "Эл. почта",
+    "settingsRoleLabel": "Роль",
+    "settingsPlanLabel": "Тариф",
+    "settingsManageSubscription": "Управление подпиской",
+    "settingsThemeLabel": "Тема",
+    "settingsLanguageLabel": "Язык",
+    "settingsThemeLight": "Светлая",
+    "settingsThemeDark": "Тёмная",
+    "settingsThemeSystem": "Системная",
+    "settingsLogout": "Выйти"
   }
 }

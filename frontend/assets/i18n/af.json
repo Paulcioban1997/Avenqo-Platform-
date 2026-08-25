@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Meld aan",
-    "tryFree": "Probeer gratis",
+    "tryFree": "Probeer Avenqo",
     "watchDemo": "Kyk 'n demo",
-    "noCreditCard": "Geen kredietkaart nodig nie",
+    "noCreditCard": "Gepersonaliseerde opstelling",
     "guidedSetup": "Begeleide opstelling",
     "isolatedData": "Geïsoleerde data"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Skaalbare huisvesting"
   },
   "modulesSection": {
-    "kicker": "Die Avenqo-reeks",
-    "title": "'n Module vir elke besigheidsprioriteit.",
-    "subtitle": "Bou jou pasgemaakte omgewing. Alle modules deel dieselfde ervaring en werk saam.",
-    "discover": "Ontdek",
+    "kicker": "Avenqo-modules",
+    "title": "Een modulêre platform, wat groei soos nodig",
+    "subtitle": "Aktiveer die modules wat jy vandag nodig het, en brei later uit sonder om gereedskap te verander.",
+    "discover": "Ontdek meer",
+    "availableNow": "Nou beskikbaar",
+    "comingSoon": "Binnekort",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Bestuur verkope, produkte en lojaliteit vanuit een oorsig."
+        "name": "Retail Intelligence",
+        "description": "Intydse verkope- en voorraadanalise vir kleinhandel.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Prioritiseer verhoudinge, geleenthede en die beste volgende stappe."
+        "name": "CRM AI",
+        "description": "AI-gedrewe kliëntverhoudingbestuur vir 'n slimmer verkoopspyplyn.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Versnel finansiële monitering en rekeningkundige afsluiting."
+        "name": "OCR AI",
+        "description": "Outomatiese data-onttrekking uit fakture en geskandeerde dokumente.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Verander inkomende dokumente in gestruktureerde prosesse."
+        "name": "Voice AI",
+        "description": "Stemassistent vir transkripsie en opvolging van klante-oproepe.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Verstaan die neigings en afwykings wat regtig saak maak."
+        "name": "Media AI",
+        "description": "Skepping en analise van visuele en bemarkingsinhoud.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Orkestreer meer relevante en meetbare veldtogte."
+        "name": "Accounting AI",
+        "description": "Outomatisering van rekeningkunde en finansiële versoening.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Verskaf betroubare antwoorde gebaseer op maatskappykennis."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Outomatiseer stem-interaksies sonder om konteks te verloor."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Verbind spanne en outomatiseer herhalende take."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Skep en organiseer jou inhoud vanuit een werkruimte."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Verminder reaksietye en verbeter elke oplossing."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Ontplooi 'n gespreksassistent vir jou kliënte."
+        "name": "Legal AI",
+        "description": "Hersiening en opsomming van kontrakte met AI-hulp.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Deursigtige pryse",
-    "title": "Begin nou. Groei op jou eie pas.",
-    "subtitle": "Elke plan sluit die platform, die Avenqo-assistent en 'n veilige werkruimte in.",
+    "kicker": "Pryse",
+    "title": "'n Plan vir elke fase van jou groei",
+    "subtitle": "Begin met 'n demo, kies dan die plan wat by jou maatskappy se grootte pas.",
     "popular": "Gewildste",
-    "priceLabel": "Op aanvraag",
+    "priceLabel": "Prys op aanvraag",
     "plans": [
       {
-        "tier": "Basies",
-        "title": "Om te begin",
+        "tier": "Demo",
+        "title": "Probeer Avenqo met jou data",
+        "priceLabel": "Gratis",
         "items": [
-          "1 Avenqo-module",
-          "Tot 5 gebruikers",
-          "Ingeboude assistent",
-          "Standaardondersteuning"
+          "Tydsbeperkte toegang",
+          "Demo- of eie data",
+          "Ondersteuning per e-pos"
         ],
-        "action": "Praat met 'n adviseur"
+        "action": "Vra 'n demo aan"
       },
       {
-        "tier": "Professioneel",
-        "title": "Om te versnel",
+        "tier": "Professional",
+        "title": "Vir maatskappye wat wil groei",
+        "priceLabel": "Prys op aanvraag",
         "items": [
-          "Tot 5 modules",
-          "Tot 25 gebruikers",
-          "Gevorderde outomatisering",
-          "Prioriteitondersteuning"
+          "Alle kernmodules",
+          "Skaalbare aantal gebruikers",
+          "Prioriteitsondersteuning"
         ],
-        "action": "Probeer gratis"
+        "action": "Kontak ons"
       },
       {
-        "tier": "Onderneming",
-        "title": "Om te orkestreer",
+        "tier": "Enterprise",
+        "title": "Vir organisasies met gevorderde behoeftes",
+        "priceLabel": "Prys op aanvraag",
         "items": [
-          "Onbeperkte modules",
-          "Pasgemaakte gebruikers",
-          "Pasgemaakte integrasies",
-          "Toegewyde bestuur"
+          "Pasgemaakte integrasie",
+          "Toegewyde rekeningbestuurder",
+          "Diensvlakooreenkoms"
         ],
         "action": "Kontak verkope"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Jou volgende stap",
     "title": "Bestuur jou besigheid anders.",
-    "tryFree": "Probeer gratis",
+    "tryFree": "Probeer Avenqo",
     "scheduleDemo": "Skeduleer 'n demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Bronne",
     "newest": "Nuutste",
     "you": "Jy",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Wat is my topverkoperprodukte hierdie maand?",
+      "Watter kliënte is in gevaar om op te hou koop?",
+      "Som my besigheidsprestasie hierdie week op.",
+      "Wat is die hoogste prioriteit-geleenthede nou?"
+    ]
   },
   "auth": {
     "tagline": "Die AI-platform vir jou besigheid",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Gemiddelde bestelwaarde",
     "prioritiesTitle": "Aanbevole prioriteite",
     "prioritiesEmpty": "Sodra data gekoppel is, sal jou prioriteite hier verskyn.",
-    "planLabel": "Plan"
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "Vra vrae oor jou besigheidsdata en ontvang kontekstuele insigte.",
+    "askAvenqoCta": "Vra Avenqo AI",
+    "importDataTitle": "Voer jou data in",
+    "importDataSubtitle": "Verbind of voer jou besigheidsbronne in om Avenqo se intelligensie te ontsluit.",
+    "importDataCta": "Voer my data in",
+    "connectionsTitle": "Verbindings",
+    "connectionsEmpty": "Nog geen data verbind nie",
+    "connectionsEmptyCta": "Voer my data in",
+    "connectionsReadyLabel": "Gereed",
+    "connectionsLastUpdate": "Laaste opdatering",
+    "activityTitle": "Onlangse aktiwiteit",
+    "activityEmpty": "Nog geen onlangse aktiwiteit nie.",
+    "stepsTitle": "Aanbevole volgende stappe",
+    "stepOrgLabel": "Voltooi jou maatskappy-opstelling",
+    "stepDataLabel": "Verbind of voer jou data in",
+    "stepInsightsLabel": "Verken jou insigte",
+    "stepAskLabel": "Vra Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Avenqo-bevelsentrum",
@@ -465,5 +477,132 @@
     "settingsTitle": "Instellings",
     "signedInAs": "Aangemeld as",
     "noSettingsMessage": "Geen platformwye konfigurasie word hier vertoon nie — geen behoefte om enigiets buiten rekeningidentiteit te vertoon nie."
+  },
+  "onboarding": {
+    "title": "Kom ons stel jou Avenqo-werkspasie op",
+    "subtitle": "'n Paar vinnige vrae om jou prioriteite en aanbevelings te personaliseer.",
+    "goalsLabel": "Wat is jou belangrikste doelwitte?",
+    "goalIncreaseSales": "Verkope verhoog",
+    "goalReduceChurn": "Kliëntverlies verminder",
+    "goalOptimizePricing": "Pryse optimaliseer",
+    "goalImproveInventory": "Voorraadbestuur verbeter",
+    "goalUnderstandCustomers": "My kliënte beter verstaan",
+    "goalAutomateReports": "My verslae outomatiseer",
+    "toolsLabel": "Watter gereedskap gebruik jy tans?",
+    "toolPos": "Verkooppuntstelsel (POS)",
+    "toolEcommerce": "E-handelsplatform",
+    "toolSpreadsheets": "Sigblaaie (Excel/Sheets)",
+    "toolAccounting": "Rekeningkundige sagteware",
+    "toolCrm": "CRM",
+    "toolNone": "Nog geen gereedskap nie",
+    "teamSizeLabel": "Wat is jou span se grootte?",
+    "teamSizeSolo": "Net ek",
+    "teamSizeSmall": "2 tot 10 mense",
+    "teamSizeMedium": "11 tot 50 mense",
+    "teamSizeLarge": "Meer as 50 mense",
+    "refineIndustryLabel": "Verfyn jou sektor (opsioneel)",
+    "refineIndustryHint": "Bv. gespesialiseerde kleinhandel, kitskos, rekeningkantoor...",
+    "continueCta": "Gaan voort",
+    "skipCta": "Slaan tans oor",
+    "genericError": "Ons kon nie jou antwoorde nou stoor nie.",
+    "goalsRequired": "Kies ten minste een doelwit.",
+    "teamSizeRequired": "Kies jou spangrootte."
+  },
+  "company": {
+    "navOverviewLabel": "Oorsig",
+    "navOverviewDescription": "Die belangrikste aanwysers van jou besigheid.",
+    "navAssistantLabel": "KI-assistent",
+    "navAssistantDescription": "Vra vrae en tree op.",
+    "navSalesLabel": "Verkope",
+    "navSalesDescription": "Volg inkomste en tendense.",
+    "navCustomersLabel": "Kliënte",
+    "navCustomersDescription": "Verstaan lojaliteit en verliesrisiko.",
+    "navProductsLabel": "Produkte",
+    "navProductsDescription": "Monitor vraag en katalogusprestasie.",
+    "navRecommendationsLabel": "Aanbevelings",
+    "navRecommendationsDescription": "Vind die geleenthede met die hoogste prioriteit.",
+    "navAlertsLabel": "Waarskuwings",
+    "navAlertsDescription": "Volg veranderinge wat jou aandag verg.",
+    "navReportsLabel": "Verslae",
+    "navReportsDescription": "Bekyk en deel jou bestuursopsommings.",
+    "navConnectionsLabel": "Verbindings",
+    "navConnectionsDescription": "Verbind jou verkoops- en bestuursgereedskap.",
+    "navTeamLabel": "Span",
+    "navTeamDescription": "Bestuur jou spanlede se toegang.",
+    "navBillingLabel": "Fakturering",
+    "navBillingDescription": "Bestuur jou intekening en fakture.",
+    "navSettingsLabel": "Instellings",
+    "navSettingsDescription": "Jou rekening- en maatskappyinligting.",
+    "navSupportLabel": "Avenqo-ondersteuning",
+    "navSupportDescription": "Benodig jy hulp met Avenqo? Vra jou vraag hier.",
+    "connectionsLoading": "Laai tans…",
+    "connectionsNoDataTitle": "Verbind jou data om analise en Avenqo AI te ontsluit.",
+    "connectionsNoDataFormats": "Aanvaarde formate: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Voer 'n lêer in",
+    "connectionsUploadingLabel": "Laai tans op…",
+    "connectionsAnalyzing": "Analiseer die struktuur van jou data…",
+    "connectionsMappingTitle": "Bevestig jou kolomkartering",
+    "connectionsMappingSubtitle": "Sommige kolomme vereis handmatige bevestiging voordat analise geaktiveer kan word.",
+    "connectionsMappingIgnore": "Ignoreer hierdie kolom",
+    "connectionsConfirmMapping": "Bevestig kartering",
+    "connectionsReadyTitle": "Data is gereed",
+    "connectionsStatNameLabel": "Naam",
+    "connectionsStatRowsLabel": "Rye",
+    "connectionsStatColumnsLabel": "Kolomme",
+    "connectionsStatUpdatedLabel": "Laaste opdatering",
+    "connectionsGoDashboard": "Gaan na kontrolebord",
+    "connectionsAskAvenqo": "Vra Avenqo AI",
+    "connectionsImportAnother": "Voer nog 'n datastel in",
+    "connectionsRetry": "Probeer weer",
+    "connectionsGenericError": "'n Onverwagte fout het voorgekom.",
+    "connectionsFileEmptyError": "Die gekose lêer is leeg of onleesbaar.",
+    "connectionsProcessingError": "Hierdie lêer kon nie verwerk word nie.",
+    "businessDefaultTitle": "Jou ruimte is gereed",
+    "businessDefaultDescription": "Verbind jou gereedskap om bygewerkte inligting hier te sien.",
+    "businessConnectButton": "Verbind my gereedskap",
+    "businessSalesTitle": "Volg elke verandering",
+    "businessSalesDescription": "Jou verkoopstendense, vergelykings en vooruitskattings sal hier verskyn.",
+    "businessCustomersTitle": "Behou die regte kliënte",
+    "businessCustomersDescription": "Hier sal jy kliënte vind om te prioritiseer, te heraktiveer of te ondersteun.",
+    "businessProductsTitle": "Bestuur jou katalogus",
+    "businessProductsDescription": "Topverkopers, verwagte vraag en voorraad om dop te hou sal hier versamel word.",
+    "businessRecommendationsTitle": "Tree direk op geleenthede op",
+    "businessRecommendationsDescription": "Avenqo sal geleenthede rangskik volgens hul potensiële impak op jou besigheid.",
+    "businessAlertsTitle": "Bly ingelig sonder geraas",
+    "businessAlertsDescription": "Belangrike veranderinge en risiko's sal met 'n aanbevole aksie gemerk word.",
+    "businessReportsTitle": "Jou bestuursopsommings",
+    "businessReportsDescription": "Skep en deel duidelike verslae oor jou maatskappy se resultate.",
+    "billingTitle": "Fakturering",
+    "billingPortalButton": "Stripe-portaal",
+    "billingUnavailable": "Fakturering is tydelik onbeskikbaar.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "Status: ",
+    "billingCancelScheduled": "Kansellasie geskeduleer",
+    "billingInvoicesTitle": "Fakture",
+    "billingInvoiceFallback": "Faktuur",
+    "employeesTitle": "Gebruikers",
+    "employeesRefreshTooltip": "Verfris",
+    "employeesUnavailable": "Gebruikerstoegang is tydelik onbeskikbaar.",
+    "employeesColumnName": "Naam",
+    "employeesColumnEmail": "E-pos",
+    "employeesColumnRole": "Rol",
+    "employeesColumnStatus": "Status",
+    "settingsTitle": "Instellings",
+    "settingsSubtitle": "Jou rekening-, maatskappy- en voorkeurinligting.",
+    "settingsAccountSection": "Rekening",
+    "settingsCompanySection": "Maatskappy",
+    "settingsAppearanceSection": "Voorkoms",
+    "settingsSessionSection": "Sessie",
+    "settingsNameLabel": "Naam",
+    "settingsEmailLabel": "E-pos",
+    "settingsRoleLabel": "Rol",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Bestuur intekening",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Taal",
+    "settingsThemeLight": "Lig",
+    "settingsThemeDark": "Donker",
+    "settingsThemeSystem": "Stelsel",
+    "settingsLogout": "Meld af"
   }
 }

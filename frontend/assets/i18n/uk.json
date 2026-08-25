@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Увійти",
-    "tryFree": "Спробувати безкоштовно",
+    "tryFree": "Спробувати Avenqo",
     "watchDemo": "Переглянути демо",
-    "noCreditCard": "Без кредитної картки",
+    "noCreditCard": "Персональний супровід",
     "guidedSetup": "Налаштування із супроводом",
     "isolatedData": "Ізольовані дані"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Масштабований хостинг"
   },
   "modulesSection": {
-    "kicker": "Пакет Avenqo",
-    "title": "Модуль для кожного бізнес-пріоритету.",
-    "subtitle": "Побудуйте своє середовище під власні потреби. Усі модулі мають єдиний досвід і працюють разом.",
+    "kicker": "Модулі Avenqo",
+    "title": "Єдина платформа з модулями, що поступово розширюються.",
+    "subtitle": "Avenqo — модульна платформа ШІ. Retail Intelligence уже доступний, нові модулі впроваджуватимуться поступово.",
     "discover": "Дізнатися більше",
+    "availableNow": "Доступно зараз",
+    "comingSoon": "Незабаром",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Керуйте продажами, товарами та лояльністю з єдиного огляду."
+        "name": "Retail Intelligence",
+        "description": "Керуйте продажами, товарами та лояльністю з єдиного вікна.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Розставляйте пріоритети у відносинах, можливостях і найкращих подальших діях."
+        "name": "CRM AI",
+        "description": "Розставляйте пріоритети у відносинах, можливостях і наступних діях.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Прискорте фінансовий моніторинг і бухгалтерське закриття."
+        "name": "OCR AI",
+        "description": "Перетворюйте вхідні документи на структуровані операції.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Перетворюйте вхідні документи на структуровані операції."
+        "name": "Voice AI",
+        "description": "Автоматизуйте голосові взаємодії, не втрачаючи контекст.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Розумійте тенденції та відхилення, які справді важливі."
+        "name": "Media AI",
+        "description": "Створюйте та впорядковуйте контент у єдиному робочому просторі.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Організовуйте більш релевантні та вимірювані кампанії."
+        "name": "Accounting AI",
+        "description": "Пришвидшіть фінансовий облік і закриття бухгалтерії.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Надавайте достовірні відповіді на основі знань компанії."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Автоматизуйте голосові взаємодії, не втрачаючи контекст."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "З'єднуйте команди й автоматизуйте повторювані завдання."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Створюйте та впорядковуйте контент з єдиного робочого простору."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Скорочуйте час відповіді та покращуйте кожне рішення."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Впровадьте розмовного асистента для своїх клієнтів."
+        "name": "Legal AI",
+        "description": "Аналізуйте та захищайте свої договірні документи.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "Прозорі ціни",
+    "kicker": "Тарифи",
     "title": "Почніть зараз. Зростайте у своєму темпі.",
     "subtitle": "Кожен тариф включає платформу, асистента Avenqo та захищений робочий простір.",
     "popular": "Найпопулярніший",
-    "priceLabel": "Індивідуально",
+    "priceLabel": "Ціна уточнюється",
     "plans": [
       {
-        "tier": "Базовий",
-        "title": "Щоб почати",
+        "tier": "Demo",
+        "title": "Щоб ознайомитися з Avenqo",
+        "priceLabel": "Ціна уточнюється",
         "items": [
-          "1 модуль Avenqo",
-          "До 5 користувачів",
-          "Вбудований асистент",
-          "Стандартна підтримка"
+          "Доступ до Retail Intelligence",
+          "Вбудований асистент Avenqo",
+          "Захищений робочий простір"
         ],
-        "action": "Поговорити з консультантом"
+        "action": "Спробувати Avenqo"
       },
       {
-        "tier": "Професійний",
-        "title": "Щоб прискоритися",
+        "tier": "Professional",
+        "title": "Для компаній, які хочуть більшого",
+        "priceLabel": "Ціна уточнюється",
         "items": [
-          "До 5 модулів",
-          "До 25 користувачів",
-          "Розширена автоматизація",
+          "Повний Retail Intelligence",
+          "Розширені автоматизації",
           "Пріоритетна підтримка"
         ],
-        "action": "Спробувати безкоштовно"
+        "action": "Почати"
       },
       {
-        "tier": "Корпоративний",
-        "title": "Щоб оркеструвати",
+        "tier": "Enterprise",
+        "title": "Індивідуально",
+        "priceLabel": "Зв'язатися з відділом продажів",
         "items": [
-          "Необмежені модулі",
-          "Індивідуальна кількість користувачів",
           "Індивідуальні інтеграції",
-          "Виділене управління"
+          "Виділене управління",
+          "Виділена підтримка"
         ],
         "action": "Зв'язатися з відділом продажів"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Ваш наступний крок",
     "title": "Керуйте бізнесом по-іншому.",
-    "tryFree": "Спробувати безкоштовно",
+    "tryFree": "Спробувати Avenqo",
     "scheduleDemo": "Запланувати демо"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Джерела",
     "newest": "Найновіші",
     "you": "Ви",
-    "avenqoAi": "Avenqo ШІ"
+    "avenqoAi": "Avenqo ШІ",
+    "suggestions": [
+      "Як ідуть мої продажі?",
+      "Яким клієнтам потрібна увага?",
+      "Що змінилося цього місяця?",
+      "Підсумуйте результати мого бізнесу."
+    ]
   },
   "auth": {
     "tagline": "Платформа ШІ для рішень вашої компанії",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Середнє замовлення",
     "prioritiesTitle": "Рекомендовані пріоритети",
     "prioritiesEmpty": "Ваші пріоритети з'являться тут, як тільки ваші дані будуть підключені.",
-    "planLabel": "План"
+    "planLabel": "План",
+    "askAvenqoSubtitle": "Ставте запитання про дані вашого бізнесу та отримуйте контекстні відомості.",
+    "askAvenqoCta": "Запитати Avenqo AI",
+    "importDataTitle": "Імпортуйте свої дані",
+    "importDataSubtitle": "Підключіть або імпортуйте джерела вашого бізнесу, щоб розблокувати аналітику Avenqo.",
+    "importDataCta": "Імпортувати мої дані",
+    "connectionsTitle": "Підключення",
+    "connectionsEmpty": "Дані ще не підключено",
+    "connectionsEmptyCta": "Імпортувати мої дані",
+    "connectionsReadyLabel": "Готово",
+    "connectionsLastUpdate": "Останнє оновлення",
+    "activityTitle": "Остання активність",
+    "activityEmpty": "Поки немає останньої активності.",
+    "stepsTitle": "Рекомендовані наступні кроки",
+    "stepOrgLabel": "Завершіть налаштування вашої компанії",
+    "stepDataLabel": "Підключіть або імпортуйте свої дані",
+    "stepInsightsLabel": "Досліджуйте свою аналітику",
+    "stepAskLabel": "Запитати Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Центр керування Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Налаштування",
     "signedInAs": "Увійшли як",
     "noSettingsMessage": "Жодна глобальна конфігурація платформи тут наразі не відображається — нічого чесно показати, крім ідентичності облікового запису."
+  },
+  "onboarding": {
+    "title": "Налаштуймо ваш робочий простір Avenqo",
+    "subtitle": "Кілька швидких запитань, щоб персоналізувати ваші пріоритети та рекомендації.",
+    "goalsLabel": "Які ваші основні цілі?",
+    "goalIncreaseSales": "Збільшити продажі",
+    "goalReduceChurn": "Зменшити відтік клієнтів",
+    "goalOptimizePricing": "Оптимізувати ціноутворення",
+    "goalImproveInventory": "Покращити управління запасами",
+    "goalUnderstandCustomers": "Краще розуміти своїх клієнтів",
+    "goalAutomateReports": "Автоматизувати звіти",
+    "toolsLabel": "Якими інструментами ви користуєтесь зараз?",
+    "toolPos": "Касова система (POS)",
+    "toolEcommerce": "Платформа електронної комерції",
+    "toolSpreadsheets": "Електронні таблиці (Excel/Sheets)",
+    "toolAccounting": "Бухгалтерське ПЗ",
+    "toolCrm": "CRM",
+    "toolNone": "Ще немає інструментів",
+    "teamSizeLabel": "Який розмір вашої команди?",
+    "teamSizeSolo": "Тільки я",
+    "teamSizeSmall": "Від 2 до 10 осіб",
+    "teamSizeMedium": "Від 11 до 50 осіб",
+    "teamSizeLarge": "Понад 50 осіб",
+    "refineIndustryLabel": "Уточніть галузь (необов'язково)",
+    "refineIndustryHint": "Напр. спеціалізована торгівля, фастфуд, бухгалтерська фірма...",
+    "continueCta": "Продовжити",
+    "skipCta": "Пропустити поки що",
+    "genericError": "Не вдалося зберегти ваші відповіді зараз.",
+    "goalsRequired": "Виберіть принаймні одну мету.",
+    "teamSizeRequired": "Виберіть розмір вашої команди."
+  },
+  "company": {
+    "navOverviewLabel": "Огляд",
+    "navOverviewDescription": "Ключові показники вашого бізнесу.",
+    "navAssistantLabel": "ШІ-асистент",
+    "navAssistantDescription": "Ставте запитання та дійте.",
+    "navSalesLabel": "Продажі",
+    "navSalesDescription": "Відстежуйте дохід і тенденції.",
+    "navCustomersLabel": "Клієнти",
+    "navCustomersDescription": "Розумійте лояльність і ризик відтоку.",
+    "navProductsLabel": "Товари",
+    "navProductsDescription": "Стежте за попитом і ефективністю каталогу.",
+    "navRecommendationsLabel": "Рекомендації",
+    "navRecommendationsDescription": "Знаходьте пріоритетні можливості.",
+    "navAlertsLabel": "Сповіщення",
+    "navAlertsDescription": "Стежте за змінами, що потребують вашої уваги.",
+    "navReportsLabel": "Звіти",
+    "navReportsDescription": "Переглядайте та діліться executive-звітами.",
+    "navConnectionsLabel": "Підключення",
+    "navConnectionsDescription": "Підключіть свої інструменти продажів та управління.",
+    "navTeamLabel": "Команда",
+    "navTeamDescription": "Керуйте доступом ваших колег.",
+    "navBillingLabel": "Оплата",
+    "navBillingDescription": "Керуйте підпискою та рахунками.",
+    "navSettingsLabel": "Налаштування",
+    "navSettingsDescription": "Інформація про ваш акаунт і компанію.",
+    "navSupportLabel": "Підтримка Avenqo",
+    "navSupportDescription": "Потрібна допомога з Avenqo? Поставте запитання тут.",
+    "connectionsLoading": "Завантаження…",
+    "connectionsNoDataTitle": "Підключіть дані, щоб розблокувати аналітику та Avenqo AI.",
+    "connectionsNoDataFormats": "Прийняті формати: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Імпортувати файл",
+    "connectionsUploadingLabel": "Завантаження…",
+    "connectionsAnalyzing": "Аналіз структури ваших даних…",
+    "connectionsMappingTitle": "Підтвердьте зіставлення стовпців",
+    "connectionsMappingSubtitle": "Деякі стовпці потребують ручного підтвердження перед активацією аналітики.",
+    "connectionsMappingIgnore": "Ігнорувати цей стовпець",
+    "connectionsConfirmMapping": "Підтвердити зіставлення",
+    "connectionsReadyTitle": "Дані готові",
+    "connectionsStatNameLabel": "Назва",
+    "connectionsStatRowsLabel": "Рядки",
+    "connectionsStatColumnsLabel": "Стовпці",
+    "connectionsStatUpdatedLabel": "Останнє оновлення",
+    "connectionsGoDashboard": "Перейти до панелі",
+    "connectionsAskAvenqo": "Запитати Avenqo AI",
+    "connectionsImportAnother": "Імпортувати інший набір даних",
+    "connectionsRetry": "Повторити",
+    "connectionsGenericError": "Сталася непередбачена помилка.",
+    "connectionsFileEmptyError": "Обраний файл порожній або не може бути прочитаний.",
+    "connectionsProcessingError": "Не вдалося обробити цей файл.",
+    "businessDefaultTitle": "Ваш простір готовий",
+    "businessDefaultDescription": "Підключіть інструменти, щоб бачити тут актуальну інформацію.",
+    "businessConnectButton": "Підключити мої інструменти",
+    "businessSalesTitle": "Відстежуйте кожну зміну",
+    "businessSalesDescription": "Тут з'являться тенденції, порівняння та прогнози ваших продажів.",
+    "businessCustomersTitle": "Утримуйте потрібних клієнтів",
+    "businessCustomersDescription": "Тут ви знайдете клієнтів для пріоритизації, реактивації або супроводу.",
+    "businessProductsTitle": "Керуйте своїм каталогом",
+    "businessProductsDescription": "Тут будуть зібрані найкращі товари, очікуваний попит і запаси для відстеження.",
+    "businessRecommendationsTitle": "Дійте безпосередньо щодо можливостей",
+    "businessRecommendationsDescription": "Avenqo ранжує можливості за їхнім потенційним впливом на ваш бізнес.",
+    "businessAlertsTitle": "Будьте в курсі без зайвого шуму",
+    "businessAlertsDescription": "Важливі зміни та ризики будуть позначені рекомендованою дією.",
+    "businessReportsTitle": "Ваші executive-звіти",
+    "businessReportsDescription": "Створюйте та діліться зрозумілими звітами про результати вашої компанії.",
+    "billingTitle": "Оплата",
+    "billingPortalButton": "Портал Stripe",
+    "billingUnavailable": "Оплата тимчасово недоступна.",
+    "billingPlanPrefix": "Тариф ",
+    "billingStatusPrefix": "Статус: ",
+    "billingCancelScheduled": "Заплановано скасування",
+    "billingInvoicesTitle": "Рахунки",
+    "billingInvoiceFallback": "Рахунок",
+    "employeesTitle": "Користувачі",
+    "employeesRefreshTooltip": "Оновити",
+    "employeesUnavailable": "Доступ користувачів тимчасово недоступний.",
+    "employeesColumnName": "Ім'я",
+    "employeesColumnEmail": "Ел. пошта",
+    "employeesColumnRole": "Роль",
+    "employeesColumnStatus": "Статус",
+    "settingsTitle": "Налаштування",
+    "settingsSubtitle": "Інформація про ваш акаунт, компанію та вподобання.",
+    "settingsAccountSection": "Акаунт",
+    "settingsCompanySection": "Компанія",
+    "settingsAppearanceSection": "Зовнішній вигляд",
+    "settingsSessionSection": "Сесія",
+    "settingsNameLabel": "Ім'я",
+    "settingsEmailLabel": "Ел. пошта",
+    "settingsRoleLabel": "Роль",
+    "settingsPlanLabel": "Тариф",
+    "settingsManageSubscription": "Керувати підпискою",
+    "settingsThemeLabel": "Тема",
+    "settingsLanguageLabel": "Мова",
+    "settingsThemeLight": "Світла",
+    "settingsThemeDark": "Темна",
+    "settingsThemeSystem": "Системна",
+    "settingsLogout": "Вийти"
   }
 }

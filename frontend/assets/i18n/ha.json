@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Shiga",
-    "tryFree": "Gwada kyauta",
+    "tryFree": "Gwada Avenqo",
     "watchDemo": "Duba nunin",
-    "noCreditCard": "Ba a bukatar katin kiredit",
+    "noCreditCard": "Saitin keɓaɓɓen",
     "guidedSetup": "Saitin da ake jagoranta",
     "isolatedData": "Bayanan da aka keɓe"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Karɓar bakuncin da za a iya faɗaɗawa"
   },
   "modulesSection": {
-    "kicker": "Rukunin Avenqo",
-    "title": "Module don kowane fifikon kasuwanci.",
-    "subtitle": "Gina yanayin ku na musamman. Duk modules suna raba irin wannan gogewa kuma suna aiki tare.",
-    "discover": "Gano",
+    "kicker": "Modules na Avenqo",
+    "title": "Dandamali ɗaya na modular, yana girma yadda ake bukata",
+    "subtitle": "Kunna modules ɗin da kake bukata yau, kuma ka faɗaɗa daga baya ba tare da canza kayan aiki ba.",
+    "discover": "Gano ƙari",
+    "availableNow": "Akwai yanzu",
+    "comingSoon": "Nan gaba kadan",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Sarrafa siyarwa, kayayyaki, da aminci daga wuri ɗaya."
+        "name": "Retail Intelligence",
+        "description": "Bincike na tallace-tallace da kayayyaki a ainihin lokaci don kasuwancin dillanci.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Ba da fifiko ga alaƙa, damarmaki, da mafi kyawun matakan gaba."
+        "name": "CRM AI",
+        "description": "Sarrafa alaƙar abokan ciniki wanda AI ke tuƙi don ingantaccen tallace-tallace.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Hanzarta lura da kuɗi da rufe asusu."
+        "name": "OCR AI",
+        "description": "Cirewa bayanai ta atomatik daga takardun kuɗi da takardun da aka bincika.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Mayar da takardun da ke shigowa zuwa hanyoyin da aka tsara."
+        "name": "Voice AI",
+        "description": "Mataimaki na murya don rubutawa da bin diddigin kiran abokan ciniki.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Fahimci yanayin da bambance-bambancen da suke da mahimmanci."
+        "name": "Media AI",
+        "description": "Ƙirƙira da nazarin abun ciki na gani da tallace-tallace.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Shirya yaƙe-yaƙe masu dacewa da za a iya aunawa."
+        "name": "Accounting AI",
+        "description": "Sarrafa kansa na lissafin kuɗi da daidaita kuɗi.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Bayar da amsoshi masu dogaro dangane da ilimin kamfani."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Sarrafa mu'amalar murya ta atomatik ba tare da rasa mahallin ba."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Haɗa ƙungiyoyi da sarrafa ayyuka masu maimaitawa ta atomatik."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Kirkiro da tsara abubuwan ku daga wuri ɗaya na aiki."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Rage lokutan amsawa da inganta kowace mafita."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Tura mataimakin tattaunawa don abokan cinikinku."
+        "name": "Legal AI",
+        "description": "Bita da taƙaita kwangiloli tare da taimakon AI.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Farashi mai bayyana",
-    "title": "Fara yanzu. Yi girma a saurin ku.",
-    "subtitle": "Kowace shirin ya haɗa da dandali, mataimakin Avenqo, da amintaccen wurin aiki.",
+    "kicker": "Farashi",
+    "title": "Tsari don kowane matakin ci gaban ku",
+    "subtitle": "Fara da nunin gwaji, sannan zaɓi tsarin da ya dace da girman kamfaninku.",
     "popular": "Mafi shahara",
-    "priceLabel": "Bisa buƙata",
+    "priceLabel": "Farashi bisa buƙata",
     "plans": [
       {
-        "tier": "Na asali",
-        "title": "Don farawa",
+        "tier": "Demo",
+        "title": "Gwada Avenqo tare da bayananku",
+        "priceLabel": "Kyauta",
         "items": [
-          "Module Avenqo 1",
-          "Har zuwa masu amfani 5",
-          "Mataimaki da aka gina a ciki",
-          "Tallafi na yau da kullun"
+          "Shiga na ɗan lokaci",
+          "Bayanan gwaji ko naku",
+          "Taimako ta imel"
         ],
-        "action": "Yi magana da mai ba da shawara"
+        "action": "Nemi nunin gwaji"
       },
       {
-        "tier": "Ƙwararre",
-        "title": "Don hanzarta",
+        "tier": "Professional",
+        "title": "Don kamfanonin da suke son girma",
+        "priceLabel": "Farashi bisa buƙata",
         "items": [
-          "Har zuwa modules 5",
-          "Har zuwa masu amfani 25",
-          "Atomatik na ci gaba",
-          "Tallafi mai fifiko"
+          "Duk manyan modules",
+          "Adadin masu amfani mai iya girma",
+          "Taimako mai fifiko"
         ],
-        "action": "Gwada kyauta"
+        "action": "Tuntube mu"
       },
       {
-        "tier": "Kamfani",
-        "title": "Don daidaitawa",
+        "tier": "Enterprise",
+        "title": "Don ƙungiyoyi masu buƙatu na ci gaba",
+        "priceLabel": "Farashi bisa buƙata",
         "items": [
-          "Modules marasa iyaka",
-          "Masu amfani bisa buƙata",
-          "Haɗin gwiwa na musamman",
-          "Gudanarwa na musamman"
+          "Haɗin kai na musamman",
+          "Manajan asusun keɓantacce",
+          "Yarjejeniyar matakin sabis"
         ],
-        "action": "Tuntuɓi tawagar siyarwa"
+        "action": "Tuntuɓi tallace-tallace"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Matakinku na gaba",
     "title": "Gudanar da kasuwancinku daban.",
-    "tryFree": "Gwada kyauta",
+    "tryFree": "Gwada Avenqo",
     "scheduleDemo": "Tsara nunin"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Majiyoyi",
     "newest": "Sabo",
     "you": "Kai",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Waɗanne kayayyaki ne mafi kyawun sayarwa a wannan watan?",
+      "Waɗanne abokan ciniki ne cikin haɗarin dainawa siyayya?",
+      "Taƙaita aikin kasuwancina na wannan makon.",
+      "Waɗanne dama ne mafi muhimmanci a yanzu?"
+    ]
   },
   "auth": {
     "tagline": "Dandalin AI don kasuwancinku",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Matsakaicin ƙimar oda",
     "prioritiesTitle": "Fifikon da aka bayar da shawara",
     "prioritiesEmpty": "Da zarar an haɗa bayanai, fifikon ku za su bayyana anan.",
-    "planLabel": "Shirin"
+    "planLabel": "Shirin",
+    "askAvenqoSubtitle": "Yi tambayoyi game da bayanan kasuwancinka kuma ka sami fahimta bisa mahallin.",
+    "askAvenqoCta": "Tambayi Avenqo AI",
+    "importDataTitle": "Shigo da bayananka",
+    "importDataSubtitle": "Haɗa ko shigo da tushen kasuwancinka don buɗe hankalin Avenqo.",
+    "importDataCta": "Shigo da bayanana",
+    "connectionsTitle": "Haɗi",
+    "connectionsEmpty": "Babu bayanan da aka haɗa tukuna",
+    "connectionsEmptyCta": "Shigo da bayanana",
+    "connectionsReadyLabel": "A shirye",
+    "connectionsLastUpdate": "Sabuntawa na ƙarshe",
+    "activityTitle": "Ayyukan kwanan nan",
+    "activityEmpty": "Babu ayyukan kwanan nan tukuna.",
+    "stepsTitle": "Matakan gaba da aka ba da shawara",
+    "stepOrgLabel": "Kammala saitin kamfaninka",
+    "stepDataLabel": "Haɗa ko shigo da bayananka",
+    "stepInsightsLabel": "Bincika fahimtarka",
+    "stepAskLabel": "Tambayi Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Cibiyar Umarni ta Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Saituna",
     "signedInAs": "An shiga a matsayin",
     "noSettingsMessage": "Babu daidaitawar dandali gaba ɗaya da aka nuna anan — babu buƙatar nuna komai fiye da asalin asusu."
+  },
+  "onboarding": {
+    "title": "Bari mu saita wurin aikin Avenqo naka",
+    "subtitle": "'Yan tambayoyi masu sauri don keɓance abubuwan da suka fi muhimmanci da shawarwari a gare ka.",
+    "goalsLabel": "Menene manyan manufofinka?",
+    "goalIncreaseSales": "Ƙara tallace-tallace",
+    "goalReduceChurn": "Rage asarar abokan ciniki",
+    "goalOptimizePricing": "Inganta farashi",
+    "goalImproveInventory": "Inganta sarrafa kayayyaki",
+    "goalUnderstandCustomers": "Fahimtar abokan cinikina sosai",
+    "goalAutomateReports": "Yin rahotona ta atomatik",
+    "toolsLabel": "Waɗanne kayan aiki kake amfani da su a yanzu?",
+    "toolPos": "Tsarin siyar da kaya (POS)",
+    "toolEcommerce": "Dandalin kasuwanci ta yanar gizo",
+    "toolSpreadsheets": "Takardun lissafi (Excel/Sheets)",
+    "toolAccounting": "Software na lissafin kuɗi",
+    "toolCrm": "CRM",
+    "toolNone": "Babu kayan aiki tukuna",
+    "teamSizeLabel": "Menene girman ƙungiyarka?",
+    "teamSizeSolo": "Ni kaɗai",
+    "teamSizeSmall": "Mutane 2 zuwa 10",
+    "teamSizeMedium": "Mutane 11 zuwa 50",
+    "teamSizeLarge": "Fiye da mutane 50",
+    "refineIndustryLabel": "Ƙayyade sashenka (na zaɓi)",
+    "refineIndustryHint": "Misali: kasuwancin musamman, abinci na gaggawa, ofishin lissafin kuɗi...",
+    "continueCta": "Ci gaba",
+    "skipCta": "Tsallake yanzu",
+    "genericError": "Ba mu iya ajiye amsoshinka a yanzu ba.",
+    "goalsRequired": "Zaɓi aƙalla manufa ɗaya.",
+    "teamSizeRequired": "Zaɓi girman ƙungiyarka."
+  },
+  "company": {
+    "navOverviewLabel": "Bayyani",
+    "navOverviewDescription": "Manyan alamomin kasuwancinka.",
+    "navAssistantLabel": "Mataimakin AI",
+    "navAssistantDescription": "Yi tambayoyi kuma ka ɗauki mataki.",
+    "navSalesLabel": "Tallace-tallace",
+    "navSalesDescription": "Bibiyar kudaden shiga da yanayin kasuwanci.",
+    "navCustomersLabel": "Abokan ciniki",
+    "navCustomersDescription": "Fahimci aminci da haɗarin rasa abokan ciniki.",
+    "navProductsLabel": "Kayayyaki",
+    "navProductsDescription": "Sa ido kan buƙata da aikin kayan.",
+    "navRecommendationsLabel": "Shawarwari",
+    "navRecommendationsDescription": "Nemo dama mafi muhimmanci.",
+    "navAlertsLabel": "Faɗakarwa",
+    "navAlertsDescription": "Bi sauye-sauyen da suke buƙatar hankalinka.",
+    "navReportsLabel": "Rahotanni",
+    "navReportsDescription": "Duba kuma raba taƙaitattun rahotonka.",
+    "navConnectionsLabel": "Haɗi",
+    "navConnectionsDescription": "Haɗa kayan aikin tallace-tallace da gudanarwa.",
+    "navTeamLabel": "Ƙungiya",
+    "navTeamDescription": "Sarrafa shigar membobin ƙungiyarka.",
+    "navBillingLabel": "Biya",
+    "navBillingDescription": "Sarrafa biyan kuɗi da takardun kuɗinka.",
+    "navSettingsLabel": "Saitunan",
+    "navSettingsDescription": "Bayanan asusunka da kamfaninka.",
+    "navSupportLabel": "Tallafin Avenqo",
+    "navSupportDescription": "Kana buƙatar taimako kan Avenqo? Yi tambayarka a nan.",
+    "connectionsLoading": "Ana loda…",
+    "connectionsNoDataTitle": "Haɗa bayananka don buɗe bincike da Avenqo AI.",
+    "connectionsNoDataFormats": "Tsarukan da ake karɓa: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Shigo da fayil",
+    "connectionsUploadingLabel": "Ana loda…",
+    "connectionsAnalyzing": "Ana nazarin tsarin bayananka…",
+    "connectionsMappingTitle": "Tabbatar da tsarin ginshiƙanka",
+    "connectionsMappingSubtitle": "Wasu ginshiƙai suna buƙatar tabbatarwa da hannu kafin kunna bincike.",
+    "connectionsMappingIgnore": "Yi watsi da wannan ginshiƙin",
+    "connectionsConfirmMapping": "Tabbatar da tsari",
+    "connectionsReadyTitle": "Bayanai a shirye",
+    "connectionsStatNameLabel": "Suna",
+    "connectionsStatRowsLabel": "Layuka",
+    "connectionsStatColumnsLabel": "Ginshiƙai",
+    "connectionsStatUpdatedLabel": "Sabuntawa na ƙarshe",
+    "connectionsGoDashboard": "Zuwa dashboard",
+    "connectionsAskAvenqo": "Tambayi Avenqo AI",
+    "connectionsImportAnother": "Shigo da wani tarin bayanai",
+    "connectionsRetry": "Sake gwadawa",
+    "connectionsGenericError": "An sami kuskure da ba a zata ba.",
+    "connectionsFileEmptyError": "Fayil ɗin da aka zaɓa babu komai ko ba a iya karantawa.",
+    "connectionsProcessingError": "An kasa sarrafa wannan fayil.",
+    "businessDefaultTitle": "Wurin aikinka a shirye yake",
+    "businessDefaultDescription": "Haɗa kayan aikinka don ganin bayanan yau da kullum a nan.",
+    "businessConnectButton": "Haɗa kayan aikina",
+    "businessSalesTitle": "Bi kowane canji",
+    "businessSalesDescription": "Yanayin tallace-tallacen ka, kwatance da hasashe za su bayyana a nan.",
+    "businessCustomersTitle": "Riƙe abokan ciniki masu dacewa",
+    "businessCustomersDescription": "A nan za ka sami abokan ciniki don ba da fifiko, sake kunnawa ko rakiya.",
+    "businessProductsTitle": "Sarrafa katalogin ka",
+    "businessProductsDescription": "Kayayyaki mafi kyawun sayarwa, buƙatar da ake tsammani da kayan da za a sa ido a kansu za a tara su a nan.",
+    "businessRecommendationsTitle": "Yi aiki kai tsaye kan damarmaki",
+    "businessRecommendationsDescription": "Avenqo za ta jera damarmaki bisa ga tasirinsu mai yiwuwa a kasuwancinka.",
+    "businessAlertsTitle": "Ka kasance da masaniya ba tare da hayaniya ba",
+    "businessAlertsDescription": "Muhimman canje-canje da haɗari za a yi musu alama da matakin da aka ba da shawara.",
+    "businessReportsTitle": "Taƙaitattun rahotonka",
+    "businessReportsDescription": "Ƙirƙira kuma raba rahotanni bayyanannu game da sakamakon kamfaninka.",
+    "billingTitle": "Biya",
+    "billingPortalButton": "Dandalin Stripe",
+    "billingUnavailable": "Biya ba ta samuwa na ɗan lokaci.",
+    "billingPlanPrefix": "Tsari ",
+    "billingStatusPrefix": "Matsayi: ",
+    "billingCancelScheduled": "An tsara sokewa",
+    "billingInvoicesTitle": "Takardun kuɗi",
+    "billingInvoiceFallback": "Takardar kuɗi",
+    "employeesTitle": "Masu amfani",
+    "employeesRefreshTooltip": "Sabunta",
+    "employeesUnavailable": "Shigar masu amfani ba ta samuwa na ɗan lokaci.",
+    "employeesColumnName": "Suna",
+    "employeesColumnEmail": "Imel",
+    "employeesColumnRole": "Matsayi",
+    "employeesColumnStatus": "Matsayi",
+    "settingsTitle": "Saitunan",
+    "settingsSubtitle": "Bayanan asusunka, kamfaninka da abubuwan da ka fi so.",
+    "settingsAccountSection": "Asusu",
+    "settingsCompanySection": "Kamfani",
+    "settingsAppearanceSection": "Kamanni",
+    "settingsSessionSection": "Zama",
+    "settingsNameLabel": "Suna",
+    "settingsEmailLabel": "Imel",
+    "settingsRoleLabel": "Matsayi",
+    "settingsPlanLabel": "Tsari",
+    "settingsManageSubscription": "Sarrafa biyan kuɗi",
+    "settingsThemeLabel": "Jigo",
+    "settingsLanguageLabel": "Harshe",
+    "settingsThemeLight": "Haske",
+    "settingsThemeDark": "Duhu",
+    "settingsThemeSystem": "Tsarin",
+    "settingsLogout": "Fita"
   }
 }

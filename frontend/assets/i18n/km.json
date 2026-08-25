@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "ចូលប្រើ",
-    "tryFree": "សាកល្បងឥតគិតថ្លៃ",
+    "tryFree": "សាកល្បង Avenqo",
     "watchDemo": "មើលការបង្ហាញ",
-    "noCreditCard": "មិនត្រូវការកាតឥណទាន",
+    "noCreditCard": "ការកំណត់ផ្ទាល់ខ្លួន",
     "guidedSetup": "ការដំឡើងដែលមានការណែនាំ",
     "isolatedData": "ទិន្នន័យដាច់ដោយឡែក"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "ការបង្ហោះដែលអាចពង្រីកបាន"
   },
   "modulesSection": {
-    "kicker": "សំណុំ Avenqo",
-    "title": "ម៉ូឌុលមួយសម្រាប់អាទិភាពអាជីវកម្មនីមួយៗ។",
-    "subtitle": "បង្កើតបរិយាកាសផ្ទាល់ខ្លួនរបស់អ្នក។ ម៉ូឌុលទាំងអស់ចែករំលែកបទពិសោធន៍ដូចគ្នា និងធ្វើការជាមួយគ្នា។",
-    "discover": "ស្វែងរក",
+    "kicker": "ម៉ូឌុល Avenqo",
+    "title": "វេទិកាម៉ូឌុលតែមួយដែលរីកចម្រើនតាមតម្រូវការ",
+    "subtitle": "ធ្វើឱ្យសកម្មនូវម៉ូឌុលដែលអ្នកត្រូវការថ្ងៃនេះ ហើយពង្រីកនៅពេលក្រោយដោយមិនប្តូរឧបករណ៍។",
+    "discover": "ស្វែងយល់បន្ថែម",
+    "availableNow": "មានឥឡូវនេះ",
+    "comingSoon": "នឹងមកដល់ឆាប់ៗនេះ",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "គ្រប់គ្រងការលក់ ផលិតផល និងភាពស្មោះត្រង់ពីទិដ្ឋភាពតែមួយ។"
+        "name": "Retail Intelligence",
+        "description": "ការវិភាគការលក់ និងសារពើភ័ណ្ឌតាមពេលវេលាជាក់ស្តែងសម្រាប់ការលក់រាយ។",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "ផ្តល់អាទិភាពដល់ទំនាក់ទំនង ឱកាស និងសកម្មភាពល្អបំផុតបន្ទាប់។"
+        "name": "CRM AI",
+        "description": "ការគ្រប់គ្រងទំនាក់ទំនងអតិថិជនដែលដំណើរការដោយ AI សម្រាប់បំពង់លក់ឆ្លាតវៃជាងមុន។",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "បង្កើនល្បឿនការត្រួតពិនិត្យហិរញ្ញវត្ថុ និងការបិទគណនេយ្យ។"
+        "name": "OCR AI",
+        "description": "ការទាញយកទិន្នន័យស្វ័យប្រវត្តិពីវិក្កយបត្រ និងឯកសារស្កេន។",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "ប្រែក្លាយឯកសារចូលទៅជាដំណើរការមានរចនាសម្ព័ន្ធ។"
+        "name": "Voice AI",
+        "description": "ជំនួយការសំឡេងសម្រាប់សរសេរតាមសំឡេង និងតាមដានការហៅទូរស័ព្ទរបស់អតិថិជន។",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "យល់ពីនិន្នាការ និងគម្លាតដែលសំខាន់ពិតប្រាកដ។"
+        "name": "Media AI",
+        "description": "ការបង្កើត និងវិភាគមាតិកាដែលមើលឃើញ និងទីផ្សារ។",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "រៀបចំយុទ្ធនាការដែលពាក់ព័ន្ធ និងអាចវាស់វែងបានច្រើនជាងមុន។"
+        "name": "Accounting AI",
+        "description": "ស្វ័យប្រវត្តិកម្មនៃការធ្វើគណនេយ្យ និងការផ្សះផ្សាហិរញ្ញវត្ថុ។",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "ផ្តល់ចម្លើយដែលអាចទុកចិត្តបានផ្អែកលើចំណេះដឹងរបស់ក្រុមហ៊ុន។"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "ធ្វើស្វ័យប្រវត្តិកម្មអន្តរកម្មសំឡេងដោយមិនបាត់បង់បរិបទ។"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "តភ្ជាប់ក្រុម និងធ្វើស្វ័យប្រវត្តិកម្មភារកិច្ចដដែលៗ។"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "ផលិត និងរៀបចំមាតិការបស់អ្នកពីកន្លែងធ្វើការតែមួយ។"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "កាត់បន្ថយពេលវេលាឆ្លើយតប និងធ្វើឱ្យប្រសើរឡើងរាល់ដំណោះស្រាយ។"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "ដាក់ពង្រាយជំនួយការសន្ទនាសម្រាប់អតិថិជនរបស់អ្នក។"
+        "name": "Legal AI",
+        "description": "ការពិនិត្យ និងសង្ខេបកិច្ចសន្យាដោយមានជំនួយពី AI។",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "តម្លៃមានតម្លាភាព",
-    "title": "ចាប់ផ្តើមឥឡូវនេះ។ រីកចម្រើនតាមល្បឿនរបស់អ្នក។",
-    "subtitle": "ផែនការនីមួយៗរួមបញ្ចូលវេទិកា ជំនួយការ Avenqo និងកន្លែងធ្វើការមានសុវត្ថិភាព។",
+    "kicker": "តម្លៃ",
+    "title": "គម្រោងសម្រាប់ដំណាក់កាលនីមួយៗនៃការរីកចម្រើនរបស់អ្នក",
+    "subtitle": "ចាប់ផ្តើមជាមួយការសាកល្បង បន្ទាប់មកជ្រើសរើសគម្រោងដែលសមស្របនឹងទំហំក្រុមហ៊ុនរបស់អ្នក។",
     "popular": "ពេញនិយមបំផុត",
-    "priceLabel": "តាមការស្នើសុំ",
+    "priceLabel": "តម្លៃតាមការស្នើសុំ",
     "plans": [
       {
-        "tier": "មូលដ្ឋាន",
-        "title": "ដើម្បីចាប់ផ្តើម",
+        "tier": "Demo",
+        "title": "សាកល្បង Avenqo ជាមួយទិន្នន័យរបស់អ្នក",
+        "priceLabel": "ឥតគិតថ្លៃ",
         "items": [
-          "ម៉ូឌុល Avenqo ១",
-          "អ្នកប្រើប្រាស់រហូតដល់ ៥ នាក់",
-          "ជំនួយការភ្ជាប់មកជាមួយ",
-          "ការគាំទ្រស្តង់ដារ"
+          "ការចូលប្រើមានកំណត់ពេលវេលា",
+          "ទិន្នន័យសាកល្បង ឬផ្ទាល់ខ្លួន",
+          "ការគាំទ្រតាមអ៊ីមែល"
         ],
-        "action": "និយាយជាមួយទីប្រឹក្សា"
+        "action": "ស្នើសុំការសាកល្បង"
       },
       {
-        "tier": "វិជ្ជាជីវៈ",
-        "title": "ដើម្បីបង្កើនល្បឿន",
+        "tier": "Professional",
+        "title": "សម្រាប់ក្រុមហ៊ុនដែលចង់រីកចម្រើន",
+        "priceLabel": "តម្លៃតាមការស្នើសុំ",
         "items": [
-          "ម៉ូឌុលរហូតដល់ ៥",
-          "អ្នកប្រើប្រាស់រហូតដល់ ២៥ នាក់",
-          "ស្វ័យប្រវត្តិកម្មកម្រិតខ្ពស់",
+          "ម៉ូឌុលស្នូលទាំងអស់",
+          "ចំនួនអ្នកប្រើប្រាស់អាចពង្រីកបាន",
           "ការគាំទ្រអាទិភាព"
         ],
-        "action": "សាកល្បងឥតគិតថ្លៃ"
+        "action": "ទាក់ទងមកយើងខ្ញុំ"
       },
       {
-        "tier": "សហគ្រាស",
-        "title": "ដើម្បីសម្របសម្រួល",
+        "tier": "Enterprise",
+        "title": "សម្រាប់អង្គភាពដែលមានតម្រូវការកម្រិតខ្ពស់",
+        "priceLabel": "តម្លៃតាមការស្នើសុំ",
         "items": [
-          "ម៉ូឌុលគ្មានដែនកំណត់",
-          "អ្នកប្រើប្រាស់តាមការស្នើសុំ",
-          "ការរួមបញ្ចូលផ្ទាល់ខ្លួន",
-          "អភិបាលកិច្ចឧទ្ទិស"
+          "ការរួមបញ្ចូលតាមតម្រូវការ",
+          "អ្នកគ្រប់គ្រងគណនីជាក់លាក់",
+          "កិច្ចព្រមព្រៀងកម្រិតសេវាកម្ម"
         ],
-        "action": "ទាក់ទងក្រុមលក់"
+        "action": "ទាក់ទងផ្នែកលក់"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "ជំហានបន្ទាប់របស់អ្នក",
     "title": "គ្រប់គ្រងអាជីវកម្មរបស់អ្នកតាមរបៀបផ្សេង។",
-    "tryFree": "សាកល្បងឥតគិតថ្លៃ",
+    "tryFree": "សាកល្បង Avenqo",
     "scheduleDemo": "កំណត់ពេលបង្ហាញ"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "ប្រភព",
     "newest": "ថ្មីបំផុត",
     "you": "អ្នក",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "តើផលិតផលលក់ដាច់បំផុតរបស់ខ្ញុំក្នុងខែនេះគឺជាអ្វី?",
+      "តើអតិថិជនណាខ្លះមានហានិភ័យឈប់ទិញ?",
+      "សូមសង្ខេបលទ្ធផលអាជីវកម្មរបស់ខ្ញុំសប្តាហ៍នេះ។",
+      "តើឱកាសដែលមានអាទិភាពខ្ពស់បំផុតឥឡូវនេះគឺជាអ្វី?"
+    ]
   },
   "auth": {
     "tagline": "វេទិកា AI សម្រាប់អាជីវកម្មរបស់អ្នក",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "តម្លៃការបញ្ជាទិញជាមធ្យម",
     "prioritiesTitle": "អាទិភាពដែលបានណែនាំ",
     "prioritiesEmpty": "នៅពេលទិន្នន័យត្រូវបានភ្ជាប់ អាទិភាពរបស់អ្នកនឹងបង្ហាញនៅទីនេះ។",
-    "planLabel": "គម្រោង"
+    "planLabel": "គម្រោង",
+    "askAvenqoSubtitle": "សួរសំណួរណាមួយអំពីអាជីវកម្មរបស់អ្នក",
+    "askAvenqoCta": "ចាប់ផ្តើមការសន្ទនា",
+    "importDataTitle": "នាំចូលទិន្នន័យរបស់អ្នក",
+    "importDataSubtitle": "តភ្ជាប់ប្រភពទិន្នន័យរបស់អ្នកដើម្បីទទួលបានការយល់ដឹង",
+    "importDataCta": "នាំចូលទិន្នន័យ",
+    "connectionsTitle": "ការតភ្ជាប់",
+    "connectionsEmpty": "មិនទាន់មានការតភ្ជាប់នៅឡើយទេ",
+    "connectionsEmptyCta": "បន្ថែមការតភ្ជាប់",
+    "connectionsReadyLabel": "រួចរាល់",
+    "connectionsLastUpdate": "ធ្វើបច្ចុប្បន្នភាពចុងក្រោយ: ",
+    "activityTitle": "សកម្មភាពថ្មីៗ",
+    "activityEmpty": "មិនទាន់មានសកម្មភាពថ្មីៗនៅឡើយទេ",
+    "stepsTitle": "ការចាប់ផ្តើម",
+    "stepOrgLabel": "រៀបចំអង្គភាពរបស់អ្នក",
+    "stepDataLabel": "តភ្ជាប់ទិន្នន័យរបស់អ្នក",
+    "stepInsightsLabel": "ស្វែងយល់ការយល់ដឹង",
+    "stepAskLabel": "សួរ Avenqo"
   },
   "admin": {
     "commandCenterTitle": "មជ្ឈមណ្ឌលបញ្ជា Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "ការកំណត់",
     "signedInAs": "បានចូលក្នុងនាមជា",
     "noSettingsMessage": "គ្មានការកំណត់រចនាសម្ព័ន្ធទូទៅរបស់វេទិកាត្រូវបានបង្ហាញនៅទីនេះទេ — មិនចាំបាច់បង្ហាញអ្វីក្រៅពីអត្តសញ្ញាណគណនីទេ។"
+  },
+  "onboarding": {
+    "title": "តោះរៀបចំកន្លែងធ្វើការ Avenqo របស់អ្នក",
+    "subtitle": "សំណួរលឿនៗមួយចំនួនដើម្បីធ្វើឱ្យអាទិភាព និងអនុសាសន៍របស់អ្នកកាន់តែផ្ទាល់ខ្លួន។",
+    "goalsLabel": "តើគោលដៅសំខាន់ៗរបស់អ្នកគឺជាអ្វី?",
+    "goalIncreaseSales": "បង្កើនការលក់",
+    "goalReduceChurn": "កាត់បន្ថយការបាត់បង់អតិថិជន",
+    "goalOptimizePricing": "បង្កើនប្រសិទ្ធភាពការកំណត់តម្លៃ",
+    "goalImproveInventory": "កែលម្អការគ្រប់គ្រងសារពើភ័ណ្ឌ",
+    "goalUnderstandCustomers": "យល់ដឹងកាន់តែច្បាស់អំពីអតិថិជន",
+    "goalAutomateReports": "ធ្វើឱ្យការរាយការណ៍ស្វ័យប្រវត្តិ",
+    "toolsLabel": "តើអ្នកកំពុងប្រើឧបករណ៍អ្វីខ្លះ?",
+    "toolPos": "ប្រព័ន្ធ POS",
+    "toolEcommerce": "វេទិកាពាណិជ្ជកម្មអេឡិចត្រូនិក",
+    "toolSpreadsheets": "សៀវភៅបញ្ជី",
+    "toolAccounting": "កម្មវិធីគណនេយ្យ",
+    "toolCrm": "ប្រព័ន្ធ CRM",
+    "toolNone": "គ្មានទាំងអស់នេះ",
+    "teamSizeLabel": "តើក្រុមរបស់អ្នកមានទំហំប៉ុន្មាន?",
+    "teamSizeSolo": "ខ្ញុំតែម្នាក់ឯង",
+    "teamSizeSmall": "២-១០ នាក់",
+    "teamSizeMedium": "១១-៥០ នាក់",
+    "teamSizeLarge": "៥០+ នាក់",
+    "refineIndustryLabel": "តើអ្នកនៅក្នុងឧស្សាហកម្មអ្វី?",
+    "refineIndustryHint": "វាជួយយើងក្នុងការកែលម្អអនុសាសន៍",
+    "continueCta": "បន្ត",
+    "skipCta": "រំលងសម្រាប់ពេលនេះ",
+    "genericError": "មានកំហុសមួយបានកើតឡើង សូមព្យាយាមម្តងទៀត។",
+    "goalsRequired": "សូមជ្រើសរើសយ៉ាងហោចណាស់មួយគោលដៅ។",
+    "teamSizeRequired": "សូមជ្រើសរើសទំហំក្រុមរបស់អ្នក។"
+  },
+  "company": {
+    "navOverviewLabel": "ទិដ្ឋភាពទូទៅ",
+    "navOverviewDescription": "រូបភាពសង្ខេបនៃអាជីវកម្មរបស់អ្នក",
+    "navAssistantLabel": "ជំនួយការ AI",
+    "navAssistantDescription": "សួរអំពីទិន្នន័យរបស់អ្នក",
+    "navSalesLabel": "ការលក់",
+    "navSalesDescription": "តាមដានប្រាក់ចំណូល និងនិន្នាការ",
+    "navCustomersLabel": "អតិថិជន",
+    "navCustomersDescription": "យល់ដឹងអំពីមូលដ្ឋានអតិថិជនរបស់អ្នក",
+    "navProductsLabel": "ផលិតផល",
+    "navProductsDescription": "វិភាគការអនុវត្តផលិតផល",
+    "navRecommendationsLabel": "អនុសាសន៍",
+    "navRecommendationsDescription": "សំណើដែលបង្កើតដោយ AI",
+    "navAlertsLabel": "ការជូនដំណឹង",
+    "navAlertsDescription": "ការជូនដំណឹងសំខាន់ៗ",
+    "navReportsLabel": "របាយការណ៍",
+    "navReportsDescription": "បង្កើតរបាយការណ៍លម្អិត",
+    "navConnectionsLabel": "ការតភ្ជាប់",
+    "navConnectionsDescription": "គ្រប់គ្រងប្រភពទិន្នន័យរបស់អ្នក",
+    "navTeamLabel": "ក្រុម",
+    "navTeamDescription": "គ្រប់គ្រងសមាជិកក្រុម",
+    "navBillingLabel": "ការចេញវិក្កយបត្រ",
+    "navBillingDescription": "គ្រប់គ្រងការជាវរបស់អ្នក",
+    "navSettingsLabel": "ការកំណត់",
+    "navSettingsDescription": "គណនី និងចំណូលចិត្ត",
+    "navSupportLabel": "ការគាំទ្រ",
+    "navSupportDescription": "ទទួលបានជំនួយ",
+    "connectionsLoading": "កំពុងផ្ទុកការតភ្ជាប់របស់អ្នក...",
+    "connectionsNoDataTitle": "មិនទាន់មានទិន្នន័យតភ្ជាប់នៅឡើយទេ",
+    "connectionsNoDataFormats": "គាំទ្រ CSV, Excel និងច្រើនទៀត",
+    "connectionsImportButton": "នាំចូលទិន្នន័យ",
+    "connectionsUploadingLabel": "កំពុងផ្ទុកឡើង...",
+    "connectionsAnalyzing": "កំពុងវិភាគទិន្នន័យរបស់អ្នក...",
+    "connectionsMappingTitle": "គូសផែនទីជួរឈររបស់អ្នក",
+    "connectionsMappingSubtitle": "ផ្គូផ្គងជួរឈររបស់អ្នកជាមួយវាលរបស់យើង",
+    "connectionsMappingIgnore": "មិនអើពើជួរឈរនេះ",
+    "connectionsConfirmMapping": "បញ្ជាក់ការគូសផែនទី",
+    "connectionsReadyTitle": "ទិន្នន័យរបស់អ្នករួចរាល់ហើយ!",
+    "connectionsStatNameLabel": "ឈ្មោះ",
+    "connectionsStatRowsLabel": "ជួរដេក",
+    "connectionsStatColumnsLabel": "ជួរឈរ",
+    "connectionsStatUpdatedLabel": "បានធ្វើបច្ចុប្បន្នភាព",
+    "connectionsGoDashboard": "ទៅផ្ទាំងគ្រប់គ្រង",
+    "connectionsAskAvenqo": "សួរ Avenqo",
+    "connectionsImportAnother": "នាំចូលឯកសារផ្សេងទៀត",
+    "connectionsRetry": "ព្យាយាមម្តងទៀត",
+    "connectionsGenericError": "កំហុសមួយបានកើតឡើង។",
+    "connectionsFileEmptyError": "ឯកសារហាក់ដូចជាទទេ។",
+    "connectionsProcessingError": "កំហុសក្នុងការដំណើរការឯកសាររបស់អ្នក។",
+    "businessDefaultTitle": "តភ្ជាប់ទិន្នន័យរបស់អ្នក",
+    "businessDefaultDescription": "តភ្ជាប់ប្រភពទិន្នន័យរបស់អ្នកដើម្បីចាប់ផ្តើម",
+    "businessConnectButton": "តភ្ជាប់",
+    "businessSalesTitle": "ទិន្នន័យការលក់",
+    "businessSalesDescription": "តភ្ជាប់ទិន្នន័យការលក់របស់អ្នកដើម្បីតាមដានការអនុវត្ត",
+    "businessCustomersTitle": "ទិន្នន័យអតិថិជន",
+    "businessCustomersDescription": "តភ្ជាប់ទិន្នន័យអតិថិជនដើម្បីទទួលបានការយល់ដឹង",
+    "businessProductsTitle": "ទិន្នន័យផលិតផល",
+    "businessProductsDescription": "តភ្ជាប់ទិន្នន័យផលិតផលដើម្បីវិភាគការអនុវត្ត",
+    "businessRecommendationsTitle": "អនុសាសន៍",
+    "businessRecommendationsDescription": "តភ្ជាប់ទិន្នន័យដើម្បីទទួលបានអនុសាសន៍ AI",
+    "businessAlertsTitle": "ការជូនដំណឹង",
+    "businessAlertsDescription": "តភ្ជាប់ទិន្នន័យដើម្បីទទួលការជូនដំណឹង",
+    "businessReportsTitle": "របាយការណ៍",
+    "businessReportsDescription": "តភ្ជាប់ទិន្នន័យដើម្បីបង្កើតរបាយការណ៍",
+    "billingTitle": "ការចេញវិក្កយបត្រ",
+    "billingPortalButton": "បើកវិបផតថលចេញវិក្កយបត្រ",
+    "billingUnavailable": "ព័ត៌មានវិក្កយបត្រមិនមានទេនាពេលនេះ",
+    "billingPlanPrefix": "គម្រោង: ",
+    "billingStatusPrefix": "ស្ថានភាព: ",
+    "billingCancelScheduled": "ការលុបចោលត្រូវបានកំណត់ពេល",
+    "billingInvoicesTitle": "វិក្កយបត្រ",
+    "billingInvoiceFallback": "គ្មានវិក្កយបត្រអាចប្រើបានទេ",
+    "employeesTitle": "សមាជិកក្រុម",
+    "employeesRefreshTooltip": "ធ្វើឱ្យបញ្ជីស្រស់ឡើងវិញ",
+    "employeesUnavailable": "ព័ត៌មានសមាជិកក្រុមមិនអាចប្រើបានទេ",
+    "employeesColumnName": "ឈ្មោះ",
+    "employeesColumnEmail": "អ៊ីមែល",
+    "employeesColumnRole": "តួនាទី",
+    "employeesColumnStatus": "ស្ថានភាព",
+    "settingsTitle": "ការកំណត់",
+    "settingsSubtitle": "គ្រប់គ្រងគណនី និងចំណូលចិត្តរបស់អ្នក",
+    "settingsAccountSection": "គណនី",
+    "settingsCompanySection": "ក្រុមហ៊ុន",
+    "settingsAppearanceSection": "រូបរាង",
+    "settingsSessionSection": "សម័យ",
+    "settingsNameLabel": "ឈ្មោះ",
+    "settingsEmailLabel": "អ៊ីមែល",
+    "settingsRoleLabel": "តួនាទី",
+    "settingsPlanLabel": "គម្រោង",
+    "settingsManageSubscription": "គ្រប់គ្រងការជាវ",
+    "settingsThemeLabel": "រូបរាង",
+    "settingsLanguageLabel": "ភាសា",
+    "settingsThemeLight": "ភ្លឺ",
+    "settingsThemeDark": "ងងឹត",
+    "settingsThemeSystem": "តាមប្រព័ន្ធ",
+    "settingsLogout": "ចាកចេញ"
   }
 }

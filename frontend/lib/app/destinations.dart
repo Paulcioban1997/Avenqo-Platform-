@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:avenqo/i18n/translations.dart';
+
 class AppDestination {
   const AppDestination({
     required this.path,
@@ -14,6 +16,37 @@ class AppDestination {
   final String description;
   final IconData icon;
   final bool sectionBreakBefore;
+
+  AppDestination copyWith({String? label, String? description}) => AppDestination(
+        path: path,
+        label: label ?? this.label,
+        description: description ?? this.description,
+        icon: icon,
+        sectionBreakBefore: sectionBreakBefore,
+      );
+}
+
+/// Retourne [destination] avec son libellé/description traduits selon la
+/// langue active — la liste [appDestinations] elle-même reste un contenu
+/// fixe (chemins/icônes/tests unitaires), seule la présentation change.
+AppDestination localizeDestination(AppDestination destination, CompanyStrings t) {
+  return switch (destination.path) {
+    '/dashboard' => destination.copyWith(label: t.navOverviewLabel, description: t.navOverviewDescription),
+    '/assistant' => destination.copyWith(label: t.navAssistantLabel, description: t.navAssistantDescription),
+    '/sales' => destination.copyWith(label: t.navSalesLabel, description: t.navSalesDescription),
+    '/customers' => destination.copyWith(label: t.navCustomersLabel, description: t.navCustomersDescription),
+    '/products' => destination.copyWith(label: t.navProductsLabel, description: t.navProductsDescription),
+    '/recommendations' =>
+      destination.copyWith(label: t.navRecommendationsLabel, description: t.navRecommendationsDescription),
+    '/alerts' => destination.copyWith(label: t.navAlertsLabel, description: t.navAlertsDescription),
+    '/reports' => destination.copyWith(label: t.navReportsLabel, description: t.navReportsDescription),
+    '/connections' => destination.copyWith(label: t.navConnectionsLabel, description: t.navConnectionsDescription),
+    '/team' => destination.copyWith(label: t.navTeamLabel, description: t.navTeamDescription),
+    '/billing' => destination.copyWith(label: t.navBillingLabel, description: t.navBillingDescription),
+    '/settings' => destination.copyWith(label: t.navSettingsLabel, description: t.navSettingsDescription),
+    '/support' => destination.copyWith(label: t.navSupportLabel, description: t.navSupportDescription),
+    _ => destination,
+  };
 }
 
 const appDestinations = <AppDestination>[

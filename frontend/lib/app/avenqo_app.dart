@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/app_theme.dart';
 import 'package:avenqo/app/destinations.dart';
@@ -31,6 +32,7 @@ import 'package:avenqo/features/admin/admin_system_health_page.dart';
 import 'package:avenqo/features/admin/admin_support_page.dart';
 import 'package:avenqo/features/admin/admin_settings_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
+import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 
 class AvenqoApp extends StatefulWidget {
@@ -206,14 +208,39 @@ class _AvenqoAppState extends State<AvenqoApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.theme,
+      listenable: Listenable.merge([widget.theme, widget.locale]),
       builder: (context, _) {
+        final rawLocale = _localeFromCode(widget.locale.code);
+        // Le rendu des chaînes Avenqo passe entièrement par AvenqoLocaleScope
+        // (indépendant de Flutter Localizations). `locale`/`supportedLocales`
+        // ne pilotent que le "chrome" natif Material (tooltips, sélection de
+        // texte, etc.) — on retombe sur l'anglais si le delegate ne supporte
+        // pas la langue exacte, pour éviter tout crash MaterialLocalizations.
+        final effectiveLocale = GlobalMaterialLocalizations.delegate.isSupported(rawLocale)
+            ? rawLocale
+            : const Locale('en');
+        final supportedLocales = _supportedLocalesFrom(widget.locale.availableLocales);
+        // La directionnalité RTL, elle, est pilotée directement par notre
+        // propre catalogue de langues (_locales.json → LocaleInfo.isRtl),
+        // pour être garantie même sur des langues que Flutter ne connaît pas.
+        final isRtl = widget.locale.currentLocaleInfo?.isRtl ?? false;
         final app = !widget.auth.initialized
             ? MaterialApp(
                 title: 'Avenqo',
                 theme: AppTheme.light,
                 darkTheme: AppTheme.dark,
                 themeMode: widget.theme.mode,
+                locale: effectiveLocale,
+                supportedLocales: supportedLocales,
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                builder: (context, child) => Directionality(
+                  textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+                  child: child!,
+                ),
                 home: const Scaffold(body: Center(child: CircularProgressIndicator())),
               )
             : MaterialApp.router(
@@ -222,6 +249,17 @@ class _AvenqoAppState extends State<AvenqoApp> {
                 theme: AppTheme.light,
                 darkTheme: AppTheme.dark,
                 themeMode: widget.theme.mode,
+                locale: effectiveLocale,
+                supportedLocales: supportedLocales,
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                builder: (context, child) => Directionality(
+                  textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+                  child: child!,
+                ),
                 routerConfig: _router,
               );
         return AvenqoThemeScope(
@@ -231,6 +269,28 @@ class _AvenqoAppState extends State<AvenqoApp> {
       },
     );
   }
+}
+
+/// Convertit un code de langue Avenqo (ex. "ar-EG") en [Locale] Flutter, pour
+/// que les localisations Material/Widgets natives suivent la langue choisie
+/// dans le sélecteur Avenqo quand Flutter la supporte nativement.
+Locale _localeFromCode(String code) {
+  final parts = code.split('-');
+  if (parts.length == 2) {
+    return Locale(parts[0], parts[1]);
+  }
+  return Locale(code);
+}
+
+List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) {
+  final supported = <Locale>{const Locale('en')};
+  for (final locale in locales) {
+    final candidate = _localeFromCode(locale.code);
+    if (GlobalMaterialLocalizations.delegate.isSupported(candidate)) {
+      supported.add(candidate);
+    }
+  }
+  return supported.toList(growable: false);
 }
 
 Widget _protectedPage(String path, AuthController auth) {

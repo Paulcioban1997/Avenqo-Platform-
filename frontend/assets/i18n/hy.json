@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Մուտք",
-    "tryFree": "Փորձեք անվճար",
+    "tryFree": "Փորձեք Avenqo-ն",
     "watchDemo": "Դիտել դեմո",
-    "noCreditCard": "Առանց վարկային քարտի",
+    "noCreditCard": "Անհատականացված կարգավորում",
     "guidedSetup": "Ուղեկցվող կարգավորում",
     "isolatedData": "Մեկուսացված տվյալներ"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Մասշտաբավորվող հոսթինգ"
   },
   "modulesSection": {
-    "kicker": "Avenqo փաթեթը",
-    "title": "Մոդուլ՝ յուրաքանչյուր բիզնես առաջնահերթության համար։",
-    "subtitle": "Կառուցեք ձեր հարմարեցված միջավայրը։ Բոլոր մոդուլները կիսում են նույն փորձառությունը և աշխատում միասին։",
-    "discover": "Բացահայտել",
+    "kicker": "Avenqo մոդուլներ",
+    "title": "Մեկ մոդուլային հարթակ, որն աճում է ըստ կարիքի",
+    "subtitle": "Միացրեք այն մոդուլները, որոնք ձեզ անհրաժեշտ են այսօր, և ընդլայնեք ավելի ուշ՝ առանց գործիքներ փոխելու.",
+    "discover": "Իմանալ ավելին",
+    "availableNow": "Հասանելի է հիմա",
+    "comingSoon": "Շուտով",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Կառավարեք վաճառքը, ապրանքները և հավատարմությունը մեկ տեսքից։"
+        "name": "Retail Intelligence",
+        "description": "Իրական ժամանակի վաճառքի և պաշարների վերլուծություն մանրածախ առևտրի համար.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Առաջնահերթություն տվեք հարաբերություններին, հնարավորություններին և հաջորդ լավագույն քայլերին։"
+        "name": "CRM AI",
+        "description": "AI-ի վրա հիմնված հաճախորդների կառավարում ավելի խելացի վաճառքի համար.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Արագացրեք ֆինանսական հսկողությունը և հաշվապահական փակումը։"
+        "name": "OCR AI",
+        "description": "Ինվոյսներից և սկանավորված փաստաթղթերից ինքնաշխատ տվյալների արդյունահանում.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Վերածեք մուտքային փաստաթղթերը կառուցվածքային գործընթացների։"
+        "name": "Voice AI",
+        "description": "Ձայնային օգնական հաճախորդների զանգերի արտագրման և հետևման համար.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Հասկացեք միտումները և շեղումները, որոնք իսկապես կարևոր են։"
+        "name": "Media AI",
+        "description": "Վիզուալ և մարքեթինգային բովանդակության ստեղծում և վերլուծություն.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Կազմակերպեք ավելի համապատասխան և չափելի արշավներ։"
+        "name": "Accounting AI",
+        "description": "Հաշվապահության և ֆինանսական համադրման ավտոմատացում.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Տրամադրեք հուսալի պատասխաններ՝ հիմնված ընկերության գիտելիքների վրա։"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Ավտոմատացրեք ձայնային փոխազդեցությունները առանց համատեքստը կորցնելու։"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Կապակցեք թիմերը և ավտոմատացրեք կրկնվող առաջադրանքները։"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Ստեղծեք և կազմակերպեք ձեր բովանդակությունը մեկ աշխատանքային տարածքից։"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Կրճատեք պատասխանման ժամանակը և բարելավեք յուրաքանչյուր լուծում։"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Տեղակայեք զրուցային օգնական ձեր հաճախորդների համար։"
+        "name": "Legal AI",
+        "description": "Պայմանագրերի AI-ով վերանայում և ամփոփում.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Թափանցիկ գնագոյացում",
-    "title": "Սկսեք հիմա։ Աճեք ձեր տեմպով։",
-    "subtitle": "Յուրաքանչյուր փաթեթ ներառում է հարթակը, Avenqo օգնականին և ապահովված աշխատանքային տարածք։",
+    "kicker": "Գնագոյացում",
+    "title": "Ձեր աճի յուրաքանչյուր փուլին համապատասխան պլան",
+    "subtitle": "Սկսեք դեմոյից, ապա ընտրեք ձեր ընկերության չափին համապատասխան պլանը.",
     "popular": "Ամենահայտնի",
-    "priceLabel": "Հարմարեցված",
+    "priceLabel": "Գին՝ ըստ հարցման",
     "plans": [
       {
-        "tier": "Հիմնական",
-        "title": "Սկսելու համար",
+        "tier": "Demo",
+        "title": "Փորձեք Avenqo-ն ձեր տվյալներով",
+        "priceLabel": "Անվճար",
         "items": [
-          "1 Avenqo մոդուլ",
-          "Մինչև 5 օգտատեր",
-          "Ներկառուցված օգնական",
-          "Ստանդարտ աջակցություն"
+          "Ժամանակով սահմանափակ մուտք",
+          "Ցուցադրական կամ սեփական տվյալներ",
+          "Աջակցություն էլ. փոստով"
         ],
-        "action": "Խոսեք խորհրդատուի հետ"
+        "action": "Պահանջել դեմո"
       },
       {
-        "tier": "Պրոֆեսիոնալ",
-        "title": "Արագացնելու համար",
+        "tier": "Professional",
+        "title": "Ընկերությունների համար, ովքեր ցանկանում են աճել",
+        "priceLabel": "Գին՝ ըստ հարցման",
         "items": [
-          "Մինչև 5 մոդուլ",
-          "Մինչև 25 օգտատեր",
-          "Առաջադեմ ավտոմատացումներ",
+          "Բոլոր հիմնական մոդուլները",
+          "Մասշտաբավորվող օգտատերերի քանակ",
           "Առաջնահերթ աջակցություն"
         ],
-        "action": "Փորձեք անվճար"
+        "action": "Կապվեք մեզ հետ"
       },
       {
-        "tier": "Ձեռնարկություն",
-        "title": "Համակարգելու համար",
+        "tier": "Enterprise",
+        "title": "Առաջադեմ պահանջներ ունեցող կազմակերպությունների համար",
+        "priceLabel": "Գին՝ ըստ հարցման",
         "items": [
-          "Անսահմանափակ մոդուլներ",
-          "Հարմարեցված օգտատերեր",
-          "Հատուկ ինտեգրումներ",
-          "Հատուկ կառավարում"
+          "Հարմարեցված ինտեգրում",
+          "Հատուկ հաշվի կառավարիչ",
+          "Ծառայության մակարդակի համաձայնագիր"
         ],
-        "action": "Կապվեք վաճառքի թիմի հետ"
+        "action": "Կապվեք վաճառքի հետ"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Ձեր հաջորդ քայլը",
     "title": "Կառավարեք ձեր բիզնեսը այլ կերպ։",
-    "tryFree": "Փորձեք անվճար",
+    "tryFree": "Փորձեք Avenqo-ն",
     "scheduleDemo": "Ժամանակացույց սահմանել դեմոյի համար"
   },
   "footer": {
@@ -326,7 +315,7 @@
   },
   "assistant": {
     "title": "Հարցրեք Avenqo-ին ձեր բիզնեսի մասին",
-    "subtitle": "Тալիս մի բիզնես հարց — Avenqo-ն կօգտագործի ձեր ընկերության մասին հասանելի տեղեկատվությունն", 
+    "subtitle": "Тալիս մի բիզնես հարց — Avenqo-ն կօգտագործի ձեր ընկերության մասին հասանելի տեղեկատվությունն",
     "connectData": "Անմիացնել իմ տվյալները",
     "newConversation": "Նոր ընդհանում",
     "conversationsEmpty": "Ձեր ընդհանումները կհայտնվեն այստեղ։",
@@ -336,7 +325,13 @@
     "sourcesLabel": "Աղբյուրներ",
     "newest": "Ամենանոր",
     "you": "Դուք",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Որո՞նք են այս ամսվա իմ ամենավաճառվող ապրանքները:",
+      "Ո՞ր հաճախորդներն են գնումների դադարեցման ռիսկի տակ:",
+      "Ամփոփեք իմ բիզնեսի արդյունքները այս շաբաթ։",
+      "Որո՞նք են այժմ ամենաառաջնահերթ հնարավորությունները:"
+    ]
   },
   "auth": {
     "tagline": "AI հարթակ ձեր բիզնեսի համար",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Միջին պատվերի արժեքը",
     "prioritiesTitle": "Առաջարկված գերակայություններ",
     "prioritiesEmpty": "Տվյալների անմիացմանից հետո ձեր գերակայությունները կհայտնվեն այստեղ։",
-    "planLabel": "Պլան"
+    "planLabel": "Պլան",
+    "askAvenqoSubtitle": "Տվեք հարցեր ձեր բիզնեսի տվյալների մասին և ստացեք համատեքստային պատկերացումներ։",
+    "askAvenqoCta": "Հարցնել Avenqo AI-ին",
+    "importDataTitle": "Ներմուծեք ձեր տվյալները",
+    "importDataSubtitle": "Միացրեք կամ ներմուծեք ձեր բիզնեսի աղբյուրները՝ Avenqo-ի բանականությունն արգելաբացելու համար։",
+    "importDataCta": "Ներմուծել իմ տվյալները",
+    "connectionsTitle": "Կապեր",
+    "connectionsEmpty": "Դեռևս ոչ մի տվյալ միացված չէ",
+    "connectionsEmptyCta": "Ներմուծել իմ տվյալները",
+    "connectionsReadyLabel": "Պատրաստ է",
+    "connectionsLastUpdate": "Վերջին թարմացում",
+    "activityTitle": "Վերջին ակտիվություն",
+    "activityEmpty": "Դեռևս վերջին ակտիվություն չկա։",
+    "stepsTitle": "Առաջարկվող հաջորդ քայլերը",
+    "stepOrgLabel": "Ավարտեք ձեր ընկերության կարգավորումը",
+    "stepDataLabel": "Միացրեք կամ ներմուծեք ձեր տվյալները",
+    "stepInsightsLabel": "Ուսումնասիրեք ձեր պատկերացումները",
+    "stepAskLabel": "Հարցնել Avenqo AI-ին"
   },
   "admin": {
     "commandCenterTitle": "Avenqo հրամանատարական կենտրոն",
@@ -465,5 +477,132 @@
     "settingsTitle": "Կարգավորումներ",
     "signedInAs": "Մուտք եք գործել որպես",
     "noSettingsMessage": "Պլատֆորմի ընդհանուր կարգավորումներ չեն ցուցադրվում — հաշների անվանունից բացի կարիք ցուցադրելի կարիք չկա։"
+  },
+  "onboarding": {
+    "title": "Եկեք կարգավորենք ձեր Avenqo աշխատանքային տարածքը",
+    "subtitle": "Մի քանի արագ հարցեր՝ ձեր առաջնահերթություններն ու առաջարկությունները անհատականացնելու համար։",
+    "goalsLabel": "Որո՞նք են ձեր հիմնական նպատակները։",
+    "goalIncreaseSales": "Վաճառքի ավելացում",
+    "goalReduceChurn": "Հաճախորդների կորստի նվազեցում",
+    "goalOptimizePricing": "Գնագոյացման օպտիմիզացում",
+    "goalImproveInventory": "Պաշարների կառավարման բարելավում",
+    "goalUnderstandCustomers": "Ավելի լավ հասկանալ իմ հաճախորդներին",
+    "goalAutomateReports": "Ավտոմատացնել իմ հաշվետվությունները",
+    "toolsLabel": "Ի՞նչ գործիքներ եք օգտագործում ներկայումս։",
+    "toolPos": "Վաճառքի կետի (POS) համակարգ",
+    "toolEcommerce": "Էլեկտրոնային առևտրի հարթակ",
+    "toolSpreadsheets": "Աղյուսակներ (Excel/Sheets)",
+    "toolAccounting": "Հաշվապահական ծրագրակազմ",
+    "toolCrm": "CRM",
+    "toolNone": "Դեռևս ոչ մի գործիք",
+    "teamSizeLabel": "Ինչքա՞ն է ձեր թիմի չափը։",
+    "teamSizeSolo": "Միայն ես",
+    "teamSizeSmall": "2-ից 10 մարդ",
+    "teamSizeMedium": "11-ից 50 մարդ",
+    "teamSizeLarge": "50-ից ավելի մարդ",
+    "refineIndustryLabel": "Ճշտեք ձեր ոլորտը (ընտրովի)",
+    "refineIndustryHint": "Օր.՝ մասնագիտացված առևտուր, արագ սնունդ, հաշվապահական գրասենյակ...",
+    "continueCta": "Շարունակել",
+    "skipCta": "Բաց թողնել առայժմ",
+    "genericError": "Այս պահին չհաջողվեց պահպանել ձեր պատասխանները։",
+    "goalsRequired": "Ընտրեք առնվազն մեկ նպատակ։",
+    "teamSizeRequired": "Ընտրեք ձեր թիմի չափը։"
+  },
+  "company": {
+    "navOverviewLabel": "Ընդհանուր ակնարկ",
+    "navOverviewDescription": "Ձեր բիզնեսի հիմնական ցուցանիշները։",
+    "navAssistantLabel": "AI օգնական",
+    "navAssistantDescription": "Տվեք հարցեր և գործեք։",
+    "navSalesLabel": "Վաճառքներ",
+    "navSalesDescription": "Հետևեք եկամուտին և միտումներին։",
+    "navCustomersLabel": "Հաճախորդներ",
+    "navCustomersDescription": "Հասկացեք հավատարմությունը և կորստի ռիսկը։",
+    "navProductsLabel": "Ապրանքներ",
+    "navProductsDescription": "Հետևեք պահանջարկին և կատալոգի կատարողականին։",
+    "navRecommendationsLabel": "Առաջարկություններ",
+    "navRecommendationsDescription": "Գտեք ամենաառաջնահերթ հնարավորությունները։",
+    "navAlertsLabel": "Ահազանգեր",
+    "navAlertsDescription": "Հետևեք ձեր ուշադրությունը պահանջող փոփոխություններին։",
+    "navReportsLabel": "Հաշվետվություններ",
+    "navReportsDescription": "Դիտեք և կիսվեք ձեր ղեկավար ամփոփումներով։",
+    "navConnectionsLabel": "Կապեր",
+    "navConnectionsDescription": "Միացրեք ձեր վաճառքի և կառավարման գործիքները։",
+    "navTeamLabel": "Թիմ",
+    "navTeamDescription": "Կառավարեք ձեր թիմի անդամների հասանելիությունը։",
+    "navBillingLabel": "Հաշվարկում",
+    "navBillingDescription": "Կառավարեք ձեր բաժանորդագրությունը և հաշիվ-ապրանքագրերը։",
+    "navSettingsLabel": "Կարգավորումներ",
+    "navSettingsDescription": "Ձեր հաշվի և ընկերության տեղեկությունները։",
+    "navSupportLabel": "Avenqo աջակցություն",
+    "navSupportDescription": "Օգնություն է պետք Avenqo-ի հետ կապված? Տվեք ձեր հարցը այստեղ։",
+    "connectionsLoading": "Բեռնվում է…",
+    "connectionsNoDataTitle": "Միացրեք ձեր տվյալները՝ վերլուծություններն ու Avenqo AI-ն արգելաբացելու համար։",
+    "connectionsNoDataFormats": "Ընդունելի ձևաչափեր՝ CSV, XLSX, JSON, Parquet։",
+    "connectionsImportButton": "Ներմուծել ֆայլ",
+    "connectionsUploadingLabel": "Վերբեռնվում է…",
+    "connectionsAnalyzing": "Ձեր տվյալների կառուցվածքի վերլուծություն…",
+    "connectionsMappingTitle": "Հաստատեք ձեր սյունակների քարտեզագրումը",
+    "connectionsMappingSubtitle": "Որոշ սյունակներ պահանջում են ձեռքով հաստատում մինչև վերլուծությունների ակտիվացումը։",
+    "connectionsMappingIgnore": "Անտեսել այս սյունակը",
+    "connectionsConfirmMapping": "Հաստատել քարտեզագրումը",
+    "connectionsReadyTitle": "Տվյալները պատրաստ են",
+    "connectionsStatNameLabel": "Անուն",
+    "connectionsStatRowsLabel": "Տողեր",
+    "connectionsStatColumnsLabel": "Սյունակներ",
+    "connectionsStatUpdatedLabel": "Վերջին թարմացում",
+    "connectionsGoDashboard": "Անցնել վահանակին",
+    "connectionsAskAvenqo": "Հարցնել Avenqo AI-ին",
+    "connectionsImportAnother": "Ներմուծել այլ տվյալների հավաքածու",
+    "connectionsRetry": "Կրկին փորձել",
+    "connectionsGenericError": "Տեղի ունեցավ անսպասելի սխալ։",
+    "connectionsFileEmptyError": "Ընտրված ֆայլը դատարկ է կամ չընթերցվող։",
+    "connectionsProcessingError": "Այս ֆայլը հնարավոր չեղավ մշակել։",
+    "businessDefaultTitle": "Ձեր տարածքը պատրաստ է",
+    "businessDefaultDescription": "Միացրեք ձեր գործիքները՝ այստեղ արդի տեղեկություններ տեսնելու համար։",
+    "businessConnectButton": "Միացնել իմ գործիքները",
+    "businessSalesTitle": "Հետևեք ամեն փոփոխության",
+    "businessSalesDescription": "Ձեր վաճառքի միտումները, համեմատությունները և կանխատեսումները կհայտնվեն այստեղ։",
+    "businessCustomersTitle": "Պահպանեք ճիշտ հաճախորդներին",
+    "businessCustomersDescription": "Այստեղ կգտնեք հաճախորդներ՝ առաջնահերթություն տալու, վերաակտիվացնելու կամ ուղեկցելու համար։",
+    "businessProductsTitle": "Կառավարեք ձեր կատալոգը",
+    "businessProductsDescription": "Ամենալավ վաճառվող ապրանքները, ակնկալվող պահանջարկը և հետևման ենթակա պաշարները կհավաքվեն այստեղ։",
+    "businessRecommendationsTitle": "Գործեք ուղղակիորեն հնարավորությունների վրա",
+    "businessRecommendationsDescription": "Avenqo-ն կդասակարգի հնարավորությունները ըստ ձեր բիզնեսի վրա նրանց հնարավոր ազդեցության։",
+    "businessAlertsTitle": "Մնացեք տեղեկացված առանց աղմուկի",
+    "businessAlertsDescription": "Կարևոր փոփոխություններն ու ռիսկերը կնշվեն առաջարկվող գործողությամբ։",
+    "businessReportsTitle": "Ձեր ղեկավար ամփոփումները",
+    "businessReportsDescription": "Ստեղծեք և կիսվեք ձեր ընկերության արդյունքների վերաբերյալ հստակ հաշվետվություններով։",
+    "billingTitle": "Հաշվարկում",
+    "billingPortalButton": "Stripe պորտալ",
+    "billingUnavailable": "Հաշվարկումը ժամանակավորապես անհասանելի է։",
+    "billingPlanPrefix": "Պլան ",
+    "billingStatusPrefix": "Կարգավիճակ՝ ",
+    "billingCancelScheduled": "Չեղարկումը պլանավորված է",
+    "billingInvoicesTitle": "Հաշիվ-ապրանքագրեր",
+    "billingInvoiceFallback": "Հաշիվ-ապրանքագիր",
+    "employeesTitle": "Օգտատերեր",
+    "employeesRefreshTooltip": "Թարմացնել",
+    "employeesUnavailable": "Օգտատերերի հասանելիությունը ժամանակավորապես անհասանելի է։",
+    "employeesColumnName": "Անուն",
+    "employeesColumnEmail": "Էլ. փոստ",
+    "employeesColumnRole": "Դեր",
+    "employeesColumnStatus": "Կարգավիճակ",
+    "settingsTitle": "Կարգավորումներ",
+    "settingsSubtitle": "Ձեր հաշվի, ընկերության և նախապատվությունների տեղեկությունները։",
+    "settingsAccountSection": "Հաշիվ",
+    "settingsCompanySection": "Ընկերություն",
+    "settingsAppearanceSection": "Տեսք",
+    "settingsSessionSection": "Աշխատաշրջան",
+    "settingsNameLabel": "Անուն",
+    "settingsEmailLabel": "Էլ. փոստ",
+    "settingsRoleLabel": "Դեր",
+    "settingsPlanLabel": "Պլան",
+    "settingsManageSubscription": "Կառավարել բաժանորդագրությունը",
+    "settingsThemeLabel": "Թեմա",
+    "settingsLanguageLabel": "Լեզու",
+    "settingsThemeLight": "Բաց",
+    "settingsThemeDark": "Մուգ",
+    "settingsThemeSystem": "Համակարգային",
+    "settingsLogout": "Ելք"
   }
 }

@@ -1,0 +1,53 @@
+# -*- coding: utf-8 -*-
+"""Onboarding translations for Group D3: tl, my, km, mn."""
+
+ONBOARDING = {
+    "tl": {
+        "title": "Simulan nating i-setup ang iyong Avenqo workspace", "subtitle": "Ilang mabilis na tanong para i-personalize ang iyong mga prioridad at rekomendasyon.",
+        "goalsLabel": "Ano ang iyong mga pangunahing layunin?", "goalIncreaseSales": "Dagdagan ang benta", "goalReduceChurn": "Bawasan ang churn ng kustomer",
+        "goalOptimizePricing": "I-optimize ang pagpepresyo", "goalImproveInventory": "Pahusayin ang pamamahala ng imbentaryo", "goalUnderstandCustomers": "Mas maunawaan ang mga kustomer",
+        "goalAutomateReports": "I-automate ang pag-uulat", "toolsLabel": "Anong mga tool ang kasalukuyan mong ginagamit?", "toolPos": "POS system",
+        "toolEcommerce": "E-commerce platform", "toolSpreadsheets": "Spreadsheets", "toolAccounting": "Accounting software",
+        "toolCrm": "CRM system", "toolNone": "Wala sa mga ito", "teamSizeLabel": "Ano ang laki ng iyong team?",
+        "teamSizeSolo": "Ako lang", "teamSizeSmall": "2-10 katao", "teamSizeMedium": "11-50 katao", "teamSizeLarge": "50+ katao",
+        "refineIndustryLabel": "Anong industriya ka nasasakupan?", "refineIndustryHint": "Nakakatulong ito sa amin na pinuhin ang mga rekomendasyon",
+        "continueCta": "Magpatuloy", "skipCta": "Laktawan muna", "genericError": "May naganap na error, pakisubukang muli.",
+        "goalsRequired": "Mangyaring pumili ng kahit isang layunin.", "teamSizeRequired": "Mangyaring piliin ang laki ng iyong team.",
+    },
+    "my": {
+        "title": "သင့်ရဲ့ Avenqo workspace ကို စတင်ပြင်ဆင်ကြပါစို့", "subtitle": "သင့်ဦးစားပေးမှုများနှင့် အကြံပြုချက်များကို စိတ်ကြိုက်ပြုလုပ်ရန် လျင်မြန်သောမေးခွန်းများ။",
+        "goalsLabel": "သင့်ရဲ့ အဓိကရည်မှန်းချက်များက ဘာတွေလဲ။", "goalIncreaseSales": "ရောင်းအားတိုးမြှင့်ရန်", "goalReduceChurn": "ဖောက်သည်ဆုံးရှုံးမှု လျှော့ချရန်",
+        "goalOptimizePricing": "စျေးနှုန်း အကောင်းဆုံးဖြစ်အောင် ပြုလုပ်ရန်", "goalImproveInventory": "ကုန်ပစ္စည်းစာရင်း စီမံခန့်ခွဲမှု တိုးတက်စေရန်", "goalUnderstandCustomers": "ဖောက်သည်များကို ပိုမိုနားလည်ရန်",
+        "goalAutomateReports": "အစီရင်ခံစာများကို အလိုအလျောက်ပြုလုပ်ရန်", "toolsLabel": "သင်လက်ရှိ ဘယ်ကိရိယာတွေ သုံးနေပါသလဲ။", "toolPos": "POS စနစ်",
+        "toolEcommerce": "e-commerce ပလပ်ဖောင်း", "toolSpreadsheets": "spreadsheet များ", "toolAccounting": "စာရင်းကိုင်ဆော့ဖ်ဝဲ",
+        "toolCrm": "CRM စနစ်", "toolNone": "အထက်ပါ မည်သည့်အရာမျှ မဟုတ်ပါ", "teamSizeLabel": "သင့်အဖွဲ့ အရွယ်အစားက ဘယ်လောက်လဲ။",
+        "teamSizeSolo": "ကျွန်ုပ်တစ်ဦးတည်း", "teamSizeSmall": "၂-၁၀ ဦး", "teamSizeMedium": "၁၁-၅၀ ဦး", "teamSizeLarge": "၅၀+ ဦး",
+        "refineIndustryLabel": "သင်ဘယ်လုပ်ငန်းအမျိုးအစားမှာ ရှိနေပါသလဲ။", "refineIndustryHint": "ဒါက အကြံပြုချက်တွေကို ပိုမိုတိကျအောင် ကူညီပေးပါတယ်",
+        "continueCta": "ဆက်လက်လုပ်ဆောင်ရန်", "skipCta": "အခုအတွက် ကျော်သွားပါ", "genericError": "အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်၊ ကျေးဇူးပြု၍ ထပ်စမ်းကြည့်ပါ။",
+        "goalsRequired": "ကျေးဇူးပြု၍ အနည်းဆုံး ရည်မှန်းချက်တစ်ခု ရွေးချယ်ပါ။", "teamSizeRequired": "ကျေးဇူးပြု၍ သင့်အဖွဲ့အရွယ်အစားကို ရွေးချယ်ပါ။",
+    },
+    "km": {
+        "title": "តោះរៀបចំកន្លែងធ្វើការ Avenqo របស់អ្នក", "subtitle": "សំណួរលឿនៗមួយចំនួនដើម្បីធ្វើឱ្យអាទិភាព និងអនុសាសន៍របស់អ្នកកាន់តែផ្ទាល់ខ្លួន។",
+        "goalsLabel": "តើគោលដៅសំខាន់ៗរបស់អ្នកគឺជាអ្វី?", "goalIncreaseSales": "បង្កើនការលក់", "goalReduceChurn": "កាត់បន្ថយការបាត់បង់អតិថិជន",
+        "goalOptimizePricing": "បង្កើនប្រសិទ្ធភាពការកំណត់តម្លៃ", "goalImproveInventory": "កែលម្អការគ្រប់គ្រងសារពើភ័ណ្ឌ", "goalUnderstandCustomers": "យល់ដឹងកាន់តែច្បាស់អំពីអតិថិជន",
+        "goalAutomateReports": "ធ្វើឱ្យការរាយការណ៍ស្វ័យប្រវត្តិ", "toolsLabel": "តើអ្នកកំពុងប្រើឧបករណ៍អ្វីខ្លះ?", "toolPos": "ប្រព័ន្ធ POS",
+        "toolEcommerce": "វេទិកាពាណិជ្ជកម្មអេឡិចត្រូនិក", "toolSpreadsheets": "សៀវភៅបញ្ជី", "toolAccounting": "កម្មវិធីគណនេយ្យ",
+        "toolCrm": "ប្រព័ន្ធ CRM", "toolNone": "គ្មានទាំងអស់នេះ", "teamSizeLabel": "តើក្រុមរបស់អ្នកមានទំហំប៉ុន្មាន?",
+        "teamSizeSolo": "ខ្ញុំតែម្នាក់ឯង", "teamSizeSmall": "២-១០ នាក់", "teamSizeMedium": "១១-៥០ នាក់", "teamSizeLarge": "៥០+ នាក់",
+        "refineIndustryLabel": "តើអ្នកនៅក្នុងឧស្សាហកម្មអ្វី?", "refineIndustryHint": "វាជួយយើងក្នុងការកែលម្អអនុសាសន៍",
+        "continueCta": "បន្ត", "skipCta": "រំលងសម្រាប់ពេលនេះ", "genericError": "មានកំហុសមួយបានកើតឡើង សូមព្យាយាមម្តងទៀត។",
+        "goalsRequired": "សូមជ្រើសរើសយ៉ាងហោចណាស់មួយគោលដៅ។", "teamSizeRequired": "សូមជ្រើសរើសទំហំក្រុមរបស់អ្នក។",
+    },
+    "mn": {
+        "title": "Avenqo ажлын орчноо тохируулцгаая", "subtitle": "Таны тэргүүлэх чиглэл, зөвлөмжийг тохируулахад зориулсан хэдэн хурдан асуулт.",
+        "goalsLabel": "Таны гол зорилго юу вэ?", "goalIncreaseSales": "Борлуулалт нэмэгдүүлэх", "goalReduceChurn": "Харилцагчийн алдагдлыг бууруулах",
+        "goalOptimizePricing": "Үнийг оновчтой болгох", "goalImproveInventory": "Нөөцийн менежментийг сайжруулах", "goalUnderstandCustomers": "Харилцагчдаа илүү сайн ойлгох",
+        "goalAutomateReports": "Тайлагналыг автоматжуулах", "toolsLabel": "Одоо ямар хэрэгсэл ашиглаж байна вэ?", "toolPos": "POS систем",
+        "toolEcommerce": "Цахим худалдааны платформ", "toolSpreadsheets": "Хүснэгт", "toolAccounting": "Санхүүгийн программ хангамж",
+        "toolCrm": "CRM систем", "toolNone": "Эдгээрийн алийг нь ч биш", "teamSizeLabel": "Таны багийн хэмжээ хэд вэ?",
+        "teamSizeSolo": "Зөвхөн би", "teamSizeSmall": "2-10 хүн", "teamSizeMedium": "11-50 хүн", "teamSizeLarge": "50+ хүн",
+        "refineIndustryLabel": "Та ямар салбарт ажилладаг вэ?", "refineIndustryHint": "Энэ нь бидэнд зөвлөмжийг сайжруулахад тусалдаг",
+        "continueCta": "Үргэлжлүүлэх", "skipCta": "Одоохондоо алгасах", "genericError": "Алдаа гарлаа, дахин оролдоно уу.",
+        "goalsRequired": "Ядаж нэг зорилго сонгоно уу.", "teamSizeRequired": "Багийн хэмжээгээ сонгоно уу.",
+    },
+}

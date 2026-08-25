@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "ورود",
-    "tryFree": "رایگان امتحان کنید",
+    "tryFree": "Avenqo را امتحان کنید",
     "watchDemo": "دیدن دمو",
-    "noCreditCard": "بدون کارت اعتباری",
+    "noCreditCard": "راه‌اندازی شخصی‌سازی‌شده",
     "guidedSetup": "راه‌اندازی هدایت‌شده",
     "isolatedData": "داده‌های ایزوله"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "میزبانی مقیاس‌پذیر"
   },
   "modulesSection": {
-    "kicker": "مجموعه Avenqo",
-    "title": "یک ماژول برای هر اولویت کسب‌وکار.",
-    "subtitle": "محیط سفارشی خود را بسازید. همه ماژول‌ها تجربه یکسانی دارند و با هم کار می‌کنند.",
-    "discover": "کشف کنید",
+    "kicker": "ماژول‌های Avenqo",
+    "title": "یک پلتفرم ماژولار، رشد بر اساس نیاز شما",
+    "subtitle": "ماژول‌هایی را که امروز نیاز دارید فعال کنید و بعداً بدون تغییر ابزارها گسترش دهید.",
+    "discover": "بیشتر بدانید",
+    "availableNow": "هم‌اکنون موجود",
+    "comingSoon": "به‌زودی",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "فروش، محصولات و وفاداری را از یک نمای واحد مدیریت کنید."
+        "name": "Retail Intelligence",
+        "description": "تحلیل فروش و موجودی به‌صورت لحظه‌ای برای خرده‌فروشی.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "روابط، فرصت‌ها و بهترین اقدامات بعدی را اولویت‌بندی کنید."
+        "name": "CRM AI",
+        "description": "مدیریت ارتباط با مشتری مبتنی بر هوش مصنوعی برای فرآیند فروش هوشمندتر.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "نظارت مالی و بستن حساب‌ها را تسریع کنید."
+        "name": "OCR AI",
+        "description": "استخراج خودکار داده از فاکتورها و اسناد اسکن‌شده.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "اسناد ورودی را به فرآیندهای ساختاریافته تبدیل کنید."
+        "name": "Voice AI",
+        "description": "دستیار صوتی برای رونویسی و پیگیری تماس‌های مشتری.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "روندها و انحرافاتی که واقعاً اهمیت دارند را درک کنید."
+        "name": "Media AI",
+        "description": "تولید و تحلیل محتوای تصویری و بازاریابی.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "کمپین‌های مرتبط‌تر و قابل اندازه‌گیری‌تری سازماندهی کنید."
+        "name": "Accounting AI",
+        "description": "خودکارسازی حسابداری و تطبیق مالی.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "پاسخ‌های قابل اعتماد مبتنی بر دانش شرکت ارائه دهید."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "تعاملات صوتی را بدون از دست دادن زمینه خودکار کنید."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "تیم‌ها را به هم متصل کرده و وظایف تکراری را خودکار کنید."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "محتوای خود را از یک فضای کاری واحد تولید و سازماندهی کنید."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "زمان پاسخ‌گویی را کاهش داده و هر راه‌حل را بهبود بخشید."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "یک دستیار گفتگو برای مشتریان خود مستقر کنید."
+        "name": "Legal AI",
+        "description": "بررسی و خلاصه‌سازی قراردادها با کمک هوش مصنوعی.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "قیمت‌گذاری شفاف",
-    "title": "همین حالا شروع کنید. با سرعت خودتان رشد کنید.",
-    "subtitle": "هر طرح شامل پلتفرم، دستیار Avenqo و یک فضای کاری امن است.",
+    "kicker": "قیمت‌گذاری",
+    "title": "طرحی برای هر مرحله از رشد شما",
+    "subtitle": "با یک دمو شروع کنید، سپس طرح متناسب با اندازه شرکت خود را انتخاب کنید.",
     "popular": "محبوب‌ترین",
-    "priceLabel": "سفارشی",
+    "priceLabel": "قیمت بر اساس درخواست",
     "plans": [
       {
-        "tier": "پایه",
-        "title": "برای شروع",
+        "tier": "Demo",
+        "title": "Avenqo را با داده‌های خود امتحان کنید",
+        "priceLabel": "رایگان",
         "items": [
-          "۱ ماژول Avenqo",
-          "تا ۵ کاربر",
-          "دستیار داخلی",
-          "پشتیبانی استاندارد"
+          "دسترسی محدود زمانی",
+          "داده‌های نمایشی یا داده‌های خودتان",
+          "پشتیبانی از طریق ایمیل"
         ],
-        "action": "با یک مشاور صحبت کنید"
+        "action": "درخواست دمو"
       },
       {
-        "tier": "حرفه‌ای",
-        "title": "برای تسریع",
+        "tier": "Professional",
+        "title": "برای شرکت‌هایی که می‌خواهند رشد کنند",
+        "priceLabel": "قیمت بر اساس درخواست",
         "items": [
-          "تا ۵ ماژول",
-          "تا ۲۵ کاربر",
-          "خودکارسازی‌های پیشرفته",
+          "همه ماژول‌های اصلی",
+          "تعداد کاربران مقیاس‌پذیر",
           "پشتیبانی اولویت‌دار"
         ],
-        "action": "رایگان امتحان کنید"
+        "action": "تماس با ما"
       },
       {
-        "tier": "سازمانی",
-        "title": "برای هماهنگ‌سازی",
+        "tier": "Enterprise",
+        "title": "برای سازمان‌های با نیازهای پیشرفته",
+        "priceLabel": "قیمت بر اساس درخواست",
         "items": [
-          "ماژول‌های نامحدود",
-          "کاربران سفارشی",
-          "یکپارچه‌سازی‌های سفارشی",
-          "حاکمیت اختصاصی"
+          "یکپارچه‌سازی سفارشی",
+          "مدیر حساب اختصاصی",
+          "توافق‌نامه سطح خدمات"
         ],
-        "action": "با تیم فروش تماس بگیرید"
+        "action": "تماس با فروش"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "قدم بعدی شما",
     "title": "کسب‌وکار خود را متفاوت مدیریت کنید.",
-    "tryFree": "رایگان امتحان کنید",
+    "tryFree": "Avenqo را امتحان کنید",
     "scheduleDemo": "زمان‌بندی دمو"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "منابع",
     "newest": "جدیدترین",
     "you": "شما",
-    "avenqoAi": "هوش مصنوعی Avenqo"
+    "avenqoAi": "هوش مصنوعی Avenqo",
+    "suggestions": [
+      "پرفروش‌ترین محصولات من در این ماه کدامند؟",
+      "کدام مشتریان در معرض خطر ترک هستند؟",
+      "عملکرد کسب‌وکار من در این هفته را خلاصه کن.",
+      "بالاترین اولویت‌های فرصت در حال حاضر کدامند؟"
+    ]
   },
   "auth": {
     "tagline": "پلتفرم هوش مصنوعی برای عملیات شرکت شما",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "میانگین ارزش سفارش",
     "prioritiesTitle": "اولویت‌های پیشنهادی",
     "prioritiesEmpty": "اولویت‌های شما پس از اتصال داده‌هایتان اینجا نمایش داده می‌شود.",
-    "planLabel": "طرح"
+    "planLabel": "طرح",
+    "askAvenqoSubtitle": "درباره داده‌های کسب‌وکار خود سؤال بپرسید و بینش‌های زمینه‌ای دریافت کنید.",
+    "askAvenqoCta": "از Avenqo AI بپرس",
+    "importDataTitle": "داده‌های خود را وارد کنید",
+    "importDataSubtitle": "منابع کسب‌وکار خود را متصل یا وارد کنید تا هوش Avenqo باز شود.",
+    "importDataCta": "وارد کردن داده‌های من",
+    "connectionsTitle": "اتصالات",
+    "connectionsEmpty": "هنوز داده‌ای متصل نشده است",
+    "connectionsEmptyCta": "وارد کردن داده‌های من",
+    "connectionsReadyLabel": "آماده",
+    "connectionsLastUpdate": "آخرین به‌روزرسانی",
+    "activityTitle": "فعالیت اخیر",
+    "activityEmpty": "هنوز فعالیت اخیری وجود ندارد.",
+    "stepsTitle": "مراحل بعدی پیشنهادی",
+    "stepOrgLabel": "تنظیمات شرکت خود را کامل کنید",
+    "stepDataLabel": "داده‌های خود را متصل یا وارد کنید",
+    "stepInsightsLabel": "بینش‌های خود را کاوش کنید",
+    "stepAskLabel": "از Avenqo AI بپرس"
   },
   "admin": {
     "commandCenterTitle": "مرکز فرماندهی Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "تنظیمات",
     "signedInAs": "وارد شده به عنوان",
     "noSettingsMessage": "هیچ پیکربندی عمومی برای پلتفرم اینجا نمایش داده نمی‌شود — لزومی نیست چیزی جز هویت حساب نشان داده شود."
+  },
+  "onboarding": {
+    "title": "بیایید فضای کاری Avenqo شما را تنظیم کنیم",
+    "subtitle": "چند سؤال سریع برای شخصی‌سازی اولویت‌ها و توصیه‌های شما.",
+    "goalsLabel": "اهداف اصلی شما چیست؟",
+    "goalIncreaseSales": "افزایش فروش",
+    "goalReduceChurn": "کاهش از دست دادن مشتری",
+    "goalOptimizePricing": "بهینه‌سازی قیمت‌گذاری",
+    "goalImproveInventory": "بهبود مدیریت موجودی",
+    "goalUnderstandCustomers": "درک بهتر مشتریانم",
+    "goalAutomateReports": "خودکارسازی گزارش‌هایم",
+    "toolsLabel": "در حال حاضر از چه ابزارهایی استفاده می‌کنید؟",
+    "toolPos": "سیستم فروش (POS)",
+    "toolEcommerce": "پلتفرم تجارت الکترونیک",
+    "toolSpreadsheets": "صفحات گسترده (Excel/Sheets)",
+    "toolAccounting": "نرم‌افزار حسابداری",
+    "toolCrm": "CRM",
+    "toolNone": "هنوز هیچ ابزاری ندارم",
+    "teamSizeLabel": "اندازه تیم شما چقدر است؟",
+    "teamSizeSolo": "فقط من",
+    "teamSizeSmall": "۲ تا ۱۰ نفر",
+    "teamSizeMedium": "۱۱ تا ۵۰ نفر",
+    "teamSizeLarge": "بیش از ۵۰ نفر",
+    "refineIndustryLabel": "صنعت خود را مشخص کنید (اختیاری)",
+    "refineIndustryHint": "مثال: خرده‌فروشی تخصصی، فست‌فود، دفتر حسابداری...",
+    "continueCta": "ادامه",
+    "skipCta": "فعلاً رد شو",
+    "genericError": "در حال حاضر نتوانستیم پاسخ‌های شما را ذخیره کنیم.",
+    "goalsRequired": "حداقل یک هدف را انتخاب کنید.",
+    "teamSizeRequired": "اندازه تیم خود را انتخاب کنید."
+  },
+  "company": {
+    "navOverviewLabel": "نمای کلی",
+    "navOverviewDescription": "شاخص‌های کلیدی کسب‌وکار شما.",
+    "navAssistantLabel": "دستیار هوش مصنوعی",
+    "navAssistantDescription": "سؤال بپرسید و اقدام کنید.",
+    "navSalesLabel": "فروش",
+    "navSalesDescription": "درآمد و روندها را دنبال کنید.",
+    "navCustomersLabel": "مشتریان",
+    "navCustomersDescription": "وفاداری و ریسک از دست دادن را درک کنید.",
+    "navProductsLabel": "محصولات",
+    "navProductsDescription": "تقاضا و عملکرد کاتالوگ را زیر نظر بگیرید.",
+    "navRecommendationsLabel": "توصیه‌ها",
+    "navRecommendationsDescription": "فرصت‌های با اولویت بالا را پیدا کنید.",
+    "navAlertsLabel": "هشدارها",
+    "navAlertsDescription": "تغییراتی که نیاز به توجه شما دارند را زیر نظر بگیرید.",
+    "navReportsLabel": "گزارش‌ها",
+    "navReportsDescription": "خلاصه‌های اجرایی خود را مشاهده و به اشتراک بگذارید.",
+    "navConnectionsLabel": "اتصالات",
+    "navConnectionsDescription": "ابزارهای فروش و مدیریت خود را متصل کنید.",
+    "navTeamLabel": "تیم",
+    "navTeamDescription": "دسترسی اعضای تیم خود را مدیریت کنید.",
+    "navBillingLabel": "صورتحساب",
+    "navBillingDescription": "اشتراک و فاکتورهای خود را مدیریت کنید.",
+    "navSettingsLabel": "تنظیمات",
+    "navSettingsDescription": "اطلاعات حساب و شرکت شما.",
+    "navSupportLabel": "پشتیبانی Avenqo",
+    "navSupportDescription": "به کمک در مورد Avenqo نیاز دارید؟ سؤال خود را اینجا مطرح کنید.",
+    "connectionsLoading": "در حال بارگذاری…",
+    "connectionsNoDataTitle": "داده‌های خود را متصل کنید تا تحلیل‌ها و Avenqo AI باز شوند.",
+    "connectionsNoDataFormats": "فرمت‌های پذیرفته‌شده: CSV، XLSX، JSON، Parquet.",
+    "connectionsImportButton": "وارد کردن یک فایل",
+    "connectionsUploadingLabel": "در حال بارگذاری…",
+    "connectionsAnalyzing": "در حال تحلیل ساختار داده‌های شما…",
+    "connectionsMappingTitle": "نگاشت ستون‌های خود را تأیید کنید",
+    "connectionsMappingSubtitle": "برخی ستون‌ها قبل از فعال‌سازی تحلیل‌ها نیاز به تأیید دستی دارند.",
+    "connectionsMappingIgnore": "این ستون را نادیده بگیر",
+    "connectionsConfirmMapping": "تأیید نگاشت",
+    "connectionsReadyTitle": "داده‌ها آماده‌اند",
+    "connectionsStatNameLabel": "نام",
+    "connectionsStatRowsLabel": "ردیف‌ها",
+    "connectionsStatColumnsLabel": "ستون‌ها",
+    "connectionsStatUpdatedLabel": "آخرین به‌روزرسانی",
+    "connectionsGoDashboard": "رفتن به داشبورد",
+    "connectionsAskAvenqo": "از Avenqo AI بپرس",
+    "connectionsImportAnother": "وارد کردن مجموعه داده دیگر",
+    "connectionsRetry": "تلاش مجدد",
+    "connectionsGenericError": "خطای غیرمنتظره‌ای رخ داد.",
+    "connectionsFileEmptyError": "فایل انتخاب‌شده خالی است یا قابل خواندن نیست.",
+    "connectionsProcessingError": "پردازش این فایل ممکن نبود.",
+    "businessDefaultTitle": "فضای شما آماده است",
+    "businessDefaultDescription": "ابزارهای خود را متصل کنید تا اطلاعات به‌روز را اینجا ببینید.",
+    "businessConnectButton": "اتصال ابزارهای من",
+    "businessSalesTitle": "هر تغییری را دنبال کنید",
+    "businessSalesDescription": "روندها، مقایسه‌ها و پیش‌بینی‌های فروش شما اینجا ظاهر خواهند شد.",
+    "businessCustomersTitle": "مشتریان درست را حفظ کنید",
+    "businessCustomersDescription": "در اینجا مشتریانی که باید اولویت‌بندی، فعال‌سازی مجدد یا پشتیبانی شوند را پیدا خواهید کرد.",
+    "businessProductsTitle": "کاتالوگ خود را مدیریت کنید",
+    "businessProductsDescription": "محصولات برتر، تقاضای مورد انتظار و موجودی قابل پیگیری اینجا جمع‌آوری خواهند شد.",
+    "businessRecommendationsTitle": "مستقیماً بر روی فرصت‌ها اقدام کنید",
+    "businessRecommendationsDescription": "Avenqo فرصت‌ها را بر اساس تأثیر بالقوه‌شان بر کسب‌وکار شما رتبه‌بندی می‌کند.",
+    "businessAlertsTitle": "بدون سروصدا مطلع بمانید",
+    "businessAlertsDescription": "تغییرات و ریسک‌های مهم با یک اقدام پیشنهادی مشخص خواهند شد.",
+    "businessReportsTitle": "خلاصه‌های اجرایی شما",
+    "businessReportsDescription": "گزارش‌های واضحی درباره نتایج شرکت خود ایجاد و به اشتراک بگذارید.",
+    "billingTitle": "صورتحساب",
+    "billingPortalButton": "پورتال Stripe",
+    "billingUnavailable": "صورتحساب موقتاً در دسترس نیست.",
+    "billingPlanPrefix": "طرح ",
+    "billingStatusPrefix": "وضعیت: ",
+    "billingCancelScheduled": "لغو برنامه‌ریزی‌شده",
+    "billingInvoicesTitle": "فاکتورها",
+    "billingInvoiceFallback": "فاکتور",
+    "employeesTitle": "کاربران",
+    "employeesRefreshTooltip": "تازه‌سازی",
+    "employeesUnavailable": "دسترسی کاربران موقتاً در دسترس نیست.",
+    "employeesColumnName": "نام",
+    "employeesColumnEmail": "ایمیل",
+    "employeesColumnRole": "نقش",
+    "employeesColumnStatus": "وضعیت",
+    "settingsTitle": "تنظیمات",
+    "settingsSubtitle": "اطلاعات حساب، شرکت و ترجیحات شما.",
+    "settingsAccountSection": "حساب",
+    "settingsCompanySection": "شرکت",
+    "settingsAppearanceSection": "ظاهر",
+    "settingsSessionSection": "جلسه",
+    "settingsNameLabel": "نام",
+    "settingsEmailLabel": "ایمیل",
+    "settingsRoleLabel": "نقش",
+    "settingsPlanLabel": "طرح",
+    "settingsManageSubscription": "مدیریت اشتراک",
+    "settingsThemeLabel": "پوسته",
+    "settingsLanguageLabel": "زبان",
+    "settingsThemeLight": "روشن",
+    "settingsThemeDark": "تیره",
+    "settingsThemeSystem": "سیستم",
+    "settingsLogout": "خروج از حساب"
   }
 }

@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "ግባ",
-    "tryFree": "በነጻ ይሞክሩ",
+    "tryFree": "Avenqo ይሞክሩ",
     "watchDemo": "ማሳያ ይመልከቱ",
-    "noCreditCard": "ክሬዲት ካርድ አያስፈልግም",
+    "noCreditCard": "ግላዊነት የተላበሰ ማዋቀር",
     "guidedSetup": "የተመራ ማዋቀር",
     "isolatedData": "የተነጠለ መረጃ"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "ሊስፋፋ የሚችል ማስተናገጃ"
   },
   "modulesSection": {
-    "kicker": "የAvenqo ስብስብ",
-    "title": "ለእያንዳንዱ የንግድ ቅድሚያ ሞጁል።",
-    "subtitle": "የተበጀ አካባቢዎን ይገንቡ። ሁሉም ሞጁሎች ተመሳሳይ ልምድ ይጋራሉ እና በጋራ ይሰራሉ።",
-    "discover": "ያግኙ",
+    "kicker": "የAvenqo ሞጁሎች",
+    "title": "እንደ ፍላጎትዎ የሚያድግ አንድ ሞጁላር መድረክ",
+    "subtitle": "ዛሬ የሚያስፈልጉዎትን ሞጁሎች ያንቁ፣ እና መሳሪያዎችን ሳይቀይሩ በኋላ ያስፉ።",
+    "discover": "ተጨማሪ ይወቁ",
+    "availableNow": "አሁን ይገኛል",
+    "comingSoon": "በቅርቡ",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "ሽያጭን፣ ምርቶችን እና ታማኝነትን ከአንድ እይታ ያስተዳድሩ።"
+        "name": "Retail Intelligence",
+        "description": "ለችርቻሮ ንግድ በእውነተኛ ጊዜ የሽያጭ እና የክምችት ትንተና።",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "ግንኙነቶችን፣ እድሎችን እና ቀጣይ ምርጥ እርምጃዎችን ቅድሚያ ይስጡ።"
+        "name": "CRM AI",
+        "description": "ለተሻለ የሽያጭ ሂደት በAI የተጎለበተ የደንበኞች ግንኙነት አስተዳደር።",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "የፋይናንስ ክትትልን እና የሂሳብ መዝጊያን ያፋጥኑ።"
+        "name": "OCR AI",
+        "description": "ከደረሰኞች እና ከተቃኙ ሰነዶች ራስ-ሰር የመረጃ ማውጣት።",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "የገቡ ሰነዶችን ወደ የተዋቀሩ ሂደቶች ይለውጡ።"
+        "name": "Voice AI",
+        "description": "ከደንበኞች ጋር የሚደረጉ ጥሪዎችን ለመመዝገብ እና ለመከታተል የድምጽ ረዳት።",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "በእውነት አስፈላጊ የሆኑ አዝማሚያዎችን እና ልዩነቶችን ይረዱ።"
+        "name": "Media AI",
+        "description": "የእይታ እና የግብይት ይዘት መፍጠር እና መተንተን።",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "የበለጠ ተዛማጅ እና ሊለካ የሚችል ዘመቻዎችን ያደራጁ።"
+        "name": "Accounting AI",
+        "description": "የሂሳብ አያያዝ እና የፋይናንስ ማስታረቅ አውቶሜሽን።",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "በኩባንያው እውቀት ላይ የተመሰረቱ አስተማማኝ መልሶችን ያቅርቡ።"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "አውዱን ሳያጡ የድምጽ ግንኙነቶችን በራስ-ሰር ያድርጉ።"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "ቡድኖችን ያገናኙ እና ተደጋጋሚ ስራዎችን በራስ-ሰር ያድርጉ።"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "ይዘትዎን ከአንድ የስራ ቦታ ያዘጋጁ እና ያደራጁ።"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "የምላሽ ጊዜን ይቀንሱ እና እያንዳንዱን መፍትሄ ያሻሽሉ።"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "ለደንበኞችዎ የውይይት ረዳት ያሰማሩ።"
+        "name": "Legal AI",
+        "description": "በAI እርዳታ ውሎችን መገምገም እና ማጠቃለል።",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "ግልጽ ዋጋ",
-    "title": "አሁን ይጀምሩ። በራስዎ ፍጥነት ያድጉ።",
-    "subtitle": "እያንዳንዱ እቅድ መድረኩን፣ የAvenqo ረዳትን እና ደህንነቱ የተጠበቀ የስራ ቦታን ያካትታል።",
-    "popular": "በጣም የተመረጠ",
-    "priceLabel": "እንደ ፍላጎት",
+    "kicker": "ዋጋ አሰጣጥ",
+    "title": "ለእያንዳንዱ የእድገት ደረጃዎ የሚስማማ እቅድ",
+    "subtitle": "በማሳያ ይጀምሩ፣ ከዚያም ለኩባንያዎ መጠን የሚስማማውን እቅድ ይምረጡ።",
+    "popular": "በጣም ተወዳጅ",
+    "priceLabel": "ዋጋ በጥያቄ",
     "plans": [
       {
-        "tier": "መሰረታዊ",
-        "title": "ለመጀመር",
+        "tier": "Demo",
+        "title": "Avenqo ን በእርስዎ መረጃ ይሞክሩ",
+        "priceLabel": "ነጻ",
         "items": [
-          "1 የAvenqo ሞጁል",
-          "እስከ 5 ተጠቃሚዎች",
-          "የተካተተ ረዳት",
-          "መደበኛ ድጋፍ"
+          "በጊዜ የተገደበ መዳረሻ",
+          "የማሳያ ወይም የራስዎ መረጃ",
+          "በኢሜይል ድጋፍ"
         ],
-        "action": "ከአማካሪ ጋር ይነጋገሩ"
+        "action": "ማሳያ ይጠይቁ"
       },
       {
-        "tier": "ሙያዊ",
-        "title": "ለማፋጠን",
+        "tier": "Professional",
+        "title": "ለማደግ ለሚፈልጉ ኩባንያዎች",
+        "priceLabel": "ዋጋ በጥያቄ",
         "items": [
-          "እስከ 5 ሞጁሎች",
-          "እስከ 25 ተጠቃሚዎች",
-          "የላቀ አውቶሜሽን",
+          "ሁሉም ዋና ሞጁሎች",
+          "ሊሰፋ የሚችል የተጠቃሚዎች ብዛት",
           "ቅድሚያ ድጋፍ"
         ],
-        "action": "በነጻ ይሞክሩ"
+        "action": "አግኙን"
       },
       {
-        "tier": "ድርጅት",
-        "title": "ለማስተባበር",
+        "tier": "Enterprise",
+        "title": "ለላቁ ፍላጎቶች ላላቸው ድርጅቶች",
+        "priceLabel": "ዋጋ በጥያቄ",
         "items": [
-          "ያልተገደበ ሞጁሎች",
-          "እንደ ፍላጎት ተጠቃሚዎች",
-          "ብጁ ውህደቶች",
-          "የተለየ አስተዳደር"
+          "ብጁ ውህደት",
+          "የተወሰነ የመለያ አስተዳዳሪ",
+          "የአገልግሎት ደረጃ ስምምነት"
         ],
         "action": "ከሽያጭ ጋር ይገናኙ"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "ቀጣይ እርምጃዎ",
     "title": "ንግድዎን በተለየ መንገድ ያስተዳድሩ።",
-    "tryFree": "በነጻ ይሞክሩ",
+    "tryFree": "Avenqo ይሞክሩ",
     "scheduleDemo": "ማሳያ ይያዙ"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "ምንጮች",
     "newest": "የቅርብ ጊዜ",
     "you": "እርስዎ",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "በዚህ ወር በጣም የተሸጡ ምርቶቼ የትኞቹ ናቸው?",
+      "መግዛት ሊያቆሙ የሚችሉ ደንበኞች የትኞቹ ናቸው?",
+      "የዚህን ሳምንት የንግድ አፈጻጸሜን ያጠቃልሉ።",
+      "አሁን በጣም ቅድሚያ የሚሰጣቸው እድሎች የትኞቹ ናቸው?"
+    ]
   },
   "auth": {
     "tagline": "ለንግድዎ የ AI መድረክ",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "አማካይ የትዕዛዝ ዋጋ",
     "prioritiesTitle": "የተመከሩ ቅድሚያዎች",
     "prioritiesEmpty": "መረጃ ከተገናኘ በኋላ ቅድሚያዎችዎ እዚህ ይታያሉ።",
-    "planLabel": "እቅድ"
+    "planLabel": "እቅድ",
+    "askAvenqoSubtitle": "ስለ ንግድዎ መረጃ ጥያቄዎችን ይጠይቁ እና አውዳዊ ግንዛቤዎችን ያግኙ።",
+    "askAvenqoCta": "Avenqo AI ን ይጠይቁ",
+    "importDataTitle": "መረጃዎን ያስመጡ",
+    "importDataSubtitle": "የAvenqo ብልህነትን ለመክፈት የንግድ ምንጮችዎን ያገናኙ ወይም ያስመጡ።",
+    "importDataCta": "የኔን መረጃ አስመጣ",
+    "connectionsTitle": "ግንኙነቶች",
+    "connectionsEmpty": "እስካሁን ምንም መረጃ አልተገናኘም",
+    "connectionsEmptyCta": "የኔን መረጃ አስመጣ",
+    "connectionsReadyLabel": "ዝግጁ",
+    "connectionsLastUpdate": "የመጨረሻ ዝማኔ",
+    "activityTitle": "የቅርብ ጊዜ እንቅስቃሴ",
+    "activityEmpty": "እስካሁን የቅርብ ጊዜ እንቅስቃሴ የለም።",
+    "stepsTitle": "የሚመከሩ ቀጣይ እርምጃዎች",
+    "stepOrgLabel": "የኩባንያዎን ማዋቀር ያጠናቅቁ",
+    "stepDataLabel": "መረጃዎን ያገናኙ ወይም ያስመጡ",
+    "stepInsightsLabel": "ግንዛቤዎችዎን ያስሱ",
+    "stepAskLabel": "Avenqo AI ን ይጠይቁ"
   },
   "admin": {
     "commandCenterTitle": "የ Avenqo ትዕዛዝ ማዕከል",
@@ -465,5 +477,132 @@
     "settingsTitle": "ቅንብሮች",
     "signedInAs": "እንደ ገብተዋል",
     "noSettingsMessage": "የመድረኩ አጠቃላይ ውቅር እዚህ አይታይም — ከመለያ ማንነት በስተቀር ሌላ ምንም ማሳየት አያስፈልግም።"
+  },
+  "onboarding": {
+    "title": "የAvenqo የስራ ቦታዎን እናዘጋጅ",
+    "subtitle": "ቅድሚያ የሚሰጧቸውን ጉዳዮች እና ምክሮችን ለማበጀት ጥቂት ፈጣን ጥያቄዎች።",
+    "goalsLabel": "ዋና ግቦችዎ ምንድናቸው?",
+    "goalIncreaseSales": "ሽያጭን መጨመር",
+    "goalReduceChurn": "የደንበኞች ማጣትን መቀነስ",
+    "goalOptimizePricing": "የዋጋ አወጣጥን ማሻሻል",
+    "goalImproveInventory": "የክምችት አስተዳደርን ማሻሻል",
+    "goalUnderstandCustomers": "ደንበኞቼን በተሻለ ሁኔታ መረዳት",
+    "goalAutomateReports": "ሪፖርቶቼን አውቶማቲክ ማድረግ",
+    "toolsLabel": "አሁን የትኞቹን መሳሪያዎች ይጠቀማሉ?",
+    "toolPos": "የሽያጭ ነጥብ ስርዓት (POS)",
+    "toolEcommerce": "የኢ-ኮሜርስ መድረክ",
+    "toolSpreadsheets": "የስፕሬድሺት ፕሮግራሞች (Excel/Sheets)",
+    "toolAccounting": "የሂሳብ አያያዝ ሶፍትዌር",
+    "toolCrm": "CRM",
+    "toolNone": "እስካሁን ምንም መሳሪያ የለም",
+    "teamSizeLabel": "የቡድንዎ መጠን ስንት ነው?",
+    "teamSizeSolo": "እኔ ብቻ",
+    "teamSizeSmall": "2 እስከ 10 ሰዎች",
+    "teamSizeMedium": "11 እስከ 50 ሰዎች",
+    "teamSizeLarge": "ከ50 ሰዎች በላይ",
+    "refineIndustryLabel": "ዘርፍዎን ይግለጹ (አማራጭ)",
+    "refineIndustryHint": "ለምሳሌ፦ ልዩ ችርቻሮ፣ ፈጣን ምግብ፣ የሂሳብ ቢሮ...",
+    "continueCta": "ቀጥል",
+    "skipCta": "ለአሁን ዝለል",
+    "genericError": "አሁን መልሶችዎን ማስቀመጥ አልቻልንም።",
+    "goalsRequired": "ቢያንስ አንድ ግብ ይምረጡ።",
+    "teamSizeRequired": "የቡድንዎን መጠን ይምረጡ።"
+  },
+  "company": {
+    "navOverviewLabel": "አጠቃላይ እይታ",
+    "navOverviewDescription": "የንግድዎ ቁልፍ አመልካቾች።",
+    "navAssistantLabel": "የAI ረዳት",
+    "navAssistantDescription": "ጥያቄዎችን ይጠይቁ እና እርምጃ ይውሰዱ።",
+    "navSalesLabel": "ሽያጮች",
+    "navSalesDescription": "ገቢን እና አዝማሚያዎችን ይከታተሉ።",
+    "navCustomersLabel": "ደንበኞች",
+    "navCustomersDescription": "ታማኝነትን እና የመተው አደጋን ይረዱ።",
+    "navProductsLabel": "ምርቶች",
+    "navProductsDescription": "ፍላጎትን እና የካታሎግ አፈጻጸምን ይከታተሉ።",
+    "navRecommendationsLabel": "ምክሮች",
+    "navRecommendationsDescription": "ከፍተኛ ቅድሚያ ያላቸውን እድሎች ያግኙ።",
+    "navAlertsLabel": "ማንቂያዎች",
+    "navAlertsDescription": "ትኩረትዎን የሚፈልጉ ለውጦችን ይከታተሉ።",
+    "navReportsLabel": "ሪፖርቶች",
+    "navReportsDescription": "የአስፈጻሚ ማጠቃለያዎችዎን ይመልከቱ እና ያጋሩ።",
+    "navConnectionsLabel": "ግንኙነቶች",
+    "navConnectionsDescription": "የሽያጭ እና የአስተዳደር መሳሪያዎችዎን ያገናኙ።",
+    "navTeamLabel": "ቡድን",
+    "navTeamDescription": "የቡድን አባላትዎን መዳረሻ ያስተዳድሩ።",
+    "navBillingLabel": "የክፍያ አሰራር",
+    "navBillingDescription": "የደንበኝነት ምዝገባዎን እና ደረሰኞችዎን ያስተዳድሩ።",
+    "navSettingsLabel": "ቅንብሮች",
+    "navSettingsDescription": "የመለያ እና የኩባንያ መረጃዎ።",
+    "navSupportLabel": "የAvenqo ድጋፍ",
+    "navSupportDescription": "ከAvenqo ጋር እርዳታ ይፈልጋሉ? ጥያቄዎን እዚህ ያቅርቡ።",
+    "connectionsLoading": "በመጫን ላይ…",
+    "connectionsNoDataTitle": "ትንታኔዎችን እና Avenqo AI ን ለመክፈት መረጃዎን ያገናኙ።",
+    "connectionsNoDataFormats": "ተቀባይነት ያላቸው ቅርጸቶች፦ CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "ፋይል አስመጣ",
+    "connectionsUploadingLabel": "በመላክ ላይ…",
+    "connectionsAnalyzing": "የመረጃዎን አወቃቀር በመተንተን ላይ…",
+    "connectionsMappingTitle": "የአምዶችዎን ካርታ ያረጋግጡ",
+    "connectionsMappingSubtitle": "አንዳንድ አምዶች ትንታኔዎች ከመጀመራቸው በፊት በእጅ ማረጋገጫ ያስፈልጋቸዋል።",
+    "connectionsMappingIgnore": "ይህን አምድ ችላ ይበሉ",
+    "connectionsConfirmMapping": "ካርታ ማውጣትን አረጋግጥ",
+    "connectionsReadyTitle": "መረጃ ዝግጁ ነው",
+    "connectionsStatNameLabel": "ስም",
+    "connectionsStatRowsLabel": "ረድፎች",
+    "connectionsStatColumnsLabel": "አምዶች",
+    "connectionsStatUpdatedLabel": "የመጨረሻ ዝማኔ",
+    "connectionsGoDashboard": "ወደ ዳሽቦርድ ይሂዱ",
+    "connectionsAskAvenqo": "Avenqo AI ን ይጠይቁ",
+    "connectionsImportAnother": "ሌላ የመረጃ ስብስብ አስመጣ",
+    "connectionsRetry": "እንደገና ሞክር",
+    "connectionsGenericError": "ያልተጠበቀ ስህተት ተከስቷል።",
+    "connectionsFileEmptyError": "የተመረጠው ፋይል ባዶ ነው ወይም ሊነበብ አይችልም።",
+    "connectionsProcessingError": "ይህን ፋይል ማካሄድ አልተቻለም።",
+    "businessDefaultTitle": "የእርስዎ ቦታ ዝግጁ ነው",
+    "businessDefaultDescription": "የቅርብ ጊዜውን መረጃ እዚህ ለማየት መሳሪያዎችዎን ያገናኙ።",
+    "businessConnectButton": "መሳሪያዎቼን አገናኝ",
+    "businessSalesTitle": "እያንዳንዱን ለውጥ ይከታተሉ",
+    "businessSalesDescription": "የሽያጭዎ አዝማሚያዎች፣ ንጽጽሮች እና ትንበያዎች እዚህ ይታያሉ።",
+    "businessCustomersTitle": "ትክክለኛ ደንበኞችን ያቆዩ",
+    "businessCustomersDescription": "እዚህ ቅድሚያ ሊሰጣቸው፣ ዳግም ሊነቃቁ ወይም ሊታገዙ የሚገቡ ደንበኞችን ያገኛሉ።",
+    "businessProductsTitle": "ካታሎግዎን ያስተዳድሩ",
+    "businessProductsDescription": "ምርጥ ምርቶች፣ የሚጠበቀው ፍላጎት እና መከታተል ያለበት ክምችት እዚህ ይሰበሰባሉ።",
+    "businessRecommendationsTitle": "በእድሎች ላይ በቀጥታ እርምጃ ይውሰዱ",
+    "businessRecommendationsDescription": "Avenqo በንግድዎ ላይ ሊኖራቸው በሚችለው ተጽዕኖ መሰረት እድሎችን ደረጃ ይሰጣል።",
+    "businessAlertsTitle": "ያለ ጫጫታ መረጃ ይያዙ",
+    "businessAlertsDescription": "አስፈላጊ ለውጦች እና አደጋዎች በሚመከር እርምጃ ምልክት ይደረግባቸዋል።",
+    "businessReportsTitle": "የአስፈጻሚ ማጠቃለያዎችዎ",
+    "businessReportsDescription": "ስለ ኩባንያዎ ውጤቶች ግልጽ ሪፖርቶችን ይፍጠሩ እና ያጋሩ።",
+    "billingTitle": "የክፍያ አሰራር",
+    "billingPortalButton": "የStripe መግቢያ",
+    "billingUnavailable": "የክፍያ አሰራር ለጊዜው አይገኝም።",
+    "billingPlanPrefix": "እቅድ ",
+    "billingStatusPrefix": "ሁኔታ፦ ",
+    "billingCancelScheduled": "መሰረዝ ተይዞልታል",
+    "billingInvoicesTitle": "ደረሰኞች",
+    "billingInvoiceFallback": "ደረሰኝ",
+    "employeesTitle": "ተጠቃሚዎች",
+    "employeesRefreshTooltip": "አድስ",
+    "employeesUnavailable": "የተጠቃሚ መዳረሻ ለጊዜው አይገኝም።",
+    "employeesColumnName": "ስም",
+    "employeesColumnEmail": "ኢሜይል",
+    "employeesColumnRole": "ሚና",
+    "employeesColumnStatus": "ሁኔታ",
+    "settingsTitle": "ቅንብሮች",
+    "settingsSubtitle": "የመለያ፣ የኩባንያ እና የምርጫዎ መረጃ።",
+    "settingsAccountSection": "መለያ",
+    "settingsCompanySection": "ኩባንያ",
+    "settingsAppearanceSection": "መልክ",
+    "settingsSessionSection": "ክፍለ ጊዜ",
+    "settingsNameLabel": "ስም",
+    "settingsEmailLabel": "ኢሜይል",
+    "settingsRoleLabel": "ሚና",
+    "settingsPlanLabel": "እቅድ",
+    "settingsManageSubscription": "ደንበኝነት ምዝገባን ያስተዳድሩ",
+    "settingsThemeLabel": "ገጽታ",
+    "settingsLanguageLabel": "ቋንቋ",
+    "settingsThemeLight": "ብሩህ",
+    "settingsThemeDark": "ጨለማ",
+    "settingsThemeSystem": "ስርዓት",
+    "settingsLogout": "ውጣ"
   }
 }

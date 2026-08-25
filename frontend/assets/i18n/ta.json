@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "உள்நுழைக",
-    "tryFree": "இலவசமாக முயற்சிக்கவும்",
+    "tryFree": "Avenqo-ஐ முயற்சிக்கவும்",
     "watchDemo": "டெமோவைப் பார்க்கவும்",
-    "noCreditCard": "கிரெடிட் கார்டு தேவையில்லை",
+    "noCreditCard": "தனிப்பயனாக்கப்பட்ட அமைப்பு",
     "guidedSetup": "வழிகாட்டப்பட்ட அமைப்பு",
     "isolatedData": "தனிமைப்படுத்தப்பட்ட தரவு"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "அளவிடக்கூடிய ஹோஸ்டிங்"
   },
   "modulesSection": {
-    "kicker": "Avenqo தொகுப்பு",
-    "title": "ஒவ்வொரு வணிக முன்னுரிமைக்கும் ஒரு தொகுதி.",
-    "subtitle": "உங்கள் தனிப்பயன் சூழலை உருவாக்குங்கள். அனைத்து தொகுதிகளும் ஒரே அனுபவத்தைப் பகிர்ந்து ஒன்றாக செயல்படுகின்றன.",
-    "discover": "கண்டறியவும்",
+    "kicker": "Avenqo தொகுதிகள்",
+    "title": "தேவைக்கேற்ப வளரும் ஒரு தொகுதி தளம்",
+    "subtitle": "இன்று உங்களுக்குத் தேவையான தொகுதிகளை இயக்கவும், கருவிகளை மாற்றாமல் பின்னர் விரிவாக்கவும்.",
+    "discover": "மேலும் அறிக",
+    "availableNow": "இப்போது கிடைக்கிறது",
+    "comingSoon": "விரைவில் வருகிறது",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "ஒரே பார்வையிலிருந்து விற்பனை, தயாரிப்புகள் மற்றும் விசுவாசத்தை நிர்வகிக்கவும்."
+        "name": "Retail Intelligence",
+        "description": "சில்லறை வர்த்தகத்திற்கான நிகழ்நேர விற்பனை மற்றும் சரக்கு பகுப்பாய்வு.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "உறவுகள், வாய்ப்புகள் மற்றும் அடுத்த சிறந்த செயல்களுக்கு முன்னுரிமை அளிக்கவும்."
+        "name": "CRM AI",
+        "description": "புத்திசாலித்தனமான விற்பனை பைப்லைனுக்கான AI-இயங்கும் வாடிக்கையாளர் உறவு மேலாண்மை.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "நிதி கண்காணிப்பு மற்றும் கணக்கு முடிவை விரைவுபடுத்தவும்."
+        "name": "OCR AI",
+        "description": "விலைப்பட்டியல்கள் மற்றும் ஸ்கேன் செய்யப்பட்ட ஆவணங்களிலிருந்து தானியங்கி தரவு பிரித்தெடுத்தல்.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "வரும் ஆவணங்களை கட்டமைக்கப்பட்ட செயல்முறைகளாக மாற்றவும்."
+        "name": "Voice AI",
+        "description": "வாடிக்கையாளர் அழைப்புகளை படியெடுத்து கண்காணிக்க குரல் உதவியாளர்.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "உண்மையிலேயே முக்கியமான போக்குகள் மற்றும் விலகல்களைப் புரிந்துகொள்ளுங்கள்."
+        "name": "Media AI",
+        "description": "காட்சி மற்றும் சந்தைப்படுத்தல் உள்ளடக்கத்தை உருவாக்குதல் மற்றும் பகுப்பாய்வு.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "மேலும் பொருத்தமான மற்றும் அளவிடக்கூடிய பிரச்சாரங்களை ஏற்பாடு செய்யுங்கள்."
+        "name": "Accounting AI",
+        "description": "கணக்கியல் மற்றும் நிதி சரிசெய்தல் தானியங்குமயமாக்கல்.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "நிறுவனத்தின் அறிவின் அடிப்படையில் நம்பகமான பதில்களை வழங்குங்கள்."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "சூழலை இழக்காமல் குரல் தொடர்புகளை தானியங்குபடுத்துங்கள்."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "குழுக்களை இணைத்து மீண்டும் மீண்டும் வரும் பணிகளை தானியங்குபடுத்துங்கள்."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "ஒரே பணித்தளத்திலிருந்து உங்கள் உள்ளடக்கத்தை உருவாக்கி ஒழுங்கமைக்கவும்."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "பதில் நேரத்தைக் குறைத்து ஒவ்வொரு தீர்வையும் மேம்படுத்துங்கள்."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "உங்கள் வாடிக்கையாளர்களுக்கு ஒரு உரையாடல் உதவியாளரை பயன்படுத்துங்கள்."
+        "name": "Legal AI",
+        "description": "AI உதவியுடன் ஒப்பந்தங்களை மதிப்பாய்வு செய்தல் மற்றும் சுருக்கமாக்குதல்.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "வெளிப்படையான விலை நிர்ணயம்",
-    "title": "இப்போது தொடங்குங்கள். உங்கள் வேகத்தில் வளருங்கள்.",
-    "subtitle": "ஒவ்வொரு திட்டமும் தளம், Avenqo உதவியாளர் மற்றும் பாதுகாப்பான பணித்தளத்தை உள்ளடக்கியது.",
+    "kicker": "விலை நிர்ணயம்",
+    "title": "உங்கள் வளர்ச்சியின் ஒவ்வொரு கட்டத்திற்கும் ஒரு திட்டம்",
+    "subtitle": "டெமோவுடன் தொடங்குங்கள், பின்னர் உங்கள் நிறுவனத்தின் அளவுக்கு ஏற்ற திட்டத்தைத் தேர்ந்தெடுக்கவும்.",
     "popular": "மிகவும் பிரபலமானது",
-    "priceLabel": "கோரிக்கையின் பேரில்",
+    "priceLabel": "கோரிக்கையின் பேரில் விலை",
     "plans": [
       {
-        "tier": "அடிப்படை",
-        "title": "தொடங்குவதற்கு",
+        "tier": "Demo",
+        "title": "உங்கள் தரவுகளுடன் Avenqo-ஐ முயற்சிக்கவும்",
+        "priceLabel": "இலவசம்",
         "items": [
-          "1 Avenqo தொகுதி",
-          "5 பயனர்கள் வரை",
-          "உள்ளமைக்கப்பட்ட உதவியாளர்",
-          "நிலையான ஆதரவு"
+          "காலவரையறை கொண்ட அணுகல்",
+          "டெமோ அல்லது சொந்த தரவு",
+          "மின்னஞ்சல் ஆதரவு"
         ],
-        "action": "ஆலோசகருடன் பேசுங்கள்"
+        "action": "டெமோவைக் கோருங்கள்"
       },
       {
-        "tier": "தொழில்முறை",
-        "title": "விரைவுபடுத்த",
+        "tier": "Professional",
+        "title": "வளர விரும்பும் நிறுவனங்களுக்கு",
+        "priceLabel": "கோரிக்கையின் பேரில் விலை",
         "items": [
-          "5 தொகுதிகள் வரை",
-          "25 பயனர்கள் வரை",
-          "மேம்பட்ட தானியங்கி செயல்முறைகள்",
+          "அனைத்து முக்கிய தொகுதிகள்",
+          "அளவிடக்கூடிய பயனர் எண்ணிக்கை",
           "முன்னுரிமை ஆதரவு"
         ],
-        "action": "இலவசமாக முயற்சிக்கவும்"
+        "action": "எங்களைத் தொடர்பு கொள்ளுங்கள்"
       },
       {
-        "tier": "நிறுவனம்",
-        "title": "ஒருங்கிணைக்க",
+        "tier": "Enterprise",
+        "title": "மேம்பட்ட தேவைகள் கொண்ட நிறுவனங்களுக்கு",
+        "priceLabel": "கோரிக்கையின் பேரில் விலை",
         "items": [
-          "வரம்பற்ற தொகுதிகள்",
-          "கோரிக்கையின் பேரில் பயனர்கள்",
-          "தனிப்பயன் ஒருங்கிணைப்புகள்",
-          "அர்ப்பணிப்பு நிர்வாகம்"
+          "தனிப்பயன் ஒருங்கிணைப்பு",
+          "பிரத்யேக கணக்கு மேலாளர்",
+          "சேவை நிலை ஒப்பந்தம்"
         ],
-        "action": "விற்பனைக் குழுவைத் தொடர்பு கொள்ளுங்கள்"
+        "action": "விற்பனையைத் தொடர்பு கொள்ளுங்கள்"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "உங்கள் அடுத்த படி",
     "title": "உங்கள் வணிகத்தை வித்தியாசமாக நிர்வகிக்கவும்.",
-    "tryFree": "இலவசமாக முயற்சிக்கவும்",
+    "tryFree": "Avenqo-ஐ முயற்சிக்கவும்",
     "scheduleDemo": "டெமோவை திட்டமிடுங்கள்"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "ஆதாரங்கள்",
     "newest": "புதியது",
     "you": "நீங்கள்",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "இந்த மாதம் எனது அதிகம் விற்பனையாகும் தயாரிப்புகள் என்ன?",
+      "எந்த வாடிக்கையாளர்கள் வாங்குவதை நிறுத்தும் அபாயத்தில் உள்ளனர்?",
+      "இந்த வாரம் எனது வணிக செயல்திறனை சுருக்கவும்.",
+      "இப்போது மிக முக்கியமான வாய்ப்புகள் என்ன?"
+    ]
   },
   "auth": {
     "tagline": "உங்கள் நிறுவன செயல்பாடுகளுக்கான AI தளம்",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "சராசரி ஆர்டர் மதிப்பு",
     "prioritiesTitle": "பரிந்துரைக்கப்பட்ட முன்னுரிமைகள்",
     "prioritiesEmpty": "உங்கள் தரவு இணைக்கப்பட்டவுடன் உங்கள் முன்னுரிமைகள் இங்கே தோன்றும்.",
-    "planLabel": "திட்டம்"
+    "planLabel": "திட்டம்",
+    "askAvenqoSubtitle": "உங்கள் வணிகத்தைப் பற்றி எந்த கேள்வியும் கேளுங்கள்",
+    "askAvenqoCta": "உரையாடலைத் தொடங்கு",
+    "importDataTitle": "உங்கள் தரவை இறக்குமதி செய்யவும்",
+    "importDataSubtitle": "நுண்ணறிவுகளைப் பெற உங்கள் தரவு மூலத்தை இணைக்கவும்",
+    "importDataCta": "தரவை இறக்குமதி செய்யவும்",
+    "connectionsTitle": "இணைப்புகள்",
+    "connectionsEmpty": "இதுவரை இணைப்புகள் இல்லை",
+    "connectionsEmptyCta": "இணைப்பைச் சேர்க்கவும்",
+    "connectionsReadyLabel": "தயார்",
+    "connectionsLastUpdate": "கடைசியாக புதுப்பிக்கப்பட்டது: ",
+    "activityTitle": "சமீபத்திய செயல்பாடு",
+    "activityEmpty": "சமீபத்திய செயல்பாடு இதுவரை இல்லை",
+    "stepsTitle": "தொடங்குதல்",
+    "stepOrgLabel": "உங்கள் நிறுவனத்தை அமைக்கவும்",
+    "stepDataLabel": "உங்கள் தரவை இணைக்கவும்",
+    "stepInsightsLabel": "நுண்ணறிவுகளை ஆராயுங்கள்",
+    "stepAskLabel": "Avenqo-விடம் கேளுங்கள்"
   },
   "admin": {
     "commandCenterTitle": "Avenqo கட்டளை மையம்",
@@ -465,5 +477,132 @@
     "settingsTitle": "அமைப்புகள்",
     "signedInAs": "இதன் மூலம் உள்நுழைந்துள்ளது",
     "noSettingsMessage": "தளத்திற்கான பொது கட்டமைப்பு எதுவும் இங்கே காட்டப்படவில்லை — கணக்கு அடையாளத்தைத் தவிர வேறு எதையும் காட்ட தேவையில்லை."
+  },
+  "onboarding": {
+    "title": "உங்கள் Avenqo பணிமனையை அமைப்போம்",
+    "subtitle": "உங்கள் முன்னுரிமைகள் மற்றும் பரிந்துரைகளைத் தனிப்பயனாக்க சில விரைவான கேள்விகள்.",
+    "goalsLabel": "உங்கள் முக்கிய இலக்குகள் என்ன?",
+    "goalIncreaseSales": "விற்பனையை அதிகரிக்கவும்",
+    "goalReduceChurn": "வாடிக்கையாளர் இழப்பைக் குறைக்கவும்",
+    "goalOptimizePricing": "விலை நிர்ணயத்தை உகந்ததாக்கவும்",
+    "goalImproveInventory": "சரக்கு மேலாண்மையை மேம்படுத்தவும்",
+    "goalUnderstandCustomers": "வாடிக்கையாளர்களை நன்கு புரிந்துகொள்ளவும்",
+    "goalAutomateReports": "அறிக்கையிடலை தானியங்குமயமாக்கவும்",
+    "toolsLabel": "நீங்கள் தற்போது என்ன கருவிகளைப் பயன்படுத்துகிறீர்கள்?",
+    "toolPos": "பாஸ் (POS) அமைப்பு",
+    "toolEcommerce": "மின்-வணிக தளம்",
+    "toolSpreadsheets": "விரிதாள்கள்",
+    "toolAccounting": "கணக்கியல் மென்பொருள்",
+    "toolCrm": "சிஆர்எம் அமைப்பு",
+    "toolNone": "இவற்றில் எதுவும் இல்லை",
+    "teamSizeLabel": "உங்கள் குழுவின் அளவு என்ன?",
+    "teamSizeSolo": "நான் மட்டும்",
+    "teamSizeSmall": "2-10 பேர்",
+    "teamSizeMedium": "11-50 பேர்",
+    "teamSizeLarge": "50+ பேர்",
+    "refineIndustryLabel": "நீங்கள் எந்தத் துறையில் இருக்கிறீர்கள்?",
+    "refineIndustryHint": "இது பரிந்துரைகளை மேம்படுத்த உதவுகிறது",
+    "continueCta": "தொடரவும்",
+    "skipCta": "இப்போதைக்கு தவிர்க்கவும்",
+    "genericError": "பிழை ஏற்பட்டது, மீண்டும் முயற்சிக்கவும்.",
+    "goalsRequired": "தயவுசெய்து குறைந்தது ஒரு இலக்கையாவது தேர்ந்தெடுக்கவும்.",
+    "teamSizeRequired": "தயவுசெய்து உங்கள் குழு அளவைத் தேர்ந்தெடுக்கவும்."
+  },
+  "company": {
+    "navOverviewLabel": "மேலோட்டம்",
+    "navOverviewDescription": "உங்கள் வணிகத்தின் ஒரு பார்வை",
+    "navAssistantLabel": "AI உதவியாளர்",
+    "navAssistantDescription": "உங்கள் தரவைப் பற்றி கேளுங்கள்",
+    "navSalesLabel": "விற்பனை",
+    "navSalesDescription": "வருவாய் மற்றும் போக்குகளைக் கண்காணிக்கவும்",
+    "navCustomersLabel": "வாடிக்கையாளர்கள்",
+    "navCustomersDescription": "உங்கள் வாடிக்கையாளர் தளத்தைப் புரிந்துகொள்ளுங்கள்",
+    "navProductsLabel": "தயாரிப்புகள்",
+    "navProductsDescription": "தயாரிப்பு செயல்திறனை பகுப்பாய்வு செய்யுங்கள்",
+    "navRecommendationsLabel": "பரிந்துரைகள்",
+    "navRecommendationsDescription": "AI உருவாக்கிய பரிந்துரைகள்",
+    "navAlertsLabel": "எச்சரிக்கைகள்",
+    "navAlertsDescription": "முக்கியமான அறிவிப்புகள்",
+    "navReportsLabel": "அறிக்கைகள்",
+    "navReportsDescription": "விரிவான அறிக்கைகளை உருவாக்கவும்",
+    "navConnectionsLabel": "இணைப்புகள்",
+    "navConnectionsDescription": "உங்கள் தரவு மூலங்களை நிர்வகிக்கவும்",
+    "navTeamLabel": "குழு",
+    "navTeamDescription": "குழு உறுப்பினர்களை நிர்வகிக்கவும்",
+    "navBillingLabel": "பில்லிங்",
+    "navBillingDescription": "உங்கள் சந்தாவை நிர்வகிக்கவும்",
+    "navSettingsLabel": "அமைப்புகள்",
+    "navSettingsDescription": "கணக்கு மற்றும் விருப்பத்தேர்வுகள்",
+    "navSupportLabel": "ஆதரவு",
+    "navSupportDescription": "உதவி பெறவும்",
+    "connectionsLoading": "உங்கள் இணைப்புகள் ஏற்றப்படுகின்றன...",
+    "connectionsNoDataTitle": "இதுவரை தரவு இணைக்கப்படவில்லை",
+    "connectionsNoDataFormats": "CSV, Excel மற்றும் பல ஆதரிக்கப்படுகின்றன",
+    "connectionsImportButton": "தரவை இறக்குமதி செய்யவும்",
+    "connectionsUploadingLabel": "பதிவேற்றப்படுகிறது...",
+    "connectionsAnalyzing": "உங்கள் தரவு பகுப்பாய்வு செய்யப்படுகிறது...",
+    "connectionsMappingTitle": "உங்கள் நெடுவரிசைகளை மேப் செய்யவும்",
+    "connectionsMappingSubtitle": "உங்கள் நெடுவரிசைகளை எங்கள் புலங்களுடன் பொருத்தவும்",
+    "connectionsMappingIgnore": "இந்த நெடுவரிசையை புறக்கணிக்கவும்",
+    "connectionsConfirmMapping": "மேப்பிங்கை உறுதிப்படுத்தவும்",
+    "connectionsReadyTitle": "உங்கள் தரவு தயார்!",
+    "connectionsStatNameLabel": "பெயர்",
+    "connectionsStatRowsLabel": "வரிசைகள்",
+    "connectionsStatColumnsLabel": "நெடுவரிசைகள்",
+    "connectionsStatUpdatedLabel": "புதுப்பிக்கப்பட்டது",
+    "connectionsGoDashboard": "டாஷ்போர்டுக்குச் செல்லவும்",
+    "connectionsAskAvenqo": "Avenqo-விடம் கேளுங்கள்",
+    "connectionsImportAnother": "மற்றொரு கோப்பை இறக்குமதி செய்யவும்",
+    "connectionsRetry": "மீண்டும் முயற்சிக்கவும்",
+    "connectionsGenericError": "பிழை ஏற்பட்டது.",
+    "connectionsFileEmptyError": "கோப்பு காலியாக உள்ளது.",
+    "connectionsProcessingError": "உங்கள் கோப்பை செயலாக்கும் போது பிழை.",
+    "businessDefaultTitle": "உங்கள் தரவை இணைக்கவும்",
+    "businessDefaultDescription": "தொடங்க உங்கள் தரவு மூலத்தை இணைக்கவும்",
+    "businessConnectButton": "இணைக்கவும்",
+    "businessSalesTitle": "விற்பனை தரவு",
+    "businessSalesDescription": "செயல்திறனைக் கண்காணிக்க உங்கள் விற்பனை தரவை இணைக்கவும்",
+    "businessCustomersTitle": "வாடிக்கையாளர் தரவு",
+    "businessCustomersDescription": "நுண்ணறிவுகளைப் பெற வாடிக்கையாளர் தரவை இணைக்கவும்",
+    "businessProductsTitle": "தயாரிப்பு தரவு",
+    "businessProductsDescription": "செயல்திறனை பகுப்பாய்வு செய்ய தயாரிப்பு தரவை இணைக்கவும்",
+    "businessRecommendationsTitle": "பரிந்துரைகள்",
+    "businessRecommendationsDescription": "AI பரிந்துரைகளைப் பெற தரவை இணைக்கவும்",
+    "businessAlertsTitle": "எச்சரிக்கைகள்",
+    "businessAlertsDescription": "எச்சரிக்கைகளைப் பெற தரவை இணைக்கவும்",
+    "businessReportsTitle": "அறிக்கைகள்",
+    "businessReportsDescription": "அறிக்கைகளை உருவாக்க தரவை இணைக்கவும்",
+    "billingTitle": "பில்லிங்",
+    "billingPortalButton": "பில்லிங் போர்டலைத் திறக்கவும்",
+    "billingUnavailable": "பில்லிங் தகவல் தற்போது கிடைக்கவில்லை",
+    "billingPlanPrefix": "திட்டம்: ",
+    "billingStatusPrefix": "நிலை: ",
+    "billingCancelScheduled": "ரத்து திட்டமிடப்பட்டுள்ளது",
+    "billingInvoicesTitle": "விலைப்பட்டியல்கள்",
+    "billingInvoiceFallback": "விலைப்பட்டியல் எதுவும் இல்லை",
+    "employeesTitle": "குழு உறுப்பினர்கள்",
+    "employeesRefreshTooltip": "பட்டியலைப் புதுப்பிக்கவும்",
+    "employeesUnavailable": "குழு உறுப்பினர் தகவல் கிடைக்கவில்லை",
+    "employeesColumnName": "பெயர்",
+    "employeesColumnEmail": "மின்னஞ்சல்",
+    "employeesColumnRole": "பங்கு",
+    "employeesColumnStatus": "நிலை",
+    "settingsTitle": "அமைப்புகள்",
+    "settingsSubtitle": "உங்கள் கணக்கு மற்றும் விருப்பத்தேர்வுகளை நிர்வகிக்கவும்",
+    "settingsAccountSection": "கணக்கு",
+    "settingsCompanySection": "நிறுவனம்",
+    "settingsAppearanceSection": "தோற்றம்",
+    "settingsSessionSection": "அமர்வு",
+    "settingsNameLabel": "பெயர்",
+    "settingsEmailLabel": "மின்னஞ்சல்",
+    "settingsRoleLabel": "பங்கு",
+    "settingsPlanLabel": "திட்டம்",
+    "settingsManageSubscription": "சந்தாவை நிர்வகிக்கவும்",
+    "settingsThemeLabel": "தீம்",
+    "settingsLanguageLabel": "மொழி",
+    "settingsThemeLight": "வெளிச்சம்",
+    "settingsThemeDark": "இருள்",
+    "settingsThemeSystem": "கணினியைப் பின்பற்று",
+    "settingsLogout": "வெளியேறு"
   }
 }

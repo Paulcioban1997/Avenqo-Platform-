@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "تسجيل الدخول",
-    "tryFree": "جرّب مجانًا",
+    "tryFree": "جرّب Avenqo",
     "watchDemo": "شاهد عرضًا توضيحيًا",
-    "noCreditCard": "بدون بطاقة ائتمان",
+    "noCreditCard": "إعداد شخصي",
     "guidedSetup": "إعداد موجّه",
     "isolatedData": "بيانات معزولة"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "استضافة قابلة للتوسع"
   },
   "modulesSection": {
-    "kicker": "مجموعة Avenqo",
-    "title": "وحدة لكل أولوية من أولويات عملك.",
-    "subtitle": "ابنِ بيئتك على مقاسك. تشترك جميع الوحدات في التجربة نفسها وتعمل معًا.",
+    "kicker": "وحدات Avenqo",
+    "title": "منصة واحدة موحدة، بتتوسع حسب احتياجك",
+    "subtitle": "فعّل الوحدات اللي محتاجها دلوقتي، ووسّعها بعدين من غير ما تغيّر أدواتك.",
     "discover": "اكتشف",
+    "availableNow": "متاح دلوقتي",
+    "comingSoon": "قريبًا",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "أدر المبيعات والمنتجات والولاء من رؤية موحّدة."
+        "name": "Retail Intelligence",
+        "description": "تحليلات المبيعات والمخزون بشكل لحظي للتجارة بالتجزئة.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "رتّب أولويات العلاقات والفرص والإجراءات التالية."
+        "name": "CRM AI",
+        "description": "إدارة علاقات العملاء بالذكاء الاصطناعي لخط مبيعات أذكى.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "سرّع المتابعة المالية والإقفال المحاسبي."
+        "name": "OCR AI",
+        "description": "استخراج تلقائي للبيانات من الفواتير والمستندات الممسوحة.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "حوّل المستندات الواردة إلى عمليات منظمة."
+        "name": "Voice AI",
+        "description": "مساعد صوتي لتسجيل ومتابعة المكالمات مع العملاء.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "افهم الاتجاهات والانحرافات المهمة فعلاً."
+        "name": "Media AI",
+        "description": "إنشاء وتحليل المحتوى المرئي والتسويقي.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "نسّق حملات أكثر صلة وقابلية للقياس."
+        "name": "Accounting AI",
+        "description": "أتمتة المحاسبة والتسوية المالية.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "قدّم إجابات موثوقة انطلاقًا من معرفة الشركة."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "أتمتة التفاعلات الصوتية دون فقدان سياق العميل."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "اربط الفرق وأتمتة المهام المتكررة."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "أنتج ونظّم محتوياتك من مساحة واحدة."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "قلّل أوقات الاستجابة وحسّن كل حل."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "انشر مساعدًا محادثيًا في خدمة عملائك."
+        "name": "Legal AI",
+        "description": "مراجعة وتلخيص العقود بمساعدة الذكاء الاصطناعي.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "أسعار واضحة",
-    "title": "ابدأ الآن. توسّع بالوتيرة التي تناسبك.",
-    "subtitle": "تتضمن كل خطة المنصة ومساعد Avenqo ومساحة آمنة.",
-    "popular": "الأكثر اختيارًا",
-    "priceLabel": "حسب الطلب",
+    "kicker": "الأسعار",
+    "title": "خطة تناسب كل مرحلة من نموك",
+    "subtitle": "ابدأ بعرض تجريبي، وبعدين اختار الخطة المناسبة لحجم شركتك.",
+    "popular": "الأكتر طلبًا",
+    "priceLabel": "السعر حسب الطلب",
     "plans": [
       {
-        "tier": "أساسي",
-        "title": "للبدء",
+        "tier": "Demo",
+        "title": "جرّب Avenqo ببياناتك",
+        "priceLabel": "مجانًا",
         "items": [
-          "وحدة Avenqo واحدة",
-          "حتى 5 مستخدمين",
-          "مساعد مدمج",
-          "دعم قياسي"
+          "دخول محدود بفترة زمنية",
+          "بيانات تجريبية أو بياناتك",
+          "دعم عبر الإيميل"
         ],
-        "action": "تحدّث مع مستشار"
+        "action": "اطلب عرض تجريبي"
       },
       {
-        "tier": "احترافي",
-        "title": "للتسريع",
+        "tier": "Professional",
+        "title": "للشركات اللي عايزة تكبر",
+        "priceLabel": "السعر حسب الطلب",
         "items": [
-          "حتى 5 وحدات",
-          "حتى 25 مستخدمًا",
-          "أتمتة متقدمة",
-          "دعم ذو أولوية"
+          "كل الوحدات الأساسية",
+          "عدد مستخدمين قابل للزيادة",
+          "دعم بأولوية"
         ],
-        "action": "جرّب مجانًا"
+        "action": "كلمنا"
       },
       {
-        "tier": "مؤسسات",
-        "title": "للتنسيق",
+        "tier": "Enterprise",
+        "title": "للمؤسسات اللي محتاجة حاجات متقدمة",
+        "priceLabel": "السعر حسب الطلب",
         "items": [
-          "وحدات غير محدودة",
-          "مستخدمون حسب الحاجة",
-          "تكاملات مخصصة",
-          "حوكمة مخصصة"
+          "تكامل مخصص",
+          "مدير حساب مخصص",
+          "اتفاقية مستوى خدمة"
         ],
         "action": "تواصل مع المبيعات"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "خطوتك التالية",
     "title": "شغّل شركتك بطريقة مختلفة.",
-    "tryFree": "جرّب مجانًا",
+    "tryFree": "جرّب Avenqo",
     "scheduleDemo": "حدد موعدًا لعرض توضيحي"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "المصادر",
     "newest": "الأحدث",
     "you": "إنت",
-    "avenqoAi": "ذكاء Avenqo"
+    "avenqoAi": "ذكاء Avenqo",
+    "suggestions": [
+      "إيه هي أكتر منتجاتي مبيعًا الشهر ده؟",
+      "مين العملاء اللي ممكن يوقفوا الشراء؟",
+      "لخّصلي أداء بيزنسي الأسبوع ده.",
+      "إيه أهم الفرص دلوقتي؟"
+    ]
   },
   "auth": {
     "tagline": "منصة الذكاء الاصطناعي لعمليات شركتك",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "متوسط قيمة الطلب",
     "prioritiesTitle": "الأولويات المقترحة",
     "prioritiesEmpty": "أولوياتك هتظهر هنا بمجرد ما تربط بياناتك.",
-    "planLabel": "الخطة"
+    "planLabel": "الخطة",
+    "askAvenqoSubtitle": "اسأل أسئلة عن بيانات شغلك واستقبل رؤى مفيدة.",
+    "askAvenqoCta": "اسأل Avenqo AI",
+    "importDataTitle": "استورد بياناتك",
+    "importDataSubtitle": "اربط أو استورد مصادر شغلك عشان تفتح ذكاء Avenqo.",
+    "importDataCta": "استورد بياناتي",
+    "connectionsTitle": "الاتصالات",
+    "connectionsEmpty": "لسه مفيش بيانات متوصلة",
+    "connectionsEmptyCta": "استورد بياناتي",
+    "connectionsReadyLabel": "جاهز",
+    "connectionsLastUpdate": "آخر تحديث",
+    "activityTitle": "آخر نشاط",
+    "activityEmpty": "لسه مفيش نشاط حديث.",
+    "stepsTitle": "الخطوات الجاية الموصى بيها",
+    "stepOrgLabel": "كمّل إعداد شركتك",
+    "stepDataLabel": "اربط أو استورد بياناتك",
+    "stepInsightsLabel": "اكتشف رؤاك",
+    "stepAskLabel": "اسأل Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "مركز قيادة Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "الإعدادات",
     "signedInAs": "مسجّل الدخول باسم",
     "noSettingsMessage": "مفيش تكوين عام للمنصة بيتعرض هنا — مفيش داعي نعرض حاجة غير هوية الحساب."
+  },
+  "onboarding": {
+    "title": "خلينا نظبط مساحة عمل Avenqo بتاعتك",
+    "subtitle": "شوية أسئلة سريعة عشان نظبطلك أولوياتك واقتراحاتك.",
+    "goalsLabel": "إيه أهم أهدافك؟",
+    "goalIncreaseSales": "زيادة المبيعات",
+    "goalReduceChurn": "تقليل فقدان العملاء",
+    "goalOptimizePricing": "تحسين التسعير",
+    "goalImproveInventory": "تحسين إدارة المخزون",
+    "goalUnderstandCustomers": "أفهم عملائي أحسن",
+    "goalAutomateReports": "أتمتة التقارير بتاعتي",
+    "toolsLabel": "بتستخدم إيه دلوقتي؟",
+    "toolPos": "نظام نقاط بيع (POS)",
+    "toolEcommerce": "منصة تجارة إلكترونية",
+    "toolSpreadsheets": "جداول بيانات (Excel/Sheets)",
+    "toolAccounting": "برنامج محاسبة",
+    "toolCrm": "نظام إدارة علاقات العملاء (CRM)",
+    "toolNone": "لسه مفيش أدوات",
+    "teamSizeLabel": "حجم فريقك قد إيه؟",
+    "teamSizeSolo": "أنا لوحدي",
+    "teamSizeSmall": "من 2 لـ 10 أشخاص",
+    "teamSizeMedium": "من 11 لـ 50 شخص",
+    "teamSizeLarge": "أكتر من 50 شخص",
+    "refineIndustryLabel": "حدد مجالك (اختياري)",
+    "refineIndustryHint": "مثال: تجارة متخصصة، فاست فود، مكتب محاسبة...",
+    "continueCta": "كمّل",
+    "skipCta": "سيب ده دلوقتي",
+    "genericError": "معرفناش نحفظ إجاباتك دلوقتي.",
+    "goalsRequired": "اختار هدف واحد على الأقل.",
+    "teamSizeRequired": "اختار حجم فريقك."
+  },
+  "company": {
+    "navOverviewLabel": "نظرة عامة",
+    "navOverviewDescription": "أهم المؤشرات بتاعة شغلك.",
+    "navAssistantLabel": "المساعد الذكي",
+    "navAssistantDescription": "اسأل وتصرف.",
+    "navSalesLabel": "المبيعات",
+    "navSalesDescription": "تابع الإيرادات والاتجاهات.",
+    "navCustomersLabel": "العملاء",
+    "navCustomersDescription": "افهم ولاء عملائك ومخاطر فقدهم.",
+    "navProductsLabel": "المنتجات",
+    "navProductsDescription": "راقب الطلب وأداء الكتالوج.",
+    "navRecommendationsLabel": "التوصيات",
+    "navRecommendationsDescription": "لاقي أهم الفرص.",
+    "navAlertsLabel": "التنبيهات",
+    "navAlertsDescription": "راقب أي تغييرات محتاجة انتباهك.",
+    "navReportsLabel": "التقارير",
+    "navReportsDescription": "شوف وشارك ملخصاتك التنفيذية.",
+    "navConnectionsLabel": "الاتصالات",
+    "navConnectionsDescription": "اربط أدوات المبيعات والإدارة بتاعتك.",
+    "navTeamLabel": "الفريق",
+    "navTeamDescription": "دير وصول فريقك.",
+    "navBillingLabel": "الفوترة",
+    "navBillingDescription": "دير اشتراكك وفواتيرك.",
+    "navSettingsLabel": "الإعدادات",
+    "navSettingsDescription": "معلومات حسابك وشركتك.",
+    "navSupportLabel": "دعم Avenqo",
+    "navSupportDescription": "محتاج مساعدة في Avenqo؟ اسأل هنا.",
+    "connectionsLoading": "جاري التحميل…",
+    "connectionsNoDataTitle": "اربط بياناتك عشان تفتح التحليلات وAvenqo AI.",
+    "connectionsNoDataFormats": "الصيغ المقبولة: CSV، XLSX، JSON، Parquet.",
+    "connectionsImportButton": "استورد ملف",
+    "connectionsUploadingLabel": "جاري الرفع…",
+    "connectionsAnalyzing": "جاري تحليل بيانات ملفك…",
+    "connectionsMappingTitle": "أكّد تخطيط الأعمدة بتاعتك",
+    "connectionsMappingSubtitle": "بعض الأعمدة محتاجة تأكيد يدوي قبل ما التحليلات تتفعّل.",
+    "connectionsMappingIgnore": "تجاهل العمود ده",
+    "connectionsConfirmMapping": "أكّد التخطيط",
+    "connectionsReadyTitle": "البيانات جاهزة",
+    "connectionsStatNameLabel": "الاسم",
+    "connectionsStatRowsLabel": "الصفوف",
+    "connectionsStatColumnsLabel": "الأعمدة",
+    "connectionsStatUpdatedLabel": "آخر تحديث",
+    "connectionsGoDashboard": "روح للوحة التحكم",
+    "connectionsAskAvenqo": "اسأل Avenqo AI",
+    "connectionsImportAnother": "استورد مجموعة بيانات تانية",
+    "connectionsRetry": "حاول تاني",
+    "connectionsGenericError": "حصل خطأ مش متوقع.",
+    "connectionsFileEmptyError": "الملف اللي اخترته فاضي أو مش قابل للقراءة.",
+    "connectionsProcessingError": "معرفناش نعالج الملف ده.",
+    "businessDefaultTitle": "مساحتك جاهزة",
+    "businessDefaultDescription": "اربط أدواتك عشان تشوف معلومات محدثة هنا.",
+    "businessConnectButton": "اربط أدواتي",
+    "businessSalesTitle": "تابع كل تغيير",
+    "businessSalesDescription": "هنا هتلاقي اتجاهات ومقارنات وتوقعات مبيعاتك.",
+    "businessCustomersTitle": "حافظ على العملاء المناسبين",
+    "businessCustomersDescription": "هنا هتلاقي العملاء اللي محتاجين أولوية، أو إعادة تفعيل، أو متابعة.",
+    "businessProductsTitle": "دير كتالوجك",
+    "businessProductsDescription": "هتتجمع هنا أكتر المنتجات مبيعًا، والطلب المتوقع، والمخزون اللي محتاج متابعة.",
+    "businessRecommendationsTitle": "تصرف على طول في الفرص",
+    "businessRecommendationsDescription": "Avenqo هيرتب الفرص حسب تأثيرها المحتمل على شغلك.",
+    "businessAlertsTitle": "ابقى عارف كل حاجة من غير دوشة",
+    "businessAlertsDescription": "التغييرات والمخاطر المهمة هتتحدد بإجراء موصى بيه.",
+    "businessReportsTitle": "ملخصاتك التنفيذية",
+    "businessReportsDescription": "اعمل وشارك تقارير واضحة عن نتائج شركتك.",
+    "billingTitle": "الفوترة",
+    "billingPortalButton": "بوابة Stripe",
+    "billingUnavailable": "الفوترة مش متاحة دلوقتي.",
+    "billingPlanPrefix": "الخطة ",
+    "billingStatusPrefix": "الحالة: ",
+    "billingCancelScheduled": "الإلغاء متجدول",
+    "billingInvoicesTitle": "الفواتير",
+    "billingInvoiceFallback": "فاتورة",
+    "employeesTitle": "المستخدمين",
+    "employeesRefreshTooltip": "تحديث",
+    "employeesUnavailable": "وصول المستخدمين مش متاح دلوقتي.",
+    "employeesColumnName": "الاسم",
+    "employeesColumnEmail": "الإيميل",
+    "employeesColumnRole": "الدور",
+    "employeesColumnStatus": "الحالة",
+    "settingsTitle": "الإعدادات",
+    "settingsSubtitle": "معلومات حسابك وشركتك وتفضيلاتك.",
+    "settingsAccountSection": "الحساب",
+    "settingsCompanySection": "الشركة",
+    "settingsAppearanceSection": "المظهر",
+    "settingsSessionSection": "الجلسة",
+    "settingsNameLabel": "الاسم",
+    "settingsEmailLabel": "الإيميل",
+    "settingsRoleLabel": "الدور",
+    "settingsPlanLabel": "الخطة",
+    "settingsManageSubscription": "إدارة الاشتراك",
+    "settingsThemeLabel": "المظهر",
+    "settingsLanguageLabel": "اللغة",
+    "settingsThemeLight": "فاتح",
+    "settingsThemeDark": "غامق",
+    "settingsThemeSystem": "النظام",
+    "settingsLogout": "تسجيل الخروج"
   }
 }

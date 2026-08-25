@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "เข้าสู่ระบบ",
-    "tryFree": "ทดลองใช้ฟรี",
+    "tryFree": "ทดลองใช้ Avenqo",
     "watchDemo": "ดูตัวอย่างสาธิต",
-    "noCreditCard": "ไม่ต้องใช้บัตรเครดิต",
+    "noCreditCard": "การตั้งค่าส่วนบุคคล",
     "guidedSetup": "การตั้งค่าแบบมีคำแนะนำ",
     "isolatedData": "ข้อมูลที่แยกจากกัน"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "การโฮสต์ที่ขยายขนาดได้"
   },
   "modulesSection": {
-    "kicker": "ชุด Avenqo",
-    "title": "โมดูลสำหรับทุกลำดับความสำคัญทางธุรกิจ",
-    "subtitle": "สร้างสภาพแวดล้อมที่ปรับแต่งเองของคุณ โมดูลทั้งหมดมีประสบการณ์เดียวกันและทำงานร่วมกัน",
-    "discover": "ค้นพบ",
+    "kicker": "โมดูล Avenqo",
+    "title": "แพลตฟอร์มแบบโมดูลเดียวที่เติบโตตามความต้องการ",
+    "subtitle": "เปิดใช้งานโมดูลที่คุณต้องการวันนี้ และขยายในภายหลังโดยไม่ต้องเปลี่ยนเครื่องมือ",
+    "discover": "เรียนรู้เพิ่มเติม",
+    "availableNow": "พร้อมใช้งานแล้ว",
+    "comingSoon": "เร็วๆ นี้",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "จัดการยอดขาย ผลิตภัณฑ์ และความภักดีจากมุมมองเดียว"
+        "name": "Retail Intelligence",
+        "description": "การวิเคราะห์ยอดขายและสินค้าคงคลังแบบเรียลไทม์สำหรับธุรกิจค้าปลีก",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "จัดลำดับความสำคัญของความสัมพันธ์ โอกาส และการดำเนินการที่ดีที่สุดถัดไป"
+        "name": "CRM AI",
+        "description": "การจัดการความสัมพันธ์ลูกค้าที่ขับเคลื่อนด้วย AI สำหรับกระบวนการขายที่ชาญฉลาดยิ่งขึ้น",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "เร่งการติดตามทางการเงินและการปิดบัญชี"
+        "name": "OCR AI",
+        "description": "การดึงข้อมูลอัตโนมัติจากใบแจ้งหนี้และเอกสารที่สแกน",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "เปลี่ยนเอกสารที่เข้ามาให้เป็นกระบวนการที่มีโครงสร้าง"
+        "name": "Voice AI",
+        "description": "ผู้ช่วยเสียงสำหรับถอดความและติดตามการโทรของลูกค้า",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "ทำความเข้าใจแนวโน้มและความเบี่ยงเบนที่สำคัญจริงๆ"
+        "name": "Media AI",
+        "description": "การสร้างและวิเคราะห์เนื้อหาภาพและการตลาด",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "จัดการแคมเปญที่เกี่ยวข้องและวัดผลได้มากขึ้น"
+        "name": "Accounting AI",
+        "description": "การทำให้การบัญชีและการกระทบยอดทางการเงินเป็นอัตโนมัติ",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "ให้คำตอบที่เชื่อถือได้โดยอิงจากความรู้ของบริษัท"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "ทำให้การโต้ตอบด้วยเสียงเป็นอัตโนมัติโดยไม่สูญเสียบริบท"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "เชื่อมต่อทีมและทำให้งานที่ซ้ำซ้อนเป็นอัตโนมัติ"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "สร้างและจัดระเบียบเนื้อหาของคุณจากพื้นที่ทำงานเดียว"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "ลดเวลาตอบสนองและปรับปรุงทุกวิธีแก้ปัญหา"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "ปรับใช้ผู้ช่วยสนทนาสำหรับลูกค้าของคุณ"
+        "name": "Legal AI",
+        "description": "การตรวจสอบและสรุปสัญญาด้วยความช่วยเหลือของ AI",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "ราคาที่โปร่งใส",
-    "title": "เริ่มต้นตอนนี้ เติบโตตามจังหวะของคุณ",
-    "subtitle": "ทุกแผนรวมแพลตฟอร์ม ผู้ช่วย Avenqo และพื้นที่ทำงานที่ปลอดภัย",
-    "popular": "ได้รับความนิยมมากที่สุด",
-    "priceLabel": "ตามคำขอ",
+    "kicker": "ราคา",
+    "title": "แผนสำหรับทุกขั้นตอนการเติบโตของคุณ",
+    "subtitle": "เริ่มต้นด้วยการสาธิต จากนั้นเลือกแผนที่เหมาะกับขนาดบริษัทของคุณ",
+    "popular": "ยอดนิยมที่สุด",
+    "priceLabel": "ราคาตามคำขอ",
     "plans": [
       {
-        "tier": "พื้นฐาน",
-        "title": "เพื่อเริ่มต้น",
+        "tier": "Demo",
+        "title": "ลองใช้ Avenqo กับข้อมูลของคุณ",
+        "priceLabel": "ฟรี",
         "items": [
-          "1 โมดูล Avenqo",
-          "ผู้ใช้สูงสุด 5 คน",
-          "ผู้ช่วยในตัว",
-          "การสนับสนุนมาตรฐาน"
+          "การเข้าถึงแบบจำกัดเวลา",
+          "ข้อมูลสาธิตหรือข้อมูลของคุณเอง",
+          "การสนับสนุนทางอีเมล"
         ],
-        "action": "พูดคุยกับที่ปรึกษา"
+        "action": "ขอการสาธิต"
       },
       {
-        "tier": "มืออาชีพ",
-        "title": "เพื่อเร่งความเร็ว",
+        "tier": "Professional",
+        "title": "สำหรับบริษัทที่ต้องการเติบโต",
+        "priceLabel": "ราคาตามคำขอ",
         "items": [
-          "โมดูลสูงสุด 5 รายการ",
-          "ผู้ใช้สูงสุด 25 คน",
-          "ระบบอัตโนมัติขั้นสูง",
+          "โมดูลหลักทั้งหมด",
+          "จำนวนผู้ใช้ที่ปรับขนาดได้",
           "การสนับสนุนที่มีความสำคัญ"
         ],
-        "action": "ทดลองใช้ฟรี"
+        "action": "ติดต่อเรา"
       },
       {
-        "tier": "องค์กร",
-        "title": "เพื่อการประสานงาน",
+        "tier": "Enterprise",
+        "title": "สำหรับองค์กรที่มีความต้องการขั้นสูง",
+        "priceLabel": "ราคาตามคำขอ",
         "items": [
-          "โมดูลไม่จำกัด",
-          "ผู้ใช้ตามคำขอ",
           "การผสานรวมแบบกำหนดเอง",
-          "การกำกับดูแลเฉพาะ"
+          "ผู้จัดการบัญชีเฉพาะ",
+          "ข้อตกลงระดับบริการ"
         ],
         "action": "ติดต่อฝ่ายขาย"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "ขั้นตอนถัดไปของคุณ",
     "title": "บริหารธุรกิจของคุณในแบบที่แตกต่าง",
-    "tryFree": "ทดลองใช้ฟรี",
+    "tryFree": "ทดลองใช้ Avenqo",
     "scheduleDemo": "กำหนดเวลาสาธิต"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "แหล่งที่มา",
     "newest": "ล่าสุด",
     "you": "คุณ",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "สินค้าขายดีที่สุดของฉันในเดือนนี้คืออะไร?",
+      "ลูกค้ารายใดมีความเสี่ยงที่จะหยุดซื้อ?",
+      "สรุปผลการดำเนินธุรกิจของฉันในสัปดาห์นี้",
+      "โอกาสที่มีความสำคัญสูงสุดในตอนนี้คืออะไร?"
+    ]
   },
   "auth": {
     "tagline": "แพลตฟอร์ม AI สำหรับธุรกิจของคุณ",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "มูลค่าคำสั่งซื้อเฉลี่ย",
     "prioritiesTitle": "ลำดับความสำคัญที่แนะนำ",
     "prioritiesEmpty": "เมื่อเชื่อมต่อข้อมูลแล้ว ลำดับความสำคัญของคุณจะแสดงที่นี่",
-    "planLabel": "แผน"
+    "planLabel": "แผน",
+    "askAvenqoSubtitle": "ถามคำถามใดๆ เกี่ยวกับธุรกิจของคุณ",
+    "askAvenqoCta": "เริ่มการสนทนา",
+    "importDataTitle": "นำเข้าข้อมูลของคุณ",
+    "importDataSubtitle": "เชื่อมต่อแหล่งข้อมูลของคุณเพื่อรับข้อมูลเชิงลึก",
+    "importDataCta": "นำเข้าข้อมูล",
+    "connectionsTitle": "การเชื่อมต่อ",
+    "connectionsEmpty": "ยังไม่มีการเชื่อมต่อ",
+    "connectionsEmptyCta": "เพิ่มการเชื่อมต่อ",
+    "connectionsReadyLabel": "พร้อม",
+    "connectionsLastUpdate": "อัปเดตล่าสุด: ",
+    "activityTitle": "กิจกรรมล่าสุด",
+    "activityEmpty": "ยังไม่มีกิจกรรมล่าสุด",
+    "stepsTitle": "เริ่มต้นใช้งาน",
+    "stepOrgLabel": "ตั้งค่าองค์กรของคุณ",
+    "stepDataLabel": "เชื่อมต่อข้อมูลของคุณ",
+    "stepInsightsLabel": "สำรวจข้อมูลเชิงลึก",
+    "stepAskLabel": "ถาม Avenqo"
   },
   "admin": {
     "commandCenterTitle": "ศูนย์ควบคุม Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "การตั้งค่า",
     "signedInAs": "เข้าสู่ระบบในชื่อ",
     "noSettingsMessage": "ไม่มีการกำหนดค่าทั่วไปของแพลตฟอร์มที่แสดงที่นี่ — ไม่จำเป็นต้องแสดงอะไรนอกเหนือจากตัวตนบัญชี"
+  },
+  "onboarding": {
+    "title": "มาตั้งค่าพื้นที่ทำงาน Avenqo ของคุณกัน",
+    "subtitle": "คำถามสั้นๆ เพื่อปรับแต่งลำดับความสำคัญและคำแนะนำของคุณ",
+    "goalsLabel": "เป้าหมายหลักของคุณคืออะไร?",
+    "goalIncreaseSales": "เพิ่มยอดขาย",
+    "goalReduceChurn": "ลดการสูญเสียลูกค้า",
+    "goalOptimizePricing": "เพิ่มประสิทธิภาพราคา",
+    "goalImproveInventory": "ปรับปรุงการจัดการสินค้าคงคลัง",
+    "goalUnderstandCustomers": "เข้าใจลูกค้าของคุณดียิ่งขึ้น",
+    "goalAutomateReports": "ทำให้การรายงานเป็นอัตโนมัติ",
+    "toolsLabel": "คุณใช้เครื่องมืออะไรอยู่ในปัจจุบัน?",
+    "toolPos": "ระบบ POS",
+    "toolEcommerce": "แพลตฟอร์มอีคอมเมิร์ซ",
+    "toolSpreadsheets": "สเปรดชีต",
+    "toolAccounting": "ซอฟต์แวร์บัญชี",
+    "toolCrm": "ระบบ CRM",
+    "toolNone": "ไม่มีข้อใดถูก",
+    "teamSizeLabel": "ทีมของคุณมีขนาดเท่าใด?",
+    "teamSizeSolo": "แค่ฉันคนเดียว",
+    "teamSizeSmall": "2-10 คน",
+    "teamSizeMedium": "11-50 คน",
+    "teamSizeLarge": "50+ คน",
+    "refineIndustryLabel": "คุณอยู่ในอุตสาหกรรมใด?",
+    "refineIndustryHint": "สิ่งนี้ช่วยให้เราปรับแต่งคำแนะนำได้ดียิ่งขึ้น",
+    "continueCta": "ดำเนินการต่อ",
+    "skipCta": "ข้ามไปก่อน",
+    "genericError": "เกิดข้อผิดพลาด กรุณาลองอีกครั้ง",
+    "goalsRequired": "กรุณาเลือกอย่างน้อยหนึ่งเป้าหมาย",
+    "teamSizeRequired": "กรุณาเลือกขนาดทีมของคุณ"
+  },
+  "company": {
+    "navOverviewLabel": "ภาพรวม",
+    "navOverviewDescription": "ภาพรวมธุรกิจของคุณ",
+    "navAssistantLabel": "ผู้ช่วย AI",
+    "navAssistantDescription": "ถามเกี่ยวกับข้อมูลของคุณ",
+    "navSalesLabel": "ยอดขาย",
+    "navSalesDescription": "ติดตามรายได้และแนวโน้ม",
+    "navCustomersLabel": "ลูกค้า",
+    "navCustomersDescription": "ทำความเข้าใจฐานลูกค้าของคุณ",
+    "navProductsLabel": "สินค้า",
+    "navProductsDescription": "วิเคราะห์ประสิทธิภาพของสินค้า",
+    "navRecommendationsLabel": "คำแนะนำ",
+    "navRecommendationsDescription": "คำแนะนำที่สร้างโดย AI",
+    "navAlertsLabel": "การแจ้งเตือน",
+    "navAlertsDescription": "การแจ้งเตือนที่สำคัญ",
+    "navReportsLabel": "รายงาน",
+    "navReportsDescription": "สร้างรายงานโดยละเอียด",
+    "navConnectionsLabel": "การเชื่อมต่อ",
+    "navConnectionsDescription": "จัดการแหล่งข้อมูลของคุณ",
+    "navTeamLabel": "ทีม",
+    "navTeamDescription": "จัดการสมาชิกในทีม",
+    "navBillingLabel": "การเรียกเก็บเงิน",
+    "navBillingDescription": "จัดการการสมัครสมาชิกของคุณ",
+    "navSettingsLabel": "การตั้งค่า",
+    "navSettingsDescription": "บัญชีและการตั้งค่า",
+    "navSupportLabel": "การสนับสนุน",
+    "navSupportDescription": "ขอความช่วยเหลือ",
+    "connectionsLoading": "กำลังโหลดการเชื่อมต่อของคุณ...",
+    "connectionsNoDataTitle": "ยังไม่มีข้อมูลที่เชื่อมต่อ",
+    "connectionsNoDataFormats": "รองรับ CSV, Excel และอื่นๆ",
+    "connectionsImportButton": "นำเข้าข้อมูล",
+    "connectionsUploadingLabel": "กำลังอัปโหลด...",
+    "connectionsAnalyzing": "กำลังวิเคราะห์ข้อมูลของคุณ...",
+    "connectionsMappingTitle": "จับคู่คอลัมน์ของคุณ",
+    "connectionsMappingSubtitle": "จับคู่คอลัมน์ของคุณกับฟิลด์ของเรา",
+    "connectionsMappingIgnore": "ละเว้นคอลัมน์นี้",
+    "connectionsConfirmMapping": "ยืนยันการจับคู่",
+    "connectionsReadyTitle": "ข้อมูลของคุณพร้อมแล้ว!",
+    "connectionsStatNameLabel": "ชื่อ",
+    "connectionsStatRowsLabel": "แถว",
+    "connectionsStatColumnsLabel": "คอลัมน์",
+    "connectionsStatUpdatedLabel": "อัปเดตแล้ว",
+    "connectionsGoDashboard": "ไปที่แดชบอร์ด",
+    "connectionsAskAvenqo": "ถาม Avenqo",
+    "connectionsImportAnother": "นำเข้าไฟล์อื่น",
+    "connectionsRetry": "ลองอีกครั้ง",
+    "connectionsGenericError": "เกิดข้อผิดพลาด",
+    "connectionsFileEmptyError": "ไฟล์ดูเหมือนจะว่างเปล่า",
+    "connectionsProcessingError": "เกิดข้อผิดพลาดในการประมวลผลไฟล์ของคุณ",
+    "businessDefaultTitle": "เชื่อมต่อข้อมูลของคุณ",
+    "businessDefaultDescription": "เชื่อมต่อแหล่งข้อมูลของคุณเพื่อเริ่มต้น",
+    "businessConnectButton": "เชื่อมต่อ",
+    "businessSalesTitle": "ข้อมูลยอดขาย",
+    "businessSalesDescription": "เชื่อมต่อข้อมูลยอดขายของคุณเพื่อติดตามประสิทธิภาพ",
+    "businessCustomersTitle": "ข้อมูลลูกค้า",
+    "businessCustomersDescription": "เชื่อมต่อข้อมูลลูกค้าเพื่อรับข้อมูลเชิงลึก",
+    "businessProductsTitle": "ข้อมูลสินค้า",
+    "businessProductsDescription": "เชื่อมต่อข้อมูลสินค้าเพื่อวิเคราะห์ประสิทธิภาพ",
+    "businessRecommendationsTitle": "คำแนะนำ",
+    "businessRecommendationsDescription": "เชื่อมต่อข้อมูลเพื่อรับคำแนะนำจาก AI",
+    "businessAlertsTitle": "การแจ้งเตือน",
+    "businessAlertsDescription": "เชื่อมต่อข้อมูลเพื่อรับการแจ้งเตือน",
+    "businessReportsTitle": "รายงาน",
+    "businessReportsDescription": "เชื่อมต่อข้อมูลเพื่อสร้างรายงาน",
+    "billingTitle": "การเรียกเก็บเงิน",
+    "billingPortalButton": "เปิดพอร์ทัลการเรียกเก็บเงิน",
+    "billingUnavailable": "ข้อมูลการเรียกเก็บเงินไม่พร้อมใช้งานในขณะนี้",
+    "billingPlanPrefix": "แผน: ",
+    "billingStatusPrefix": "สถานะ: ",
+    "billingCancelScheduled": "กำหนดการยกเลิกแล้ว",
+    "billingInvoicesTitle": "ใบแจ้งหนี้",
+    "billingInvoiceFallback": "ไม่มีใบแจ้งหนี้ที่ใช้ได้",
+    "employeesTitle": "สมาชิกในทีม",
+    "employeesRefreshTooltip": "รีเฟรชรายการ",
+    "employeesUnavailable": "ไม่มีข้อมูลสมาชิกในทีม",
+    "employeesColumnName": "ชื่อ",
+    "employeesColumnEmail": "อีเมล",
+    "employeesColumnRole": "บทบาท",
+    "employeesColumnStatus": "สถานะ",
+    "settingsTitle": "การตั้งค่า",
+    "settingsSubtitle": "จัดการบัญชีและการตั้งค่าของคุณ",
+    "settingsAccountSection": "บัญชี",
+    "settingsCompanySection": "บริษัท",
+    "settingsAppearanceSection": "ลักษณะที่ปรากฏ",
+    "settingsSessionSection": "เซสชัน",
+    "settingsNameLabel": "ชื่อ",
+    "settingsEmailLabel": "อีเมล",
+    "settingsRoleLabel": "บทบาท",
+    "settingsPlanLabel": "แผน",
+    "settingsManageSubscription": "จัดการการสมัครสมาชิก",
+    "settingsThemeLabel": "ธีม",
+    "settingsLanguageLabel": "ภาษา",
+    "settingsThemeLight": "สว่าง",
+    "settingsThemeDark": "มืด",
+    "settingsThemeSystem": "ตามระบบ",
+    "settingsLogout": "ออกจากระบบ"
   }
 }

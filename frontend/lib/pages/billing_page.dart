@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class BillingPage extends StatelessWidget {
@@ -25,6 +26,7 @@ class BillingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     return FutureBuilder<dynamic>(
       future: Future.wait([
         api.get('/billing/subscription'),
@@ -43,14 +45,14 @@ class BillingPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Facturation',
+                    t.billingTitle,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                 ),
                 FilledButton.icon(
                   onPressed: () => _openPortal(context),
                   icon: const Icon(Icons.open_in_new),
-                  label: const Text('Portail Stripe'),
+                  label: Text(t.billingPortalButton),
                 ),
               ],
             ),
@@ -58,33 +60,33 @@ class BillingPage extends StatelessWidget {
             if (snapshot.connectionState != ConnectionState.done)
               const Center(child: CircularProgressIndicator())
             else if (snapshot.hasError)
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('Facturation temporairement indisponible.'),
+                  padding: const EdgeInsets.all(20),
+                  child: Text(t.billingUnavailable),
                 ),
               )
             else ...[
               Card(
                 child: ListTile(
                   title: Text(
-                    'Plan ${subscription?['plan_code'] ?? 'demo'}',
+                    '${t.billingPlanPrefix}${subscription?['plan_code'] ?? 'demo'}',
                   ),
                   subtitle: Text(
-                    'État: ${subscription?['status'] ?? 'inactive'}',
+                    '${t.billingStatusPrefix}${subscription?['status'] ?? 'inactive'}',
                   ),
                   trailing: subscription?['cancel_at_period_end'] == true
-                      ? const Chip(label: Text('Annulation planifiée'))
+                      ? Chip(label: Text(t.billingCancelScheduled))
                       : null,
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Factures', style: Theme.of(context).textTheme.titleLarge),
+              Text(t.billingInvoicesTitle, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 10),
               for (final invoice in invoices)
                 ListTile(
                   leading: const Icon(Icons.receipt_outlined),
-                  title: Text(invoice['number']?.toString() ?? 'Facture'),
+                  title: Text(invoice['number']?.toString() ?? t.billingInvoiceFallback),
                   subtitle: Text(invoice['status'].toString()),
                   trailing: Text(
                     '${(invoice['amount_paid'] as num) / 100} ${invoice['currency'].toString().toUpperCase()}',

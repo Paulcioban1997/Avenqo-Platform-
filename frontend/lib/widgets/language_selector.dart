@@ -14,8 +14,9 @@ class LanguageSelector extends StatelessWidget {
   static const Map<String, String> _regionLabels = {
     'americas': 'Amériques',
     'europe': 'Europe',
-    'middle-east-africa': 'Moyen-Orient et Afrique',
-    'asia-pacific': 'Asie-Pacifique',
+    'middle-east': 'Moyen-Orient',
+    'africa': 'Afrique',
+    'asia': 'Asie-Pacifique',
   };
 
   @override

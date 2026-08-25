@@ -56,7 +56,7 @@ void main() {
     final auth = AuthController(
       ApiClient(tokenStore: MemoryTokenStore(), httpClient: _UnreachableHttpClient()),
     );
-    final locale = LocaleController(store: MemoryLocalePreferenceStore());
+    final locale = LocaleController(store: MemoryLocalePreferenceStore('fr'));
     await auth.initialize();
     await locale.initialize();
 
@@ -64,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Avenqo'), findsWidgets);
-    expect(find.text('Essayer gratuitement'), findsWidgets);
+    expect(find.text('Essayer Avenqo'), findsWidgets);
 
     // Démonte explicitement l'arbre (GoRouter/refreshListenable inclus) avant
     // la fin du test pour éviter toute fuite d'état vers le test suivant.

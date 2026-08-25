@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "ログイン",
-    "tryFree": "無料で試す",
+    "tryFree": "Avenqoを試す",
     "watchDemo": "デモを見る",
-    "noCreditCard": "クレジットカード不要",
+    "noCreditCard": "パーソナライズされたセットアップ",
     "guidedSetup": "ガイド付きセットアップ",
     "isolatedData": "分離されたデータ"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "拡張可能なホスティング"
   },
   "modulesSection": {
-    "kicker": "Avenqoスイート",
-    "title": "あらゆるビジネス上の優先事項に対応するモジュール。",
-    "subtitle": "自社に合わせて環境を構築できます。すべてのモジュールは同じ体験を共有し、連携して動作します。",
-    "discover": "詳しく見る",
+    "kicker": "Avenqoモジュール",
+    "title": "必要に応じて拡張できる単一のモジュール式プラットフォーム",
+    "subtitle": "今日必要なモジュールを有効にし、後でツールを変更せずに拡張できます。",
+    "discover": "詳細を見る",
+    "availableNow": "現在利用可能",
+    "comingSoon": "近日公開",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "販売、商品、顧客ロイヤルティを一元管理。"
+        "name": "Retail Intelligence",
+        "description": "小売業向けのリアルタイムの売上と在庫分析。",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "関係、商談機会、次のアクションに優先順位を付けます。"
+        "name": "CRM AI",
+        "description": "よりスマートな営業パイプラインのためのAI搭載顧客関係管理。",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "財務トラッキングと決算業務を加速します。"
+        "name": "OCR AI",
+        "description": "請求書やスキャンした文書からの自動データ抽出。",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "受信文書を構造化された業務プロセスに変換します。"
+        "name": "Voice AI",
+        "description": "顧客通話の文字起こしと追跡のための音声アシスタント。",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "本当に重要な傾向とギャップを把握します。"
+        "name": "Media AI",
+        "description": "ビジュアルおよびマーケティングコンテンツの作成と分析。",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "より関連性が高く測定可能なキャンペーンを実現します。"
+        "name": "Accounting AI",
+        "description": "会計と財務照合の自動化。",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "企業のナレッジに基づいた信頼できる回答を提供します。"
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "文脈を失うことなく音声対応を自動化します。"
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "チームをつなぎ、反復業務を自動化します。"
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "コンテンツをひとつの場所で制作・管理します。"
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "対応時間を短縮し、解決品質を高めます。"
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "顧客向けの対話型アシスタントを展開します。"
+        "name": "Legal AI",
+        "description": "AIによる契約書の確認と要約。",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "明確な料金体系",
-    "title": "今すぐ始めて、自分のペースで拡張。",
-    "subtitle": "すべてのプランにプラットフォーム、Avenqoアシスタント、安全なワークスペースが含まれます。",
-    "popular": "人気No.1",
-    "priceLabel": "個別見積もり",
+    "kicker": "料金プラン",
+    "title": "成長のあらゆる段階に対応するプラン",
+    "subtitle": "デモから始めて、貴社の規模に合ったプランを選択してください。",
+    "popular": "最も人気",
+    "priceLabel": "お問い合わせください",
     "plans": [
       {
-        "tier": "エッセンシャル",
-        "title": "はじめての方向け",
+        "tier": "Demo",
+        "title": "ご自身のデータでAvenqoを試す",
+        "priceLabel": "無料",
         "items": [
-          "Avenqoモジュール1つ",
-          "ユーザー数5名まで",
-          "内蔵アシスタント",
-          "標準サポート"
+          "期間限定アクセス",
+          "デモデータまたは独自データ",
+          "メールサポート"
         ],
-        "action": "アドバイザーに相談"
+        "action": "デモをリクエスト"
       },
       {
-        "tier": "プロフェッショナル",
-        "title": "加速を目指す方向け",
+        "tier": "Professional",
+        "title": "成長を目指す企業向け",
+        "priceLabel": "お問い合わせください",
         "items": [
-          "モジュール最大5つ",
-          "ユーザー数25名まで",
-          "高度な自動化",
+          "すべてのコアモジュール",
+          "拡張可能なユーザー数",
           "優先サポート"
         ],
-        "action": "無料で試す"
+        "action": "お問い合わせ"
       },
       {
-        "tier": "エンタープライズ",
-        "title": "全体最適を目指す方向け",
+        "tier": "Enterprise",
+        "title": "高度なニーズを持つ組織向け",
+        "priceLabel": "お問い合わせください",
         "items": [
-          "モジュール数無制限",
-          "ユーザー数を柔軟に設定",
-          "カスタム連携",
-          "専任ガバナンス"
+          "カスタム統合",
+          "専任アカウントマネージャー",
+          "サービスレベル契約"
         ],
         "action": "営業に問い合わせる"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "次のステップへ",
     "title": "会社の運営を、これまでとは違う形に。",
-    "tryFree": "無料で試す",
+    "tryFree": "Avenqoを試す",
     "scheduleDemo": "デモを予約する"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "ソース",
     "newest": "最新",
     "you": "あなた",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "今月の私のベストセラー製品は何ですか？",
+      "購入をやめるリスクのある顧客は誰ですか？",
+      "今週の私のビジネスパフォーマンスを要約してください。",
+      "現在最も優先度の高い機会は何ですか？"
+    ]
   },
   "auth": {
     "tagline": "あなたの会社の業務のための AI プラットフォーム",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "平均注文金額",
     "prioritiesTitle": "推奨の優先事項",
     "prioritiesEmpty": "データを接続すると、優先事項がここに表示されます。",
-    "planLabel": "プラン"
+    "planLabel": "プラン",
+    "askAvenqoSubtitle": "ビジネスに関する質問をしてください",
+    "askAvenqoCta": "会話を始める",
+    "importDataTitle": "データをインポート",
+    "importDataSubtitle": "インサイトを得るためにデータソースを接続する",
+    "importDataCta": "データをインポート",
+    "connectionsTitle": "接続",
+    "connectionsEmpty": "まだ接続がありません",
+    "connectionsEmptyCta": "接続を追加",
+    "connectionsReadyLabel": "準備完了",
+    "connectionsLastUpdate": "最終更新：",
+    "activityTitle": "最近のアクティビティ",
+    "activityEmpty": "最近のアクティビティはありません",
+    "stepsTitle": "はじめに",
+    "stepOrgLabel": "組織を設定する",
+    "stepDataLabel": "データを接続する",
+    "stepInsightsLabel": "インサイトを探る",
+    "stepAskLabel": "Avenqoに質問する"
   },
   "admin": {
     "commandCenterTitle": "Avenqo コマンドセンター",
@@ -465,5 +477,132 @@
     "settingsTitle": "設定",
     "signedInAs": "ログイン中",
     "noSettingsMessage": "プラットフォームの共通設定はここに表示されません — アカウント情報以外は表示する必要はありません。"
+  },
+  "onboarding": {
+    "title": "Avenqoワークスペースをセットアップしましょう",
+    "subtitle": "優先事項とおすすめをパーソナライズするための簡単な質問です。",
+    "goalsLabel": "主な目標は何ですか？",
+    "goalIncreaseSales": "売上の向上",
+    "goalReduceChurn": "解約率の低減",
+    "goalOptimizePricing": "価格の最適化",
+    "goalImproveInventory": "在庫管理の改善",
+    "goalUnderstandCustomers": "顧客の理解を深める",
+    "goalAutomateReports": "レポートの自動化",
+    "toolsLabel": "現在使用しているツールは？",
+    "toolPos": "POSレジ",
+    "toolEcommerce": "ECプラットフォーム",
+    "toolSpreadsheets": "スプレッドシート",
+    "toolAccounting": "会計ソフト",
+    "toolCrm": "CRMシステム",
+    "toolNone": "いずれも使用していない",
+    "teamSizeLabel": "チームの規模は？",
+    "teamSizeSolo": "自分のみ",
+    "teamSizeSmall": "2〜10人",
+    "teamSizeMedium": "11〜50人",
+    "teamSizeLarge": "50人以上",
+    "refineIndustryLabel": "業界は何ですか？",
+    "refineIndustryHint": "これにより提案を絞り込むことができます",
+    "continueCta": "続ける",
+    "skipCta": "今はスキップ",
+    "genericError": "エラーが発生しました。再試行してください。",
+    "goalsRequired": "少なくとも1つの目標を選択してください。",
+    "teamSizeRequired": "チームの規模を選択してください。"
+  },
+  "company": {
+    "navOverviewLabel": "概要",
+    "navOverviewDescription": "ビジネスのスナップショット",
+    "navAssistantLabel": "AIアシスタント",
+    "navAssistantDescription": "データについて質問する",
+    "navSalesLabel": "売上",
+    "navSalesDescription": "収益とトレンドを追跡",
+    "navCustomersLabel": "顧客",
+    "navCustomersDescription": "顧客ベースを理解する",
+    "navProductsLabel": "製品",
+    "navProductsDescription": "製品パフォーマンスを分析",
+    "navRecommendationsLabel": "おすすめ",
+    "navRecommendationsDescription": "AI生成の提案",
+    "navAlertsLabel": "アラート",
+    "navAlertsDescription": "重要な通知",
+    "navReportsLabel": "レポート",
+    "navReportsDescription": "詳細なレポートを生成",
+    "navConnectionsLabel": "接続",
+    "navConnectionsDescription": "データソースを管理する",
+    "navTeamLabel": "チーム",
+    "navTeamDescription": "チームメンバーを管理する",
+    "navBillingLabel": "請求",
+    "navBillingDescription": "サブスクリプションを管理する",
+    "navSettingsLabel": "設定",
+    "navSettingsDescription": "アカウントと環境設定",
+    "navSupportLabel": "サポート",
+    "navSupportDescription": "ヘルプを取得する",
+    "connectionsLoading": "接続を読み込み中...",
+    "connectionsNoDataTitle": "まだデータが接続されていません",
+    "connectionsNoDataFormats": "CSV、Excelなどをサポート",
+    "connectionsImportButton": "データをインポート",
+    "connectionsUploadingLabel": "アップロード中...",
+    "connectionsAnalyzing": "データを分析中...",
+    "connectionsMappingTitle": "列をマッピングする",
+    "connectionsMappingSubtitle": "列を当社のフィールドに一致させます",
+    "connectionsMappingIgnore": "この列を無視",
+    "connectionsConfirmMapping": "マッピングを確認",
+    "connectionsReadyTitle": "データの準備ができました！",
+    "connectionsStatNameLabel": "名前",
+    "connectionsStatRowsLabel": "行数",
+    "connectionsStatColumnsLabel": "列数",
+    "connectionsStatUpdatedLabel": "更新日時",
+    "connectionsGoDashboard": "ダッシュボードへ",
+    "connectionsAskAvenqo": "Avenqoに質問する",
+    "connectionsImportAnother": "別のファイルをインポート",
+    "connectionsRetry": "再試行",
+    "connectionsGenericError": "エラーが発生しました。",
+    "connectionsFileEmptyError": "ファイルが空のようです。",
+    "connectionsProcessingError": "ファイルの処理中にエラーが発生しました。",
+    "businessDefaultTitle": "データを接続する",
+    "businessDefaultDescription": "開始するにはデータソースを接続してください",
+    "businessConnectButton": "接続する",
+    "businessSalesTitle": "売上データ",
+    "businessSalesDescription": "パフォーマンスを追跡するために売上データを接続する",
+    "businessCustomersTitle": "顧客データ",
+    "businessCustomersDescription": "インサイトを得るために顧客データを接続する",
+    "businessProductsTitle": "製品データ",
+    "businessProductsDescription": "パフォーマンスを分析するために製品データを接続する",
+    "businessRecommendationsTitle": "おすすめ",
+    "businessRecommendationsDescription": "AIのおすすめを得るためにデータを接続する",
+    "businessAlertsTitle": "アラート",
+    "businessAlertsDescription": "アラートを受け取るためにデータを接続する",
+    "businessReportsTitle": "レポート",
+    "businessReportsDescription": "レポートを生成するためにデータを接続する",
+    "billingTitle": "請求",
+    "billingPortalButton": "請求ポータルを開く",
+    "billingUnavailable": "請求情報は現在ご利用いただけません",
+    "billingPlanPrefix": "プラン：",
+    "billingStatusPrefix": "ステータス：",
+    "billingCancelScheduled": "キャンセルが予定されています",
+    "billingInvoicesTitle": "請求書",
+    "billingInvoiceFallback": "利用可能な請求書はありません",
+    "employeesTitle": "チームメンバー",
+    "employeesRefreshTooltip": "リストを更新",
+    "employeesUnavailable": "チームメンバー情報がありません",
+    "employeesColumnName": "名前",
+    "employeesColumnEmail": "メール",
+    "employeesColumnRole": "役割",
+    "employeesColumnStatus": "ステータス",
+    "settingsTitle": "設定",
+    "settingsSubtitle": "アカウントと環境設定を管理する",
+    "settingsAccountSection": "アカウント",
+    "settingsCompanySection": "会社",
+    "settingsAppearanceSection": "外観",
+    "settingsSessionSection": "セッション",
+    "settingsNameLabel": "名前",
+    "settingsEmailLabel": "メール",
+    "settingsRoleLabel": "役割",
+    "settingsPlanLabel": "プラン",
+    "settingsManageSubscription": "サブスクリプションを管理",
+    "settingsThemeLabel": "テーマ",
+    "settingsLanguageLabel": "言語",
+    "settingsThemeLight": "ライト",
+    "settingsThemeDark": "ダーク",
+    "settingsThemeSystem": "システムに従う",
+    "settingsLogout": "ログアウト"
   }
 }

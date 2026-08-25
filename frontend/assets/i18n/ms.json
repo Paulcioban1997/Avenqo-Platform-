@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Log masuk",
-    "tryFree": "Cuba percuma",
+    "tryFree": "Cuba Avenqo",
     "watchDemo": "Tonton demo",
-    "noCreditCard": "Tiada kad kredit diperlukan",
+    "noCreditCard": "Persediaan yang diperibadikan",
     "guidedSetup": "Persediaan berpandu",
     "isolatedData": "Data terpencil"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Pengehosan berskala"
   },
   "modulesSection": {
-    "kicker": "Rangkaian Avenqo",
-    "title": "Satu modul untuk setiap keutamaan perniagaan.",
-    "subtitle": "Bina persekitaran tersuai anda. Semua modul berkongsi pengalaman yang sama dan berfungsi bersama.",
-    "discover": "Terokai",
+    "kicker": "Modul Avenqo",
+    "title": "Satu platform modular yang berkembang mengikut keperluan",
+    "subtitle": "Aktifkan modul yang anda perlukan hari ini, dan kembangkan kemudian tanpa menukar alat.",
+    "discover": "Ketahui lebih lanjut",
+    "availableNow": "Tersedia sekarang",
+    "comingSoon": "Akan datang tidak lama lagi",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Uruskan jualan, produk dan kesetiaan daripada satu paparan."
+        "name": "Retail Intelligence",
+        "description": "Analisis jualan dan inventori masa nyata untuk peruncitan.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Utamakan hubungan, peluang dan tindakan terbaik seterusnya."
+        "name": "CRM AI",
+        "description": "Pengurusan perhubungan pelanggan berkuasa AI untuk saluran jualan yang lebih pintar.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Percepatkan pemantauan kewangan dan penutupan perakaunan."
+        "name": "OCR AI",
+        "description": "Pengekstrakan data automatik daripada invois dan dokumen yang diimbas.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Tukar dokumen masuk kepada proses berstruktur."
+        "name": "Voice AI",
+        "description": "Pembantu suara untuk transkripsi dan penjejakan panggilan pelanggan.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Fahami trend dan penyelewengan yang benar-benar penting."
+        "name": "Media AI",
+        "description": "Penciptaan dan analisis kandungan visual dan pemasaran.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Aturkan kempen yang lebih relevan dan boleh diukur."
+        "name": "Accounting AI",
+        "description": "Automasi perakaunan dan penyesuaian kewangan.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Berikan jawapan yang boleh dipercayai berdasarkan pengetahuan syarikat."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Automasikan interaksi suara tanpa kehilangan konteks."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Sambungkan pasukan dan automasikan tugas berulang."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Hasilkan dan susun kandungan anda daripada satu ruang kerja."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Kurangkan masa tindak balas dan tingkatkan setiap penyelesaian."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Gunakan pembantu perbualan untuk pelanggan anda."
+        "name": "Legal AI",
+        "description": "Semakan dan ringkasan kontrak dengan bantuan AI.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Harga telus",
-    "title": "Mula sekarang. Berkembang mengikut rentak anda.",
-    "subtitle": "Setiap pelan merangkumi platform, pembantu Avenqo dan ruang kerja yang selamat.",
+    "kicker": "Harga",
+    "title": "Pelan untuk setiap peringkat pertumbuhan anda",
+    "subtitle": "Mulakan dengan demo, kemudian pilih pelan yang sesuai dengan saiz syarikat anda.",
     "popular": "Paling popular",
-    "priceLabel": "Mengikut permintaan",
+    "priceLabel": "Harga atas permintaan",
     "plans": [
       {
-        "tier": "Asas",
-        "title": "Untuk bermula",
+        "tier": "Demo",
+        "title": "Cuba Avenqo dengan data anda",
+        "priceLabel": "Percuma",
         "items": [
-          "1 modul Avenqo",
-          "Sehingga 5 pengguna",
-          "Pembantu terbina dalam",
-          "Sokongan standard"
+          "Akses terhad masa",
+          "Data demo atau data anda sendiri",
+          "Sokongan e-mel"
         ],
-        "action": "Bercakap dengan perunding"
+        "action": "Minta demo"
       },
       {
-        "tier": "Profesional",
-        "title": "Untuk mempercepatkan",
+        "tier": "Professional",
+        "title": "Untuk syarikat yang ingin berkembang",
+        "priceLabel": "Harga atas permintaan",
         "items": [
-          "Sehingga 5 modul",
-          "Sehingga 25 pengguna",
-          "Automasi lanjutan",
+          "Semua modul teras",
+          "Bilangan pengguna berskala",
           "Sokongan keutamaan"
         ],
-        "action": "Cuba percuma"
+        "action": "Hubungi kami"
       },
       {
-        "tier": "Perusahaan",
-        "title": "Untuk menyelaraskan",
+        "tier": "Enterprise",
+        "title": "Untuk organisasi dengan keperluan lanjutan",
+        "priceLabel": "Harga atas permintaan",
         "items": [
-          "Modul tanpa had",
-          "Pengguna mengikut permintaan",
           "Integrasi tersuai",
-          "Tadbir urus khusus"
+          "Pengurus akaun khusus",
+          "Perjanjian tahap perkhidmatan"
         ],
-        "action": "Hubungi pasukan jualan"
+        "action": "Hubungi jualan"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Langkah anda seterusnya",
     "title": "Uruskan perniagaan anda secara berbeza.",
-    "tryFree": "Cuba percuma",
+    "tryFree": "Cuba Avenqo",
     "scheduleDemo": "Jadualkan demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Sumber",
     "newest": "Terbaharu",
     "you": "Anda",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Apakah produk terlaris saya bulan ini?",
+      "Pelanggan manakah yang berisiko berhenti membeli?",
+      "Ringkaskan prestasi perniagaan saya minggu ini.",
+      "Apakah peluang keutamaan tertinggi sekarang?"
+    ]
   },
   "auth": {
     "tagline": "Platform AI untuk perniagaan anda",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Nilai pesanan purata",
     "prioritiesTitle": "Keutamaan yang disyorkan",
     "prioritiesEmpty": "Setelah data disambungkan, keutamaan anda akan dipaparkan di sini.",
-    "planLabel": "Pelan"
+    "planLabel": "Pelan",
+    "askAvenqoSubtitle": "Tanya sebarang soalan tentang perniagaan anda",
+    "askAvenqoCta": "Mulakan perbualan",
+    "importDataTitle": "Import data anda",
+    "importDataSubtitle": "Sambungkan sumber data anda untuk mendapatkan pandangan",
+    "importDataCta": "Import data",
+    "connectionsTitle": "Sambungan",
+    "connectionsEmpty": "Belum ada sambungan",
+    "connectionsEmptyCta": "Tambah sambungan",
+    "connectionsReadyLabel": "Sedia",
+    "connectionsLastUpdate": "Kemas kini terakhir: ",
+    "activityTitle": "Aktiviti terkini",
+    "activityEmpty": "Belum ada aktiviti terkini",
+    "stepsTitle": "Bermula",
+    "stepOrgLabel": "Sediakan organisasi anda",
+    "stepDataLabel": "Sambungkan data anda",
+    "stepInsightsLabel": "Terokai pandangan",
+    "stepAskLabel": "Tanya Avenqo"
   },
   "admin": {
     "commandCenterTitle": "Pusat Arahan Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Tetapan",
     "signedInAs": "Log masuk sebagai",
     "noSettingsMessage": "Tiada konfigurasi umum platform dipaparkan di sini — tiada keperluan untuk memaparkan apa-apa selain identiti akaun."
+  },
+  "onboarding": {
+    "title": "Mari sediakan ruang kerja Avenqo anda",
+    "subtitle": "Beberapa soalan pantas untuk memperibadikan keutamaan dan cadangan anda.",
+    "goalsLabel": "Apakah matlamat utama anda?",
+    "goalIncreaseSales": "Meningkatkan jualan",
+    "goalReduceChurn": "Mengurangkan pelanggan hilang",
+    "goalOptimizePricing": "Mengoptimumkan harga",
+    "goalImproveInventory": "Menambah baik pengurusan inventori",
+    "goalUnderstandCustomers": "Memahami pelanggan dengan lebih baik",
+    "goalAutomateReports": "Mengautomasikan pelaporan",
+    "toolsLabel": "Apakah alat yang anda gunakan sekarang?",
+    "toolPos": "Sistem POS",
+    "toolEcommerce": "Platform e-dagang",
+    "toolSpreadsheets": "Hamparan",
+    "toolAccounting": "Perisian perakaunan",
+    "toolCrm": "Sistem CRM",
+    "toolNone": "Tiada satu pun daripada ini",
+    "teamSizeLabel": "Apakah saiz pasukan anda?",
+    "teamSizeSolo": "Hanya saya",
+    "teamSizeSmall": "2-10 orang",
+    "teamSizeMedium": "11-50 orang",
+    "teamSizeLarge": "50+ orang",
+    "refineIndustryLabel": "Anda berada dalam industri apa?",
+    "refineIndustryHint": "Ini membantu kami memperhalusi cadangan",
+    "continueCta": "Teruskan",
+    "skipCta": "Langkau buat masa ini",
+    "genericError": "Ralat berlaku, sila cuba lagi.",
+    "goalsRequired": "Sila pilih sekurang-kurangnya satu matlamat.",
+    "teamSizeRequired": "Sila pilih saiz pasukan anda."
+  },
+  "company": {
+    "navOverviewLabel": "Gambaran keseluruhan",
+    "navOverviewDescription": "Gambaran keseluruhan perniagaan anda",
+    "navAssistantLabel": "Pembantu AI",
+    "navAssistantDescription": "Tanya tentang data anda",
+    "navSalesLabel": "Jualan",
+    "navSalesDescription": "Jejaki hasil dan trend",
+    "navCustomersLabel": "Pelanggan",
+    "navCustomersDescription": "Fahami asas pelanggan anda",
+    "navProductsLabel": "Produk",
+    "navProductsDescription": "Analisis prestasi produk",
+    "navRecommendationsLabel": "Cadangan",
+    "navRecommendationsDescription": "Cadangan yang dijana AI",
+    "navAlertsLabel": "Amaran",
+    "navAlertsDescription": "Pemberitahuan penting",
+    "navReportsLabel": "Laporan",
+    "navReportsDescription": "Jana laporan terperinci",
+    "navConnectionsLabel": "Sambungan",
+    "navConnectionsDescription": "Urus sumber data anda",
+    "navTeamLabel": "Pasukan",
+    "navTeamDescription": "Urus ahli pasukan",
+    "navBillingLabel": "Pengebilan",
+    "navBillingDescription": "Urus langganan anda",
+    "navSettingsLabel": "Tetapan",
+    "navSettingsDescription": "Akaun dan keutamaan",
+    "navSupportLabel": "Sokongan",
+    "navSupportDescription": "Dapatkan bantuan",
+    "connectionsLoading": "Memuatkan sambungan anda...",
+    "connectionsNoDataTitle": "Tiada data disambungkan lagi",
+    "connectionsNoDataFormats": "CSV, Excel, dan lain-lain disokong",
+    "connectionsImportButton": "Import data",
+    "connectionsUploadingLabel": "Memuat naik...",
+    "connectionsAnalyzing": "Menganalisis data anda...",
+    "connectionsMappingTitle": "Petakan lajur anda",
+    "connectionsMappingSubtitle": "Padankan lajur anda dengan medan kami",
+    "connectionsMappingIgnore": "Abaikan lajur ini",
+    "connectionsConfirmMapping": "Sahkan pemetaan",
+    "connectionsReadyTitle": "Data anda sudah sedia!",
+    "connectionsStatNameLabel": "Nama",
+    "connectionsStatRowsLabel": "Baris",
+    "connectionsStatColumnsLabel": "Lajur",
+    "connectionsStatUpdatedLabel": "Dikemas kini",
+    "connectionsGoDashboard": "Pergi ke papan pemuka",
+    "connectionsAskAvenqo": "Tanya Avenqo",
+    "connectionsImportAnother": "Import fail lain",
+    "connectionsRetry": "Cuba lagi",
+    "connectionsGenericError": "Ralat berlaku.",
+    "connectionsFileEmptyError": "Fail kelihatan kosong.",
+    "connectionsProcessingError": "Ralat semasa memproses fail anda.",
+    "businessDefaultTitle": "Sambungkan data anda",
+    "businessDefaultDescription": "Sambungkan sumber data anda untuk bermula",
+    "businessConnectButton": "Sambung",
+    "businessSalesTitle": "Data jualan",
+    "businessSalesDescription": "Sambungkan data jualan anda untuk menjejaki prestasi",
+    "businessCustomersTitle": "Data pelanggan",
+    "businessCustomersDescription": "Sambungkan data pelanggan untuk mendapatkan pandangan",
+    "businessProductsTitle": "Data produk",
+    "businessProductsDescription": "Sambungkan data produk untuk menganalisis prestasi",
+    "businessRecommendationsTitle": "Cadangan",
+    "businessRecommendationsDescription": "Sambungkan data untuk mendapatkan cadangan AI",
+    "businessAlertsTitle": "Amaran",
+    "businessAlertsDescription": "Sambungkan data untuk menerima amaran",
+    "businessReportsTitle": "Laporan",
+    "businessReportsDescription": "Sambungkan data untuk menjana laporan",
+    "billingTitle": "Pengebilan",
+    "billingPortalButton": "Buka portal pengebilan",
+    "billingUnavailable": "Maklumat pengebilan tidak tersedia buat masa ini",
+    "billingPlanPrefix": "Pelan: ",
+    "billingStatusPrefix": "Status: ",
+    "billingCancelScheduled": "Pembatalan dijadualkan",
+    "billingInvoicesTitle": "Invois",
+    "billingInvoiceFallback": "Tiada invois tersedia",
+    "employeesTitle": "Ahli pasukan",
+    "employeesRefreshTooltip": "Segarkan senarai",
+    "employeesUnavailable": "Maklumat ahli pasukan tidak tersedia",
+    "employeesColumnName": "Nama",
+    "employeesColumnEmail": "E-mel",
+    "employeesColumnRole": "Peranan",
+    "employeesColumnStatus": "Status",
+    "settingsTitle": "Tetapan",
+    "settingsSubtitle": "Urus akaun dan keutamaan anda",
+    "settingsAccountSection": "Akaun",
+    "settingsCompanySection": "Syarikat",
+    "settingsAppearanceSection": "Penampilan",
+    "settingsSessionSection": "Sesi",
+    "settingsNameLabel": "Nama",
+    "settingsEmailLabel": "E-mel",
+    "settingsRoleLabel": "Peranan",
+    "settingsPlanLabel": "Pelan",
+    "settingsManageSubscription": "Urus langganan",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Bahasa",
+    "settingsThemeLight": "Cerah",
+    "settingsThemeDark": "Gelap",
+    "settingsThemeSystem": "Ikut sistem",
+    "settingsLogout": "Log keluar"
   }
 }

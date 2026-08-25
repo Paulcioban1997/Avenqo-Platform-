@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
 
 class EmployeesPage extends StatefulWidget {
   const EmployeesPage({super.key, required this.api});
@@ -14,6 +15,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     return FutureBuilder<dynamic>(
       future: _employees,
       builder: (context, snapshot) {
@@ -27,12 +29,12 @@ class _EmployeesPageState extends State<EmployeesPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Utilisateurs',
+                    t.employeesTitle,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Actualiser',
+                  tooltip: t.employeesRefreshTooltip,
                   onPressed: () =>
                       setState(() => _employees = widget.api.get('/employees')),
                   icon: const Icon(Icons.refresh),
@@ -43,20 +45,20 @@ class _EmployeesPageState extends State<EmployeesPage> {
             if (snapshot.connectionState != ConnectionState.done)
               const Center(child: CircularProgressIndicator())
             else if (snapshot.hasError)
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('Accès utilisateurs indisponible.'),
+                  padding: const EdgeInsets.all(20),
+                  child: Text(t.employeesUnavailable),
                 ),
               )
             else
               Card(
                 child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Nom')),
-                    DataColumn(label: Text('Email')),
-                    DataColumn(label: Text('Rôle')),
-                    DataColumn(label: Text('État')),
+                  columns: [
+                    DataColumn(label: Text(t.employeesColumnName)),
+                    DataColumn(label: Text(t.employeesColumnEmail)),
+                    DataColumn(label: Text(t.employeesColumnRole)),
+                    DataColumn(label: Text(t.employeesColumnStatus)),
                   ],
                   rows: [
                     for (final user in users)

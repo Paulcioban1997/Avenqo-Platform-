@@ -1,0 +1,100 @@
+// Dedicated release-gate test (AVENQO localization directive Part A1).
+//
+// Protects the 42-locale i18n catalog against silent regressions: it fails
+// the normal `flutter test` suite if a future developer adds a key to
+// en.json but forgets another locale, removes a locale from _locales.json,
+// or breaks `Translations.fromJson` parsing for any locale file.
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:avenqo/i18n/translations.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+const List<String> kExpectedLocaleCodes = [
+  'fr', 'en', 'es', 'pt', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk', 'el',
+  'sv', 'tr', 'cs', 'ka', 'hy', 'ar', 'ar-EG', 'he', 'fa', 'sw', 'am', 'af',
+  'ha', 'zh', 'ja', 'ko', 'hi', 'bn', 'ur', 'ta', 'pa', 'ne', 'vi', 'th',
+  'id', 'ms', 'tl', 'my', 'km', 'mn',
+];
+
+/// Set of top-level sections that must never silently fall back to English
+/// via `Translations.fromJson`'s `json['x'] != null ? ... : Fallback()`
+/// pattern — every one of the 42 locales must genuinely define them.
+const List<String> kFallbackProneSections = [
+  'assistant', 'auth', 'dashboardHome', 'admin', 'onboarding', 'company',
+];
+
+Set<String> _leafKeyPaths(dynamic node, [String prefix = '']) {
+  final paths = <String>{};
+  if (node is Map<String, dynamic>) {
+    for (final entry in node.entries) {
+      final path = prefix.isEmpty ? entry.key : '$prefix.${entry.key}';
+      paths.addAll(_leafKeyPaths(entry.value, path));
+    }
+  } else {
+    paths.add(prefix);
+  }
+  return paths;
+}
+
+Map<String, dynamic> _readLocaleJson(String code) {
+  final file = File('assets/i18n/$code.json');
+  return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+}
+
+void main() {
+  final localesCatalog =
+      jsonDecode(File('assets/i18n/_locales.json').readAsStringSync()) as List<dynamic>;
+  final registeredCodes =
+      localesCatalog.map((e) => (e as Map<String, dynamic>)['code'] as String).toList();
+
+  test('exactly the 42 expected locales are registered in _locales.json', () {
+    expect(registeredCodes.toSet(), equals(kExpectedLocaleCodes.toSet()));
+    expect(registeredCodes.length, 42);
+  });
+
+  test('no stale/unsupported locale file is accidentally exposed', () {
+    final onDisk = Directory('assets/i18n')
+        .listSync()
+        .whereType<File>()
+        .map((f) => f.uri.pathSegments.last)
+        .where((name) => name.endsWith('.json') && name != '_locales.json')
+        .map((name) => name.substring(0, name.length - '.json'.length))
+        .toSet();
+    expect(onDisk, equals(kExpectedLocaleCodes.toSet()));
+  });
+
+  final enLeaves = _leafKeyPaths(_readLocaleJson('en'));
+
+  test('en.json (reference catalog) has at least one leaf key', () {
+    expect(enLeaves, isNotEmpty);
+  });
+
+  for (final code in kExpectedLocaleCodes) {
+    test('$code.json has 100% key parity with en.json (no missing/extra keys)', () {
+      final json = _readLocaleJson(code);
+      final leaves = _leafKeyPaths(json);
+      final missing = enLeaves.difference(leaves);
+      final extra = leaves.difference(enLeaves);
+      expect(missing, isEmpty, reason: 'Locale "$code" is missing keys: $missing');
+      expect(extra, isEmpty, reason: 'Locale "$code" has unexpected extra keys: $extra');
+    });
+
+    test('$code.json defines every fallback-prone section directly (no silent English fallback)', () {
+      final json = _readLocaleJson(code);
+      for (final section in kFallbackProneSections) {
+        expect(
+          json[section],
+          isNotNull,
+          reason: 'Locale "$code" is missing top-level section "$section" and would '
+              'silently fall back to English via Translations.fromJson.',
+        );
+      }
+    });
+
+    test('$code.json parses cleanly through Translations.fromJson', () {
+      final json = _readLocaleJson(code);
+      expect(() => Translations.fromJson(json), returnsNormally);
+    });
+  }
+}

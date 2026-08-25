@@ -35,10 +35,20 @@ ApiClient _api(http.Client client) => ApiClient(
       baseUrl: 'https://avenqo.test/api/v1',
     );
 
+Future<Widget> _wrapWithLocale(Widget child) async {
+  final locale = LocaleController(store: _MemoryLocalePreferenceStore());
+  await locale.initialize();
+  await locale.setLocale('fr');
+  return AvenqoLocaleScope(
+    controller: locale,
+    child: MaterialApp(home: child),
+  );
+}
+
 void main() {
   testWidgets('Connections shows the no-data state with an import CTA', (tester) async {
     final client = MockClient((request) async => http.Response('[]', 200));
-    await tester.pumpWidget(MaterialApp(home: ConnectionsPage(api: _api(client))));
+    await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pumpAndSettle();
 
     expect(
@@ -55,7 +65,7 @@ void main() {
         200,
       );
     });
-    await tester.pumpWidget(MaterialApp(home: ConnectionsPage(api: _api(client))));
+    await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pumpAndSettle();
 
     expect(find.text('Données prêtes'), findsOneWidget);
@@ -71,7 +81,7 @@ void main() {
         200,
       );
     });
-    await tester.pumpWidget(MaterialApp(home: ConnectionsPage(api: _api(client))));
+    await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pump();
     await tester.pump();
 
@@ -82,7 +92,7 @@ void main() {
     final client = MockClient((request) async {
       return http.Response('{"detail":"Erreur serveur interne"}', 500);
     });
-    await tester.pumpWidget(MaterialApp(home: ConnectionsPage(api: _api(client))));
+    await tester.pumpWidget(await _wrapWithLocale(ConnectionsPage(api: _api(client))));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.error_outline), findsOneWidget);

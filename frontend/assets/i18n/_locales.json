@@ -17,7 +17,7 @@
   },
   {
     "code": "es",
-    "region": "americas",
+    "region": "europe",
     "flag": "🇪🇸",
     "nativeName": "Español",
     "englishName": "Spanish",
@@ -25,8 +25,8 @@
   },
   {
     "code": "pt",
-    "region": "americas",
-    "flag": "🇧🇷",
+    "region": "europe",
+    "flag": "🇵🇹",
     "nativeName": "Português",
     "englishName": "Portuguese",
     "direction": "ltr"
@@ -121,7 +121,7 @@
   },
   {
     "code": "ka",
-    "region": "europe",
+    "region": "asia",
     "flag": "🇬🇪",
     "nativeName": "ქართული",
     "englishName": "Georgian",
@@ -129,7 +129,7 @@
   },
   {
     "code": "hy",
-    "region": "europe",
+    "region": "asia",
     "flag": "🇦🇲",
     "nativeName": "Հայերեն",
     "englishName": "Armenian",
@@ -137,7 +137,7 @@
   },
   {
     "code": "ar",
-    "region": "middle-east-africa",
+    "region": "middle-east",
     "flag": "🇸🇦",
     "nativeName": "العربية",
     "englishName": "Arabic",
@@ -145,7 +145,7 @@
   },
   {
     "code": "ar-EG",
-    "region": "middle-east-africa",
+    "region": "middle-east",
     "flag": "🇪🇬",
     "nativeName": "العربية (مصر)",
     "englishName": "Arabic (Egypt)",
@@ -153,7 +153,7 @@
   },
   {
     "code": "he",
-    "region": "middle-east-africa",
+    "region": "middle-east",
     "flag": "🇮🇱",
     "nativeName": "עברית",
     "englishName": "Hebrew",
@@ -161,7 +161,7 @@
   },
   {
     "code": "fa",
-    "region": "middle-east-africa",
+    "region": "middle-east",
     "flag": "🇮🇷",
     "nativeName": "فارسی",
     "englishName": "Persian",
@@ -169,7 +169,7 @@
   },
   {
     "code": "sw",
-    "region": "middle-east-africa",
+    "region": "africa",
     "flag": "🇰🇪",
     "nativeName": "Kiswahili",
     "englishName": "Swahili",
@@ -177,7 +177,7 @@
   },
   {
     "code": "am",
-    "region": "middle-east-africa",
+    "region": "africa",
     "flag": "🇪🇹",
     "nativeName": "አማርኛ",
     "englishName": "Amharic",
@@ -185,7 +185,7 @@
   },
   {
     "code": "af",
-    "region": "middle-east-africa",
+    "region": "africa",
     "flag": "🇿🇦",
     "nativeName": "Afrikaans",
     "englishName": "Afrikaans",
@@ -193,7 +193,7 @@
   },
   {
     "code": "ha",
-    "region": "middle-east-africa",
+    "region": "africa",
     "flag": "🇳🇬",
     "nativeName": "Hausa",
     "englishName": "Hausa",
@@ -201,7 +201,7 @@
   },
   {
     "code": "zh",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇨🇳",
     "nativeName": "中文",
     "englishName": "Chinese",
@@ -209,7 +209,7 @@
   },
   {
     "code": "ja",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇯🇵",
     "nativeName": "日本語",
     "englishName": "Japanese",
@@ -217,7 +217,7 @@
   },
   {
     "code": "ko",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇰🇷",
     "nativeName": "한국어",
     "englishName": "Korean",
@@ -225,7 +225,7 @@
   },
   {
     "code": "hi",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇮🇳",
     "nativeName": "हिन्दी",
     "englishName": "Hindi",
@@ -233,7 +233,7 @@
   },
   {
     "code": "bn",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇧🇩",
     "nativeName": "বাংলা",
     "englishName": "Bengali",
@@ -241,7 +241,7 @@
   },
   {
     "code": "ur",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇵🇰",
     "nativeName": "اردو",
     "englishName": "Urdu",
@@ -249,15 +249,15 @@
   },
   {
     "code": "ta",
-    "region": "asia-pacific",
-    "flag": "🇱🇰",
+    "region": "asia",
+    "flag": "🇮🇳",
     "nativeName": "தமிழ்",
     "englishName": "Tamil",
     "direction": "ltr"
   },
   {
     "code": "pa",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇮🇳",
     "nativeName": "ਪੰਜਾਬੀ",
     "englishName": "Punjabi",
@@ -265,7 +265,7 @@
   },
   {
     "code": "ne",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇳🇵",
     "nativeName": "नेपाली",
     "englishName": "Nepali",
@@ -273,7 +273,7 @@
   },
   {
     "code": "vi",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇻🇳",
     "nativeName": "Tiếng Việt",
     "englishName": "Vietnamese",
@@ -281,7 +281,7 @@
   },
   {
     "code": "th",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇹🇭",
     "nativeName": "ไทย",
     "englishName": "Thai",
@@ -289,7 +289,7 @@
   },
   {
     "code": "id",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇮🇩",
     "nativeName": "Bahasa Indonesia",
     "englishName": "Indonesian",
@@ -297,7 +297,7 @@
   },
   {
     "code": "ms",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇲🇾",
     "nativeName": "Bahasa Melayu",
     "englishName": "Malay",
@@ -305,7 +305,7 @@
   },
   {
     "code": "tl",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇵🇭",
     "nativeName": "Filipino",
     "englishName": "Filipino",
@@ -313,15 +313,15 @@
   },
   {
     "code": "my",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇲🇲",
-    "nativeName": "မြန်မာ",
+    "nativeName": "မြန်မာဘာသာ",
     "englishName": "Burmese",
     "direction": "ltr"
   },
   {
     "code": "km",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇰🇭",
     "nativeName": "ខ្មែរ",
     "englishName": "Khmer",
@@ -329,7 +329,7 @@
   },
   {
     "code": "mn",
-    "region": "asia-pacific",
+    "region": "asia",
     "flag": "🇲🇳",
     "nativeName": "Монгол",
     "englishName": "Mongolian",

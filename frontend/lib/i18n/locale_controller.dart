@@ -45,7 +45,14 @@ class LocaleController extends ChangeNotifier {
     if (persisted != null && _availableLocales.any((locale) => locale.code == persisted)) {
       return persisted;
     }
-    final browserCode = PlatformDispatcher.instance.locale.languageCode;
+    final browserLocale = PlatformDispatcher.instance.locale;
+    // Cas particulier : ar-EG est exposé comme variante régionale distincte
+    // de l'arabe standard dans notre catalogue.
+    final regionalCode = '${browserLocale.languageCode}-${browserLocale.countryCode ?? ''}';
+    if (_availableLocales.any((locale) => locale.code == regionalCode)) {
+      return regionalCode;
+    }
+    final browserCode = browserLocale.languageCode;
     if (_availableLocales.any((locale) => locale.code == browserCode)) {
       return browserCode;
     }

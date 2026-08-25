@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Logga in",
-    "tryFree": "Prova gratis",
+    "tryFree": "Prova Avenqo",
     "watchDemo": "Se en demo",
-    "noCreditCard": "Inget kreditkort krävs",
+    "noCreditCard": "Personlig introduktion",
     "guidedSetup": "Guidad installation",
     "isolatedData": "Isolerad data"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Skalbar hosting"
   },
   "modulesSection": {
-    "kicker": "Avenqo-sviten",
-    "title": "En modul för varje affärsprioritet.",
-    "subtitle": "Bygg din skräddarsydda miljö. Alla moduler delar samma upplevelse och fungerar tillsammans.",
+    "kicker": "Avenqo-moduler",
+    "title": "En plattform, med moduler som växer stegvis.",
+    "subtitle": "Avenqo är en modulär AI-plattform. Retail Intelligence är redan tillgängligt, och fler moduler introduceras successivt.",
     "discover": "Upptäck",
+    "availableNow": "Tillgängligt nu",
+    "comingSoon": "Kommer snart",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Hantera försäljning, produkter och lojalitet från en enda vy."
+        "name": "Retail Intelligence",
+        "description": "Hantera försäljning, produkter och lojalitet från en enda vy.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Prioritera relationer, möjligheter och nästa bästa åtgärd."
+        "name": "CRM AI",
+        "description": "Prioritera relationer, möjligheter och de bästa nästa stegen.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Snabba upp ekonomisk uppföljning och bokslut."
+        "name": "OCR AI",
+        "description": "Omvandla inkommande dokument till strukturerade processer.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Omvandla inkommande dokument till strukturerade processer."
+        "name": "Voice AI",
+        "description": "Automatisera röstinteraktioner utan att förlora kontexten.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Förstå trender och avvikelser som verkligen betyder något."
+        "name": "Media AI",
+        "description": "Producera och organisera ditt innehåll från en enda arbetsyta.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Orkestrera mer relevanta och mätbara kampanjer."
+        "name": "Accounting AI",
+        "description": "Snabba upp den ekonomiska uppföljningen och bokslutet.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Ge tillförlitliga svar baserade på företagets kunskap."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Automatisera röstinteraktioner utan att förlora kontexten."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Koppla samman team och automatisera repetitiva uppgifter."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Producera och organisera ditt innehåll från en enda arbetsyta."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Minska svarstider och förbättra varje lösning."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Driftsätt en konversationsassistent för dina kunder."
+        "name": "Legal AI",
+        "description": "Analysera och skydda dina avtalsdokument.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Transparent prissättning",
-    "title": "Kom igång nu. Väx i din egen takt.",
+    "kicker": "Priser",
+    "title": "Börja nu. Väx i din egen takt.",
     "subtitle": "Varje plan inkluderar plattformen, Avenqo-assistenten och en säker arbetsyta.",
     "popular": "Mest populär",
-    "priceLabel": "Skräddarsytt",
+    "priceLabel": "Pris bekräftas senare",
     "plans": [
       {
-        "tier": "Grundläggande",
-        "title": "För att komma igång",
+        "tier": "Demo",
+        "title": "För att upptäcka Avenqo",
+        "priceLabel": "Pris bekräftas senare",
         "items": [
-          "1 Avenqo-modul",
-          "Upp till 5 användare",
-          "Inbyggd assistent",
-          "Standardsupport"
+          "Tillgång till Retail Intelligence",
+          "Inbyggd Avenqo-assistent",
+          "Säker arbetsyta"
         ],
-        "action": "Prata med en rådgivare"
+        "action": "Prova Avenqo"
       },
       {
-        "tier": "Professionell",
-        "title": "För att accelerera",
+        "tier": "Professional",
+        "title": "För företag som vill gå längre",
+        "priceLabel": "Pris bekräftas senare",
         "items": [
-          "Upp till 5 moduler",
-          "Upp till 25 användare",
+          "Fullständig Retail Intelligence",
           "Avancerade automatiseringar",
           "Prioriterad support"
         ],
-        "action": "Prova gratis"
+        "action": "Kom igång"
       },
       {
-        "tier": "Företag",
-        "title": "För att orkestrera",
+        "tier": "Enterprise",
+        "title": "Skräddarsytt",
+        "priceLabel": "Kontakta försäljning",
         "items": [
-          "Obegränsade moduler",
-          "Skräddarsytt antal användare",
-          "Anpassade integrationer",
-          "Dedikerad styrning"
+          "Skräddarsydda integrationer",
+          "Dedikerad styrning",
+          "Dedikerad support"
         ],
-        "action": "Kontakta säljteamet"
+        "action": "Kontakta försäljning"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Ditt nästa steg",
     "title": "Driv ditt företag på ett annat sätt.",
-    "tryFree": "Prova gratis",
+    "tryFree": "Prova Avenqo",
     "scheduleDemo": "Boka en demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Källor",
     "newest": "Senaste",
     "you": "Du",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Hur går min försäljning?",
+      "Vilka kunder behöver uppmärksamhet?",
+      "Vad har förändrats den här månaden?",
+      "Sammanfatta mitt företags prestation."
+    ]
   },
   "auth": {
     "tagline": "AI-plattformen för ditt företags beslut",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Genomsnittlig beställning",
     "prioritiesTitle": "Rekommenderade prioriteringar",
     "prioritiesEmpty": "Dina prioriteringar visas här när dina data är anslutna.",
-    "planLabel": "Plan"
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "Ställ frågor om ditt företags data och få kontextuella insikter.",
+    "askAvenqoCta": "Fråga Avenqo AI",
+    "importDataTitle": "Importera dina data",
+    "importDataSubtitle": "Anslut eller importera dina affärskällor för att låsa upp Avenqo-intelligens.",
+    "importDataCta": "Importera mina data",
+    "connectionsTitle": "Anslutningar",
+    "connectionsEmpty": "Inga data anslutna ännu",
+    "connectionsEmptyCta": "Importera mina data",
+    "connectionsReadyLabel": "Klar",
+    "connectionsLastUpdate": "Senast uppdaterad",
+    "activityTitle": "Senaste aktivitet",
+    "activityEmpty": "Ingen senaste aktivitet ännu.",
+    "stepsTitle": "Rekommenderade nästa steg",
+    "stepOrgLabel": "Slutför din företagsinställning",
+    "stepDataLabel": "Anslut eller importera dina data",
+    "stepInsightsLabel": "Utforska dina insikter",
+    "stepAskLabel": "Fråga Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "Avenqo kommandocentral",
@@ -465,5 +477,132 @@
     "settingsTitle": "Inställningar",
     "signedInAs": "Inloggad som",
     "noSettingsMessage": "Ingen global plattformskonfiguration visas här just nu — inget att ärligt visa förutom kontots identitet."
+  },
+  "onboarding": {
+    "title": "Låt oss konfigurera din Avenqo-arbetsyta",
+    "subtitle": "Några snabba frågor för att anpassa dina prioriteringar och rekommendationer.",
+    "goalsLabel": "Vilka är dina huvudmål?",
+    "goalIncreaseSales": "Öka försäljningen",
+    "goalReduceChurn": "Minska kundbortfallet",
+    "goalOptimizePricing": "Optimera prissättningen",
+    "goalImproveInventory": "Förbättra lagerhanteringen",
+    "goalUnderstandCustomers": "Förstå mina kunder bättre",
+    "goalAutomateReports": "Automatisera mina rapporter",
+    "toolsLabel": "Vilka verktyg använder du för närvarande?",
+    "toolPos": "Kassasystem (POS)",
+    "toolEcommerce": "E-handelsplattform",
+    "toolSpreadsheets": "Kalkylblad (Excel/Sheets)",
+    "toolAccounting": "Bokföringsprogram",
+    "toolCrm": "CRM",
+    "toolNone": "Inga verktyg ännu",
+    "teamSizeLabel": "Hur stort är ditt team?",
+    "teamSizeSolo": "Bara jag",
+    "teamSizeSmall": "2 till 10 personer",
+    "teamSizeMedium": "11 till 50 personer",
+    "teamSizeLarge": "Fler än 50 personer",
+    "refineIndustryLabel": "Precisera din bransch (valfritt)",
+    "refineIndustryHint": "T.ex. specialbutik, snabbmat, redovisningsbyrå...",
+    "continueCta": "Fortsätt",
+    "skipCta": "Hoppa över för nu",
+    "genericError": "Vi kunde inte spara dina svar just nu.",
+    "goalsRequired": "Välj minst ett mål.",
+    "teamSizeRequired": "Välj din teamstorlek."
+  },
+  "company": {
+    "navOverviewLabel": "Översikt",
+    "navOverviewDescription": "De viktigaste nyckeltalen för ditt företag.",
+    "navAssistantLabel": "AI-assistent",
+    "navAssistantDescription": "Ställ frågor och agera.",
+    "navSalesLabel": "Försäljning",
+    "navSalesDescription": "Följ intäkter och trender.",
+    "navCustomersLabel": "Kunder",
+    "navCustomersDescription": "Förstå lojalitet och avhoppsrisk.",
+    "navProductsLabel": "Produkter",
+    "navProductsDescription": "Övervaka efterfrågan och katalogprestanda.",
+    "navRecommendationsLabel": "Rekommendationer",
+    "navRecommendationsDescription": "Hitta de mest prioriterade möjligheterna.",
+    "navAlertsLabel": "Varningar",
+    "navAlertsDescription": "Håll koll på förändringar som kräver din uppmärksamhet.",
+    "navReportsLabel": "Rapporter",
+    "navReportsDescription": "Se och dela dina ledningssammanfattningar.",
+    "navConnectionsLabel": "Anslutningar",
+    "navConnectionsDescription": "Anslut dina försäljnings- och hanteringsverktyg.",
+    "navTeamLabel": "Team",
+    "navTeamDescription": "Hantera dina medarbetares åtkomst.",
+    "navBillingLabel": "Fakturering",
+    "navBillingDescription": "Hantera din prenumeration och dina fakturor.",
+    "navSettingsLabel": "Inställningar",
+    "navSettingsDescription": "Din konto- och företagsinformation.",
+    "navSupportLabel": "Avenqo-support",
+    "navSupportDescription": "Behöver du hjälp med Avenqo? Ställ din fråga här.",
+    "connectionsLoading": "Laddar…",
+    "connectionsNoDataTitle": "Anslut dina data för att låsa upp analys och Avenqo AI.",
+    "connectionsNoDataFormats": "Accepterade format: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Importera en fil",
+    "connectionsUploadingLabel": "Laddar upp…",
+    "connectionsAnalyzing": "Analyserar strukturen på dina data…",
+    "connectionsMappingTitle": "Bekräfta din kolumnmappning",
+    "connectionsMappingSubtitle": "Vissa kolumner kräver manuell bekräftelse innan analys kan aktiveras.",
+    "connectionsMappingIgnore": "Ignorera denna kolumn",
+    "connectionsConfirmMapping": "Bekräfta mappning",
+    "connectionsReadyTitle": "Data klara",
+    "connectionsStatNameLabel": "Namn",
+    "connectionsStatRowsLabel": "Rader",
+    "connectionsStatColumnsLabel": "Kolumner",
+    "connectionsStatUpdatedLabel": "Senast uppdaterad",
+    "connectionsGoDashboard": "Gå till instrumentpanelen",
+    "connectionsAskAvenqo": "Fråga Avenqo AI",
+    "connectionsImportAnother": "Importera en till dataset",
+    "connectionsRetry": "Försök igen",
+    "connectionsGenericError": "Ett oväntat fel inträffade.",
+    "connectionsFileEmptyError": "Den valda filen är tom eller kan inte läsas.",
+    "connectionsProcessingError": "Den här filen kunde inte bearbetas.",
+    "businessDefaultTitle": "Din arbetsyta är redo",
+    "businessDefaultDescription": "Anslut dina verktyg för att se aktuell information här.",
+    "businessConnectButton": "Anslut mina verktyg",
+    "businessSalesTitle": "Följ varje förändring",
+    "businessSalesDescription": "Dina försäljningstrender, jämförelser och prognoser visas här.",
+    "businessCustomersTitle": "Behåll rätt kunder",
+    "businessCustomersDescription": "Här hittar du kunder att prioritera, återaktivera eller stötta.",
+    "businessProductsTitle": "Hantera din katalog",
+    "businessProductsDescription": "Bästsäljande produkter, förväntad efterfrågan och lager att bevaka samlas här.",
+    "businessRecommendationsTitle": "Agera direkt på möjligheter",
+    "businessRecommendationsDescription": "Avenqo rangordnar möjligheter efter deras potentiella påverkan på ditt företag.",
+    "businessAlertsTitle": "Håll dig informerad utan brus",
+    "businessAlertsDescription": "Viktiga förändringar och risker markeras med en rekommenderad åtgärd.",
+    "businessReportsTitle": "Dina ledningssammanfattningar",
+    "businessReportsDescription": "Skapa och dela tydliga rapporter om ditt företags resultat.",
+    "billingTitle": "Fakturering",
+    "billingPortalButton": "Stripe-portal",
+    "billingUnavailable": "Fakturering är tillfälligt otillgänglig.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "Status: ",
+    "billingCancelScheduled": "Uppsägning schemalagd",
+    "billingInvoicesTitle": "Fakturor",
+    "billingInvoiceFallback": "Faktura",
+    "employeesTitle": "Användare",
+    "employeesRefreshTooltip": "Uppdatera",
+    "employeesUnavailable": "Användaråtkomst är tillfälligt otillgänglig.",
+    "employeesColumnName": "Namn",
+    "employeesColumnEmail": "E-post",
+    "employeesColumnRole": "Roll",
+    "employeesColumnStatus": "Status",
+    "settingsTitle": "Inställningar",
+    "settingsSubtitle": "Din konto-, företags- och preferensinformation.",
+    "settingsAccountSection": "Konto",
+    "settingsCompanySection": "Företag",
+    "settingsAppearanceSection": "Utseende",
+    "settingsSessionSection": "Session",
+    "settingsNameLabel": "Namn",
+    "settingsEmailLabel": "E-post",
+    "settingsRoleLabel": "Roll",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Hantera prenumeration",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Språk",
+    "settingsThemeLight": "Ljust",
+    "settingsThemeDark": "Mörkt",
+    "settingsThemeSystem": "System",
+    "settingsLogout": "Logga ut"
   }
 }

@@ -6,7 +6,7 @@ import 'package:avenqo/core/token_store.dart';
 /// `LocaleController` (persistance best-effort, jamais bloquante, aucune
 /// dépendance directe à `FlutterSecureStorage` pour rester testable).
 class ThemeController extends ChangeNotifier {
-  ThemeController({ThemeMode initialMode = ThemeMode.system, ThemePreferenceStore? store})
+  ThemeController({ThemeMode initialMode = ThemeMode.light, ThemePreferenceStore? store})
       : _mode = initialMode,
         _store = store ?? const SecureThemePreferenceStore();
 

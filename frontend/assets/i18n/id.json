@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Masuk",
-    "tryFree": "Coba gratis",
+    "tryFree": "Coba Avenqo",
     "watchDemo": "Tonton demo",
-    "noCreditCard": "Tanpa kartu kredit",
+    "noCreditCard": "Pengaturan yang dipersonalisasi",
     "guidedSetup": "Pengaturan terpandu",
     "isolatedData": "Data terisolasi"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Hosting yang dapat diskalakan"
   },
   "modulesSection": {
-    "kicker": "Rangkaian Avenqo",
-    "title": "Satu modul untuk setiap prioritas bisnis.",
-    "subtitle": "Bangun lingkungan yang disesuaikan. Semua modul berbagi pengalaman yang sama dan bekerja bersama.",
-    "discover": "Temukan",
+    "kicker": "Modul Avenqo",
+    "title": "Satu platform modular yang berkembang sesuai kebutuhan",
+    "subtitle": "Aktifkan modul yang Anda butuhkan hari ini, lalu perluas nanti tanpa mengganti alat.",
+    "discover": "Pelajari lebih lanjut",
+    "availableNow": "Tersedia sekarang",
+    "comingSoon": "Segera hadir",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Kelola penjualan, produk, dan loyalitas dari satu tampilan."
+        "name": "Retail Intelligence",
+        "description": "Analisis penjualan dan inventaris real-time untuk ritel.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Prioritaskan hubungan, peluang, dan tindakan terbaik berikutnya."
+        "name": "CRM AI",
+        "description": "Manajemen hubungan pelanggan bertenaga AI untuk alur penjualan yang lebih cerdas.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Percepat pemantauan keuangan dan penutupan akuntansi."
+        "name": "OCR AI",
+        "description": "Ekstraksi data otomatis dari faktur dan dokumen yang dipindai.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Ubah dokumen masuk menjadi proses terstruktur."
+        "name": "Voice AI",
+        "description": "Asisten suara untuk mentranskripsi dan melacak panggilan pelanggan.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Pahami tren dan penyimpangan yang benar-benar penting."
+        "name": "Media AI",
+        "description": "Pembuatan dan analisis konten visual dan pemasaran.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Atur kampanye yang lebih relevan dan terukur."
+        "name": "Accounting AI",
+        "description": "Otomatisasi akuntansi dan rekonsiliasi keuangan.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Berikan jawaban yang dapat diandalkan berdasarkan pengetahuan perusahaan."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Otomatisasi interaksi suara tanpa kehilangan konteks."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Hubungkan tim dan otomatisasi tugas berulang."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Produksi dan atur konten Anda dari satu ruang kerja."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Kurangi waktu respons dan tingkatkan setiap solusi."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Terapkan asisten percakapan untuk pelanggan Anda."
+        "name": "Legal AI",
+        "description": "Peninjauan dan ringkasan kontrak dengan bantuan AI.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Harga transparan",
-    "title": "Mulai sekarang. Berkembang sesuai kecepatan Anda.",
-    "subtitle": "Setiap paket mencakup platform, asisten Avenqo, dan ruang kerja yang aman.",
+    "kicker": "Harga",
+    "title": "Paket untuk setiap tahap pertumbuhan Anda",
+    "subtitle": "Mulai dengan demo, lalu pilih paket yang sesuai dengan ukuran perusahaan Anda.",
     "popular": "Paling populer",
-    "priceLabel": "Sesuai permintaan",
+    "priceLabel": "Harga sesuai permintaan",
     "plans": [
       {
-        "tier": "Dasar",
-        "title": "Untuk memulai",
+        "tier": "Demo",
+        "title": "Coba Avenqo dengan data Anda",
+        "priceLabel": "Gratis",
         "items": [
-          "1 modul Avenqo",
-          "Hingga 5 pengguna",
-          "Asisten bawaan",
-          "Dukungan standar"
+          "Akses terbatas waktu",
+          "Data demo atau data Anda sendiri",
+          "Dukungan email"
         ],
-        "action": "Bicara dengan konsultan"
+        "action": "Minta demo"
       },
       {
-        "tier": "Profesional",
-        "title": "Untuk mempercepat",
+        "tier": "Professional",
+        "title": "Untuk perusahaan yang ingin berkembang",
+        "priceLabel": "Harga sesuai permintaan",
         "items": [
-          "Hingga 5 modul",
-          "Hingga 25 pengguna",
-          "Otomatisasi lanjutan",
+          "Semua modul inti",
+          "Jumlah pengguna yang dapat diskalakan",
           "Dukungan prioritas"
         ],
-        "action": "Coba gratis"
+        "action": "Hubungi kami"
       },
       {
-        "tier": "Perusahaan",
-        "title": "Untuk mengorkestrasi",
+        "tier": "Enterprise",
+        "title": "Untuk organisasi dengan kebutuhan lanjutan",
+        "priceLabel": "Harga sesuai permintaan",
         "items": [
-          "Modul tak terbatas",
-          "Pengguna sesuai permintaan",
-          "Integrasi khusus",
-          "Tata kelola khusus"
+          "Integrasi kustom",
+          "Manajer akun khusus",
+          "Perjanjian tingkat layanan"
         ],
-        "action": "Hubungi tim penjualan"
+        "action": "Hubungi penjualan"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Langkah Anda berikutnya",
     "title": "Kelola bisnis Anda secara berbeda.",
-    "tryFree": "Coba gratis",
+    "tryFree": "Coba Avenqo",
     "scheduleDemo": "Jadwalkan demo"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Sumber",
     "newest": "Terbaru",
     "you": "Anda",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Apa produk terlaris saya bulan ini?",
+      "Pelanggan mana yang berisiko berhenti membeli?",
+      "Ringkas kinerja bisnis saya minggu ini.",
+      "Apa peluang dengan prioritas tertinggi saat ini?"
+    ]
   },
   "auth": {
     "tagline": "Platform AI untuk bisnis Anda",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Nilai pesanan rata-rata",
     "prioritiesTitle": "Prioritas yang disarankan",
     "prioritiesEmpty": "Setelah data terhubung, prioritas Anda akan muncul di sini.",
-    "planLabel": "Paket"
+    "planLabel": "Paket",
+    "askAvenqoSubtitle": "Ajukan pertanyaan apa pun tentang bisnis Anda",
+    "askAvenqoCta": "Mulai percakapan",
+    "importDataTitle": "Impor data Anda",
+    "importDataSubtitle": "Hubungkan sumber data Anda untuk mendapatkan wawasan",
+    "importDataCta": "Impor data",
+    "connectionsTitle": "Koneksi",
+    "connectionsEmpty": "Belum ada koneksi",
+    "connectionsEmptyCta": "Tambahkan koneksi",
+    "connectionsReadyLabel": "Siap",
+    "connectionsLastUpdate": "Terakhir diperbarui: ",
+    "activityTitle": "Aktivitas terbaru",
+    "activityEmpty": "Belum ada aktivitas terbaru",
+    "stepsTitle": "Memulai",
+    "stepOrgLabel": "Siapkan organisasi Anda",
+    "stepDataLabel": "Hubungkan data Anda",
+    "stepInsightsLabel": "Jelajahi wawasan",
+    "stepAskLabel": "Tanyakan pada Avenqo"
   },
   "admin": {
     "commandCenterTitle": "Pusat Komando Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "Pengaturan",
     "signedInAs": "Masuk sebagai",
     "noSettingsMessage": "Tidak ada konfigurasi umum platform yang ditampilkan di sini — tidak perlu menampilkan apa pun selain identitas akun."
+  },
+  "onboarding": {
+    "title": "Mari siapkan ruang kerja Avenqo Anda",
+    "subtitle": "Beberapa pertanyaan cepat untuk mempersonalisasi prioritas dan rekomendasi Anda.",
+    "goalsLabel": "Apa tujuan utama Anda?",
+    "goalIncreaseSales": "Meningkatkan penjualan",
+    "goalReduceChurn": "Mengurangi churn pelanggan",
+    "goalOptimizePricing": "Mengoptimalkan harga",
+    "goalImproveInventory": "Meningkatkan manajemen inventaris",
+    "goalUnderstandCustomers": "Memahami pelanggan lebih baik",
+    "goalAutomateReports": "Mengotomatiskan pelaporan",
+    "toolsLabel": "Alat apa yang Anda gunakan saat ini?",
+    "toolPos": "Sistem POS",
+    "toolEcommerce": "Platform e-commerce",
+    "toolSpreadsheets": "Spreadsheet",
+    "toolAccounting": "Perangkat lunak akuntansi",
+    "toolCrm": "Sistem CRM",
+    "toolNone": "Tidak ada dari ini",
+    "teamSizeLabel": "Berapa ukuran tim Anda?",
+    "teamSizeSolo": "Hanya saya",
+    "teamSizeSmall": "2-10 orang",
+    "teamSizeMedium": "11-50 orang",
+    "teamSizeLarge": "50+ orang",
+    "refineIndustryLabel": "Anda berada di industri apa?",
+    "refineIndustryHint": "Ini membantu kami menyempurnakan rekomendasi",
+    "continueCta": "Lanjutkan",
+    "skipCta": "Lewati untuk saat ini",
+    "genericError": "Terjadi kesalahan, silakan coba lagi.",
+    "goalsRequired": "Silakan pilih setidaknya satu tujuan.",
+    "teamSizeRequired": "Silakan pilih ukuran tim Anda."
+  },
+  "company": {
+    "navOverviewLabel": "Ikhtisar",
+    "navOverviewDescription": "Ringkasan bisnis Anda",
+    "navAssistantLabel": "Asisten AI",
+    "navAssistantDescription": "Tanyakan tentang data Anda",
+    "navSalesLabel": "Penjualan",
+    "navSalesDescription": "Lacak pendapatan dan tren",
+    "navCustomersLabel": "Pelanggan",
+    "navCustomersDescription": "Pahami basis pelanggan Anda",
+    "navProductsLabel": "Produk",
+    "navProductsDescription": "Analisis kinerja produk",
+    "navRecommendationsLabel": "Rekomendasi",
+    "navRecommendationsDescription": "Saran yang dihasilkan AI",
+    "navAlertsLabel": "Peringatan",
+    "navAlertsDescription": "Pemberitahuan penting",
+    "navReportsLabel": "Laporan",
+    "navReportsDescription": "Hasilkan laporan terperinci",
+    "navConnectionsLabel": "Koneksi",
+    "navConnectionsDescription": "Kelola sumber data Anda",
+    "navTeamLabel": "Tim",
+    "navTeamDescription": "Kelola anggota tim",
+    "navBillingLabel": "Penagihan",
+    "navBillingDescription": "Kelola langganan Anda",
+    "navSettingsLabel": "Pengaturan",
+    "navSettingsDescription": "Akun dan preferensi",
+    "navSupportLabel": "Dukungan",
+    "navSupportDescription": "Dapatkan bantuan",
+    "connectionsLoading": "Memuat koneksi Anda...",
+    "connectionsNoDataTitle": "Belum ada data yang terhubung",
+    "connectionsNoDataFormats": "CSV, Excel, dan lainnya didukung",
+    "connectionsImportButton": "Impor data",
+    "connectionsUploadingLabel": "Mengunggah...",
+    "connectionsAnalyzing": "Menganalisis data Anda...",
+    "connectionsMappingTitle": "Petakan kolom Anda",
+    "connectionsMappingSubtitle": "Cocokkan kolom Anda dengan bidang kami",
+    "connectionsMappingIgnore": "Abaikan kolom ini",
+    "connectionsConfirmMapping": "Konfirmasi pemetaan",
+    "connectionsReadyTitle": "Data Anda sudah siap!",
+    "connectionsStatNameLabel": "Nama",
+    "connectionsStatRowsLabel": "Baris",
+    "connectionsStatColumnsLabel": "Kolom",
+    "connectionsStatUpdatedLabel": "Diperbarui",
+    "connectionsGoDashboard": "Buka dasbor",
+    "connectionsAskAvenqo": "Tanyakan pada Avenqo",
+    "connectionsImportAnother": "Impor file lain",
+    "connectionsRetry": "Coba lagi",
+    "connectionsGenericError": "Terjadi kesalahan.",
+    "connectionsFileEmptyError": "File tampaknya kosong.",
+    "connectionsProcessingError": "Kesalahan saat memproses file Anda.",
+    "businessDefaultTitle": "Hubungkan data Anda",
+    "businessDefaultDescription": "Hubungkan sumber data Anda untuk memulai",
+    "businessConnectButton": "Hubungkan",
+    "businessSalesTitle": "Data penjualan",
+    "businessSalesDescription": "Hubungkan data penjualan Anda untuk melacak kinerja",
+    "businessCustomersTitle": "Data pelanggan",
+    "businessCustomersDescription": "Hubungkan data pelanggan untuk mendapatkan wawasan",
+    "businessProductsTitle": "Data produk",
+    "businessProductsDescription": "Hubungkan data produk untuk menganalisis kinerja",
+    "businessRecommendationsTitle": "Rekomendasi",
+    "businessRecommendationsDescription": "Hubungkan data untuk mendapatkan rekomendasi AI",
+    "businessAlertsTitle": "Peringatan",
+    "businessAlertsDescription": "Hubungkan data untuk menerima peringatan",
+    "businessReportsTitle": "Laporan",
+    "businessReportsDescription": "Hubungkan data untuk menghasilkan laporan",
+    "billingTitle": "Penagihan",
+    "billingPortalButton": "Buka portal penagihan",
+    "billingUnavailable": "Informasi penagihan saat ini tidak tersedia",
+    "billingPlanPrefix": "Paket: ",
+    "billingStatusPrefix": "Status: ",
+    "billingCancelScheduled": "Pembatalan dijadwalkan",
+    "billingInvoicesTitle": "Faktur",
+    "billingInvoiceFallback": "Tidak ada faktur yang tersedia",
+    "employeesTitle": "Anggota tim",
+    "employeesRefreshTooltip": "Segarkan daftar",
+    "employeesUnavailable": "Informasi anggota tim tidak tersedia",
+    "employeesColumnName": "Nama",
+    "employeesColumnEmail": "Email",
+    "employeesColumnRole": "Peran",
+    "employeesColumnStatus": "Status",
+    "settingsTitle": "Pengaturan",
+    "settingsSubtitle": "Kelola akun dan preferensi Anda",
+    "settingsAccountSection": "Akun",
+    "settingsCompanySection": "Perusahaan",
+    "settingsAppearanceSection": "Tampilan",
+    "settingsSessionSection": "Sesi",
+    "settingsNameLabel": "Nama",
+    "settingsEmailLabel": "Email",
+    "settingsRoleLabel": "Peran",
+    "settingsPlanLabel": "Paket",
+    "settingsManageSubscription": "Kelola langganan",
+    "settingsThemeLabel": "Tema",
+    "settingsLanguageLabel": "Bahasa",
+    "settingsThemeLight": "Terang",
+    "settingsThemeDark": "Gelap",
+    "settingsThemeSystem": "Ikuti sistem",
+    "settingsLogout": "Keluar"
   }
 }

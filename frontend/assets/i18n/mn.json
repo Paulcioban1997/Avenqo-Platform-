@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "Нэвтрэх",
-    "tryFree": "Үнэгүй туршиж үзэх",
+    "tryFree": "Avenqo-г туршиж үзэх",
     "watchDemo": "Демо үзэх",
-    "noCreditCard": "Кредит карт шаардлагагүй",
+    "noCreditCard": "Хувийн тохиргоо",
     "guidedSetup": "Заавартай тохиргоо",
     "isolatedData": "Тусгаарлагдсан өгөгдөл"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "Өргөтгөх боломжтой хостинг"
   },
   "modulesSection": {
-    "kicker": "Avenqo цогцолбор",
-    "title": "Бизнесийн тэргүүлэх чиглэл бүрд нэг модуль.",
-    "subtitle": "Өөрийн тохируулсан орчноо бүтээ. Бүх модуль ижил туршлагыг хуваалцаж, хамтран ажилладаг.",
-    "discover": "Нээж үзэх",
+    "kicker": "Avenqo Модулиуд",
+    "title": "Хэрэгцээнд тохирсон, өсөн тэлэх нэг модуль платформ",
+    "subtitle": "Өнөөдөр танд хэрэгтэй модулиудыг идэвхжүүлж, дараа нь хэрэгслүүдийг солихгүйгээр өргөжүүлээрэй.",
+    "discover": "Дэлгэрэнгүй",
+    "availableNow": "Одоо боломжтой",
+    "comingSoon": "Тун удахгүй",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "Борлуулалт, бүтээгдэхүүн, үнэнч байдлыг нэг харагдацаас удирдах."
+        "name": "Retail Intelligence",
+        "description": "Жижиглэн худалдааны бодит цагийн борлуулалт, нөөцийн шинжилгээ.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "Харилцаа, боломж, дараагийн шилдэг үйлдлүүдэд тэргүүлэх ач холбогдол өгөх."
+        "name": "CRM AI",
+        "description": "Илүү ухаалаг борлуулалтын хоолойн төлөө AI-аар ажилладаг харилцагчийн харилцааны менежмент.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "Санхүүгийн хяналт, нягтлан бодох бүртгэлийн хаалтыг хурдасгах."
+        "name": "OCR AI",
+        "description": "Нэхэмжлэх, сканнердсан баримт бичгээс өгөгдлийг автоматаар гаргаж авах.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "Ирж буй баримт бичгүүдийг бүтэцтэй процесс болгон хувиргах."
+        "name": "Voice AI",
+        "description": "Харилцагчийн дуудлагыг тэмдэглэж, хянах дуут туслах.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "Жинхэнэ утга учиртай чиг хандлага, хазайлтуудыг ойлгох."
+        "name": "Media AI",
+        "description": "Дүрслэл болон маркетингийн контент бүтээх, шинжлэх.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "Илүү холбогдолтой, хэмжигдэхүйц кампанит ажлуудыг зохион байгуулах."
+        "name": "Accounting AI",
+        "description": "Нягтлан бодох бүртгэл, санхүүгийн тохируулгыг автоматжуулах.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "Компанийн мэдлэг дээр үндэслэсэн найдвартай хариултыг өгөх."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "Нөхцөл байдлыг алдалгүйгээр дуут харилцан яриаг автоматжуулах."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "Багуудыг холбож, давтагдах ажлуудыг автоматжуулах."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "Контентоо нэг ажлын орон зайгаас бүтээж, зохион байгуулах."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "Хариу өгөх хугацааг багасгаж, шийдэл бүрийг сайжруулах."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "Харилцагчдадаа зориулсан яриа хэлэлцээний туслахыг байршуулах."
+        "name": "Legal AI",
+        "description": "AI-ийн тусламжтайгаар гэрээг хянаж, товч дүгнэх.",
+        "available": false
       }
     ]
   },
@@ -224,44 +213,44 @@
     ]
   },
   "pricing": {
-    "kicker": "Ил тод үнэ",
-    "title": "Одоо эхэл. Өөрийн хурдаар өс.",
-    "subtitle": "Төлөвлөгөө бүр платформ, Avenqo туслах, аюулгүй ажлын орон зайг агуулдаг.",
-    "popular": "Хамгийн түгээмэл",
-    "priceLabel": "Хүсэлтээр",
+    "kicker": "Үнэ",
+    "title": "Таны өсөлтийн үе шат бүрд зориулсан төлөвлөгөө",
+    "subtitle": "Демо-гоор эхэлж, дараа нь компанийхаа хэмжээнд тохирсон төлөвлөгөөг сонго.",
+    "popular": "Хамгийн алдартай",
+    "priceLabel": "Хүсэлтээр үнэ",
     "plans": [
       {
-        "tier": "Үндсэн",
-        "title": "Эхлэхэд",
+        "tier": "Demo",
+        "title": "Өөрийн өгөгдлөөрөө Avenqo-г туршиж үзээрэй",
+        "priceLabel": "Үнэгүй",
         "items": [
-          "1 Avenqo модуль",
-          "5 хэрэглэгч хүртэл",
-          "Суулгагдсан туслах",
-          "Стандарт дэмжлэг"
+          "Хугацаагаар хязгаарлагдсан хандалт",
+          "Демо эсвэл өөрийн өгөгдөл",
+          "Имэйл дэмжлэг"
         ],
-        "action": "Зөвлөхтэй ярилцах"
+        "action": "Демо хүсэх"
       },
       {
-        "tier": "Мэргэжлийн",
-        "title": "Хурдасгахад",
+        "tier": "Professional",
+        "title": "Өсөхийг хүсдэг компаниудад",
+        "priceLabel": "Хүсэлтээр үнэ",
         "items": [
-          "5 модуль хүртэл",
-          "25 хэрэглэгч хүртэл",
-          "Дэвшилтэт автоматжуулалт",
-          "Тэргүүлэх дэмжлэг"
+          "Бүх үндсэн модуль",
+          "Өргөтгөх боломжтой хэрэглэгчийн тоо",
+          "Тэргүүн ээлжийн дэмжлэг"
         ],
-        "action": "Үнэгүй туршиж үзэх"
+        "action": "Бидэнтэй холбогдох"
       },
       {
-        "tier": "Аж ахуйн нэгж",
-        "title": "Уялдуулахад",
+        "tier": "Enterprise",
+        "title": "Дэвшилтэт хэрэгцээтэй байгууллагуудад",
+        "priceLabel": "Хүсэлтээр үнэ",
         "items": [
-          "Хязгааргүй модуль",
-          "Хүсэлтээр хэрэглэгчид",
-          "Тусгай интеграци",
-          "Тусгайлсан засаглал"
+          "Захиалгат интеграци",
+          "Хариуцсан бүртгэлийн менежер",
+          "Үйлчилгээний түвшний гэрээ"
         ],
-        "action": "Борлуулалтын багтай холбогдох"
+        "action": "Борлуулалттай холбогдох"
       }
     ]
   },
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "Таны дараагийн алхам",
     "title": "Бизнесээ өөрөөр удирд.",
-    "tryFree": "Үнэгүй туршиж үзэх",
+    "tryFree": "Avenqo-г туршиж үзэх",
     "scheduleDemo": "Демо товлох"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "Эх сурвалж",
     "newest": "Хамгийн шинэ",
     "you": "Та",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "Энэ сард миний хамгийн их зарагдсан бүтээгдэхүүн юу вэ?",
+      "Аль харилцагчид худалдан авалтаа зогсоох эрсдэлтэй байна вэ?",
+      "Энэ долоо хоногийн бизнесийн гүйцэтгэлийг товч дүгнэнэ үү.",
+      "Одоогийн хамгийн өндөр тэргүүлэх боломжууд юу вэ?"
+    ]
   },
   "auth": {
     "tagline": "Таны бизнест зориулсан AI платформ",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "Дундаж захиалгын үнэ цэнэ",
     "prioritiesTitle": "Санал болгосон чиглэлүүд",
     "prioritiesEmpty": "Мэдээлэл холбогдсоны дараа таны чиглэлүүд энд харагдах болно.",
-    "planLabel": "Төлөвлөгөө"
+    "planLabel": "Төлөвлөгөө",
+    "askAvenqoSubtitle": "Бизнесийнхээ талаар ямар ч асуулт асуу",
+    "askAvenqoCta": "Ярилцлага эхлүүлэх",
+    "importDataTitle": "Өгөгдлөө импортлох",
+    "importDataSubtitle": "Ойлголт авахын тулд өгөгдлийн эх сурвалжаа холбоно уу",
+    "importDataCta": "Өгөгдөл импортлох",
+    "connectionsTitle": "Холболтууд",
+    "connectionsEmpty": "Одоогоор холболт байхгүй байна",
+    "connectionsEmptyCta": "Холболт нэмэх",
+    "connectionsReadyLabel": "Бэлэн",
+    "connectionsLastUpdate": "Сүүлд шинэчлэгдсэн: ",
+    "activityTitle": "Сүүлийн үйл ажиллагаа",
+    "activityEmpty": "Сүүлийн үйл ажиллагаа одоогоор байхгүй байна",
+    "stepsTitle": "Эхлэх",
+    "stepOrgLabel": "Байгууллагаа тохируулах",
+    "stepDataLabel": "Өгөгдлөө холбох",
+    "stepInsightsLabel": "Ойлголтуудыг судлах",
+    "stepAskLabel": "Avenqo-с асуух"
   },
   "admin": {
     "commandCenterTitle": "Avenqo командын төв",
@@ -465,5 +477,132 @@
     "settingsTitle": "Тохиргоо",
     "signedInAs": "Нэвтэрсэн байгаагаар",
     "noSettingsMessage": "Платформын ерөнхий тохиргоо энд харагдахгүй — данс шинжийн мэдээллээс өөр юу ч харуулах шаардлагагүй."
+  },
+  "onboarding": {
+    "title": "Avenqo ажлын орчноо тохируулцгаая",
+    "subtitle": "Таны тэргүүлэх чиглэл, зөвлөмжийг тохируулахад зориулсан хэдэн хурдан асуулт.",
+    "goalsLabel": "Таны гол зорилго юу вэ?",
+    "goalIncreaseSales": "Борлуулалт нэмэгдүүлэх",
+    "goalReduceChurn": "Харилцагчийн алдагдлыг бууруулах",
+    "goalOptimizePricing": "Үнийг оновчтой болгох",
+    "goalImproveInventory": "Нөөцийн менежментийг сайжруулах",
+    "goalUnderstandCustomers": "Харилцагчдаа илүү сайн ойлгох",
+    "goalAutomateReports": "Тайлагналыг автоматжуулах",
+    "toolsLabel": "Одоо ямар хэрэгсэл ашиглаж байна вэ?",
+    "toolPos": "POS систем",
+    "toolEcommerce": "Цахим худалдааны платформ",
+    "toolSpreadsheets": "Хүснэгт",
+    "toolAccounting": "Санхүүгийн программ хангамж",
+    "toolCrm": "CRM систем",
+    "toolNone": "Эдгээрийн алийг нь ч биш",
+    "teamSizeLabel": "Таны багийн хэмжээ хэд вэ?",
+    "teamSizeSolo": "Зөвхөн би",
+    "teamSizeSmall": "2-10 хүн",
+    "teamSizeMedium": "11-50 хүн",
+    "teamSizeLarge": "50+ хүн",
+    "refineIndustryLabel": "Та ямар салбарт ажилладаг вэ?",
+    "refineIndustryHint": "Энэ нь бидэнд зөвлөмжийг сайжруулахад тусалдаг",
+    "continueCta": "Үргэлжлүүлэх",
+    "skipCta": "Одоохондоо алгасах",
+    "genericError": "Алдаа гарлаа, дахин оролдоно уу.",
+    "goalsRequired": "Ядаж нэг зорилго сонгоно уу.",
+    "teamSizeRequired": "Багийн хэмжээгээ сонгоно уу."
+  },
+  "company": {
+    "navOverviewLabel": "Тойм",
+    "navOverviewDescription": "Таны бизнесийн тойм",
+    "navAssistantLabel": "AI Туслах",
+    "navAssistantDescription": "Өгөгдлийнхөө талаар асуу",
+    "navSalesLabel": "Борлуулалт",
+    "navSalesDescription": "Орлого болон чиг хандлагыг хянах",
+    "navCustomersLabel": "Харилцагчид",
+    "navCustomersDescription": "Харилцагчийн баазаа ойлгох",
+    "navProductsLabel": "Бүтээгдэхүүн",
+    "navProductsDescription": "Бүтээгдэхүүний гүйцэтгэлийг шинжлэх",
+    "navRecommendationsLabel": "Зөвлөмжүүд",
+    "navRecommendationsDescription": "AI-аар үүсгэсэн санал",
+    "navAlertsLabel": "Сануулгууд",
+    "navAlertsDescription": "Чухал мэдэгдлүүд",
+    "navReportsLabel": "Тайлангууд",
+    "navReportsDescription": "Дэлгэрэнгүй тайлан үүсгэх",
+    "navConnectionsLabel": "Холболтууд",
+    "navConnectionsDescription": "Өгөгдлийн эх сурвалжаа удирдах",
+    "navTeamLabel": "Баг",
+    "navTeamDescription": "Багийн гишүүдийг удирдах",
+    "navBillingLabel": "Төлбөр тооцоо",
+    "navBillingDescription": "Захиалгаа удирдах",
+    "navSettingsLabel": "Тохиргоо",
+    "navSettingsDescription": "Бүртгэл болон тохиргоо",
+    "navSupportLabel": "Дэмжлэг",
+    "navSupportDescription": "Тусламж авах",
+    "connectionsLoading": "Таны холболтуудыг ачааллаж байна...",
+    "connectionsNoDataTitle": "Одоогоор өгөгдөл холбогдоогүй байна",
+    "connectionsNoDataFormats": "CSV, Excel болон бусад дэмжигдэнэ",
+    "connectionsImportButton": "Өгөгдөл импортлох",
+    "connectionsUploadingLabel": "Байршуулж байна...",
+    "connectionsAnalyzing": "Таны өгөгдлийг шинжилж байна...",
+    "connectionsMappingTitle": "Баганаа зурагжуулах",
+    "connectionsMappingSubtitle": "Баганаа манай талбартай тааруулна уу",
+    "connectionsMappingIgnore": "Энэ баганыг үл тоомсорлох",
+    "connectionsConfirmMapping": "Зурагжуулалтыг баталгаажуулах",
+    "connectionsReadyTitle": "Таны өгөгдөл бэлэн боллоо!",
+    "connectionsStatNameLabel": "Нэр",
+    "connectionsStatRowsLabel": "Мөрүүд",
+    "connectionsStatColumnsLabel": "Баганууд",
+    "connectionsStatUpdatedLabel": "Шинэчлэгдсэн",
+    "connectionsGoDashboard": "Хяналтын самбар руу очих",
+    "connectionsAskAvenqo": "Avenqo-с асуух",
+    "connectionsImportAnother": "Өөр файл импортлох",
+    "connectionsRetry": "Дахин оролдох",
+    "connectionsGenericError": "Алдаа гарлаа.",
+    "connectionsFileEmptyError": "Файл хоосон бололтой.",
+    "connectionsProcessingError": "Файлыг боловсруулахад алдаа гарлаа.",
+    "businessDefaultTitle": "Өгөгдлөө холбох",
+    "businessDefaultDescription": "Эхлэхийн тулд өгөгдлийн эх сурвалжаа холбоно уу",
+    "businessConnectButton": "Холбох",
+    "businessSalesTitle": "Борлуулалтын өгөгдөл",
+    "businessSalesDescription": "Гүйцэтгэлийг хянахын тулд борлуулалтын өгөгдлөө холбоно уу",
+    "businessCustomersTitle": "Харилцагчийн өгөгдөл",
+    "businessCustomersDescription": "Ойлголт авахын тулд харилцагчийн өгөгдлийг холбоно уу",
+    "businessProductsTitle": "Бүтээгдэхүүний өгөгдөл",
+    "businessProductsDescription": "Гүйцэтгэлийг шинжлэхийн тулд бүтээгдэхүүний өгөгдлийг холбоно уу",
+    "businessRecommendationsTitle": "Зөвлөмжүүд",
+    "businessRecommendationsDescription": "AI зөвлөмж авахын тулд өгөгдлөө холбоно уу",
+    "businessAlertsTitle": "Сануулгууд",
+    "businessAlertsDescription": "Сануулга авахын тулд өгөгдлөө холбоно уу",
+    "businessReportsTitle": "Тайлангууд",
+    "businessReportsDescription": "Тайлан үүсгэхийн тулд өгөгдлөө холбоно уу",
+    "billingTitle": "Төлбөр тооцоо",
+    "billingPortalButton": "Төлбөрийн порталыг нээх",
+    "billingUnavailable": "Төлбөрийн мэдээлэл одоогоор боломжгүй байна",
+    "billingPlanPrefix": "Багц: ",
+    "billingStatusPrefix": "Төлөв: ",
+    "billingCancelScheduled": "Цуцлалт төлөвлөгдсөн",
+    "billingInvoicesTitle": "Нэхэмжлэхүүд",
+    "billingInvoiceFallback": "Нэхэмжлэх байхгүй байна",
+    "employeesTitle": "Багийн гишүүд",
+    "employeesRefreshTooltip": "Жагсаалтыг сэргээх",
+    "employeesUnavailable": "Багийн гишүүний мэдээлэл байхгүй байна",
+    "employeesColumnName": "Нэр",
+    "employeesColumnEmail": "Имэйл",
+    "employeesColumnRole": "Үүрэг",
+    "employeesColumnStatus": "Төлөв",
+    "settingsTitle": "Тохиргоо",
+    "settingsSubtitle": "Бүртгэл болон тохиргоогоо удирдах",
+    "settingsAccountSection": "Бүртгэл",
+    "settingsCompanySection": "Компани",
+    "settingsAppearanceSection": "Гадаад төрх",
+    "settingsSessionSection": "Сесс",
+    "settingsNameLabel": "Нэр",
+    "settingsEmailLabel": "Имэйл",
+    "settingsRoleLabel": "Үүрэг",
+    "settingsPlanLabel": "Багц",
+    "settingsManageSubscription": "Захиалгыг удирдах",
+    "settingsThemeLabel": "Загвар",
+    "settingsLanguageLabel": "Хэл",
+    "settingsThemeLight": "Цайвар",
+    "settingsThemeDark": "Бараан",
+    "settingsThemeSystem": "Системийн дагуу",
+    "settingsLogout": "Гарах"
   }
 }

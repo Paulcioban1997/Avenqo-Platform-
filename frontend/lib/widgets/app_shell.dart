@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/destinations.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/widgets/language_selector.dart';
 import 'package:avenqo/widgets/theme_toggle_button.dart';
 
@@ -31,6 +32,7 @@ class AppShell extends StatelessWidget {
     final index = selected < 0 ? 0 : selected;
     final compact = MediaQuery.sizeOf(context).width < 960;
     final showAskCta = currentPath != '/assistant';
+    final askCta = AvenqoLocaleScope.translationsOf(context).dashboardHome.askAvenqoCta;
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -57,7 +59,7 @@ class AppShell extends StatelessWidget {
                 onPressed: () => context.go('/assistant'),
                 style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
                 icon: const Icon(Icons.auto_awesome, size: 16),
-                label: const Text('Ask Avenqo AI'),
+                label: Text(askCta),
               ),
             ),
           const ThemeToggleButton(),
@@ -76,7 +78,7 @@ class AppShell extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Déconnexion',
+            tooltip: AvenqoLocaleScope.translationsOf(context).company.settingsLogout,
             onPressed: auth.busy ? null : auth.logout,
             icon: const Icon(Icons.logout),
           ),
@@ -147,6 +149,7 @@ class _CompanyIdentityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     final company = auth.company ?? const <String, dynamic>{};
     final planCode = company['subscription_plan']?.toString();
     final companyName = company['name']?.toString() ?? 'Avenqo';
@@ -198,7 +201,7 @@ class _CompanyIdentityCard extends StatelessWidget {
           TextButton(
             style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
             onPressed: () => onSelect('/billing'),
-            child: const Text('Gérer l\u2019abonnement', style: TextStyle(fontSize: 12.5)),
+            child: Text(t.settingsManageSubscription, style: const TextStyle(fontSize: 12.5)),
           ),
         ],
       ),
@@ -221,13 +224,14 @@ class _DestinationList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
       children: [
         for (var itemIndex = 0; itemIndex < appDestinations.length; itemIndex++) ...[
           if (appDestinations[itemIndex].sectionBreakBefore)
             const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
-          _buildTile(context, appDestinations[itemIndex], itemIndex == index),
+          _buildTile(context, localizeDestination(appDestinations[itemIndex], t), itemIndex == index),
         ],
         if (showAdminEntry) ...[
           const Padding(

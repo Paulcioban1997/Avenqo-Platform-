@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/destinations.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 
 class _Brand {
   const _Brand._();
@@ -15,7 +17,10 @@ class BusinessPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final content = _content[destination.path] ?? const ('Votre espace est prêt', 'Connectez vos outils pour afficher ici des informations à jour.');
+    final t = AvenqoLocaleScope.translationsOf(context).company;
+    final localized = localizeDestination(destination, t);
+    final content = _contentFor(destination.path, t) ??
+        (t.businessDefaultTitle, t.businessDefaultDescription);
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -24,9 +29,9 @@ class BusinessPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(destination.label, style: Theme.of(context).textTheme.headlineMedium),
+              Text(localized.label, style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 6),
-              Text(destination.description, style: TextStyle(color: colors.muted)),
+              Text(localized.description, style: TextStyle(color: colors.muted)),
               const SizedBox(height: 28),
               Container(
                 width: double.infinity,
@@ -44,7 +49,7 @@ class BusinessPage extends StatelessWidget {
                       onPressed: () => context.go('/connections'),
                       style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
                       icon: const Icon(Icons.add_link),
-                      label: const Text('Connecter mes outils'),
+                      label: Text(t.businessConnectButton),
                     ),
                   ],
                 ),
@@ -57,13 +62,12 @@ class BusinessPage extends StatelessWidget {
   }
 }
 
-const _content = <String, (String, String)>{
-  '/sales': ('Suivez chaque évolution', 'Vos tendances, comparaisons et prévisions de ventes apparaîtront ici.'),
-  '/customers': ('Fidélisez les bons clients', 'Vous retrouverez les clients à valoriser, à relancer ou à accompagner en priorité.'),
-  '/products': ('Pilotez votre catalogue', 'Les produits performants, la demande attendue et les stocks à surveiller seront réunis ici.'),
-  '/recommendations': ('Passez directement à l’action', 'Avenqo classera les opportunités selon leur impact potentiel sur votre activité.'),
-  '/alerts': ('Restez informé sans bruit', 'Les variations importantes et les risques seront signalés avec une action recommandée.'),
-  '/reports': ('Vos synthèses de direction', 'Créez et partagez des rapports clairs sur les résultats de votre entreprise.'),
-  '/connections': ('Reliez vos outils métier', 'Ajoutez votre solution de caisse, votre boutique en ligne ou vos fichiers de ventes.'),
-  '/settings': ('Préférences de l’entreprise', 'Personnalisez les informations et les notifications de votre organisation.'),
-};
+(String, String)? _contentFor(String path, CompanyStrings t) => switch (path) {
+      '/sales' => (t.businessSalesTitle, t.businessSalesDescription),
+      '/customers' => (t.businessCustomersTitle, t.businessCustomersDescription),
+      '/products' => (t.businessProductsTitle, t.businessProductsDescription),
+      '/recommendations' => (t.businessRecommendationsTitle, t.businessRecommendationsDescription),
+      '/alerts' => (t.businessAlertsTitle, t.businessAlertsDescription),
+      '/reports' => (t.businessReportsTitle, t.businessReportsDescription),
+      _ => null,
+    };

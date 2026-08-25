@@ -1,9 +1,9 @@
 {
   "common": {
     "login": "התחברות",
-    "tryFree": "נסו בחינם",
+    "tryFree": "נסו את Avenqo",
     "watchDemo": "צפו בהדגמה",
-    "noCreditCard": "ללא כרטיס אשראי",
+    "noCreditCard": "הגדרה אישית",
     "guidedSetup": "התקנה מודרכת",
     "isolatedData": "נתונים מבודדים"
   },
@@ -93,58 +93,47 @@
     "securityItem3": "אחסון ניתן להרחבה"
   },
   "modulesSection": {
-    "kicker": "חבילת Avenqo",
-    "title": "מודול לכל עדיפות עסקית.",
-    "subtitle": "בנו את הסביבה המותאמת שלכם. כל המודולים חולקים אותה חוויה ופועלים יחד.",
+    "kicker": "מודולים של Avenqo",
+    "title": "פלטפורמה מודולרית אחת, שגדלה לפי הצורך",
+    "subtitle": "הפעילו את המודולים שאתם צריכים היום, והרחיבו מאוחר יותר בלי לשנות כלים.",
     "discover": "גלו עוד",
+    "availableNow": "זמין כעת",
+    "comingSoon": "בקרוב",
     "items": [
       {
-        "name": "Avenqo Retail",
-        "description": "נהלו מכירות, מוצרים ונאמנות מתצוגה אחת."
+        "name": "Retail Intelligence",
+        "description": "ניתוח מכירות ומלאי בזמן אמת עבור קמעונאות.",
+        "available": true
       },
       {
-        "name": "Avenqo CRM",
-        "description": "תעדפו קשרים, הזדמנויות ואת הפעולות הבאות הטובות ביותר."
+        "name": "CRM AI",
+        "description": "ניהול קשרי לקוחות מבוסס AI לצינור מכירות חכם יותר.",
+        "available": false
       },
       {
-        "name": "Avenqo Accounting",
-        "description": "האיצו מעקב פיננסי וסגירת חשבונות."
+        "name": "OCR AI",
+        "description": "חילוץ נתונים אוטומטי מחשבוניות ומסמכים סרוקים.",
+        "available": false
       },
       {
-        "name": "Avenqo Documents",
-        "description": "הפכו מסמכים נכנסים לתהליכים מובנים."
+        "name": "Voice AI",
+        "description": "עוזר קולי לתמלול ומעקב אחר שיחות עם לקוחות.",
+        "available": false
       },
       {
-        "name": "Avenqo Analytics",
-        "description": "הבינו מגמות וסטיות שבאמת חשובות."
+        "name": "Media AI",
+        "description": "יצירה וניתוח של תוכן חזותי ושיווקי.",
+        "available": false
       },
       {
-        "name": "Avenqo Marketing",
-        "description": "תזמרו קמפיינים רלוונטיים ומדידים יותר."
+        "name": "Accounting AI",
+        "description": "אוטומציה של הנהלת חשבונות ויישוב פיננסי.",
+        "available": false
       },
       {
-        "name": "Avenqo Knowledge",
-        "description": "ספקו תשובות אמינות המבוססות על ידע החברה."
-      },
-      {
-        "name": "Avenqo Voice",
-        "description": "הפכו אינטראקציות קוליות לאוטומטיות מבלי לאבד הקשר."
-      },
-      {
-        "name": "Avenqo Workflow",
-        "description": "חברו צוותים והפכו משימות חוזרות לאוטומטיות."
-      },
-      {
-        "name": "Avenqo Media",
-        "description": "צרו וארגנו את התוכן שלכם מסביבת עבודה אחת."
-      },
-      {
-        "name": "Avenqo Support",
-        "description": "קצרו זמני תגובה ושפרו כל פתרון."
-      },
-      {
-        "name": "Avenqo Chat",
-        "description": "פרסו עוזר שיחה עבור הלקוחות שלכם."
+        "name": "Legal AI",
+        "description": "בדיקה וסיכום חוזים בעזרת בינה מלאכותית.",
+        "available": false
       }
     ]
   },
@@ -224,42 +213,42 @@
     ]
   },
   "pricing": {
-    "kicker": "תמחור שקוף",
-    "title": "התחילו עכשיו. צמחו בקצב שלכם.",
-    "subtitle": "כל תוכנית כוללת את הפלטפורמה, את עוזר Avenqo וסביבת עבודה מאובטחת.",
-    "popular": "המבוקשת ביותר",
-    "priceLabel": "לפי דרישה",
+    "kicker": "מחירים",
+    "title": "תוכנית לכל שלב בצמיחה שלכם",
+    "subtitle": "התחילו עם הדגמה, ואז בחרו את התוכנית המתאימה לגודל החברה שלכם.",
+    "popular": "הכי פופולרי",
+    "priceLabel": "מחיר לפי בקשה",
     "plans": [
       {
-        "tier": "בסיסי",
-        "title": "כדי להתחיל",
+        "tier": "Demo",
+        "title": "נסו את Avenqo עם הנתונים שלכם",
+        "priceLabel": "חינם",
         "items": [
-          "מודול Avenqo אחד",
-          "עד 5 משתמשים",
-          "עוזר מובנה",
-          "תמיכה סטנדרטית"
+          "גישה מוגבלת בזמן",
+          "נתוני דמו או נתונים שלכם",
+          "תמיכה בדוא\"ל"
         ],
-        "action": "שוחחו עם יועץ"
+        "action": "בקשו הדגמה"
       },
       {
-        "tier": "מקצועי",
-        "title": "כדי להאיץ",
+        "tier": "Professional",
+        "title": "לחברות שרוצות לצמוח",
+        "priceLabel": "מחיר לפי בקשה",
         "items": [
-          "עד 5 מודולים",
-          "עד 25 משתמשים",
-          "אוטומציות מתקדמות",
+          "כל המודולים המרכזיים",
+          "מספר משתמשים ניתן להרחבה",
           "תמיכה בעדיפות"
         ],
-        "action": "נסו בחינם"
+        "action": "צרו קשר"
       },
       {
-        "tier": "ארגוני",
-        "title": "כדי לתזמר",
+        "tier": "Enterprise",
+        "title": "לארגונים עם צרכים מתקדמים",
+        "priceLabel": "מחיר לפי בקשה",
         "items": [
-          "מודולים ללא הגבלה",
-          "משתמשים לפי דרישה",
-          "אינטגרציות מותאמות אישית",
-          "ממשל ייעודי"
+          "אינטגרציה מותאמת אישית",
+          "מנהל חשבון ייעודי",
+          "הסכם רמת שירות"
         ],
         "action": "צרו קשר עם המכירות"
       }
@@ -296,7 +285,7 @@
   "finalCta": {
     "label": "הצעד הבא שלכם",
     "title": "נהלו את העסק שלכם אחרת.",
-    "tryFree": "נסו בחינם",
+    "tryFree": "נסו את Avenqo",
     "scheduleDemo": "קבעו הדגמה"
   },
   "footer": {
@@ -336,7 +325,13 @@
     "sourcesLabel": "מקורות",
     "newest": "החדשים ביותר",
     "you": "אתה",
-    "avenqoAi": "Avenqo AI"
+    "avenqoAi": "Avenqo AI",
+    "suggestions": [
+      "מה המוצרים הכי נמכרים שלי החודש?",
+      "אילו לקוחות בסיכון להפסיק לקנות?",
+      "סכמו את ביצועי העסק שלי השבוע.",
+      "מהן ההזדמנויות בעדיפות הגבוהה ביותר כרגע?"
+    ]
   },
   "auth": {
     "tagline": "פלטפורמת ה-AI עבור פעילויות העסק שלך",
@@ -381,7 +376,24 @@
     "avgOrderLabel": "הזמנה ממוצעת",
     "prioritiesTitle": "עדיפויות מומלצים",
     "prioritiesEmpty": "העדיפויות שלך יופיעו כאן מיד שהנתונים שלך מחוברים.",
-    "planLabel": "מסלול"
+    "planLabel": "מסלול",
+    "askAvenqoSubtitle": "שאלו שאלות על נתוני העסק שלכם וקבלו תובנות מבוססות הקשר.",
+    "askAvenqoCta": "שאלו את Avenqo AI",
+    "importDataTitle": "ייבאו את הנתונים שלכם",
+    "importDataSubtitle": "חברו או ייבאו את מקורות העסק שלכם כדי לפתוח את הבינה של Avenqo.",
+    "importDataCta": "ייבוא הנתונים שלי",
+    "connectionsTitle": "חיבורים",
+    "connectionsEmpty": "עדיין אין נתונים מחוברים",
+    "connectionsEmptyCta": "ייבוא הנתונים שלי",
+    "connectionsReadyLabel": "מוכן",
+    "connectionsLastUpdate": "עדכון אחרון",
+    "activityTitle": "פעילות אחרונה",
+    "activityEmpty": "עדיין אין פעילות אחרונה.",
+    "stepsTitle": "הצעדים הבאים המומלצים",
+    "stepOrgLabel": "השלימו את הגדרת החברה שלכם",
+    "stepDataLabel": "חברו או ייבאו את הנתונים שלכם",
+    "stepInsightsLabel": "חקרו את התובנות שלכם",
+    "stepAskLabel": "שאלו את Avenqo AI"
   },
   "admin": {
     "commandCenterTitle": "מרכז פיקוד של Avenqo",
@@ -465,5 +477,132 @@
     "settingsTitle": "הגדרות",
     "signedInAs": "מחובר כ-",
     "noSettingsMessage": "עדיין אין תצורת פלטפורמה גלובלית להציג כאן — אין טעם להציג מידע שאינו קיים, מלבד זהות החשבון."
+  },
+  "onboarding": {
+    "title": "בואו נגדיר את סביבת העבודה שלכם ב-Avenqo",
+    "subtitle": "כמה שאלות מהירות כדי להתאים אישית את העדיפויות וההמלצות שלכם.",
+    "goalsLabel": "מהן המטרות העיקריות שלכם?",
+    "goalIncreaseSales": "הגדלת מכירות",
+    "goalReduceChurn": "הפחתת נטישת לקוחות",
+    "goalOptimizePricing": "אופטימיזציה של תמחור",
+    "goalImproveInventory": "שיפור ניהול המלאי",
+    "goalUnderstandCustomers": "הבנה טובה יותר של הלקוחות שלי",
+    "goalAutomateReports": "אוטומציה של הדוחות שלי",
+    "toolsLabel": "באילו כלים אתם משתמשים כיום?",
+    "toolPos": "מערכת קופה (POS)",
+    "toolEcommerce": "פלטפורמת מסחר אלקטרוני",
+    "toolSpreadsheets": "גיליונות אלקטרוניים (Excel/Sheets)",
+    "toolAccounting": "תוכנת הנהלת חשבונות",
+    "toolCrm": "CRM",
+    "toolNone": "עדיין אין כלים",
+    "teamSizeLabel": "מה גודל הצוות שלכם?",
+    "teamSizeSolo": "רק אני",
+    "teamSizeSmall": "2 עד 10 אנשים",
+    "teamSizeMedium": "11 עד 50 אנשים",
+    "teamSizeLarge": "יותר מ-50 אנשים",
+    "refineIndustryLabel": "פרטו את התחום שלכם (אופציונלי)",
+    "refineIndustryHint": "לדוגמה: קמעונאות מתמחה, מזון מהיר, משרד הנהלת חשבונות...",
+    "continueCta": "המשך",
+    "skipCta": "דלגו לעת עתה",
+    "genericError": "לא הצלחנו לשמור את התשובות שלכם כרגע.",
+    "goalsRequired": "בחרו לפחות מטרה אחת.",
+    "teamSizeRequired": "בחרו את גודל הצוות שלכם."
+  },
+  "company": {
+    "navOverviewLabel": "סקירה כללית",
+    "navOverviewDescription": "המדדים המרכזיים של העסק שלכם.",
+    "navAssistantLabel": "עוזר AI",
+    "navAssistantDescription": "שאלו שאלות ופעלו.",
+    "navSalesLabel": "מכירות",
+    "navSalesDescription": "עקבו אחר הכנסות ומגמות.",
+    "navCustomersLabel": "לקוחות",
+    "navCustomersDescription": "הבינו נאמנות וסיכון נטישה.",
+    "navProductsLabel": "מוצרים",
+    "navProductsDescription": "עקבו אחר ביקוש וביצועי הקטלוג.",
+    "navRecommendationsLabel": "המלצות",
+    "navRecommendationsDescription": "מצאו את ההזדמנויות בעדיפות הגבוהה ביותר.",
+    "navAlertsLabel": "התראות",
+    "navAlertsDescription": "עקבו אחר שינויים הדורשים את תשומת לבכם.",
+    "navReportsLabel": "דוחות",
+    "navReportsDescription": "צפו ושתפו את הסיכומים הניהוליים שלכם.",
+    "navConnectionsLabel": "חיבורים",
+    "navConnectionsDescription": "חברו את כלי המכירות והניהול שלכם.",
+    "navTeamLabel": "צוות",
+    "navTeamDescription": "נהלו את הגישה של חברי הצוות שלכם.",
+    "navBillingLabel": "חיוב",
+    "navBillingDescription": "נהלו את המנוי והחשבוניות שלכם.",
+    "navSettingsLabel": "הגדרות",
+    "navSettingsDescription": "פרטי החשבון והחברה שלכם.",
+    "navSupportLabel": "תמיכת Avenqo",
+    "navSupportDescription": "צריכים עזרה עם Avenqo? שאלו כאן.",
+    "connectionsLoading": "טוען…",
+    "connectionsNoDataTitle": "חברו את הנתונים שלכם כדי לפתוח ניתוחים ו-Avenqo AI.",
+    "connectionsNoDataFormats": "פורמטים מקובלים: CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "ייבוא קובץ",
+    "connectionsUploadingLabel": "מעלה…",
+    "connectionsAnalyzing": "מנתח את מבנה הנתונים שלכם…",
+    "connectionsMappingTitle": "אשרו את מיפוי העמודות שלכם",
+    "connectionsMappingSubtitle": "חלק מהעמודות דורשות אישור ידני לפני הפעלת הניתוחים.",
+    "connectionsMappingIgnore": "התעלמו מעמודה זו",
+    "connectionsConfirmMapping": "אשרו מיפוי",
+    "connectionsReadyTitle": "הנתונים מוכנים",
+    "connectionsStatNameLabel": "שם",
+    "connectionsStatRowsLabel": "שורות",
+    "connectionsStatColumnsLabel": "עמודות",
+    "connectionsStatUpdatedLabel": "עדכון אחרון",
+    "connectionsGoDashboard": "מעבר ללוח הבקרה",
+    "connectionsAskAvenqo": "שאלו את Avenqo AI",
+    "connectionsImportAnother": "ייבוא מערך נתונים נוסף",
+    "connectionsRetry": "נסו שוב",
+    "connectionsGenericError": "אירעה שגיאה בלתי צפויה.",
+    "connectionsFileEmptyError": "הקובץ שנבחר ריק או לא ניתן לקריאה.",
+    "connectionsProcessingError": "לא ניתן היה לעבד קובץ זה.",
+    "businessDefaultTitle": "המרחב שלכם מוכן",
+    "businessDefaultDescription": "חברו את הכלים שלכם כדי לראות כאן מידע מעודכן.",
+    "businessConnectButton": "חבר את הכלים שלי",
+    "businessSalesTitle": "עקבו אחר כל שינוי",
+    "businessSalesDescription": "מגמות, השוואות ותחזיות המכירות שלכם יופיעו כאן.",
+    "businessCustomersTitle": "שמרו על הלקוחות הנכונים",
+    "businessCustomersDescription": "כאן תמצאו לקוחות לתעדוף, הפעלה מחדש או ליווי.",
+    "businessProductsTitle": "נהלו את הקטלוג שלכם",
+    "businessProductsDescription": "המוצרים המובילים, הביקוש הצפוי והמלאי למעקב ירוכזו כאן.",
+    "businessRecommendationsTitle": "פעלו ישירות על הזדמנויות",
+    "businessRecommendationsDescription": "Avenqo תדרג הזדמנויות לפי השפעתן הפוטנציאלית על העסק שלכם.",
+    "businessAlertsTitle": "הישארו מעודכנים ללא רעש",
+    "businessAlertsDescription": "שינויים וסיכונים חשובים יסומנו עם פעולה מומלצת.",
+    "businessReportsTitle": "הסיכומים הניהוליים שלכם",
+    "businessReportsDescription": "צרו ושתפו דוחות ברורים על תוצאות החברה שלכם.",
+    "billingTitle": "חיוב",
+    "billingPortalButton": "פורטל Stripe",
+    "billingUnavailable": "החיוב אינו זמין באופן זמני.",
+    "billingPlanPrefix": "תוכנית ",
+    "billingStatusPrefix": "סטטוס: ",
+    "billingCancelScheduled": "ביטול מתוזמן",
+    "billingInvoicesTitle": "חשבוניות",
+    "billingInvoiceFallback": "חשבונית",
+    "employeesTitle": "משתמשים",
+    "employeesRefreshTooltip": "רענון",
+    "employeesUnavailable": "גישת המשתמשים אינה זמינה באופן זמני.",
+    "employeesColumnName": "שם",
+    "employeesColumnEmail": "אימייל",
+    "employeesColumnRole": "תפקיד",
+    "employeesColumnStatus": "סטטוס",
+    "settingsTitle": "הגדרות",
+    "settingsSubtitle": "פרטי החשבון, החברה וההעדפות שלכם.",
+    "settingsAccountSection": "חשבון",
+    "settingsCompanySection": "חברה",
+    "settingsAppearanceSection": "מראה",
+    "settingsSessionSection": "הפעלה",
+    "settingsNameLabel": "שם",
+    "settingsEmailLabel": "אימייל",
+    "settingsRoleLabel": "תפקיד",
+    "settingsPlanLabel": "תוכנית",
+    "settingsManageSubscription": "ניהול מנוי",
+    "settingsThemeLabel": "ערכת נושא",
+    "settingsLanguageLabel": "שפה",
+    "settingsThemeLight": "בהיר",
+    "settingsThemeDark": "כהה",
+    "settingsThemeSystem": "מערכת",
+    "settingsLogout": "התנתקות"
   }
 }
