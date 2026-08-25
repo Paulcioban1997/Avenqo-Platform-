@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Կապակցված տվյալներ",
     "connectionsContinueLabel": "Շարունակել",
     "connectionsImportedAtLabel": "Ներմուծված է",
-    "connectionsUploadedFileSuccessLabel": "Տվյալները հաջողությամբ ներմուծվեցին"
+    "connectionsUploadedFileSuccessLabel": "Տվյալները հաջողությամբ ներմուծվեցին",
+    "themeToggleSwitchToDark": "Անցնել մուգ ռեժիմի",
+    "themeToggleSwitchToLight": "Անցնել լուսավոր ռեժիմի"
   }
 }

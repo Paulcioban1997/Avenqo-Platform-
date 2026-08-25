@@ -6,6 +6,7 @@ import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/widgets/language_selector.dart';
+import 'package:avenqo/widgets/theme_toggle_button.dart';
 
 enum AuthMode { login, register, forgot, verify, reset }
 
@@ -363,6 +364,7 @@ class _CompactHeader extends StatelessWidget {
           ),
         ),
         const Spacer(),
+        ThemeToggleButton(foregroundColor: colors.muted),
         LanguageSelector(foregroundColor: colors.muted),
       ],
     );
@@ -391,6 +393,7 @@ class _FormCard extends StatelessWidget {
                 style: TextStyle(color: colors.ink, fontSize: 26, fontWeight: FontWeight.w800),
               ),
             ),
+            ThemeToggleButton(foregroundColor: colors.muted),
             LanguageSelector(foregroundColor: colors.muted),
           ],
         ),

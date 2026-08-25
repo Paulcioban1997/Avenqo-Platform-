@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "जडान गरिएको डेटा",
     "connectionsContinueLabel": "जारी राख्नुहोस्",
     "connectionsImportedAtLabel": "आयात गरियो",
-    "connectionsUploadedFileSuccessLabel": "डेटा सफलतापूर्वक आयात भयो"
+    "connectionsUploadedFileSuccessLabel": "डेटा सफलतापूर्वक आयात भयो",
+    "themeToggleSwitchToDark": "डार्क मोडमा जानुहोस्",
+    "themeToggleSwitchToLight": "लाइट मोडमा जानुहोस्"
   }
 }

@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Gekoppelde data",
     "connectionsContinueLabel": "Gaan voort",
     "connectionsImportedAtLabel": "Ingevoer",
-    "connectionsUploadedFileSuccessLabel": "Data suksesvol ingevoer"
+    "connectionsUploadedFileSuccessLabel": "Data suksesvol ingevoer",
+    "themeToggleSwitchToDark": "Skakel na donker modus",
+    "themeToggleSwitchToLight": "Skakel na ligte modus"
   }
 }

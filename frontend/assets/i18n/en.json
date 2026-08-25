@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Connected data",
     "connectionsContinueLabel": "Continue",
     "connectionsImportedAtLabel": "Imported",
-    "connectionsUploadedFileSuccessLabel": "Data imported successfully"
+    "connectionsUploadedFileSuccessLabel": "Data imported successfully",
+    "themeToggleSwitchToDark": "Switch to dark mode",
+    "themeToggleSwitchToLight": "Switch to light mode"
   }
 }

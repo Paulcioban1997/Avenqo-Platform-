@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Data disambungkan",
     "connectionsContinueLabel": "Teruskan",
     "connectionsImportedAtLabel": "Diimport",
-    "connectionsUploadedFileSuccessLabel": "Data berjaya diimport"
+    "connectionsUploadedFileSuccessLabel": "Data berjaya diimport",
+    "themeToggleSwitchToDark": "Tukar ke mod gelap",
+    "themeToggleSwitchToLight": "Tukar ke mod terang"
   }
 }

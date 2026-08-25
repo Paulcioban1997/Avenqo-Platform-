@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Συνδεδεμένα δεδομένα",
     "connectionsContinueLabel": "Συνέχεια",
     "connectionsImportedAtLabel": "Εισήχθη",
-    "connectionsUploadedFileSuccessLabel": "Τα δεδομένα εισήχθησαν με επιτυχία"
+    "connectionsUploadedFileSuccessLabel": "Τα δεδομένα εισήχθησαν με επιτυχία",
+    "themeToggleSwitchToDark": "Εναλλαγή σε σκούρα λειτουργία",
+    "themeToggleSwitchToLight": "Εναλλαγή σε φωτεινή λειτουργία"
   }
 }

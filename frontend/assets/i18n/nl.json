@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Gekoppelde gegevens",
     "connectionsContinueLabel": "Doorgaan",
     "connectionsImportedAtLabel": "Geïmporteerd",
-    "connectionsUploadedFileSuccessLabel": "Gegevens succesvol geïmporteerd"
+    "connectionsUploadedFileSuccessLabel": "Gegevens succesvol geïmporteerd",
+    "themeToggleSwitchToDark": "Overschakelen naar donkere modus",
+    "themeToggleSwitchToLight": "Overschakelen naar lichte modus"
   }
 }

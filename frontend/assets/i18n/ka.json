@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "დაკავშირებული მონაცემები",
     "connectionsContinueLabel": "გაგრძელება",
     "connectionsImportedAtLabel": "შემოტანილია",
-    "connectionsUploadedFileSuccessLabel": "მონაცემები წარმატებით შემოტანილია"
+    "connectionsUploadedFileSuccessLabel": "მონაცემები წარმატებით შემოტანილია",
+    "themeToggleSwitchToDark": "გადართვა მუქ რეჟიმზე",
+    "themeToggleSwitchToLight": "გადართვა ნათელ რეჟიმზე"
   }
 }

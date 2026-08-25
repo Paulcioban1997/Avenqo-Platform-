@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "ਕਨੈਕਟ ਕੀਤਾ ਡਾਟਾ",
     "connectionsContinueLabel": "ਜਾਰੀ ਰੱਖੋ",
     "connectionsImportedAtLabel": "ਇੰਪੋਰਟ ਕੀਤਾ",
-    "connectionsUploadedFileSuccessLabel": "ਡਾਟਾ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਇਆ"
+    "connectionsUploadedFileSuccessLabel": "ਡਾਟਾ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਇਆ",
+    "themeToggleSwitchToDark": "ਡਾਰਕ ਮੋਡ ਵਿੱਚ ਬਦਲੋ",
+    "themeToggleSwitchToLight": "ਲਾਈਟ ਮੋਡ ਵਿੱਚ ਬਦਲੋ"
   }
 }

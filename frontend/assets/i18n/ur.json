@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "منسلک ڈیٹا",
     "connectionsContinueLabel": "جاری رکھیں",
     "connectionsImportedAtLabel": "درآمد شدہ",
-    "connectionsUploadedFileSuccessLabel": "ڈیٹا کامیابی سے درآمد ہوا"
+    "connectionsUploadedFileSuccessLabel": "ڈیٹا کامیابی سے درآمد ہوا",
+    "themeToggleSwitchToDark": "ڈارک موڈ پر جائیں",
+    "themeToggleSwitchToLight": "لائٹ موڈ پر جائیں"
   }
 }

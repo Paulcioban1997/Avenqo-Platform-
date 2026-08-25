@@ -5,6 +5,8 @@ import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
+import 'package:avenqo/widgets/language_selector.dart';
+import 'package:avenqo/widgets/theme_toggle_button.dart';
 
 class _Brand {
   const _Brand._();
@@ -126,6 +128,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ThemeToggleButton(foregroundColor: colors.muted),
+                LanguageSelector(foregroundColor: colors.muted),
+              ],
+            ),
+            const SizedBox(height: 8),
             _StepProgress(colors: colors),
             const SizedBox(height: 20),
             Text(

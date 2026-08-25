@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "داده‌های متصل",
     "connectionsContinueLabel": "ادامه",
     "connectionsImportedAtLabel": "وارد شد",
-    "connectionsUploadedFileSuccessLabel": "داده‌ها با موفقیت وارد شدند"
+    "connectionsUploadedFileSuccessLabel": "داده‌ها با موفقیت وارد شدند",
+    "themeToggleSwitchToDark": "تغییر به حالت تیره",
+    "themeToggleSwitchToLight": "تغییر به حالت روشن"
   }
 }

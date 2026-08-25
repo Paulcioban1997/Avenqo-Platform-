@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Nakakonektang data",
     "connectionsContinueLabel": "Magpatuloy",
     "connectionsImportedAtLabel": "Na-import",
-    "connectionsUploadedFileSuccessLabel": "Matagumpay na na-import ang data"
+    "connectionsUploadedFileSuccessLabel": "Matagumpay na na-import ang data",
+    "themeToggleSwitchToDark": "Lumipat sa madilim na mode",
+    "themeToggleSwitchToLight": "Lumipat sa maliwanag na mode"
   }
 }

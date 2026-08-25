@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Bağlı veriler",
     "connectionsContinueLabel": "Devam et",
     "connectionsImportedAtLabel": "İçe aktarıldı",
-    "connectionsUploadedFileSuccessLabel": "Veriler başarıyla içe aktarıldı"
+    "connectionsUploadedFileSuccessLabel": "Veriler başarıyla içe aktarıldı",
+    "themeToggleSwitchToDark": "Koyu moda geç",
+    "themeToggleSwitchToLight": "Açık moda geç"
   }
 }

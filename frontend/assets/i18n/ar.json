@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "البيانات المتصلة",
     "connectionsContinueLabel": "متابعة",
     "connectionsImportedAtLabel": "تم الاستيراد",
-    "connectionsUploadedFileSuccessLabel": "تم استيراد البيانات بنجاح"
+    "connectionsUploadedFileSuccessLabel": "تم استيراد البيانات بنجاح",
+    "themeToggleSwitchToDark": "التبديل إلى الوضع الداكن",
+    "themeToggleSwitchToLight": "التبديل إلى الوضع الفاتح"
   }
 }

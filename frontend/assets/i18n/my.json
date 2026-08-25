@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "ချိတ်ဆက်ထားသော ဒေတာ",
     "connectionsContinueLabel": "ဆက်လက်ရန်",
     "connectionsImportedAtLabel": "တင်သွင်းပြီး",
-    "connectionsUploadedFileSuccessLabel": "ဒေတာအောင်မြင်စွာတင်သွင်းပြီးပါပြီ"
+    "connectionsUploadedFileSuccessLabel": "ဒေတာအောင်မြင်စွာတင်သွင်းပြီးပါပြီ",
+    "themeToggleSwitchToDark": "မှောင်မိုက်မုဒ်သို့ ပြောင်းပါ",
+    "themeToggleSwitchToLight": "အလင်းမုဒ်သို့ ပြောင်းပါ"
   }
 }

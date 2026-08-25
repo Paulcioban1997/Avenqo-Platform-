@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Anslutna data",
     "connectionsContinueLabel": "Fortsätt",
     "connectionsImportedAtLabel": "Importerad",
-    "connectionsUploadedFileSuccessLabel": "Data importerade"
+    "connectionsUploadedFileSuccessLabel": "Data importerade",
+    "themeToggleSwitchToDark": "Byt till mörkt läge",
+    "themeToggleSwitchToLight": "Byt till ljust läge"
   }
 }

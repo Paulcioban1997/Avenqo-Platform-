@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "সংযুক্ত ডেটা",
     "connectionsContinueLabel": "চালিয়ে যান",
     "connectionsImportedAtLabel": "আমদানিকৃত",
-    "connectionsUploadedFileSuccessLabel": "ডেটা সফলভাবে আমদানি হয়েছে"
+    "connectionsUploadedFileSuccessLabel": "ডেটা সফলভাবে আমদানি হয়েছে",
+    "themeToggleSwitchToDark": "ডার্ক মোডে যান",
+    "themeToggleSwitchToLight": "লাইট মোডে যান"
   }
 }

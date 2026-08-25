@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "已连接的数据",
     "connectionsContinueLabel": "继续",
     "connectionsImportedAtLabel": "已导入",
-    "connectionsUploadedFileSuccessLabel": "数据导入成功"
+    "connectionsUploadedFileSuccessLabel": "数据导入成功",
+    "themeToggleSwitchToDark": "切换到深色模式",
+    "themeToggleSwitchToLight": "切换到浅色模式"
   }
 }

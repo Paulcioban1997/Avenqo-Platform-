@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Холбогдсон өгөгдөл",
     "connectionsContinueLabel": "Үргэлжлүүлэх",
     "connectionsImportedAtLabel": "Импортлосон",
-    "connectionsUploadedFileSuccessLabel": "Өгөгдлийг амжилттай импортлолоо"
+    "connectionsUploadedFileSuccessLabel": "Өгөгдлийг амжилттай импортлолоо",
+    "themeToggleSwitchToDark": "Бараан горимд шилжих",
+    "themeToggleSwitchToLight": "Цайвар горимд шилжих"
   }
 }

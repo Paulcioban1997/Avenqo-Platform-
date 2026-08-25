@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "ទិន្នន័យបានភ្ជាប់",
     "connectionsContinueLabel": "បន្ត",
     "connectionsImportedAtLabel": "បាននាំចូល",
-    "connectionsUploadedFileSuccessLabel": "ទិន្នន័យបាននាំចូលដោយជោគជ័យ"
+    "connectionsUploadedFileSuccessLabel": "ទិន្នន័យបាននាំចូលដោយជោគជ័យ",
+    "themeToggleSwitchToDark": "ប្តូរទៅរបៀបងងឹត",
+    "themeToggleSwitchToLight": "ប្តូរទៅរបៀបភ្លឺ"
   }
 }

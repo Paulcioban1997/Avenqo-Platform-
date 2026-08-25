@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Bayanan da aka haɗa",
     "connectionsContinueLabel": "Ci gaba",
     "connectionsImportedAtLabel": "An shigo da shi",
-    "connectionsUploadedFileSuccessLabel": "An shigo da bayanai cikin nasara"
+    "connectionsUploadedFileSuccessLabel": "An shigo da bayanai cikin nasara",
+    "themeToggleSwitchToDark": "Canja zuwa yanayin duhu",
+    "themeToggleSwitchToLight": "Canja zuwa yanayin haske"
   }
 }

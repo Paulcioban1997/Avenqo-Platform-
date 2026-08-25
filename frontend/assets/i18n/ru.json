@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Подключённые данные",
     "connectionsContinueLabel": "Продолжить",
     "connectionsImportedAtLabel": "Импортировано",
-    "connectionsUploadedFileSuccessLabel": "Данные успешно импортированы"
+    "connectionsUploadedFileSuccessLabel": "Данные успешно импортированы",
+    "themeToggleSwitchToDark": "Переключиться на тёмный режим",
+    "themeToggleSwitchToLight": "Переключиться на светлый режим"
   }
 }

@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "ข้อมูลที่เชื่อมต่อ",
     "connectionsContinueLabel": "ดำเนินการต่อ",
     "connectionsImportedAtLabel": "นำเข้าแล้ว",
-    "connectionsUploadedFileSuccessLabel": "นำเข้าข้อมูลสำเร็จแล้ว"
+    "connectionsUploadedFileSuccessLabel": "นำเข้าข้อมูลสำเร็จแล้ว",
+    "themeToggleSwitchToDark": "สลับเป็นโหมดมืด",
+    "themeToggleSwitchToLight": "สลับเป็นโหมดสว่าง"
   }
 }

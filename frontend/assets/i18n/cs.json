@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Připojená data",
     "connectionsContinueLabel": "Pokračovat",
     "connectionsImportedAtLabel": "Importováno",
-    "connectionsUploadedFileSuccessLabel": "Data úspěšně importována"
+    "connectionsUploadedFileSuccessLabel": "Data úspěšně importována",
+    "themeToggleSwitchToDark": "Přepnout na tmavý režim",
+    "themeToggleSwitchToLight": "Přepnout na světlý režim"
   }
 }

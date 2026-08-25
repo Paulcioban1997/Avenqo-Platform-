@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "נתונים מחוברים",
     "connectionsContinueLabel": "המשך",
     "connectionsImportedAtLabel": "יובא",
-    "connectionsUploadedFileSuccessLabel": "הנתונים יובאו בהצלחה"
+    "connectionsUploadedFileSuccessLabel": "הנתונים יובאו בהצלחה",
+    "themeToggleSwitchToDark": "החלף למצב כהה",
+    "themeToggleSwitchToLight": "החלף למצב בהיר"
   }
 }

@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "የተገናኙ ውሂቦች",
     "connectionsContinueLabel": "ቀጥል",
     "connectionsImportedAtLabel": "ገብቷል",
-    "connectionsUploadedFileSuccessLabel": "ውሂብ በተሳካ ሁኔታ ገብቷል"
+    "connectionsUploadedFileSuccessLabel": "ውሂብ በተሳካ ሁኔታ ገብቷል",
+    "themeToggleSwitchToDark": "ወደ ጨለማ ሁነታ ቀይር",
+    "themeToggleSwitchToLight": "ወደ ብርሃን ሁነታ ቀይር"
   }
 }

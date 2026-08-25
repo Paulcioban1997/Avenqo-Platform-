@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Data iliyounganishwa",
     "connectionsContinueLabel": "Endelea",
     "connectionsImportedAtLabel": "Imeingizwa",
-    "connectionsUploadedFileSuccessLabel": "Data imeingizwa kwa mafanikio"
+    "connectionsUploadedFileSuccessLabel": "Data imeingizwa kwa mafanikio",
+    "themeToggleSwitchToDark": "Badilisha kwenda hali ya giza",
+    "themeToggleSwitchToLight": "Badilisha kwenda hali ya mwanga"
   }
 }

@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "இணைக்கப்பட்ட தரவு",
     "connectionsContinueLabel": "தொடரவும்",
     "connectionsImportedAtLabel": "இறக்குமதி செய்யப்பட்டது",
-    "connectionsUploadedFileSuccessLabel": "தரவு வெற்றிகரமாக இறக்குமதி செய்யப்பட்டது"
+    "connectionsUploadedFileSuccessLabel": "தரவு வெற்றிகரமாக இறக்குமதி செய்யப்பட்டது",
+    "themeToggleSwitchToDark": "இருண்ட பயன்முறைக்கு மாறவும்",
+    "themeToggleSwitchToLight": "வெளிச்ச பயன்முறைக்கு மாறவும்"
   }
 }

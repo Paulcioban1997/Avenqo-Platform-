@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "연결된 데이터",
     "connectionsContinueLabel": "계속",
     "connectionsImportedAtLabel": "가져옴",
-    "connectionsUploadedFileSuccessLabel": "데이터를 성공적으로 가져왔습니다"
+    "connectionsUploadedFileSuccessLabel": "데이터를 성공적으로 가져왔습니다",
+    "themeToggleSwitchToDark": "다크 모드로 전환",
+    "themeToggleSwitchToLight": "라이트 모드로 전환"
   }
 }

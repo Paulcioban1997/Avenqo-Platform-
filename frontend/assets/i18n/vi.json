@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Dữ liệu đã kết nối",
     "connectionsContinueLabel": "Tiếp tục",
     "connectionsImportedAtLabel": "Đã nhập",
-    "connectionsUploadedFileSuccessLabel": "Đã nhập dữ liệu thành công"
+    "connectionsUploadedFileSuccessLabel": "Đã nhập dữ liệu thành công",
+    "themeToggleSwitchToDark": "Chuyển sang chế độ tối",
+    "themeToggleSwitchToLight": "Chuyển sang chế độ sáng"
   }
 }

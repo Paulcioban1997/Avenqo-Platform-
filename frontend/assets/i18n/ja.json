@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "接続済みのデータ",
     "connectionsContinueLabel": "続ける",
     "connectionsImportedAtLabel": "インポート済み",
-    "connectionsUploadedFileSuccessLabel": "データのインポートに成功しました"
+    "connectionsUploadedFileSuccessLabel": "データのインポートに成功しました",
+    "themeToggleSwitchToDark": "ダークモードに切り替える",
+    "themeToggleSwitchToLight": "ライトモードに切り替える"
   }
 }

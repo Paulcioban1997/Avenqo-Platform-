@@ -621,6 +621,8 @@
     "connectionsConnectedDataTitle": "Date conectate",
     "connectionsContinueLabel": "Continuă",
     "connectionsImportedAtLabel": "Importat",
-    "connectionsUploadedFileSuccessLabel": "Date importate cu succes"
+    "connectionsUploadedFileSuccessLabel": "Date importate cu succes",
+    "themeToggleSwitchToDark": "Comută la modul întunecat",
+    "themeToggleSwitchToLight": "Comută la modul luminos"
   }
 }

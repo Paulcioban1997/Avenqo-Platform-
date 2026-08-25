@@ -1527,6 +1527,8 @@ class CompanyStrings {
     required this.settingsThemeDark,
     required this.settingsThemeSystem,
     required this.settingsLogout,
+    required this.themeToggleSwitchToDark,
+    required this.themeToggleSwitchToLight,
   });
 
   factory CompanyStrings.fromJson(Map<String, dynamic> json) {
@@ -1646,6 +1648,8 @@ class CompanyStrings {
       settingsThemeDark: s('settingsThemeDark'),
       settingsThemeSystem: s('settingsThemeSystem'),
       settingsLogout: s('settingsLogout'),
+      themeToggleSwitchToDark: s('themeToggleSwitchToDark'),
+      themeToggleSwitchToLight: s('themeToggleSwitchToLight'),
     );
   }
 
@@ -1763,6 +1767,8 @@ class CompanyStrings {
         settingsThemeDark: 'Dark',
         settingsThemeSystem: 'System',
         settingsLogout: 'Log out',
+        themeToggleSwitchToDark: 'Switch to dark mode',
+        themeToggleSwitchToLight: 'Switch to light mode',
       );
 
   String _byKey(String key) => switch (key) {
@@ -1879,6 +1885,8 @@ class CompanyStrings {
         'settingsThemeDark' => settingsThemeDark,
         'settingsThemeSystem' => settingsThemeSystem,
         'settingsLogout' => settingsLogout,
+        'themeToggleSwitchToDark' => themeToggleSwitchToDark,
+        'themeToggleSwitchToLight' => themeToggleSwitchToLight,
         _ => '',
       };
 
@@ -1995,5 +2003,7 @@ class CompanyStrings {
   final String settingsThemeDark;
   final String settingsThemeSystem;
   final String settingsLogout;
+  final String themeToggleSwitchToDark;
+  final String themeToggleSwitchToLight;
 }
 
