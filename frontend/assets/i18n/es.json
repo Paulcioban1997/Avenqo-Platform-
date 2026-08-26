@@ -364,7 +364,8 @@
     "forgotSuccess": "Si la cuenta existe, se ha enviado un correo.",
     "verifySuccess": "Correo verificado. Ya puedes iniciar sesión.",
     "resetSuccess": "Contraseña cambiada. Ya puedes iniciar sesión.",
-    "genericError": "El servicio no está disponible temporalmente."
+    "genericError": "El servicio no está disponible temporalmente.",
+    "verifyButton": "Verifica tu correo"
   },
   "dashboardHome": {
     "hello": "Hola",

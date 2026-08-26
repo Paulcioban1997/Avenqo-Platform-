@@ -364,7 +364,8 @@
     "forgotSuccess": "መለያው ካለ፣ ኢሜይል ተልኳል።",
     "verifySuccess": "ኢሜይልዎ ተረጋግጧል። አሁን መግባት ይችላሉ።",
     "resetSuccess": "የይለፍ ቃል ተቀይሯል። አሁን መግባት ይችላሉ።",
-    "genericError": "አገልግሎቱ ለጊዜው አይገኝም።"
+    "genericError": "አገልግሎቱ ለጊዜው አይገኝም።",
+    "verifyButton": "ኢሜይልዎን ያረጋግጡ"
   },
   "dashboardHome": {
     "hello": "ሰላም",

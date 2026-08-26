@@ -364,7 +364,8 @@
     "forgotSuccess": "As die rekening bestaan, is 'n e-pos gestuur.",
     "verifySuccess": "Jou e-pos is geverifieer. Jy kan nou aanmeld.",
     "resetSuccess": "Wagwoord is verander. Jy kan nou aanmeld.",
-    "genericError": "Diens tans nie beskikbaar nie."
+    "genericError": "Diens tans nie beskikbaar nie.",
+    "verifyButton": "Verifieer jou e-pos"
   },
   "dashboardHome": {
     "hello": "Hallo",

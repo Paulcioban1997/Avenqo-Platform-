@@ -364,7 +364,8 @@
     "forgotSuccess": "Jeśli konto istnieje, wysłano wiadomość e-mail.",
     "verifySuccess": "Adres e-mail potwierdzony. Możesz się teraz zalogować.",
     "resetSuccess": "Hasło zmienione. Możesz się teraz zalogować.",
-    "genericError": "Usługa jest tymczasowo niedostępna."
+    "genericError": "Usługa jest tymczasowo niedostępna.",
+    "verifyButton": "Potwierdź swój e-mail"
   },
   "dashboardHome": {
     "hello": "Witaj",

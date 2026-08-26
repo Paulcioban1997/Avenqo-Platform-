@@ -364,7 +364,8 @@
     "forgotSuccess": "Kung umiiral ang account, ipinadala na ang isang email.",
     "verifySuccess": "Na-verify na ang iyong email. Maaari ka nang mag-log in.",
     "resetSuccess": "Nabago na ang password. Maaari ka nang mag-log in.",
-    "genericError": "Pansamantalang hindi available ang serbisyo."
+    "genericError": "Pansamantalang hindi available ang serbisyo.",
+    "verifyButton": "I-verify ang iyong email"
   },
   "dashboardHome": {
     "hello": "Kumusta",

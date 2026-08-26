@@ -364,7 +364,8 @@
     "forgotSuccess": "アカウントが存在すれば、メールが送信されました。",
     "verifySuccess": "メールが確認されました。今すぐログインできます。",
     "resetSuccess": "パスワードが変更されました。今すぐログインできます。",
-    "genericError": "サービスは一時的に利用できません。"
+    "genericError": "サービスは一時的に利用できません。",
+    "verifyButton": "メールアドレスを確認"
   },
   "dashboardHome": {
     "hello": "こんにちは",

@@ -364,7 +364,8 @@
     "forgotSuccess": "Falls das Konto existiert, wurde eine E-Mail gesendet.",
     "verifySuccess": "E-Mail-Adresse bestätigt. Sie können sich nun anmelden.",
     "resetSuccess": "Passwort geändert. Sie können sich nun anmelden.",
-    "genericError": "Der Dienst ist vorübergehend nicht verfügbar."
+    "genericError": "Der Dienst ist vorübergehend nicht verfügbar.",
+    "verifyButton": "E-Mail bestätigen"
   },
   "dashboardHome": {
     "hello": "Hallo",

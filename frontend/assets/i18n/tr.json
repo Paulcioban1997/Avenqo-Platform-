@@ -364,7 +364,8 @@
     "forgotSuccess": "Hesap varsa bir e-posta gönderildi.",
     "verifySuccess": "E-posta adresi doğrulandı. Şimdi giriş yapabilirsiniz.",
     "resetSuccess": "Şifre değiştirildi. Şimdi giriş yapabilirsiniz.",
-    "genericError": "Hizmet geçici olarak kullanılamıyor."
+    "genericError": "Hizmet geçici olarak kullanılamıyor.",
+    "verifyButton": "E-postanızı doğrulayın"
   },
   "dashboardHome": {
     "hello": "Merhaba",

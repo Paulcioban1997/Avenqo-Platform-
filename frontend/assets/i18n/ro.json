@@ -364,7 +364,8 @@
     "forgotSuccess": "Dacă contul există, a fost trimis un email.",
     "verifySuccess": "Adresă de email verificată. Vă puteți conecta.",
     "resetSuccess": "Parolă schimbată. Vă puteți conecta.",
-    "genericError": "Serviciul este temporar indisponibil."
+    "genericError": "Serviciul este temporar indisponibil.",
+    "verifyButton": "Verificați-vă emailul"
   },
   "dashboardHome": {
     "hello": "Bună",

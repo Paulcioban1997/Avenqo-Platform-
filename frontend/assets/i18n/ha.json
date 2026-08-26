@@ -364,7 +364,8 @@
     "forgotSuccess": "Idan asusun ya wanzu, an aika imel.",
     "verifySuccess": "An tabbatar da imel ɗinku. Yanzu kuna iya shiga.",
     "resetSuccess": "An canza kalmar sirri. Yanzu kuna iya shiga.",
-    "genericError": "Sabis din bai samuwa na ɗan lokaci ba."
+    "genericError": "Sabis din bai samuwa na ɗan lokaci ba.",
+    "verifyButton": "Tabbatar da imel ɗinku"
   },
   "dashboardHome": {
     "hello": "Sannu",

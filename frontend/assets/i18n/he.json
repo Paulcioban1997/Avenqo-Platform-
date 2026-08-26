@@ -364,7 +364,8 @@
     "forgotSuccess": "אם החשבון קיים, נשלח אימייל.",
     "verifySuccess": "האימייל אומת. עכשיו תוכלו להתחבר.",
     "resetSuccess": "הסיסמה שונתה. עכשיו תוכלו להתחבר.",
-    "genericError": "השירות אינו זמין כרגע."
+    "genericError": "השירות אינו זמין כרגע.",
+    "verifyButton": "אמתו את האימייל שלכם"
   },
   "dashboardHome": {
     "hello": "שלום",

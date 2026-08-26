@@ -364,7 +364,8 @@
     "forgotSuccess": "Nếu tài khoản tồn tại, một email đã được gửi.",
     "verifySuccess": "Email đã được xác minh. Bạn có thể đăng nhập ngay bây giờ.",
     "resetSuccess": "Mật khẩu đã được thay đổi. Bạn có thể đăng nhập ngay bây giờ.",
-    "genericError": "Dịch vụ tạm thời không khả dụng."
+    "genericError": "Dịch vụ tạm thời không khả dụng.",
+    "verifyButton": "Xác minh email của bạn"
   },
   "dashboardHome": {
     "hello": "Xin chào",

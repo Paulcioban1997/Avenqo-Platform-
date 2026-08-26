@@ -364,7 +364,8 @@
     "forgotSuccess": "Se l'account esiste, è stata inviata un'email.",
     "verifySuccess": "Indirizzo email verificato. Ora puoi accedere.",
     "resetSuccess": "Password modificata. Ora puoi accedere.",
-    "genericError": "Il servizio è temporaneamente non disponibile."
+    "genericError": "Il servizio è temporaneamente non disponibile.",
+    "verifyButton": "Verifica la tua email"
   },
   "dashboardHome": {
     "hello": "Ciao",

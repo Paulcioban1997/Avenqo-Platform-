@@ -364,7 +364,8 @@
     "forgotSuccess": "Om kontot finns har ett e-postmeddelande skickats.",
     "verifySuccess": "E-postadress bekräftad. Du kan nu logga in.",
     "resetSuccess": "Lösenord ändrat. Du kan nu logga in.",
-    "genericError": "Tjänsten är tillfälligt otillgänglig."
+    "genericError": "Tjänsten är tillfälligt otillgänglig.",
+    "verifyButton": "Bekräfta din e-post"
   },
   "dashboardHome": {
     "hello": "Hej",

@@ -364,7 +364,8 @@
     "forgotSuccess": "Als het account bestaat, is er een e-mail verzonden.",
     "verifySuccess": "E-mailadres bevestigd. U kunt nu inloggen.",
     "resetSuccess": "Wachtwoord gewijzigd. U kunt nu inloggen.",
-    "genericError": "De service is tijdelijk niet beschikbaar."
+    "genericError": "De service is tijdelijk niet beschikbaar.",
+    "verifyButton": "Bevestig uw e-mail"
   },
   "dashboardHome": {
     "hello": "Hallo",

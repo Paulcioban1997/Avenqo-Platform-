@@ -364,7 +364,8 @@
     "forgotSuccess": "Jika akaun itu wujud, e-mel telah dihantar.",
     "verifySuccess": "E-mel anda telah disahkan. Anda kini boleh log masuk.",
     "resetSuccess": "Kata laluan telah ditukar. Anda kini boleh log masuk.",
-    "genericError": "Perkhidmatan tidak tersedia buat sementara waktu."
+    "genericError": "Perkhidmatan tidak tersedia buat sementara waktu.",
+    "verifyButton": "Sahkan e-mel anda"
   },
   "dashboardHome": {
     "hello": "Helo",

@@ -364,7 +364,8 @@
     "forgotSuccess": "Pokud účet existuje, byl odeslán e-mail.",
     "verifySuccess": "E-mailová adresa ověřena. Nyní se můžete přihlásit.",
     "resetSuccess": "Heslo změněno. Nyní se můžete přihlásit.",
-    "genericError": "Služba je dočasně nedostupná."
+    "genericError": "Služba je dočasně nedostupná.",
+    "verifyButton": "Ověřte svůj e-mail"
   },
   "dashboardHome": {
     "hello": "Dobrý den",

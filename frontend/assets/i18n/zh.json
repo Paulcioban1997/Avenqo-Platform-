@@ -364,7 +364,8 @@
     "forgotSuccess": "如果账户存在，已发送一封电子邮件。",
     "verifySuccess": "您的电子邮件已验证。现在您可以登录了。",
     "resetSuccess": "密码已更改。现在您可以登录了。",
-    "genericError": "服务暂时不可用。"
+    "genericError": "服务暂时不可用。",
+    "verifyButton": "验证您的电子邮件"
   },
   "dashboardHome": {
     "hello": "您好",

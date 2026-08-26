@@ -364,7 +364,8 @@
     "forgotSuccess": "Se a conta existir, um e-mail foi enviado.",
     "verifySuccess": "E-mail verificado. Você já pode entrar.",
     "resetSuccess": "Senha alterada. Você já pode entrar.",
-    "genericError": "O serviço está temporariamente indisponível."
+    "genericError": "O serviço está temporariamente indisponível.",
+    "verifyButton": "Verifique seu e-mail"
   },
   "dashboardHome": {
     "hello": "Olá",

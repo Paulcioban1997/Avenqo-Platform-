@@ -364,7 +364,8 @@
     "forgotSuccess": "Iwapo akaunti ipo, barua pepe imetumwa.",
     "verifySuccess": "Barua pepe yako imethibitishwa. Sasa unaweza kuingia.",
     "resetSuccess": "Nenosiri limebadilishwa. Sasa unaweza kuingia.",
-    "genericError": "Huduma haipatikani kwa muda."
+    "genericError": "Huduma haipatikani kwa muda.",
+    "verifyButton": "Thibitisha barua pepe yako"
   },
   "dashboardHome": {
     "hello": "Habari",
