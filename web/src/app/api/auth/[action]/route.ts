@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE_URL = (
   process.env.AVENQO_API_BASE_URL ??
+  process.env.AVENQO_API_URL ??
   process.env.API_BASE_URL ??
-  "http://127.0.0.1:8000/api/v1"
+  "https://api.avenqo.ca/api/v1"
 ).replace(/\/$/, "");
 
 const ALLOWED_ACTIONS = new Set(["login", "register"]);
@@ -46,3 +47,4 @@ export async function POST(
     );
   }
 }
+

@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     auth_jwt_algorithm: str = Field(default="HS256", alias="AUTH_JWT_ALGORITHM")
     auth_jwt_issuer: str = Field(default="avenqo-api", alias="AUTH_JWT_ISSUER")
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
-    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")

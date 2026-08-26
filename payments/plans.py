@@ -32,9 +32,9 @@ class SubscriptionPlan:
 RETAIL_MODULES = frozenset({"retail"})
 
 PLANS: tuple[SubscriptionPlan, ...] = (
-    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=29),
+    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=28),
     SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES, monthly_price_usd=99),
-    SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES, monthly_price_usd=None),
+    SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES, monthly_price_usd=499),
     SubscriptionPlan(
         PlanCode.CUSTOM_ENTERPRISE,
         "Custom Enterprise",

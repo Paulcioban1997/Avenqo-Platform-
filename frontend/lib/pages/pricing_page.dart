@@ -50,9 +50,16 @@ class PricingPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 12),
                             Text(
+                              item['monthly_price_usd'] == null
+                                  ? 'Contact sales'
+                                  : '\$${item['monthly_price_usd']}/mo',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
                               item['requires_sales_contact'] == true
-                                  ? 'Accompagnement commercial personnalisé'
-                                  : 'Abonnement géré avec Stripe',
+                                  ? 'Custom onboarding'
+                                  : 'Managed via Stripe',
                             ),
                           ],
                         ),

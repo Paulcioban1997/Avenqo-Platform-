@@ -529,9 +529,7 @@ class _AuthPageState extends State<AuthPage> {
       ),
       Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
       const SizedBox(height: 8),
-      const Text(
-        'Your Avenqo workspace is ready to be created.',
-      ),
+      const Text('Your Avenqo workspace is ready to be created.'),
     ],
   );
 
@@ -642,47 +640,54 @@ class _BrandPanel extends StatelessWidget {
               ),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              InkWell(
-                onTap: () => context.go('/'),
-                child: const Row(
-                  children: [
-                    Icon(Icons.change_history, color: _Brand.blue, size: 26),
-                    SizedBox(width: 10),
-                    Text(
-                      'Avenqo',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 26,
-                      ),
+          Center(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkWell(
+                    onTap: () => context.go('/'),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.change_history,
+                          color: _Brand.blue,
+                          size: 26,
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Avenqo',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 26,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    tagline,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    t.common.isolatedData,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 15,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 28),
-              Text(
-                tagline,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800,
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                t.common.isolatedData,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 15,
-                  height: 1.6,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),

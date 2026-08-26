@@ -27,6 +27,8 @@ const fadeUp = {
   transition: { duration: 0.6, ease: "easeOut" as const },
 };
 
+const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.avenqo.ca";
+
 export function LandingPage() {
   const t = useTranslations();
   const usecaseEntries = [t.usecases.direction, t.usecases.finance, t.usecases.commerce, t.usecases.operations];
@@ -41,7 +43,7 @@ export function LandingPage() {
             <h1>{t.hero.titleLine1}<br /><span>{t.hero.titleLine2}</span></h1>
             <p>{t.hero.subtitle}</p>
             <div className="hero-actions">
-              <Link className="button button-primary" href="/register">{t.common.tryFree} <ArrowRight size={17} /></Link>
+              <a className="button button-primary" href={`${APP_BASE_URL}/register`}>{t.common.tryFree} <ArrowRight size={17} /></a>
               <Link className="button button-secondary" href="#demonstration"><Play size={16} /> {t.common.watchDemo}</Link>
             </div>
             <div className="hero-proof"><span><Check size={14} /> {t.common.noCreditCard}</span><span><Check size={14} /> {t.common.guidedSetup}</span><span><ShieldCheck size={14} /> {t.common.isolatedData}</span></div>
@@ -59,7 +61,7 @@ export function LandingPage() {
           <div className="feature-grid">
             <motion.article className="feature-large assistant-feature" id="demonstration" {...fadeUp}>
               <div className="feature-label"><Bot size={18} /> {t.features.assistantLabel}</div><h3>{t.features.assistantTitle}</h3><p>{t.features.assistantText}</p>
-              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/register">{t.features.demoAction1}</Link><Link href="#modules">{t.features.demoAction2}</Link></div></div>
+              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><a href={`${APP_BASE_URL}/register`}>{t.features.demoAction1}</a><Link href="#modules">{t.features.demoAction2}</Link></div></div>
             </motion.article>
             <motion.article className="feature-small dark-feature" {...fadeUp} whileHover={{ y: -4 }}><Zap size={24} /><h3>{t.features.actionsTitle}</h3><p>{t.features.actionsText}</p><div className="action-line"><span>{t.features.actionsPriority}</span><strong>{t.features.actionsLine}</strong><ArrowRight size={17} /></div></motion.article>
             <motion.article className="feature-small" id="securite" {...fadeUp} whileHover={{ y: -4 }}><ShieldCheck size={24} /><h3>{t.features.securityTitle}</h3><p>{t.features.securityText}</p><div className="security-list"><span><Check /> {t.features.securityItem1}</span><span><Check /> {t.features.securityItem2}</span><span><Check /> {t.features.securityItem3}</span></div></motion.article>
@@ -102,7 +104,7 @@ export function LandingPage() {
               </motion.article>
             ))}
           </div>
-          <div className="steps-cta"><span>{t.steps.ctaLabel}</span><Link href="/register">{t.steps.ctaButton} <ArrowRight size={16} /></Link></div>
+          <div className="steps-cta"><span>{t.steps.ctaLabel}</span><a href={`${APP_BASE_URL}/register`}>{t.steps.ctaButton} <ArrowRight size={16} /></a></div>
         </div>
       </section>
 
@@ -163,7 +165,7 @@ export function LandingPage() {
       <section className="final-cta" id="contact">
         <div className="page-shell final-cta-inner">
           <div><span>{t.finalCta.label}</span><h2>{t.finalCta.title}</h2></div>
-          <div><Link className="button white-button" href="/register">{t.finalCta.tryFree} <ArrowRight size={17} /></Link><Link className="text-link" href="mailto:bonjour@avenqo.ca">{t.finalCta.scheduleDemo}</Link></div>
+          <div><a className="button white-button" href={`${APP_BASE_URL}/register`}>{t.finalCta.tryFree} <ArrowRight size={17} /></a><Link className="text-link" href="mailto:bonjour@avenqo.ca">{t.finalCta.scheduleDemo}</Link></div>
         </div>
       </section>
 
@@ -195,7 +197,7 @@ function PriceCard({
       {featured && <div className="popular">{popularLabel}</div>}
       <span>{tier}</span><h3>{title}</h3><p className="price">{priceLabel}</p>
       <ul>{items.map(item => <li key={item}><Check /> {item}</li>)}</ul>
-      <Link href={featured ? "/register" : "#contact"}>{action}</Link>
+      <a href={featured ? `${APP_BASE_URL}/register` : "#contact"}>{action}</a>
     </motion.article>
   );
 }

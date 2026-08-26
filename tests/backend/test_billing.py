@@ -150,9 +150,11 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
 
     plans = client.get("/api/v1/billing/plans")
     assert plans.status_code == 200
-    assert [plan["code"] for plan in plans.json()] == [
+    catalog = plans.json()
+    assert [plan["code"] for plan in catalog] == [
         "demo", "professional", "enterprise", "custom_enterprise"
     ]
+    assert [plan["monthly_price_usd"] for plan in catalog] == [28, 99, 499, None]
     checkout = client.post(
         "/api/v1/billing/checkout",
         json={"plan_code": "professional"},
