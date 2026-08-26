@@ -45,19 +45,48 @@ def test_production_settings_boot_without_smtp_host(_clean_settings_cache, monke
     assert settings.smtp_host is None
 
 
-def test_production_settings_still_require_stripe(_clean_settings_cache, monkeypatch) -> None:
+def test_production_settings_boot_without_stripe_billing_disabled(_clean_settings_cache, monkeypatch) -> None:
+    for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
-    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
-    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
-    monkeypatch.delenv("STRIPE_PRICE_DEMO", raising=False)
-    monkeypatch.delenv("STRIPE_PRICE_PROFESSIONAL", raising=False)
-    monkeypatch.delenv("STRIPE_PRICE_ENTERPRISE", raising=False)
 
     from backend.app.config.settings import Settings
 
-    with pytest.raises(Exception, match="Stripe"):
-        Settings()
+    settings = Settings()
+
+    assert settings.environment == "production"
+    assert settings.billing_enabled is False
+
+
+def test_billing_enabled_true_only_when_stripe_fully_configured(_clean_settings_cache, monkeypatch) -> None:
+    settings = _build_settings(monkeypatch)
+    assert settings.billing_enabled is True
+
+    partial = _build_settings(monkeypatch, STRIPE_WEBHOOK_SECRET=None)
+    assert partial.billing_enabled is False
+
+
+def test_billing_provider_returns_clear_503_when_stripe_missing(_clean_settings_cache, monkeypatch) -> None:
+    from fastapi import HTTPException
+    import backend.app.dependencies.billing as billing_dep
+
+    # Construire un settings Stripe-vide en neutralisant l'env ET le .env local
+    # (pydantic-settings priorise le .env sur un kwargs None).
+    for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
+        monkeypatch.setenv(key, "")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
+    from backend.app.config.settings import Settings
+    settings = Settings()
+    assert settings.stripe_secret_key is None
+    monkeypatch.setattr(billing_dep, "get_settings", lambda: settings)
+
+    with pytest.raises(HTTPException) as exc_info:
+        billing_dep.get_billing_provider()
+
+    assert exc_info.value.status_code == 503
+    assert "Stripe" in str(exc_info.value.detail)
 
 
 def test_account_notifier_falls_back_to_logging_without_smtp(_clean_settings_cache, monkeypatch) -> None:

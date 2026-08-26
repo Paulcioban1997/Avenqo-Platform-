@@ -146,7 +146,12 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
-    @field_validator("smtp_host", "smtp_username", "smtp_password", mode="before")
+    @field_validator(
+        "smtp_host", "smtp_username", "smtp_password",
+        "stripe_secret_key", "stripe_webhook_secret",
+        "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
+        mode="before",
+    )
     @classmethod
     def blank_to_none(cls, value: object) -> object:
         """Une valeur vide (ex. `SMTP_HOST=` dans un .env) compte comme absente."""
@@ -177,16 +182,23 @@ class Settings(BaseSettings):
             # dÃ©marrer sans serveur email. Sans SMTP_HOST, `get_account_notifier`
             # retombe sur LoggingAccountNotifier et les rÃ©ponses signalent
             # `email_delivery_configured=false` (erreur claire, jamais un crash).
-            stripe_values = (
-                self.stripe_secret_key,
-                self.stripe_webhook_secret,
-                self.stripe_price_demo,
-                self.stripe_price_professional,
-                self.stripe_price_enterprise,
-            )
-            if not all(stripe_values):
-                raise ValueError("La configuration Stripe complÃ¨te est requise en production")
+            # Stripe volontairement NON bloquant au dÃ©marrage : l'app dÃ©marre
+            # normalement avec `billing_enabled=false`. Une fonction de paiement
+            # appelÃ©e sans clÃ© Stripe retourne une erreur 503 claire
+            # (`get_billing_provider`), jamais un crash au startup.
         return self
+
+    @property
+    def billing_enabled(self) -> bool:
+        """Facturation Stripe pleinement configurÃ©e (jamais requise au dÃ©marrage)."""
+
+        return bool(
+            self.stripe_secret_key
+            and self.stripe_webhook_secret
+            and self.stripe_price_demo
+            and self.stripe_price_professional
+            and self.stripe_price_enterprise
+        )
 
     @property
     def app_title(self) -> str:
