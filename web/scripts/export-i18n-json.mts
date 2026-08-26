@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LOCALES } from "../src/lib/i18n/locales.ts";
+import { LOCALES } from "../src/lib/i18n/locales";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, "../../frontend/assets/i18n");
