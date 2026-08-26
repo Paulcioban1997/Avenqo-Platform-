@@ -128,6 +128,13 @@ class Settings(BaseSettings):
     # et docs/backup-and-disaster-recovery.md.
     backup_root: str = Field(default="var/backups", alias="BACKUP_ROOT")
     backup_retention_days: int = Field(default=30, ge=1, alias="BACKUP_RETENTION_DAYS")
+    # Stockage S3-compatible (Railway Storage Bucket / MinIO / AWS S3) — optionnel.
+    # Si non configuré, les backups restent sur le disque local (comportement actuel).
+    backup_s3_endpoint_url: str | None = Field(default=None, alias="BACKUP_S3_ENDPOINT_URL")
+    backup_s3_bucket: str | None = Field(default=None, alias="BACKUP_S3_BUCKET")
+    backup_s3_access_key: str | None = Field(default=None, alias="BACKUP_S3_ACCESS_KEY")
+    backup_s3_secret_key: str | None = Field(default=None, alias="BACKUP_S3_SECRET_KEY")
+    backup_s3_region: str = Field(default="auto", alias="BACKUP_S3_REGION")
 
     # Bootstrap sécurisé du compte platform_admin propriétaire (scripts/bootstrap_platform_admin.py).
     # Jamais loggé ni exposé via une réponse API. Voir docs/platform-admin-setup.md.
@@ -198,6 +205,16 @@ class Settings(BaseSettings):
             and self.stripe_price_demo
             and self.stripe_price_professional
             and self.stripe_price_enterprise
+        )
+
+    @property
+    def backup_s3_enabled(self) -> bool:
+        """Stockage S3 de backup configuré (bucket + clés requis ; endpoint optionnel)."""
+
+        return bool(
+            self.backup_s3_bucket
+            and self.backup_s3_access_key
+            and self.backup_s3_secret_key
         )
 
     @property

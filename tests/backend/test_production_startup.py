@@ -29,13 +29,12 @@ def _build_settings(monkeypatch, **overrides):
     init_kwargs = {}
     for key, value in overrides.items():
         if value is None:
-            monkeypatch.delenv(key, raising=False)
-            # Override direct en constructeur : prioritaire sur le .env chargé
-            # par pydantic-settings (qui contient un SMTP_HOST local non vide).
-            init_kwargs[key.lower()] = None
+            # Chaîne vide = absent via blank_to_none (prioritaire sur .env local
+            # qui contient de vraies clés Stripe de développement).
+            monkeypatch.setenv(key, "")
         else:
             monkeypatch.setenv(key, value)
-    return Settings(**init_kwargs)
+    return Settings()
 
 
 def test_production_settings_boot_without_smtp_host(_clean_settings_cache, monkeypatch) -> None:
@@ -47,7 +46,7 @@ def test_production_settings_boot_without_smtp_host(_clean_settings_cache, monke
 
 def test_production_settings_boot_without_stripe_billing_disabled(_clean_settings_cache, monkeypatch) -> None:
     for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
-        monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv(key, "")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
 
