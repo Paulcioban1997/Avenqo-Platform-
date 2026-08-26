@@ -61,7 +61,6 @@ class _AvenqoAppState extends State<AvenqoApp> {
       '/reset-password',
     };
     return GoRouter(
-      initialLocation: '/',
       refreshListenable: widget.auth,
       redirect: (context, state) {
         if (!widget.auth.initialized) {
