@@ -1,28 +1,48 @@
-﻿import pytest
+import { NextRequest, NextResponse } from "next/server";
 
-from payments import PLANS, PlanCode, SubscriptionPlan, get_plan
+const API_BASE_URL = (
+  process.env.AVENQO_API_BASE_URL ??
+  process.env.API_BASE_URL ??
+  "http://127.0.0.1:8000/api/v1"
+).replace(/\/$/, "");
 
+const ALLOWED_ACTIONS = new Set(["login", "register"]);
 
-def test_catalogue_contient_les_quatre_offres_avenqo() -> None:
-    assert [plan.code for plan in PLANS] == [
-        PlanCode.STARTER,
-        PlanCode.PROFESSIONAL,
-        PlanCode.ENTERPRISE,
-        PlanCode.CUSTOM_ENTERPRISE,
-    ]
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ action: string }> },
+) {
+  const { action } = await context.params;
 
+  if (!ALLOWED_ACTIONS.has(action)) {
+    return NextResponse.json({ detail: "Auth action not found." }, { status: 404 });
+  }
 
-@pytest.mark.parametrize("plan", PLANS)
-def test_retail_est_selectionnable_dans_chaque_offre(
-    plan: SubscriptionPlan,
-) -> None:
-    assert plan.allows_module("retail") is True
+  try {
+    const body = await request.text();
+    const upstream = await fetch(`${API_BASE_URL}/auth/${action}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": request.headers.get("content-type") ?? "application/json",
+        Accept: "application/json",
+      },
+      body,
+      cache: "no-store",
+    });
 
+    const responseBody = await upstream.text();
 
-def test_custom_enterprise_demande_un_contact_commercial() -> None:
-    assert get_plan("custom_enterprise").requires_sales_contact is True
-
-
-def test_offre_inconnue_est_refusee() -> None:
-    with pytest.raises(ValueError, match="Offre Avenqo inconnue"):
-        get_plan("inconnue")
+    return new NextResponse(responseBody, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") ?? "application/json",
+      },
+    });
+  } catch (error) {
+    console.error(`Avenqo auth proxy failed for ${action}`, error);
+    return NextResponse.json(
+      { detail: "Le service Avenqo est temporairement indisponible." },
+      { status: 503 },
+    );
+  }
+}
