@@ -21,6 +21,7 @@ from backend.app.ai.tools.business.analytics import (
 )
 from backend.app.ai.tools.business.dataset_access import load_latest_prepared_dataset
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+from backend.app.models import Company
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 
 
@@ -28,6 +29,20 @@ def _to_datetime(value: date | None, *, end_of_day: bool) -> datetime | None:
     if value is None:
         return None
     return datetime.combine(value, time.max if end_of_day else time.min)
+
+
+def _with_currency(session: Session, context: ToolExecutionContext, data: dict[str, object]) -> dict[str, object]:
+    """Ajoute `currency_code` (ISO-4217 de l'entreprise) aux valeurs monétaires.
+
+    Valeur numérique brute + code devise — JAMAIS de symbole concaténé ("€284"),
+    jamais de conversion FX inventée. Le LLM formate selon locale + currency.
+    """
+
+    currency = getattr(context, "currency_code", None)
+    if not currency:
+        company = session.get(Company, context.tenant.company_id)
+        currency = getattr(company, "currency_code", None) or "USD"
+    return {**data, "currency_code": currency}
 
 
 class BusinessOverviewArgs(ToolArguments):
@@ -50,7 +65,7 @@ class GetBusinessOverviewTool(AITool):
     async def run(self, context: ToolExecutionContext, arguments: BusinessOverviewArgs) -> ToolResult:
         prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
         data = compute_business_overview(prepared)
-        return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),))
+        return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
 
 class SalesSummaryArgs(ToolArguments):
@@ -84,7 +99,7 @@ class GetSalesSummaryTool(AITool):
         )
         unsupported = [name for name, value in (("location", arguments.location), ("category", arguments.category)) if value is not None]
         metadata = {"unsupported_filters": unsupported} if unsupported else {}
-        return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),), metadata=metadata)
+        return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),), metadata=metadata)
 
 
 class SalesTrendArgs(ToolArguments):
@@ -103,7 +118,7 @@ class GetSalesTrendTool(AITool):
     async def run(self, context: ToolExecutionContext, arguments: SalesTrendArgs) -> ToolResult:
         prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
         data = compute_sales_trend(prepared)
-        return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),))
+        return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
 
 class SalesComparisonArgs(ToolArguments):

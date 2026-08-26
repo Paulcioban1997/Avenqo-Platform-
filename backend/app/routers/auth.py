@@ -50,6 +50,10 @@ def _company_response(company: Company) -> CompanyResponse:
         subscription_plan=company.subscription_plan,
         onboarding_status=onboarding_status.value,
         billing_email=company.billing_email,
+        country=company.country,
+        preferred_language=company.preferred_language,
+        currency_code=getattr(company, "currency_code", None),
+        timezone=company.timezone,
     )
 
 

@@ -31,6 +31,9 @@ class Company(TimestampMixin, Base):
     region: Mapped[str] = mapped_column(String(100), nullable=False, default="North America")
     company_size: Mapped[str] = mapped_column(String(50), nullable=False, default="1-10")
     preferred_language: Mapped[str] = mapped_column(String(10), nullable=False, default="fr")
+    # Devise ISO-4217 de l'entreprise (ex. CAD). Déduite du pays à la création,
+    # modifiable en settings, JAMAIS déduite de la langue ni convertie.
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     subscription_plan: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[CompanyStatus] = mapped_column(
         SAEnum(CompanyStatus, name="company_status"),

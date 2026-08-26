@@ -67,6 +67,8 @@ class AuthService:
         if self._session.scalar(select(Company).where(Company.email == company_email)):
             raise ConflictError("Une entreprise utilise déjà cet email")
 
+        from backend.app.core.locale_catalog import currency_for_country
+
         company = Company(
             name=request.company_name.strip(),
             slug=self._unique_slug(request.company_name),
@@ -79,6 +81,10 @@ class AuthService:
             region=request.region.strip(),
             company_size=request.company_size.strip(),
             preferred_language=request.preferred_language.strip(),
+            # Devise : valeur explicite si fournie, sinon default du PAYS (jamais
+            # déduit de la langue), fallback technique USD si pays inconnu.
+            currency_code=(request.currency_code or "").strip().upper()
+            or currency_for_country(request.country),
             subscription_plan=request.plan_code,
             status=CompanyStatus.ACTIVE,
         )

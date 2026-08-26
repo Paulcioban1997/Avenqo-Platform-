@@ -88,6 +88,7 @@ async def message(
     )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
+    company = identity.user.company
     try:
         item, sources = await service.send(
             tenant.company_id,
@@ -95,9 +96,13 @@ async def message(
             conversation_id,
             request.content,
             permissions=permissions,
-            plan_code=identity.user.company.subscription_plan,
+            plan_code=company.subscription_plan,
             capabilities=capabilities,
             request_id=str(uuid4()),
+            user_language=company.preferred_language or "fr",
+            company_country=company.country or "",
+            company_currency=getattr(company, "currency_code", None) or "USD",
+            company_timezone=company.timezone or "UTC",
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
@@ -138,6 +143,7 @@ async def stream(
     )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
+    company = identity.user.company
 
     async def is_cancelled() -> bool:
         return await http_request.is_disconnected()
@@ -150,10 +156,14 @@ async def stream(
                 conversation_id,
                 request.content,
                 permissions=permissions,
-                plan_code=identity.user.company.subscription_plan,
+                plan_code=company.subscription_plan,
                 capabilities=capabilities,
                 request_id=str(uuid4()),
                 is_cancelled=is_cancelled,
+                user_language=company.preferred_language or "fr",
+                company_country=company.country or "",
+                company_currency=getattr(company, "currency_code", None) or "USD",
+                company_timezone=company.timezone or "UTC",
             ):
                 if event.kind == "delta":
                     yield f"data: {json.dumps(event.payload)}\n\n"

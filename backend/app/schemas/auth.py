@@ -24,6 +24,7 @@ class RegisterRequest(BaseModel):
     region: str = Field(default="North America", min_length=2, max_length=100)
     company_size: str = Field(default="1-10", min_length=1, max_length=50)
     preferred_language: str = Field(default="fr", min_length=2, max_length=10)
+    currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     billing_email: EmailStr | None = None
     job_title: str = Field(default="Owner", min_length=1, max_length=120)
     phone: str | None = Field(default=None, max_length=32)
@@ -94,6 +95,10 @@ class CompanyResponse(BaseModel):
     subscription_plan: str
     onboarding_status: str
     billing_email: str
+    country: str | None = None
+    preferred_language: str | None = None
+    currency_code: str | None = None
+    timezone: str | None = None
 
     model_config = {"from_attributes": True}
 
