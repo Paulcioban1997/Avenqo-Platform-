@@ -6,6 +6,7 @@ import 'package:avenqo/features/ai_chat/ai_chat_api.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
@@ -47,6 +48,17 @@ class _AssistantPageState extends State<AssistantPage> {
   bool _nearBottom = true;
   String? _error;
   String? _statusMessage;
+
+  String _devFriendlyMessage(ApiException error) {
+    if (kReleaseMode) return error.message;
+    final detail = error.message.toLowerCase();
+    if (error.statusCode == 401) return 'DEV: erreur_auth';
+    if (error.statusCode == 429 || detail.contains('quota')) return 'DEV: quota_atteint';
+    if (detail.contains('provider_non_configure')) return 'DEV: provider_non_configure';
+    if (detail.contains('provider_inaccessible')) return 'DEV: backend_ou_provider_inaccessible';
+    if (detail.contains('no business data') || detail.contains('dataset')) return 'DEV: dataset_indisponible';
+    return 'DEV: ${error.message}';
+  }
 
 
   @override
@@ -154,7 +166,9 @@ class _AssistantPageState extends State<AssistantPage> {
       if (!mounted) return;
       setState(() => _error = error.statusCode == 401
           ? 'Your session has expired. Please sign in again.'
-          : "Avenqo couldn't start this conversation. Please try again.");
+          : (kReleaseMode
+              ? "Avenqo couldn't start this conversation. Please try again."
+              : _devFriendlyMessage(error)));
     }
   }
 
@@ -190,8 +204,10 @@ class _AssistantPageState extends State<AssistantPage> {
     // on ne remplace par un message générique que pour les erreurs réseau/parsing.
     debugPrint('AssistantPage: chat stream error: $error');
     final message = error is ApiException
-        ? error.message
-        : "Avenqo couldn't complete this request. Please try again.";
+      ? _devFriendlyMessage(error)
+      : (kReleaseMode
+        ? "Avenqo couldn't complete this request. Please try again."
+        : 'DEV: backend_inaccessible');
     setState(() {
       final last = _messages.last.copyWith(error: message);
       _messages = [..._messages.take(_messages.length - 1), last];

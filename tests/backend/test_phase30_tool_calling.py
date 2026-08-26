@@ -26,7 +26,7 @@ from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.orchestrator import MAX_TOOL_ITERATIONS, OrchestrationResult, ToolOrchestrator
 from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.llm.base import LLMProvider
-from backend.app.ai.llm.exceptions import ToolCallingUnsupportedError
+from backend.app.ai.llm.exceptions import LLMProviderError, ToolCallingUnsupportedError
 from backend.app.ai.llm.schemas import LLMGeneration, LLMMessage, LLMToolResponse
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.business import customer_tools, sales_tools
@@ -582,6 +582,33 @@ async def test_orchestrator_falls_back_when_provider_does_not_support_tool_calli
     assert result.content == "fallback answer"
 
 
+async def test_orchestrator_falls_back_to_plain_generate_when_tool_call_provider_fails() -> None:
+    class FailingToolProvider(FakeLLMProvider):
+        def __init__(self):
+            super().__init__(plain_content="plain answer")
+            self.generate_with_tools_calls = 1
+
+        async def generate_with_tools(self, *, system_instruction, messages, tools) -> LLMToolResponse:
+            self.generate_with_tools_calls += 1
+            raise LLMProviderError("Le fournisseur IA est temporairement indisponible")
+
+    provider = FailingToolProvider()
+    registry = ToolRegistry()
+    registry.register(_DummyTool())
+    executor = ToolExecutor(registry)
+    orchestrator = ToolOrchestrator(provider, executor)
+    context = _executor_context(permissions=frozenset({"ai:use", "data:read"}))
+
+    result = await orchestrator.run(
+        system_instruction="sys", user_query="hi", context=context,
+        available_tools=(_DummyTool(),),
+    )
+
+    assert result.content == "plain answer"
+    assert provider.generate_calls == 1
+    assert provider.generate_with_tools_calls == 2
+
+
 async def test_orchestrator_executes_a_tool_call_and_returns_final_answer(tenant_with_ready_dataset) -> None:
     session, _, _, _, tenant, ingestion, context = tenant_with_ready_dataset
     registry = ToolRegistry()
@@ -727,3 +754,135 @@ def test_settings_expose_tool_calling_bounds() -> None:
     assert settings.ai_max_tool_iterations >= 1
     assert settings.ai_max_tools_per_request >= 1
     assert settings.ai_max_tool_result_chars >= 500
+
+
+# ---------------------------------------------------------------------------
+# 9. End-to-end multi-tenant isolation (Company A/B)
+# ---------------------------------------------------------------------------
+
+
+async def test_chat_service_tool_calling_enforces_company_isolation_across_two_tenants(db_session) -> None:
+    class RecordingExecutor(ToolExecutor):
+        def __init__(self, registry: ToolRegistry) -> None:
+            super().__init__(registry)
+            self.seen_tenant_ids = []
+
+        async def execute(self, name, context, raw_arguments):
+            self.seen_tenant_ids.append(context.tenant.company_id)
+            return await super().execute(name, context, raw_arguments)
+
+    class MultiTenantIngestionService:
+        def __init__(self, prepared_by_dataset_id):
+            self._prepared_by_dataset_id = prepared_by_dataset_id
+
+        def get_prepared_dataset(self, tenant: TenantContext, dataset_id) -> PreparedCompanyDataset:
+            prepared = self._prepared_by_dataset_id[dataset_id]
+            assert prepared.company_id == tenant.company_id
+            return prepared
+
+    def _prepared_for(company_id, dataset_id, rows):
+        cleaner = CompanyDatasetCleaner()
+        cleaned_rows, cleaning_report = cleaner.clean(rows, CANONICAL_COLUMNS)
+        profile = DatasetProfiler().profile(cleaned_rows, tuple(CANONICAL_COLUMNS))
+        quality = assess_quality(cleaning_report)
+        readiness = assess_capability_readiness(set(CANONICAL_COLUMNS.values()))
+        return PreparedCompanyDataset(
+            company_id=company_id,
+            dataset_id=dataset_id,
+            version=1,
+            canonical_columns=CANONICAL_COLUMNS,
+            rows=tuple(cleaned_rows),
+            profile=profile,
+            mapping=(),
+            cleaning_report=cleaning_report,
+            quality=quality,
+            capability_readiness=readiness,
+        )
+
+    company_a = Company(name="Company A", slug="company-a-e2e", email="a-e2e@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
+    company_b = Company(name="Company B", slug="company-b-e2e", email="b-e2e@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
+    db_session.add_all([company_a, company_b]); db_session.flush()
+
+    user_a = User(company_id=company_a.id, first_name="Alice", last_name="A", email="alice-a@example.com", password_hash="hash", role=UserRole.ANALYST)
+    user_b = User(company_id=company_b.id, first_name="Bob", last_name="B", email="bob-b@example.com", password_hash="hash", role=UserRole.ANALYST)
+    db_session.add_all([user_a, user_b]); db_session.flush()
+
+    dataset_a = Dataset(company_id=company_a.id, name="Sales A", type="csv", source="a.csv", rows_count=3, columns_count=6, status=DatasetStatus.READY)
+    dataset_b = Dataset(company_id=company_b.id, name="Sales B", type="csv", source="b.csv", rows_count=4, columns_count=6, status=DatasetStatus.READY)
+    db_session.add_all([dataset_a, dataset_b]); db_session.commit()
+
+    rows_a = [
+        {"customer_id": "a-1", "order_id": "a-o1", "product_id": "p1", "order_timestamp": "2024-01-01T00:00:00+00:00", "quantity": 1, "total_amount": 40.0},
+        {"customer_id": "a-2", "order_id": "a-o2", "product_id": "p2", "order_timestamp": "2024-01-02T00:00:00+00:00", "quantity": 1, "total_amount": 20.0},
+        {"customer_id": "a-1", "order_id": "a-o3", "product_id": "p1", "order_timestamp": "2024-01-03T00:00:00+00:00", "quantity": 2, "total_amount": 80.0},
+    ]
+    rows_b = [
+        {"customer_id": "b-1", "order_id": "b-o1", "product_id": "p3", "order_timestamp": "2024-02-01T00:00:00+00:00", "quantity": 1, "total_amount": 55.0},
+        {"customer_id": "b-2", "order_id": "b-o2", "product_id": "p4", "order_timestamp": "2024-02-02T00:00:00+00:00", "quantity": 1, "total_amount": 65.0},
+        {"customer_id": "b-3", "order_id": "b-o3", "product_id": "p5", "order_timestamp": "2024-02-03T00:00:00+00:00", "quantity": 1, "total_amount": 75.0},
+        {"customer_id": "b-3", "order_id": "b-o4", "product_id": "p5", "order_timestamp": "2024-02-04T00:00:00+00:00", "quantity": 3, "total_amount": 95.0},
+    ]
+    ingestion = MultiTenantIngestionService({
+        dataset_a.id: _prepared_for(company_a.id, dataset_a.id, rows_a),
+        dataset_b.id: _prepared_for(company_b.id, dataset_b.id, rows_b),
+    })
+
+    provider = FakeLLMProvider(tool_responses=[
+        LLMToolResponse(content=None, tool_calls=(ToolCall(id="a-1", name="get_customer_summary", arguments={}),), provider="fake", model="fake-model"),
+        LLMToolResponse(content="A processed", tool_calls=(), provider="fake", model="fake-model"),
+        LLMToolResponse(content=None, tool_calls=(ToolCall(id="b-1", name="get_customer_summary", arguments={}),), provider="fake", model="fake-model"),
+        LLMToolResponse(content="B processed", tool_calls=(), provider="fake", model="fake-model"),
+    ])
+
+    registry = build_business_tool_registry(db_session, ingestion, prediction_service=object())
+    executor = RecordingExecutor(registry)
+    service = ChatService(
+        ConversationService(db_session),
+        RetrievalService(db_session),
+        provider,
+        tool_registry=registry,
+        tool_executor=executor,
+    )
+
+    conversation_service = ConversationService(db_session)
+    conversation_a = conversation_service.create(company_a.id, user_a.id, "A chat")
+    conversation_b = conversation_service.create(company_b.id, user_b.id, "B chat")
+
+    _, sources_a = await service.send(
+        company_a.id,
+        user_a.id,
+        conversation_a.id,
+        "Quels clients ont besoin d'attention ?",
+        permissions=frozenset(permissions_for(UserRole.ANALYST)),
+        plan_code="demo",
+        request_id="req-a",
+    )
+    tool_results_a = service.last_tool_call_results
+
+    _, sources_b = await service.send(
+        company_b.id,
+        user_b.id,
+        conversation_b.id,
+        "Quels clients ont besoin d'attention ?",
+        permissions=frozenset(permissions_for(UserRole.ANALYST)),
+        plan_code="demo",
+        request_id="req-b",
+    )
+    tool_results_b = service.last_tool_call_results
+
+    assert executor.seen_tenant_ids == [company_a.id, company_b.id]
+
+    assert any(source.identifier == str(dataset_a.id) for source in sources_a)
+    assert all(source.identifier != str(dataset_b.id) for source in sources_a)
+    assert any(source.identifier == str(dataset_b.id) for source in sources_b)
+    assert all(source.identifier != str(dataset_a.id) for source in sources_b)
+
+    assert tool_results_a[0].call.name == "get_customer_summary"
+    assert tool_results_a[0].result.success is True
+    assert tool_results_a[0].result.data["total_customers"] == 2
+    assert str(dataset_a.id) in tool_results_a[0].result.source_refs
+
+    assert tool_results_b[0].call.name == "get_customer_summary"
+    assert tool_results_b[0].result.success is True
+    assert tool_results_b[0].result.data["total_customers"] == 3
+    assert str(dataset_b.id) in tool_results_b[0].result.source_refs

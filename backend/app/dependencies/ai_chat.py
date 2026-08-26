@@ -55,4 +55,5 @@ def get_chat_service(
         tool_registry=registry,
         tool_executor=executor,
         usage_service=usage_service,
+        debug_mode=settings.debug,
     )

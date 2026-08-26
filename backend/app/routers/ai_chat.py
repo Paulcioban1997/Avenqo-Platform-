@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -22,6 +23,7 @@ from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
 router = APIRouter(prefix="/ai/chat", tags=["ai-chat"])
+logger = logging.getLogger("avenqo.ai.router")
 
 
 def response(item) -> ConversationResponse:
@@ -70,6 +72,20 @@ async def message(
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
 ):
+    if tenant.company_id != identity.user.company_id:
+        logger.error(
+            "ai_chat_tenant_mismatch user_id=%s identity_company_id=%s tenant_company_id=%s",
+            identity.user.id,
+            identity.user.company_id,
+            tenant.company_id,
+        )
+        raise HTTPException(status_code=403, detail="Contexte tenant invalide")
+    logger.info(
+        "ai_chat_identity user_id=%s identity_company_id=%s tenant_company_id=%s",
+        identity.user.id,
+        identity.user.company_id,
+        tenant.company_id,
+    )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
     try:
@@ -106,6 +122,20 @@ async def stream(
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
 ):
+    if tenant.company_id != identity.user.company_id:
+        logger.error(
+            "ai_chat_stream_tenant_mismatch user_id=%s identity_company_id=%s tenant_company_id=%s",
+            identity.user.id,
+            identity.user.company_id,
+            tenant.company_id,
+        )
+        raise HTTPException(status_code=403, detail="Contexte tenant invalide")
+    logger.info(
+        "ai_chat_stream_identity user_id=%s identity_company_id=%s tenant_company_id=%s",
+        identity.user.id,
+        identity.user.company_id,
+        tenant.company_id,
+    )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
 

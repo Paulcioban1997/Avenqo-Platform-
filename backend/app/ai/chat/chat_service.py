@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
+import logging
 from uuid import UUID
 
 from backend.app.ai.chat.conversation_service import ConversationService
@@ -9,6 +10,7 @@ from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.chat.source_service import RetrievedSource
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
+from backend.app.ai.llm.failure_classification import FailureCategory, classify_exception
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
@@ -28,6 +30,8 @@ _STREAM_CHUNK_SIZE = 40
 
 IsCancelled = Callable[[], Awaitable[bool]]
 
+logger = logging.getLogger("avenqo.ai.chat")
+
 
 @dataclass(frozen=True, slots=True)
 class ChatStreamEvent:
@@ -46,11 +50,13 @@ class ChatService:
         tool_registry: ToolRegistry | None = None,
         tool_executor: ToolExecutor | None = None,
         usage_service: AIUsageService | None = None,
+        debug_mode: bool = False,
     ) -> None:
         self._conversations, self._retrieval, self._provider = conversations, retrieval, provider
         self._tool_registry = tool_registry
         self._orchestrator = ToolOrchestrator(provider, tool_executor) if tool_executor is not None else None
         self._usage_service = usage_service
+        self._debug_mode = debug_mode
         self.last_stream_sources = []
         self.last_tool_call_results = ()
 
@@ -58,6 +64,21 @@ class ChatService:
         if self._orchestrator is None or self._tool_registry is None:
             return ()
         return self._tool_registry.available_for(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+
+    def _client_error_message(self, exc: LLMProviderError) -> str:
+        if not self._debug_mode:
+            return "Le service IA est temporairement indisponible"
+
+        category = classify_exception(exc.__cause__ or exc)
+        if category == FailureCategory.AUTH_CONFIG:
+            return "DEV: provider_non_configure"
+        if category in {FailureCategory.RATE_LIMITED, FailureCategory.QUOTA_PROBLEM}:
+            return "DEV: quota_fournisseur_atteint"
+        if category in {FailureCategory.TIMEOUT, FailureCategory.NETWORK, FailureCategory.PROVIDER_5XX, FailureCategory.OVERLOADED}:
+            return "DEV: provider_inaccessible"
+        if category == FailureCategory.INVALID_REQUEST:
+            return "DEV: requete_provider_invalide"
+        return "DEV: provider_indisponible"
 
     async def send(
         self,
@@ -82,6 +103,13 @@ class ChatService:
         prompt = f"<conversation>{history}</conversation>\n<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
 
         available_tools = self._available_tools(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+        logger.info(
+            "ai_chat_request tenant_id=%s user_id=%s provider=%s available_tools_count=%d",
+            tenant_id,
+            user_id,
+            self._provider.name,
+            len(available_tools),
+        )
         tool_context = ToolExecutionContext(
             tenant=TenantContext(company_id=tenant_id),
             user_id=user_id,
@@ -104,7 +132,15 @@ class ChatService:
                 content, provider_name, model_name, token_usage = generation.content, generation.provider, generation.model, generation.token_usage
                 self.last_tool_call_results = ()
         except LLMProviderError as exc:
-            raise AIServiceUnavailableError("Le service IA est temporairement indisponible") from exc
+            category = classify_exception(exc.__cause__ or exc)
+            logger.exception(
+                "ai_chat_provider_error tenant_id=%s user_id=%s provider=%s category=%s",
+                tenant_id,
+                user_id,
+                self._provider.name,
+                category.value,
+            )
+            raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
 
         if self._usage_service is not None:
             self._usage_service.record_usage(
@@ -154,6 +190,13 @@ class ChatService:
         prompt = f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
 
         available_tools = self._available_tools(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+        logger.info(
+            "ai_chat_stream_request tenant_id=%s user_id=%s provider=%s available_tools_count=%d",
+            tenant_id,
+            user_id,
+            self._provider.name,
+            len(available_tools),
+        )
         content = ""
         provider_name = self._provider.name
         tool_call_results: tuple[ToolCallResult, ...] = ()
@@ -202,8 +245,16 @@ class ChatService:
                             break
                         piece = content[start:start + _STREAM_CHUNK_SIZE]
                         yield ChatStreamEvent("delta", {"chunk": piece})
-        except LLMProviderError:
-            yield ChatStreamEvent("error", {"detail": "Le service IA est temporairement indisponible"})
+        except LLMProviderError as exc:
+            category = classify_exception(exc.__cause__ or exc)
+            logger.exception(
+                "ai_chat_stream_provider_error tenant_id=%s user_id=%s provider=%s category=%s",
+                tenant_id,
+                user_id,
+                self._provider.name,
+                category.value,
+            )
+            yield ChatStreamEvent("error", {"detail": self._client_error_message(exc)})
             return
 
         if cancelled or not content:

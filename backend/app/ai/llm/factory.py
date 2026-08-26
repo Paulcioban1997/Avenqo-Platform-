@@ -1,3 +1,5 @@
+import logging
+
 from backend.app.ai.llm.anthropic_provider import AnthropicProvider
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.circuit_breaker import get_circuit_breaker
@@ -7,6 +9,8 @@ from backend.app.ai.llm.gemini_provider import GeminiProvider
 from backend.app.ai.llm.health import get_provider_health_registry
 from backend.app.ai.llm.openai_provider import OpenAIProvider
 from backend.app.config.settings import Settings
+
+logger = logging.getLogger("avenqo.ai.factory")
 
 
 class LLMProviderFactory:
@@ -34,6 +38,14 @@ class LLMProviderFactory:
         }.get(provider_code)
 
     @staticmethod
+    def _model_for(settings: Settings, provider_code: str) -> str:
+        return {
+            "openai": settings.openai_model,
+            "anthropic": settings.anthropic_model,
+            "gemini": settings.gemini_model,
+        }.get(provider_code, settings.llm_model)
+
+    @staticmethod
     def create_gateway(settings: Settings) -> LLMProvider:
         """Phase 32 : construit le Resilient AI Gateway (primaire + fallbacks).
 
@@ -53,12 +65,33 @@ class LLMProviderFactory:
             if code in seen or code not in LLMProviderFactory._BUILDERS:
                 continue
             if index > 0 and not LLMProviderFactory._credential_for(settings, code):
+                logger.info(
+                    "ai_provider_config provider=%s role=fallback position=%d api_key_configured=false model=%s included=false",
+                    code,
+                    index,
+                    LLMProviderFactory._model_for(settings, code),
+                )
                 continue
             seen.add(code)
+            logger.info(
+                "ai_provider_config provider=%s role=%s position=%d api_key_configured=%s model=%s included=true",
+                code,
+                "primary" if index == 0 else "fallback",
+                index,
+                str(bool(LLMProviderFactory._credential_for(settings, code))).lower(),
+                LLMProviderFactory._model_for(settings, code),
+            )
             providers.append(LLMProviderFactory._BUILDERS[code](settings))
 
         if not providers and settings.ai_primary_provider.lower() in LLMProviderFactory._BUILDERS:
             providers = [LLMProviderFactory._BUILDERS[settings.ai_primary_provider.lower()](settings)]
+            primary = settings.ai_primary_provider.lower()
+            logger.info(
+                "ai_provider_config provider=%s role=primary position=0 api_key_configured=%s model=%s included=true reason=primary_only_fallback",
+                primary,
+                str(bool(LLMProviderFactory._credential_for(settings, primary))).lower(),
+                LLMProviderFactory._model_for(settings, primary),
+            )
 
         breaker = get_circuit_breaker()
         breaker.configure(settings.ai_gateway_circuit_failure_threshold, settings.ai_gateway_circuit_cooldown_seconds)

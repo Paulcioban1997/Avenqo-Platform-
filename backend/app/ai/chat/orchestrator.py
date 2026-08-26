@@ -13,11 +13,12 @@ pour piloter le SSE sans jamais révéler les noms d'outils au client.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
 from backend.app.ai.llm.base import LLMProvider
-from backend.app.ai.llm.exceptions import ToolCallingUnsupportedError
+from backend.app.ai.llm.exceptions import LLMProviderError, ToolCallingUnsupportedError
 from backend.app.ai.llm.schemas import LLMMessage
 from backend.app.ai.tools.base import AITool
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext, ToolResult
@@ -30,6 +31,8 @@ MAX_TOOLS_PER_REQUEST = 8
 STATUS_ANALYZING_BUSINESS_DATA = "Analyzing your business data..."
 
 IsCancelled = Callable[[], Awaitable[bool]]
+
+logger = logging.getLogger("avenqo.ai.orchestrator")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +125,12 @@ class ToolOrchestrator:
             )
             return
 
+        logger.info(
+            "ai_tools_available available_tools_count=%d provider=%s",
+            len(available_tools),
+            self._provider.name,
+        )
+
         definitions = [tool.definition() for tool in available_tools]
         messages = [LLMMessage(role="user", content=user_query)]
         tool_call_results: list[ToolCallResult] = []
@@ -143,7 +152,7 @@ class ToolOrchestrator:
                 response = await self._provider.generate_with_tools(
                     system_instruction=system_instruction, messages=messages, tools=definitions
                 )
-            except ToolCallingUnsupportedError:
+            except (ToolCallingUnsupportedError, LLMProviderError):
                 generation = await self._provider.generate(system_instruction=system_instruction, prompt=user_query)
                 yield OrchestrationEvent(
                     kind="final",
@@ -197,8 +206,10 @@ class ToolOrchestrator:
                 tools_called += 1
                 try:
                     result = await self._executor.execute(call.name, context, call.arguments)
+                    logger.info("ai_tool_execution selected_tool_name=%s tool_success=true", call.name)
                 except ToolError as exc:
                     result = ToolResult(success=False, error=str(exc))
+                    logger.info("ai_tool_execution selected_tool_name=%s tool_success=false", call.name)
                 tool_call_results.append(ToolCallResult(call=call, result=result))
                 messages.append(
                     LLMMessage(
