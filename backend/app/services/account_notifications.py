@@ -35,8 +35,10 @@ class SMTPAccountNotifier:
     """Envoie les liens de compte avec le serveur SMTP configurÃ©."""
 
     def __init__(self, settings: Settings) -> None:
-        if settings.smtp_host is None:
-            raise ValueError("SMTP_HOST est requis")
+        if not settings.smtp_host:
+            raise ValueError(
+                "SMTP non configuré : définir SMTP_HOST pour activer l'envoi d'emails"
+            )
         self._settings = settings
 
     def send_email_verification(self, email: str, token: str) -> None:

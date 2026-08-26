@@ -146,6 +146,15 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
+    @field_validator("smtp_host", "smtp_username", "smtp_password", mode="before")
+    @classmethod
+    def blank_to_none(cls, value: object) -> object:
+        """Une valeur vide (ex. `SMTP_HOST=` dans un .env) compte comme absente."""
+
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("debug", mode="before")
     @classmethod
     def parse_debug(cls, value: object) -> object:
@@ -164,8 +173,10 @@ class Settings(BaseSettings):
         if self.environment.lower() in {"production", "prod"}:
             if self.auth_jwt_secret == "development-only-change-this-jwt-secret":
                 raise ValueError("AUTH_JWT_SECRET doit Ãªtre remplacÃ© en production")
-            if not self.smtp_host:
-                raise ValueError("SMTP_HOST est requis en production")
+            # SMTP volontairement NON bloquant au dÃ©marrage : l'app doit pouvoir
+            # dÃ©marrer sans serveur email. Sans SMTP_HOST, `get_account_notifier`
+            # retombe sur LoggingAccountNotifier et les rÃ©ponses signalent
+            # `email_delivery_configured=false` (erreur claire, jamais un crash).
             stripe_values = (
                 self.stripe_secret_key,
                 self.stripe_webhook_secret,
