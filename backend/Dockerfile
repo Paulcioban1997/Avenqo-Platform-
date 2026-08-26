@@ -28,6 +28,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend backend
 COPY shared shared
 COPY payments payments
+COPY modules modules
 
 RUN useradd --create-home --shell /usr/sbin/nologin avenqo \
     && chown -R avenqo:avenqo /srv
