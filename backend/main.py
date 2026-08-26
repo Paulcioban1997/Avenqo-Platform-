@@ -47,13 +47,20 @@ def create_application() -> FastAPI:
         openapi_url=None if is_production else "/openapi.json",
     )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Stripe-Signature"],
-    )
+    # CORS : en développement, Flutter Web choisit un port localhost aléatoire à
+    # chaque lancement — on autorise donc localhost/127.0.0.1 sur n'importe quel
+    # port via une regex (jamais en production, où seules les origines explicites
+    # de CORS_ORIGINS, ex. https://app.avenqo.ca, sont acceptées).
+    cors_kwargs: dict[str, object] = {
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        "allow_headers": ["Authorization", "Content-Type", "X-Request-ID", "Stripe-Signature"],
+    }
+    if is_production:
+        cors_kwargs["allow_origins"] = settings.cors_origins
+    else:
+        cors_kwargs["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    app.add_middleware(CORSMiddleware, **cors_kwargs)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     app.add_middleware(SecurityHeadersMiddleware, force_https=is_production)
     app.add_middleware(RequestIDMiddleware)
