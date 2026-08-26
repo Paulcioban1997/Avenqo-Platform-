@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from functools import lru_cache
 from typing import Annotated, List
@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Centralise les paramÃ¨tres chargÃ©s depuis les variables d'environnement."""
+    """Centralise les paramètres chargés depuis les variables d'environnement."""
 
     model_config = SettingsConfigDict(
         env_file="backend/.env",
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", alias="ENVIRONMENT")
     debug: bool = Field(default=True, alias="DEBUG")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
-    host: str = Field(default="127.0.0.1", alias="HOST")
+    host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_origins: Annotated[List[str], NoDecode] = Field(
@@ -134,6 +134,21 @@ class Settings(BaseSettings):
     platform_admin_email: str | None = Field(default=None, alias="PLATFORM_ADMIN_EMAIL")
     platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def validate_database_url(cls, value: object) -> object:
+        """Valide que DATABASE_URL n'est pas vide pour éviter une erreur
+        SQLAlchemy cryptique au démarrage."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError(
+                    "DATABASE_URL cannot be empty. Ensure the variable is set "
+                    "(e.g., by the Railway Postgres service)."
+                )
+            return stripped
+        return value
+
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: object) -> object:
@@ -163,7 +178,7 @@ class Settings(BaseSettings):
     def validate_production_auth(self) -> "Settings":
         if self.environment.lower() in {"production", "prod"}:
             if self.auth_jwt_secret == "development-only-change-this-jwt-secret":
-                raise ValueError("AUTH_JWT_SECRET doit Ãªtre remplacÃ© en production")
+                raise ValueError("AUTH_JWT_SECRET doit être remplacé en production")
             if not self.smtp_host:
                 raise ValueError("SMTP_HOST est requis en production")
             stripe_values = (
@@ -174,7 +189,7 @@ class Settings(BaseSettings):
                 self.stripe_price_enterprise,
             )
             if not all(stripe_values):
-                raise ValueError("La configuration Stripe complÃ¨te est requise en production")
+                raise ValueError("La configuration Stripe complète est requise en production")
         return self
 
     @property
