@@ -53,10 +53,20 @@ class BackupMetadata:
         return asdict(self)
 
 
+def _database_kind(database_url: str) -> str:
+    if database_url.startswith("sqlite"):
+        return "sqlite"
+    if database_url.startswith("postgresql") or database_url.startswith("postgres"):
+        return "postgresql"
+    raise UnsupportedDatabaseError(
+        f"Base de données non prise en charge pour la sauvegarde : {database_url.split(':')[0]}"
+    )
+
+
 def _sqlite_path_from_url(database_url: str) -> Path:
     if not database_url.startswith("sqlite"):
         raise UnsupportedDatabaseError(
-            "Le service de sauvegarde ne prend en charge que SQLite pour l'instant."
+            "Le chemin fichier ne s'applique qu'à une base SQLite."
         )
     raw = database_url.split("///", 1)[1]
     return Path(raw)
@@ -112,32 +122,43 @@ class BackupService:
         return self._storage.root
 
     def create_backup(self) -> BackupMetadata:
-        source_path = _sqlite_path_from_url(self._settings.database_url)
-        if not source_path.exists():
-            raise BackupError(f"Base de données introuvable : {source_path}")
-
+        kind = _database_kind(self._settings.database_url)
         backup_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + "Z"
-        destination_path = self.root / f"{backup_id}.db"
+        suffix = ".sql" if kind == "postgresql" else ".db"
+        destination_path = self.root / f"{backup_id}{suffix}"
 
-        # API de sauvegarde SQLite native (snapshot cohérent) plutôt qu'une
-        # simple copie de fichier — évite une archive incohérente si des
-        # écritures sont en cours pendant la sauvegarde.
-        source_conn = sqlite3.connect(str(source_path))
-        try:
-            dest_conn = sqlite3.connect(str(destination_path))
+        if kind == "sqlite":
+            source_path = _sqlite_path_from_url(self._settings.database_url)
+            if not source_path.exists():
+                raise BackupError(f"Base de données introuvable : {source_path}")
+            # API de sauvegarde SQLite native (snapshot cohérent) plutôt qu'une
+            # simple copie de fichier — évite une archive incohérente si des
+            # écritures sont en cours pendant la sauvegarde.
+            source_conn = sqlite3.connect(str(source_path))
             try:
-                source_conn.backup(dest_conn)
+                dest_conn = sqlite3.connect(str(destination_path))
+                try:
+                    source_conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
             finally:
-                dest_conn.close()
-        finally:
-            source_conn.close()
+                source_conn.close()
+        else:  # postgresql — pg_dump cohérent, jamais de secret dans les logs
+            result = subprocess.run(
+                ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
+                 "--file", str(destination_path), self._settings.database_url],
+                capture_output=True, text=True, timeout=600, check=False,
+            )
+            if result.returncode != 0:
+                destination_path.unlink(missing_ok=True)
+                raise BackupError(f"pg_dump a échoué (code {result.returncode})")
 
         checksum = _sha256_of_file(destination_path)
         metadata = BackupMetadata(
             backup_id=backup_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             environment=self._settings.environment,
-            database_type="sqlite",
+            database_type=kind,
             app_version=self._settings.app_version,
             git_revision=_git_revision(),
             format_version=self.FORMAT_VERSION,
@@ -165,10 +186,14 @@ class BackupService:
         safe_id = Path(backup_id).name
         if safe_id != backup_id or ".." in backup_id or not backup_id:
             raise BackupError("Identifiant de sauvegarde invalide.")
-        db_path = self.root / f"{safe_id}.db"
         metadata_path = self.root / f"{safe_id}.json"
-        if not db_path.exists() or not metadata_path.exists():
+        if not metadata_path.exists():
             raise BackupError(f"Sauvegarde introuvable : {backup_id}")
+        db_path = self.root / f"{safe_id}.db"
+        if not db_path.exists():
+            db_path = self.root / f"{safe_id}.sql"
+        if not db_path.exists():
+            raise BackupError(f"Archive introuvable pour la sauvegarde : {backup_id}")
         return db_path, metadata_path
 
     def verify_backup(self, backup_id: str) -> BackupMetadata:
@@ -187,21 +212,35 @@ class BackupService:
         la base configurée par défaut — l'appelant (script CLI) doit fournir
         `target_database_url` explicitement, voir scripts/restore_db.py."""
 
-        db_path, _ = self._resolve_backup_id(backup_id)
+        metadata = self._load_metadata(self._resolve_backup_id(backup_id)[1])
         self.verify_backup(backup_id)  # refuse toute archive corrompue avant restauration
+        kind = metadata.database_type
+        db_path = self._resolve_backup_id(backup_id)[0]
+        target_kind = _database_kind(target_database_url)
+        if target_kind != kind:
+            raise BackupError(
+                f"Type de base cible ({target_kind}) incompatible avec l'archive ({kind})."
+            )
 
-        target_path = _sqlite_path_from_url(target_database_url)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-
-        source_conn = sqlite3.connect(str(db_path))
-        try:
-            dest_conn = sqlite3.connect(str(target_path))
+        if kind == "sqlite":
+            target_path = _sqlite_path_from_url(target_database_url)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            source_conn = sqlite3.connect(str(db_path))
             try:
-                source_conn.backup(dest_conn)
+                dest_conn = sqlite3.connect(str(target_path))
+                try:
+                    source_conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
             finally:
-                dest_conn.close()
-        finally:
-            source_conn.close()
+                source_conn.close()
+        else:  # postgresql
+            result = subprocess.run(
+                ["psql", target_database_url, "-f", str(db_path)],
+                capture_output=True, text=True, timeout=1800, check=False,
+            )
+            if result.returncode != 0:
+                raise BackupError(f"psql restore a échoué (code {result.returncode})")
 
     def _apply_retention(self) -> None:
         cutoff = datetime.now(timezone.utc).timestamp() - (
