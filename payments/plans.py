@@ -31,10 +31,19 @@ class SubscriptionPlan:
 
 RETAIL_MODULES = frozenset({"retail"})
 
-PLANS: tuple[SubscriptionPlan, ...] = (
-    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=28),
+PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
+    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=29),
     SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES, monthly_price_usd=99),
-    SubscriptionPlan(PlanCode.ENTERPRISE, "Enterprise", RETAIL_MODULES, monthly_price_usd=499),
+    SubscriptionPlan(
+        PlanCode.ENTERPRISE,
+        "Enterprise",
+        RETAIL_MODULES,
+        requires_sales_contact=True,
+    ),
+)
+
+INTERNAL_COMPATIBILITY_PLANS: tuple[SubscriptionPlan, ...] = (
+    *PUBLIC_PLANS,
     SubscriptionPlan(
         PlanCode.CUSTOM_ENTERPRISE,
         "Custom Enterprise",
@@ -43,7 +52,8 @@ PLANS: tuple[SubscriptionPlan, ...] = (
     ),
 )
 
-PLANS_BY_CODE = {plan.code: plan for plan in PLANS}
+PLANS = PUBLIC_PLANS
+PLANS_BY_CODE = {plan.code: plan for plan in INTERNAL_COMPATIBILITY_PLANS}
 
 
 def get_plan(code: PlanCode | str) -> SubscriptionPlan:

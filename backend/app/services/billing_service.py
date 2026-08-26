@@ -41,7 +41,7 @@ class BillingService:
 
     def create_checkout(self, company: Company, plan_code: str) -> str:
         plan = get_plan(plan_code)
-        if plan.requires_sales_contact:
+        if plan.code == PlanCode.CUSTOM_ENTERPRISE:
             raise BillingOperationError("Custom Enterprise nÃ©cessite un contact commercial")
         price_id = self._required_price(plan.code)
         account = self.get_account(company.id)
@@ -64,7 +64,7 @@ class BillingService:
 
     def change_plan(self, company_id: UUID, plan_code: str) -> BillingAccount:
         plan = get_plan(plan_code)
-        if plan.requires_sales_contact:
+        if plan.code == PlanCode.CUSTOM_ENTERPRISE:
             raise BillingOperationError("Custom Enterprise nÃ©cessite un contact commercial")
         account = self.get_account(company_id)
         if not account.stripe_subscription_id:
