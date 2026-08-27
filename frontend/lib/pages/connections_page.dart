@@ -454,10 +454,10 @@ class _ConnectedDataView extends StatelessWidget {
         ),
         if (datasets.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Container(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              border: Border.all(color: colors.line),
+          Material(
+            color: colors.surface,
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: colors.line),
               borderRadius: BorderRadius.circular(12),
             ),
             clipBehavior: Clip.antiAlias,
