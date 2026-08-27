@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
@@ -36,6 +35,8 @@ Future<List<PickedFile>> _defaultFilePicker() async {
   final result = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: _acceptedExtensions,
+    // ignore: deprecated_member_use — API multi-fichiers correcte pour v12.
+    allowMultiple: true,
   );
   final files = <PickedFile>[];
   for (final platformFile in result) {
