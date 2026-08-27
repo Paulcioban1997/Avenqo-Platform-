@@ -24,6 +24,25 @@ class BillingPage extends StatelessWidget {
     }
   }
 
+  Future<void> _startCheckout(BuildContext context, String planCode) async {
+    try {
+      final response = await api.post(
+        '/billing/checkout',
+        body: {'plan_code': planCode},
+      ) as Map<String, dynamic>;
+      await launchUrl(
+        Uri.parse(response['url'] as String),
+        mode: LaunchMode.externalApplication,
+      );
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AvenqoLocaleScope.translationsOf(context).company;
@@ -38,6 +57,17 @@ class BillingPage extends StatelessWidget {
             : null;
         final subscription = values?[0] as Map<String, dynamic>?;
         final invoices = values?[1] as List<dynamic>? ?? const [];
+        final planCode = subscription?['plan_code']?.toString() ?? 'demo';
+        final billingStatus =
+            subscription?['status']?.toString().toLowerCase() ?? 'inactive';
+        final needsCheckout = const {
+          'inactive',
+          'canceled',
+          'incomplete',
+          'incomplete_expired',
+          'unpaid',
+        }.contains(billingStatus);
+
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -70,7 +100,7 @@ class BillingPage extends StatelessWidget {
               Card(
                 child: ListTile(
                   title: Text(
-                    '${t.billingPlanPrefix}${subscription?['plan_code'] ?? 'demo'}',
+                    '${t.billingPlanPrefix}$planCode',
                   ),
                   subtitle: Text(
                     '${t.billingStatusPrefix}${subscription?['status'] ?? 'inactive'}',
@@ -80,13 +110,29 @@ class BillingPage extends StatelessWidget {
                       : null,
                 ),
               ),
+              if (needsCheckout && planCode != 'enterprise') ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: () => _startCheckout(context, planCode),
+                    icon: const Icon(Icons.credit_card),
+                    label: const Text('Stripe Checkout'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
-              Text(t.billingInvoicesTitle, style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                t.billingInvoicesTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 10),
               for (final invoice in invoices)
                 ListTile(
                   leading: const Icon(Icons.receipt_outlined),
-                  title: Text(invoice['number']?.toString() ?? t.billingInvoiceFallback),
+                  title: Text(
+                    invoice['number']?.toString() ?? t.billingInvoiceFallback,
+                  ),
                   subtitle: Text(invoice['status'].toString()),
                   trailing: Text(
                     '${(invoice['amount_paid'] as num) / 100} ${invoice['currency'].toString().toUpperCase()}',
