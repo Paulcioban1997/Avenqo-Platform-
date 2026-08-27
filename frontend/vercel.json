@@ -1,9 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    {
-      "source": "/((?!assets/.*|icons/.*|favicon\\.png|manifest\\.json|flutter\\.js|flutter_bootstrap\\.js|flutter_service_worker\\.js|main\\.dart\\.js|version\\.json|canvaskit/.*|.*\\..*).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
