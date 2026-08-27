@@ -11,11 +11,16 @@ import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const List<String> kExpectedLocaleCodes = [
-  'fr', 'en', 'es', 'pt', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk', 'el',
-  'sv', 'tr', 'cs', 'ka', 'hy', 'ar', 'ar-EG', 'he', 'fa', 'sw', 'am', 'af',
-  'ha', 'zh', 'ja', 'ko', 'hi', 'bn', 'ur', 'ta', 'pa', 'ne', 'vi', 'th',
-  'id', 'ms', 'tl', 'my', 'km', 'mn',
+  'fr-CA', 'fr-FR', 'en', 'es', 'pt', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
+  'el', 'sv', 'tr', 'cs', 'ka', 'hy', 'ar', 'ar-EG', 'he', 'fa', 'sw', 'am',
+  'af', 'ha', 'zh', 'ja', 'ko', 'hi', 'bn', 'ur', 'ta', 'pa', 'ne', 'vi',
+  'th', 'id', 'ms', 'tl', 'my', 'km', 'mn',
 ];
+
+/// Locale legacy conservée sur disque comme alias backward-compatible pour les
+/// utilisateurs existants ayant `fr` persisté (migrée vers fr-CA à la lecture
+/// via LocaleController) — jamais exposée comme option visible du sélecteur.
+const List<String> kLegacyAliasLocaleCodes = ['fr'];
 
 /// Set of top-level sections that must never silently fall back to English
 /// via `Translations.fromJson`'s `json['x'] != null ? ... : Fallback()`
@@ -48,9 +53,12 @@ void main() {
   final registeredCodes =
       localesCatalog.map((e) => (e as Map<String, dynamic>)['code'] as String).toList();
 
-  test('exactly the 42 expected locales are registered in _locales.json', () {
+  test('exactly the 43 expected locales are registered in _locales.json', () {
     expect(registeredCodes.toSet(), equals(kExpectedLocaleCodes.toSet()));
-    expect(registeredCodes.length, 42);
+    expect(registeredCodes.length, 43);
+    // Le legacy `fr` ne doit JAMAIS apparaître comme option visible.
+    expect(registeredCodes, isNot(contains('fr')));
+    expect(registeredCodes, containsAll(['fr-CA', 'fr-FR']));
   });
 
   test('no stale/unsupported locale file is accidentally exposed', () {
@@ -61,7 +69,8 @@ void main() {
         .where((name) => name.endsWith('.json') && name != '_locales.json')
         .map((name) => name.substring(0, name.length - '.json'.length))
         .toSet();
-    expect(onDisk, equals(kExpectedLocaleCodes.toSet()));
+    final expectedOnDisk = {...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes};
+    expect(onDisk, equals(expectedOnDisk));
   });
 
   final enLeaves = _leafKeyPaths(_readLocaleJson('en'));

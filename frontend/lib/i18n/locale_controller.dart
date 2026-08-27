@@ -42,8 +42,9 @@ class LocaleController extends ChangeNotifier {
   /// jamais bloquer ou planter le démarrage de l'app.
   Future<String> _resolveInitialLocale() async {
     final persisted = await _readPersistedLocale();
-    if (persisted != null && _availableLocales.any((locale) => locale.code == persisted)) {
-      return persisted;
+    final resolved = _aliasLocale(persisted);
+    if (resolved != null && _availableLocales.any((locale) => locale.code == resolved)) {
+      return resolved;
     }
     final browserLocale = PlatformDispatcher.instance.locale;
     // Cas particulier : ar-EG est exposé comme variante régionale distincte
@@ -57,6 +58,19 @@ class LocaleController extends ChangeNotifier {
       return browserCode;
     }
     return defaultLocaleCode;
+  }
+
+  /// Compatibilité ascendante : les préférences existantes stockées comme `fr`
+  /// (locale legacy) migrent vers `fr-CA` — `fr` n'est plus une option visible
+  /// du sélecteur mais reste parfaitement supporté.
+  String? _aliasLocale(String? code) {
+    if (code == null) return null;
+    if (code == 'fr') {
+      return _availableLocales.any((l) => l.code == 'fr-CA')
+          ? 'fr-CA'
+          : code;
+    }
+    return code;
   }
 
   Future<String?> _readPersistedLocale() async {

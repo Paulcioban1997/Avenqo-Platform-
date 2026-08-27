@@ -1,13 +1,5 @@
 [
   {
-    "code": "fr",
-    "region": "americas",
-    "flag": "🇨🇦",
-    "nativeName": "Français",
-    "englishName": "French",
-    "direction": "ltr"
-  },
-  {
     "code": "fr-CA",
     "region": "americas",
     "flag": "🇨🇦",
