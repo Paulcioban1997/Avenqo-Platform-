@@ -59,9 +59,25 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
 # ---------------------------------------------------------------------------
 
 
-def test_production_requires_jwt_secret_smtp_and_stripe() -> None:
+def test_production_requires_non_default_jwt_secret() -> None:
     with pytest.raises(ValueError):
-        Settings(ENVIRONMENT="production", AUTH_JWT_SECRET="a" * 32)
+        Settings(ENVIRONMENT="production")
+
+
+def test_production_allows_optional_smtp_and_stripe_integrations() -> None:
+    settings = Settings(
+        ENVIRONMENT="production",
+        AUTH_JWT_SECRET="a" * 32,
+        SMTP_HOST="",
+        STRIPE_SECRET_KEY="",
+        STRIPE_WEBHOOK_SECRET="",
+        STRIPE_PRICE_DEMO="",
+        STRIPE_PRICE_PROFESSIONAL="",
+        STRIPE_PRICE_ENTERPRISE="",
+    )
+    assert settings.environment == "production"
+    assert settings.smtp_host is None
+    assert settings.billing_enabled is False
 
 
 def test_production_settings_accepted_when_fully_configured() -> None:
@@ -76,6 +92,7 @@ def test_production_settings_accepted_when_fully_configured() -> None:
         STRIPE_PRICE_ENTERPRISE="price_ent",
     )
     assert settings.environment == "production"
+    assert settings.billing_enabled is True
 
 
 def test_docs_disabled_in_production(monkeypatch: pytest.MonkeyPatch, db_session) -> None:
@@ -185,4 +202,3 @@ async def test_unhandled_exception_never_leaks_traceback() -> None:
     assert "sk-should-not-leak" not in body
     assert "Traceback" not in body
     assert "RuntimeError" not in body
-
