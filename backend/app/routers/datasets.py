@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.dependencies.auth import get_tenant_context
@@ -325,6 +325,21 @@ def list_datasets(
     except Exception as exc:
         logger.exception(f"Error listing datasets: {exc}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+
+@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dataset(
+    dataset_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: DatasetImportService = Depends(get_dataset_import_service),
+) -> Response:
+    """Supprime un fichier/dataset du tenant courant et ses artefacts locaux."""
+
+    try:
+        service.delete(tenant, dataset_id)
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)

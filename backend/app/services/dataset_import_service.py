@@ -1,13 +1,14 @@
-﻿"""Importe et profile les datasets sans entraÃ®ner de modÃ¨le."""
+﻿"""Importe et profile les datasets sans entraîner de modèle."""
 
 from collections import Counter
 import csv
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+import shutil
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
@@ -27,11 +28,11 @@ from shared.ai_engine.schema_detection.detector import SchemaDetector
 
 
 class DatasetImportError(ValueError):
-    """Signale un fichier vide, invalide ou non supportÃ©."""
+    """Signale un fichier vide, invalide ou non supporté."""
 
 
 class DatasetNotFoundError(ValueError):
-    """Masque aussi les datasets appartenant Ã  un autre tenant."""
+    """Masque aussi les datasets appartenant à un autre tenant."""
 
 
 class DatasetImportService:
@@ -63,16 +64,16 @@ class DatasetImportService:
         # de plan (nombre de datasets) s'applique ici.
         self._quota.check_dataset_quota(tenant)
         if not filename.lower().endswith(".csv"):
-            raise DatasetImportError("Seuls les fichiers CSV sont acceptÃ©s Ã  cette Ã©tape")
+            raise DatasetImportError("Seuls les fichiers CSV sont acceptés à cette étape")
         max_upload_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
         if not content or len(content) > max_upload_bytes:
-            raise DatasetImportError("Fichier vide ou taille maximale dÃ©passÃ©e")
+            raise DatasetImportError("Fichier vide ou taille maximale dépassée")
         try:
             rows = list(csv.DictReader(StringIO(content.decode("utf-8-sig"))))
         except (UnicodeDecodeError, csv.Error) as exc:
-            raise DatasetImportError("CSV invalide ou encodage non supportÃ©") from exc
+            raise DatasetImportError("CSV invalide ou encodage non supporté") from exc
         if not rows or not rows[0]:
-            raise DatasetImportError("Le CSV doit contenir un en-tÃªte et au moins une ligne")
+            raise DatasetImportError("Le CSV doit contenir un en-tête et au moins une ligne")
 
         normalized = [{key: self._coerce(value) for key, value in row.items()} for row in rows]
         report = SchemaDetector().detect(normalized)
@@ -175,6 +176,64 @@ class DatasetImportService:
         if dataset is None:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
+
+    def delete(self, tenant: TenantContext, dataset_id: UUID) -> None:
+        """Supprime un dataset du tenant et son dossier d'artefacts local.
+
+        La suppression est strictement tenant-scoped : un identifiant appartenant
+        à une autre entreprise reste indistinguable d'un dataset inexistant.
+        Les FK PostgreSQL utilisent ``ON DELETE CASCADE`` pour les profils,
+        versions, mappings, rapports qualité et artefacts de training liés.
+        Le dossier physique du dataset est ensuite retiré en entier afin de ne
+        pas laisser de raw/prepared/training.csv orphelins.
+        """
+
+        dataset = self.get(tenant, dataset_id)
+        artifact_roots = self._dataset_artifact_roots(dataset)
+
+        self._session.execute(
+            delete(Dataset).where(
+                Dataset.id == dataset_id,
+                Dataset.company_id == tenant.company_id,
+            )
+        )
+        self._session.commit()
+
+        for root in artifact_roots:
+            shutil.rmtree(root, ignore_errors=True)
+
+    @staticmethod
+    def _dataset_artifact_roots(dataset: Dataset) -> set[Path]:
+        """Retourne uniquement les dossiers ``.../<company>/datasets/<dataset>``.
+
+        On ne supprime jamais un parent générique ``datasets``/``company`` :
+        chaque chemin doit contenir à la fois le company_id et le dataset_id
+        attendus avant d'être accepté comme racine de suppression.
+        """
+
+        raw_paths = [dataset.source]
+        raw_paths.extend(
+            version.artifact_path
+            for version in dataset.versions
+            if version.artifact_path
+        )
+        roots: set[Path] = set()
+        expected_dataset = str(dataset.id)
+        expected_company = str(dataset.company_id)
+
+        for raw_path in raw_paths:
+            if not raw_path:
+                continue
+            path = Path(raw_path).resolve()
+            for parent in (path, *path.parents):
+                if parent.name != expected_dataset:
+                    continue
+                datasets_dir = parent.parent
+                company_dir = datasets_dir.parent
+                if datasets_dir.name == "datasets" and company_dir.name == expected_company:
+                    roots.add(parent)
+                break
+        return roots
 
     @staticmethod
     def _coerce(value: str | None) -> object:
