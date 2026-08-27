@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -165,7 +166,7 @@ def test_dataset_delete_is_tenant_scoped_and_removes_artifacts(dataset_environme
     dataset_id = upload.json()["id"]
 
     with session_factory() as session:
-        dataset = session.get(Dataset, dataset_id)
+        dataset = session.get(Dataset, UUID(dataset_id))
         assert dataset is not None
         source = Path(dataset.source)
         dataset_root = source.parent
