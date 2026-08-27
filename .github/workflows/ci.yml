@@ -1,6 +1,6 @@
 name: CI
 
-# Phase 34 — pipeline minimal : tests backend (pytest) + analyse/tests Flutter.
+# Phase 34 — pipeline : couverture backend complète + analyse/tests Flutter.
 # N'utilise AUCUN secret réel : les tests backend fournissent leurs propres
 # valeurs factices (AUTH_JWT_SECRET, etc.) via fixtures/monkeypatch, jamais
 # via ce fichier.
@@ -11,9 +11,19 @@ on:
   pull_request:
     branches: [main]
 
+# Évite de gaspiller des minutes et d'envoyer des résultats obsolètes lorsqu'un
+# nouveau commit remplace un run encore en cours sur la même branche/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
@@ -26,8 +36,21 @@ jobs:
           pip install -r backend/requirements.txt
           pip install "moto[s3]>=5.0.0"
 
-      - name: Run backend test suite
-        run: python -m pytest tests/backend tests/security tests/payments -q
+      - name: Run backend test suite shard ${{ matrix.shard }}
+        shell: bash
+        run: |
+          mapfile -t backend_files < <(find tests/backend -maxdepth 1 -type f -name 'test_*.py' -print | sort)
+          selected=()
+          for i in "${!backend_files[@]}"; do
+            if (( i % 4 == ${{ matrix.shard }} )); then
+              selected+=("${backend_files[$i]}")
+            fi
+          done
+          if [[ "${{ matrix.shard }}" == "0" ]]; then
+            selected+=(tests/security tests/payments)
+          fi
+          printf 'Running shard %s with %s test targets\n' "${{ matrix.shard }}" "${#selected[@]}"
+          python -m pytest "${selected[@]}" -q
         env:
           ENVIRONMENT: test
 
