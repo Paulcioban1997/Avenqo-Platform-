@@ -13,6 +13,13 @@ from backend.app.middlewares.request_id import RequestIDMiddleware
 from backend.app.middlewares.security_headers import SecurityHeadersMiddleware
 
 
+FIRST_PARTY_WEB_ORIGINS = {
+    "https://avenqo.ca",
+    "https://www.avenqo.ca",
+    "https://app.avenqo.ca",
+}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Prépare les ressources persistantes de l'application."""
@@ -49,15 +56,16 @@ def create_application() -> FastAPI:
 
     # CORS : en développement, Flutter Web choisit un port localhost aléatoire à
     # chaque lancement — on autorise donc localhost/127.0.0.1 sur n'importe quel
-    # port via une regex (jamais en production, où seules les origines explicites
-    # de CORS_ORIGINS, ex. https://app.avenqo.ca, sont acceptées).
+    # port via une regex. En production, on conserve CORS_ORIGINS mais on ajoute
+    # systématiquement les trois origines first-party Avenqo afin que la connexion
+    # fonctionne depuis avenqo.ca, www.avenqo.ca et app.avenqo.ca.
     cors_kwargs: dict[str, object] = {
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         "allow_headers": ["Authorization", "Content-Type", "X-Request-ID", "Stripe-Signature"],
     }
     if is_production:
-        cors_kwargs["allow_origins"] = settings.cors_origins
+        cors_kwargs["allow_origins"] = sorted(set(settings.cors_origins) | FIRST_PARTY_WEB_ORIGINS)
     else:
         cors_kwargs["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     app.add_middleware(CORSMiddleware, **cors_kwargs)
@@ -81,4 +89,3 @@ def create_application() -> FastAPI:
 
 
 app = create_application()
-
