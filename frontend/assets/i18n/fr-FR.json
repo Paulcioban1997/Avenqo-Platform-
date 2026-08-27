@@ -1,0 +1,632 @@
+{
+  "common": {
+    "login": "Connexion",
+    "tryFree": "Essayer Avenqo",
+    "watchDemo": "Voir une démonstration",
+    "noCreditCard": "Accompagnement personnalisé",
+    "guidedSetup": "Configuration guidée",
+    "isolatedData": "Données isolées"
+  },
+  "nav": {
+    "features": "Fonctionnalités",
+    "modules": "Modules",
+    "pricing": "Tarifs",
+    "enterprise": "Entreprise",
+    "docs": "Documentation"
+  },
+  "hero": {
+    "eyebrow": "La plateforme IA tout-en-un pour l'entreprise",
+    "titleLine1": "Toute votre entreprise.",
+    "titleLine2": "Une seule intelligence.",
+    "subtitle": "Avenqo unifie vente, relation client, finance, documents et opérations dans une plateforme IA modulaire, conçue pour accompagner la croissance des PME comme des grandes entreprises.",
+    "trustLabel": "Une seule plateforme pour",
+    "trustSell": "Vendre",
+    "trustUnderstand": "Comprendre",
+    "trustAutomate": "Automatiser",
+    "trustDecide": "Décider"
+  },
+  "dashboard": {
+    "greeting": "Bonjour Paul",
+    "subtitle": "Votre activité aujourd'hui",
+    "askAvenqo": "Demander à Avenqo",
+    "salesLabel": "Ventes du mois",
+    "activeClientsLabel": "Clients actifs",
+    "opportunitiesLabel": "Opportunités",
+    "opportunitiesHint": "À prioriser",
+    "performanceLabel": "Performance commerciale",
+    "performancePeriod": "6 mois",
+    "recommendationLabel": "Recommandation",
+    "recommendationTitle": "Réactivez 42 clients à forte valeur.",
+    "recommendationText": "Une campagne ciblée pourrait générer jusqu'à 18 400 $ ce mois-ci.",
+    "recommendationAction": "Voir l'action",
+    "quickModulesLabel": "Vos modules",
+    "quickModules": [
+      {
+        "key": "retail",
+        "label": "Retail Intelligence"
+      },
+      {
+        "key": "crm",
+        "label": "CRM AI"
+      },
+      {
+        "key": "ocr",
+        "label": "OCR AI"
+      },
+      {
+        "key": "voice",
+        "label": "Voice AI"
+      },
+      {
+        "key": "media",
+        "label": "Media AI"
+      },
+      {
+        "key": "accounting",
+        "label": "Accounting AI"
+      },
+      {
+        "key": "legal",
+        "label": "Legal AI"
+      }
+    ]
+  },
+  "features": {
+    "kicker": "Une intelligence utile",
+    "title": "De la question à l'action, sans complexité.",
+    "subtitle": "Avenqo transforme votre activité en décisions claires, au même endroit.",
+    "assistantLabel": "Assistant Avenqo",
+    "assistantTitle": "Parlez à votre entreprise.",
+    "assistantText": "Posez une question comme vous le feriez à un collègue. Avenqo rassemble le contexte et répond directement.",
+    "demoQuestion": "Pourquoi mes ventes baissent ce mois-ci ?",
+    "demoAnswer": "La baisse provient principalement du segment Maison, en recul de 14 %. Je recommande une relance ciblée sur 126 clients.",
+    "demoAction1": "Préparer la campagne",
+    "demoAction2": "Voir l'analyse",
+    "actionsTitle": "Des actions, pas des écrans.",
+    "actionsText": "Chaque recommandation indique quoi faire, pourquoi et quel résultat attendre.",
+    "actionsPriority": "Priorité élevée",
+    "actionsLine": "Relancer 42 comptes",
+    "securityTitle": "Votre entreprise reste la vôtre.",
+    "securityText": "Espaces isolés, accès maîtrisés et architecture conçue pour évoluer.",
+    "securityItem1": "Accès par rôle",
+    "securityItem2": "Traçabilité",
+    "securityItem3": "Hébergement évolutif"
+  },
+  "modulesSection": {
+    "kicker": "Les modules Avenqo",
+    "title": "Une plateforme, des modules qui s'ajoutent progressivement.",
+    "subtitle": "Avenqo est une plateforme d'IA modulaire. Retail Intelligence est disponible maintenant, et d'autres modules métier arrivent progressivement.",
+    "discover": "Découvrir",
+    "availableNow": "Disponible maintenant",
+    "comingSoon": "Bientôt disponible",
+    "items": [
+      {
+        "name": "Retail Intelligence",
+        "description": "Pilotez ventes, produits et fidélisation depuis une vue unifiée.",
+        "available": true
+      },
+      {
+        "name": "CRM AI",
+        "description": "Priorisez les relations, opportunités et prochaines actions.",
+        "available": false
+      },
+      {
+        "name": "OCR AI",
+        "description": "Transformez les documents entrants en opérations structurées.",
+        "available": false
+      },
+      {
+        "name": "Voice AI",
+        "description": "Automatisez les échanges vocaux sans perdre le contexte client.",
+        "available": false
+      },
+      {
+        "name": "Media AI",
+        "description": "Produisez et organisez vos contenus depuis un espace unique.",
+        "available": false
+      },
+      {
+        "name": "Accounting AI",
+        "description": "Accélérez le suivi financier et la préparation comptable.",
+        "available": false
+      },
+      {
+        "name": "Legal AI",
+        "description": "Analysez et sécurisez vos documents contractuels.",
+        "available": false
+      }
+    ]
+  },
+  "steps": {
+    "kicker": "Simple dès le départ",
+    "title": "Opérationnel en quatre étapes.",
+    "ctaLabel": "Prêt à démarrer ?",
+    "ctaButton": "Créer mon espace",
+    "items": [
+      {
+        "number": "01",
+        "title": "Créez votre espace",
+        "text": "Configurez votre entreprise en quelques minutes."
+      },
+      {
+        "number": "02",
+        "title": "Choisissez vos modules",
+        "text": "Activez uniquement les solutions dont vous avez besoin."
+      },
+      {
+        "number": "03",
+        "title": "Connectez vos outils",
+        "text": "Reliez vos ventes, votre CRM ou vos documents."
+      },
+      {
+        "number": "04",
+        "title": "Laissez Avenqo agir",
+        "text": "Recevez des réponses et des actions prêtes à exécuter."
+      }
+    ]
+  },
+  "usecases": {
+    "kicker": "Pour toute l'entreprise",
+    "title": "Une vision commune. Des équipes plus rapides.",
+    "subtitle": "Direction, ventes, finance et opérations partagent enfin la même lecture de l'activité.",
+    "direction": {
+      "title": "Direction",
+      "text": "Suivez les priorités et les résultats en temps réel."
+    },
+    "finance": {
+      "title": "Finance",
+      "text": "Anticipez les écarts et accélérez le suivi."
+    },
+    "commerce": {
+      "title": "Commerce",
+      "text": "Identifiez les clients et produits à fort potentiel."
+    },
+    "operations": {
+      "title": "Opérations",
+      "text": "Automatisez les tâches qui ralentissent vos équipes."
+    }
+  },
+  "why": {
+    "kicker": "Pourquoi Avenqo",
+    "title": "Conçu pour grandir avec vous.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Modulaire par nature",
+        "text": "Commencez par une priorité et étendez la plateforme sans recommencer."
+      },
+      {
+        "number": "02",
+        "title": "Une expérience unifiée",
+        "text": "Une connexion, une interface et un assistant commun à tous vos modules."
+      },
+      {
+        "number": "03",
+        "title": "Accompagnement humain",
+        "text": "PMC Solutions AI vous accompagne de la connexion à l'adoption."
+      },
+      {
+        "number": "04",
+        "title": "Prêt pour l'entreprise",
+        "text": "Gestion des accès, espaces isolés et infrastructure évolutive."
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Tarification",
+    "title": "Commencez maintenant. Évoluez à votre rythme.",
+    "subtitle": "Chaque offre inclut la plateforme, l'assistant Avenqo et un espace sécurisé.",
+    "popular": "Le plus choisi",
+    "priceLabel": "Tarification à confirmer",
+    "plans": [
+      {
+        "tier": "Demo",
+        "title": "Pour découvrir Avenqo",
+        "priceLabel": "Tarification à confirmer",
+        "items": [
+          "Accès à Retail Intelligence",
+          "Assistant Avenqo intégré",
+          "Espace sécurisé"
+        ],
+        "action": "Essayer Avenqo"
+      },
+      {
+        "tier": "Professional",
+        "title": "Pour les entreprises qui veulent aller plus loin",
+        "priceLabel": "Tarification à confirmer",
+        "items": [
+          "Retail Intelligence complet",
+          "Automatisations avancées",
+          "Accompagnement prioritaire"
+        ],
+        "action": "Commencer"
+      },
+      {
+        "tier": "Enterprise",
+        "title": "Sur mesure",
+        "priceLabel": "Contacter les ventes",
+        "items": [
+          "Connexions personnalisées",
+          "Gouvernance dédiée",
+          "Accompagnement dédié"
+        ],
+        "action": "Contacter les ventes"
+      }
+    ]
+  },
+  "faq": {
+    "kicker": "Questions fréquentes",
+    "title": "Tout ce qu'il faut savoir.",
+    "subtitle": "Une autre question ? Notre équipe vous répond directement.",
+    "contactCta": "bonjour@avenqo.ca",
+    "items": [
+      {
+        "question": "Avenqo remplace-t-il mes outils actuels ?",
+        "answer": "Avenqo se connecte à votre environnement et rassemble décisions, recommandations et automatisations dans une expérience unique."
+      },
+      {
+        "question": "Puis-je commencer avec un seul module ?",
+        "answer": "Oui. Commencez par votre priorité, puis ajoutez des capacités au rythme de votre entreprise."
+      },
+      {
+        "question": "Mes informations sont-elles isolées ?",
+        "answer": "Oui. Chaque entreprise dispose de son propre espace, de ses accès et de ses informations strictement séparées."
+      },
+      {
+        "question": "Avenqo convient-il aux PME ?",
+        "answer": "Oui. Les offres accompagnent aussi bien une équipe en croissance qu'une organisation multisite."
+      },
+      {
+        "question": "Combien de temps faut-il pour démarrer ?",
+        "answer": "La création de l'espace est immédiate. Le délai de connexion dépend ensuite des outils choisis."
+      }
+    ]
+  },
+  "finalCta": {
+    "label": "Votre prochaine étape",
+    "title": "Faites travailler votre entreprise autrement.",
+    "tryFree": "Essayer Avenqo",
+    "scheduleDemo": "Planifier une démonstration"
+  },
+  "footer": {
+    "tagline": "Une plateforme. Toutes vos solutions IA.",
+    "platformTitle": "Plateforme",
+    "platformLinks": [
+      "Fonctionnalités",
+      "Modules",
+      "Tarifs",
+      "Fonctionnement"
+    ],
+    "companyTitle": "Entreprise",
+    "companyLinks": [
+      "À propos",
+      "Contact",
+      "Sécurité",
+      "Partenaires"
+    ],
+    "resourcesTitle": "Ressources",
+    "resourcesLinks": [
+      "Documentation",
+      "FAQ",
+      "Confidentialité",
+      "Conditions"
+    ],
+    "copyright": "© 2026 Avenqo. Une plateforme de PMC Solutions AI."
+  },
+  "assistant": {
+    "title": "Demandez à Avenqo au sujet de votre entreprise",
+    "subtitle": "Posez une question métier : Avenqo utilise les informations disponibles pour votre entreprise.",
+    "connectData": "Connecter mes données",
+    "newConversation": "Nouvelle conversation",
+    "conversationsEmpty": "Vos conversations apparaîtront ici.",
+    "deleteConversation": "Supprimer la conversation",
+    "thinking": "Avenqo réfléchit...",
+    "retry": "Réessayer",
+    "sourcesLabel": "Sources",
+    "newest": "Plus récent",
+    "you": "Vous",
+    "avenqoAi": "Avenqo IA",
+    "suggestions": [
+      "Comment se portent mes ventes ?",
+      "Quels clients ont besoin d'attention ?",
+      "Qu'est-ce qui a changé ce mois-ci ?",
+      "Résumez la performance de mon entreprise."
+    ]
+  },
+  "auth": {
+    "tagline": "La plateforme IA pour les décisions de votre entreprise",
+    "loginTitle": "Connexion",
+    "loginSubtitle": "Accédez à votre espace Avenqo.",
+    "registerTitle": "Créer une organisation",
+    "registerSubtitle": "Configurez votre espace Avenqo en quelques minutes.",
+    "forgotTitle": "Mot de passe oublié",
+    "forgotSubtitle": "Recevez un lien pour réinitialiser votre mot de passe.",
+    "verifyTitle": "Vérifier votre email",
+    "verifySubtitle": "Entrez le jeton reçu par email.",
+    "resetTitle": "Nouveau mot de passe",
+    "resetSubtitle": "Choisissez un nouveau mot de passe sécurisé.",
+    "organisation": "Organisation",
+    "billingEmail": "Email de facturation",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "email": "Email",
+    "password": "Mot de passe",
+    "emailToken": "Jeton reçu par email",
+    "requiredField": "Champ requis",
+    "forgotPassword": "Mot de passe oublié",
+    "createOrganisation": "Créer une organisation",
+    "backToLogin": "Retour à la connexion",
+    "home": "Accueil",
+    "registerSuccess": "Compte créé. Vérifiez votre adresse email.",
+    "registerPendingVerification": "Compte créé. Un administrateur confirmera votre accès sous peu.",
+    "workspaceReadyMessage": "Votre espace Avenqo est prêt à être créé.",
+    "continueLabel": "Continuer",
+    "forgotSuccess": "Si le compte existe, un email a été envoyé.",
+    "verifySuccess": "Adresse email vérifiée. Vous pouvez vous connecter.",
+    "resetSuccess": "Mot de passe modifié. Vous pouvez vous connecter.",
+    "genericError": "Le service est temporairement indisponible.",
+    "verifyButton": "Vérifier votre email"
+  },
+  "dashboardHome": {
+    "hello": "Bonjour",
+    "subtitleForCompany": "Voici ce qui mérite votre attention chez {company}.",
+    "askAvenqo": "Que souhaitez-vous comprendre aujourd’hui ?",
+    "connectDataTitle": "Connectez vos données pour débloquer analyses, prévisions et recommandations Avenqo AI.",
+    "connectDataCta": "Connecter mes données",
+    "thisMonth": "Ce mois-ci",
+    "salesLabel": "Chiffre d’affaires",
+    "ordersLabel": "Commandes",
+    "customersLabel": "Clients actifs",
+    "avgOrderLabel": "Panier moyen",
+    "prioritiesTitle": "Priorités recommandées",
+    "prioritiesEmpty": "Vos priorités apparaîtront ici dès que vos données seront connectées.",
+    "planLabel": "Plan",
+    "askAvenqoSubtitle": "Posez vos questions sur votre activité et obtenez des réponses contextualisées.",
+    "askAvenqoCta": "Poser une question à l'IA",
+    "importDataTitle": "Importez vos données",
+    "importDataSubtitle": "Connectez ou importez vos sources métier pour activer l'intelligence Avenqo.",
+    "importDataCta": "Importer mes données",
+    "connectionsTitle": "Connexions",
+    "connectionsEmpty": "Aucune donnée connectée",
+    "connectionsEmptyCta": "Charger mes données",
+    "connectionsReadyLabel": "Prêt",
+    "connectionsLastUpdate": "Dernière mise à jour",
+    "activityTitle": "Activité récente",
+    "activityEmpty": "Aucune activité récente pour le moment.",
+    "stepsTitle": "Prochaines étapes recommandées",
+    "stepOrgLabel": "Complétez la configuration de votre entreprise",
+    "stepDataLabel": "Connectez ou importez vos données",
+    "stepInsightsLabel": "Explorez vos analyses",
+    "stepAskLabel": "Posez une question à Avenqo AI"
+  },
+  "admin": {
+    "commandCenterTitle": "Centre de contrôle Avenqo",
+    "platformBadge": "PLATEFORME",
+    "backToWorkspace": "Retour à l'espace de travail",
+    "logOut": "Se déconnecter",
+    "navOverview": "Vue d'ensemble",
+    "navCompanies": "Entreprises",
+    "navSubscriptions": "Abonnements",
+    "navBilling": "Facturation",
+    "navAiUsage": "Usage IA",
+    "navProviders": "Fournisseurs",
+    "navSystemHealth": "Santé système",
+    "navAuditLogs": "Journaux d'audit",
+    "navSupport": "Support",
+    "navSettings": "Paramètres",
+    "overviewTitle": "Vue d'ensemble de la plateforme",
+    "overviewSubtitle": "Indicateurs cross-tenant, santé et activité récente sur Avenqo.",
+    "overviewError": "Le tableau de bord admin est temporairement indisponible.",
+    "totalCompanies": "Entreprises au total",
+    "newCompanies30d": "Nouvelles entreprises (30j)",
+    "activeSubscriptions": "Abonnements actifs",
+    "pastDue": "En retard de paiement",
+    "aiRequestsPeriod": "Requêtes IA (période)",
+    "planDistribution": "Répartition par plan",
+    "providerHealth": "Santé des fournisseurs IA",
+    "noCompaniesYet": "Aucune entreprise pour le moment.",
+    "noProviderStatus": "Aucun statut de fournisseur signalé.",
+    "companiesTitle": "Entreprises",
+    "companiesSubtitle": "entreprises sur la plateforme",
+    "searchCompaniesHint": "Rechercher une entreprise…",
+    "companiesError": "L'annuaire des entreprises est temporairement indisponible.",
+    "noCompaniesMatch": "Aucune entreprise ne correspond à",
+    "companyFallbackName": "Entreprise",
+    "joinedLabel": "inscrite le",
+    "companyDetailError": "Le détail de cette entreprise est indisponible.",
+    "usage": "Utilisation",
+    "users": "Utilisateurs",
+    "datasets": "Jeux de données",
+    "trainedModels": "Modèles entraînés",
+    "subscription": "Abonnement",
+    "currentPeriodEnd": "Fin de la période en cours",
+    "cancelsAtPeriodEnd": "Annulation en fin de période",
+    "yes": "Oui",
+    "no": "Non",
+    "enterpriseOverride": "Dérogation entreprise",
+    "active": "Active",
+    "auditLogTitle": "Journaux d'audit",
+    "auditLogSubtitle": "entrées récentes · lecture seule",
+    "auditLogError": "Le journal d'audit est temporairement indisponible.",
+    "noAuditEntries": "Aucune entrée d'audit pour le moment.",
+    "subscriptionsTitle": "Abonnements",
+    "subscriptionsSubtitle": "entreprises · Demo / Professional / Enterprise",
+    "subscriptionsError": "Les données d'abonnement sont temporairement indisponibles.",
+    "noSubscriptionsYet": "Aucun abonnement pour le moment.",
+    "billingTitle": "Facturation",
+    "billingSubtitle": "Signaux d'abonnement et de revenus à l'échelle de la plateforme.",
+    "billingError": "La vue facturation est temporairement indisponible.",
+    "noInvoicesMessage": "Les factures, le MRR et l'ARR cross-tenant nécessitent un endpoint d'agrégation de facturation admin dédié qui n'existe pas encore côté backend. Non inventé ici.",
+    "aiUsageTitle": "Usage IA",
+    "aiUsageSubtitle": "Requêtes IA logiques et disponibilité des fournisseurs sur toutes les entreprises.",
+    "aiUsageError": "L'usage IA est temporairement indisponible.",
+    "aiRequestsCurrentPeriod": "Requêtes Avenqo AI (période en cours)",
+    "providersLabel": "Fournisseurs",
+    "noCostBreakdownMessage": "Le détail des tokens et du coût estimé par fournisseur nécessite un endpoint d'agrégation d'usage dédié qui n'existe pas encore côté backend. Non inventé ici.",
+    "providersTitle": "Fournisseurs",
+    "providersSubtitle": "Santé en direct de la passerelle IA — aucune clé ni erreur brute affichée.",
+    "providersError": "Le statut des fournisseurs est temporairement indisponible.",
+    "systemHealthTitle": "Santé système",
+    "systemHealthSubtitle": "Disponibilité en direct des services essentiels d'Avenqo.",
+    "systemHealthError": "La santé du système est temporairement indisponible.",
+    "backendLabel": "Backend",
+    "databaseLabel": "Base de données",
+    "billingStripeLabel": "Facturation (Stripe)",
+    "configured": "configuré",
+    "notConfigured": "non configuré",
+    "unknownStatus": "inconnu",
+    "supportTitle": "Support",
+    "supportSubtitle": "Escalades, incidents importants et incidents entreprise.",
+    "noSupportMessage": "Aucun backend de support/tickets n'existe encore — cette vue n'affiche volontairement aucun ticket fictif.",
+    "settingsTitle": "Paramètres",
+    "signedInAs": "Connecté en tant que",
+    "noSettingsMessage": "Aucune configuration globale de la plateforme n'est exposée ici pour le moment — rien à afficher honnêtement au-delà de l'identité du compte."
+  },
+  "onboarding": {
+    "title": "Configurons votre espace Avenqo",
+    "subtitle": "Quelques questions rapides pour personnaliser vos priorités et vos recommandations.",
+    "goalsLabel": "Quels sont vos objectifs principaux ?",
+    "goalIncreaseSales": "Augmenter les ventes",
+    "goalReduceChurn": "Réduire le taux de désabonnement",
+    "goalOptimizePricing": "Optimiser les prix",
+    "goalImproveInventory": "Améliorer la gestion des stocks",
+    "goalUnderstandCustomers": "Mieux comprendre mes clients",
+    "goalAutomateReports": "Automatiser mes rapports",
+    "toolsLabel": "Quels outils utilisez-vous actuellement ?",
+    "toolPos": "Système de caisse (POS)",
+    "toolEcommerce": "Plateforme e-commerce",
+    "toolSpreadsheets": "Feuilles de calcul (Excel/Sheets)",
+    "toolAccounting": "Logiciel de comptabilité",
+    "toolCrm": "CRM",
+    "toolNone": "Aucun outil pour le moment",
+    "teamSizeLabel": "Quelle est la taille de votre équipe ?",
+    "teamSizeSolo": "Juste moi",
+    "teamSizeSmall": "2 à 10 personnes",
+    "teamSizeMedium": "11 à 50 personnes",
+    "teamSizeLarge": "Plus de 50 personnes",
+    "refineIndustryLabel": "Précisez votre secteur d'activité (facultatif)",
+    "refineIndustryHint": "Ex. : commerce de détail spécialisé, restauration rapide, cabinet comptable...",
+    "continueCta": "Continuer",
+    "skipCta": "Passer pour l'instant",
+    "genericError": "Impossible d'enregistrer vos réponses pour le moment.",
+    "goalsRequired": "Sélectionnez au moins un objectif.",
+    "teamSizeRequired": "Sélectionnez la taille de votre équipe."
+  },
+  "company": {
+    "navOverviewLabel": "Vue d’ensemble",
+    "navOverviewDescription": "Les indicateurs essentiels de votre activité.",
+    "navAssistantLabel": "AI Assistant",
+    "navAssistantDescription": "Posez vos questions et passez à l’action.",
+    "navSalesLabel": "Ventes",
+    "navSalesDescription": "Suivez le chiffre d’affaires et les tendances.",
+    "navCustomersLabel": "Clients",
+    "navCustomersDescription": "Comprenez la fidélité et les risques de départ.",
+    "navProductsLabel": "Produits",
+    "navProductsDescription": "Pilotez la demande et les performances du catalogue.",
+    "navRecommendationsLabel": "Recommandations",
+    "navRecommendationsDescription": "Retrouvez les opportunités prioritaires.",
+    "navAlertsLabel": "Alertes",
+    "navAlertsDescription": "Surveillez les changements qui demandent votre attention.",
+    "navReportsLabel": "Rapports",
+    "navReportsDescription": "Consultez et partagez vos synthèses de direction.",
+    "navConnectionsLabel": "Connexions",
+    "navConnectionsDescription": "Reliez vos outils de ventes et de gestion.",
+    "navTeamLabel": "Équipe",
+    "navTeamDescription": "Gérez les accès de vos collaborateurs.",
+    "navBillingLabel": "Facturation",
+    "navBillingDescription": "Gérez votre abonnement et vos factures.",
+    "navSettingsLabel": "Paramètres",
+    "navSettingsDescription": "Préférences de votre entreprise et de votre compte.",
+    "navSupportLabel": "Avenqo Support",
+    "navSupportDescription": "Besoin d'aide pour utiliser Avenqo ? Posez votre question ici.",
+    "connectionsLoading": "Chargement…",
+    "connectionsNoDataTitle": "Connectez vos données pour activer les analyses et l'IA Avenqo.",
+    "connectionsNoDataFormats": "Formats acceptés : CSV, XLSX, JSON, Parquet.",
+    "connectionsImportButton": "Importer un fichier",
+    "connectionsUploadingLabel": "Envoi en cours…",
+    "connectionsAnalyzing": "Analyse de la structure de vos données…",
+    "connectionsMappingTitle": "Confirmez la correspondance de vos colonnes",
+    "connectionsMappingSubtitle": "Certaines colonnes nécessitent une confirmation manuelle avant l'activation des analyses.",
+    "connectionsMappingIgnore": "Ignorer cette colonne",
+    "connectionsConfirmMapping": "Confirmer la correspondance",
+    "connectionsReadyTitle": "Données prêtes",
+    "connectionsStatNameLabel": "Nom",
+    "connectionsStatRowsLabel": "Lignes",
+    "connectionsStatColumnsLabel": "Colonnes",
+    "connectionsStatUpdatedLabel": "Dernière mise à jour",
+    "connectionsGoDashboard": "Aller au tableau de bord",
+    "connectionsAskAvenqo": "Demander à Avenqo AI",
+    "connectionsImportAnother": "Importer un autre dataset",
+    "connectionsRetry": "Réessayer",
+    "connectionsGenericError": "Une erreur inattendue est survenue.",
+    "connectionsFileEmptyError": "Le fichier sélectionné est vide ou illisible.",
+    "connectionsProcessingError": "Ce fichier n'a pas pu être traité.",
+    "businessDefaultTitle": "Votre espace est prêt",
+    "businessDefaultDescription": "Connectez vos outils pour afficher ici des informations à jour.",
+    "businessConnectButton": "Connecter mes outils",
+    "businessSalesTitle": "Suivez chaque évolution",
+    "businessSalesDescription": "Vos tendances, comparaisons et prévisions de ventes apparaîtront ici.",
+    "businessCustomersTitle": "Fidélisez les bons clients",
+    "businessCustomersDescription": "Vous retrouverez les clients à valoriser, à relancer ou à accompagner en priorité.",
+    "businessProductsTitle": "Pilotez votre catalogue",
+    "businessProductsDescription": "Les produits performants, la demande attendue et les stocks à surveiller seront réunis ici.",
+    "businessRecommendationsTitle": "Passez directement à l’action",
+    "businessRecommendationsDescription": "Avenqo classera les opportunités selon leur impact potentiel sur votre activité.",
+    "businessAlertsTitle": "Restez informé sans bruit",
+    "businessAlertsDescription": "Les variations importantes et les risques seront signalés avec une action recommandée.",
+    "businessReportsTitle": "Vos synthèses de direction",
+    "businessReportsDescription": "Créez et partagez des rapports clairs sur les résultats de votre entreprise.",
+    "billingTitle": "Facturation",
+    "billingPortalButton": "Portail Stripe",
+    "billingUnavailable": "Facturation temporairement indisponible.",
+    "billingPlanPrefix": "Plan ",
+    "billingStatusPrefix": "État: ",
+    "billingCancelScheduled": "Annulation planifiée",
+    "billingInvoicesTitle": "Factures",
+    "billingInvoiceFallback": "Facture",
+    "employeesTitle": "Utilisateurs",
+    "employeesRefreshTooltip": "Actualiser",
+    "employeesUnavailable": "Accès utilisateurs indisponible.",
+    "employeesColumnName": "Nom",
+    "employeesColumnEmail": "Email",
+    "employeesColumnRole": "Rôle",
+    "employeesColumnStatus": "État",
+    "settingsTitle": "Paramètres",
+    "settingsSubtitle": "Vos informations de compte, votre entreprise et vos préférences.",
+    "settingsAccountSection": "Compte",
+    "settingsCompanySection": "Entreprise",
+    "settingsAppearanceSection": "Apparence",
+    "settingsSessionSection": "Session",
+    "settingsNameLabel": "Nom",
+    "settingsEmailLabel": "E-mail",
+    "settingsRoleLabel": "Rôle",
+    "settingsPlanLabel": "Plan",
+    "settingsManageSubscription": "Gérer l’abonnement",
+    "settingsThemeLabel": "Thème",
+    "settingsLanguageLabel": "Langue",
+    "settingsThemeLight": "Clair",
+    "settingsThemeDark": "Sombre",
+    "settingsThemeSystem": "Système",
+    "settingsLogout": "Déconnexion",
+    "connectionsAddFiles": "Ajouter des fichiers",
+    "connectionsAddMoreFiles": "Ajouter d'autres fichiers",
+    "connectionsReadyToUpload": "Prêt à importer",
+    "connectionsUploadCountOne": "Importer {n} fichier",
+    "connectionsUploadCountOther": "Importer {n} fichiers",
+    "connectionsRemoveFile": "Retirer",
+    "connectionsDuplicateFileNotice": "Ce fichier est déjà sélectionné.",
+    "connectionsImportCompleteTitle": "Import terminé",
+    "connectionsImportSummarySuccessOne": "{n} fichier importé avec succès.",
+    "connectionsImportSummarySuccessOther": "{n} fichiers importés avec succès.",
+    "connectionsImportSummaryErrorsOne": "{n} fichier en erreur.",
+    "connectionsImportSummaryErrorsOther": "{n} fichiers en erreur.",
+    "connectionsMappingRequiredBadge": "Mappage requis",
+    "connectionsCompleteMapping": "Compléter le mappage",
+    "connectionsConnectedDataTitle": "Données connectées",
+    "connectionsContinueLabel": "Continuer",
+    "connectionsImportedAtLabel": "Importé",
+    "connectionsUploadedFileSuccessLabel": "Données importées avec succès",
+    "themeToggleSwitchToDark": "Passer en mode sombre",
+    "themeToggleSwitchToLight": "Passer en mode clair"
+  }
+}
