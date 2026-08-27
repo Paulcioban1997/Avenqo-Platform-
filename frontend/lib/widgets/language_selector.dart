@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -7,9 +8,9 @@ import 'package:avenqo/i18n/locale_scope.dart';
 /// Sélecteur de langue mince, miroir de web/src/components/region-language-selector.tsx :
 /// regroupe les langues disponibles par région dans un menu déroulant.
 class LanguageSelector extends StatelessWidget {
-  const LanguageSelector({super.key, this.foregroundColor = Colors.white70});
+  const LanguageSelector({super.key, this.foregroundColor});
 
-  final Color foregroundColor;
+  final Color? foregroundColor;
 
   static const Map<String, String> _regionLabels = {
     'americas': 'Amériques',
@@ -22,6 +23,7 @@ class LanguageSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AvenqoLocaleScope.of(context);
+    final effectiveForeground = foregroundColor ?? AvenqoColors.of(context).muted;
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
@@ -37,11 +39,21 @@ class LanguageSelector extends StatelessWidget {
               children: [
                 Text(current?.flag ?? '🌐', style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 6),
-                Text(
-                  current?.code.toUpperCase() ?? '',
-                  style: TextStyle(color: foregroundColor, fontSize: 12, fontWeight: FontWeight.w700),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Text(
+                    current?.nativeName ?? current?.code.toUpperCase() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: effectiveForeground,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-                Icon(Icons.expand_more, size: 16, color: foregroundColor),
+                const SizedBox(width: 2),
+                Icon(Icons.expand_more, size: 16, color: effectiveForeground),
               ],
             ),
           ),
@@ -61,18 +73,28 @@ class LanguageSelector extends StatelessWidget {
       if (locales == null || locales.isEmpty) {
         continue;
       }
-      entries.add(PopupMenuItem<String>(enabled: false, child: Text(_regionLabels[region]!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))));
-      for (final locale in locales) {
-        entries.add(PopupMenuItem<String>(
-          value: locale.code,
-          child: Row(
-            children: [
-              Text(locale.flag),
-              const SizedBox(width: 8),
-              Text(locale.nativeName),
-            ],
+      entries.add(
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Text(
+            _regionLabels[region]!,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
           ),
-        ));
+        ),
+      );
+      for (final locale in locales) {
+        entries.add(
+          PopupMenuItem<String>(
+            value: locale.code,
+            child: Row(
+              children: [
+                Text(locale.flag),
+                const SizedBox(width: 8),
+                Text(locale.nativeName),
+              ],
+            ),
+          ),
+        );
       }
     }
     return entries;
