@@ -154,6 +154,38 @@ def test_dataset_routes_hide_other_tenants(dataset_environment) -> None:
     assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 404
 
 
+def test_dataset_delete_is_tenant_scoped_and_removes_artifacts(dataset_environment) -> None:
+    client, session_factory, tenants, _ = dataset_environment
+    upload = client.post(
+        "/api/v1/datasets/csv",
+        data={"module_code": "retail"},
+        files={"file": ("customers.csv", CSV_CONTENT, "text/csv")},
+    )
+    assert upload.status_code == 201
+    dataset_id = upload.json()["id"]
+
+    with session_factory() as session:
+        dataset = session.get(Dataset, dataset_id)
+        assert dataset is not None
+        source = Path(dataset.source)
+        dataset_root = source.parent
+        assert source.is_file()
+        assert dataset_root.is_dir()
+
+    # Une autre entreprise ne peut ni voir ni supprimer le fichier.
+    tenants["current"]["tenant"] = tenants["nova"]
+    assert client.delete(f"/api/v1/datasets/{dataset_id}").status_code == 404
+    assert source.is_file()
+
+    # Le propriétaire peut supprimer le dataset, ses métadonnées et son dossier.
+    tenants["current"]["tenant"] = tenants["acme"]
+    response = client.delete(f"/api/v1/datasets/{dataset_id}")
+    assert response.status_code == 204
+    assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 404
+    assert client.get("/api/v1/datasets").json() == []
+    assert not dataset_root.exists()
+
+
 def test_csv_import_succeeds_without_active_module_core_capability(dataset_environment) -> None:
     """L'ingestion de données est une capacité CORE Avenqo : une entreprise
     sans module optionnel actif peut tout de même importer un CSV."""
