@@ -1,4 +1,4 @@
-﻿"""Cas d'usage de facturation Stripe limitÃ©s au tenant authentifiÃ©."""
+"""Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
 from datetime import datetime, timezone
 from typing import Any
@@ -42,11 +42,11 @@ class BillingService:
     def create_checkout(self, company: Company, plan_code: str) -> str:
         plan = get_plan(plan_code)
         if plan.code == PlanCode.CUSTOM_ENTERPRISE:
-            raise BillingOperationError("Custom Enterprise nÃ©cessite un contact commercial")
+            raise BillingOperationError("Custom Enterprise nécessite un contact commercial")
         price_id = self._required_price(plan.code)
         account = self.get_account(company.id)
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
-            raise BillingOperationError("Un abonnement existe dÃ©jÃ ; utilisez le changement d'offre")
+            raise BillingOperationError("Un abonnement existe déjà; utilisez le changement d'offre")
         if not account.stripe_customer_id:
             account.stripe_customer_id = self._provider.create_customer(
                 company.email,
@@ -65,7 +65,7 @@ class BillingService:
     def change_plan(self, company_id: UUID, plan_code: str) -> BillingAccount:
         plan = get_plan(plan_code)
         if plan.code == PlanCode.CUSTOM_ENTERPRISE:
-            raise BillingOperationError("Custom Enterprise nÃ©cessite un contact commercial")
+            raise BillingOperationError("Custom Enterprise nécessite un contact commercial")
         account = self.get_account(company_id)
         if not account.stripe_subscription_id:
             raise BillingOperationError("Aucun abonnement Stripe actif")
@@ -84,10 +84,16 @@ class BillingService:
         self._session.commit()
         return account
 
-    def create_portal(self, company_id: UUID) -> str:
-        account = self.get_account(company_id)
+    def create_portal(self, company: Company) -> str:
+        """Ouvre le portail Stripe et crée le Customer à la demande si nécessaire."""
+        account = self.get_account(company.id)
         if not account.stripe_customer_id:
-            raise BillingOperationError("Aucun compte de facturation Stripe")
+            account.stripe_customer_id = self._provider.create_customer(
+                company.email,
+                company.name,
+                str(company.id),
+            )
+            self._session.commit()
         return self._provider.create_portal(
             account.stripe_customer_id,
             f"{self._settings.frontend_url.rstrip('/')}/billing",
@@ -102,7 +108,7 @@ class BillingService:
 
     def process_webhook(self, payload: bytes, signature: str) -> bool:
         if not self._settings.stripe_webhook_secret:
-            raise BillingConfigurationError("STRIPE_WEBHOOK_SECRET n'est pas configurÃ©")
+            raise BillingConfigurationError("STRIPE_WEBHOOK_SECRET n'est pas configuré")
         event = self._provider.construct_event(
             payload,
             signature,
@@ -189,11 +195,11 @@ class BillingService:
     def _company_id(resource: dict[str, Any]) -> UUID:
         raw_company_id = (resource.get("metadata") or {}).get("avenqo_company_id")
         if not raw_company_id:
-            raise BillingOperationError("MÃ©tadonnÃ©e avenqo_company_id absente")
+            raise BillingOperationError("Métadonnée avenqo_company_id absente")
         return UUID(str(raw_company_id))
 
     def _required_price(self, plan_code: PlanCode) -> str:
         price_id = self._settings.stripe_price_id(plan_code.value)
         if not price_id:
-            raise BillingConfigurationError(f"Prix Stripe non configurÃ© pour {plan_code.value}")
+            raise BillingConfigurationError(f"Prix Stripe non configuré pour {plan_code.value}")
         return price_id
