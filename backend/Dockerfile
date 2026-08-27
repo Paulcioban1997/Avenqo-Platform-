@@ -16,11 +16,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
-# Dépendances système minimales (certificats TLS pour les appels sortants
-# Stripe / fournisseurs IA ; postgresql-client pour pg_dump/pg_restore des
-# sauvegardes PostgreSQL via le cron Railway — voir scripts/backup_db.py).
+# Dépendances système minimales. Railway PostgreSQL tourne en 18.x ; le client
+# pg_dump doit être de la même version majeure (un pg_dump 17 refuse un serveur 18).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt backend/requirements.txt
