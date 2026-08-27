@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
-import 'package:avenqo/core/web_file_picker.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
 
@@ -33,16 +32,7 @@ class PickedFile {
 typedef FilePickerFn = Future<List<PickedFile>> Function();
 
 Future<List<PickedFile>> _defaultFilePicker() async {
-  if (kIsWeb) {
-    // Flutter Web : sélecteur natif navigateur déclenché immédiatement dans
-    // le handler de clic. Aucun await réseau/dialog avant — sinon le navigateur
-    // rejette l'ouverture du file picker (geste utilisateur perdu).
-    return WebFilePicker.pick(
-      accept: '.csv,.xlsx,.json,.parquet',
-      multiple: true,
-    );
-  }
-  // Mobile/Desktop : file_picker plugin (fonctionne sur ces plateformes).
+  // L'appel DOIT rester synchrone avec le geste utilisateur (pas d'await avant).
   final result = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: _acceptedExtensions,

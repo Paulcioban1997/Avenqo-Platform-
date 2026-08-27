@@ -8,6 +8,22 @@
     "direction": "ltr"
   },
   {
+    "code": "fr-CA",
+    "region": "americas",
+    "flag": "🇨🇦",
+    "nativeName": "Français (Canada)",
+    "englishName": "French (Canada)",
+    "direction": "ltr"
+  },
+  {
+    "code": "fr-FR",
+    "region": "europe",
+    "flag": "🇫🇷",
+    "nativeName": "Français (France)",
+    "englishName": "French (France)",
+    "direction": "ltr"
+  },
+  {
     "code": "en",
     "region": "americas",
     "flag": "🇺🇸",

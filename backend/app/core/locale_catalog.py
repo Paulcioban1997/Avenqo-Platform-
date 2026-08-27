@@ -25,6 +25,8 @@ class LocaleInfo:
 # 42 locales actuellement supportées par l'app.
 LOCALES: tuple[LocaleInfo, ...] = (
     LocaleInfo("fr", "CA", "Canada", "CAD", "America/Toronto"),
+    LocaleInfo("fr-CA", "CA", "Canada", "CAD", "America/Toronto"),
+    LocaleInfo("fr-FR", "FR", "France", "EUR", "Europe/Paris"),
     LocaleInfo("en", "US", "United States", "USD", "America/New_York"),
     LocaleInfo("es", "ES", "Spain", "EUR", "Europe/Madrid"),
     LocaleInfo("pt", "PT", "Portugal", "EUR", "Europe/Lisbon"),

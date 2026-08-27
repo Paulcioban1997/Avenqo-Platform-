@@ -72,9 +72,9 @@ def test_canada_en_defaults_to_cad() -> None:
     assert currency_for_country("Canada") == "CAD"
 
 
-def test_france_fr_not_in_42_locale_catalog_falls_back_to_usd() -> None:
-    # La France n'est pas parmi les 42 locales supportées -> fallback technique.
-    assert currency_for_country("France") == "USD"
+def test_france_fr_now_in_catalog_defaults_to_eur() -> None:
+    # La France est maintenant dans le catalogue via fr-FR.
+    assert currency_for_country("France") == "EUR"
 
 
 def test_spain_and_germany_default_to_eur() -> None:
@@ -99,8 +99,8 @@ def test_unknown_country_falls_back_to_usd() -> None:
     assert currency_for_country("Atlantis") == "USD"
 
 
-def test_catalog_supports_42_locales_and_distinct_currencies() -> None:
-    assert len(LOCALES) == 42
+def test_catalog_supports_44_locales_and_distinct_currencies() -> None:
+    assert len(LOCALES) == 44
     assert "CAD" in distinct_currencies() and "EUR" in distinct_currencies() and "JPY" in distinct_currencies()
 
 
