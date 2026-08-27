@@ -53,7 +53,7 @@ Future<Widget> _wrapWithLocale(Widget child) async {
   await locale.setLocale('fr');
   return AvenqoLocaleScope(
     controller: locale,
-    child: MaterialApp(home: child),
+    child: MaterialApp(home: Scaffold(body: child)),
   );
 }
 
@@ -114,6 +114,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Données connectées'), findsOneWidget);
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
     expect(find.text('sales.csv'), findsOneWidget);
     expect(find.textContaining('42'), findsOneWidget);
     // The Add files CTA must remain available even once data already exists.
@@ -134,7 +137,51 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
     expect(find.text('sales.csv'), findsOneWidget);
+  });
+
+  testWidgets('A connected dataset can be deleted from the dropdown', (
+    tester,
+  ) async {
+    var deleteCalled = false;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"33333333-3333-3333-3333-333333333333","name":"obsolete.csv","status":"ready","rows_count":8,"columns_count":2,"uploaded_at":"2026-08-27T00:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.method == 'DELETE' &&
+          request.url.path.endsWith(
+            '/datasets/33333333-3333-3333-3333-333333333333',
+          )) {
+        deleteCalled = true;
+        return http.Response('', 204);
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('obsolete.csv'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await tester.tap(
+      find.widgetWithIcon(FilledButton, Icons.delete_outline),
+    );
+    await tester.pumpAndSettle();
+
+    expect(deleteCalled, isTrue);
+    expect(find.text('obsolete.csv'), findsNothing);
   });
 
   testWidgets('Connections shows a safe error state and allows retry', (
@@ -317,8 +364,10 @@ void main() {
       await tester.tap(find.text('Continuer'));
       await tester.pumpAndSettle();
 
-      expect(find.text('sales.csv'), findsOneWidget);
       expect(find.text('Données connectées'), findsOneWidget);
+      await tester.tap(find.text('Données connectées'));
+      await tester.pumpAndSettle();
+      expect(find.text('sales.csv'), findsOneWidget);
     },
   );
 
