@@ -9,19 +9,30 @@ docs/backup-and-disaster-recovery.md et tests/security/test_backup_restore_secur
 
 from __future__ import annotations
 
+import os
+
 from backend.app.config.settings import get_settings
 from backend.app.services.backup_service import BackupService, database_scheme
 
 
 def main() -> None:
     settings = get_settings()
-    # Log SAFE de démarrage : présence + scheme uniquement — jamais l'URL
-    # complète (elle contient user/password de la base).
+    # Diagnostic SAFE : compare la présence côté env OS vs lecture Settings.
+    # Jamais la valeur de l'URL (elle contient user/password de la base).
+    env_present = os.getenv("DATABASE_URL") is not None
+    settings_present = bool(settings.database_url and settings.database_url.strip())
     scheme = database_scheme(settings.database_url)
     print(
-        f"Backup démarré : database_url_present={scheme is not None} "
+        "Backup démarré : "
+        f"env_database_url_present={str(env_present).lower()} "
+        f"settings_database_url_present={str(settings_present).lower()} "
         f"database_scheme={scheme or 'unknown'}"
     )
+    if env_present and not settings_present:
+        print(
+            "ALERTE : DATABASE_URL est définie dans l'environnement mais non lue "
+            "par Settings — vérifiez la configuration Pydantic (alias/env_file)."
+        )
     service = BackupService(settings)
     metadata = service.create_backup()
     print("Sauvegarde créée avec succès :")
