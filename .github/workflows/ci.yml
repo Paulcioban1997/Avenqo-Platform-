@@ -22,7 +22,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        run: pip install -r backend/requirements.txt
+        run: |
+          pip install -r backend/requirements.txt
+          pip install "moto[s3]>=5.0.0"
 
       - name: Run backend test suite
         run: python -m pytest tests/backend tests/security tests/payments -q
