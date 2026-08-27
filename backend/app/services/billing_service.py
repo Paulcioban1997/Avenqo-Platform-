@@ -41,8 +41,8 @@ class BillingService:
 
     def create_checkout(self, company: Company, plan_code: str) -> str:
         plan = get_plan(plan_code)
-        if plan.code == PlanCode.CUSTOM_ENTERPRISE:
-            raise BillingOperationError("Custom Enterprise nécessite un contact commercial")
+        if plan.requires_sales_contact:
+            raise BillingOperationError(f"{plan.name} nécessite un contact commercial")
         price_id = self._required_price(plan.code)
         account = self.get_account(company.id)
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
@@ -64,8 +64,8 @@ class BillingService:
 
     def change_plan(self, company_id: UUID, plan_code: str) -> BillingAccount:
         plan = get_plan(plan_code)
-        if plan.code == PlanCode.CUSTOM_ENTERPRISE:
-            raise BillingOperationError("Custom Enterprise nécessite un contact commercial")
+        if plan.requires_sales_contact:
+            raise BillingOperationError(f"{plan.name} nécessite un contact commercial")
         account = self.get_account(company_id)
         if not account.stripe_subscription_id:
             raise BillingOperationError("Aucun abonnement Stripe actif")
