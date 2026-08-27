@@ -51,6 +51,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   final List<_PendingFile> _pending = [];
   List<_UploadItem> _uploadItems = [];
   final Map<String, String?> _mappingOverrides = {};
+  final Set<String> _deletingDatasetIds = <String>{};
 
   @override
   void initState() {
@@ -231,6 +232,39 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
+  Future<void> _deleteDataset(String datasetId) async {
+    if (_deletingDatasetIds.contains(datasetId)) return;
+    setState(() => _deletingDatasetIds.add(datasetId));
+    try {
+      await widget.api.delete('/datasets/$datasetId');
+      if (!mounted) return;
+      setState(() {
+        _datasets.removeWhere(
+          (dataset) => dataset['id']?.toString() == datasetId,
+        );
+        _deletingDatasetIds.remove(datasetId);
+      });
+    } on ApiException catch (exc) {
+      if (!mounted) return;
+      setState(() => _deletingDatasetIds.remove(datasetId));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(exc.message)),
+      );
+    } on Object {
+      if (!mounted) return;
+      setState(() => _deletingDatasetIds.remove(datasetId));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            AvenqoLocaleScope.translationsOf(
+              context,
+            ).company.connectionsGenericError,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
@@ -248,8 +282,10 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
               ),
               _ViewState.idle => _ConnectedDataView(
                 datasets: _datasets,
+                deletingDatasetIds: _deletingDatasetIds,
                 onAddFiles: _addFiles,
                 onCompleteMapping: _openMapping,
+                onDeleteDataset: _deleteDataset,
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
                 t: t,
@@ -339,23 +375,25 @@ class _UploadItem {
   String? error;
 }
 
-/// Panneau principal : liste des données déjà connectées pour ce tenant
-/// (jamais masquée, même vide) et bouton "Ajouter des fichiers" toujours
-/// disponible pour permettre l'import de plusieurs jeux de données distincts
-/// (ventes, clients, produits...).
+/// Panneau principal : import + dropdown de TOUS les datasets du tenant,
+/// quel que soit leur statut. Chaque ligne reste supprimable indépendamment.
 class _ConnectedDataView extends StatelessWidget {
   const _ConnectedDataView({
     required this.datasets,
+    required this.deletingDatasetIds,
     required this.onAddFiles,
     required this.onCompleteMapping,
+    required this.onDeleteDataset,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
   });
 
   final List<Map<String, dynamic>> datasets;
+  final Set<String> deletingDatasetIds;
   final VoidCallback onAddFiles;
   final void Function(String datasetId) onCompleteMapping;
+  final Future<void> Function(String datasetId) onDeleteDataset;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -416,28 +454,54 @@ class _ConnectedDataView extends StatelessWidget {
         ),
         if (datasets.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text(
-            t.connectionsConnectedDataTitle,
-            style: TextStyle(
-              color: colors.ink,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: colors.surface,
               border: Border.all(color: colors.line),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              key: const PageStorageKey<String>('connected-datasets-dropdown'),
+              initiallyExpanded: false,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              childrenPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.folder_copy_outlined,
+                  color: _Brand.blue,
+                  size: 20,
+                ),
+              ),
+              title: Text(
+                t.connectionsConnectedDataTitle,
+                style: TextStyle(
+                  color: colors.ink,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                '${datasets.length}',
+                style: TextStyle(color: colors.muted, fontSize: 12),
+              ),
               children: [
+                Divider(height: 1, color: colors.line),
                 for (var i = 0; i < datasets.length; i++)
                   _DatasetRow(
                     dataset: datasets[i],
                     isLast: i == datasets.length - 1,
+                    isDeleting: deletingDatasetIds.contains(
+                      datasets[i]['id']?.toString(),
+                    ),
                     onCompleteMapping: onCompleteMapping,
+                    onDeleteDataset: onDeleteDataset,
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
                     t: t,
@@ -455,7 +519,9 @@ class _DatasetRow extends StatelessWidget {
   const _DatasetRow({
     required this.dataset,
     required this.isLast,
+    required this.isDeleting,
     required this.onCompleteMapping,
+    required this.onDeleteDataset,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -463,10 +529,49 @@ class _DatasetRow extends StatelessWidget {
 
   final Map<String, dynamic> dataset;
   final bool isLast;
+  final bool isDeleting;
   final void Function(String datasetId) onCompleteMapping;
+  final Future<void> Function(String datasetId) onDeleteDataset;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
+
+  Future<void> _confirmDelete(BuildContext context, String id) async {
+    final name = dataset['name']?.toString() ?? '—';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.connectionsRemoveFile),
+        content: Row(
+          children: [
+            const Icon(Icons.delete_outline, color: _Brand.red),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(MaterialLocalizations.of(dialogContext).cancelButtonLabel),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _Brand.red),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: Text(t.connectionsRemoveFile),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await onDeleteDataset(id);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -526,20 +631,38 @@ class _DatasetRow extends StatelessWidget {
           ),
           if (isMappingRequired && id != null)
             TextButton(
-              onPressed: () => onCompleteMapping(id),
+              onPressed: isDeleting ? null : () => onCompleteMapping(id),
               child: Text(t.connectionsMappingRequiredBadge),
             )
           else if (isReady) ...[
             IconButton(
               tooltip: t.connectionsGoDashboard,
-              onPressed: onGoToDashboard,
+              onPressed: isDeleting ? null : onGoToDashboard,
               icon: const Icon(Icons.dashboard_outlined),
             ),
             IconButton(
               tooltip: t.connectionsAskAvenqo,
-              onPressed: onAskAvenqo,
+              onPressed: isDeleting ? null : onAskAvenqo,
               icon: const Icon(Icons.smart_toy_outlined),
             ),
+          ],
+          if (id != null) ...[
+            const SizedBox(width: 4),
+            if (isDeleting)
+              const SizedBox(
+                width: 40,
+                height: 40,
+                child: Padding(
+                  padding: EdgeInsets.all(10),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              IconButton(
+                tooltip: t.connectionsRemoveFile,
+                onPressed: () => _confirmDelete(context, id),
+                icon: const Icon(Icons.delete_outline, color: _Brand.red),
+              ),
           ],
         ],
       ),
