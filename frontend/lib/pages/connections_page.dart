@@ -1,11 +1,16 @@
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/file_picker/app_file_picker.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
+
+// Ré-export pour compatibilité : les tests et consommateurs existants
+// importent `PickedFile` depuis cette page.
+export 'package:avenqo/core/file_picker/picked_file.dart' show PickedFile;
 
 class _Brand {
   const _Brand._();
@@ -14,37 +19,11 @@ class _Brand {
   static const red = Color(0xFFD1414B);
 }
 
-/// Formats acceptés par le pipeline d'ingestion universel côté backend
-/// (`CompanyDatasetLoader` : CSV/XLSX/JSON/Parquet).
-const _acceptedExtensions = ['csv', 'xlsx', 'json', 'parquet'];
 const _defaultModuleCode = 'retail';
 
 enum _ViewState { loading, idle, selecting, uploading, summary, mapping, error }
 
-/// Fichier choisi par l'utilisateur, découplé de `PlatformFile` (classe `base`
-/// non sous-classable hors de son package) afin de rester injectable en test.
-class PickedFile {
-  const PickedFile(this.name, this.bytes);
-  final String name;
-  final Uint8List bytes;
-}
-
 typedef FilePickerFn = Future<List<PickedFile>> Function();
-
-Future<List<PickedFile>> _defaultFilePicker() async {
-  // L'appel DOIT rester synchrone avec le geste utilisateur (pas d'await avant).
-  final result = await FilePicker.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: _acceptedExtensions,
-    // ignore: deprecated_member_use — API multi-fichiers correcte pour v12.
-    allowMultiple: true,
-  );
-  final files = <PickedFile>[];
-  for (final platformFile in result) {
-    files.add(PickedFile(platformFile.name, await platformFile.readAsBytes()));
-  }
-  return files;
-}
 
 /// Centre de gestion des données Avenqo (remplace le placeholder générique).
 /// Réutilise exclusivement les endpoints existants (`/datasets`,
@@ -53,7 +32,7 @@ class ConnectionsPage extends StatefulWidget {
   const ConnectionsPage({
     super.key,
     required this.api,
-    this.pickFiles = _defaultFilePicker,
+    this.pickFiles = pickDataFiles,
   });
   final ApiClient api;
   final FilePickerFn pickFiles;
