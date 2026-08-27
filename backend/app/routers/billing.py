@@ -100,7 +100,7 @@ def portal(
     service: BillingService = Depends(get_billing_service),
 ) -> RedirectResponse:
     try:
-        return RedirectResponse(url=service.create_portal(identity.user.company_id))
+        return RedirectResponse(url=service.create_portal(identity.user.company))
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
