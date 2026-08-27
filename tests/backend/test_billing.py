@@ -155,6 +155,13 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
         "demo", "professional", "enterprise"
     ]
     assert [plan["monthly_price_usd"] for plan in catalog] == [29, 99, None]
+    assert [plan["requires_sales_contact"] for plan in catalog] == [False, False, True]
+
+    # Un nouveau tenant peut ouvrir le portail : le Customer Stripe est créé à la demande.
+    portal = client.post("/api/v1/billing/portal", headers=headers)
+    assert portal.status_code == 200
+    assert portal.json()["url"] == "https://billing.stripe.test/session"
+
     checkout = client.post(
         "/api/v1/billing/checkout",
         json={"plan_code": "professional"},
@@ -162,6 +169,14 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     )
     assert checkout.status_code == 200
     assert checkout.json()["url"].endswith("price_professional")
+
+    # Les offres nécessitant un contact commercial ne peuvent jamais contourner
+    # cette règle en appelant directement l'API Checkout.
+    assert client.post(
+        "/api/v1/billing/checkout",
+        json={"plan_code": "enterprise"},
+        headers=headers,
+    ).status_code == 400
     assert client.post(
         "/api/v1/billing/checkout",
         json={"plan_code": "custom_enterprise"},
@@ -179,17 +194,22 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert subscription.json()["plan_code"] == "professional"
     assert subscription.json()["status"] == "active"
 
-    changed = client.post(
+    # Même politique pour un changement d'offre existante.
+    assert client.post(
         "/api/v1/billing/change-plan",
         json={"plan_code": "enterprise"},
         headers=headers,
+    ).status_code == 400
+    changed = client.post(
+        "/api/v1/billing/change-plan",
+        json={"plan_code": "demo"},
+        headers=headers,
     )
     assert changed.status_code == 200
-    assert provider.changed_prices == ["price_enterprise"]
+    assert provider.changed_prices == ["price_demo"]
+
     assert client.post("/api/v1/billing/cancel", headers=headers).json()["cancel_at_period_end"] is True
     assert provider.cancelled_subscriptions == ["sub_acme"]
-    portal = client.post("/api/v1/billing/portal", headers=headers)
-    assert portal.json()["url"] == "https://billing.stripe.test/session"
 
 
 def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> None:
