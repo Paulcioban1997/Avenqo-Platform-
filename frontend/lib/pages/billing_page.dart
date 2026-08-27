@@ -67,6 +67,13 @@ class BillingPage extends StatelessWidget {
           'incomplete_expired',
           'unpaid',
         }.contains(billingStatus);
+        // Politique deny-by-default côté UI : seules les offres explicitement
+        // self-service peuvent déclencher Checkout. Enterprise et toute future
+        // offre commerciale restent donc protégées même si leur code change.
+        final isSelfServicePlan = const {
+          'demo',
+          'professional',
+        }.contains(planCode);
 
         return ListView(
           padding: const EdgeInsets.all(24),
@@ -110,14 +117,14 @@ class BillingPage extends StatelessWidget {
                       : null,
                 ),
               ),
-              if (needsCheckout && planCode != 'enterprise') ...[
+              if (needsCheckout && isSelfServicePlan) ...[
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FilledButton.icon(
                     onPressed: () => _startCheckout(context, planCode),
                     icon: const Icon(Icons.credit_card),
-                    label: const Text('Stripe Checkout'),
+                    label: Text(t.settingsManageSubscription),
                   ),
                 ),
               ],
