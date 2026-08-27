@@ -10,6 +10,16 @@ docs/backup-and-disaster-recovery.md et tests/security/test_backup_restore_secur
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+# Quand Python exécute directement `scripts/backup_db.py`, sys.path[0] pointe
+# vers `/srv/scripts` et non vers la racine `/srv`. Ajouter explicitement la
+# racine du projet permet d'importer le package `backend` de façon fiable dans
+# le Cron Railway sans dépendre d'un PYTHONPATH externe.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.config.settings import get_settings
 from backend.app.services.backup_service import BackupService, database_scheme
@@ -19,7 +29,7 @@ def main() -> None:
     settings = get_settings()
     # Diagnostic SAFE : compare la présence côté env OS vs lecture Settings.
     # Jamais la valeur de l'URL (elle contient user/password de la base).
-    env_present = os.getenv("DATABASE_URL") is not None
+    env_present = bool(os.getenv("DATABASE_URL", "").strip())
     settings_present = bool(settings.database_url and settings.database_url.strip())
     scheme = database_scheme(settings.database_url)
     print(
