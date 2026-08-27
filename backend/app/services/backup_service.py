@@ -55,6 +55,15 @@ class BackupMetadata:
 
 from urllib.parse import urlsplit
 
+def database_scheme(database_url: str) -> str | None:
+    """Scheme de connexion SAFE à logger (ex. `postgresql`) — jamais l'URL
+    complète ni les credentials. `None` si l'URL est absente/vide."""
+
+    if not database_url or not database_url.strip():
+        return None
+    return urlsplit(database_url.strip()).scheme.lower() or None
+
+
 _POSTGRES_SCHEMES = frozenset({"postgresql", "postgres"})
 
 
