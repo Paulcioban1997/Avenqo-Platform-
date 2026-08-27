@@ -17,9 +17,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv
 
 # Dépendances système minimales (certificats TLS pour les appels sortants
-# Stripe / fournisseurs IA).
+# Stripe / fournisseurs IA ; postgresql-client pour pg_dump/pg_restore des
+# sauvegardes PostgreSQL via le cron Railway — voir scripts/backup_db.py).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt backend/requirements.txt
