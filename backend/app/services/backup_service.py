@@ -53,13 +53,25 @@ class BackupMetadata:
         return asdict(self)
 
 
+from urllib.parse import urlsplit
+
+_POSTGRES_SCHEMES = frozenset({"postgresql", "postgres"})
+
+
 def _database_kind(database_url: str) -> str:
-    if database_url.startswith("sqlite"):
+    """Détecte le type de base depuis le schéma — robuste aux variantes Railway :
+    `postgresql://`, `postgres://`, `postgresql+psycopg://` (et casse/espaces).
+    Ne logue ni n'inclut JAMAIS l'URL (elle contient les credentials)."""
+
+    scheme = urlsplit(database_url.strip()).scheme.lower()
+    # `postgresql+psycopg` → dialecte avant le '+', `postgres` → alias historique.
+    dialect = scheme.split("+", 1)[0]
+    if dialect == "sqlite":
         return "sqlite"
-    if database_url.startswith("postgresql") or database_url.startswith("postgres"):
+    if dialect in _POSTGRES_SCHEMES:
         return "postgresql"
     raise UnsupportedDatabaseError(
-        f"Base de données non prise en charge pour la sauvegarde : {database_url.split(':')[0]}"
+        "Schéma de base de données non pris en charge pour la sauvegarde."
     )
 
 
