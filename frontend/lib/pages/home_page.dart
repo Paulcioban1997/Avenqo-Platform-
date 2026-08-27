@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
+import 'package:avenqo/widgets/avenqo_brand.dart';
 import 'package:avenqo/widgets/language_selector.dart';
 import 'package:avenqo/widgets/theme_toggle_button.dart';
 
@@ -137,8 +138,9 @@ class _Navbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AvenqoLocaleScope.translationsOf(context);
+    final colors = AvenqoColors.of(context);
     return Container(
-      color: _Brand.ink,
+      color: colors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -147,20 +149,7 @@ class _Navbar extends StatelessWidget {
             children: [
               InkWell(
                 onTap: () => context.go('/'),
-                child: const Row(
-                  children: [
-                    Icon(Icons.change_history, color: _Brand.blue, size: 22),
-                    SizedBox(width: 8),
-                    Text(
-                      'Avenqo',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 20,
-                      ),
-                    ),
-                  ],
-                ),
+                child: const AvenqoBrand(),
               ),
               const Spacer(),
               if (wide) ...[
@@ -176,14 +165,14 @@ class _Navbar extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const ThemeToggleButton(foregroundColor: Colors.white70),
+                      ThemeToggleButton(foregroundColor: colors.muted),
                       const SizedBox(width: 4),
                       const LanguageSelector(),
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: () => context.go('/login'),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.white70,
+                          foregroundColor: colors.muted,
                         ),
                         child: Text(t.common.login),
                       ),
@@ -217,9 +206,10 @@ class _NavLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
     return TextButton(
       onPressed: onTap,
-      style: TextButton.styleFrom(foregroundColor: Colors.white70),
+      style: TextButton.styleFrom(foregroundColor: colors.muted),
       child: Text(label),
     );
   }
@@ -1504,7 +1494,7 @@ class _UsecaseBrandCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.change_history, color: _Brand.blue, size: 28),
+              AvenqoBrandIcon(size: 28),
               SizedBox(width: 10),
               Text(
                 'Avenqo',
@@ -2121,7 +2111,7 @@ class _Footer extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.change_history, color: _Brand.blue, size: 20),
+                      AvenqoBrandIcon(size: 20),
                       SizedBox(width: 8),
                       Text(
                         'Avenqo',
