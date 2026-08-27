@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /connections
+Disallow: /billing
+Disallow: /settings
+
+Sitemap: https://avenqo.ca/sitemap.xml
