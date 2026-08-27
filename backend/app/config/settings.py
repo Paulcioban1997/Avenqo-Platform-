@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     )
     database_url: str = Field(
         default="sqlite:///./var/avenqo.db",
-        alias="DATABASE_URL",
+        validation_alias="DATABASE_URL",
     )
     artifact_root: str = Field(default="var/artifacts", alias="ARTIFACT_ROOT")
     model_registry_root: str = Field(default="var/models", alias="MODEL_REGISTRY_ROOT")
