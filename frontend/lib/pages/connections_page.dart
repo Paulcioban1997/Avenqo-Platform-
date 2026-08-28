@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -21,7 +22,7 @@ class _Brand {
 
 const _defaultModuleCode = 'retail';
 
-enum _ViewState { loading, idle, selecting, uploading, summary, mapping, error }
+enum _ViewState { loading, idle, selecting, uploading, summary, error }
 
 typedef FilePickerFn = Future<List<PickedFile>> Function();
 
@@ -33,9 +34,11 @@ class ConnectionsPage extends StatefulWidget {
     super.key,
     required this.api,
     this.pickFiles = pickDataFiles,
+    this.pollInterval = const Duration(seconds: 3),
   });
   final ApiClient api;
   final FilePickerFn pickFiles;
+  final Duration pollInterval;
 
   @override
   State<ConnectionsPage> createState() => _ConnectionsPageState();
@@ -44,14 +47,13 @@ class ConnectionsPage extends StatefulWidget {
 class _ConnectionsPageState extends State<ConnectionsPage> {
   _ViewState _state = _ViewState.loading;
   List<Map<String, dynamic>> _datasets = [];
-  Map<String, dynamic>? _profile;
-  String? _mappingDatasetId;
   String? _errorMessage;
   String? _duplicateNotice;
   final List<_PendingFile> _pending = [];
   List<_UploadItem> _uploadItems = [];
-  final Map<String, String?> _mappingOverrides = {};
   final Set<String> _deletingDatasetIds = <String>{};
+  Timer? _pollTimer;
+  bool _refreshing = false;
 
   @override
   void initState() {
@@ -67,6 +69,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         _datasets = datasets.cast<Map<String, dynamic>>();
         _state = _ViewState.idle;
       });
+      _syncPolling();
     } on ApiException catch (exc) {
       setState(() {
         _errorMessage = exc.isTimeout
@@ -89,34 +92,43 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   /// Rafraîchit la liste des jeux de données sans changer l'écran affiché
   /// (utilisé après un import pour ne pas écraser le résumé de succès).
   Future<void> _refreshDatasetsInBackground() async {
+    if (_refreshing) return;
+    _refreshing = true;
     try {
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
       if (mounted) {
         setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+        _syncPolling();
       }
     } on ApiException {
       // Le résumé d'import reste affiché ; la liste sera retentée à la prochaine visite de l'écran.
+    } finally {
+      _refreshing = false;
     }
   }
 
-  Future<void> _loadProfile(String datasetId) async {
-    try {
-      _profile =
-          await widget.api.get('/datasets/$datasetId/profile')
-              as Map<String, dynamic>;
-      _mappingOverrides.clear();
-    } on ApiException catch (exc) {
-      setState(() {
-        _errorMessage = exc.message;
-        _state = _ViewState.error;
-      });
+  void _syncPolling() {
+    final shouldPoll = _datasets.any((dataset) {
+      final status = dataset['pipeline_status']?.toString();
+      return status == 'analyzing' ||
+          status == 'preparing_data' ||
+          status == 'training_ai';
+    });
+    if (!shouldPoll) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      return;
     }
+    _pollTimer ??= Timer.periodic(
+      widget.pollInterval,
+      (_) => _refreshDatasetsInBackground(),
+    );
   }
 
-  Future<void> _openMapping(String datasetId) async {
-    setState(() => _mappingDatasetId = datasetId);
-    await _loadProfile(datasetId);
-    if (mounted) setState(() => _state = _ViewState.mapping);
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   /// Ouvre le sélecteur natif en mode multi-sélection : l'utilisateur peut
@@ -196,8 +208,6 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
             _uploadItems[i].progress = 1;
             _uploadItems[i].done = true;
             _uploadItems[i].datasetId = datasetId;
-            _uploadItems[i].mappingRequired =
-                response['status']?.toString() == 'mapping_required';
           });
         }
       } on ApiException catch (exc) {
@@ -209,27 +219,6 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
     if (mounted) setState(() => _state = _ViewState.summary);
     await _refreshDatasetsInBackground();
-  }
-
-  Future<void> _submitMapping() async {
-    final datasetId = _mappingDatasetId;
-    if (datasetId == null) return;
-    final overrides = <String, String>{
-      for (final entry in _mappingOverrides.entries)
-        if (entry.value != null) entry.key: entry.value!,
-    };
-    try {
-      await widget.api.post(
-        '/datasets/$datasetId/mapping',
-        body: {'mapping': overrides},
-      );
-      await _loadDatasets();
-    } on ApiException catch (exc) {
-      setState(() {
-        _errorMessage = exc.message;
-        _state = _ViewState.error;
-      });
-    }
   }
 
   Future<void> _deleteDataset(String datasetId) async {
@@ -284,7 +273,6 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 datasets: _datasets,
                 deletingDatasetIds: _deletingDatasetIds,
                 onAddFiles: _addFiles,
-                onCompleteMapping: _openMapping,
                 onDeleteDataset: _deleteDataset,
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
@@ -305,14 +293,6 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
                 onAddFiles: _addFiles,
-                t: t,
-              ),
-              _ViewState.mapping => _MappingView(
-                profile: _profile,
-                overrides: _mappingOverrides,
-                onChanged: (column, field) =>
-                    setState(() => _mappingOverrides[column] = field),
-                onSubmit: _submitMapping,
                 t: t,
               ),
               _ViewState.error => _ErrorView(
@@ -370,7 +350,6 @@ class _UploadItem {
   final int fileSize;
   double progress = 0;
   bool done = false;
-  bool mappingRequired = false;
   String? datasetId;
   String? error;
 }
@@ -382,7 +361,6 @@ class _ConnectedDataView extends StatelessWidget {
     required this.datasets,
     required this.deletingDatasetIds,
     required this.onAddFiles,
-    required this.onCompleteMapping,
     required this.onDeleteDataset,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
@@ -392,7 +370,6 @@ class _ConnectedDataView extends StatelessWidget {
   final List<Map<String, dynamic>> datasets;
   final Set<String> deletingDatasetIds;
   final VoidCallback onAddFiles;
-  final void Function(String datasetId) onCompleteMapping;
   final Future<void> Function(String datasetId) onDeleteDataset;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
@@ -500,7 +477,6 @@ class _ConnectedDataView extends StatelessWidget {
                     isDeleting: deletingDatasetIds.contains(
                       datasets[i]['id']?.toString(),
                     ),
-                    onCompleteMapping: onCompleteMapping,
                     onDeleteDataset: onDeleteDataset,
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
@@ -520,7 +496,6 @@ class _DatasetRow extends StatelessWidget {
     required this.dataset,
     required this.isLast,
     required this.isDeleting,
-    required this.onCompleteMapping,
     required this.onDeleteDataset,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
@@ -530,7 +505,6 @@ class _DatasetRow extends StatelessWidget {
   final Map<String, dynamic> dataset;
   final bool isLast;
   final bool isDeleting;
-  final void Function(String datasetId) onCompleteMapping;
   final Future<void> Function(String datasetId) onDeleteDataset;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
@@ -576,12 +550,20 @@ class _DatasetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final status = dataset['status']?.toString();
+    final status = dataset['pipeline_status']?.toString() ??
+      dataset['status']?.toString();
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
-    final isMappingRequired = status == 'mapping_required';
     final isError =
         status == 'failed' || status == 'invalid' || status == 'rejected';
+    final statusLabel = switch (status) {
+      'ready' || 'validated' => t.connectionsReadyTitle,
+      'preparing_data' => t.connectionsPreparingData,
+      'training_ai' => t.connectionsTrainingAi,
+      'attention_required' => t.connectionsAttentionRequired,
+      'failed' || 'invalid' || 'rejected' => t.connectionsProcessingError,
+      _ => t.connectionsAnalyzing,
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -592,8 +574,6 @@ class _DatasetRow extends StatelessWidget {
           Icon(
             isError
                 ? Icons.error_outline
-                : isMappingRequired
-                ? Icons.rule_outlined
                 : isReady
                 ? Icons.check_circle
                 : Icons.hourglass_top,
@@ -616,6 +596,17 @@ class _DatasetRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: isError
+                        ? _Brand.red
+                        : (isReady ? _Brand.green : _Brand.blue),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
                   [
                     if (dataset['rows_count'] != null)
                       '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
@@ -629,12 +620,7 @@ class _DatasetRow extends StatelessWidget {
               ],
             ),
           ),
-          if (isMappingRequired && id != null)
-            TextButton(
-              onPressed: isDeleting ? null : () => onCompleteMapping(id),
-              child: Text(t.connectionsMappingRequiredBadge),
-            )
-          else if (isReady) ...[
+          if (isReady) ...[
             IconButton(
               tooltip: t.connectionsGoDashboard,
               onPressed: isDeleting ? null : onGoToDashboard,
@@ -975,139 +961,6 @@ class _SummaryView extends StatelessWidget {
                 child: Text(t.connectionsContinueLabel),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MappingView extends StatelessWidget {
-  const _MappingView({
-    required this.profile,
-    required this.overrides,
-    required this.onChanged,
-    required this.onSubmit,
-    required this.t,
-  });
-
-  final Map<String, dynamic>? profile;
-  final Map<String, String?> overrides;
-  final void Function(String column, String? field) onChanged;
-  final VoidCallback onSubmit;
-  final CompanyStrings t;
-
-  static const _canonicalFields = [
-    'customer_id',
-    'order_id',
-    'product_id',
-    'order_timestamp',
-    'quantity',
-    'unit_price',
-    'total_amount',
-    'review_text',
-    'review_score',
-    'churn_flag',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    final suggestions =
-        (profile?['mapping_suggestions'] as List<dynamic>? ?? const [])
-            .cast<Map<String, dynamic>>();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border.all(color: colors.line),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            t.connectionsMappingTitle,
-            style: TextStyle(
-              color: colors.ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            t.connectionsMappingSubtitle,
-            style: TextStyle(color: colors.muted),
-          ),
-          const SizedBox(height: 20),
-          for (final suggestion in suggestions)
-            _MappingRow(
-              suggestion: suggestion,
-              canonicalFields: _canonicalFields,
-              selected:
-                  overrides[suggestion['original_column']?.toString()] ??
-                  suggestion['suggested_field']?.toString(),
-              onChanged: (field) =>
-                  onChanged(suggestion['original_column'].toString(), field),
-              ignoreLabel: t.connectionsMappingIgnore,
-            ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: onSubmit,
-            style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-            child: Text(t.connectionsConfirmMapping),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MappingRow extends StatelessWidget {
-  const _MappingRow({
-    required this.suggestion,
-    required this.canonicalFields,
-    required this.selected,
-    required this.onChanged,
-    required this.ignoreLabel,
-  });
-
-  final Map<String, dynamic> suggestion;
-  final List<String> canonicalFields;
-  final String? selected;
-  final void Function(String? field) onChanged;
-  final String ignoreLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    final column = suggestion['original_column']?.toString() ?? '';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              column,
-              style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const Icon(Icons.arrow_forward, size: 16),
-          const SizedBox(width: 12),
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              initialValue: canonicalFields.contains(selected)
-                  ? selected
-                  : null,
-              hint: Text(ignoreLabel),
-              isExpanded: true,
-              items: [
-                for (final field in canonicalFields)
-                  DropdownMenuItem(value: field, child: Text(field)),
-              ],
-              onChanged: onChanged,
-            ),
           ),
         ],
       ),

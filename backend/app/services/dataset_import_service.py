@@ -24,7 +24,9 @@ from backend.app.services.data_import_policy import DataImportPolicy
 from modules.catalog import MODULES_BY_CODE
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_management.service import DatasetManagementService
+from shared.ai_engine.registry.registry import ModelRegistry
 from shared.ai_engine.schema_detection.detector import SchemaDetector
+from shared.ai_engine.versioning.service import invalidate_dataset_versions
 
 
 class DatasetImportError(ValueError):
@@ -44,11 +46,13 @@ class DatasetImportService:
         artifacts: ArtifactService,
         quota: DataImportPolicy,
         max_upload_bytes: int,
+        model_registry: ModelRegistry | None = None,
     ) -> None:
         self._session = session
         self._artifacts = artifacts
         self._quota = quota
         self._max_upload_bytes = max_upload_bytes
+        self._model_registry = model_registry
 
     def import_csv(
         self,
@@ -198,6 +202,9 @@ class DatasetImportService:
             )
         )
         self._session.commit()
+
+        if self._model_registry is not None:
+            invalidate_dataset_versions(self._model_registry, tenant, str(dataset_id))
 
         for root in artifact_roots:
             shutil.rmtree(root, ignore_errors=True)

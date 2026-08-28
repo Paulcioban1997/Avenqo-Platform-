@@ -285,9 +285,8 @@ def test_dataset_with_multiple_capabilities_creates_independent_jobs_per_task(
     by_task = {row.task_code: row for row in registry_rows}
     assert set(by_task) == {"price", "demand", "bad_review", "weekly_forecast", "recommendation"}
 
-    # Isolation : chaque tâche garde son propre modèle actif, aucune n'a
-    # désactivé l'autre (bug corrigé en Phase 18.2, toujours valable avec
-    # plus de deux tâches simultanées depuis la Phase 19).
+    # Isolation : chaque tâche garde sa propre décision d'activation. Le
+    # classifieur est activé lorsqu'il atteint au minimum la baseline naïve.
     assert by_task["price"].is_active is True
     assert by_task["price"].model_type == "regression"
     assert by_task["demand"].is_active is True

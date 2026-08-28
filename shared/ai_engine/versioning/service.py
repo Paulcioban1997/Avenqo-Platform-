@@ -15,6 +15,7 @@ jamais par le frontend Avenqo).
 from __future__ import annotations
 
 import logging
+import shutil
 from dataclasses import replace
 from typing import Any, Mapping
 
@@ -50,6 +51,52 @@ from shared.ai_engine.versioning.types import (
 logger = logging.getLogger(__name__)
 
 
+def invalidate_dataset_versions(
+    registry: ModelRegistry,
+    tenant: TenantContext,
+    dataset_id: str,
+) -> int:
+    """Remove model artifacts derived from one tenant dataset and clear stale pointers."""
+
+    tenant_directory = registry.model_directory(
+        tenant, "tenantroot", "taskroot", "versionroot"
+    ).parents[2]
+    removed = 0
+    if not tenant_directory.is_dir():
+        return removed
+    for module_directory in tenant_directory.iterdir():
+        if not module_directory.is_dir():
+            continue
+        for task_directory in module_directory.iterdir():
+            if not task_directory.is_dir():
+                continue
+            removed_versions: set[str] = set()
+            for version_directory in task_directory.iterdir():
+                if not version_directory.is_dir():
+                    continue
+                try:
+                    record = load_version_record(
+                        registry,
+                        tenant,
+                        module_directory.name,
+                        task_directory.name,
+                        version_directory.name,
+                    )
+                except (FileNotFoundError, OSError):
+                    continue
+                if record.dataset_id != dataset_id:
+                    continue
+                removed_versions.add(version_directory.name)
+                shutil.rmtree(version_directory)
+                removed += 1
+            active_pointer = task_directory / "ACTIVE"
+            if active_pointer.is_file():
+                active = active_pointer.read_text(encoding="utf-8").strip()
+                if active in removed_versions:
+                    active_pointer.unlink()
+    return removed
+
+
 def record_version(
     registry: ModelRegistry,
     tenant: TenantContext,
@@ -65,6 +112,9 @@ def record_version(
     metrics: Mapping[str, float],
     parent_version: str | None,
     activated: bool,
+    baseline_metrics: Mapping[str, float] | None = None,
+    quality_approved: bool | None = None,
+    quality_reason: str | None = None,
     drift_report: DriftReport | None = None,
     has_explanation: bool = False,
     retraining_reason: str | None = None,
@@ -97,6 +147,11 @@ def record_version(
             hyperparameters=dict(hyperparameters),
             search_method=search_method,
             metrics=dict(metrics),
+            baseline_metrics=(
+                dict(baseline_metrics) if baseline_metrics is not None else None
+            ),
+            quality_approved=quality_approved,
+            quality_reason=quality_reason,
             state=next_state,
             drift_severity=drift_report.overall_severity if drift_report is not None else None,
             has_drift_report=drift_report is not None,

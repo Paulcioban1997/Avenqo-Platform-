@@ -45,7 +45,7 @@ def _build_csv(seed: int = 0) -> bytes:
     for i in range(30):
         age = 20 + ((i + seed) % 40)
         segment = "A" if i % 2 == 0 else "B"
-        label = 1 if i % 3 == 0 else 0
+        label = 1 if age >= 35 else 0
         rows.append(f"{i},{age},{segment},{label}")
     return ("\n".join(rows) + "\n").encode("utf-8")
 

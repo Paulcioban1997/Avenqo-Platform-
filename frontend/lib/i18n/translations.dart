@@ -1458,6 +1458,9 @@ class CompanyStrings {
     required this.connectionsImportButton,
     required this.connectionsUploadingLabel,
     required this.connectionsAnalyzing,
+    required this.connectionsPreparingData,
+    required this.connectionsTrainingAi,
+    required this.connectionsAttentionRequired,
     required this.connectionsMappingTitle,
     required this.connectionsMappingSubtitle,
     required this.connectionsMappingIgnore,
@@ -1579,6 +1582,9 @@ class CompanyStrings {
       connectionsImportButton: s('connectionsImportButton'),
       connectionsUploadingLabel: s('connectionsUploadingLabel'),
       connectionsAnalyzing: s('connectionsAnalyzing'),
+      connectionsPreparingData: s('connectionsPreparingData'),
+      connectionsTrainingAi: s('connectionsTrainingAi'),
+      connectionsAttentionRequired: s('connectionsAttentionRequired'),
       connectionsMappingTitle: s('connectionsMappingTitle'),
       connectionsMappingSubtitle: s('connectionsMappingSubtitle'),
       connectionsMappingIgnore: s('connectionsMappingIgnore'),
@@ -1698,6 +1704,9 @@ class CompanyStrings {
         connectionsImportButton: 'Import a file',
         connectionsUploadingLabel: 'Uploading…',
         connectionsAnalyzing: 'Analyzing the structure of your data…',
+        connectionsPreparingData: 'Preparing data…',
+        connectionsTrainingAi: 'Training AI…',
+        connectionsAttentionRequired: 'Attention required',
         connectionsMappingTitle: 'Confirm your column mapping',
         connectionsMappingSubtitle: 'Some columns need manual confirmation before analytics can be activated.',
         connectionsMappingIgnore: 'Ignore this column',
@@ -1816,6 +1825,9 @@ class CompanyStrings {
         'connectionsImportButton' => connectionsImportButton,
         'connectionsUploadingLabel' => connectionsUploadingLabel,
         'connectionsAnalyzing' => connectionsAnalyzing,
+        'connectionsPreparingData' => connectionsPreparingData,
+        'connectionsTrainingAi' => connectionsTrainingAi,
+        'connectionsAttentionRequired' => connectionsAttentionRequired,
         'connectionsMappingTitle' => connectionsMappingTitle,
         'connectionsMappingSubtitle' => connectionsMappingSubtitle,
         'connectionsMappingIgnore' => connectionsMappingIgnore,
@@ -1934,6 +1946,9 @@ class CompanyStrings {
   final String connectionsImportButton;
   final String connectionsUploadingLabel;
   final String connectionsAnalyzing;
+  final String connectionsPreparingData;
+  final String connectionsTrainingAi;
+  final String connectionsAttentionRequired;
   final String connectionsMappingTitle;
   final String connectionsMappingSubtitle;
   final String connectionsMappingIgnore;

@@ -60,6 +60,10 @@ def test_pipeline_classification_entraine_sauvegarde_et_journalise(
     assert result.numerical_columns == ("age",)
     assert result.categorical_columns == ("segment", "client")
     assert "accuracy" in result.metrics
+    assert result.baseline_metrics is not None
+    assert "accuracy" in result.baseline_metrics
+    assert isinstance(result.quality_approved, bool)
+    assert result.quality_reason is not None
     train_data, _ = train_test_split(
         data,
         test_size=0.25,

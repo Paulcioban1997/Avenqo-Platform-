@@ -13,6 +13,7 @@ from backend.app.dependencies.datasets import (
     get_dataset_import_service,
 )
 from backend.app.dependencies.training import get_training_dispatcher
+from backend.app.models import DatasetStatus, JobStatus
 from backend.app.schemas.company_datasets import (
     CapabilityDatasetResponse,
     CapabilityReadinessResponse,
@@ -47,6 +48,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
+def _pipeline_status(dataset) -> str:
+    if dataset.status in {DatasetStatus.FAILED, DatasetStatus.INVALID, DatasetStatus.REJECTED}:
+        return "failed"
+    if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
+        return "analyzing"
+    jobs = list(dataset.training_jobs)
+    if not jobs:
+        return "ready"
+    if any(job.status == JobStatus.RUNNING for job in jobs):
+        return "training_ai"
+    if any(job.status == JobStatus.PENDING for job in jobs):
+        return "preparing_data"
+    if all(job.status in {JobStatus.FAILED, JobStatus.CANCELLED} for job in jobs):
+        return "attention_required"
+    return "ready"
+
+
 def dataset_response(dataset) -> DatasetResponse:
     profile = dataset.profile
     quality = dataset.quality_report
@@ -68,6 +86,7 @@ def dataset_response(dataset) -> DatasetResponse:
             duplicates=0,
             quality_score=0.0,
             status=dataset.status,
+            pipeline_status=_pipeline_status(dataset),
             uploaded_at=dataset.uploaded_at,
             columns=[],
             distributions={},
@@ -100,6 +119,7 @@ def dataset_response(dataset) -> DatasetResponse:
         duplicates=quality_data["duplicates"],
         quality_score=quality_data["quality_score"],
         status=dataset.status,
+        pipeline_status=_pipeline_status(dataset),
         uploaded_at=dataset.uploaded_at,
         columns=profile.schema_json["columns"],
         distributions=profile.distribution_json,

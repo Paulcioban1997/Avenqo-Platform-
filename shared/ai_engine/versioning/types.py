@@ -64,6 +64,9 @@ class VersionRecord:
     hyperparameters: Mapping[str, Any]
     search_method: SearchMethod
     metrics: Mapping[str, float]
+    baseline_metrics: Mapping[str, float] | None = None
+    quality_approved: bool | None = None
+    quality_reason: str | None = None
     state: ModelLifecycleState = ModelLifecycleState.TRAINING
     drift_severity: DriftSeverity | None = None
     has_drift_report: bool = False

@@ -22,5 +22,8 @@ class SupervisedTrainingResult:
     categorical_columns: tuple[str, ...]
     model_path: Path
     preprocessor_path: Path
+    baseline_metrics: Mapping[str, float] | None = None
+    quality_approved: bool = True
+    quality_reason: str | None = None
     explanation: ExplanationArtifact | None = None
     reference_baseline: ReferenceBaseline | None = None

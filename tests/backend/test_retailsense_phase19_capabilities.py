@@ -283,7 +283,10 @@ def test_bad_review_and_price_still_work(phase19_environment) -> None:
     rows = ["customer_id,order_date,product_id,price,is_bad_review"]
     for i in range(20):
         order_date = (datetime(2024, 1, 1) + timedelta(days=i)).strftime("%Y-%m-%d")
-        rows.append(f"C{i},{order_date},P{i % 3},{round(9.99 + i * 0.2, 2)},{1 if i % 4 == 0 else 0}")
+        product = f"P{i % 3}"
+        price = 10.0 + (i % 3) * 5.0
+        label = 1 if product == "P0" else 0
+        rows.append(f"C{i},{order_date},{product},{price},{label}")
     csv_bytes = ("\n".join(rows) + "\n").encode("utf-8")
 
     response = client.post(

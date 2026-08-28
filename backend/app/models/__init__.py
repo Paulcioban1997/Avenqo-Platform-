@@ -24,6 +24,7 @@ from backend.app.models.company_onboarding import CompanyOnboarding
 from backend.app.models.data_quality_report import DataQualityReport
 from backend.app.models.dataset import Dataset
 from backend.app.models.dataset_profile import DatasetProfile
+from backend.app.models.dataset_relationship import DatasetRelationship
 from backend.app.models.dataset_version import DatasetVersion
 from backend.app.models.enterprise_override import EnterpriseOverride
 from backend.app.models.mapping import Mapping
@@ -57,6 +58,7 @@ __all__ = [
     "DataQualityReport",
     "Dataset",
     "DatasetProfile",
+    "DatasetRelationship",
     "DatasetStatus",
     "DatasetVersion",
     "DatasetVersionStatus",

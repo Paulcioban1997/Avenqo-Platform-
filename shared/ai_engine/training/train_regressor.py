@@ -12,6 +12,7 @@ from shared.ai_engine.architectures.machine_learning.optimizer import run_hyperp
 from shared.ai_engine.contracts import DatasetArtifact
 from shared.ai_engine.drift.service import capture_reference_baseline
 from shared.ai_engine.evaluation.sklearn_metrics import evaluate_model
+from shared.ai_engine.evaluation.model_quality import compare_with_naive_baseline
 from shared.ai_engine.explainability.service import explain_supervised
 from shared.ai_engine.preprocessing.tabular import (
     build_model_pipeline,
@@ -74,6 +75,12 @@ def train_regressor(
             "regression",
             random_seed,
         )
+        quality = compare_with_naive_baseline(
+            train_target,
+            test_target,
+            report.metrics,
+            "regression",
+        )
         explanation = explain_supervised(
             search.best_pipeline,
             test_features,
@@ -117,6 +124,9 @@ def train_regressor(
             categorical_columns=columns.categorical,
             model_path=paths.model,
             preprocessor_path=paths.preprocessor,
+            baseline_metrics=quality.baseline_metrics,
+            quality_approved=quality.approved,
+            quality_reason=quality.reason,
             explanation=explanation,
             reference_baseline=reference_baseline,
         )

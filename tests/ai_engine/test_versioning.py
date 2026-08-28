@@ -9,6 +9,7 @@ réentraînement, aucune suppression), et le caractère "never-raise" de
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ from shared.ai_engine.versioning.service import (
     get_version,
     list_versions as list_version_summaries,
     record_version,
+    invalidate_dataset_versions,
     rollback,
 )
 from shared.ai_engine.versioning.types import ModelLifecycleState, VersionEventType, VersionRecord
@@ -240,6 +242,25 @@ class TestRollback:
 
 
 class TestService:
+    def test_invalidate_dataset_versions_is_tenant_and_dataset_scoped(self, tmp_path: Path) -> None:
+        registry = _registry(tmp_path)
+        tenant = _tenant()
+        other_tenant = _tenant()
+        dataset_id = str(uuid4())
+        for owner, version, owner_dataset in (
+            (tenant, "v1", dataset_id),
+            (tenant, "v2", str(uuid4())),
+            (other_tenant, "v1", dataset_id),
+        ):
+            record = dataclasses.replace(_make_record(version), dataset_id=owner_dataset)
+            save_version_record(registry, record, owner)
+            registry.activate(owner, "retail", "bad_review", version)
+
+        assert invalidate_dataset_versions(registry, tenant, dataset_id) == 1
+        assert not registry.model_directory(tenant, "retail", "bad_review", "v1").exists()
+        assert registry.model_directory(tenant, "retail", "bad_review", "v2").exists()
+        assert registry.model_directory(other_tenant, "retail", "bad_review", "v1").exists()
+
     def test_record_version_persists_and_numbers_sequentially(self, tmp_path: Path) -> None:
         registry = _registry(tmp_path)
         tenant = _tenant()

@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from backend.app.models import Dataset, DatasetStatus
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.data_import_policy import DataImportPolicy
+from backend.app.services.dataset_relationship_service import DatasetRelationshipService
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.column_mapper import MappingConfidence, MappingProvenance
@@ -80,6 +81,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
             dataset = self._resolve_mapping_without_blocking(tenant, dataset)
             if dataset.status == DatasetStatus.READY:
                 dataset = self._materialize_canonical_training_source(tenant, dataset)
+                DatasetRelationshipService(self._session).refresh_for_dataset(tenant, dataset, self)
                 self._dispatch_training_safely(tenant, dataset)
         except Exception:
             # Importing company data must never be turned into a failed upload

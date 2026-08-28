@@ -399,12 +399,12 @@ def test_synthetic_data_is_a_future_capability_never_reaching_the_opportunity_en
 
 
 def _demand_growth_price_flat_csv() -> bytes:
-    rows = ["customer_id,order_date,product_id,quantity,price"]
+    rows = ["customer_id,order_date,product_id,day_index,quantity,price"]
     base_date = datetime(2024, 1, 1)
     for i in range(30):
         order_date = (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
         quantity = 5 + i * 4
-        rows.append(f"C{i},{order_date},P{i % 5},{quantity},20.0")
+        rows.append(f"C{i},{order_date},P{i % 5},{i},{quantity},20.0")
     return ("\n".join(rows) + "\n").encode("utf-8")
 
 

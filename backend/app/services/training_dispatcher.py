@@ -279,11 +279,6 @@ class TrainingDispatcher:
             ai_job.logs = STAGE_FINALIZING
             session.commit()
 
-            # Import de dataset : un modèle fraîchement entraîné est toujours
-            # activé — aucune comparaison n'est requise ici (comportement
-            # historique, préservé à l'identique). La comparaison obligatoire
-            # (Phase 8) ne s'applique qu'au flux de ré-entraînement autonome
-            # (`_run_retraining`), déclenché sans nouvel upload.
             activated, drift_report = self._finalize_and_persist(
                 session,
                 tenant,
@@ -294,7 +289,9 @@ class TrainingDispatcher:
                 model_type,
                 dataset,
                 training_job,
-                activation_decider=lambda *_args: True,
+                activation_decider=lambda candidate, *_args: bool(
+                    getattr(candidate, "quality_approved", True)
+                ),
             )
 
             self._complete(session, ai_job, training_job, result, started_at)
@@ -908,10 +905,9 @@ class TrainingDispatcher:
     ) -> tuple[bool, DriftReport | None]:
         """Drift-check vs. modèle précédent, décision d'activation, persistance.
 
-        Commun aux deux flux : le flux upload passe un `activation_decider`
-        toujours vrai (comportement historique préservé à l'identique) ; le
-        flux de ré-entraînement autonome passe la comparaison obligatoire
-        (Phase 8). Les artefacts (explication, baseline) sont toujours
+        Commun aux deux flux : le flux upload applique le contrôle qualité du
+        résultat supervisé et le flux de ré-entraînement autonome passe la
+        comparaison obligatoire (Phase 8). Les artefacts sont toujours
         enregistrés, activé ou non — versionnement immuable, audit complet.
         """
 
@@ -1026,6 +1022,9 @@ class TrainingDispatcher:
             hyperparameters=dict(result.best_parameters),
             search_method=run_context.search_method,
             metrics=dict(result.metrics),
+            baseline_metrics=getattr(result, "baseline_metrics", None),
+            quality_approved=getattr(result, "quality_approved", None),
+            quality_reason=getattr(result, "quality_reason", None),
             parent_version=parent_version,
             activated=activated,
             drift_report=drift_report,

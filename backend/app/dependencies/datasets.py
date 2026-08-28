@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.training import get_training_dispatcher
+from backend.app.dependencies.ai_engine import get_ai_model_registry
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.automatic_company_dataset_ingestion_service import (
@@ -20,6 +21,7 @@ from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
+from shared.ai_engine.registry.registry import ModelRegistry
 
 
 def get_data_import_policy(db: Session = Depends(get_db)) -> DataImportPolicy:
@@ -29,6 +31,7 @@ def get_data_import_policy(db: Session = Depends(get_db)) -> DataImportPolicy:
 def get_dataset_import_service(
     db: Session = Depends(get_db),
     quota: DataImportPolicy = Depends(get_data_import_policy),
+    model_registry: ModelRegistry = Depends(get_ai_model_registry),
 ) -> DatasetImportService:
     settings = get_settings()
     return DatasetImportService(
@@ -36,6 +39,7 @@ def get_dataset_import_service(
         artifacts=ArtifactService(Path(settings.artifact_root)),
         quota=quota,
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
+        model_registry=model_registry,
     )
 
 

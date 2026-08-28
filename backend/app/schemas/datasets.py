@@ -29,6 +29,7 @@ class DatasetResponse(BaseModel):
     duplicates: int
     quality_score: float
     status: DatasetStatus
+    pipeline_status: str
     uploaded_at: datetime
     columns: list[FieldProfileResponse]
     distributions: dict[str, dict[str, int]]

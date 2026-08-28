@@ -142,6 +142,38 @@ void main() {
     expect(find.text('sales.csv'), findsOneWidget);
   });
 
+  testWidgets('Connections polls until automatic training is ready', (
+    tester,
+  ) async {
+    var requests = 0;
+    final client = MockClient((request) async {
+      requests += 1;
+      final pipelineStatus = requests == 1 ? 'training_ai' : 'ready';
+      return http.Response(
+        '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"$pipelineStatus"}]',
+        200,
+      );
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(
+        ConnectionsPage(
+          api: _api(client),
+          pollInterval: const Duration(milliseconds: 50),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump();
+
+    expect(requests, 2);
+    await tester.tap(find.text('Données connectées'));
+    await tester.pump();
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.textContaining('Mapping required'), findsNothing);
+    expect(find.textContaining('Mappage requis'), findsNothing);
+  });
+
   testWidgets('A connected dataset can be deleted from the dropdown', (
     tester,
   ) async {

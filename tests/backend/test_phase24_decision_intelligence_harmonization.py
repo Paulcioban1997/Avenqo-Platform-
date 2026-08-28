@@ -98,25 +98,25 @@ def _assert_no_ml_jargon(*texts: str) -> None:
 def _demand_growth_price_flat_csv() -> bytes:
     """Quantité en forte hausse (opportunité), prix parfaitement stable."""
 
-    rows = ["customer_id,order_date,product_id,quantity,price"]
+    rows = ["customer_id,order_date,product_id,day_index,quantity,price"]
     base_date = datetime(2024, 1, 1)
     for i in range(30):
         order_date = (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
         quantity = 5 + i * 4
-        rows.append(f"C{i},{order_date},P{i % 5},{quantity},20.0")
+        rows.append(f"C{i},{order_date},P{i % 5},{i},{quantity},20.0")
     return ("\n".join(rows) + "\n").encode("utf-8")
 
 
 def _demand_decline_price_growth_csv() -> bytes:
     """Quantité en forte baisse (risque), prix en forte hausse (opportunité)."""
 
-    rows = ["customer_id,order_date,product_id,quantity,price"]
+    rows = ["customer_id,order_date,product_id,day_index,quantity,price"]
     base_date = datetime(2024, 1, 1)
     for i in range(30):
         order_date = (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
         quantity = 120 - i * 4
         price = round(10 + i * 1.5, 2)
-        rows.append(f"C{i},{order_date},P{i % 5},{quantity},{price}")
+        rows.append(f"C{i},{order_date},P{i % 5},{i},{quantity},{price}")
     return ("\n".join(rows) + "\n").encode("utf-8")
 
 
@@ -164,22 +164,23 @@ def _all_capabilities_csv() -> bytes:
         "c5": ["p3", "p4", "p5"],
         "c_full": ["p1", "p2", "p3", "p4", "p5"],
     }
-    rows = ["customer_id,product_id,order_date,quantity,price,recency,frequency,monetary_value"]
+    rows = [
+        "customer_id,product_id,order_date,day_index,quantity,price,"
+        "recency,frequency,monetary_value"
+    ]
     base_date = datetime(2024, 1, 1)
     row_index = 0
     for _ in range(2):
         for customer, products in customers.items():
             for product in products:
                 order_date = (base_date + timedelta(days=row_index)).strftime("%Y-%m-%d")
-                # Décorrélées (modulos distincts) pour éviter une matrice de
-                # caractéristiques quasi colinéaire (convergence ElasticNet).
-                quantity = 5 + (row_index * 3) % 37
-                price = round(15 + (row_index * 7) % 23 * 1.3, 2)
+                quantity = 5 + row_index * 3
+                price = 20.0
                 recency = (row_index * 5) % 31
                 frequency = 1 + (row_index * 11) % 17
                 monetary_value = round(50 + (row_index * 13) % 29 * 2.1, 2)
                 rows.append(
-                    f"{customer},{product},{order_date},{quantity},{price},"
+                    f"{customer},{product},{order_date},{row_index},{quantity},{price},"
                     f"{recency},{frequency},{monetary_value}"
                 )
                 row_index += 1
