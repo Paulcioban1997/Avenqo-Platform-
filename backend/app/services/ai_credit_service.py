@@ -8,12 +8,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.models import AICreditBalance, AICreditTransaction
 from payments import get_credit_pack, get_plan
 
 
-class InsufficientAICreditsError(ValueError):
-    pass
+class InsufficientAICreditsError(AIQuotaExceededError):
+    """Levée lorsqu'un tenant n'a plus de crédits IA disponibles."""
 
 
 class AICreditService:
@@ -68,18 +69,14 @@ class AICreditService:
         return balance
 
     def ensure_available(self, company_id: UUID, plan_code: str, amount: int = 1) -> None:
-        if amount <= 0:
-            return
-        if get_plan(plan_code).included_ai_credits is None:
+        if amount <= 0 or get_plan(plan_code).included_ai_credits is None:
             return
         balance = self.get_balance(company_id, plan_code)
         if balance.total_remaining < amount:
             raise InsufficientAICreditsError("Your Avenqo AI credit balance has been exhausted.")
 
     def consume(self, company_id: UUID, plan_code: str, amount: int = 1) -> AICreditBalance:
-        if amount <= 0:
-            return self.get_balance(company_id, plan_code)
-        if get_plan(plan_code).included_ai_credits is None:
+        if amount <= 0 or get_plan(plan_code).included_ai_credits is None:
             return self.get_balance(company_id, plan_code)
 
         balance = self.get_balance(company_id, plan_code)
