@@ -61,6 +61,10 @@ class BillingService:
     def create_credit_checkout(self, company: Company, pack_code: str) -> str:
         pack = get_credit_pack(pack_code)
         account = self.get_account(company.id)
+        if not account.stripe_subscription_id or account.status not in {"active", "trialing"}:
+            raise BillingOperationError(
+                "Un abonnement Avenqo actif est requis pour acheter des crédits supplémentaires"
+            )
         self._ensure_customer(company, account)
         return self._provider.create_credit_checkout(
             account.stripe_customer_id,
