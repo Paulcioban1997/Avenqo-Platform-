@@ -238,6 +238,23 @@ def test_pack_credits_est_un_achat_unique_et_idempotent(billing_environment) -> 
     headers = auth_headers(login)
     company_id = login["company"]["id"]
 
+    # Les top-ups complètent un abonnement : ils ne remplacent jamais l'abonnement.
+    inactive_checkout = client.post(
+        "/api/v1/billing/credits/checkout",
+        json={"pack_code": "credits_20k"},
+        headers=headers,
+    )
+    assert inactive_checkout.status_code == 400
+    assert provider.credit_checkouts == []
+
+    provider.events.append(subscription_event(company_id, "evt_subscription_pack"))
+    activated = client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    assert activated.json() == {"processed": True}
+
     checkout = client.post(
         "/api/v1/billing/credits/checkout",
         json={"pack_code": "credits_20k"},
@@ -274,9 +291,9 @@ def test_pack_credits_est_un_achat_unique_et_idempotent(billing_environment) -> 
     assert second.json() == {"processed": False}
 
     balance = client.get("/api/v1/billing/credits", headers=headers).json()
-    assert balance["monthly_remaining"] == 5000
+    assert balance["monthly_remaining"] == 25000
     assert balance["purchased_remaining"] == 20000
-    assert balance["total_remaining"] == 25000
+    assert balance["total_remaining"] == 45000
 
 
 def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> None:
