@@ -5,21 +5,22 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
-from backend.app.models import Base
+from backend.app.models import Base, Company
 from backend.main import create_application
 
 from tests.backend.test_auth import RecordingNotifier, registration_payload, verify_and_login
+from tests.subscription_helpers import activate_subscription
 
 
 @pytest.fixture
 def onboarding_environment(
     tmp_path: Path,
-) -> Generator[tuple[TestClient, RecordingNotifier], None, None]:
+) -> Generator[tuple[TestClient, RecordingNotifier, sessionmaker[Session]], None, None]:
     engine = create_engine(
         f"sqlite:///{tmp_path / 'onboarding.db'}",
         connect_args={"check_same_thread": False},
@@ -39,7 +40,7 @@ def onboarding_environment(
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_account_notifier] = lambda: notifier
     with TestClient(app) as client:
-        yield client, notifier
+        yield client, notifier, testing_session
 
 
 def _register_and_login(client: TestClient, notifier: RecordingNotifier) -> str:
@@ -55,7 +56,7 @@ def _register_and_login(client: TestClient, notifier: RecordingNotifier) -> str:
 
 
 def test_new_company_defaults_to_pending(onboarding_environment) -> None:
-    client, notifier = onboarding_environment
+    client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)
 
     response = client.get(
@@ -70,7 +71,7 @@ def test_new_company_defaults_to_pending(onboarding_environment) -> None:
 
 
 def test_complete_onboarding_persists_answers(onboarding_environment) -> None:
-    client, notifier = onboarding_environment
+    client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -99,7 +100,7 @@ def test_complete_onboarding_persists_answers(onboarding_environment) -> None:
 
 
 def test_skip_onboarding_marks_status_skipped(onboarding_environment) -> None:
-    client, notifier = onboarding_environment
+    client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -112,13 +113,13 @@ def test_skip_onboarding_marks_status_skipped(onboarding_environment) -> None:
 
 
 def test_onboarding_requires_authentication(onboarding_environment) -> None:
-    client, _notifier = onboarding_environment
+    client, _notifier, _ = onboarding_environment
     response = client.get("/api/v1/onboarding")
     assert response.status_code == 401
 
 
 def test_onboarding_is_tenant_isolated(onboarding_environment) -> None:
-    client, notifier = onboarding_environment
+    client, notifier, _ = onboarding_environment
     token_a = _register_and_login(client, notifier)
 
     response_b = client.post(
@@ -143,7 +144,7 @@ def test_onboarding_is_tenant_isolated(onboarding_environment) -> None:
 def test_onboarding_activates_selected_module_allowed_by_plan(onboarding_environment) -> None:
     """L'offre Demo autorise le module "retail" (voir `payments/plans.py`) :
     le sélectionner à l'onboarding doit créer un `CompanyModule` actif."""
-    client, notifier = onboarding_environment
+    client, notifier, session_factory = onboarding_environment
     token = _register_and_login(client, notifier)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -160,6 +161,13 @@ def test_onboarding_activates_selected_module_allowed_by_plan(onboarding_environ
     body = response.json()
     assert body["activated_modules"] == ["retail"]
     assert body["unavailable_modules"] == []
+
+    with session_factory() as session:
+        company = session.scalar(
+            select(Company).where(Company.name == "Onboarding Test Co")
+        )
+        assert company is not None
+        activate_subscription(session, company)
 
     upload = client.post(
         "/api/v1/datasets/upload",
@@ -178,7 +186,7 @@ def test_onboarding_activates_selected_module_allowed_by_plan(onboarding_environ
 def test_onboarding_reports_module_unavailable_for_plan(onboarding_environment) -> None:
     """Un module hors des modules sélectionnables du plan n'est jamais
     activé en contournement de la facturation."""
-    client, notifier = onboarding_environment
+    client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)
     headers = {"Authorization": f"Bearer {token}"}
 

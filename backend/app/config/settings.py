@@ -183,28 +183,47 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_auth(self) -> "Settings":
         if self.environment.lower() in {"production", "prod"}:
+            missing: list[str] = []
+            if not self.database_url.strip() or self.database_url == "sqlite:///./var/avenqo.db":
+                missing.append("DATABASE_URL")
             if self.auth_jwt_secret == "development-only-change-this-jwt-secret":
-                raise ValueError("AUTH_JWT_SECRET doit Ãªtre remplacÃ© en production")
+                missing.append("AUTH_JWT_SECRET")
+            for name, value in (
+                ("STRIPE_SECRET_KEY", self.stripe_secret_key),
+                ("STRIPE_WEBHOOK_SECRET", self.stripe_webhook_secret),
+                ("STRIPE_PRICE_DEMO", self.stripe_price_demo),
+                ("STRIPE_PRICE_PROFESSIONAL", self.stripe_price_professional),
+            ):
+                if not value:
+                    missing.append(name)
+            if not self.frontend_url.startswith("https://"):
+                missing.append("FRONTEND_URL")
+            if not self.cors_origins or any(
+                not origin.startswith("https://") for origin in self.cors_origins
+            ):
+                missing.append("CORS_ORIGINS")
+            if not self.allowed_hosts or "*" in self.allowed_hosts:
+                missing.append("ALLOWED_HOSTS")
+            if missing:
+                raise ValueError(
+                    "Configuration production manquante ou non sécurisée : "
+                    + ", ".join(missing)
+                )
             # SMTP volontairement NON bloquant au dÃ©marrage : l'app doit pouvoir
             # dÃ©marrer sans serveur email. Sans SMTP_HOST, `get_account_notifier`
             # retombe sur LoggingAccountNotifier et les rÃ©ponses signalent
             # `email_delivery_configured=false` (erreur claire, jamais un crash).
-            # Stripe volontairement NON bloquant au dÃ©marrage : l'app dÃ©marre
-            # normalement avec `billing_enabled=false`. Une fonction de paiement
-            # appelÃ©e sans clÃ© Stripe retourne une erreur 503 claire
-            # (`get_billing_provider`), jamais un crash au startup.
         return self
 
     @property
     def billing_enabled(self) -> bool:
-        """Facturation Stripe pleinement configurÃ©e (jamais requise au dÃ©marrage)."""
+        """Facturation self-service Demo/Professional pleinement configurée."""
 
         return bool(
             self.stripe_secret_key
             and self.stripe_webhook_secret
             and self.stripe_price_demo
             and self.stripe_price_professional
-            and self.stripe_price_enterprise
         )
 
     @property
@@ -225,14 +244,12 @@ class Settings(BaseSettings):
         return {
             "demo": self.stripe_price_demo,
             "professional": self.stripe_price_professional,
-            "enterprise": self.stripe_price_enterprise,
         }.get(plan_code)
 
     def stripe_plan_code(self, price_id: str) -> str | None:
         prices = {
             self.stripe_price_demo: "demo",
             self.stripe_price_professional: "professional",
-            self.stripe_price_enterprise: "enterprise",
         }
         return prices.get(price_id)
 

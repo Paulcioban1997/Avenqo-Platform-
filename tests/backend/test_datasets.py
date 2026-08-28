@@ -13,6 +13,7 @@ from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.datasets import get_dataset_import_service
 from backend.app.models import (
     Base,
+    BillingAccount,
     Company,
     CompanyModule,
     CompanyModuleStatus,
@@ -73,6 +74,14 @@ def dataset_environment(
                 status=CompanyModuleStatus.ACTIVE,
             )
             for company in companies[:2]
+        ])
+        session.add_all([
+            BillingAccount(
+                company_id=company.id,
+                plan_code=company.subscription_plan,
+                status="active",
+            )
+            for company in companies
         ])
         session.commit()
         tenants = {
@@ -153,6 +162,75 @@ def test_dataset_routes_hide_other_tenants(dataset_environment) -> None:
 
     assert client.get("/api/v1/datasets").json() == []
     assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 404
+
+
+def test_dataset_routes_block_inactive_subscription(dataset_environment) -> None:
+    client, session_factory, tenants, _ = dataset_environment
+    with session_factory() as session:
+        account = session.scalar(
+            select(BillingAccount).where(
+                BillingAccount.company_id == tenants["acme"].company_id,
+            )
+        )
+        assert account is not None
+        account.status = "inactive"
+        session.commit()
+
+    response = client.get("/api/v1/datasets")
+
+    assert response.status_code == 402
+    assert response.json()["error"]["message"] == "Un abonnement actif est requis"
+
+
+def test_dataset_lookup_and_delete_convert_path_id_to_uuid(
+    dataset_environment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, _, _ = dataset_environment
+    upload = client.post(
+        "/api/v1/datasets/csv",
+        data={"module_code": "retail"},
+        files={"file": ("customers.csv", CSV_CONTENT, "text/csv")},
+    )
+    dataset_id = upload.json()["id"]
+    received_ids: list[UUID] = []
+    original_get = DatasetImportService.get
+    original_delete = DatasetImportService.delete
+
+    def recording_get(self, tenant, received_id):
+        received_ids.append(received_id)
+        return original_get(self, tenant, received_id)
+
+    def recording_delete(self, tenant, received_id):
+        received_ids.append(received_id)
+        return original_delete(self, tenant, received_id)
+
+    monkeypatch.setattr(DatasetImportService, "get", recording_get)
+    monkeypatch.setattr(DatasetImportService, "delete", recording_delete)
+
+    assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 200
+    assert client.delete(f"/api/v1/datasets/{dataset_id}").status_code == 204
+    assert received_ids
+    assert all(isinstance(received_id, UUID) for received_id in received_ids)
+
+
+@pytest.mark.parametrize("method", ["GET", "DELETE"])
+def test_dataset_routes_reject_invalid_uuid_before_service_call(
+    method: str,
+    dataset_environment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, _, _ = dataset_environment
+
+    def unexpected_call(*args, **kwargs):
+        raise AssertionError("Le service ne doit pas recevoir un UUID invalide")
+
+    monkeypatch.setattr(DatasetImportService, "get", unexpected_call)
+    monkeypatch.setattr(DatasetImportService, "delete", unexpected_call)
+
+    response = client.request(method, "/api/v1/datasets/not-a-uuid")
+
+    assert response.status_code == 422
 
 
 def test_dataset_delete_is_tenant_scoped_and_removes_artifacts(dataset_environment) -> None:

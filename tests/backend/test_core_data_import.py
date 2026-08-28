@@ -42,6 +42,7 @@ from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 
 from tests.backend.test_auth import RecordingNotifier, registration_payload, verify_and_login
+from tests.subscription_helpers import activate_subscription_by_id, add_active_subscription
 
 
 def _csv(row_marker: str) -> bytes:
@@ -56,7 +57,7 @@ def _csv(row_marker: str) -> bytes:
 @pytest.fixture
 def core_import_environment(
     tmp_path: Path,
-) -> Generator[tuple[TestClient, RecordingNotifier], None, None]:
+) -> Generator[tuple[TestClient, RecordingNotifier, sessionmaker[Session]], None, None]:
     engine = create_engine(
         f"sqlite:///{tmp_path / 'core_data_import.db'}",
         connect_args={"check_same_thread": False},
@@ -76,7 +77,7 @@ def core_import_environment(
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_account_notifier] = lambda: notifier
     with TestClient(app) as client:
-        yield client, notifier
+        yield client, notifier, testing_session
 
 
 def test_new_demo_company_can_import_data_with_zero_company_modules(
@@ -85,7 +86,7 @@ def test_new_demo_company_can_import_data_with_zero_company_modules(
     """Le bug historique : une entreprise Demo fraîchement inscrite (donc sans
     aucun `CompanyModule` actif) doit pouvoir importer des données — capacité
     CORE Avenqo, jamais subordonnée à un module optionnel."""
-    client, notifier = core_import_environment
+    client, notifier, session_factory = core_import_environment
     email = "owner@core-import-demo.ca"
     response = client.post(
         "/api/v1/auth/register",
@@ -93,6 +94,8 @@ def test_new_demo_company_can_import_data_with_zero_company_modules(
     )
     assert response.status_code == 201
     session = verify_and_login(client, notifier, email)
+    with session_factory() as db_session:
+        activate_subscription_by_id(db_session, session["company"]["id"])
     assert session["company"]["subscription_plan"] == "demo"
     token = session["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -112,14 +115,17 @@ def test_new_demo_company_can_import_data_with_zero_company_modules(
 
 
 def test_new_demo_company_dataset_is_tenant_isolated(core_import_environment) -> None:
-    client, notifier = core_import_environment
+    client, notifier, session_factory = core_import_environment
 
     def _register_and_upload(email: str, company_name: str, filename: str) -> str:
         assert client.post(
             "/api/v1/auth/register",
             json=registration_payload(email=email, company_name=company_name),
         ).status_code == 201
-        token = verify_and_login(client, notifier, email)["access_token"]
+        login = verify_and_login(client, notifier, email)
+        with session_factory() as db_session:
+            activate_subscription_by_id(db_session, login["company"]["id"])
+        token = login["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         upload = client.post(
             "/api/v1/datasets/upload",
@@ -175,6 +181,9 @@ def quota_environment(
             ),
         }
         session.add_all(companies.values())
+        session.flush()
+        for company in companies.values():
+            add_active_subscription(session, company)
         session.commit()
         tenants = {code: TenantContext(company.id) for code, company in companies.items()}
 
@@ -266,6 +275,7 @@ def capability_gating_environment(
         )
         session.add(company)
         session.flush()
+        add_active_subscription(session, company)
         tenant = TenantContext(company.id)
         session.commit()
 

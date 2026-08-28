@@ -25,6 +25,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import AuthSession, Base, Company, User, UserRole
 from backend.main import create_application
+from tests.subscription_helpers import add_active_subscription
 
 
 class _NullNotifier:
@@ -67,6 +68,7 @@ def _company(session, *, slug: str) -> Company:
     )
     session.add(company)
     session.flush()
+    add_active_subscription(session, company)
     return company
 
 

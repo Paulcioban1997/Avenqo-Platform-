@@ -20,12 +20,16 @@ def _build_settings(monkeypatch, **overrides):
     from backend.app.config.settings import Settings
 
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./var/avenqo-production.db")
     monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_dummy")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo_dummy")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_pro_dummy")
-    monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent_dummy")
+    monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "")
+    monkeypatch.setenv("FRONTEND_URL", "https://app.avenqo.ca")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.avenqo.ca")
+    monkeypatch.setenv("ALLOWED_HOSTS", "api.avenqo.ca")
     init_kwargs = {}
     for key, value in overrides.items():
         if value is None:
@@ -44,25 +48,56 @@ def test_production_settings_boot_without_smtp_host(_clean_settings_cache, monke
     assert settings.smtp_host is None
 
 
-def test_production_settings_boot_without_stripe_billing_disabled(_clean_settings_cache, monkeypatch) -> None:
-    for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "DATABASE_URL",
+        "AUTH_JWT_SECRET",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_DEMO",
+        "STRIPE_PRICE_PROFESSIONAL",
+    ],
+)
+def test_production_settings_fail_fast_when_mandatory_config_is_missing(
+    _clean_settings_cache,
+    monkeypatch,
+    missing_key: str,
+) -> None:
+    from backend.app.config.settings import Settings
+
+    with pytest.raises(ValueError, match=missing_key):
+        _build_settings(monkeypatch, **{missing_key: None})
+
+
+def test_development_allows_missing_production_integrations(_clean_settings_cache, monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    for key in (
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_DEMO",
+        "STRIPE_PRICE_PROFESSIONAL",
+        "STRIPE_PRICE_ENTERPRISE",
+    ):
         monkeypatch.setenv(key, "")
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
 
     from backend.app.config.settings import Settings
 
     settings = Settings()
-
-    assert settings.environment == "production"
     assert settings.billing_enabled is False
 
 
 def test_billing_enabled_true_only_when_stripe_fully_configured(_clean_settings_cache, monkeypatch) -> None:
     settings = _build_settings(monkeypatch)
     assert settings.billing_enabled is True
+    assert settings.stripe_price_enterprise is None
+    assert settings.stripe_price_id("enterprise") is None
 
-    partial = _build_settings(monkeypatch, STRIPE_WEBHOOK_SECRET=None)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "")
+    from backend.app.config.settings import Settings
+
+    partial = Settings()
     assert partial.billing_enabled is False
 
 
@@ -74,7 +109,7 @@ def test_billing_provider_returns_clear_503_when_stripe_missing(_clean_settings_
     # (pydantic-settings priorise le .env sur un kwargs None).
     for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
         monkeypatch.setenv(key, "")
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
     from backend.app.config.settings import Settings
     settings = Settings()

@@ -52,6 +52,7 @@ from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from modules.retailsense.training_specs import CapabilityStatus, get_capability_status
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 from shared.ai_engine.decision_intelligence.action_rules import build_default_action_registry
 from shared.ai_engine.decision_intelligence.contracts import (
     BusinessSignal,
@@ -234,6 +235,7 @@ def phase24_environment(tmp_path: Path):
                     status=CompanyModuleStatus.ACTIVE,
                 )
             )
+            add_active_subscription(session, company)
             session.commit()
             return TenantContext(company.id)
 

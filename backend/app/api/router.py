@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from backend.app.dependencies.subscription import require_active_subscription
 
 from backend.app.routers.ai_chat import router as ai_chat_router
 from backend.app.routers.ai_support import router as ai_support_router
@@ -17,17 +19,41 @@ from backend.app.routers.training import router as training_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, prefix="/api/v1")
-api_router.include_router(ai_chat_router, prefix="/api/v1")
+api_router.include_router(
+	ai_chat_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")
-api_router.include_router(assistants_router, prefix="/api/v1")
+api_router.include_router(
+	assistants_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
-api_router.include_router(datasets_router, prefix="/api/v1")
+api_router.include_router(
+	datasets_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 api_router.include_router(onboarding_router, prefix="/api/v1")
-api_router.include_router(retail_router, prefix="/api/v1")
-api_router.include_router(employees_router, prefix="/api/v1")
-api_router.include_router(training_router, prefix="/api/v1")
+api_router.include_router(
+	retail_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	employees_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	training_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 
 # Routeur interne (Auto Retraining Enterprise, Phase 8) : jamais sous
 # `/api/v1`, jamais consommé par le frontend utilisateur.

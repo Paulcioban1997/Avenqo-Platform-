@@ -12,6 +12,7 @@ from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import Base, Company, CompanyOnboarding, User
 from backend.main import create_application
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
+from tests.subscription_helpers import activate_subscription_by_id
 
 
 class RecordingNotifier:
@@ -322,13 +323,16 @@ def test_conflits_et_recuperation_ne_revelent_pas_les_comptes(auth_environment) 
 
 
 def test_gestion_employes_respecte_roles_et_tenants(auth_environment) -> None:
-    client, _, notifier = auth_environment
+    client, session_factory, notifier = auth_environment
     acme = registration_payload("owner@acme.ca", "Acme Retail")
     nova = registration_payload("owner@nova.ca", "Nova Commerce")
     client.post("/api/v1/auth/register", json=acme)
     client.post("/api/v1/auth/register", json=nova)
     acme_login = verify_and_login(client, notifier, acme["email"])
     nova_login = verify_and_login(client, notifier, nova["email"])
+    with session_factory() as session:
+        activate_subscription_by_id(session, acme_login["company"]["id"])
+        activate_subscription_by_id(session, nova_login["company"]["id"])
     acme_headers = {"Authorization": f"Bearer {acme_login['access_token']}"}
     nova_headers = {"Authorization": f"Bearer {nova_login['access_token']}"}
 

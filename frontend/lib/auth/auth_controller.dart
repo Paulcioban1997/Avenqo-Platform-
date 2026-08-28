@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:avenqo/auth/subscription_route_guard.dart';
 import 'package:avenqo/core/api_client.dart';
 
 class AuthController extends ChangeNotifier {
@@ -8,6 +9,7 @@ class AuthController extends ChangeNotifier {
   bool _initialized = false;
   bool _busy = false;
   Map<String, dynamic>? _account;
+  String _subscriptionStatus = 'inactive';
 
   bool get initialized => _initialized;
   bool get busy => _busy;
@@ -17,14 +19,20 @@ class AuthController extends ChangeNotifier {
   Map<String, dynamic>? get company =>
       _account?['company'] as Map<String, dynamic>?;
   bool get isPlatformAdmin => user?['is_platform_admin'] == true;
+  String get subscriptionStatus => _subscriptionStatus;
+  bool get hasActiveSubscription =>
+      isPlatformAdmin || subscriptionAllowsTenantApp(_subscriptionStatus);
 
   Future<void> initialize() async {
     await api.initialize();
     if (api.hasSession) {
       try {
         _account = await api.get('/auth/me') as Map<String, dynamic>;
+        await _refreshSubscription();
       } on ApiException {
         await api.clearSession();
+        _account = null;
+        _subscriptionStatus = 'inactive';
       }
     }
     _initialized = true;
@@ -35,6 +43,7 @@ class AuthController extends ChangeNotifier {
     await _run(() async {
       final data = await api.login(email.trim(), password);
       _account = {'user': data['user'], 'company': data['company']};
+      await _refreshSubscription();
     });
   }
 
@@ -80,6 +89,7 @@ class AuthController extends ChangeNotifier {
     } finally {
       await api.clearSession();
       _account = null;
+      _subscriptionStatus = 'inactive';
       notifyListeners();
     }
   }
@@ -91,6 +101,7 @@ class AuthController extends ChangeNotifier {
     if (!api.hasSession) return;
     try {
       _account = await api.get('/auth/me') as Map<String, dynamic>;
+      await _refreshSubscription();
       notifyListeners();
     } on ApiException {
       // Best-effort : on garde l'état local précédent si le rafraîchissement échoue.
@@ -105,6 +116,21 @@ class AuthController extends ChangeNotifier {
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _refreshSubscription() async {
+    if (_account == null || isPlatformAdmin) {
+      _subscriptionStatus = isPlatformAdmin ? 'active' : 'inactive';
+      return;
+    }
+    try {
+      final subscription =
+          await api.get('/billing/subscription') as Map<String, dynamic>;
+      _subscriptionStatus =
+          subscription['status']?.toString().trim().toLowerCase() ?? 'inactive';
+    } on ApiException {
+      _subscriptionStatus = 'inactive';
     }
   }
 }

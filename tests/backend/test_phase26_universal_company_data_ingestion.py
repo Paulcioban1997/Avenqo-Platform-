@@ -42,6 +42,7 @@ from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 
 COMPANY_A_CSV = (
@@ -151,6 +152,8 @@ def phase26_environment(
             )
             for company in companies[:2]
         ])
+        for company in companies:
+            add_active_subscription(session, company)
         session.commit()
         tenants = {
             "company_a": TenantContext(companies[0].id),

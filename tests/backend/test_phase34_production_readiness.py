@@ -64,32 +64,41 @@ def test_production_requires_non_default_jwt_secret() -> None:
         Settings(ENVIRONMENT="production")
 
 
-def test_production_allows_optional_smtp_and_stripe_integrations() -> None:
+def test_production_allows_optional_smtp_and_enterprise_price() -> None:
     settings = Settings(
         ENVIRONMENT="production",
+        DATABASE_URL="sqlite:///./var/avenqo-production.db",
         AUTH_JWT_SECRET="a" * 32,
         SMTP_HOST="",
-        STRIPE_SECRET_KEY="",
-        STRIPE_WEBHOOK_SECRET="",
-        STRIPE_PRICE_DEMO="",
-        STRIPE_PRICE_PROFESSIONAL="",
+        STRIPE_SECRET_KEY="sk_test_x",
+        STRIPE_WEBHOOK_SECRET="whsec_x",
+        STRIPE_PRICE_DEMO="price_demo",
+        STRIPE_PRICE_PROFESSIONAL="price_pro",
         STRIPE_PRICE_ENTERPRISE="",
+        FRONTEND_URL="https://app.avenqo.ca",
+        CORS_ORIGINS="https://app.avenqo.ca",
+        ALLOWED_HOSTS="api.avenqo.ca",
     )
     assert settings.environment == "production"
     assert settings.smtp_host is None
-    assert settings.billing_enabled is False
+    assert settings.stripe_price_enterprise is None
+    assert settings.billing_enabled is True
 
 
 def test_production_settings_accepted_when_fully_configured() -> None:
     settings = Settings(
         ENVIRONMENT="production",
+        DATABASE_URL="sqlite:///./var/avenqo-production.db",
         AUTH_JWT_SECRET="b" * 32,
         SMTP_HOST="smtp.avenqo.ca",
         STRIPE_SECRET_KEY="sk_test_x",
         STRIPE_WEBHOOK_SECRET="whsec_x",
         STRIPE_PRICE_DEMO="price_demo",
         STRIPE_PRICE_PROFESSIONAL="price_pro",
-        STRIPE_PRICE_ENTERPRISE="price_ent",
+        STRIPE_PRICE_ENTERPRISE="",
+        FRONTEND_URL="https://app.avenqo.ca",
+        CORS_ORIGINS="https://app.avenqo.ca",
+        ALLOWED_HOSTS="api.avenqo.ca",
     )
     assert settings.environment == "production"
     assert settings.billing_enabled is True
@@ -97,13 +106,17 @@ def test_production_settings_accepted_when_fully_configured() -> None:
 
 def test_docs_disabled_in_production(monkeypatch: pytest.MonkeyPatch, db_session) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_session.bind.url.database}")
     monkeypatch.setenv("AUTH_JWT_SECRET", "c" * 32)
     monkeypatch.setenv("SMTP_HOST", "smtp.avenqo.ca")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_pro")
-    monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_ent")
+    monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "")
+    monkeypatch.setenv("FRONTEND_URL", "https://app.avenqo.ca")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.avenqo.ca")
+    monkeypatch.setenv("ALLOWED_HOSTS", "api.avenqo.ca")
     get_settings.cache_clear()
     app = create_application()
 
@@ -112,8 +125,9 @@ def test_docs_disabled_in_production(monkeypatch: pytest.MonkeyPatch, db_session
 
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as prod_client:
-        assert prod_client.get("/docs").status_code == 404
-        assert prod_client.get("/openapi.json").status_code == 404
+        headers = {"Host": "api.avenqo.ca"}
+        assert prod_client.get("/docs", headers=headers).status_code == 404
+        assert prod_client.get("/openapi.json", headers=headers).status_code == 404
     get_settings.cache_clear()
 
 

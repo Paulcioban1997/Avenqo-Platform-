@@ -53,6 +53,7 @@ from shared.ai_engine.capability_dataset.feature_engineering import (
     compute_segmentation_rfm_features,
 )
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 from shared.ai_engine.dataset_ingestion.capability_requirements import CAPABILITY_DATA_REQUIREMENTS
 from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
@@ -634,6 +635,8 @@ def phase27_environment(
             )
             for company in companies
         ])
+        for company in companies:
+            add_active_subscription(session, company)
         session.commit()
         tenants = {
             "company_a": TenantContext(companies[0].id),

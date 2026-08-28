@@ -28,11 +28,12 @@ secrets de la plateforme d'hébergement (jamais `backend/.env` en production).
 |---|---|---|
 | `ENVIRONMENT=production` | Oui | Active la validation stricte au démarrage, désactive `/docs`/`/redoc`/`/openapi.json`, force `Strict-Transport-Security`. |
 | `AUTH_JWT_SECRET` | Oui | ≥32 caractères, doit différer de la valeur de développement par défaut (le démarrage échoue sinon). |
-| `SMTP_HOST` (+ `SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM_EMAIL`) | Oui | Requis par la validation de démarrage en production. |
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_DEMO`, `STRIPE_PRICE_PROFESSIONAL`, `STRIPE_PRICE_ENTERPRISE` | Oui | Requis par la validation de démarrage en production. |
-| `DATABASE_URL` | Oui | Voir §4 — limite SQLite connue. |
-| `ALLOWED_HOSTS` | Recommandé | Liste séparée par virgules (ex. `api.avenqo.ca`). Par défaut `*` — à restreindre explicitement en production. |
-| `CORS_ORIGINS` | Recommandé | Domaines exacts du frontend (ex. `https://app.avenqo.ca`). |
+| `SMTP_HOST` (+ `SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM_EMAIL`) | Non | Optionnel. Sans SMTP, les fonctionnalités email sont dégradées sans bloquer le démarrage. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_DEMO`, `STRIPE_PRICE_PROFESSIONAL` | Oui | Requis pour la facturation self-service Demo/Professional. Enterprise reste sur devis, sans prix Stripe fixe. |
+| `DATABASE_URL` | Oui | Doit être explicitement défini en production. Voir §4 — limite SQLite connue. |
+| `FRONTEND_URL` | Oui | Origine HTTPS utilisée pour les retours Checkout/Customer Portal. |
+| `ALLOWED_HOSTS` | Oui | Liste séparée par virgules (ex. `api.avenqo.ca`) ; `*` est refusé en production. |
+| `CORS_ORIGINS` | Oui | Domaines HTTPS exacts du frontend (ex. `https://app.avenqo.ca`) ; les origines localhost sont refusées en production. |
 | `RATE_LIMIT_*` | Optionnel | Voir §6 — limite technique par défaut raisonnable, ajustable. |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_AI_API_KEY` | Selon fournisseurs actifs | Voir `AI_PRIMARY_PROVIDER`/`AI_FALLBACK_PROVIDER_*`. |
 

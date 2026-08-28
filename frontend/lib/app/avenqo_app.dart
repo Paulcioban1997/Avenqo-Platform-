@@ -7,6 +7,7 @@ import 'package:avenqo/app/theme_controller.dart';
 import 'package:avenqo/app/theme_scope.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/auth/auth_page.dart';
+import 'package:avenqo/auth/subscription_route_guard.dart';
 import 'package:avenqo/pages/billing_page.dart';
 import 'package:avenqo/pages/assistant_page.dart';
 import 'package:avenqo/pages/support_page.dart';
@@ -51,15 +52,6 @@ class _AvenqoAppState extends State<AvenqoApp> {
   late final GoRouter _router = _createRouter();
 
   GoRouter _createRouter() {
-    final publicPaths = {
-      '/',
-      '/pricing',
-      '/login',
-      '/register',
-      '/forgot-password',
-      '/verify-email',
-      '/reset-password',
-    };
     return GoRouter(
       refreshListenable: widget.auth,
       redirect: (context, state) {
@@ -67,32 +59,14 @@ class _AvenqoAppState extends State<AvenqoApp> {
           return null;
         }
         final path = state.uri.path;
-        final isPublic = publicPaths.contains(path);
-        final isAdminPath = path == '/admin' || path.startsWith('/admin/');
-        if (!widget.auth.isAuthenticated && !isPublic) {
-          return '/login';
-        }
-        if (isAdminPath && !widget.auth.isPlatformAdmin) {
-          // Défense en profondeur : le backend refuse déjà (403) via
-          // `require_platform_admin`, mais on évite aussi d'afficher l'écran.
-          return '/dashboard';
-        }
-        if (widget.auth.isAuthenticated && path == '/login') {
-          return widget.auth.isPlatformAdmin ? '/admin' : '/dashboard';
-        }
-        // Onboarding : forcé une seule fois tant que le statut reste "pending"
-        // (jamais reforcé après complétion/abandon — un banner du dashboard
-        // permet de le reprendre volontairement s'il a été passé).
         final onboardingStatus = widget.auth.company?['onboarding_status'] as String?;
-        final isOnboardingPath = path == '/onboarding';
-        if (widget.auth.isAuthenticated &&
-            !widget.auth.isPlatformAdmin &&
-            !isAdminPath &&
-            onboardingStatus == 'pending' &&
-            !isOnboardingPath) {
-          return '/onboarding';
-        }
-        return null;
+        return subscriptionRedirect(
+          path: path,
+          isAuthenticated: widget.auth.isAuthenticated,
+          isPlatformAdmin: widget.auth.isPlatformAdmin,
+          hasActiveSubscription: widget.auth.hasActiveSubscription,
+          onboardingStatus: onboardingStatus,
+        );
       },
       routes: [
         GoRoute(path: '/', builder: (context, state) => const HomePage()),

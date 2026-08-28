@@ -1,8 +1,11 @@
 """Routes de facturation Stripe du tenant courant."""
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from backend.app.dependencies.auth import CurrentIdentity, require_permission
+from backend.app.database import get_db
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
 from backend.app.dependencies.billing import get_billing_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
@@ -18,6 +21,7 @@ from backend.app.services.billing_service import (
     BillingOperationError,
     BillingService,
 )
+from backend.app.models import BillingAccount
 from payments import PLANS
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -45,10 +49,22 @@ def plans() -> list[PlanResponse]:
 
 @router.get("/subscription", response_model=SubscriptionResponse)
 def subscription(
-    identity: CurrentIdentity = Depends(manage_billing),
-    service: BillingService = Depends(get_billing_service),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
 ) -> SubscriptionResponse:
-    return subscription_response(service.get_account(identity.user.company_id))
+    account = db.scalar(
+        select(BillingAccount).where(
+            BillingAccount.company_id == identity.user.company_id,
+        )
+    )
+    if account is None:
+        return SubscriptionResponse(
+            plan_code=identity.user.company.subscription_plan,
+            status="inactive",
+            current_period_end=None,
+            cancel_at_period_end=False,
+        )
+    return subscription_response(account)
 
 
 @router.post(

@@ -12,7 +12,7 @@ Les modules restent dans `company_modules`. Ils n'importent jamais le SDK Stripe
 | --- | --- | --- |
 | `demo` | Demo | Stripe Checkout |
 | `professional` | Professional | Stripe Checkout |
-| `enterprise` | Enterprise | Stripe Checkout |
+| `enterprise` | Enterprise | Contact commercial / sur devis |
 | `custom_enterprise` | Custom Enterprise | Contact commercial |
 
 Les Price IDs Stripe sont configurÃ©s par environnement. Aucun Price ID n'est codÃ© en dur.
@@ -30,7 +30,7 @@ Les Price IDs Stripe sont configurÃ©s par environnement. Aucun Price ID n'est 
 | GET | `/api/v1/billing/invoices` | Historique des factures du tenant |
 | POST | `/api/v1/billing/webhook` | Synchroniser les Ã©vÃ©nements signÃ©s |
 
-Toutes les routes sauf le catalogue et le webhook exigent `billing:manage`. Le tenant provient toujours du JWT. Le webhook vÃ©rifie la signature Stripe et mÃ©morise chaque `event.id` pour assurer l'idempotence.
+La lecture de l'abonnement exige une session authentifiée. Les mutations et les factures exigent `billing:manage`; le catalogue et le webhook restent publics. Le tenant provient toujours du JWT. Le webhook vérifie la signature Stripe et mémorise chaque `event.id` pour assurer l'idempotence.
 
 ## Configuration
 
@@ -40,7 +40,8 @@ Les variables sont listÃ©es dans `backend/.env.example`:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_DEMO`
 - `STRIPE_PRICE_PROFESSIONAL`
-- `STRIPE_PRICE_ENTERPRISE`
+
+Enterprise n'a pas de Price ID fixe et ne peut pas ouvrir de Checkout self-service.
 
 ## Validation
 

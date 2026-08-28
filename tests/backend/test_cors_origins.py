@@ -19,20 +19,30 @@ def _build_app(environment: str, cors_origins: list[str] | None = None):
 
     old_env = os.environ.get("ENVIRONMENT")
     old_cors = os.environ.get("CORS_ORIGINS")
-    prod_keys = ("AUTH_JWT_SECRET", "SMTP_HOST", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE")
+    prod_keys = (
+        "DATABASE_URL",
+        "AUTH_JWT_SECRET",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_DEMO",
+        "STRIPE_PRICE_PROFESSIONAL",
+        "FRONTEND_URL",
+        "ALLOWED_HOSTS",
+    )
     old_prod = {k: os.environ.get(k) for k in prod_keys}
     os.environ["ENVIRONMENT"] = environment
     if cors_origins is not None:
         os.environ["CORS_ORIGINS"] = ",".join(cors_origins)
     if environment == "production":
         # Valeurs factices requises par la validation Settings en production.
+        os.environ.setdefault("DATABASE_URL", "sqlite:///./var/cors-production-test.db")
         os.environ.setdefault("AUTH_JWT_SECRET", "test-only-prod-jwt-secret-0123456789abcdef")
-        os.environ.setdefault("SMTP_HOST", "smtp.test.local")
         os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test_dummy")
         os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_dummy")
         os.environ.setdefault("STRIPE_PRICE_DEMO", "price_demo_dummy")
         os.environ.setdefault("STRIPE_PRICE_PROFESSIONAL", "price_pro_dummy")
-        os.environ.setdefault("STRIPE_PRICE_ENTERPRISE", "price_ent_dummy")
+        os.environ.setdefault("FRONTEND_URL", "https://app.avenqo.ca")
+        os.environ.setdefault("ALLOWED_HOSTS", "testserver")
     try:
         app = create_application()
     finally:

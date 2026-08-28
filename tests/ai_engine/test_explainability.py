@@ -70,6 +70,13 @@ def _fitted_pipeline(estimator, task_type: str) -> tuple[Pipeline, pd.DataFrame,
     return pipeline, features, target
 
 
+def _require_shap() -> None:
+    try:
+        import shap  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(f"SHAP runtime unavailable: {exc}")
+
+
 class TestRegistryFamily:
     def test_arbres_reconnus(self) -> None:
         assert explanation_family_for(RandomForestClassifier()) == "tree"
@@ -127,6 +134,7 @@ class TestPermutationImportance:
 
 class TestShapExplainer:
     def test_shap_arbre_classification(self) -> None:
+        _require_shap()
         pipeline, features, _ = _fitted_pipeline(
             RandomForestClassifier(n_estimators=20, random_state=42), "classification"
         )
@@ -138,6 +146,7 @@ class TestShapExplainer:
         assert len(samples) == 5
 
     def test_shap_lineaire_regression(self) -> None:
+        _require_shap()
         pipeline, features, _ = _fitted_pipeline(LinearRegression(), "regression")
         names = resolve_output_feature_names(pipeline)
         method, importance, samples = build_shap_explanation(pipeline, features, names, "regression")
@@ -156,6 +165,7 @@ class TestShapExplainer:
 
 class TestExplainSupervised:
     def test_assemble_explication_arbre(self) -> None:
+        _require_shap()
         pipeline, features, _ = _fitted_pipeline(
             RandomForestClassifier(n_estimators=20, random_state=42), "classification"
         )

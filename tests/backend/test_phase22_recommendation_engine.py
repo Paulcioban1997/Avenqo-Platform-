@@ -56,6 +56,7 @@ from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 
 _FORBIDDEN_ML_TERMS = (
     "random forest",
@@ -173,6 +174,7 @@ def phase22_environment(tmp_path: Path):
                     status=CompanyModuleStatus.ACTIVE,
                 )
             )
+            add_active_subscription(session, company)
             session.commit()
             return TenantContext(company.id)
 

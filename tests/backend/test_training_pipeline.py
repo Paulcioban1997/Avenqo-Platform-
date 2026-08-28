@@ -38,6 +38,7 @@ from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 from shared.ai_engine.drift.serializer import load_baseline, load_drift_report
 from shared.ai_engine.drift.types import DriftSeverity
 from shared.ai_engine.explainability.serializer import load_explanation
@@ -88,6 +89,7 @@ def training_environment(tmp_path: Path):
                 status=CompanyModuleStatus.ACTIVE,
             )
         )
+        add_active_subscription(session, company)
         session.commit()
         tenant = TenantContext(company.id)
 
