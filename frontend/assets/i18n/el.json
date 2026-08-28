@@ -368,6 +368,11 @@
     "verifyButton": "Επιβεβαιώστε το email σας"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Γεια σας",
     "subtitleForCompany": "Αυτά αξίζουν την προσοχή σας στην {company}.",
     "askAvenqo": "Τι θα θέλατε να κατανοήσετε σήμερα;",

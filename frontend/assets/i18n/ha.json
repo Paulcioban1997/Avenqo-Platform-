@@ -368,6 +368,11 @@
     "verifyButton": "Tabbatar da imel ɗinku"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Sannu",
     "subtitleForCompany": "Ga abin da ke buƙatar kulawa yau don {company}.",
     "askAvenqo": "Me kuke son sani a yau?",

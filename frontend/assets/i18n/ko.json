@@ -368,6 +368,11 @@
     "verifyButton": "이메일 인증"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "안녕하세요",
     "subtitleForCompany": "{company}에서 주목해야 할 사항입니다.",
     "askAvenqo": "오늘 무엇을 알고 싶으신가요?",

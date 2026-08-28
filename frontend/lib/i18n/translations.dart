@@ -244,6 +244,11 @@ class DashboardHomeStrings {
     required this.stepDataLabel,
     required this.stepInsightsLabel,
     required this.stepAskLabel,
+    required this.revenueDeclineTitle,
+    required this.revenueGrowthTitle,
+    required this.revenueChangedExplanation,
+    required this.datasetImportedActivity,
+    required this.modelActivatedActivity,
   });
 
   factory DashboardHomeStrings.fromJson(Map<String, dynamic> json) => DashboardHomeStrings(
@@ -277,6 +282,11 @@ class DashboardHomeStrings {
         stepDataLabel: json['stepDataLabel'] as String? ?? DashboardHomeStrings.fallback().stepDataLabel,
         stepInsightsLabel: json['stepInsightsLabel'] as String? ?? DashboardHomeStrings.fallback().stepInsightsLabel,
         stepAskLabel: json['stepAskLabel'] as String? ?? DashboardHomeStrings.fallback().stepAskLabel,
+        revenueDeclineTitle: json['revenueDeclineTitle'] as String? ?? DashboardHomeStrings.fallback().revenueDeclineTitle,
+        revenueGrowthTitle: json['revenueGrowthTitle'] as String? ?? DashboardHomeStrings.fallback().revenueGrowthTitle,
+        revenueChangedExplanation: json['revenueChangedExplanation'] as String? ?? DashboardHomeStrings.fallback().revenueChangedExplanation,
+        datasetImportedActivity: json['datasetImportedActivity'] as String? ?? DashboardHomeStrings.fallback().datasetImportedActivity,
+        modelActivatedActivity: json['modelActivatedActivity'] as String? ?? DashboardHomeStrings.fallback().modelActivatedActivity,
       );
 
   factory DashboardHomeStrings.fallback() => const DashboardHomeStrings(
@@ -310,6 +320,11 @@ class DashboardHomeStrings {
         stepDataLabel: 'Connect or import your data',
         stepInsightsLabel: 'Explore your insights',
         stepAskLabel: 'Ask Avenqo AI',
+        revenueDeclineTitle: 'Review the recent revenue decline',
+        revenueGrowthTitle: 'Build on recent revenue growth',
+        revenueChangedExplanation: 'Revenue changed materially from the previous equivalent period.',
+        datasetImportedActivity: 'Dataset imported',
+        modelActivatedActivity: 'Intelligence capability activated',
       );
 
   final String hello;
@@ -342,6 +357,11 @@ class DashboardHomeStrings {
   final String stepDataLabel;
   final String stepInsightsLabel;
   final String stepAskLabel;
+  final String revenueDeclineTitle;
+  final String revenueGrowthTitle;
+  final String revenueChangedExplanation;
+  final String datasetImportedActivity;
+  final String modelActivatedActivity;
 }
 
 class AssistantStrings {

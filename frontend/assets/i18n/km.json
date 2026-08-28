@@ -368,6 +368,11 @@
     "verifyButton": "ផ្ទៀងផ្ទាត់អ៊ីមែលរបស់អ្នក"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "សួស្តី",
     "subtitleForCompany": "នេះជាអ្វីដែលត្រូវយកចិត្តទុកដាក់ថ្ងៃនេះសម្រាប់ {company}។",
     "askAvenqo": "តើអ្នកចង់ដឹងអ្វីខ្លះថ្ងៃនេះ?",

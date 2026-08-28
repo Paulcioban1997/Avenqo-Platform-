@@ -397,7 +397,12 @@
     "stepOrgLabel": "Complétez la configuration de votre entreprise",
     "stepDataLabel": "Connectez ou importez vos données",
     "stepInsightsLabel": "Explorez vos analyses",
-    "stepAskLabel": "Posez une question à Avenqo AI"
+    "stepAskLabel": "Posez une question à Avenqo AI",
+    "revenueDeclineTitle": "Examiner la baisse récente du chiffre d’affaires",
+    "revenueGrowthTitle": "Consolider la croissance récente du chiffre d’affaires",
+    "revenueChangedExplanation": "Le chiffre d’affaires a évolué de manière significative par rapport à la période précédente équivalente.",
+    "datasetImportedActivity": "Jeu de données importé",
+    "modelActivatedActivity": "Capacité d’intelligence activée"
   },
   "admin": {
     "commandCenterTitle": "Centre de contrôle Avenqo",

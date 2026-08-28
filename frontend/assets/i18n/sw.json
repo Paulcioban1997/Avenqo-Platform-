@@ -368,6 +368,11 @@
     "verifyButton": "Thibitisha barua pepe yako"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Habari",
     "subtitleForCompany": "Haya ndiyo yanayohitaji uangalizi leo kwa {company}.",
     "askAvenqo": "Unataka kujua nini leo?",

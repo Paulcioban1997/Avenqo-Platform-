@@ -368,6 +368,11 @@
     "verifyButton": "اپنا ای میل تصدیق کریں"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "ہیلو",
     "subtitleForCompany": "آج {company} میں آپ کی توجہ کیا چاہتا ہے۔",
     "askAvenqo": "آج آپ کیا جاننا چاہتے ہیں؟",

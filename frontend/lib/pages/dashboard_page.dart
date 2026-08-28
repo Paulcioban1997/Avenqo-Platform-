@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 
 /// Palette de marque Avenqo (alignée sur home_page.dart / auth_page.dart).
 /// `blue`/`blueDark` sont l'accent de marque fixe (identique clair/sombre) ;
@@ -17,18 +19,48 @@ class _Brand {
 
 class DashboardData {
   const DashboardData({
-    required this.hasReadyDataset,
+    required this.status,
     required this.planCode,
-    this.datasetName,
-    this.datasetStatus,
-    this.datasetUpdatedAt,
+    required this.currency,
+    required this.kpis,
+    required this.priorities,
+    required this.connections,
+    required this.recentActivity,
   });
 
-  final bool hasReadyDataset;
+  factory DashboardData.fromJson(Map<String, dynamic> json) {
+    final company = json['company'] as Map<String, dynamic>? ?? const {};
+    return DashboardData(
+      status: json['status']?.toString() ?? 'error',
+      planCode: company['plan_code']?.toString(),
+      currency: company['currency']?.toString() ?? 'USD',
+      kpis: (json['kpis'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>(),
+      priorities: (json['priorities'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>(),
+      connections:
+          json['connections'] as Map<String, dynamic>? ?? const {},
+      recentActivity: (json['recent_activity'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>(),
+    );
+  }
+
+  final String status;
   final String? planCode;
-  final String? datasetName;
-  final String? datasetStatus;
-  final DateTime? datasetUpdatedAt;
+  final String currency;
+  final List<Map<String, dynamic>> kpis;
+  final List<Map<String, dynamic>> priorities;
+  final Map<String, dynamic> connections;
+  final List<Map<String, dynamic>> recentActivity;
+
+  bool get hasReadyData => status == 'ready' || status == 'partial_ready';
+
+  Map<String, dynamic>? kpi(String key) {
+    for (final item in kpis) {
+      if (item['key'] == key) return item;
+    }
+    return null;
+  }
 }
 
 /// Point d'injection pour les tests : évite tout appel réseau réel dans les
@@ -36,43 +68,10 @@ class DashboardData {
 typedef DashboardDataLoader = Future<DashboardData> Function(AuthController auth);
 
 Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
-  bool hasReadyDataset = false;
-  String? planCode;
-  String? datasetName;
-  String? datasetStatus;
-  DateTime? datasetUpdatedAt;
-  try {
-    final datasets = await auth.api
-        .get('/datasets')
-        .timeout(const Duration(seconds: 6)) as List<dynamic>;
-    hasReadyDataset = datasets.any(
-      (item) => (item as Map<String, dynamic>)['status']?.toString().toUpperCase() == 'READY',
-    );
-    if (datasets.isNotEmpty) {
-      final latest = datasets.first as Map<String, dynamic>;
-      datasetName = latest['name']?.toString();
-      datasetStatus = latest['status']?.toString();
-      final rawUpdatedAt = (latest['uploaded_at'] ?? latest['updated_at'])?.toString();
-      if (rawUpdatedAt != null) datasetUpdatedAt = DateTime.tryParse(rawUpdatedAt);
-    }
-  } catch (_) {
-    // Pas de données disponibles ou service indisponible : on retombe sur l'état vide.
-  }
-  try {
-    final subscription = await auth.api
-        .get('/billing/subscription')
-        .timeout(const Duration(seconds: 6)) as Map<String, dynamic>;
-    planCode = subscription['plan_code']?.toString();
-  } catch (_) {
-    // Le badge de plan est facultatif : on l'omet simplement en cas d'échec.
-  }
-  return DashboardData(
-    hasReadyDataset: hasReadyDataset,
-    planCode: planCode,
-    datasetName: datasetName,
-    datasetStatus: datasetStatus,
-    datasetUpdatedAt: datasetUpdatedAt,
-  );
+  final payload = await auth.api
+      .get('/dashboard')
+      .timeout(const Duration(seconds: 10)) as Map<String, dynamic>;
+  return DashboardData.fromJson(payload);
 }
 
 class DashboardPage extends StatefulWidget {
@@ -87,11 +86,19 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  late final Future<DashboardData> _future = widget.loader(widget.auth);
+  late Future<DashboardData> _future = widget.loader(widget.auth);
+
+  void _retry() {
+    final next = widget.loader(widget.auth);
+    setState(() {
+      _future = next;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = AvenqoLocaleScope.translationsOf(context).dashboardHome;
+    final companyT = AvenqoLocaleScope.translationsOf(context).company;
     final colors = AvenqoColors.of(context);
     final company = widget.auth.company ?? const <String, dynamic>{};
     final user = widget.auth.user ?? const <String, dynamic>{};
@@ -105,7 +112,15 @@ class _DashboardPageState extends State<DashboardPage> {
         future: _future,
         builder: (context, snapshot) {
           final loading = snapshot.connectionState != ConnectionState.done;
-          final data = snapshot.data ?? const DashboardData(hasReadyDataset: false, planCode: null);
+          final data = snapshot.data ?? const DashboardData(
+            status: 'no_data',
+            planCode: null,
+            currency: 'USD',
+            kpis: [],
+            priorities: [],
+            connections: {},
+            recentActivity: [],
+          );
           return ListView(
             padding: EdgeInsets.all(wide ? 32 : 20),
             children: [
@@ -135,7 +150,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       ],
                     ),
                   ),
-                  if (!loading && data.planCode != null) _PlanBadge(label: t.planLabel, plan: data.planCode!),
+                  if (!loading && data.planCode?.isNotEmpty == true)
+                    _PlanBadge(label: t.planLabel, plan: data.planCode!),
                 ],
               ),
               if (company['onboarding_status'] == 'skipped') ...[
@@ -183,8 +199,20 @@ class _DashboardPageState extends State<DashboardPage> {
                   padding: EdgeInsets.symmetric(vertical: 40),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (!data.hasReadyDataset)
+              else if (snapshot.hasError)
+                _DashboardMessage(
+                  icon: Icons.error_outline,
+                  message: companyT.connectionsGenericError,
+                  actionLabel: companyT.connectionsRetry,
+                  onAction: _retry,
+                )
+              else if (data.status == 'no_data')
                 _EmptyDataBanner(title: t.connectDataTitle, cta: t.connectDataCta)
+              else if (data.status == 'processing')
+                _DashboardMessage(
+                  icon: Icons.sync,
+                  message: companyT.connectionsAnalyzing,
+                )
               else ...[
                 Text(t.thisMonth, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
                 const SizedBox(height: 12),
@@ -198,12 +226,16 @@ class _DashboardPageState extends State<DashboardPage> {
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: wide ? 1.65 : 2.2,
+                    childAspectRatio: wide
+                      ? 1.65
+                      : MediaQuery.sizeOf(context).width >= 620
+                        ? 1.7
+                        : 2.2,
                   children: [
-                    _Metric(label: t.salesLabel, value: '—'),
-                    _Metric(label: t.ordersLabel, value: '—'),
-                    _Metric(label: t.customersLabel, value: '—'),
-                    _Metric(label: t.avgOrderLabel, value: '—'),
+                    _Metric.fromKpi(label: t.salesLabel, data: data, key: 'revenue', context: context),
+                    _Metric.fromKpi(label: t.ordersLabel, data: data, key: 'orders', context: context),
+                    _Metric.fromKpi(label: t.customersLabel, data: data, key: 'customers', context: context),
+                    _Metric.fromKpi(label: t.avgOrderLabel, data: data, key: 'average_order_value', context: context),
                   ],
                 ),
               ],
@@ -218,26 +250,27 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(22),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lightbulb_outline, color: _Brand.blue),
-                      const SizedBox(width: 14),
-                      Expanded(child: Text(t.prioritiesEmpty, style: TextStyle(color: colors.muted))),
-                    ],
-                  ),
+                  child: data.priorities.isEmpty
+                      ? Row(
+                          children: [
+                            const Icon(Icons.lightbulb_outline, color: _Brand.blue),
+                            const SizedBox(width: 14),
+                            Expanded(child: Text(t.prioritiesEmpty, style: TextStyle(color: colors.muted))),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            for (final priority in data.priorities)
+                              _PriorityRow(priority: priority, strings: t),
+                          ],
+                        ),
                 ),
               ),
               const SizedBox(height: 28),
               Text(t.connectionsTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
               const SizedBox(height: 12),
-              if (!loading && data.datasetName != null)
-                _ConnectionStatusCard(
-                  name: data.datasetName!,
-                  status: data.datasetStatus ?? '',
-                  updatedAt: data.datasetUpdatedAt,
-                  readyLabel: t.connectionsReadyLabel,
-                  lastUpdateLabel: t.connectionsLastUpdate,
-                )
+              if (!loading && data.connections.isNotEmpty)
+                _ConnectionsSummary(data: data.connections, strings: companyT)
               else if (!loading)
                 _EmptyDataBanner(title: t.connectionsEmpty, cta: t.connectionsEmptyCta),
               const SizedBox(height: 28),
@@ -251,18 +284,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(22),
-                  child: !loading && data.datasetName != null
-                      ? Row(
+                  child: !loading && data.recentActivity.isNotEmpty
+                      ? Column(
                           children: [
-                            const Icon(Icons.history, color: _Brand.blue),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Text(
-                                '${data.datasetName} \u2014 ${data.datasetStatus ?? ''}'
-                                '${data.datasetUpdatedAt != null ? ' \u00b7 ${_formatDate(data.datasetUpdatedAt!)}' : ''}',
-                                style: TextStyle(color: colors.ink),
-                              ),
-                            ),
+                            for (final activity in data.recentActivity)
+                              _ActivityRow(activity: activity),
                           ],
                         )
                       : Row(
@@ -279,7 +305,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 12),
               _RecommendedSteps(
                 orgDone: company['onboarding_status'] != null && company['onboarding_status'] != 'pending',
-                dataDone: !loading && data.hasReadyDataset,
+                dataDone: !loading && data.hasReadyData,
                 orgLabel: t.stepOrgLabel,
                 dataLabel: t.stepDataLabel,
                 insightsLabel: t.stepInsightsLabel,
@@ -364,58 +390,128 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _ConnectionStatusCard extends StatelessWidget {
-  const _ConnectionStatusCard({
-    required this.name,
-    required this.status,
-    required this.updatedAt,
-    required this.readyLabel,
-    required this.lastUpdateLabel,
+class _DashboardMessage extends StatelessWidget {
+  const _DashboardMessage({
+    required this.icon,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
   });
 
-  final String name;
-  final String status;
-  final DateTime? updatedAt;
-  final String readyLabel;
-  final String lastUpdateLabel;
+  final IconData icon;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final ready = status.toUpperCase() == 'READY';
-    final statusColor = ready ? const Color(0xFF1B9E5A) : _Brand.blue;
     return Container(
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border.all(color: colors.line),
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.all(22),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-            child: Icon(ready ? Icons.check_circle_outline : Icons.sync, color: statusColor),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(
-                  updatedAt == null
-                      ? (ready ? readyLabel : status)
-                      : '${ready ? readyLabel : status} \u00b7 $lastUpdateLabel ${_formatDate(updatedAt!)}',
-                  style: TextStyle(color: colors.muted, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
+          Icon(icon, color: _Brand.blue),
+          const SizedBox(width: 14),
+          Expanded(child: Text(message, style: TextStyle(color: colors.ink))),
+          if (actionLabel != null && onAction != null)
+            TextButton(onPressed: onAction, child: Text(actionLabel!)),
         ],
+      ),
+    );
+  }
+}
+
+class _PriorityRow extends StatelessWidget {
+  const _PriorityRow({required this.priority, required this.strings});
+
+  final Map<String, dynamic> priority;
+  final DashboardHomeStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final declining = priority['title'] == 'revenue_decline';
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        declining ? Icons.trending_down : Icons.trending_up,
+        color: declining ? const Color(0xFFD1414B) : const Color(0xFF1B9E5A),
+      ),
+      title: Text(
+        declining ? strings.revenueDeclineTitle : strings.revenueGrowthTitle,
+        style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(strings.revenueChangedExplanation, style: TextStyle(color: colors.muted)),
+    );
+  }
+}
+
+class _ConnectionsSummary extends StatelessWidget {
+  const _ConnectionsSummary({required this.data, required this.strings});
+
+  final Map<String, dynamic> data;
+  final CompanyStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final statuses = <(String, String)>[
+      ('ready', strings.connectionsReadyTitle),
+      ('analyzing', strings.connectionsAnalyzing),
+      ('preparing_data', strings.connectionsPreparingData),
+      ('training_ai', strings.connectionsTrainingAi),
+      ('attention_required', strings.connectionsAttentionRequired),
+      ('failed', strings.connectionsProcessingError),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        spacing: 20,
+        runSpacing: 12,
+        children: [
+          for (final status in statuses)
+            if ((data[status.$1] as num? ?? 0) > 0)
+              Text(
+                '${data[status.$1]} ${status.$2}',
+                style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.activity});
+
+  final Map<String, dynamic> activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final strings = AvenqoLocaleScope.translationsOf(context).dashboardHome;
+    final kind = activity['kind']?.toString();
+    final label = kind == 'model_activated'
+        ? strings.modelActivatedActivity
+        : strings.datasetImportedActivity;
+    final date = DateTime.tryParse(activity['occurred_at']?.toString() ?? '');
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.history, color: _Brand.blue),
+      title: Text(label, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+      subtitle: Text(
+        '${activity['title'] ?? ''}${date == null ? '' : ' · ${_formatDate(date)}'}',
+        style: TextStyle(color: colors.muted),
       ),
     );
   }
@@ -584,9 +680,39 @@ class _EmptyDataBanner extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({required this.label, required this.value, this.change});
+
+  factory _Metric.fromKpi({
+    required String label,
+    required DashboardData data,
+    required String key,
+    required BuildContext context,
+  }) {
+    final kpi = data.kpi(key);
+    final available = kpi?['available'] == true && kpi?['value'] is num;
+    if (!available) return _Metric(label: label, value: '—');
+    final value = kpi!['value'] as num;
+    final currency = kpi['currency']?.toString();
+    final rendered = currency == null
+        ? value.toString()
+        : formatMoney(
+            value,
+            locale: Localizations.localeOf(context).toLanguageTag(),
+            currencyCode: data.currency,
+          );
+    final changePercent = kpi['change_percent'] as num?;
+    return _Metric(
+      label: label,
+      value: rendered,
+      change: changePercent == null
+          ? null
+          : '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(1)}%',
+    );
+  }
+
   final String label;
   final String value;
+  final String? change;
 
   @override
   Widget build(BuildContext context) {
@@ -606,6 +732,10 @@ class _Metric extends StatelessWidget {
             Text(label, style: TextStyle(color: colors.muted)),
             const SizedBox(height: 4),
             Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: colors.ink)),
+            if (change != null) ...[
+              const SizedBox(height: 4),
+              Text(change!, style: const TextStyle(color: Color(0xFF1B9E5A), fontSize: 12)),
+            ],
           ],
         ),
       ),

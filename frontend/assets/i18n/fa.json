@@ -368,6 +368,11 @@
     "verifyButton": "ایمیل خود را تأیید کنید"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "سلام",
     "subtitleForCompany": "این چیزی است که امروز در {company} نیاز به توجه شما دارد.",
     "askAvenqo": "امروز می‌خواهید چه چیزی را بدانید؟",

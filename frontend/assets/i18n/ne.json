@@ -368,6 +368,11 @@
     "verifyButton": "आफ्नो इमेल प्रमाणित गर्नुहोस्"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "नमस्ते",
     "subtitleForCompany": "{company} को लागि आज ध्यान दिनुपर्ने कुराहरू यहाँ छन्।",
     "askAvenqo": "आज तपाईं के जान्न चाहनुहुन्छ?",

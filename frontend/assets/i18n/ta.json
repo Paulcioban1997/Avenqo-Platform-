@@ -368,6 +368,11 @@
     "verifyButton": "உங்கள் மின்னஞ்சலை சரிபார்க்கவும்"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "வணக்கம்",
     "subtitleForCompany": "இன்று {company}-இல் உங்கள் கவனம் தேவைப்படுவது இதுதான்.",
     "askAvenqo": "இன்று நீங்கள் என்ன தெரிந்துகொள்ள விரும்புகிறீர்கள்?",

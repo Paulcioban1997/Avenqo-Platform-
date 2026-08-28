@@ -8,6 +8,7 @@ from backend.app.routers.admin import router as admin_router
 from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
+from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.datasets import router as datasets_router
 from backend.app.routers.employees import router as employees_router
 from backend.app.routers.health import router as health_router
@@ -33,6 +34,11 @@ api_router.include_router(
 )
 api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
+api_router.include_router(
+	dashboard_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 api_router.include_router(
 	datasets_router,
 	prefix="/api/v1",

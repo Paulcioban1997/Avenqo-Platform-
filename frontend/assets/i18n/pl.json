@@ -368,6 +368,11 @@
     "verifyButton": "Potwierdź swój e-mail"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Witaj",
     "subtitleForCompany": "Oto co zasługuje na Twoją uwagę w {company}.",
     "askAvenqo": "Co chcesz dziś zrozumieć?",

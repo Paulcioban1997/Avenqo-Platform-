@@ -368,6 +368,11 @@
     "verifyButton": "ยืนยันอีเมลของคุณ"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "สวัสดี",
     "subtitleForCompany": "นี่คือสิ่งที่ควรให้ความสนใจสำหรับ {company} วันนี้",
     "askAvenqo": "วันนี้คุณอยากรู้อะไร?",

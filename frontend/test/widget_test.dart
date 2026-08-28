@@ -125,8 +125,15 @@ void main() {
             auth: auth,
             // Charge instantanément, sans passer par ApiClient/http : élimine
             // toute opération réseau réelle ou en attente pendant le test.
-            loader: (_) async =>
-                const DashboardData(hasReadyDataset: false, planCode: null),
+            loader: (_) async => const DashboardData(
+              status: 'no_data',
+              planCode: '',
+              currency: 'CAD',
+              kpis: [],
+              priorities: [],
+              connections: {'total': 0},
+              recentActivity: [],
+            ),
           ),
         ),
       ),

@@ -368,6 +368,11 @@
     "verifyButton": "メールアドレスを確認"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "こんにちは",
     "subtitleForCompany": "今日、{company} で注目すべきはこちらです。",
     "askAvenqo": "今日は何を知りたいですか？",

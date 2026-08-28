@@ -397,7 +397,12 @@
     "stepOrgLabel": "Complete your company setup",
     "stepDataLabel": "Connect or import your data",
     "stepInsightsLabel": "Explore your insights",
-    "stepAskLabel": "Ask Avenqo AI"
+    "stepAskLabel": "Ask Avenqo AI",
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated"
   },
   "admin": {
     "commandCenterTitle": "Avenqo Command Center",

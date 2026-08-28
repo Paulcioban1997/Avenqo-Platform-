@@ -368,6 +368,11 @@
     "verifyButton": "验证您的电子邮件"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "您好",
     "subtitleForCompany": "以下是今天 {company} 需要您关注的内容。",
     "askAvenqo": "您今天想了解什么？",

@@ -368,6 +368,11 @@
     "verifyButton": "Xác minh email của bạn"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Xin chào",
     "subtitleForCompany": "Đây là những gì đáng chú ý tại {company}.",
     "askAvenqo": "Hôm nay bạn muốn tìm hiểu điều gì?",

@@ -368,6 +368,11 @@
     "verifyButton": "Verifieer jou e-pos"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Hallo",
     "subtitleForCompany": "Hier is wat vandag aandag benodig vir {company}.",
     "askAvenqo": "Wat wil jy vandag weet?",

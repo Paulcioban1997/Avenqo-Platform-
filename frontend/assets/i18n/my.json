@@ -368,6 +368,11 @@
     "verifyButton": "သင့်အီးမေးလ်ကို အတည်ပြုပါ"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "မင်္ဂလာပါ",
     "subtitleForCompany": "ယနေ့ {company} အတွက် အာရုံစိုက်သင့်သည်များကို ဤနေရာတွင် တွေ့ရပါမည်။",
     "askAvenqo": "ယနေ့ ဘာသိချင်ပါသလဲ?",

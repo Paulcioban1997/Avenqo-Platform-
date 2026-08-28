@@ -368,6 +368,11 @@
     "verifyButton": "Bekräfta din e-post"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Hej",
     "subtitleForCompany": "Här är vad som förtjänar din uppmärksamhet hos {company}.",
     "askAvenqo": "Vad vill du förstå idag?",

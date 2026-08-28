@@ -368,6 +368,11 @@
     "verifyButton": "I-verify ang iyong email"
   },
   "dashboardHome": {
+    "revenueDeclineTitle": "Review the recent revenue decline",
+    "revenueGrowthTitle": "Build on recent revenue growth",
+    "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
+    "datasetImportedActivity": "Dataset imported",
+    "modelActivatedActivity": "Intelligence capability activated",
     "hello": "Kumusta",
     "subtitleForCompany": "Narito ang mga dapat bigyang pansin ngayon para sa {company}.",
     "askAvenqo": "Ano ang gusto mong malaman ngayon?",
