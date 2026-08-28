@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.models import BillingAccount, BillingInvoice, Company, StripeWebhookEvent
+from backend.app.services.ai_credit_service import AICreditService
 from backend.app.services.stripe_gateway import BillingProvider
-from payments import PlanCode, get_plan
+from payments import PlanCode, get_credit_pack, get_plan
 
 
 class BillingConfigurationError(RuntimeError):
@@ -28,6 +29,7 @@ class BillingService:
         self._session = session
         self._provider = provider
         self._settings = settings
+        self._credits = AICreditService(session)
 
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
@@ -47,13 +49,7 @@ class BillingService:
         account = self.get_account(company.id)
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
             raise BillingOperationError("Un abonnement existe déjà; utilisez le changement d'offre")
-        if not account.stripe_customer_id:
-            account.stripe_customer_id = self._provider.create_customer(
-                company.email,
-                company.name,
-                str(company.id),
-            )
-            self._session.commit()
+        self._ensure_customer(company, account)
         return self._provider.create_checkout(
             account.stripe_customer_id,
             price_id,
@@ -61,6 +57,24 @@ class BillingService:
             f"{self._settings.frontend_url.rstrip('/')}/billing?checkout=success",
             f"{self._settings.frontend_url.rstrip('/')}/pricing?checkout=cancelled",
         )
+
+    def create_credit_checkout(self, company: Company, pack_code: str) -> str:
+        pack = get_credit_pack(pack_code)
+        account = self.get_account(company.id)
+        self._ensure_customer(company, account)
+        return self._provider.create_credit_checkout(
+            account.stripe_customer_id,
+            str(company.id),
+            pack.code,
+            pack.credits,
+            pack.price_usd,
+            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=success",
+            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=cancelled",
+        )
+
+    def get_credit_balance(self, company_id: UUID):
+        account = self.get_account(company_id)
+        return self._credits.get_balance(company_id, account.plan_code)
 
     def change_plan(self, company_id: UUID, plan_code: str) -> BillingAccount:
         plan = get_plan(plan_code)
@@ -85,15 +99,8 @@ class BillingService:
         return account
 
     def create_portal(self, company: Company) -> str:
-        """Ouvre le portail Stripe et crée le Customer à la demande si nécessaire."""
         account = self.get_account(company.id)
-        if not account.stripe_customer_id:
-            account.stripe_customer_id = self._provider.create_customer(
-                company.email,
-                company.name,
-                str(company.id),
-            )
-            self._session.commit()
+        self._ensure_customer(company, account)
         return self._provider.create_portal(
             account.stripe_customer_id,
             f"{self._settings.frontend_url.rstrip('/')}/billing",
@@ -124,6 +131,9 @@ class BillingService:
             self._sync_subscription(data)
         elif event_type.startswith("invoice."):
             self._sync_invoice(data)
+        elif event_type == "checkout.session.completed":
+            self._sync_credit_checkout(data)
+
         self._session.add(StripeWebhookEvent(
             stripe_event_id=event_id,
             event_type=event_type,
@@ -131,6 +141,22 @@ class BillingService:
         ))
         self._session.commit()
         return True
+
+    def _sync_credit_checkout(self, checkout: dict[str, Any]) -> None:
+        metadata = checkout.get("metadata") or {}
+        if metadata.get("avenqo_checkout_kind") != "ai_credit_pack":
+            return
+        if checkout.get("payment_status") != "paid":
+            return
+        raw_company_id = metadata.get("avenqo_company_id")
+        pack_code = metadata.get("avenqo_credit_pack")
+        if not raw_company_id or not pack_code:
+            raise BillingOperationError("Métadonnées du pack de crédits incomplètes")
+        self._credits.grant_pack(
+            UUID(str(raw_company_id)),
+            str(pack_code),
+            f"stripe_checkout:{checkout['id']}",
+        )
 
     def _sync_subscription(self, subscription: dict[str, Any]) -> None:
         company_id = self._company_id(subscription)
@@ -149,6 +175,7 @@ class BillingService:
             datetime.fromtimestamp(int(period_end), timezone.utc) if period_end else None
         )
         account.company.subscription_plan = plan_code
+        self._credits.get_balance(company_id, plan_code)
 
     def _sync_invoice(self, invoice: dict[str, Any]) -> None:
         company_id = self._invoice_company_id(invoice)
@@ -197,6 +224,16 @@ class BillingService:
         if not raw_company_id:
             raise BillingOperationError("Métadonnée avenqo_company_id absente")
         return UUID(str(raw_company_id))
+
+    def _ensure_customer(self, company: Company, account: BillingAccount) -> None:
+        if account.stripe_customer_id:
+            return
+        account.stripe_customer_id = self._provider.create_customer(
+            company.email,
+            company.name,
+            str(company.id),
+        )
+        self._session.commit()
 
     def _required_price(self, plan_code: PlanCode) -> str:
         price_id = self._settings.stripe_price_id(plan_code.value)
