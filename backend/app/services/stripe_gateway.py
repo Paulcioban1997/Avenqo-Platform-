@@ -1,4 +1,4 @@
-﻿"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
+"""Adaptateur Stripe isolé des cas d'usage de facturation Avenqo."""
 
 from typing import Any, Protocol
 
@@ -7,6 +7,7 @@ import stripe
 
 class BillingProvider(Protocol):
     def create_customer(self, email: str, name: str, company_id: str) -> str: ...
+
     def create_checkout(
         self,
         customer_id: str,
@@ -15,6 +16,18 @@ class BillingProvider(Protocol):
         success_url: str,
         cancel_url: str,
     ) -> str: ...
+
+    def create_credit_checkout(
+        self,
+        customer_id: str,
+        company_id: str,
+        pack_code: str,
+        credits: int,
+        price_usd: int,
+        success_url: str,
+        cancel_url: str,
+    ) -> str: ...
+
     def change_subscription(self, subscription_id: str, price_id: str) -> None: ...
     def cancel_subscription(self, subscription_id: str) -> None: ...
     def create_portal(self, customer_id: str, return_url: str) -> str: ...
@@ -22,7 +35,7 @@ class BillingProvider(Protocol):
 
 
 class StripeGateway:
-    """Traduit les opÃ©rations Avenqo vers le SDK officiel Stripe."""
+    """Traduit les opérations Avenqo vers le SDK officiel Stripe."""
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -55,7 +68,48 @@ class StripeGateway:
             api_key=self._api_key,
         )
         if not checkout.url:
-            raise RuntimeError("Stripe n'a pas retournÃ© d'URL Checkout")
+            raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
+        return checkout.url
+
+    def create_credit_checkout(
+        self,
+        customer_id: str,
+        company_id: str,
+        pack_code: str,
+        credits: int,
+        price_usd: int,
+        success_url: str,
+        cancel_url: str,
+    ) -> str:
+        metadata = {
+            "avenqo_company_id": company_id,
+            "avenqo_checkout_kind": "ai_credit_pack",
+            "avenqo_credit_pack": pack_code,
+            "avenqo_credits": str(credits),
+        }
+        checkout = stripe.checkout.Session.create(
+            mode="payment",
+            customer=customer_id,
+            client_reference_id=company_id,
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": price_usd * 100,
+                    "product_data": {
+                        "name": f"Avenqo AI Credits — {credits:,}",
+                        "metadata": {"avenqo_credit_pack": pack_code},
+                    },
+                },
+                "quantity": 1,
+            }],
+            metadata=metadata,
+            payment_intent_data={"metadata": metadata},
+            success_url=success_url,
+            cancel_url=cancel_url,
+            api_key=self._api_key,
+        )
+        if not checkout.url:
+            raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
         return checkout.url
 
     def change_subscription(self, subscription_id: str, price_id: str) -> None:

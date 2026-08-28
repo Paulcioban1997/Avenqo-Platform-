@@ -6,8 +6,11 @@ from backend.app.dependencies.auth import CurrentIdentity, require_permission
 from backend.app.dependencies.billing import get_billing_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
+    AICreditBalanceResponse,
+    AICreditPackResponse,
     ChangePlanRequest,
     CheckoutRequest,
+    CreditCheckoutRequest,
     InvoiceResponse,
     PlanResponse,
     RedirectResponse,
@@ -18,7 +21,7 @@ from backend.app.services.billing_service import (
     BillingOperationError,
     BillingService,
 )
-from payments import PLANS
+from payments import AI_CREDIT_PACKS, PLANS
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
@@ -40,7 +43,50 @@ def plans() -> list[PlanResponse]:
         name=plan.name,
         requires_sales_contact=plan.requires_sales_contact,
         monthly_price_usd=plan.monthly_price_usd,
+        included_ai_credits=plan.included_ai_credits,
     ) for plan in PLANS]
+
+
+@router.get("/credit-packs", response_model=list[AICreditPackResponse])
+def credit_packs() -> list[AICreditPackResponse]:
+    return [AICreditPackResponse(
+        code=pack.code,
+        credits=pack.credits,
+        price_usd=pack.price_usd,
+    ) for pack in AI_CREDIT_PACKS]
+
+
+@router.get("/credits", response_model=AICreditBalanceResponse)
+def credits(
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: BillingService = Depends(get_billing_service),
+) -> AICreditBalanceResponse:
+    balance = service.get_credit_balance(identity.user.company_id)
+    return AICreditBalanceResponse(
+        billing_period=balance.billing_period,
+        monthly_allowance=balance.monthly_allowance,
+        monthly_remaining=balance.monthly_remaining,
+        purchased_remaining=balance.purchased_remaining,
+        total_remaining=balance.total_remaining,
+    )
+
+
+@router.post(
+    "/credits/checkout",
+    response_model=RedirectResponse,
+    dependencies=[Depends(rate_limit("billing_credit_checkout", "rate_limit_billing_per_minute"))],
+)
+def credit_checkout(
+    request: CreditCheckoutRequest,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: BillingService = Depends(get_billing_service),
+) -> RedirectResponse:
+    try:
+        return RedirectResponse(url=service.create_credit_checkout(identity.user.company, request.pack_code))
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except (BillingOperationError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/subscription", response_model=SubscriptionResponse)

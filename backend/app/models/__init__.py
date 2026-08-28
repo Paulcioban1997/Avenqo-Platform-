@@ -1,4 +1,5 @@
 from backend.app.models.account_token import AccountToken
+from backend.app.models.ai_credit import AICreditBalance, AICreditTransaction
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
@@ -36,6 +37,8 @@ from backend.app.models.user import User
 __all__ = [
     "AccountToken",
     "AccountTokenPurpose",
+    "AICreditBalance",
+    "AICreditTransaction",
     "AIJob",
     "AIConversation",
     "AIMessage",
