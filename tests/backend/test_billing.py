@@ -1,4 +1,4 @@
-﻿from collections.abc import Generator
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ class FakeStripeProvider:
         self.events: list[dict[str, Any]] = []
         self.changed_prices: list[str] = []
         self.cancelled_subscriptions: list[str] = []
+        self.credit_checkouts: list[str] = []
 
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         return f"cus_{company_id}"
@@ -44,6 +45,19 @@ class FakeStripeProvider:
         cancel_url: str,
     ) -> str:
         return f"https://checkout.stripe.test/{price_id}"
+
+    def create_credit_checkout(
+        self,
+        customer_id: str,
+        company_id: str,
+        pack_code: str,
+        credits: int,
+        price_usd: int,
+        success_url: str,
+        cancel_url: str,
+    ) -> str:
+        self.credit_checkouts.append(pack_code)
+        return f"https://checkout.stripe.test/credits/{pack_code}"
 
     def change_subscription(self, subscription_id: str, price_id: str) -> None:
         self.changed_prices.append(price_id)
@@ -151,13 +165,17 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     plans = client.get("/api/v1/billing/plans")
     assert plans.status_code == 200
     catalog = plans.json()
-    assert [plan["code"] for plan in catalog] == [
-        "demo", "professional", "enterprise"
-    ]
-    assert [plan["monthly_price_usd"] for plan in catalog] == [29, 99, None]
+    assert [plan["code"] for plan in catalog] == ["demo", "professional", "enterprise"]
+    assert [plan["monthly_price_usd"] for plan in catalog] == [28, 49, None]
+    assert [plan["included_ai_credits"] for plan in catalog] == [5000, 25000, None]
     assert [plan["requires_sales_contact"] for plan in catalog] == [False, False, True]
 
-    # Un nouveau tenant peut ouvrir le portail : le Customer Stripe est créé à la demande.
+    packs = client.get("/api/v1/billing/credit-packs")
+    assert packs.status_code == 200
+    assert [(item["credits"], item["price_usd"]) for item in packs.json()] == [
+        (5000, 10), (20000, 29), (50000, 59), (150000, 149)
+    ]
+
     portal = client.post("/api/v1/billing/portal", headers=headers)
     assert portal.status_code == 200
     assert portal.json()["url"] == "https://billing.stripe.test/session"
@@ -170,8 +188,6 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert checkout.status_code == 200
     assert checkout.json()["url"].endswith("price_professional")
 
-    # Les offres nécessitant un contact commercial ne peuvent jamais contourner
-    # cette règle en appelant directement l'API Checkout.
     assert client.post(
         "/api/v1/billing/checkout",
         json={"plan_code": "enterprise"},
@@ -194,7 +210,11 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert subscription.json()["plan_code"] == "professional"
     assert subscription.json()["status"] == "active"
 
-    # Même politique pour un changement d'offre existante.
+    credits = client.get("/api/v1/billing/credits", headers=headers)
+    assert credits.status_code == 200
+    assert credits.json()["monthly_allowance"] == 25000
+    assert credits.json()["total_remaining"] == 25000
+
     assert client.post(
         "/api/v1/billing/change-plan",
         json={"plan_code": "enterprise"},
@@ -210,6 +230,53 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
 
     assert client.post("/api/v1/billing/cancel", headers=headers).json()["cancel_at_period_end"] is True
     assert provider.cancelled_subscriptions == ["sub_acme"]
+
+
+def test_pack_credits_est_un_achat_unique_et_idempotent(billing_environment) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier)
+    headers = auth_headers(login)
+    company_id = login["company"]["id"]
+
+    checkout = client.post(
+        "/api/v1/billing/credits/checkout",
+        json={"pack_code": "credits_20k"},
+        headers=headers,
+    )
+    assert checkout.status_code == 200
+    assert provider.credit_checkouts == ["credits_20k"]
+
+    event = {
+        "id": "evt_credit_pack",
+        "type": "checkout.session.completed",
+        "data": {"object": {
+            "id": "cs_credit_1",
+            "payment_status": "paid",
+            "metadata": {
+                "avenqo_company_id": company_id,
+                "avenqo_checkout_kind": "ai_credit_pack",
+                "avenqo_credit_pack": "credits_20k",
+            },
+        }},
+    }
+    provider.events.extend([event, event])
+    first = client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    second = client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    assert first.json() == {"processed": True}
+    assert second.json() == {"processed": False}
+
+    balance = client.get("/api/v1/billing/credits", headers=headers).json()
+    assert balance["monthly_remaining"] == 5000
+    assert balance["purchased_remaining"] == 20000
+    assert balance["total_remaining"] == 25000
 
 
 def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> None:
