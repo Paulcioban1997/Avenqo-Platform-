@@ -4,23 +4,16 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.business.analytics import compute_business_overview
-from backend.app.models import Company, Dataset, DatasetStatus, ModelRegistry
-from backend.app.routers.datasets import _pipeline_status
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.tenant_analytics_service import (
+    BUSINESS_METRIC_FIELDS,
+    TenantAnalyticsService,
+)
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
-
-
-_KPI_FIELDS = {
-    "revenue": frozenset({"total_amount"}),
-    "orders": frozenset({"order_id"}),
-    "customers": frozenset({"customer_id"}),
-    "average_order_value": frozenset({"total_amount", "order_id"}),
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,58 +31,35 @@ class TenantDashboardService:
     """Builds one tenant dashboard from READY Phase 4A outputs only."""
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
-        self._session = session
-        self._ingestion = ingestion
+        self._analytics = TenantAnalyticsService(session, ingestion)
 
     def build(self, tenant: TenantContext) -> dict[str, Any]:
-        company = self._session.scalar(
-            select(Company).where(Company.id == tenant.company_id)
-        )
-        currency = company.currency_code if company is not None else "USD"
-        datasets = list(
-            self._session.scalars(
-                select(Dataset)
-                .where(Dataset.company_id == tenant.company_id)
-                .options(selectinload(Dataset.training_jobs))
-                .order_by(Dataset.uploaded_at.desc())
-            ).all()
-        )
-        statuses = [_pipeline_status(dataset) for dataset in datasets]
-        prepared = self._prepared_ready_datasets(tenant, datasets)
-        active_models = list(
-            self._session.scalars(
-                select(ModelRegistry).where(
-                    ModelRegistry.company_id == tenant.company_id,
-                    ModelRegistry.is_active.is_(True),
-                )
-            ).all()
-        )
-        capabilities = self._capabilities(prepared, active_models)
-        period = self._period(prepared)
+        snapshot = self._analytics.load(tenant)
+        period = self._period(snapshot.prepared)
         kpis = [
-            self._kpi(key, prepared, currency, period)
-            for key in _KPI_FIELDS
+            self._kpi(key, snapshot.prepared, snapshot.currency, period)
+            for key in BUSINESS_METRIC_FIELDS
         ]
         revenue = next(kpi for kpi in kpis if kpi.key == "revenue")
         return {
-            "status": self._dashboard_status(datasets, statuses, prepared),
+            "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
             "company": {
-                "currency": currency,
-                "plan_code": company.subscription_plan if company is not None else "",
+                "currency": snapshot.currency,
+                "plan_code": snapshot.company.subscription_plan if snapshot.company is not None else "",
             },
             "period": period,
-            "capabilities": sorted(capabilities),
+            "capabilities": sorted(snapshot.capabilities),
             "kpis": [asdict(kpi) for kpi in kpis],
             "priorities": self._priorities(revenue),
             "connections": {
-                "total": len(datasets),
-                "ready": statuses.count("ready"),
-                "analyzing": statuses.count("analyzing"),
-                "preparing_data": statuses.count("preparing_data"),
-                "training_ai": statuses.count("training_ai"),
-                "attention_required": statuses.count("attention_required"),
-                "failed": statuses.count("failed"),
+                "total": len(snapshot.datasets),
+                "ready": snapshot.statuses.count("ready"),
+                "analyzing": snapshot.statuses.count("analyzing"),
+                "preparing_data": snapshot.statuses.count("preparing_data"),
+                "training_ai": snapshot.statuses.count("training_ai"),
+                "attention_required": snapshot.statuses.count("attention_required"),
+                "failed": snapshot.statuses.count("failed"),
             },
             "recent_activity": [
                 {
@@ -97,7 +67,7 @@ class TenantDashboardService:
                     "title": dataset.name,
                     "occurred_at": self._aware(dataset.uploaded_at),
                 }
-                for dataset in datasets[:5]
+                for dataset in snapshot.datasets[:5]
             ]
             + [
                 {
@@ -105,7 +75,7 @@ class TenantDashboardService:
                     "title": model.task_code,
                     "occurred_at": self._aware(model.created_at),
                 }
-                for model in active_models[:5]
+                for model in snapshot.active_models[:5]
             ],
         }
 
@@ -125,40 +95,14 @@ class TenantDashboardService:
             }
         ]
 
-    def _prepared_ready_datasets(
-        self, tenant: TenantContext, datasets: list[Dataset]
-    ) -> list[PreparedCompanyDataset]:
-        result: list[PreparedCompanyDataset] = []
-        for dataset in datasets:
-            if dataset.status != DatasetStatus.READY or dataset.mapping is None:
-                continue
-            try:
-                result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
-            except Exception:
-                continue
-        return result
-
-    @staticmethod
-    def _capabilities(
-        prepared: list[PreparedCompanyDataset], active_models: list[ModelRegistry]
-    ) -> set[str]:
-        capabilities = {model.task_code for model in active_models}
-        for dataset in prepared:
-            fields = set(dataset.canonical_columns.values())
-            capabilities.update(key for key, required in _KPI_FIELDS.items() if required <= fields)
-            capabilities.update(
-                readiness.capability for readiness in dataset.capability_readiness if readiness.ready
-            )
-        return capabilities
-
     def _kpi(
         self,
         key: str,
-        prepared: list[PreparedCompanyDataset],
+        prepared: tuple[PreparedCompanyDataset, ...],
         currency: str,
         period: dict[str, datetime | None],
     ) -> DashboardKPI:
-        required = _KPI_FIELDS[key]
+        required = BUSINESS_METRIC_FIELDS[key]
         source = next(
             (item for item in prepared if required <= set(item.canonical_columns.values())),
             None,
@@ -187,7 +131,7 @@ class TenantDashboardService:
         )
 
     @staticmethod
-    def _period(prepared: list[PreparedCompanyDataset]) -> dict[str, datetime | None]:
+    def _period(prepared: tuple[PreparedCompanyDataset, ...]) -> dict[str, datetime | None]:
         timestamps: list[datetime] = []
         for dataset in prepared:
             reverse = {canonical: source for source, canonical in dataset.canonical_columns.items()}
@@ -258,20 +202,6 @@ class TenantDashboardService:
             quality=prepared.quality,
             capability_readiness=prepared.capability_readiness,
         )
-
-    @staticmethod
-    def _dashboard_status(
-        datasets: list[Dataset], statuses: list[str], prepared: list[PreparedCompanyDataset]
-    ) -> str:
-        if not datasets:
-            return "no_data"
-        if prepared and any(status != "ready" for status in statuses):
-            return "partial_ready"
-        if prepared:
-            return "ready"
-        if statuses and all(status == "failed" for status in statuses):
-            return "error"
-        return "processing"
 
     @staticmethod
     def _aware(value: datetime) -> datetime:

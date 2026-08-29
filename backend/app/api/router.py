@@ -17,6 +17,7 @@ from backend.app.routers.internal_versioning import router as internal_versionin
 from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.training import router as training_router
+from backend.app.routers.tenant_business import customers_router, sales_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, prefix="/api/v1")
@@ -36,6 +37,16 @@ api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
 api_router.include_router(
 	dashboard_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	sales_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	customers_router,
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )

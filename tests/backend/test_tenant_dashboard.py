@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.database import get_db
@@ -18,8 +18,10 @@ from backend.app.models import (
     Company,
     Dataset,
     DatasetStatus,
+    JobStatus,
     Mapping,
     ModelRegistry,
+    TrainingJob,
 )
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.main import create_application
@@ -94,10 +96,26 @@ def _dataset(
     return dataset
 
 
-def _model(session, company: Company, task_code: str, *, active: bool) -> ModelRegistry:
+def _model(
+    session,
+    company: Company,
+    dataset: Dataset,
+    task_code: str,
+    *,
+    active: bool,
+) -> ModelRegistry:
+    training_job = TrainingJob(
+        company_id=company.id,
+        dataset_id=dataset.id,
+        ai_job_id=uuid4(),
+        algorithm="validated",
+        status=JobStatus.COMPLETED,
+    )
+    session.add(training_job)
+    session.flush()
     model = ModelRegistry(
         company_id=company.id,
-        training_job_id=uuid4(),
+        training_job_id=training_job.id,
         module_code="retail",
         task_code=task_code,
         model_name=f"{task_code}-model",
@@ -215,8 +233,8 @@ def test_dashboard_reflects_partial_data_active_models_and_dataset_deletion(tmp_
             [{"sale": "S1"}, {"sale": "S2"}],
             canonical_columns={"sale": "order_id"},
         )
-        _model(session, company, "active_opportunity", active=True)
-        _model(session, company, "inactive_opportunity", active=False)
+        _model(session, company, ready, "active_opportunity", active=True)
+        _model(session, company, ready, "inactive_opportunity", active=False)
         service = TenantDashboardService(session, _PreparedIngestion({ready.id: prepared}))
 
         dashboard = service.build(TenantContext(company.id))
@@ -231,8 +249,9 @@ def test_dashboard_reflects_partial_data_active_models_and_dataset_deletion(tmp_
         assert kpis["orders"]["value"] == 2
         assert kpis["revenue"]["available"] is False
 
-        session.delete(ready)
-        session.delete(processing)
+        session.execute(
+            delete(Dataset).where(Dataset.id.in_((ready.id, processing.id)))
+        )
         session.commit()
         refreshed = service.build(TenantContext(company.id))
 

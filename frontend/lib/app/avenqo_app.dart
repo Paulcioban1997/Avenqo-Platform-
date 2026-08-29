@@ -19,6 +19,8 @@ import 'package:avenqo/pages/home_page.dart';
 import 'package:avenqo/pages/onboarding_page.dart';
 import 'package:avenqo/pages/pricing_page.dart';
 import 'package:avenqo/pages/settings_page.dart';
+import 'package:avenqo/pages/sales_page.dart';
+import 'package:avenqo/pages/customers_page.dart';
 import 'package:avenqo/widgets/app_shell.dart';
 import 'package:avenqo/widgets/admin_shell.dart';
 import 'package:avenqo/features/admin/admin_dashboard_page.dart';
@@ -267,8 +269,11 @@ List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) {
 }
 
 Widget _protectedPage(String path, AuthController auth) {
+  final companyId = auth.company?['id'];
   return switch (path) {
     '/dashboard' => DashboardPage(auth: auth),
+    '/sales' => SalesPage(key: ValueKey('sales-$companyId'), api: auth.api),
+    '/customers' => CustomersPage(key: ValueKey('customers-$companyId'), api: auth.api),
     '/assistant' => AssistantPage(api: auth.api),
     '/support' => SupportPage(api: auth.api),
     '/team' => EmployeesPage(api: auth.api),

@@ -1522,6 +1522,29 @@ class CompanyStrings {
     required this.businessSalesDescription,
     required this.businessCustomersTitle,
     required this.businessCustomersDescription,
+    required this.analyticsUnavailable,
+    required this.periodCurrentMonth,
+    required this.periodLast30Days,
+    required this.periodLast90Days,
+    required this.periodYearToDate,
+    required this.salesTrendTitle,
+    required this.salesForecastTitle,
+    required this.salesStrongestPeriod,
+    required this.salesWeakestPeriod,
+    required this.customersTotal,
+    required this.customersActive,
+    required this.customersNew,
+    required this.customersRepeat,
+    required this.customersAverageValue,
+    required this.customersFrequency,
+    required this.customersSearch,
+    required this.customersOrders,
+    required this.customersValue,
+    required this.customersLastPurchase,
+    required this.customersSegment,
+    required this.customersRisk,
+    required this.previousPage,
+    required this.nextPage,
     required this.businessProductsTitle,
     required this.businessProductsDescription,
     required this.businessRecommendationsTitle,
@@ -1646,6 +1669,29 @@ class CompanyStrings {
       businessSalesDescription: s('businessSalesDescription'),
       businessCustomersTitle: s('businessCustomersTitle'),
       businessCustomersDescription: s('businessCustomersDescription'),
+      analyticsUnavailable: s('analyticsUnavailable'),
+      periodCurrentMonth: s('periodCurrentMonth'),
+      periodLast30Days: s('periodLast30Days'),
+      periodLast90Days: s('periodLast90Days'),
+      periodYearToDate: s('periodYearToDate'),
+      salesTrendTitle: s('salesTrendTitle'),
+      salesForecastTitle: s('salesForecastTitle'),
+      salesStrongestPeriod: s('salesStrongestPeriod'),
+      salesWeakestPeriod: s('salesWeakestPeriod'),
+      customersTotal: s('customersTotal'),
+      customersActive: s('customersActive'),
+      customersNew: s('customersNew'),
+      customersRepeat: s('customersRepeat'),
+      customersAverageValue: s('customersAverageValue'),
+      customersFrequency: s('customersFrequency'),
+      customersSearch: s('customersSearch'),
+      customersOrders: s('customersOrders'),
+      customersValue: s('customersValue'),
+      customersLastPurchase: s('customersLastPurchase'),
+      customersSegment: s('customersSegment'),
+      customersRisk: s('customersRisk'),
+      previousPage: s('previousPage'),
+      nextPage: s('nextPage'),
       businessProductsTitle: s('businessProductsTitle'),
       businessProductsDescription: s('businessProductsDescription'),
       businessRecommendationsTitle: s('businessRecommendationsTitle'),
@@ -1768,6 +1814,29 @@ class CompanyStrings {
         businessSalesDescription: 'Your sales trends, comparisons and forecasts will appear here.',
         businessCustomersTitle: 'Retain the right customers',
         businessCustomersDescription: "You'll find customers to prioritize, re-engage or support here.",
+        analyticsUnavailable: 'This capability is unavailable with your current business data.',
+        periodCurrentMonth: 'Current month',
+        periodLast30Days: 'Last 30 days',
+        periodLast90Days: 'Last 90 days',
+        periodYearToDate: 'Year to date',
+        salesTrendTitle: 'Revenue trend',
+        salesForecastTitle: 'Validated sales forecast',
+        salesStrongestPeriod: 'Strongest period',
+        salesWeakestPeriod: 'Weakest period',
+        customersTotal: 'Total customers',
+        customersActive: 'Active customers',
+        customersNew: 'New customers',
+        customersRepeat: 'Repeat customers',
+        customersAverageValue: 'Average customer value',
+        customersFrequency: 'Purchase frequency',
+        customersSearch: 'Search customers',
+        customersOrders: 'Orders',
+        customersValue: 'Value',
+        customersLastPurchase: 'Last purchase',
+        customersSegment: 'Segment',
+        customersRisk: 'Risk',
+        previousPage: 'Previous',
+        nextPage: 'Next',
         businessProductsTitle: 'Manage your catalog',
         businessProductsDescription: 'Top-performing products, expected demand and stock to watch will be gathered here.',
         businessRecommendationsTitle: 'Act directly on opportunities',
@@ -1889,6 +1958,29 @@ class CompanyStrings {
         'businessSalesDescription' => businessSalesDescription,
         'businessCustomersTitle' => businessCustomersTitle,
         'businessCustomersDescription' => businessCustomersDescription,
+        'analyticsUnavailable' => analyticsUnavailable,
+        'periodCurrentMonth' => periodCurrentMonth,
+        'periodLast30Days' => periodLast30Days,
+        'periodLast90Days' => periodLast90Days,
+        'periodYearToDate' => periodYearToDate,
+        'salesTrendTitle' => salesTrendTitle,
+        'salesForecastTitle' => salesForecastTitle,
+        'salesStrongestPeriod' => salesStrongestPeriod,
+        'salesWeakestPeriod' => salesWeakestPeriod,
+        'customersTotal' => customersTotal,
+        'customersActive' => customersActive,
+        'customersNew' => customersNew,
+        'customersRepeat' => customersRepeat,
+        'customersAverageValue' => customersAverageValue,
+        'customersFrequency' => customersFrequency,
+        'customersSearch' => customersSearch,
+        'customersOrders' => customersOrders,
+        'customersValue' => customersValue,
+        'customersLastPurchase' => customersLastPurchase,
+        'customersSegment' => customersSegment,
+        'customersRisk' => customersRisk,
+        'previousPage' => previousPage,
+        'nextPage' => nextPage,
         'businessProductsTitle' => businessProductsTitle,
         'businessProductsDescription' => businessProductsDescription,
         'businessRecommendationsTitle' => businessRecommendationsTitle,
@@ -2010,6 +2102,29 @@ class CompanyStrings {
   final String businessSalesDescription;
   final String businessCustomersTitle;
   final String businessCustomersDescription;
+  final String analyticsUnavailable;
+  final String periodCurrentMonth;
+  final String periodLast30Days;
+  final String periodLast90Days;
+  final String periodYearToDate;
+  final String salesTrendTitle;
+  final String salesForecastTitle;
+  final String salesStrongestPeriod;
+  final String salesWeakestPeriod;
+  final String customersTotal;
+  final String customersActive;
+  final String customersNew;
+  final String customersRepeat;
+  final String customersAverageValue;
+  final String customersFrequency;
+  final String customersSearch;
+  final String customersOrders;
+  final String customersValue;
+  final String customersLastPurchase;
+  final String customersSegment;
+  final String customersRisk;
+  final String previousPage;
+  final String nextPage;
   final String businessProductsTitle;
   final String businessProductsDescription;
   final String businessRecommendationsTitle;

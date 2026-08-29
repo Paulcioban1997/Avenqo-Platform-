@@ -7,7 +7,7 @@ tenant (Phase 26/27). Aucun entraînement de modèle n'est déclenché ici.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -132,22 +132,45 @@ def compute_sales_summary(
     }
 
 
-def compute_sales_trend(prepared: PreparedCompanyDataset) -> dict[str, object]:
+def compute_sales_trend(
+    prepared: PreparedCompanyDataset,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    granularity: str = "month",
+) -> dict[str, object]:
     reverse = _reverse_mapping(prepared.canonical_columns)
-    revenue_by_month: dict[str, float] = defaultdict(float)
+    rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
+    revenue_by_period: dict[str, float] = defaultdict(float)
+    orders_by_period: dict[str, set[object]] = defaultdict(set)
+    row_count_by_period: dict[str, int] = defaultdict(int)
 
-    for row in prepared.rows:
+    for row in rows:
         timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is None:
             continue
+        if granularity == "day":
+            period = timestamp.strftime("%Y-%m-%d")
+        elif granularity == "week":
+            period = (timestamp - timedelta(days=timestamp.weekday())).strftime("%Y-%m-%d")
+        else:
+            period = timestamp.strftime("%Y-%m")
         amount = _as_float(_value(row, reverse, "total_amount")) or 0.0
-        revenue_by_month[timestamp.strftime("%Y-%m")] += amount
+        revenue_by_period[period] += amount
+        order_id = _value(row, reverse, "order_id")
+        if order_id is not None:
+            orders_by_period[period].add(order_id)
+        row_count_by_period[period] += 1
 
     points = [
-        {"period": period, "revenue": round(revenue, 2)}
-        for period, revenue in sorted(revenue_by_month.items())
+        {
+            "period": period,
+            "revenue": round(revenue, 2),
+            "orders": len(orders_by_period[period]) or row_count_by_period[period],
+        }
+        for period, revenue in sorted(revenue_by_period.items())
     ]
-    return {"granularity": "month", "points": points}
+    return {"granularity": granularity, "points": points}
 
 
 def compute_sales_comparison(
@@ -211,24 +234,72 @@ def compute_top_products(
 
 
 def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, object]:
-    reverse = _reverse_mapping(prepared.canonical_columns)
-    orders_by_customer: dict[str, int] = defaultdict(int)
-
-    for row in prepared.rows:
-        customer_id = _value(row, reverse, "customer_id")
-        if customer_id is None:
-            continue
-        orders_by_customer[str(customer_id)] += 1
-
-    total_customers = len(orders_by_customer)
-    returning_customers = sum(1 for count in orders_by_customer.values() if count > 1)
+    customers = compute_customer_portfolio(prepared)
+    total_customers = len(customers)
+    returning_customers = sum(1 for customer in customers if customer["orders"] > 1)
     new_customers = total_customers - returning_customers
-
     return {
         "total_customers": total_customers,
         "returning_customers": returning_customers,
         "new_customers": new_customers,
-        "average_orders_per_customer": round(sum(orders_by_customer.values()) / total_customers, 2)
+        "average_orders_per_customer": round(
+            sum(int(customer["orders"]) for customer in customers) / total_customers, 2
+        )
         if total_customers
         else 0.0,
     }
+
+
+def compute_customer_portfolio(
+    prepared: PreparedCompanyDataset,
+) -> list[dict[str, object]]:
+    reverse = _reverse_mapping(prepared.canonical_columns)
+    by_customer: dict[str, dict[str, object]] = {}
+
+    for row_index, row in enumerate(prepared.rows):
+        customer_id = _value(row, reverse, "customer_id")
+        if customer_id is None:
+            continue
+        key = str(customer_id)
+        customer = by_customer.setdefault(
+            key,
+            {
+                "customer_id": key,
+                "order_ids": set(),
+                "row_count": 0,
+                "total_value": 0.0,
+                "first_purchase": None,
+                "last_purchase": None,
+                "latest_row": row,
+                "latest_row_index": row_index,
+            },
+        )
+        customer["row_count"] = int(customer["row_count"]) + 1
+        order_id = _value(row, reverse, "order_id")
+        if order_id is not None:
+            order_ids = customer["order_ids"]
+            assert isinstance(order_ids, set)
+            order_ids.add(order_id)
+        customer["total_value"] = float(customer["total_value"]) + (
+            _as_float(_value(row, reverse, "total_amount")) or 0.0
+        )
+        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        if timestamp is not None:
+            first = customer["first_purchase"]
+            last = customer["last_purchase"]
+            if first is None or timestamp < first:
+                customer["first_purchase"] = timestamp
+            if last is None or timestamp >= last:
+                customer["last_purchase"] = timestamp
+                customer["latest_row"] = row
+                customer["latest_row_index"] = row_index
+
+    result = []
+    for customer in by_customer.values():
+        order_ids = customer.pop("order_ids")
+        row_count = int(customer.pop("row_count"))
+        assert isinstance(order_ids, set)
+        customer["orders"] = len(order_ids) or row_count
+        customer["total_value"] = round(float(customer["total_value"]), 2)
+        result.append(customer)
+    return result
