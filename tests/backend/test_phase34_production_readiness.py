@@ -64,22 +64,22 @@ def test_production_requires_non_default_jwt_secret() -> None:
         Settings(ENVIRONMENT="production")
 
 
-def test_production_requires_email_delivery_configuration() -> None:
-    with pytest.raises(ValueError, match="SMTP_HOST"):
-        Settings(
-            ENVIRONMENT="production",
-            DATABASE_URL="sqlite:///./var/avenqo-production.db",
-            AUTH_JWT_SECRET="a" * 32,
-            SMTP_HOST="",
-            STRIPE_SECRET_KEY="sk_test_x",
-            STRIPE_WEBHOOK_SECRET="whsec_x",
-            STRIPE_PRICE_DEMO="price_demo",
-            STRIPE_PRICE_PROFESSIONAL="price_pro",
-            STRIPE_PRICE_ENTERPRISE="",
-            FRONTEND_URL="https://app.avenqo.ca",
-            CORS_ORIGINS="https://app.avenqo.ca",
-            ALLOWED_HOSTS="api.avenqo.ca",
-        )
+def test_production_reports_email_delivery_unconfigured_without_blocking_startup() -> None:
+    settings = Settings(
+        ENVIRONMENT="production",
+        DATABASE_URL="sqlite:///./var/avenqo-production.db",
+        AUTH_JWT_SECRET="a" * 32,
+        SMTP_HOST="",
+        STRIPE_SECRET_KEY="sk_test_x",
+        STRIPE_WEBHOOK_SECRET="whsec_x",
+        STRIPE_PRICE_DEMO="price_demo",
+        STRIPE_PRICE_PROFESSIONAL="price_pro",
+        STRIPE_PRICE_ENTERPRISE="",
+        FRONTEND_URL="https://app.avenqo.ca",
+        CORS_ORIGINS="https://app.avenqo.ca",
+        ALLOWED_HOSTS="api.avenqo.ca",
+    )
+    assert settings.email_delivery_configured is False
 
 
 def test_production_settings_accepted_when_fully_configured() -> None:

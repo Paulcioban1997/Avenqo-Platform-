@@ -326,6 +326,13 @@
     "newest": "Plus récent",
     "you": "Vous",
     "avenqoAi": "Avenqo IA",
+    "agentComingSoon": "Ce sp??cialiste arrive bient??t.",
+    "unsupportedIntent": "Avenqo ne peut pas encore acheminer cette demande vers un sp??cialiste disponible.",
+    "retailNotEntitled": "Retail Intelligence n'est pas inclus dans votre abonnement actuel.",
+    "creditsExhausted": "Vos cr??dits IA sont ??puis??s. Ajoutez des cr??dits pour continuer.",
+    "requestUnavailable": "Avenqo n'a pas pu traiter cette demande.",
+    "remainingCredits": "Cr??dits IA restants",
+    "manageCredits": "G??rer les cr??dits",
     "suggestions": [
       "Comment se portent mes ventes ?",
       "Quels clients ont besoin d'attention ?",

@@ -326,6 +326,13 @@
     "newest": "En yeni",
     "you": "Siz",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Bu uzman yak??nda geliyor.",
+    "unsupportedIntent": "Avenqo bu talebi hen??z mevcut bir uzmana y??nlendiremiyor.",
+    "retailNotEntitled": "Retail Intelligence mevcut aboneli??inize dahil de??il.",
+    "creditsExhausted": "AI kredileriniz t??kendi. Devam etmek i??in kredi ekleyin.",
+    "requestUnavailable": "Avenqo bu iste??i tamamlayamad??.",
+    "remainingCredits": "Kalan AI kredileri",
+    "manageCredits": "Kredileri y??net",
     "suggestions": [
       "Satışlarım nasıl gidiyor?",
       "Hangi müşterilerin ilgiye ihtiyacı var?",

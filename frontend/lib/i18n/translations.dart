@@ -31,15 +31,25 @@ class Translations {
       common: CommonStrings.fromJson(json['common'] as Map<String, dynamic>),
       nav: NavStrings.fromJson(json['nav'] as Map<String, dynamic>),
       hero: HeroStrings.fromJson(json['hero'] as Map<String, dynamic>),
-      dashboard: DashboardStrings.fromJson(json['dashboard'] as Map<String, dynamic>),
-      features: FeaturesStrings.fromJson(json['features'] as Map<String, dynamic>),
-      modulesSection: ModulesSectionStrings.fromJson(json['modulesSection'] as Map<String, dynamic>),
+      dashboard: DashboardStrings.fromJson(
+        json['dashboard'] as Map<String, dynamic>,
+      ),
+      features: FeaturesStrings.fromJson(
+        json['features'] as Map<String, dynamic>,
+      ),
+      modulesSection: ModulesSectionStrings.fromJson(
+        json['modulesSection'] as Map<String, dynamic>,
+      ),
       steps: StepsStrings.fromJson(json['steps'] as Map<String, dynamic>),
-      usecases: UsecasesStrings.fromJson(json['usecases'] as Map<String, dynamic>),
+      usecases: UsecasesStrings.fromJson(
+        json['usecases'] as Map<String, dynamic>,
+      ),
       why: WhyStrings.fromJson(json['why'] as Map<String, dynamic>),
       pricing: PricingStrings.fromJson(json['pricing'] as Map<String, dynamic>),
       faq: FaqStrings.fromJson(json['faq'] as Map<String, dynamic>),
-      finalCta: FinalCtaStrings.fromJson(json['finalCta'] as Map<String, dynamic>),
+      finalCta: FinalCtaStrings.fromJson(
+        json['finalCta'] as Map<String, dynamic>,
+      ),
       footer: FooterStrings.fromJson(json['footer'] as Map<String, dynamic>),
       // Traduit uniquement pour fr/en pour le moment : les 40 autres locales
       // retombent sur l'anglais existant tant qu'elles n'ont pas la clé.
@@ -52,7 +62,9 @@ class Translations {
           : AuthStrings.fallback(),
       // Même logique de repli que assistant/auth : fr/en traduits, le reste en anglais.
       dashboardHome: json['dashboardHome'] != null
-          ? DashboardHomeStrings.fromJson(json['dashboardHome'] as Map<String, dynamic>)
+          ? DashboardHomeStrings.fromJson(
+              json['dashboardHome'] as Map<String, dynamic>,
+            )
           : DashboardHomeStrings.fallback(),
       // Même logique de repli que assistant/auth/dashboardHome : fr/en traduits,
       // le reste en anglais.
@@ -61,19 +73,21 @@ class Translations {
           : AdminStrings.fallback(),
       // Même logique de repli : fr/en traduits, le reste en anglais.
       onboarding: json['onboarding'] != null
-          ? OnboardingStrings.fromJson(json['onboarding'] as Map<String, dynamic>)
+          ? OnboardingStrings.fromJson(
+              json['onboarding'] as Map<String, dynamic>,
+            )
           : OnboardingStrings.fallback(),
       // Même logique de repli : fr/en traduits, le reste en anglais.
       company: json['company'] != null
           ? CompanyStrings.fromJson(json['company'] as Map<String, dynamic>)
           : CompanyStrings.fallback(),
-        phase4d: json['phase4d'] != null
+      phase4d: json['phase4d'] != null
           ? Phase4dStrings.fromJson(json['phase4d'] as Map<String, dynamic>)
           : Phase4dStrings.fallback(),
-        phase4e: json['phase4e'] != null
+      phase4e: json['phase4e'] != null
           ? Phase4eStrings.fromJson(json['phase4e'] as Map<String, dynamic>)
           : Phase4eStrings.fallback(),
-        agents: json['agents'] != null
+      agents: json['agents'] != null
           ? AgentStrings.fromJson(json['agents'] as Map<String, dynamic>)
           : AgentStrings.fallback(),
     );
@@ -106,66 +120,81 @@ class Translations {
 class AgentStrings {
   const AgentStrings(this.values);
 
-  factory AgentStrings.fromJson(Map<String, dynamic> json) => AgentStrings(
-        json.map((key, value) => MapEntry(key, value as String)),
-      );
+  factory AgentStrings.fromJson(Map<String, dynamic> json) =>
+      AgentStrings(json.map((key, value) => MapEntry(key, value as String)));
 
   factory AgentStrings.fallback() => const AgentStrings({
-        'navLabel': 'Agents',
-        'title': 'Avenqo Agents',
-        'subtitle': 'Specialized business capabilities, connected in one workspace.',
-        'availableNow': 'Available now',
-        'comingSoon': 'Coming Soon',
-        'openAgent': 'Open agent',
-        'adminTitle': 'Agent Catalog',
-        'adminSubtitle': 'Platform capabilities and their current availability.',
-        'availableCount': 'Available agents',
-        'comingSoonCount': 'Coming Soon agents',
-        'retailName': 'Retail Intelligence',
-        'retailDescription': 'Operate sales, customers, products, recommendations, and retail analytics.',
-        'marketingName': 'Marketing AI',
-        'marketingDescription': 'Prepare campaigns, audiences, and measurable growth actions.',
-        'crmName': 'CRM AI',
-        'crmDescription': 'Prioritize relationships, opportunities, and next best actions.',
-        'hrName': 'HR AI',
-        'hrDescription': 'Support people operations, workforce insights, and employee workflows.',
-        'accountingName': 'Accounting AI',
-        'accountingDescription': 'Accelerate financial operations, controls, and reporting workflows.',
-        'ocrName': 'OCR AI',
-        'ocrDescription': 'Turn business documents into structured, usable information.',
-        'voiceName': 'Voice AI',
-        'voiceDescription': 'Prepare intelligent voice interactions connected to business context.',
-        'mediaName': 'Media AI',
-        'mediaDescription': 'Create, organize, and manage business media workflows.',
-        'legalName': 'Legal AI',
-        'legalDescription': 'Support contract analysis and controlled legal-document workflows.',
-        'appointmentsName': 'Appointments AI',
-        'appointmentsDescription': 'Coordinate bookings and availability across service-based businesses.',
-        'workflowName': 'Workflow Automation',
-        'workflowDescription': 'Connect repeatable tasks, approvals, and business processes.',
-        'retailOverviewLabel': 'Overview',
-        'retailSalesLabel': 'Sales',
-        'retailCustomersLabel': 'Customers',
-        'retailProductsLabel': 'Products',
-        'retailRecommendationsLabel': 'Recommendations',
-        'adminRetailSubtitle': 'Manage sales, products, loyalty, and retail analytics from one view.',
-        'adminSelectTenantTitle': 'Select company',
-        'adminSelectTenantSubtitle': 'Choose a company before accessing Retail Intelligence.',
-        'loadTenantsError': 'Companies could not be loaded.',
-        'operationalAccessUnavailable': 'Operational Retail data remains protected until an authorized tenant context is available.',
-        'noTenants': 'No companies available.',
-        'selectTenantAction': 'Select company',
-        'selectedTenant': 'Selected company',
-        'viewCompanyDetails': 'View company details',
-        'adminViewLabel': 'Admin view — Company',
-        'switchCompany': 'Switch company',
-        'exitTenantView': 'Exit tenant view',
-        'tenantContextError': 'The tenant context could not be validated.',
-      });
+    'navLabel': 'Agents',
+    'title': 'Avenqo Agents',
+    'subtitle':
+        'Specialized business capabilities, connected in one workspace.',
+    'availableNow': 'Available now',
+    'comingSoon': 'Coming Soon',
+    'openAgent': 'Open agent',
+    'adminTitle': 'Agent Catalog',
+    'adminSubtitle': 'Platform capabilities and their current availability.',
+    'availableCount': 'Available agents',
+    'comingSoonCount': 'Coming Soon agents',
+    'retailName': 'Retail Intelligence',
+    'retailDescription':
+        'Operate sales, customers, products, recommendations, and retail analytics.',
+    'marketingName': 'Marketing AI',
+    'marketingDescription':
+        'Prepare campaigns, audiences, and measurable growth actions.',
+    'crmName': 'CRM AI',
+    'crmDescription':
+        'Prioritize relationships, opportunities, and next best actions.',
+    'hrName': 'HR AI',
+    'hrDescription':
+        'Support people operations, workforce insights, and employee workflows.',
+    'accountingName': 'Accounting AI',
+    'accountingDescription':
+        'Accelerate financial operations, controls, and reporting workflows.',
+    'ocrName': 'OCR AI',
+    'ocrDescription':
+        'Turn business documents into structured, usable information.',
+    'voiceName': 'Voice AI',
+    'voiceDescription':
+        'Prepare intelligent voice interactions connected to business context.',
+    'mediaName': 'Media AI',
+    'mediaDescription':
+        'Create, organize, and manage business media workflows.',
+    'legalName': 'Legal AI',
+    'legalDescription':
+        'Support contract analysis and controlled legal-document workflows.',
+    'appointmentsName': 'Appointments AI',
+    'appointmentsDescription':
+        'Coordinate bookings and availability across service-based businesses.',
+    'workflowName': 'Workflow Automation',
+    'workflowDescription':
+        'Connect repeatable tasks, approvals, and business processes.',
+    'retailOverviewLabel': 'Overview',
+    'retailSalesLabel': 'Sales',
+    'retailCustomersLabel': 'Customers',
+    'retailProductsLabel': 'Products',
+    'retailRecommendationsLabel': 'Recommendations',
+    'adminRetailSubtitle':
+        'Manage sales, products, loyalty, and retail analytics from one view.',
+    'adminSelectTenantTitle': 'Select company',
+    'adminSelectTenantSubtitle':
+        'Choose a company before accessing Retail Intelligence.',
+    'loadTenantsError': 'Companies could not be loaded.',
+    'operationalAccessUnavailable':
+        'Operational Retail data remains protected until an authorized tenant context is available.',
+    'noTenants': 'No companies available.',
+    'selectTenantAction': 'Select company',
+    'selectedTenant': 'Selected company',
+    'viewCompanyDetails': 'View company details',
+    'adminViewLabel': 'Admin view — Company',
+    'switchCompany': 'Switch company',
+    'exitTenantView': 'Exit tenant view',
+    'tenantContextError': 'The tenant context could not be validated.',
+  });
 
   final Map<String, String> values;
 
-  String value(String key) => values[key] ?? AgentStrings.fallback().values[key] ?? key;
+  String value(String key) =>
+      values[key] ?? AgentStrings.fallback().values[key] ?? key;
   String get navLabel => value('navLabel');
   String get title => value('title');
   String get subtitle => value('subtitle');
@@ -205,54 +234,56 @@ class Phase4eStrings {
   });
 
   factory Phase4eStrings.fromJson(Map<String, dynamic> json) => Phase4eStrings(
-        creditsTitle: json['creditsTitle'] as String,
-        creditsSubtitle: json['creditsSubtitle'] as String,
-        monthlyAllowance: json['monthlyAllowance'] as String,
-        monthlyRemaining: json['monthlyRemaining'] as String,
-        purchasedRemaining: json['purchasedRemaining'] as String,
-        totalRemaining: json['totalRemaining'] as String,
-        billingPeriod: json['billingPeriod'] as String,
-        monthlyProgress: json['monthlyProgress'] as String,
-        customAllowance: json['customAllowance'] as String,
-        resetExplanation: json['resetExplanation'] as String,
-        packsTitle: json['packsTitle'] as String,
-        packsSubtitle: json['packsSubtitle'] as String,
-        creditsUnit: json['creditsUnit'] as String,
-        purchase: json['purchase'] as String,
-        purchaseRequiresActive: json['purchaseRequiresActive'] as String,
-        priceUsd: json['priceUsd'] as String,
-        adminSubtitle: json['adminSubtitle'] as String,
-        company: json['company'] as String,
-        plan: json['plan'] as String,
-        subscription: json['subscription'] as String,
-        aiUsage: json['aiUsage'] as String,
-        noCompanies: json['noCompanies'] as String,
-      );
+    creditsTitle: json['creditsTitle'] as String,
+    creditsSubtitle: json['creditsSubtitle'] as String,
+    monthlyAllowance: json['monthlyAllowance'] as String,
+    monthlyRemaining: json['monthlyRemaining'] as String,
+    purchasedRemaining: json['purchasedRemaining'] as String,
+    totalRemaining: json['totalRemaining'] as String,
+    billingPeriod: json['billingPeriod'] as String,
+    monthlyProgress: json['monthlyProgress'] as String,
+    customAllowance: json['customAllowance'] as String,
+    resetExplanation: json['resetExplanation'] as String,
+    packsTitle: json['packsTitle'] as String,
+    packsSubtitle: json['packsSubtitle'] as String,
+    creditsUnit: json['creditsUnit'] as String,
+    purchase: json['purchase'] as String,
+    purchaseRequiresActive: json['purchaseRequiresActive'] as String,
+    priceUsd: json['priceUsd'] as String,
+    adminSubtitle: json['adminSubtitle'] as String,
+    company: json['company'] as String,
+    plan: json['plan'] as String,
+    subscription: json['subscription'] as String,
+    aiUsage: json['aiUsage'] as String,
+    noCompanies: json['noCompanies'] as String,
+  );
 
   factory Phase4eStrings.fallback() => const Phase4eStrings(
-        creditsTitle: 'AI credits',
-        creditsSubtitle: 'Your monthly allowance and purchased credit balance.',
-        monthlyAllowance: 'Monthly allowance',
-        monthlyRemaining: 'Monthly remaining',
-        purchasedRemaining: 'Purchased remaining',
-        totalRemaining: 'Total remaining',
-        billingPeriod: 'Billing period',
-        monthlyProgress: '{used} of {included} credits used this period',
-        customAllowance: 'Contractual / custom',
-        resetExplanation: 'Monthly credits reset each billing period. Purchased credits carry over.',
-        packsTitle: 'Add AI credits',
-        packsSubtitle: 'One-time credit packs, fulfilled securely through Stripe.',
-        creditsUnit: 'credits',
-        purchase: 'Purchase',
-        purchaseRequiresActive: 'An active or trialing subscription is required to purchase credit packs.',
-        priceUsd: '\${price} USD',
-        adminSubtitle: 'Tenant-scoped balances and logical AI usage across Avenqo.',
-        company: 'Company',
-        plan: 'Plan',
-        subscription: 'Subscription',
-        aiUsage: 'AI usage',
-        noCompanies: 'No company credit data is available.',
-      );
+    creditsTitle: 'AI credits',
+    creditsSubtitle: 'Your monthly allowance and purchased credit balance.',
+    monthlyAllowance: 'Monthly allowance',
+    monthlyRemaining: 'Monthly remaining',
+    purchasedRemaining: 'Purchased remaining',
+    totalRemaining: 'Total remaining',
+    billingPeriod: 'Billing period',
+    monthlyProgress: '{used} of {included} credits used this period',
+    customAllowance: 'Contractual / custom',
+    resetExplanation:
+        'Monthly credits reset each billing period. Purchased credits carry over.',
+    packsTitle: 'Add AI credits',
+    packsSubtitle: 'One-time credit packs, fulfilled securely through Stripe.',
+    creditsUnit: 'credits',
+    purchase: 'Purchase',
+    purchaseRequiresActive:
+        'An active or trialing subscription is required to purchase credit packs.',
+    priceUsd: '\${price} USD',
+    adminSubtitle: 'Tenant-scoped balances and logical AI usage across Avenqo.',
+    company: 'Company',
+    plan: 'Plan',
+    subscription: 'Subscription',
+    aiUsage: 'AI usage',
+    noCompanies: 'No company credit data is available.',
+  );
 
   final String creditsTitle;
   final String creditsSubtitle;
@@ -320,14 +351,21 @@ class Phase4dStrings {
 
   factory Phase4dStrings.fromJson(Map<String, dynamic> json) {
     final fallback = Phase4dStrings.fallback();
-    String value(String key, String fallbackValue) => json[key] as String? ?? fallbackValue;
+    String value(String key, String fallbackValue) =>
+        json[key] as String? ?? fallbackValue;
     return Phase4dStrings(
       productsTotal: value('productsTotal', fallback.productsTotal),
       productsActive: value('productsActive', fallback.productsActive),
       productsRevenue: value('productsRevenue', fallback.productsRevenue),
       productsUnits: value('productsUnits', fallback.productsUnits),
-      productsAveragePrice: value('productsAveragePrice', fallback.productsAveragePrice),
-      productsConcentration: value('productsConcentration', fallback.productsConcentration),
+      productsAveragePrice: value(
+        'productsAveragePrice',
+        fallback.productsAveragePrice,
+      ),
+      productsConcentration: value(
+        'productsConcentration',
+        fallback.productsConcentration,
+      ),
       productsSearch: value('productsSearch', fallback.productsSearch),
       productLabel: value('productLabel', fallback.productLabel),
       categoryLabel: value('categoryLabel', fallback.categoryLabel),
@@ -341,64 +379,108 @@ class Phase4dStrings {
       allLabel: value('allLabel', fallback.allLabel),
       sortLabel: value('sortLabel', fallback.sortLabel),
       partialReady: value('partialReady', fallback.partialReady),
-      recommendationsEmpty: value('recommendationsEmpty', fallback.recommendationsEmpty),
+      recommendationsEmpty: value(
+        'recommendationsEmpty',
+        fallback.recommendationsEmpty,
+      ),
       priorityLabel: value('priorityLabel', fallback.priorityLabel),
       evidenceLabel: value('evidenceLabel', fallback.evidenceLabel),
-      suggestedActionLabel: value('suggestedActionLabel', fallback.suggestedActionLabel),
-      productDeclineTitle: value('productDeclineTitle', fallback.productDeclineTitle),
-      productGrowthTitle: value('productGrowthTitle', fallback.productGrowthTitle),
-      productConcentrationTitle: value('productConcentrationTitle', fallback.productConcentrationTitle),
-      crossSellOpportunityTitle: value('crossSellOpportunityTitle', fallback.crossSellOpportunityTitle),
-      productRevenueChangedExplanation: value('productRevenueChangedExplanation', fallback.productRevenueChangedExplanation),
-      productConcentrationExplanation: value('productConcentrationExplanation', fallback.productConcentrationExplanation),
-      crossSellOpportunityExplanation: value('crossSellOpportunityExplanation', fallback.crossSellOpportunityExplanation),
-      reviewProductPerformance: value('reviewProductPerformance', fallback.reviewProductPerformance),
-      reviewProductConcentration: value('reviewProductConcentration', fallback.reviewProductConcentration),
-      reviewCrossSellOpportunities: value('reviewCrossSellOpportunities', fallback.reviewCrossSellOpportunities),
+      suggestedActionLabel: value(
+        'suggestedActionLabel',
+        fallback.suggestedActionLabel,
+      ),
+      productDeclineTitle: value(
+        'productDeclineTitle',
+        fallback.productDeclineTitle,
+      ),
+      productGrowthTitle: value(
+        'productGrowthTitle',
+        fallback.productGrowthTitle,
+      ),
+      productConcentrationTitle: value(
+        'productConcentrationTitle',
+        fallback.productConcentrationTitle,
+      ),
+      crossSellOpportunityTitle: value(
+        'crossSellOpportunityTitle',
+        fallback.crossSellOpportunityTitle,
+      ),
+      productRevenueChangedExplanation: value(
+        'productRevenueChangedExplanation',
+        fallback.productRevenueChangedExplanation,
+      ),
+      productConcentrationExplanation: value(
+        'productConcentrationExplanation',
+        fallback.productConcentrationExplanation,
+      ),
+      crossSellOpportunityExplanation: value(
+        'crossSellOpportunityExplanation',
+        fallback.crossSellOpportunityExplanation,
+      ),
+      reviewProductPerformance: value(
+        'reviewProductPerformance',
+        fallback.reviewProductPerformance,
+      ),
+      reviewProductConcentration: value(
+        'reviewProductConcentration',
+        fallback.reviewProductConcentration,
+      ),
+      reviewCrossSellOpportunities: value(
+        'reviewCrossSellOpportunities',
+        fallback.reviewCrossSellOpportunities,
+      ),
       changeEvidence: value('changeEvidence', fallback.changeEvidence),
-      concentrationEvidence: value('concentrationEvidence', fallback.concentrationEvidence),
+      concentrationEvidence: value(
+        'concentrationEvidence',
+        fallback.concentrationEvidence,
+      ),
       customerEvidence: value('customerEvidence', fallback.customerEvidence),
     );
   }
 
   factory Phase4dStrings.fallback() => const Phase4dStrings(
-        productsTotal: 'Total products',
-        productsActive: 'Active products',
-        productsRevenue: 'Product revenue',
-        productsUnits: 'Units sold',
-        productsAveragePrice: 'Average selling price',
-        productsConcentration: 'Top product revenue share',
-        productsSearch: 'Search products',
-        productLabel: 'Product',
-        categoryLabel: 'Category',
-        revenueLabel: 'Revenue',
-        unitsLabel: 'Units',
-        averagePriceLabel: 'Average price',
-        lastActivityLabel: 'Last activity',
-        performanceLabel: 'Performance',
-        strongLabel: 'Strong',
-        weakLabel: 'Weak',
-        allLabel: 'All',
-        sortLabel: 'Sort by',
-        partialReady: 'Some data is still processing. Ready results are shown below.',
-        recommendationsEmpty: 'No evidence-backed recommendation is available right now.',
-        priorityLabel: 'Priority',
-        evidenceLabel: 'Evidence',
-        suggestedActionLabel: 'Suggested action',
-        productDeclineTitle: 'Product revenue is declining',
-        productGrowthTitle: 'Product revenue is growing',
-        productConcentrationTitle: 'Revenue is concentrated in one product',
-        crossSellOpportunityTitle: 'Cross-sell opportunities are available',
-        productRevenueChangedExplanation: 'Revenue changed compared with the previous equivalent period.',
-        productConcentrationExplanation: 'One product represents a significant share of observed product revenue.',
-        crossSellOpportunityExplanation: 'The active validated recommendation model identified customers with relevant product suggestions.',
-        reviewProductPerformance: 'Review product performance',
-        reviewProductConcentration: 'Review product concentration',
-        reviewCrossSellOpportunities: 'Review cross-sell opportunities',
-        changeEvidence: '{entity}: {current} vs {comparison} ({change}%)',
-        concentrationEvidence: '{entity}: {current}% of product revenue',
-        customerEvidence: '{current} customers with recommendations',
-      );
+    productsTotal: 'Total products',
+    productsActive: 'Active products',
+    productsRevenue: 'Product revenue',
+    productsUnits: 'Units sold',
+    productsAveragePrice: 'Average selling price',
+    productsConcentration: 'Top product revenue share',
+    productsSearch: 'Search products',
+    productLabel: 'Product',
+    categoryLabel: 'Category',
+    revenueLabel: 'Revenue',
+    unitsLabel: 'Units',
+    averagePriceLabel: 'Average price',
+    lastActivityLabel: 'Last activity',
+    performanceLabel: 'Performance',
+    strongLabel: 'Strong',
+    weakLabel: 'Weak',
+    allLabel: 'All',
+    sortLabel: 'Sort by',
+    partialReady:
+        'Some data is still processing. Ready results are shown below.',
+    recommendationsEmpty:
+        'No evidence-backed recommendation is available right now.',
+    priorityLabel: 'Priority',
+    evidenceLabel: 'Evidence',
+    suggestedActionLabel: 'Suggested action',
+    productDeclineTitle: 'Product revenue is declining',
+    productGrowthTitle: 'Product revenue is growing',
+    productConcentrationTitle: 'Revenue is concentrated in one product',
+    crossSellOpportunityTitle: 'Cross-sell opportunities are available',
+    productRevenueChangedExplanation:
+        'Revenue changed compared with the previous equivalent period.',
+    productConcentrationExplanation:
+        'One product represents a significant share of observed product revenue.',
+    crossSellOpportunityExplanation:
+        'The active validated recommendation model identified customers with relevant product suggestions.',
+    reviewProductPerformance: 'Review product performance',
+    reviewProductConcentration: 'Review product concentration',
+    reviewCrossSellOpportunities: 'Review cross-sell opportunities',
+    changeEvidence: '{entity}: {current} vs {comparison} ({change}%)',
+    concentrationEvidence: '{entity}: {current}% of product revenue',
+    customerEvidence: '{current} customers with recommendations',
+  );
 
   final String productsTotal;
   final String productsActive;
@@ -470,7 +552,8 @@ class OnboardingStrings {
     required this.teamSizeRequired,
   });
 
-  factory OnboardingStrings.fromJson(Map<String, dynamic> json) => OnboardingStrings(
+  factory OnboardingStrings.fromJson(Map<String, dynamic> json) =>
+      OnboardingStrings(
         title: json['title'] as String,
         subtitle: json['subtitle'] as String,
         goalsLabel: json['goalsLabel'] as String,
@@ -502,35 +585,36 @@ class OnboardingStrings {
       );
 
   factory OnboardingStrings.fallback() => const OnboardingStrings(
-        title: "Let's set up your Avenqo workspace",
-        subtitle: 'A few quick questions to personalize your priorities and recommendations.',
-        goalsLabel: 'What are your main goals?',
-        goalIncreaseSales: 'Increase sales',
-        goalReduceChurn: 'Reduce customer churn',
-        goalOptimizePricing: 'Optimize pricing',
-        goalImproveInventory: 'Improve inventory management',
-        goalUnderstandCustomers: 'Better understand my customers',
-        goalAutomateReports: 'Automate my reports',
-        toolsLabel: 'Which tools do you currently use?',
-        toolPos: 'Point of sale (POS) system',
-        toolEcommerce: 'E-commerce platform',
-        toolSpreadsheets: 'Spreadsheets (Excel/Sheets)',
-        toolAccounting: 'Accounting software',
-        toolCrm: 'CRM',
-        toolNone: 'No tools yet',
-        teamSizeLabel: 'What is the size of your team?',
-        teamSizeSolo: 'Just me',
-        teamSizeSmall: '2 to 10 people',
-        teamSizeMedium: '11 to 50 people',
-        teamSizeLarge: 'More than 50 people',
-        refineIndustryLabel: 'Refine your industry (optional)',
-        refineIndustryHint: 'E.g. specialty retail, fast food, accounting firm...',
-        continueCta: 'Continue',
-        skipCta: 'Skip for now',
-        genericError: "We couldn't save your answers right now.",
-        goalsRequired: 'Select at least one goal.',
-        teamSizeRequired: 'Select your team size.',
-      );
+    title: "Let's set up your Avenqo workspace",
+    subtitle:
+        'A few quick questions to personalize your priorities and recommendations.',
+    goalsLabel: 'What are your main goals?',
+    goalIncreaseSales: 'Increase sales',
+    goalReduceChurn: 'Reduce customer churn',
+    goalOptimizePricing: 'Optimize pricing',
+    goalImproveInventory: 'Improve inventory management',
+    goalUnderstandCustomers: 'Better understand my customers',
+    goalAutomateReports: 'Automate my reports',
+    toolsLabel: 'Which tools do you currently use?',
+    toolPos: 'Point of sale (POS) system',
+    toolEcommerce: 'E-commerce platform',
+    toolSpreadsheets: 'Spreadsheets (Excel/Sheets)',
+    toolAccounting: 'Accounting software',
+    toolCrm: 'CRM',
+    toolNone: 'No tools yet',
+    teamSizeLabel: 'What is the size of your team?',
+    teamSizeSolo: 'Just me',
+    teamSizeSmall: '2 to 10 people',
+    teamSizeMedium: '11 to 50 people',
+    teamSizeLarge: 'More than 50 people',
+    refineIndustryLabel: 'Refine your industry (optional)',
+    refineIndustryHint: 'E.g. specialty retail, fast food, accounting firm...',
+    continueCta: 'Continue',
+    skipCta: 'Skip for now',
+    genericError: "We couldn't save your answers right now.",
+    goalsRequired: 'Select at least one goal.',
+    teamSizeRequired: 'Select your team size.',
+  );
 
   final String title;
   final String subtitle;
@@ -601,7 +685,8 @@ class DashboardHomeStrings {
     required this.modelActivatedActivity,
   });
 
-  factory DashboardHomeStrings.fromJson(Map<String, dynamic> json) => DashboardHomeStrings(
+  factory DashboardHomeStrings.fromJson(Map<String, dynamic> json) =>
+      DashboardHomeStrings(
         hello: json['hello'] as String,
         subtitleForCompany: json['subtitleForCompany'] as String,
         askAvenqo: json['askAvenqo'] as String,
@@ -615,67 +700,116 @@ class DashboardHomeStrings {
         prioritiesTitle: json['prioritiesTitle'] as String,
         prioritiesEmpty: json['prioritiesEmpty'] as String,
         planLabel: json['planLabel'] as String,
-        askAvenqoSubtitle: json['askAvenqoSubtitle'] as String? ?? DashboardHomeStrings.fallback().askAvenqoSubtitle,
-        askAvenqoCta: json['askAvenqoCta'] as String? ?? DashboardHomeStrings.fallback().askAvenqoCta,
-        importDataTitle: json['importDataTitle'] as String? ?? DashboardHomeStrings.fallback().importDataTitle,
-        importDataSubtitle: json['importDataSubtitle'] as String? ?? DashboardHomeStrings.fallback().importDataSubtitle,
-        importDataCta: json['importDataCta'] as String? ?? DashboardHomeStrings.fallback().importDataCta,
-        connectionsTitle: json['connectionsTitle'] as String? ?? DashboardHomeStrings.fallback().connectionsTitle,
-        connectionsEmpty: json['connectionsEmpty'] as String? ?? DashboardHomeStrings.fallback().connectionsEmpty,
-        connectionsEmptyCta: json['connectionsEmptyCta'] as String? ?? DashboardHomeStrings.fallback().connectionsEmptyCta,
-        connectionsReadyLabel: json['connectionsReadyLabel'] as String? ?? DashboardHomeStrings.fallback().connectionsReadyLabel,
-        connectionsLastUpdate: json['connectionsLastUpdate'] as String? ?? DashboardHomeStrings.fallback().connectionsLastUpdate,
-        activityTitle: json['activityTitle'] as String? ?? DashboardHomeStrings.fallback().activityTitle,
-        activityEmpty: json['activityEmpty'] as String? ?? DashboardHomeStrings.fallback().activityEmpty,
-        stepsTitle: json['stepsTitle'] as String? ?? DashboardHomeStrings.fallback().stepsTitle,
-        stepOrgLabel: json['stepOrgLabel'] as String? ?? DashboardHomeStrings.fallback().stepOrgLabel,
-        stepDataLabel: json['stepDataLabel'] as String? ?? DashboardHomeStrings.fallback().stepDataLabel,
-        stepInsightsLabel: json['stepInsightsLabel'] as String? ?? DashboardHomeStrings.fallback().stepInsightsLabel,
-        stepAskLabel: json['stepAskLabel'] as String? ?? DashboardHomeStrings.fallback().stepAskLabel,
-        revenueDeclineTitle: json['revenueDeclineTitle'] as String? ?? DashboardHomeStrings.fallback().revenueDeclineTitle,
-        revenueGrowthTitle: json['revenueGrowthTitle'] as String? ?? DashboardHomeStrings.fallback().revenueGrowthTitle,
-        revenueChangedExplanation: json['revenueChangedExplanation'] as String? ?? DashboardHomeStrings.fallback().revenueChangedExplanation,
-        datasetImportedActivity: json['datasetImportedActivity'] as String? ?? DashboardHomeStrings.fallback().datasetImportedActivity,
-        modelActivatedActivity: json['modelActivatedActivity'] as String? ?? DashboardHomeStrings.fallback().modelActivatedActivity,
+        askAvenqoSubtitle:
+            json['askAvenqoSubtitle'] as String? ??
+            DashboardHomeStrings.fallback().askAvenqoSubtitle,
+        askAvenqoCta:
+            json['askAvenqoCta'] as String? ??
+            DashboardHomeStrings.fallback().askAvenqoCta,
+        importDataTitle:
+            json['importDataTitle'] as String? ??
+            DashboardHomeStrings.fallback().importDataTitle,
+        importDataSubtitle:
+            json['importDataSubtitle'] as String? ??
+            DashboardHomeStrings.fallback().importDataSubtitle,
+        importDataCta:
+            json['importDataCta'] as String? ??
+            DashboardHomeStrings.fallback().importDataCta,
+        connectionsTitle:
+            json['connectionsTitle'] as String? ??
+            DashboardHomeStrings.fallback().connectionsTitle,
+        connectionsEmpty:
+            json['connectionsEmpty'] as String? ??
+            DashboardHomeStrings.fallback().connectionsEmpty,
+        connectionsEmptyCta:
+            json['connectionsEmptyCta'] as String? ??
+            DashboardHomeStrings.fallback().connectionsEmptyCta,
+        connectionsReadyLabel:
+            json['connectionsReadyLabel'] as String? ??
+            DashboardHomeStrings.fallback().connectionsReadyLabel,
+        connectionsLastUpdate:
+            json['connectionsLastUpdate'] as String? ??
+            DashboardHomeStrings.fallback().connectionsLastUpdate,
+        activityTitle:
+            json['activityTitle'] as String? ??
+            DashboardHomeStrings.fallback().activityTitle,
+        activityEmpty:
+            json['activityEmpty'] as String? ??
+            DashboardHomeStrings.fallback().activityEmpty,
+        stepsTitle:
+            json['stepsTitle'] as String? ??
+            DashboardHomeStrings.fallback().stepsTitle,
+        stepOrgLabel:
+            json['stepOrgLabel'] as String? ??
+            DashboardHomeStrings.fallback().stepOrgLabel,
+        stepDataLabel:
+            json['stepDataLabel'] as String? ??
+            DashboardHomeStrings.fallback().stepDataLabel,
+        stepInsightsLabel:
+            json['stepInsightsLabel'] as String? ??
+            DashboardHomeStrings.fallback().stepInsightsLabel,
+        stepAskLabel:
+            json['stepAskLabel'] as String? ??
+            DashboardHomeStrings.fallback().stepAskLabel,
+        revenueDeclineTitle:
+            json['revenueDeclineTitle'] as String? ??
+            DashboardHomeStrings.fallback().revenueDeclineTitle,
+        revenueGrowthTitle:
+            json['revenueGrowthTitle'] as String? ??
+            DashboardHomeStrings.fallback().revenueGrowthTitle,
+        revenueChangedExplanation:
+            json['revenueChangedExplanation'] as String? ??
+            DashboardHomeStrings.fallback().revenueChangedExplanation,
+        datasetImportedActivity:
+            json['datasetImportedActivity'] as String? ??
+            DashboardHomeStrings.fallback().datasetImportedActivity,
+        modelActivatedActivity:
+            json['modelActivatedActivity'] as String? ??
+            DashboardHomeStrings.fallback().modelActivatedActivity,
       );
 
   factory DashboardHomeStrings.fallback() => const DashboardHomeStrings(
-        hello: 'Hello',
-        subtitleForCompany: "Here's what deserves your attention at {company}.",
-        askAvenqo: 'What would you like to understand today?',
-        connectDataTitle: 'Connect your business data to unlock analytics, forecasts and Avenqo AI insights.',
-        connectDataCta: 'Connect data',
-        thisMonth: 'This month',
-        salesLabel: 'Revenue',
-        ordersLabel: 'Orders',
-        customersLabel: 'Active customers',
-        avgOrderLabel: 'Average order',
-        prioritiesTitle: 'Recommended priorities',
-        prioritiesEmpty: 'Your priorities will appear here once your business data is connected.',
-        planLabel: 'Plan',
-        askAvenqoSubtitle: 'Ask questions about your business data and receive contextual insights.',
-        askAvenqoCta: 'Ask Avenqo AI',
-        importDataTitle: 'Import your data',
-        importDataSubtitle: 'Connect or import your business sources to unlock Avenqo intelligence.',
-        importDataCta: 'Import my data',
-        connectionsTitle: 'Connections',
-        connectionsEmpty: 'No data connected yet',
-        connectionsEmptyCta: 'Import my data',
-        connectionsReadyLabel: 'Ready',
-        connectionsLastUpdate: 'Last update',
-        activityTitle: 'Recent activity',
-        activityEmpty: 'No recent activity yet.',
-        stepsTitle: 'Next recommended steps',
-        stepOrgLabel: 'Complete your company setup',
-        stepDataLabel: 'Connect or import your data',
-        stepInsightsLabel: 'Explore your insights',
-        stepAskLabel: 'Ask Avenqo AI',
-        revenueDeclineTitle: 'Review the recent revenue decline',
-        revenueGrowthTitle: 'Build on recent revenue growth',
-        revenueChangedExplanation: 'Revenue changed materially from the previous equivalent period.',
-        datasetImportedActivity: 'Dataset imported',
-        modelActivatedActivity: 'Intelligence capability activated',
-      );
+    hello: 'Hello',
+    subtitleForCompany: "Here's what deserves your attention at {company}.",
+    askAvenqo: 'What would you like to understand today?',
+    connectDataTitle:
+        'Connect your business data to unlock analytics, forecasts and Avenqo AI insights.',
+    connectDataCta: 'Connect data',
+    thisMonth: 'This month',
+    salesLabel: 'Revenue',
+    ordersLabel: 'Orders',
+    customersLabel: 'Active customers',
+    avgOrderLabel: 'Average order',
+    prioritiesTitle: 'Recommended priorities',
+    prioritiesEmpty:
+        'Your priorities will appear here once your business data is connected.',
+    planLabel: 'Plan',
+    askAvenqoSubtitle:
+        'Ask questions about your business data and receive contextual insights.',
+    askAvenqoCta: 'Ask Avenqo AI',
+    importDataTitle: 'Import your data',
+    importDataSubtitle:
+        'Connect or import your business sources to unlock Avenqo intelligence.',
+    importDataCta: 'Import my data',
+    connectionsTitle: 'Connections',
+    connectionsEmpty: 'No data connected yet',
+    connectionsEmptyCta: 'Import my data',
+    connectionsReadyLabel: 'Ready',
+    connectionsLastUpdate: 'Last update',
+    activityTitle: 'Recent activity',
+    activityEmpty: 'No recent activity yet.',
+    stepsTitle: 'Next recommended steps',
+    stepOrgLabel: 'Complete your company setup',
+    stepDataLabel: 'Connect or import your data',
+    stepInsightsLabel: 'Explore your insights',
+    stepAskLabel: 'Ask Avenqo AI',
+    revenueDeclineTitle: 'Review the recent revenue decline',
+    revenueGrowthTitle: 'Build on recent revenue growth',
+    revenueChangedExplanation:
+        'Revenue changed materially from the previous equivalent period.',
+    datasetImportedActivity: 'Dataset imported',
+    modelActivatedActivity: 'Intelligence capability activated',
+  );
 
   final String hello;
   final String subtitleForCompany;
@@ -728,10 +862,18 @@ class AssistantStrings {
     required this.newest,
     required this.you,
     required this.avenqoAi,
+    required this.agentComingSoon,
+    required this.unsupportedIntent,
+    required this.retailNotEntitled,
+    required this.creditsExhausted,
+    required this.requestUnavailable,
+    required this.remainingCredits,
+    required this.manageCredits,
     required this.suggestions,
   });
 
-  factory AssistantStrings.fromJson(Map<String, dynamic> json) => AssistantStrings(
+  factory AssistantStrings.fromJson(Map<String, dynamic> json) =>
+      AssistantStrings(
         title: json['title'] as String,
         subtitle: json['subtitle'] as String,
         connectData: json['connectData'] as String,
@@ -744,6 +886,13 @@ class AssistantStrings {
         newest: json['newest'] as String,
         you: json['you'] as String,
         avenqoAi: json['avenqoAi'] as String,
+        agentComingSoon: json['agentComingSoon'] as String,
+        unsupportedIntent: json['unsupportedIntent'] as String,
+        retailNotEntitled: json['retailNotEntitled'] as String,
+        creditsExhausted: json['creditsExhausted'] as String,
+        requestUnavailable: json['requestUnavailable'] as String,
+        remainingCredits: json['remainingCredits'] as String,
+        manageCredits: json['manageCredits'] as String,
         suggestions: json['suggestions'] != null
             ? (json['suggestions'] as List<dynamic>).cast<String>()
             : AssistantStrings.fallback().suggestions,
@@ -752,25 +901,35 @@ class AssistantStrings {
   /// Anglais par d\u00e9faut : m\u00eame texte que l'ancien code en dur, utilis\u00e9 par
   /// toutes les locales qui n'ont pas encore la cl\u00e9 "assistant".
   factory AssistantStrings.fallback() => const AssistantStrings(
-        title: 'Ask Avenqo about your business',
-        subtitle: 'Ask a business question and Avenqo will use the information available to your company.',
-        connectData: 'Connect your business data',
-        newConversation: 'New conversation',
-        conversationsEmpty: 'Your conversations will appear here.',
-        deleteConversation: 'Delete conversation',
-        thinking: 'Avenqo is thinking...',
-        retry: 'Retry',
-        sourcesLabel: 'Sources',
-        newest: 'Newest',
-        you: 'You',
-        avenqoAi: 'Avenqo AI',
-        suggestions: [
-          'How are my sales performing?',
-          'Which customers need attention?',
-          'What changed this month?',
-          'Summarize my business performance.',
-        ],
-      );
+    title: 'Ask Avenqo about your business',
+    subtitle:
+        'Ask a business question and Avenqo will use the information available to your company.',
+    connectData: 'Connect your business data',
+    newConversation: 'New conversation',
+    conversationsEmpty: 'Your conversations will appear here.',
+    deleteConversation: 'Delete conversation',
+    thinking: 'Avenqo is thinking...',
+    retry: 'Retry',
+    sourcesLabel: 'Sources',
+    newest: 'Newest',
+    you: 'You',
+    avenqoAi: 'Avenqo AI',
+    agentComingSoon: 'This specialist is Coming Soon.',
+    unsupportedIntent:
+        'Avenqo cannot route this request to an available specialist yet.',
+    retailNotEntitled:
+        'Retail Intelligence is not included in your current subscription.',
+    creditsExhausted: 'Your AI credits are exhausted. Add credits to continue.',
+    requestUnavailable: 'Avenqo could not complete this request.',
+    remainingCredits: 'AI credits remaining',
+    manageCredits: 'Manage credits',
+    suggestions: [
+      'How are my sales performing?',
+      'Which customers need attention?',
+      'What changed this month?',
+      'Summarize my business performance.',
+    ],
+  );
 
   final String title;
   final String subtitle;
@@ -784,6 +943,13 @@ class AssistantStrings {
   final String newest;
   final String you;
   final String avenqoAi;
+  final String agentComingSoon;
+  final String unsupportedIntent;
+  final String retailNotEntitled;
+  final String creditsExhausted;
+  final String requestUnavailable;
+  final String remainingCredits;
+  final String manageCredits;
   final List<String> suggestions;
 }
 
@@ -823,72 +989,73 @@ class AuthStrings {
   });
 
   factory AuthStrings.fromJson(Map<String, dynamic> json) => AuthStrings(
-        tagline: json['tagline'] as String,
-        loginTitle: json['loginTitle'] as String,
-        loginSubtitle: json['loginSubtitle'] as String,
-        registerTitle: json['registerTitle'] as String,
-        registerSubtitle: json['registerSubtitle'] as String,
-        forgotTitle: json['forgotTitle'] as String,
-        forgotSubtitle: json['forgotSubtitle'] as String,
-        verifyTitle: json['verifyTitle'] as String,
-        verifySubtitle: json['verifySubtitle'] as String,
-        resetTitle: json['resetTitle'] as String,
-        resetSubtitle: json['resetSubtitle'] as String,
-        organisation: json['organisation'] as String,
-        billingEmail: json['billingEmail'] as String,
-        firstName: json['firstName'] as String,
-        lastName: json['lastName'] as String,
-        email: json['email'] as String,
-        password: json['password'] as String,
-        emailToken: json['emailToken'] as String,
-        requiredField: json['requiredField'] as String,
-        forgotPassword: json['forgotPassword'] as String,
-        createOrganisation: json['createOrganisation'] as String,
-        backToLogin: json['backToLogin'] as String,
-        home: json['home'] as String,
-        registerSuccess: json['registerSuccess'] as String,
-        registerPendingVerification: json['registerPendingVerification'] as String,
-        workspaceReadyMessage: json['workspaceReadyMessage'] as String,
-        continueLabel: json['continueLabel'] as String,
-        forgotSuccess: json['forgotSuccess'] as String,
-        verifySuccess: json['verifySuccess'] as String,
-        resetSuccess: json['resetSuccess'] as String,
-        genericError: json['genericError'] as String,
-      );
+    tagline: json['tagline'] as String,
+    loginTitle: json['loginTitle'] as String,
+    loginSubtitle: json['loginSubtitle'] as String,
+    registerTitle: json['registerTitle'] as String,
+    registerSubtitle: json['registerSubtitle'] as String,
+    forgotTitle: json['forgotTitle'] as String,
+    forgotSubtitle: json['forgotSubtitle'] as String,
+    verifyTitle: json['verifyTitle'] as String,
+    verifySubtitle: json['verifySubtitle'] as String,
+    resetTitle: json['resetTitle'] as String,
+    resetSubtitle: json['resetSubtitle'] as String,
+    organisation: json['organisation'] as String,
+    billingEmail: json['billingEmail'] as String,
+    firstName: json['firstName'] as String,
+    lastName: json['lastName'] as String,
+    email: json['email'] as String,
+    password: json['password'] as String,
+    emailToken: json['emailToken'] as String,
+    requiredField: json['requiredField'] as String,
+    forgotPassword: json['forgotPassword'] as String,
+    createOrganisation: json['createOrganisation'] as String,
+    backToLogin: json['backToLogin'] as String,
+    home: json['home'] as String,
+    registerSuccess: json['registerSuccess'] as String,
+    registerPendingVerification: json['registerPendingVerification'] as String,
+    workspaceReadyMessage: json['workspaceReadyMessage'] as String,
+    continueLabel: json['continueLabel'] as String,
+    forgotSuccess: json['forgotSuccess'] as String,
+    verifySuccess: json['verifySuccess'] as String,
+    resetSuccess: json['resetSuccess'] as String,
+    genericError: json['genericError'] as String,
+  );
 
   factory AuthStrings.fallback() => const AuthStrings(
-        tagline: 'The AI platform for your business decisions',
-        loginTitle: 'Log in',
-        loginSubtitle: 'Access your Avenqo workspace.',
-        registerTitle: 'Create an organization',
-        registerSubtitle: 'Set up your Avenqo workspace in a few minutes.',
-        forgotTitle: 'Forgot password',
-        forgotSubtitle: 'Get a link to reset your password.',
-        verifyTitle: 'Verify your email',
-        verifySubtitle: 'Enter the token you received by email.',
-        resetTitle: 'New password',
-        resetSubtitle: 'Choose a new, secure password.',
-        organisation: 'Organization',
-        billingEmail: 'Billing email',
-        firstName: 'First name',
-        lastName: 'Last name',
-        email: 'Email',
-        password: 'Password',
-        emailToken: 'Token received by email',
-        requiredField: 'Required field',
-        forgotPassword: 'Forgot password',
-        createOrganisation: 'Create an organization',
-        backToLogin: 'Back to login',
-        home: 'Home',
-        registerSuccess: 'Account created. Check your email address.',
-        registerPendingVerification: 'Account created. An administrator will confirm your access shortly.',
-        workspaceReadyMessage: 'Your Avenqo workspace is ready to be created.',
-        continueLabel: 'Continue',
-        forgotSuccess: 'If the account exists, an email has been sent.',
-        verifySuccess: 'Email verified. You can now log in.',
-        resetSuccess: 'Password changed. You can now log in.',
-        genericError: 'The service is temporarily unavailable.',
-      );
+    tagline: 'The AI platform for your business decisions',
+    loginTitle: 'Log in',
+    loginSubtitle: 'Access your Avenqo workspace.',
+    registerTitle: 'Create an organization',
+    registerSubtitle: 'Set up your Avenqo workspace in a few minutes.',
+    forgotTitle: 'Forgot password',
+    forgotSubtitle: 'Get a link to reset your password.',
+    verifyTitle: 'Verify your email',
+    verifySubtitle: 'Enter the token you received by email.',
+    resetTitle: 'New password',
+    resetSubtitle: 'Choose a new, secure password.',
+    organisation: 'Organization',
+    billingEmail: 'Billing email',
+    firstName: 'First name',
+    lastName: 'Last name',
+    email: 'Email',
+    password: 'Password',
+    emailToken: 'Token received by email',
+    requiredField: 'Required field',
+    forgotPassword: 'Forgot password',
+    createOrganisation: 'Create an organization',
+    backToLogin: 'Back to login',
+    home: 'Home',
+    registerSuccess: 'Account created. Check your email address.',
+    registerPendingVerification:
+        'Account created. An administrator will confirm your access shortly.',
+    workspaceReadyMessage: 'Your Avenqo workspace is ready to be created.',
+    continueLabel: 'Continue',
+    forgotSuccess: 'If the account exists, an email has been sent.',
+    verifySuccess: 'Email verified. You can now log in.',
+    resetSuccess: 'Password changed. You can now log in.',
+    genericError: 'The service is temporarily unavailable.',
+  );
 
   final String tagline;
   final String loginTitle;
@@ -1011,178 +1178,181 @@ class AdminStrings {
   });
 
   factory AdminStrings.fromJson(Map<String, dynamic> json) => AdminStrings(
-        commandCenterTitle: json['commandCenterTitle'] as String,
-        platformBadge: json['platformBadge'] as String,
-        backToWorkspace: json['backToWorkspace'] as String,
-        logOut: json['logOut'] as String,
-        navOverview: json['navOverview'] as String,
-        navCompanies: json['navCompanies'] as String,
-        navSubscriptions: json['navSubscriptions'] as String,
-        navBilling: json['navBilling'] as String,
-        navAiUsage: json['navAiUsage'] as String,
-        navProviders: json['navProviders'] as String,
-        navSystemHealth: json['navSystemHealth'] as String,
-        navAuditLogs: json['navAuditLogs'] as String,
-        navSupport: json['navSupport'] as String,
-        navSettings: json['navSettings'] as String,
-        overviewTitle: json['overviewTitle'] as String,
-        overviewSubtitle: json['overviewSubtitle'] as String,
-        overviewError: json['overviewError'] as String,
-        totalCompanies: json['totalCompanies'] as String,
-        newCompanies30d: json['newCompanies30d'] as String,
-        activeSubscriptions: json['activeSubscriptions'] as String,
-        pastDue: json['pastDue'] as String,
-        aiRequestsPeriod: json['aiRequestsPeriod'] as String,
-        planDistribution: json['planDistribution'] as String,
-        providerHealth: json['providerHealth'] as String,
-        noCompaniesYet: json['noCompaniesYet'] as String,
-        noProviderStatus: json['noProviderStatus'] as String,
-        companiesTitle: json['companiesTitle'] as String,
-        companiesSubtitle: json['companiesSubtitle'] as String,
-        searchCompaniesHint: json['searchCompaniesHint'] as String,
-        companiesError: json['companiesError'] as String,
-        noCompaniesMatch: json['noCompaniesMatch'] as String,
-        companyFallbackName: json['companyFallbackName'] as String,
-        joinedLabel: json['joinedLabel'] as String,
-        companyDetailError: json['companyDetailError'] as String,
-        usage: json['usage'] as String,
-        users: json['users'] as String,
-        datasets: json['datasets'] as String,
-        trainedModels: json['trainedModels'] as String,
-        subscription: json['subscription'] as String,
-        currentPeriodEnd: json['currentPeriodEnd'] as String,
-        cancelsAtPeriodEnd: json['cancelsAtPeriodEnd'] as String,
-        yes: json['yes'] as String,
-        no: json['no'] as String,
-        enterpriseOverride: json['enterpriseOverride'] as String,
-        active: json['active'] as String,
-        auditLogTitle: json['auditLogTitle'] as String,
-        auditLogSubtitle: json['auditLogSubtitle'] as String,
-        auditLogError: json['auditLogError'] as String,
-        noAuditEntries: json['noAuditEntries'] as String,
-        subscriptionsTitle: json['subscriptionsTitle'] as String,
-        subscriptionsSubtitle: json['subscriptionsSubtitle'] as String,
-        subscriptionsError: json['subscriptionsError'] as String,
-        noSubscriptionsYet: json['noSubscriptionsYet'] as String,
-        billingTitle: json['billingTitle'] as String,
-        billingSubtitle: json['billingSubtitle'] as String,
-        billingError: json['billingError'] as String,
-        noInvoicesMessage: json['noInvoicesMessage'] as String,
-        aiUsageTitle: json['aiUsageTitle'] as String,
-        aiUsageSubtitle: json['aiUsageSubtitle'] as String,
-        aiUsageError: json['aiUsageError'] as String,
-        aiRequestsCurrentPeriod: json['aiRequestsCurrentPeriod'] as String,
-        providersLabel: json['providersLabel'] as String,
-        noCostBreakdownMessage: json['noCostBreakdownMessage'] as String,
-        providersTitle: json['providersTitle'] as String,
-        providersSubtitle: json['providersSubtitle'] as String,
-        providersError: json['providersError'] as String,
-        systemHealthTitle: json['systemHealthTitle'] as String,
-        systemHealthSubtitle: json['systemHealthSubtitle'] as String,
-        systemHealthError: json['systemHealthError'] as String,
-        backendLabel: json['backendLabel'] as String,
-        databaseLabel: json['databaseLabel'] as String,
-        billingStripeLabel: json['billingStripeLabel'] as String,
-        configured: json['configured'] as String,
-        notConfigured: json['notConfigured'] as String,
-        unknownStatus: json['unknownStatus'] as String,
-        supportTitle: json['supportTitle'] as String,
-        supportSubtitle: json['supportSubtitle'] as String,
-        noSupportMessage: json['noSupportMessage'] as String,
-        settingsTitle: json['settingsTitle'] as String,
-        signedInAs: json['signedInAs'] as String,
-        noSettingsMessage: json['noSettingsMessage'] as String,
-      );
+    commandCenterTitle: json['commandCenterTitle'] as String,
+    platformBadge: json['platformBadge'] as String,
+    backToWorkspace: json['backToWorkspace'] as String,
+    logOut: json['logOut'] as String,
+    navOverview: json['navOverview'] as String,
+    navCompanies: json['navCompanies'] as String,
+    navSubscriptions: json['navSubscriptions'] as String,
+    navBilling: json['navBilling'] as String,
+    navAiUsage: json['navAiUsage'] as String,
+    navProviders: json['navProviders'] as String,
+    navSystemHealth: json['navSystemHealth'] as String,
+    navAuditLogs: json['navAuditLogs'] as String,
+    navSupport: json['navSupport'] as String,
+    navSettings: json['navSettings'] as String,
+    overviewTitle: json['overviewTitle'] as String,
+    overviewSubtitle: json['overviewSubtitle'] as String,
+    overviewError: json['overviewError'] as String,
+    totalCompanies: json['totalCompanies'] as String,
+    newCompanies30d: json['newCompanies30d'] as String,
+    activeSubscriptions: json['activeSubscriptions'] as String,
+    pastDue: json['pastDue'] as String,
+    aiRequestsPeriod: json['aiRequestsPeriod'] as String,
+    planDistribution: json['planDistribution'] as String,
+    providerHealth: json['providerHealth'] as String,
+    noCompaniesYet: json['noCompaniesYet'] as String,
+    noProviderStatus: json['noProviderStatus'] as String,
+    companiesTitle: json['companiesTitle'] as String,
+    companiesSubtitle: json['companiesSubtitle'] as String,
+    searchCompaniesHint: json['searchCompaniesHint'] as String,
+    companiesError: json['companiesError'] as String,
+    noCompaniesMatch: json['noCompaniesMatch'] as String,
+    companyFallbackName: json['companyFallbackName'] as String,
+    joinedLabel: json['joinedLabel'] as String,
+    companyDetailError: json['companyDetailError'] as String,
+    usage: json['usage'] as String,
+    users: json['users'] as String,
+    datasets: json['datasets'] as String,
+    trainedModels: json['trainedModels'] as String,
+    subscription: json['subscription'] as String,
+    currentPeriodEnd: json['currentPeriodEnd'] as String,
+    cancelsAtPeriodEnd: json['cancelsAtPeriodEnd'] as String,
+    yes: json['yes'] as String,
+    no: json['no'] as String,
+    enterpriseOverride: json['enterpriseOverride'] as String,
+    active: json['active'] as String,
+    auditLogTitle: json['auditLogTitle'] as String,
+    auditLogSubtitle: json['auditLogSubtitle'] as String,
+    auditLogError: json['auditLogError'] as String,
+    noAuditEntries: json['noAuditEntries'] as String,
+    subscriptionsTitle: json['subscriptionsTitle'] as String,
+    subscriptionsSubtitle: json['subscriptionsSubtitle'] as String,
+    subscriptionsError: json['subscriptionsError'] as String,
+    noSubscriptionsYet: json['noSubscriptionsYet'] as String,
+    billingTitle: json['billingTitle'] as String,
+    billingSubtitle: json['billingSubtitle'] as String,
+    billingError: json['billingError'] as String,
+    noInvoicesMessage: json['noInvoicesMessage'] as String,
+    aiUsageTitle: json['aiUsageTitle'] as String,
+    aiUsageSubtitle: json['aiUsageSubtitle'] as String,
+    aiUsageError: json['aiUsageError'] as String,
+    aiRequestsCurrentPeriod: json['aiRequestsCurrentPeriod'] as String,
+    providersLabel: json['providersLabel'] as String,
+    noCostBreakdownMessage: json['noCostBreakdownMessage'] as String,
+    providersTitle: json['providersTitle'] as String,
+    providersSubtitle: json['providersSubtitle'] as String,
+    providersError: json['providersError'] as String,
+    systemHealthTitle: json['systemHealthTitle'] as String,
+    systemHealthSubtitle: json['systemHealthSubtitle'] as String,
+    systemHealthError: json['systemHealthError'] as String,
+    backendLabel: json['backendLabel'] as String,
+    databaseLabel: json['databaseLabel'] as String,
+    billingStripeLabel: json['billingStripeLabel'] as String,
+    configured: json['configured'] as String,
+    notConfigured: json['notConfigured'] as String,
+    unknownStatus: json['unknownStatus'] as String,
+    supportTitle: json['supportTitle'] as String,
+    supportSubtitle: json['supportSubtitle'] as String,
+    noSupportMessage: json['noSupportMessage'] as String,
+    settingsTitle: json['settingsTitle'] as String,
+    signedInAs: json['signedInAs'] as String,
+    noSettingsMessage: json['noSettingsMessage'] as String,
+  );
 
   factory AdminStrings.fallback() => const AdminStrings(
-        commandCenterTitle: 'Avenqo Command Center',
-        platformBadge: 'PLATFORM',
-        backToWorkspace: 'Back to workspace',
-        logOut: 'Log out',
-        navOverview: 'Overview',
-        navCompanies: 'Companies',
-        navSubscriptions: 'Subscriptions',
-        navBilling: 'Billing',
-        navAiUsage: 'AI Usage',
-        navProviders: 'Providers',
-        navSystemHealth: 'System Health',
-        navAuditLogs: 'Audit Logs',
-        navSupport: 'Support',
-        navSettings: 'Settings',
-        overviewTitle: 'Platform Overview',
-        overviewSubtitle: 'Cross-tenant KPIs, health, and recent activity across Avenqo.',
-        overviewError: 'Admin dashboard is temporarily unavailable.',
-        totalCompanies: 'Total companies',
-        newCompanies30d: 'New companies (30d)',
-        activeSubscriptions: 'Active subscriptions',
-        pastDue: 'Past due',
-        aiRequestsPeriod: 'AI requests (period)',
-        planDistribution: 'Plan distribution',
-        providerHealth: 'AI provider health',
-        noCompaniesYet: 'No companies yet.',
-        noProviderStatus: 'No provider status reported.',
-        companiesTitle: 'Companies',
-        companiesSubtitle: 'companies on the platform',
-        searchCompaniesHint: 'Search companies…',
-        companiesError: 'Company directory is temporarily unavailable.',
-        noCompaniesMatch: 'No companies match',
-        companyFallbackName: 'Company',
-        joinedLabel: 'joined',
-        companyDetailError: "This company's detail is unavailable.",
-        usage: 'Usage',
-        users: 'Users',
-        datasets: 'Datasets',
-        trainedModels: 'Trained models',
-        subscription: 'Subscription',
-        currentPeriodEnd: 'Current period end',
-        cancelsAtPeriodEnd: 'Cancels at period end',
-        yes: 'Yes',
-        no: 'No',
-        enterpriseOverride: 'Enterprise override',
-        active: 'Active',
-        auditLogTitle: 'Audit Logs',
-        auditLogSubtitle: 'recent entries · read-only',
-        auditLogError: 'Audit log is temporarily unavailable.',
-        noAuditEntries: 'No audit entries yet.',
-        subscriptionsTitle: 'Subscriptions',
-        subscriptionsSubtitle: 'companies · Demo / Professional / Enterprise',
-        subscriptionsError: 'Subscription data is temporarily unavailable.',
-        noSubscriptionsYet: 'No subscriptions yet.',
-        billingTitle: 'Billing',
-        billingSubtitle: 'Platform-wide subscription and revenue signals.',
-        billingError: 'Billing overview is temporarily unavailable.',
-        noInvoicesMessage:
-            'Cross-tenant invoices, MRR and ARR require a dedicated admin billing aggregation endpoint '
-            'that does not exist yet on the backend. Not fabricated here.',
-        aiUsageTitle: 'AI Usage',
-        aiUsageSubtitle: 'Logical AI requests and provider availability across all companies.',
-        aiUsageError: 'AI usage is temporarily unavailable.',
-        aiRequestsCurrentPeriod: 'Avenqo AI requests (current period)',
-        providersLabel: 'Providers',
-        noCostBreakdownMessage:
-            'Per-provider token counts and estimated cost breakdown require a dedicated usage-aggregation '
-            'endpoint that does not exist yet on the backend. Not fabricated here.',
-        providersTitle: 'Providers',
-        providersSubtitle: 'Live AI Gateway provider health — no keys or raw errors shown.',
-        providersError: 'Provider status is temporarily unavailable.',
-        systemHealthTitle: 'System Health',
-        systemHealthSubtitle: 'Live readiness of core Avenqo services.',
-        systemHealthError: 'System health is temporarily unavailable.',
-        backendLabel: 'Backend',
-        databaseLabel: 'Database',
-        billingStripeLabel: 'Billing (Stripe)',
-        configured: 'configured',
-        notConfigured: 'not configured',
-        unknownStatus: 'unknown',
-        supportTitle: 'Support',
-        supportSubtitle: 'Escalations, important issues, and enterprise incidents.',
-        noSupportMessage:
-            'No admin support/ticketing backend exists yet — this view intentionally shows no fabricated tickets.',
-        settingsTitle: 'Settings',
-        signedInAs: 'Signed in as',
-        noSettingsMessage:
-            'No platform-wide configuration is exposed here yet — nothing to show honestly beyond account identity.',
-      );
+    commandCenterTitle: 'Avenqo Command Center',
+    platformBadge: 'PLATFORM',
+    backToWorkspace: 'Back to workspace',
+    logOut: 'Log out',
+    navOverview: 'Overview',
+    navCompanies: 'Companies',
+    navSubscriptions: 'Subscriptions',
+    navBilling: 'Billing',
+    navAiUsage: 'AI Usage',
+    navProviders: 'Providers',
+    navSystemHealth: 'System Health',
+    navAuditLogs: 'Audit Logs',
+    navSupport: 'Support',
+    navSettings: 'Settings',
+    overviewTitle: 'Platform Overview',
+    overviewSubtitle:
+        'Cross-tenant KPIs, health, and recent activity across Avenqo.',
+    overviewError: 'Admin dashboard is temporarily unavailable.',
+    totalCompanies: 'Total companies',
+    newCompanies30d: 'New companies (30d)',
+    activeSubscriptions: 'Active subscriptions',
+    pastDue: 'Past due',
+    aiRequestsPeriod: 'AI requests (period)',
+    planDistribution: 'Plan distribution',
+    providerHealth: 'AI provider health',
+    noCompaniesYet: 'No companies yet.',
+    noProviderStatus: 'No provider status reported.',
+    companiesTitle: 'Companies',
+    companiesSubtitle: 'companies on the platform',
+    searchCompaniesHint: 'Search companies…',
+    companiesError: 'Company directory is temporarily unavailable.',
+    noCompaniesMatch: 'No companies match',
+    companyFallbackName: 'Company',
+    joinedLabel: 'joined',
+    companyDetailError: "This company's detail is unavailable.",
+    usage: 'Usage',
+    users: 'Users',
+    datasets: 'Datasets',
+    trainedModels: 'Trained models',
+    subscription: 'Subscription',
+    currentPeriodEnd: 'Current period end',
+    cancelsAtPeriodEnd: 'Cancels at period end',
+    yes: 'Yes',
+    no: 'No',
+    enterpriseOverride: 'Enterprise override',
+    active: 'Active',
+    auditLogTitle: 'Audit Logs',
+    auditLogSubtitle: 'recent entries · read-only',
+    auditLogError: 'Audit log is temporarily unavailable.',
+    noAuditEntries: 'No audit entries yet.',
+    subscriptionsTitle: 'Subscriptions',
+    subscriptionsSubtitle: 'companies · Demo / Professional / Enterprise',
+    subscriptionsError: 'Subscription data is temporarily unavailable.',
+    noSubscriptionsYet: 'No subscriptions yet.',
+    billingTitle: 'Billing',
+    billingSubtitle: 'Platform-wide subscription and revenue signals.',
+    billingError: 'Billing overview is temporarily unavailable.',
+    noInvoicesMessage:
+        'Cross-tenant invoices, MRR and ARR require a dedicated admin billing aggregation endpoint '
+        'that does not exist yet on the backend. Not fabricated here.',
+    aiUsageTitle: 'AI Usage',
+    aiUsageSubtitle:
+        'Logical AI requests and provider availability across all companies.',
+    aiUsageError: 'AI usage is temporarily unavailable.',
+    aiRequestsCurrentPeriod: 'Avenqo AI requests (current period)',
+    providersLabel: 'Providers',
+    noCostBreakdownMessage:
+        'Per-provider token counts and estimated cost breakdown require a dedicated usage-aggregation '
+        'endpoint that does not exist yet on the backend. Not fabricated here.',
+    providersTitle: 'Providers',
+    providersSubtitle:
+        'Live AI Gateway provider health — no keys or raw errors shown.',
+    providersError: 'Provider status is temporarily unavailable.',
+    systemHealthTitle: 'System Health',
+    systemHealthSubtitle: 'Live readiness of core Avenqo services.',
+    systemHealthError: 'System health is temporarily unavailable.',
+    backendLabel: 'Backend',
+    databaseLabel: 'Database',
+    billingStripeLabel: 'Billing (Stripe)',
+    configured: 'configured',
+    notConfigured: 'not configured',
+    unknownStatus: 'unknown',
+    supportTitle: 'Support',
+    supportSubtitle: 'Escalations, important issues, and enterprise incidents.',
+    noSupportMessage:
+        'No admin support/ticketing backend exists yet — this view intentionally shows no fabricated tickets.',
+    settingsTitle: 'Settings',
+    signedInAs: 'Signed in as',
+    noSettingsMessage:
+        'No platform-wide configuration is exposed here yet — nothing to show honestly beyond account identity.',
+  );
 
   final String commandCenterTitle;
   final String platformBadge;
@@ -1278,13 +1448,13 @@ class CommonStrings {
   });
 
   factory CommonStrings.fromJson(Map<String, dynamic> json) => CommonStrings(
-        login: json['login'] as String,
-        tryFree: json['tryFree'] as String,
-        watchDemo: json['watchDemo'] as String,
-        noCreditCard: json['noCreditCard'] as String,
-        guidedSetup: json['guidedSetup'] as String,
-        isolatedData: json['isolatedData'] as String,
-      );
+    login: json['login'] as String,
+    tryFree: json['tryFree'] as String,
+    watchDemo: json['watchDemo'] as String,
+    noCreditCard: json['noCreditCard'] as String,
+    guidedSetup: json['guidedSetup'] as String,
+    isolatedData: json['isolatedData'] as String,
+  );
 
   final String login;
   final String tryFree;
@@ -1304,12 +1474,12 @@ class NavStrings {
   });
 
   factory NavStrings.fromJson(Map<String, dynamic> json) => NavStrings(
-        features: json['features'] as String,
-        modules: json['modules'] as String,
-        pricing: json['pricing'] as String,
-        enterprise: json['enterprise'] as String,
-        docs: json['docs'] as String,
-      );
+    features: json['features'] as String,
+    modules: json['modules'] as String,
+    pricing: json['pricing'] as String,
+    enterprise: json['enterprise'] as String,
+    docs: json['docs'] as String,
+  );
 
   final String features;
   final String modules;
@@ -1332,16 +1502,16 @@ class HeroStrings {
   });
 
   factory HeroStrings.fromJson(Map<String, dynamic> json) => HeroStrings(
-        eyebrow: json['eyebrow'] as String,
-        titleLine1: json['titleLine1'] as String,
-        titleLine2: json['titleLine2'] as String,
-        subtitle: json['subtitle'] as String,
-        trustLabel: json['trustLabel'] as String,
-        trustSell: json['trustSell'] as String,
-        trustUnderstand: json['trustUnderstand'] as String,
-        trustAutomate: json['trustAutomate'] as String,
-        trustDecide: json['trustDecide'] as String,
-      );
+    eyebrow: json['eyebrow'] as String,
+    titleLine1: json['titleLine1'] as String,
+    titleLine2: json['titleLine2'] as String,
+    subtitle: json['subtitle'] as String,
+    trustLabel: json['trustLabel'] as String,
+    trustSell: json['trustSell'] as String,
+    trustUnderstand: json['trustUnderstand'] as String,
+    trustAutomate: json['trustAutomate'] as String,
+    trustDecide: json['trustDecide'] as String,
+  );
 
   final String eyebrow;
   final String titleLine1;
@@ -1357,10 +1527,8 @@ class HeroStrings {
 class QuickModule {
   const QuickModule({required this.key, required this.label});
 
-  factory QuickModule.fromJson(Map<String, dynamic> json) => QuickModule(
-        key: json['key'] as String,
-        label: json['label'] as String,
-      );
+  factory QuickModule.fromJson(Map<String, dynamic> json) =>
+      QuickModule(key: json['key'] as String, label: json['label'] as String);
 
   final String key;
   final String label;
@@ -1385,7 +1553,8 @@ class DashboardStrings {
     required this.quickModules,
   });
 
-  factory DashboardStrings.fromJson(Map<String, dynamic> json) => DashboardStrings(
+  factory DashboardStrings.fromJson(Map<String, dynamic> json) =>
+      DashboardStrings(
         greeting: json['greeting'] as String,
         subtitle: json['subtitle'] as String,
         askAvenqo: json['askAvenqo'] as String,
@@ -1445,7 +1614,8 @@ class FeaturesStrings {
     required this.securityItem3,
   });
 
-  factory FeaturesStrings.fromJson(Map<String, dynamic> json) => FeaturesStrings(
+  factory FeaturesStrings.fromJson(Map<String, dynamic> json) =>
+      FeaturesStrings(
         kicker: json['kicker'] as String,
         title: json['title'] as String,
         subtitle: json['subtitle'] as String,
@@ -1489,13 +1659,17 @@ class FeaturesStrings {
 }
 
 class ModuleItem {
-  const ModuleItem({required this.name, required this.description, required this.available});
+  const ModuleItem({
+    required this.name,
+    required this.description,
+    required this.available,
+  });
 
   factory ModuleItem.fromJson(Map<String, dynamic> json) => ModuleItem(
-        name: json['name'] as String,
-        description: json['description'] as String,
-        available: json['available'] as bool? ?? false,
-      );
+    name: json['name'] as String,
+    description: json['description'] as String,
+    available: json['available'] as bool? ?? false,
+  );
 
   final String name;
   final String description;
@@ -1513,7 +1687,8 @@ class ModulesSectionStrings {
     required this.items,
   });
 
-  factory ModulesSectionStrings.fromJson(Map<String, dynamic> json) => ModulesSectionStrings(
+  factory ModulesSectionStrings.fromJson(Map<String, dynamic> json) =>
+      ModulesSectionStrings(
         kicker: json['kicker'] as String,
         title: json['title'] as String,
         subtitle: json['subtitle'] as String,
@@ -1535,13 +1710,17 @@ class ModulesSectionStrings {
 }
 
 class StepItem {
-  const StepItem({required this.number, required this.title, required this.text});
+  const StepItem({
+    required this.number,
+    required this.title,
+    required this.text,
+  });
 
   factory StepItem.fromJson(Map<String, dynamic> json) => StepItem(
-        number: json['number'] as String,
-        title: json['title'] as String,
-        text: json['text'] as String,
-      );
+    number: json['number'] as String,
+    title: json['title'] as String,
+    text: json['text'] as String,
+  );
 
   final String number;
   final String title;
@@ -1558,14 +1737,14 @@ class StepsStrings {
   });
 
   factory StepsStrings.fromJson(Map<String, dynamic> json) => StepsStrings(
-        kicker: json['kicker'] as String,
-        title: json['title'] as String,
-        ctaLabel: json['ctaLabel'] as String,
-        ctaButton: json['ctaButton'] as String,
-        items: (json['items'] as List<dynamic>)
-            .map((e) => StepItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    kicker: json['kicker'] as String,
+    title: json['title'] as String,
+    ctaLabel: json['ctaLabel'] as String,
+    ctaButton: json['ctaButton'] as String,
+    items: (json['items'] as List<dynamic>)
+        .map((e) => StepItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   final String kicker;
   final String title;
@@ -1578,9 +1757,9 @@ class UsecaseEntry {
   const UsecaseEntry({required this.title, required this.text});
 
   factory UsecaseEntry.fromJson(Map<String, dynamic> json) => UsecaseEntry(
-        title: json['title'] as String,
-        text: json['text'] as String,
-      );
+    title: json['title'] as String,
+    text: json['text'] as String,
+  );
 
   final String title;
   final String text;
@@ -1597,15 +1776,19 @@ class UsecasesStrings {
     required this.operations,
   });
 
-  factory UsecasesStrings.fromJson(Map<String, dynamic> json) => UsecasesStrings(
-        kicker: json['kicker'] as String,
-        title: json['title'] as String,
-        subtitle: json['subtitle'] as String,
-        direction: UsecaseEntry.fromJson(json['direction'] as Map<String, dynamic>),
-        finance: UsecaseEntry.fromJson(json['finance'] as Map<String, dynamic>),
-        commerce: UsecaseEntry.fromJson(json['commerce'] as Map<String, dynamic>),
-        operations: UsecaseEntry.fromJson(json['operations'] as Map<String, dynamic>),
-      );
+  factory UsecasesStrings.fromJson(
+    Map<String, dynamic> json,
+  ) => UsecasesStrings(
+    kicker: json['kicker'] as String,
+    title: json['title'] as String,
+    subtitle: json['subtitle'] as String,
+    direction: UsecaseEntry.fromJson(json['direction'] as Map<String, dynamic>),
+    finance: UsecaseEntry.fromJson(json['finance'] as Map<String, dynamic>),
+    commerce: UsecaseEntry.fromJson(json['commerce'] as Map<String, dynamic>),
+    operations: UsecaseEntry.fromJson(
+      json['operations'] as Map<String, dynamic>,
+    ),
+  );
 
   final String kicker;
   final String title;
@@ -1617,13 +1800,17 @@ class UsecasesStrings {
 }
 
 class WhyItem {
-  const WhyItem({required this.number, required this.title, required this.text});
+  const WhyItem({
+    required this.number,
+    required this.title,
+    required this.text,
+  });
 
   factory WhyItem.fromJson(Map<String, dynamic> json) => WhyItem(
-        number: json['number'] as String,
-        title: json['title'] as String,
-        text: json['text'] as String,
-      );
+    number: json['number'] as String,
+    title: json['title'] as String,
+    text: json['text'] as String,
+  );
 
   final String number;
   final String title;
@@ -1631,15 +1818,19 @@ class WhyItem {
 }
 
 class WhyStrings {
-  const WhyStrings({required this.kicker, required this.title, required this.items});
+  const WhyStrings({
+    required this.kicker,
+    required this.title,
+    required this.items,
+  });
 
   factory WhyStrings.fromJson(Map<String, dynamic> json) => WhyStrings(
-        kicker: json['kicker'] as String,
-        title: json['title'] as String,
-        items: (json['items'] as List<dynamic>)
-            .map((e) => WhyItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    kicker: json['kicker'] as String,
+    title: json['title'] as String,
+    items: (json['items'] as List<dynamic>)
+        .map((e) => WhyItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   final String kicker;
   final String title;
@@ -1656,12 +1847,12 @@ class PricingPlan {
   });
 
   factory PricingPlan.fromJson(Map<String, dynamic> json) => PricingPlan(
-        tier: json['tier'] as String,
-        title: json['title'] as String,
-        priceLabel: json['priceLabel'] as String,
-        items: (json['items'] as List<dynamic>).cast<String>(),
-        action: json['action'] as String,
-      );
+    tier: json['tier'] as String,
+    title: json['title'] as String,
+    priceLabel: json['priceLabel'] as String,
+    items: (json['items'] as List<dynamic>).cast<String>(),
+    action: json['action'] as String,
+  );
 
   final String tier;
   final String title;
@@ -1681,15 +1872,15 @@ class PricingStrings {
   });
 
   factory PricingStrings.fromJson(Map<String, dynamic> json) => PricingStrings(
-        kicker: json['kicker'] as String,
-        title: json['title'] as String,
-        subtitle: json['subtitle'] as String,
-        popular: json['popular'] as String,
-        priceLabel: json['priceLabel'] as String,
-        plans: (json['plans'] as List<dynamic>)
-            .map((e) => PricingPlan.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    kicker: json['kicker'] as String,
+    title: json['title'] as String,
+    subtitle: json['subtitle'] as String,
+    popular: json['popular'] as String,
+    priceLabel: json['priceLabel'] as String,
+    plans: (json['plans'] as List<dynamic>)
+        .map((e) => PricingPlan.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   final String kicker;
   final String title;
@@ -1703,9 +1894,9 @@ class FaqItem {
   const FaqItem({required this.question, required this.answer});
 
   factory FaqItem.fromJson(Map<String, dynamic> json) => FaqItem(
-        question: json['question'] as String,
-        answer: json['answer'] as String,
-      );
+    question: json['question'] as String,
+    answer: json['answer'] as String,
+  );
 
   final String question;
   final String answer;
@@ -1721,14 +1912,14 @@ class FaqStrings {
   });
 
   factory FaqStrings.fromJson(Map<String, dynamic> json) => FaqStrings(
-        kicker: json['kicker'] as String,
-        title: json['title'] as String,
-        subtitle: json['subtitle'] as String,
-        contactCta: json['contactCta'] as String,
-        items: (json['items'] as List<dynamic>)
-            .map((e) => FaqItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    kicker: json['kicker'] as String,
+    title: json['title'] as String,
+    subtitle: json['subtitle'] as String,
+    contactCta: json['contactCta'] as String,
+    items: (json['items'] as List<dynamic>)
+        .map((e) => FaqItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   final String kicker;
   final String title;
@@ -1745,7 +1936,8 @@ class FinalCtaStrings {
     required this.scheduleDemo,
   });
 
-  factory FinalCtaStrings.fromJson(Map<String, dynamic> json) => FinalCtaStrings(
+  factory FinalCtaStrings.fromJson(Map<String, dynamic> json) =>
+      FinalCtaStrings(
         label: json['label'] as String,
         title: json['title'] as String,
         tryFree: json['tryFree'] as String,
@@ -1771,15 +1963,15 @@ class FooterStrings {
   });
 
   factory FooterStrings.fromJson(Map<String, dynamic> json) => FooterStrings(
-        tagline: json['tagline'] as String,
-        platformTitle: json['platformTitle'] as String,
-        platformLinks: (json['platformLinks'] as List<dynamic>).cast<String>(),
-        companyTitle: json['companyTitle'] as String,
-        companyLinks: (json['companyLinks'] as List<dynamic>).cast<String>(),
-        resourcesTitle: json['resourcesTitle'] as String,
-        resourcesLinks: (json['resourcesLinks'] as List<dynamic>).cast<String>(),
-        copyright: json['copyright'] as String,
-      );
+    tagline: json['tagline'] as String,
+    platformTitle: json['platformTitle'] as String,
+    platformLinks: (json['platformLinks'] as List<dynamic>).cast<String>(),
+    companyTitle: json['companyTitle'] as String,
+    companyLinks: (json['companyLinks'] as List<dynamic>).cast<String>(),
+    resourcesTitle: json['resourcesTitle'] as String,
+    resourcesLinks: (json['resourcesLinks'] as List<dynamic>).cast<String>(),
+    copyright: json['copyright'] as String,
+  );
 
   final String tagline;
   final String platformTitle;
@@ -2002,16 +2194,24 @@ class CompanyStrings {
       connectionsRemoveFile: s('connectionsRemoveFile'),
       connectionsDuplicateFileNotice: s('connectionsDuplicateFileNotice'),
       connectionsImportCompleteTitle: s('connectionsImportCompleteTitle'),
-      connectionsImportSummarySuccessOne: s('connectionsImportSummarySuccessOne'),
-      connectionsImportSummarySuccessOther: s('connectionsImportSummarySuccessOther'),
+      connectionsImportSummarySuccessOne: s(
+        'connectionsImportSummarySuccessOne',
+      ),
+      connectionsImportSummarySuccessOther: s(
+        'connectionsImportSummarySuccessOther',
+      ),
       connectionsImportSummaryErrorsOne: s('connectionsImportSummaryErrorsOne'),
-      connectionsImportSummaryErrorsOther: s('connectionsImportSummaryErrorsOther'),
+      connectionsImportSummaryErrorsOther: s(
+        'connectionsImportSummaryErrorsOther',
+      ),
       connectionsMappingRequiredBadge: s('connectionsMappingRequiredBadge'),
       connectionsCompleteMapping: s('connectionsCompleteMapping'),
       connectionsConnectedDataTitle: s('connectionsConnectedDataTitle'),
       connectionsContinueLabel: s('connectionsContinueLabel'),
       connectionsImportedAtLabel: s('connectionsImportedAtLabel'),
-      connectionsUploadedFileSuccessLabel: s('connectionsUploadedFileSuccessLabel'),
+      connectionsUploadedFileSuccessLabel: s(
+        'connectionsUploadedFileSuccessLabel',
+      ),
       businessDefaultTitle: s('businessDefaultTitle'),
       businessDefaultDescription: s('businessDefaultDescription'),
       businessConnectButton: s('businessConnectButton'),
@@ -2045,7 +2245,9 @@ class CompanyStrings {
       businessProductsTitle: s('businessProductsTitle'),
       businessProductsDescription: s('businessProductsDescription'),
       businessRecommendationsTitle: s('businessRecommendationsTitle'),
-      businessRecommendationsDescription: s('businessRecommendationsDescription'),
+      businessRecommendationsDescription: s(
+        'businessRecommendationsDescription',
+      ),
       businessAlertsTitle: s('businessAlertsTitle'),
       businessAlertsDescription: s('businessAlertsDescription'),
       businessReportsTitle: s('businessReportsTitle'),
@@ -2088,293 +2290,306 @@ class CompanyStrings {
   }
 
   factory CompanyStrings.fallback() => const CompanyStrings(
-        navOverviewLabel: 'Overview',
-        navOverviewDescription: 'The key indicators of your business.',
-        navAssistantLabel: 'AI Assistant',
-        navAssistantDescription: 'Ask questions and take action.',
-        navSalesLabel: 'Sales',
-        navSalesDescription: 'Track revenue and trends.',
-        navCustomersLabel: 'Customers',
-        navCustomersDescription: 'Understand loyalty and churn risk.',
-        navProductsLabel: 'Products',
-        navProductsDescription: 'Monitor demand and catalog performance.',
-        navRecommendationsLabel: 'Recommendations',
-        navRecommendationsDescription: 'Find the highest priority opportunities.',
-        navAlertsLabel: 'Alerts',
-        navAlertsDescription: 'Watch for changes that need your attention.',
-        navReportsLabel: 'Reports',
-        navReportsDescription: 'View and share your executive summaries.',
-        navConnectionsLabel: 'Connections',
-        navConnectionsDescription: 'Connect your sales and management tools.',
-        navTeamLabel: 'Team',
-        navTeamDescription: "Manage your teammates' access.",
-        navBillingLabel: 'Billing',
-        navBillingDescription: 'Manage your subscription and invoices.',
-        navSettingsLabel: 'Settings',
-        navSettingsDescription: 'Your account and company preferences.',
-        navSupportLabel: 'Avenqo Support',
-        navSupportDescription: 'Need help using Avenqo? Ask your question here.',
-        connectionsLoading: 'Loading…',
-        connectionsNoDataTitle: 'Connect your data to unlock analytics and Avenqo AI.',
-        connectionsNoDataFormats: 'Accepted formats: CSV, XLSX, JSON, Parquet.',
-        connectionsImportButton: 'Import a file',
-        connectionsUploadingLabel: 'Uploading…',
-        connectionsAnalyzing: 'Analyzing the structure of your data…',
-        connectionsPreparingData: 'Preparing data…',
-        connectionsTrainingAi: 'Training AI…',
-        connectionsAttentionRequired: 'Attention required',
-        connectionsMappingTitle: 'Confirm your column mapping',
-        connectionsMappingSubtitle: 'Some columns need manual confirmation before analytics can be activated.',
-        connectionsMappingIgnore: 'Ignore this column',
-        connectionsConfirmMapping: 'Confirm mapping',
-        connectionsReadyTitle: 'Data ready',
-        connectionsStatNameLabel: 'Name',
-        connectionsStatRowsLabel: 'Rows',
-        connectionsStatColumnsLabel: 'Columns',
-        connectionsStatUpdatedLabel: 'Last updated',
-        connectionsGoDashboard: 'Go to dashboard',
-        connectionsAskAvenqo: 'Ask Avenqo AI',
-        connectionsImportAnother: 'Import another dataset',
-        connectionsRetry: 'Retry',
-        connectionsGenericError: 'An unexpected error occurred.',
-        connectionsFileEmptyError: 'The selected file is empty or unreadable.',
-        connectionsProcessingError: 'This file could not be processed.',
-        connectionsAddFiles: 'Add files',
-        connectionsAddMoreFiles: 'Add more files',
-        connectionsReadyToUpload: 'Ready to upload',
-        connectionsUploadCountOne: 'Upload {n} file',
-        connectionsUploadCountOther: 'Upload {n} files',
-        connectionsRemoveFile: 'Remove',
-        connectionsDuplicateFileNotice: 'This file is already selected.',
-        connectionsImportCompleteTitle: 'Import complete',
-        connectionsImportSummarySuccessOne: '{n} file imported successfully.',
-        connectionsImportSummarySuccessOther: '{n} files imported successfully.',
-        connectionsImportSummaryErrorsOne: '{n} file failed.',
-        connectionsImportSummaryErrorsOther: '{n} files failed.',
-        connectionsMappingRequiredBadge: 'Mapping required',
-        connectionsCompleteMapping: 'Complete mapping',
-        connectionsConnectedDataTitle: 'Connected data',
-        connectionsContinueLabel: 'Continue',
-        connectionsImportedAtLabel: 'Imported',
-        connectionsUploadedFileSuccessLabel: 'Data imported successfully',
-        businessDefaultTitle: 'Your space is ready',
-        businessDefaultDescription: 'Connect your tools to see up-to-date information here.',
-        businessConnectButton: 'Connect my tools',
-        businessSalesTitle: 'Track every change',
-        businessSalesDescription: 'Your sales trends, comparisons and forecasts will appear here.',
-        businessCustomersTitle: 'Retain the right customers',
-        businessCustomersDescription: "You'll find customers to prioritize, re-engage or support here.",
-        analyticsUnavailable: 'This capability is unavailable with your current business data.',
-        periodCurrentMonth: 'Current month',
-        periodLast30Days: 'Last 30 days',
-        periodLast90Days: 'Last 90 days',
-        periodYearToDate: 'Year to date',
-        salesTrendTitle: 'Revenue trend',
-        salesForecastTitle: 'Validated sales forecast',
-        salesStrongestPeriod: 'Strongest period',
-        salesWeakestPeriod: 'Weakest period',
-        customersTotal: 'Total customers',
-        customersActive: 'Active customers',
-        customersNew: 'New customers',
-        customersRepeat: 'Repeat customers',
-        customersAverageValue: 'Average customer value',
-        customersFrequency: 'Purchase frequency',
-        customersSearch: 'Search customers',
-        customersOrders: 'Orders',
-        customersValue: 'Value',
-        customersLastPurchase: 'Last purchase',
-        customersSegment: 'Segment',
-        customersRisk: 'Risk',
-        previousPage: 'Previous',
-        nextPage: 'Next',
-        businessProductsTitle: 'Manage your catalog',
-        businessProductsDescription: 'Top-performing products, expected demand and stock to watch will be gathered here.',
-        businessRecommendationsTitle: 'Act directly on opportunities',
-        businessRecommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
-        businessAlertsTitle: 'Stay informed without the noise',
-        businessAlertsDescription: 'Important changes and risks will be flagged with a recommended action.',
-        businessReportsTitle: 'Your executive summaries',
-        businessReportsDescription: "Create and share clear reports on your company's results.",
-        billingTitle: 'Billing',
-        billingPortalButton: 'Stripe portal',
-        billingUnavailable: 'Billing is temporarily unavailable.',
-        billingPlanPrefix: 'Plan ',
-        billingStatusPrefix: 'Status: ',
-        billingCancelScheduled: 'Cancellation scheduled',
-        billingInvoicesTitle: 'Invoices',
-        billingInvoiceFallback: 'Invoice',
-        employeesTitle: 'Users',
-        employeesRefreshTooltip: 'Refresh',
-        employeesUnavailable: 'User access is temporarily unavailable.',
-        employeesColumnName: 'Name',
-        employeesColumnEmail: 'Email',
-        employeesColumnRole: 'Role',
-        employeesColumnStatus: 'Status',
-        settingsTitle: 'Settings',
-        settingsSubtitle: 'Your account, company and preference information.',
-        settingsAccountSection: 'Account',
-        settingsCompanySection: 'Company',
-        settingsAppearanceSection: 'Appearance',
-        settingsSessionSection: 'Session',
-        settingsNameLabel: 'Name',
-        settingsEmailLabel: 'Email',
-        settingsRoleLabel: 'Role',
-        settingsPlanLabel: 'Plan',
-        settingsManageSubscription: 'Manage subscription',
-        settingsThemeLabel: 'Theme',
-        settingsLanguageLabel: 'Language',
-        settingsThemeLight: 'Light',
-        settingsThemeDark: 'Dark',
-        settingsThemeSystem: 'System',
-        settingsLogout: 'Log out',
-        themeToggleSwitchToDark: 'Switch to dark mode',
-        themeToggleSwitchToLight: 'Switch to light mode',
-      );
+    navOverviewLabel: 'Overview',
+    navOverviewDescription: 'The key indicators of your business.',
+    navAssistantLabel: 'AI Assistant',
+    navAssistantDescription: 'Ask questions and take action.',
+    navSalesLabel: 'Sales',
+    navSalesDescription: 'Track revenue and trends.',
+    navCustomersLabel: 'Customers',
+    navCustomersDescription: 'Understand loyalty and churn risk.',
+    navProductsLabel: 'Products',
+    navProductsDescription: 'Monitor demand and catalog performance.',
+    navRecommendationsLabel: 'Recommendations',
+    navRecommendationsDescription: 'Find the highest priority opportunities.',
+    navAlertsLabel: 'Alerts',
+    navAlertsDescription: 'Watch for changes that need your attention.',
+    navReportsLabel: 'Reports',
+    navReportsDescription: 'View and share your executive summaries.',
+    navConnectionsLabel: 'Connections',
+    navConnectionsDescription: 'Connect your sales and management tools.',
+    navTeamLabel: 'Team',
+    navTeamDescription: "Manage your teammates' access.",
+    navBillingLabel: 'Billing',
+    navBillingDescription: 'Manage your subscription and invoices.',
+    navSettingsLabel: 'Settings',
+    navSettingsDescription: 'Your account and company preferences.',
+    navSupportLabel: 'Avenqo Support',
+    navSupportDescription: 'Need help using Avenqo? Ask your question here.',
+    connectionsLoading: 'Loading…',
+    connectionsNoDataTitle:
+        'Connect your data to unlock analytics and Avenqo AI.',
+    connectionsNoDataFormats: 'Accepted formats: CSV, XLSX, JSON, Parquet.',
+    connectionsImportButton: 'Import a file',
+    connectionsUploadingLabel: 'Uploading…',
+    connectionsAnalyzing: 'Analyzing the structure of your data…',
+    connectionsPreparingData: 'Preparing data…',
+    connectionsTrainingAi: 'Training AI…',
+    connectionsAttentionRequired: 'Attention required',
+    connectionsMappingTitle: 'Confirm your column mapping',
+    connectionsMappingSubtitle:
+        'Some columns need manual confirmation before analytics can be activated.',
+    connectionsMappingIgnore: 'Ignore this column',
+    connectionsConfirmMapping: 'Confirm mapping',
+    connectionsReadyTitle: 'Data ready',
+    connectionsStatNameLabel: 'Name',
+    connectionsStatRowsLabel: 'Rows',
+    connectionsStatColumnsLabel: 'Columns',
+    connectionsStatUpdatedLabel: 'Last updated',
+    connectionsGoDashboard: 'Go to dashboard',
+    connectionsAskAvenqo: 'Ask Avenqo AI',
+    connectionsImportAnother: 'Import another dataset',
+    connectionsRetry: 'Retry',
+    connectionsGenericError: 'An unexpected error occurred.',
+    connectionsFileEmptyError: 'The selected file is empty or unreadable.',
+    connectionsProcessingError: 'This file could not be processed.',
+    connectionsAddFiles: 'Add files',
+    connectionsAddMoreFiles: 'Add more files',
+    connectionsReadyToUpload: 'Ready to upload',
+    connectionsUploadCountOne: 'Upload {n} file',
+    connectionsUploadCountOther: 'Upload {n} files',
+    connectionsRemoveFile: 'Remove',
+    connectionsDuplicateFileNotice: 'This file is already selected.',
+    connectionsImportCompleteTitle: 'Import complete',
+    connectionsImportSummarySuccessOne: '{n} file imported successfully.',
+    connectionsImportSummarySuccessOther: '{n} files imported successfully.',
+    connectionsImportSummaryErrorsOne: '{n} file failed.',
+    connectionsImportSummaryErrorsOther: '{n} files failed.',
+    connectionsMappingRequiredBadge: 'Mapping required',
+    connectionsCompleteMapping: 'Complete mapping',
+    connectionsConnectedDataTitle: 'Connected data',
+    connectionsContinueLabel: 'Continue',
+    connectionsImportedAtLabel: 'Imported',
+    connectionsUploadedFileSuccessLabel: 'Data imported successfully',
+    businessDefaultTitle: 'Your space is ready',
+    businessDefaultDescription:
+        'Connect your tools to see up-to-date information here.',
+    businessConnectButton: 'Connect my tools',
+    businessSalesTitle: 'Track every change',
+    businessSalesDescription:
+        'Your sales trends, comparisons and forecasts will appear here.',
+    businessCustomersTitle: 'Retain the right customers',
+    businessCustomersDescription:
+        "You'll find customers to prioritize, re-engage or support here.",
+    analyticsUnavailable:
+        'This capability is unavailable with your current business data.',
+    periodCurrentMonth: 'Current month',
+    periodLast30Days: 'Last 30 days',
+    periodLast90Days: 'Last 90 days',
+    periodYearToDate: 'Year to date',
+    salesTrendTitle: 'Revenue trend',
+    salesForecastTitle: 'Validated sales forecast',
+    salesStrongestPeriod: 'Strongest period',
+    salesWeakestPeriod: 'Weakest period',
+    customersTotal: 'Total customers',
+    customersActive: 'Active customers',
+    customersNew: 'New customers',
+    customersRepeat: 'Repeat customers',
+    customersAverageValue: 'Average customer value',
+    customersFrequency: 'Purchase frequency',
+    customersSearch: 'Search customers',
+    customersOrders: 'Orders',
+    customersValue: 'Value',
+    customersLastPurchase: 'Last purchase',
+    customersSegment: 'Segment',
+    customersRisk: 'Risk',
+    previousPage: 'Previous',
+    nextPage: 'Next',
+    businessProductsTitle: 'Manage your catalog',
+    businessProductsDescription:
+        'Top-performing products, expected demand and stock to watch will be gathered here.',
+    businessRecommendationsTitle: 'Act directly on opportunities',
+    businessRecommendationsDescription:
+        "Avenqo will rank opportunities by their potential impact on your business.",
+    businessAlertsTitle: 'Stay informed without the noise',
+    businessAlertsDescription:
+        'Important changes and risks will be flagged with a recommended action.',
+    businessReportsTitle: 'Your executive summaries',
+    businessReportsDescription:
+        "Create and share clear reports on your company's results.",
+    billingTitle: 'Billing',
+    billingPortalButton: 'Stripe portal',
+    billingUnavailable: 'Billing is temporarily unavailable.',
+    billingPlanPrefix: 'Plan ',
+    billingStatusPrefix: 'Status: ',
+    billingCancelScheduled: 'Cancellation scheduled',
+    billingInvoicesTitle: 'Invoices',
+    billingInvoiceFallback: 'Invoice',
+    employeesTitle: 'Users',
+    employeesRefreshTooltip: 'Refresh',
+    employeesUnavailable: 'User access is temporarily unavailable.',
+    employeesColumnName: 'Name',
+    employeesColumnEmail: 'Email',
+    employeesColumnRole: 'Role',
+    employeesColumnStatus: 'Status',
+    settingsTitle: 'Settings',
+    settingsSubtitle: 'Your account, company and preference information.',
+    settingsAccountSection: 'Account',
+    settingsCompanySection: 'Company',
+    settingsAppearanceSection: 'Appearance',
+    settingsSessionSection: 'Session',
+    settingsNameLabel: 'Name',
+    settingsEmailLabel: 'Email',
+    settingsRoleLabel: 'Role',
+    settingsPlanLabel: 'Plan',
+    settingsManageSubscription: 'Manage subscription',
+    settingsThemeLabel: 'Theme',
+    settingsLanguageLabel: 'Language',
+    settingsThemeLight: 'Light',
+    settingsThemeDark: 'Dark',
+    settingsThemeSystem: 'System',
+    settingsLogout: 'Log out',
+    themeToggleSwitchToDark: 'Switch to dark mode',
+    themeToggleSwitchToLight: 'Switch to light mode',
+  );
 
   String _byKey(String key) => switch (key) {
-        'navOverviewLabel' => navOverviewLabel,
-        'navOverviewDescription' => navOverviewDescription,
-        'navAssistantLabel' => navAssistantLabel,
-        'navAssistantDescription' => navAssistantDescription,
-        'navSalesLabel' => navSalesLabel,
-        'navSalesDescription' => navSalesDescription,
-        'navCustomersLabel' => navCustomersLabel,
-        'navCustomersDescription' => navCustomersDescription,
-        'navProductsLabel' => navProductsLabel,
-        'navProductsDescription' => navProductsDescription,
-        'navRecommendationsLabel' => navRecommendationsLabel,
-        'navRecommendationsDescription' => navRecommendationsDescription,
-        'navAlertsLabel' => navAlertsLabel,
-        'navAlertsDescription' => navAlertsDescription,
-        'navReportsLabel' => navReportsLabel,
-        'navReportsDescription' => navReportsDescription,
-        'navConnectionsLabel' => navConnectionsLabel,
-        'navConnectionsDescription' => navConnectionsDescription,
-        'navTeamLabel' => navTeamLabel,
-        'navTeamDescription' => navTeamDescription,
-        'navBillingLabel' => navBillingLabel,
-        'navBillingDescription' => navBillingDescription,
-        'navSettingsLabel' => navSettingsLabel,
-        'navSettingsDescription' => navSettingsDescription,
-        'navSupportLabel' => navSupportLabel,
-        'navSupportDescription' => navSupportDescription,
-        'connectionsLoading' => connectionsLoading,
-        'connectionsNoDataTitle' => connectionsNoDataTitle,
-        'connectionsNoDataFormats' => connectionsNoDataFormats,
-        'connectionsImportButton' => connectionsImportButton,
-        'connectionsUploadingLabel' => connectionsUploadingLabel,
-        'connectionsAnalyzing' => connectionsAnalyzing,
-        'connectionsPreparingData' => connectionsPreparingData,
-        'connectionsTrainingAi' => connectionsTrainingAi,
-        'connectionsAttentionRequired' => connectionsAttentionRequired,
-        'connectionsMappingTitle' => connectionsMappingTitle,
-        'connectionsMappingSubtitle' => connectionsMappingSubtitle,
-        'connectionsMappingIgnore' => connectionsMappingIgnore,
-        'connectionsConfirmMapping' => connectionsConfirmMapping,
-        'connectionsReadyTitle' => connectionsReadyTitle,
-        'connectionsStatNameLabel' => connectionsStatNameLabel,
-        'connectionsStatRowsLabel' => connectionsStatRowsLabel,
-        'connectionsStatColumnsLabel' => connectionsStatColumnsLabel,
-        'connectionsStatUpdatedLabel' => connectionsStatUpdatedLabel,
-        'connectionsGoDashboard' => connectionsGoDashboard,
-        'connectionsAskAvenqo' => connectionsAskAvenqo,
-        'connectionsImportAnother' => connectionsImportAnother,
-        'connectionsRetry' => connectionsRetry,
-        'connectionsGenericError' => connectionsGenericError,
-        'connectionsFileEmptyError' => connectionsFileEmptyError,
-        'connectionsProcessingError' => connectionsProcessingError,
-        'connectionsAddFiles' => connectionsAddFiles,
-        'connectionsAddMoreFiles' => connectionsAddMoreFiles,
-        'connectionsReadyToUpload' => connectionsReadyToUpload,
-        'connectionsUploadCountOne' => connectionsUploadCountOne,
-        'connectionsUploadCountOther' => connectionsUploadCountOther,
-        'connectionsRemoveFile' => connectionsRemoveFile,
-        'connectionsDuplicateFileNotice' => connectionsDuplicateFileNotice,
-        'connectionsImportCompleteTitle' => connectionsImportCompleteTitle,
-        'connectionsImportSummarySuccessOne' => connectionsImportSummarySuccessOne,
-        'connectionsImportSummarySuccessOther' => connectionsImportSummarySuccessOther,
-        'connectionsImportSummaryErrorsOne' => connectionsImportSummaryErrorsOne,
-        'connectionsImportSummaryErrorsOther' => connectionsImportSummaryErrorsOther,
-        'connectionsMappingRequiredBadge' => connectionsMappingRequiredBadge,
-        'connectionsCompleteMapping' => connectionsCompleteMapping,
-        'connectionsConnectedDataTitle' => connectionsConnectedDataTitle,
-        'connectionsContinueLabel' => connectionsContinueLabel,
-        'connectionsImportedAtLabel' => connectionsImportedAtLabel,
-        'connectionsUploadedFileSuccessLabel' => connectionsUploadedFileSuccessLabel,
-        'businessDefaultTitle' => businessDefaultTitle,
-        'businessDefaultDescription' => businessDefaultDescription,
-        'businessConnectButton' => businessConnectButton,
-        'businessSalesTitle' => businessSalesTitle,
-        'businessSalesDescription' => businessSalesDescription,
-        'businessCustomersTitle' => businessCustomersTitle,
-        'businessCustomersDescription' => businessCustomersDescription,
-        'analyticsUnavailable' => analyticsUnavailable,
-        'periodCurrentMonth' => periodCurrentMonth,
-        'periodLast30Days' => periodLast30Days,
-        'periodLast90Days' => periodLast90Days,
-        'periodYearToDate' => periodYearToDate,
-        'salesTrendTitle' => salesTrendTitle,
-        'salesForecastTitle' => salesForecastTitle,
-        'salesStrongestPeriod' => salesStrongestPeriod,
-        'salesWeakestPeriod' => salesWeakestPeriod,
-        'customersTotal' => customersTotal,
-        'customersActive' => customersActive,
-        'customersNew' => customersNew,
-        'customersRepeat' => customersRepeat,
-        'customersAverageValue' => customersAverageValue,
-        'customersFrequency' => customersFrequency,
-        'customersSearch' => customersSearch,
-        'customersOrders' => customersOrders,
-        'customersValue' => customersValue,
-        'customersLastPurchase' => customersLastPurchase,
-        'customersSegment' => customersSegment,
-        'customersRisk' => customersRisk,
-        'previousPage' => previousPage,
-        'nextPage' => nextPage,
-        'businessProductsTitle' => businessProductsTitle,
-        'businessProductsDescription' => businessProductsDescription,
-        'businessRecommendationsTitle' => businessRecommendationsTitle,
-        'businessRecommendationsDescription' => businessRecommendationsDescription,
-        'businessAlertsTitle' => businessAlertsTitle,
-        'businessAlertsDescription' => businessAlertsDescription,
-        'businessReportsTitle' => businessReportsTitle,
-        'businessReportsDescription' => businessReportsDescription,
-        'billingTitle' => billingTitle,
-        'billingPortalButton' => billingPortalButton,
-        'billingUnavailable' => billingUnavailable,
-        'billingPlanPrefix' => billingPlanPrefix,
-        'billingStatusPrefix' => billingStatusPrefix,
-        'billingCancelScheduled' => billingCancelScheduled,
-        'billingInvoicesTitle' => billingInvoicesTitle,
-        'billingInvoiceFallback' => billingInvoiceFallback,
-        'employeesTitle' => employeesTitle,
-        'employeesRefreshTooltip' => employeesRefreshTooltip,
-        'employeesUnavailable' => employeesUnavailable,
-        'employeesColumnName' => employeesColumnName,
-        'employeesColumnEmail' => employeesColumnEmail,
-        'employeesColumnRole' => employeesColumnRole,
-        'employeesColumnStatus' => employeesColumnStatus,
-        'settingsTitle' => settingsTitle,
-        'settingsSubtitle' => settingsSubtitle,
-        'settingsAccountSection' => settingsAccountSection,
-        'settingsCompanySection' => settingsCompanySection,
-        'settingsAppearanceSection' => settingsAppearanceSection,
-        'settingsSessionSection' => settingsSessionSection,
-        'settingsNameLabel' => settingsNameLabel,
-        'settingsEmailLabel' => settingsEmailLabel,
-        'settingsRoleLabel' => settingsRoleLabel,
-        'settingsPlanLabel' => settingsPlanLabel,
-        'settingsManageSubscription' => settingsManageSubscription,
-        'settingsThemeLabel' => settingsThemeLabel,
-        'settingsLanguageLabel' => settingsLanguageLabel,
-        'settingsThemeLight' => settingsThemeLight,
-        'settingsThemeDark' => settingsThemeDark,
-        'settingsThemeSystem' => settingsThemeSystem,
-        'settingsLogout' => settingsLogout,
-        'themeToggleSwitchToDark' => themeToggleSwitchToDark,
-        'themeToggleSwitchToLight' => themeToggleSwitchToLight,
-        _ => '',
-      };
+    'navOverviewLabel' => navOverviewLabel,
+    'navOverviewDescription' => navOverviewDescription,
+    'navAssistantLabel' => navAssistantLabel,
+    'navAssistantDescription' => navAssistantDescription,
+    'navSalesLabel' => navSalesLabel,
+    'navSalesDescription' => navSalesDescription,
+    'navCustomersLabel' => navCustomersLabel,
+    'navCustomersDescription' => navCustomersDescription,
+    'navProductsLabel' => navProductsLabel,
+    'navProductsDescription' => navProductsDescription,
+    'navRecommendationsLabel' => navRecommendationsLabel,
+    'navRecommendationsDescription' => navRecommendationsDescription,
+    'navAlertsLabel' => navAlertsLabel,
+    'navAlertsDescription' => navAlertsDescription,
+    'navReportsLabel' => navReportsLabel,
+    'navReportsDescription' => navReportsDescription,
+    'navConnectionsLabel' => navConnectionsLabel,
+    'navConnectionsDescription' => navConnectionsDescription,
+    'navTeamLabel' => navTeamLabel,
+    'navTeamDescription' => navTeamDescription,
+    'navBillingLabel' => navBillingLabel,
+    'navBillingDescription' => navBillingDescription,
+    'navSettingsLabel' => navSettingsLabel,
+    'navSettingsDescription' => navSettingsDescription,
+    'navSupportLabel' => navSupportLabel,
+    'navSupportDescription' => navSupportDescription,
+    'connectionsLoading' => connectionsLoading,
+    'connectionsNoDataTitle' => connectionsNoDataTitle,
+    'connectionsNoDataFormats' => connectionsNoDataFormats,
+    'connectionsImportButton' => connectionsImportButton,
+    'connectionsUploadingLabel' => connectionsUploadingLabel,
+    'connectionsAnalyzing' => connectionsAnalyzing,
+    'connectionsPreparingData' => connectionsPreparingData,
+    'connectionsTrainingAi' => connectionsTrainingAi,
+    'connectionsAttentionRequired' => connectionsAttentionRequired,
+    'connectionsMappingTitle' => connectionsMappingTitle,
+    'connectionsMappingSubtitle' => connectionsMappingSubtitle,
+    'connectionsMappingIgnore' => connectionsMappingIgnore,
+    'connectionsConfirmMapping' => connectionsConfirmMapping,
+    'connectionsReadyTitle' => connectionsReadyTitle,
+    'connectionsStatNameLabel' => connectionsStatNameLabel,
+    'connectionsStatRowsLabel' => connectionsStatRowsLabel,
+    'connectionsStatColumnsLabel' => connectionsStatColumnsLabel,
+    'connectionsStatUpdatedLabel' => connectionsStatUpdatedLabel,
+    'connectionsGoDashboard' => connectionsGoDashboard,
+    'connectionsAskAvenqo' => connectionsAskAvenqo,
+    'connectionsImportAnother' => connectionsImportAnother,
+    'connectionsRetry' => connectionsRetry,
+    'connectionsGenericError' => connectionsGenericError,
+    'connectionsFileEmptyError' => connectionsFileEmptyError,
+    'connectionsProcessingError' => connectionsProcessingError,
+    'connectionsAddFiles' => connectionsAddFiles,
+    'connectionsAddMoreFiles' => connectionsAddMoreFiles,
+    'connectionsReadyToUpload' => connectionsReadyToUpload,
+    'connectionsUploadCountOne' => connectionsUploadCountOne,
+    'connectionsUploadCountOther' => connectionsUploadCountOther,
+    'connectionsRemoveFile' => connectionsRemoveFile,
+    'connectionsDuplicateFileNotice' => connectionsDuplicateFileNotice,
+    'connectionsImportCompleteTitle' => connectionsImportCompleteTitle,
+    'connectionsImportSummarySuccessOne' => connectionsImportSummarySuccessOne,
+    'connectionsImportSummarySuccessOther' =>
+      connectionsImportSummarySuccessOther,
+    'connectionsImportSummaryErrorsOne' => connectionsImportSummaryErrorsOne,
+    'connectionsImportSummaryErrorsOther' =>
+      connectionsImportSummaryErrorsOther,
+    'connectionsMappingRequiredBadge' => connectionsMappingRequiredBadge,
+    'connectionsCompleteMapping' => connectionsCompleteMapping,
+    'connectionsConnectedDataTitle' => connectionsConnectedDataTitle,
+    'connectionsContinueLabel' => connectionsContinueLabel,
+    'connectionsImportedAtLabel' => connectionsImportedAtLabel,
+    'connectionsUploadedFileSuccessLabel' =>
+      connectionsUploadedFileSuccessLabel,
+    'businessDefaultTitle' => businessDefaultTitle,
+    'businessDefaultDescription' => businessDefaultDescription,
+    'businessConnectButton' => businessConnectButton,
+    'businessSalesTitle' => businessSalesTitle,
+    'businessSalesDescription' => businessSalesDescription,
+    'businessCustomersTitle' => businessCustomersTitle,
+    'businessCustomersDescription' => businessCustomersDescription,
+    'analyticsUnavailable' => analyticsUnavailable,
+    'periodCurrentMonth' => periodCurrentMonth,
+    'periodLast30Days' => periodLast30Days,
+    'periodLast90Days' => periodLast90Days,
+    'periodYearToDate' => periodYearToDate,
+    'salesTrendTitle' => salesTrendTitle,
+    'salesForecastTitle' => salesForecastTitle,
+    'salesStrongestPeriod' => salesStrongestPeriod,
+    'salesWeakestPeriod' => salesWeakestPeriod,
+    'customersTotal' => customersTotal,
+    'customersActive' => customersActive,
+    'customersNew' => customersNew,
+    'customersRepeat' => customersRepeat,
+    'customersAverageValue' => customersAverageValue,
+    'customersFrequency' => customersFrequency,
+    'customersSearch' => customersSearch,
+    'customersOrders' => customersOrders,
+    'customersValue' => customersValue,
+    'customersLastPurchase' => customersLastPurchase,
+    'customersSegment' => customersSegment,
+    'customersRisk' => customersRisk,
+    'previousPage' => previousPage,
+    'nextPage' => nextPage,
+    'businessProductsTitle' => businessProductsTitle,
+    'businessProductsDescription' => businessProductsDescription,
+    'businessRecommendationsTitle' => businessRecommendationsTitle,
+    'businessRecommendationsDescription' => businessRecommendationsDescription,
+    'businessAlertsTitle' => businessAlertsTitle,
+    'businessAlertsDescription' => businessAlertsDescription,
+    'businessReportsTitle' => businessReportsTitle,
+    'businessReportsDescription' => businessReportsDescription,
+    'billingTitle' => billingTitle,
+    'billingPortalButton' => billingPortalButton,
+    'billingUnavailable' => billingUnavailable,
+    'billingPlanPrefix' => billingPlanPrefix,
+    'billingStatusPrefix' => billingStatusPrefix,
+    'billingCancelScheduled' => billingCancelScheduled,
+    'billingInvoicesTitle' => billingInvoicesTitle,
+    'billingInvoiceFallback' => billingInvoiceFallback,
+    'employeesTitle' => employeesTitle,
+    'employeesRefreshTooltip' => employeesRefreshTooltip,
+    'employeesUnavailable' => employeesUnavailable,
+    'employeesColumnName' => employeesColumnName,
+    'employeesColumnEmail' => employeesColumnEmail,
+    'employeesColumnRole' => employeesColumnRole,
+    'employeesColumnStatus' => employeesColumnStatus,
+    'settingsTitle' => settingsTitle,
+    'settingsSubtitle' => settingsSubtitle,
+    'settingsAccountSection' => settingsAccountSection,
+    'settingsCompanySection' => settingsCompanySection,
+    'settingsAppearanceSection' => settingsAppearanceSection,
+    'settingsSessionSection' => settingsSessionSection,
+    'settingsNameLabel' => settingsNameLabel,
+    'settingsEmailLabel' => settingsEmailLabel,
+    'settingsRoleLabel' => settingsRoleLabel,
+    'settingsPlanLabel' => settingsPlanLabel,
+    'settingsManageSubscription' => settingsManageSubscription,
+    'settingsThemeLabel' => settingsThemeLabel,
+    'settingsLanguageLabel' => settingsLanguageLabel,
+    'settingsThemeLight' => settingsThemeLight,
+    'settingsThemeDark' => settingsThemeDark,
+    'settingsThemeSystem' => settingsThemeSystem,
+    'settingsLogout' => settingsLogout,
+    'themeToggleSwitchToDark' => themeToggleSwitchToDark,
+    'themeToggleSwitchToLight' => themeToggleSwitchToLight,
+    _ => '',
+  };
 
   final String navOverviewLabel;
   final String navOverviewDescription;
@@ -2518,4 +2733,3 @@ class CompanyStrings {
   final String themeToggleSwitchToDark;
   final String themeToggleSwitchToLight;
 }
-

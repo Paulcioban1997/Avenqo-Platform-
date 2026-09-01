@@ -326,6 +326,13 @@
     "newest": "Nieuwste",
     "you": "U",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Deze specialist komt binnenkort.",
+    "unsupportedIntent": "Avenqo kan dit verzoek nog niet doorsturen naar een beschikbare specialist.",
+    "retailNotEntitled": "Retail Intelligence is niet inbegrepen in je huidige abonnement.",
+    "creditsExhausted": "Je AI-tegoeden zijn op. Voeg tegoed toe om door te gaan.",
+    "requestUnavailable": "Avenqo kon dit verzoek niet voltooien.",
+    "remainingCredits": "Resterende AI-tegoeden",
+    "manageCredits": "Tegoeden beheren",
     "suggestions": [
       "Hoe presteren mijn verkopen?",
       "Welke klanten hebben aandacht nodig?",

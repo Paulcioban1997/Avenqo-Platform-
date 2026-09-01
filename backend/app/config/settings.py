@@ -198,16 +198,6 @@ class Settings(BaseSettings):
                     missing.append(name)
             if self.frontend_url.rstrip("/") != "https://app.avenqo.ca":
                 missing.append("FRONTEND_URL")
-            for name, value in (
-                ("SMTP_HOST", self.smtp_host),
-                ("SMTP_USERNAME", self.smtp_username),
-                ("SMTP_PASSWORD", self.smtp_password),
-                ("SMTP_FROM_EMAIL", self.smtp_from_email),
-            ):
-                if not value:
-                    missing.append(name)
-            if "smtp_from_email" not in self.model_fields_set:
-                missing.append("SMTP_FROM_EMAIL")
             if not self.cors_origins or any(
                 not origin.startswith("https://") for origin in self.cors_origins
             ):

@@ -326,6 +326,13 @@
     "newest": "Sabo",
     "you": "Kai",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Wannan ??wararren zai zo nan ba da jimawa ba.",
+    "unsupportedIntent": "Avenqo ba zai iya tura wannan bu??atar zuwa ??wararren da yake akwai ba tukuna.",
+    "retailNotEntitled": "Retail Intelligence ba ya cikin biyan ku??in ku na yanzu.",
+    "creditsExhausted": "Ku??a??en AI ??inku sun ??are. ??ara ku??a??e don ci gaba.",
+    "requestUnavailable": "Avenqo bai iya kammala wannan bu??atar ba.",
+    "remainingCredits": "Ragowar ku??a??en AI",
+    "manageCredits": "Sarrafa ku??a??e",
     "suggestions": [
       "Waɗanne kayayyaki ne mafi kyawun sayarwa a wannan watan?",
       "Waɗanne abokan ciniki ne cikin haɗarin dainawa siyayya?",

@@ -326,6 +326,13 @@
     "newest": "Senaste",
     "you": "Du",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Denna specialist kommer snart.",
+    "unsupportedIntent": "Avenqo kan ??nnu inte routa denna f??rfr??gan till en tillg??nglig specialist.",
+    "retailNotEntitled": "Retail Intelligence ing??r inte i din nuvarande prenumeration.",
+    "creditsExhausted": "Dina AI-krediter ??r slut. L??gg till krediter f??r att forts??tta.",
+    "requestUnavailable": "Avenqo kunde inte slutf??ra denna f??rfr??gan.",
+    "remainingCredits": "??terst??ende AI-krediter",
+    "manageCredits": "Hantera krediter",
     "suggestions": [
       "Hur går min försäljning?",
       "Vilka kunder behöver uppmärksamhet?",

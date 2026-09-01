@@ -326,6 +326,13 @@
     "newest": "Pinakabago",
     "you": "Ikaw",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Darating na ang espesyalistang ito sa lalong madaling panahon.",
+    "unsupportedIntent": "Hindi pa kayang i-route ng Avenqo ang kahilingang ito sa isang available na espesyalista.",
+    "retailNotEntitled": "Hindi kasama ang Retail Intelligence sa kasalukuyan mong subscription.",
+    "creditsExhausted": "Naubos na ang iyong AI credits. Magdagdag ng credits para magpatuloy.",
+    "requestUnavailable": "Hindi makumpleto ng Avenqo ang kahilingang ito.",
+    "remainingCredits": "Natitirang AI credits",
+    "manageCredits": "Pamahalaan ang credits",
     "suggestions": [
       "Ano ang pinakamabentang produkto ko ngayong buwan?",
       "Aling mga kustomer ang nasa peligro na huminto sa pagbili?",

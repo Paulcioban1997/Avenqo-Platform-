@@ -326,6 +326,13 @@
     "newest": "Nejnovější",
     "you": "Vy",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Tento specialista bude brzy k dispozici.",
+    "unsupportedIntent": "Avenqo zat??m nem????e tento po??adavek sm??rovat na dostupn??ho specialistu.",
+    "retailNotEntitled": "Retail Intelligence nen?? sou????st?? va??eho sou??asn??ho p??edplatn??ho.",
+    "creditsExhausted": "Va??e AI kredity jsou vy??erp??ny. P??idejte kredity pro pokra??ov??n??.",
+    "requestUnavailable": "Avenqo tento po??adavek nemohl dokon??it.",
+    "remainingCredits": "Zb??vaj??c?? AI kredity",
+    "manageCredits": "Spravovat kredity",
     "suggestions": [
       "Jak si vedou mé prodeje?",
       "Kteří zákazníci potřebují pozornost?",

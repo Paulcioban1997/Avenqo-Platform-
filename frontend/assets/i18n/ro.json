@@ -326,6 +326,13 @@
     "newest": "Cele mai recente",
     "you": "Dvs.",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Acest specialist va veni ??n cur??nd.",
+    "unsupportedIntent": "Avenqo nu poate ??nc?? s?? direc??ioneze aceast?? solicitare c??tre un specialist disponibil.",
+    "retailNotEntitled": "Retail Intelligence nu este inclus ??n abonamentul dvs. actual.",
+    "creditsExhausted": "Creditele dvs. AI s-au epuizat. Ad??uga??i credite pentru a continua.",
+    "requestUnavailable": "Avenqo nu a putut finaliza aceast?? solicitare.",
+    "remainingCredits": "Credite AI r??mase",
+    "manageCredits": "Gestiona??i creditele",
     "suggestions": [
       "Cum merg vânzările mele?",
       "Ce clienți au nevoie de atenție?",

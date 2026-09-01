@@ -326,6 +326,13 @@
     "newest": "Newest",
     "you": "You",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "This specialist is Coming Soon.",
+    "unsupportedIntent": "Avenqo cannot route this request to an available specialist yet.",
+    "retailNotEntitled": "Retail Intelligence is not included in your current subscription.",
+    "creditsExhausted": "Your AI credits are exhausted. Add credits to continue.",
+    "requestUnavailable": "Avenqo could not complete this request.",
+    "remainingCredits": "AI credits remaining",
+    "manageCredits": "Manage credits",
     "suggestions": [
       "How are my sales performing?",
       "Which customers need attention?",

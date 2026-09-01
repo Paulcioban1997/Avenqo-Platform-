@@ -326,6 +326,13 @@
     "newest": "Nuutste",
     "you": "Jy",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Hierdie spesialis kom binnekort.",
+    "unsupportedIntent": "Avenqo kan hierdie versoek nog nie aan 'n beskikbare spesialis stuur nie.",
+    "retailNotEntitled": "Retail Intelligence is nie in u huidige intekening ingesluit nie.",
+    "creditsExhausted": "U AI-krediete is opgebruik. Voeg krediete by om voort te gaan.",
+    "requestUnavailable": "Avenqo kon hierdie versoek nie voltooi nie.",
+    "remainingCredits": "AI-krediete oor",
+    "manageCredits": "Bestuur krediete",
     "suggestions": [
       "Wat is my topverkoperprodukte hierdie maand?",
       "Watter kliënte is in gevaar om op te hou koop?",

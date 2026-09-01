@@ -326,6 +326,13 @@
     "newest": "Neueste",
     "you": "Sie",
     "avenqoAi": "Avenqo KI",
+    "agentComingSoon": "Dieser Spezialist ist demn??chst verf??gbar.",
+    "unsupportedIntent": "Avenqo kann diese Anfrage noch nicht an einen verf??gbaren Spezialisten weiterleiten.",
+    "retailNotEntitled": "Retail Intelligence ist in Ihrem aktuellen Abonnement nicht enthalten.",
+    "creditsExhausted": "Ihre KI-Guthaben sind aufgebraucht. F??gen Sie Guthaben hinzu, um fortzufahren.",
+    "requestUnavailable": "Avenqo konnte diese Anfrage nicht bearbeiten.",
+    "remainingCredits": "Verbleibende KI-Guthaben",
+    "manageCredits": "Guthaben verwalten",
     "suggestions": [
       "Wie laufen meine Verkäufe?",
       "Welche Kunden benötigen Aufmerksamkeit?",

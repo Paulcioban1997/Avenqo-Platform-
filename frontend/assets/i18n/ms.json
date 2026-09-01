@@ -326,6 +326,13 @@
     "newest": "Terbaharu",
     "you": "Anda",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Pakar ini akan hadir tidak lama lagi.",
+    "unsupportedIntent": "Avenqo belum dapat mengarahkan permintaan ini kepada pakar yang tersedia.",
+    "retailNotEntitled": "Retail Intelligence tidak termasuk dalam langganan anda sekarang.",
+    "creditsExhausted": "Kredit AI anda telah habis. Tambah kredit untuk meneruskan.",
+    "requestUnavailable": "Avenqo tidak dapat menyelesaikan permintaan ini.",
+    "remainingCredits": "Kredit AI baki",
+    "manageCredits": "Urus kredit",
     "suggestions": [
       "Apakah produk terlaris saya bulan ini?",
       "Pelanggan manakah yang berisiko berhenti membeli?",

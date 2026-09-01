@@ -326,6 +326,13 @@
     "newest": "Mpya zaidi",
     "you": "Wewe",
     "avenqoAi": "Avenqo AI",
+    "agentComingSoon": "Mtaalamu huyu anakuja hivi karibuni.",
+    "unsupportedIntent": "Avenqo bado hawezi kuwasilisha ombi hili kwa mtaalamu aliyeko.",
+    "retailNotEntitled": "Retail Intelligence haijajumuishwa kwenye usajili wako wa sasa.",
+    "creditsExhausted": "Mikopo yako ya AI imeisha. Ongeza mikopo ili kuendelea.",
+    "requestUnavailable": "Avenqo haikuweza kukamilisha ombi hili.",
+    "remainingCredits": "Mikopo ya AI iliyobaki",
+    "manageCredits": "Simamia mikopo",
     "suggestions": [
       "Ni bidhaa zipi zinazouzwa zaidi mwezi huu?",
       "Ni wateja gani walio hatarini kuacha kununua?",
