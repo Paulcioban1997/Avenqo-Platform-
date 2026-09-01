@@ -12,11 +12,11 @@ class Conversation {
   final DateTime updatedAt;
 
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
-    id: json['id'] as String,
-    title: json['title'] as String,
-    createdAt: DateTime.parse(json['created_at'] as String),
-    updatedAt: DateTime.parse(json['updated_at'] as String),
-  );
+        id: json['id'] as String,
+        title: json['title'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        updatedAt: DateTime.parse(json['updated_at'] as String),
+      );
 }
 
 class ChatSource {
@@ -33,11 +33,11 @@ class ChatSource {
   final Map<String, dynamic> metadata;
 
   factory ChatSource.fromJson(Map<String, dynamic> json) => ChatSource(
-    type: json['type'] as String,
-    identifier: json['identifier'] as String,
-    name: json['name'] as String,
-    metadata: (json['metadata'] as Map<String, dynamic>?) ?? const {},
-  );
+        type: json['type'] as String,
+        identifier: json['identifier'] as String,
+        name: json['name'] as String,
+        metadata: (json['metadata'] as Map<String, dynamic>?) ?? const {},
+      );
 }
 
 class ChatMessage {
@@ -57,25 +57,22 @@ class ChatMessage {
   final List<ChatSource> sources;
   final String? error;
 
-  ChatMessage copyWith({
-    String? content,
-    String? error,
-    List<ChatSource>? sources,
-  }) => ChatMessage(
-    id: id,
-    role: role,
-    content: content ?? this.content,
-    createdAt: createdAt,
-    sources: sources ?? this.sources,
-    error: error ?? this.error,
-  );
+  ChatMessage copyWith({String? content, String? error, List<ChatSource>? sources}) =>
+      ChatMessage(
+        id: id,
+        role: role,
+        content: content ?? this.content,
+        createdAt: createdAt,
+        sources: sources ?? this.sources,
+        error: error ?? this.error,
+      );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
-    id: json['id'] as String,
-    role: ChatRole.fromApi(json['role'] as String),
-    content: json['content'] as String,
-    createdAt: DateTime.parse(json['created_at'] as String),
-  );
+        id: json['id'] as String,
+        role: ChatRole.fromApi(json['role'] as String),
+        content: json['content'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
 }
 
 enum ChatRole {
@@ -87,10 +84,7 @@ enum ChatRole {
 }
 
 class ConversationDetail {
-  const ConversationDetail({
-    required this.conversation,
-    required this.messages,
-  });
+  const ConversationDetail({required this.conversation, required this.messages});
 
   final Conversation conversation;
   final List<ChatMessage> messages;
@@ -111,14 +105,13 @@ class ChatStreamEvent {
   final List<ChatSource> sources;
   final String? status;
 
-  factory ChatStreamEvent.fromJson(Map<String, dynamic> json) =>
-      ChatStreamEvent(
-        chunk: json['chunk']?.toString(),
-        sources: (json['sources'] as List<dynamic>? ?? const [])
-            .map((item) => ChatSource.fromJson(item as Map<String, dynamic>))
-            .toList(),
-        status: json['message']?.toString(),
-      );
+  factory ChatStreamEvent.fromJson(Map<String, dynamic> json) => ChatStreamEvent(
+    chunk: json['chunk']?.toString(),
+    sources: (json['sources'] as List<dynamic>? ?? const [])
+    .map((item) => ChatSource.fromJson(item as Map<String, dynamic>))
+    .toList(),
+    status: json['message']?.toString(),
+  );
 }
 
 class CentralAIResponse {

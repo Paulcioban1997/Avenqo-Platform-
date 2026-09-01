@@ -20,8 +20,7 @@ class _Brand {
 /// [AvenqoLocaleScope] est disponible, retombe sur l'anglais sinon (tests
 /// isolés qui montent `AssistantPage` sans monter toute l'app).
 AssistantStrings _assistantStrings(BuildContext context) =>
-    AvenqoLocaleScope.maybeTranslationsOf(context)?.assistant ??
-    AssistantStrings.fallback();
+    AvenqoLocaleScope.maybeTranslationsOf(context)?.assistant ?? AssistantStrings.fallback();
 
 class AssistantPage extends StatefulWidget {
   const AssistantPage({super.key, required this.api});
@@ -52,20 +51,13 @@ class _AssistantPageState extends State<AssistantPage> {
     if (kReleaseMode) return error.message;
     final detail = error.message.toLowerCase();
     if (error.statusCode == 401) return 'DEV: erreur_auth';
-    if (error.statusCode == 429 || detail.contains('quota')) {
-      return 'DEV: quota_atteint';
-    }
-    if (detail.contains('provider_non_configure')) {
-      return 'DEV: provider_non_configure';
-    }
-    if (detail.contains('provider_inaccessible')) {
-      return 'DEV: backend_ou_provider_inaccessible';
-    }
-    if (detail.contains('no business data') || detail.contains('dataset')) {
-      return 'DEV: dataset_indisponible';
-    }
+    if (error.statusCode == 429 || detail.contains('quota')) return 'DEV: quota_atteint';
+    if (detail.contains('provider_non_configure')) return 'DEV: provider_non_configure';
+    if (detail.contains('provider_inaccessible')) return 'DEV: backend_ou_provider_inaccessible';
+    if (detail.contains('no business data') || detail.contains('dataset')) return 'DEV: dataset_indisponible';
     return 'DEV: ${error.message}';
   }
+
 
   @override
   void initState() {
@@ -91,10 +83,7 @@ class _AssistantPageState extends State<AssistantPage> {
       if (mounted) setState(() => _conversations = conversations);
     } on ApiException {
       if (mounted) {
-        setState(
-          () => _error =
-              "Avenqo couldn't load your conversations. Please try again.",
-        );
+        setState(() => _error = "Avenqo couldn't load your conversations. Please try again.");
       }
     } finally {
       if (mounted) setState(() => _loadingConversations = false);
@@ -119,9 +108,7 @@ class _AssistantPageState extends State<AssistantPage> {
       if (!mounted) return;
       setState(() {
         if (error.statusCode == 404) {
-          _conversations = _conversations
-              .where((item) => item.id != conversation.id)
-              .toList();
+          _conversations = _conversations.where((item) => item.id != conversation.id).toList();
           _selected = null;
         }
         _error = "Avenqo couldn't open this conversation. Please try again.";
@@ -161,18 +148,8 @@ class _AssistantPageState extends State<AssistantPage> {
         _creditsExhausted = false;
         _messages = [
           ..._messages,
-          ChatMessage(
-            id: 'local-user-${now.microsecondsSinceEpoch}',
-            role: ChatRole.user,
-            content: content,
-            createdAt: now,
-          ),
-          ChatMessage(
-            id: 'local-assistant-${now.microsecondsSinceEpoch}',
-            role: ChatRole.assistant,
-            content: '',
-            createdAt: now,
-          ),
+          ChatMessage(id: 'local-user-${now.microsecondsSinceEpoch}', role: ChatRole.user, content: content, createdAt: now),
+          ChatMessage(id: 'local-assistant-${now.microsecondsSinceEpoch}', role: ChatRole.assistant, content: '', createdAt: now),
         ];
       });
       _scrollToBottom(force: true);
@@ -197,8 +174,8 @@ class _AssistantPageState extends State<AssistantPage> {
         _error = error.statusCode == 401
             ? 'Your session has expired. Please sign in again.'
             : (kReleaseMode
-                  ? "Avenqo couldn't start this conversation. Please try again."
-                  : _devFriendlyMessage(error));
+                ? "Avenqo couldn't start this conversation. Please try again."
+                : _devFriendlyMessage(error));
       });
     }
   }
@@ -229,49 +206,33 @@ class _AssistantPageState extends State<AssistantPage> {
       await _chat.deleteConversation(conversation.id);
       if (!mounted) return;
       setState(() {
-        _conversations = _conversations
-            .where((item) => item.id != conversation.id)
-            .toList();
+        _conversations = _conversations.where((item) => item.id != conversation.id).toList();
         if (_selected?.id == conversation.id) {
           _selected = null;
           _messages = const [];
         }
       });
     } on ApiException {
-      if (mounted) {
-        setState(
-          () => _error =
-              "Avenqo couldn't delete this conversation. Please try again.",
-        );
-      }
+      if (mounted) setState(() => _error = "Avenqo couldn't delete this conversation. Please try again.");
     }
   }
 
   void _trackScrollPosition() {
     if (!_scrollController.hasClients) return;
-    final nearBottom =
-        _scrollController.position.maxScrollExtent - _scrollController.offset <
-        120;
-    if (nearBottom != _nearBottom && mounted) {
-      setState(() => _nearBottom = nearBottom);
-    }
+    final nearBottom = _scrollController.position.maxScrollExtent - _scrollController.offset < 120;
+    if (nearBottom != _nearBottom && mounted) setState(() => _nearBottom = nearBottom);
   }
 
   void _scrollToBottom({bool force = false}) {
     if (!force && !_nearBottom) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-        );
+        _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
       }
     });
   }
 
-  String _titleFor(String content) =>
-      content.length > 54 ? '${content.substring(0, 54)}...' : content;
+  String _titleFor(String content) => content.length > 54 ? '${content.substring(0, 54)}...' : content;
 
   @override
   Widget build(BuildContext context) {
@@ -291,97 +252,48 @@ class _AssistantPageState extends State<AssistantPage> {
     return Scaffold(
       key: _scaffoldKey,
       endDrawer: compact ? Drawer(child: SafeArea(child: sidebar)) : null,
-      body: Row(
-        children: [
-          if (!compact) SizedBox(width: 276, child: sidebar),
-          if (!compact) const VerticalDivider(width: 1),
+      body: Row(children: [
+        if (!compact) SizedBox(width: 276, child: sidebar),
+        if (!compact) const VerticalDivider(width: 1),
+        Expanded(child: Column(children: [
+          ChatHeader(title: _selected?.title ?? t.avenqoAi, compact: compact, onOpenConversations: () => _scaffoldKey.currentState?.openEndDrawer()),
+          if (_error != null) ChatErrorState(message: _error!, retryLabel: t.retry, onRetry: _loadConversations),
           Expanded(
-            child: Column(
-              children: [
-                ChatHeader(
-                  title: _selected?.title ?? t.avenqoAi,
-                  compact: compact,
-                  onOpenConversations: () =>
-                      _scaffoldKey.currentState?.openEndDrawer(),
-                ),
-                if (_error != null)
-                  ChatErrorState(
-                    message: _error!,
-                    retryLabel: t.retry,
-                    onRetry: _loadConversations,
+            child: _loadingMessages
+                ? const Center(child: CircularProgressIndicator())
+                : ChatMessages(
+                    controller: _scrollController,
+                    messages: _messages,
+                    generating: _generating,
+                    onSuggestion: _send,
+                    onRetry: _retryLastMessage,
+                    empty: _selected == null && _messages.isEmpty,
                   ),
-                Expanded(
-                  child: _loadingMessages
-                      ? const Center(child: CircularProgressIndicator())
-                      : ChatMessages(
-                          controller: _scrollController,
-                          messages: _messages,
-                          generating: _generating,
-                          onSuggestion: _send,
-                          onRetry: _retryLastMessage,
-                          empty: _selected == null && _messages.isEmpty,
-                        ),
-                ),
-                if (!_nearBottom && _messages.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 24),
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => _scrollToBottom(force: true),
-                        icon: const Icon(Icons.arrow_downward),
-                        label: Text(t.newest),
-                      ),
-                    ),
-                  ),
-                if (_remainingAiCredits != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${t.remainingCredits}: $_remainingAiCredits',
-                          ),
-                        ),
-                        if (_creditsExhausted)
-                          FilledButton.icon(
-                            onPressed: () => context.go('/billing'),
-                            icon: const Icon(
-                              Icons.account_balance_wallet_outlined,
-                            ),
-                            label: Text(t.manageCredits),
-                          ),
-                      ],
-                    ),
-                  ),
-                ChatComposer(
-                  controller: _composer,
-                  generating: _generating,
-                  onSend: _send,
-                ),
-              ],
-            ),
           ),
-        ],
-      ),
+          if (!_nearBottom && _messages.isNotEmpty)
+            Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.only(right: 24), child: FilledButton.tonalIcon(onPressed: () => _scrollToBottom(force: true), icon: const Icon(Icons.arrow_downward), label: Text(t.newest)))),
+          if (_remainingAiCredits != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+              child: Row(children: [
+                Expanded(child: Text('${t.remainingCredits}: $_remainingAiCredits')),
+                if (_creditsExhausted)
+                  FilledButton.icon(
+                    onPressed: () => context.go('/billing'),
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                    label: Text(t.manageCredits),
+                  ),
+              ]),
+            ),
+          ChatComposer(controller: _composer, generating: _generating, onSend: _send),
+        ])),
+      ]),
     );
   }
 }
 
 class ConversationSidebar extends StatelessWidget {
-  const ConversationSidebar({
-    super.key,
-    required this.conversations,
-    required this.selectedId,
-    required this.loading,
-    required this.onNewConversation,
-    required this.onSelect,
-    required this.onDelete,
-  });
+  const ConversationSidebar({super.key, required this.conversations, required this.selectedId, required this.loading, required this.onNewConversation, required this.onSelect, required this.onDelete});
   final List<Conversation> conversations;
   final String? selectedId;
   final bool loading;
@@ -393,113 +305,34 @@ class ConversationSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = _assistantStrings(context);
     final colors = AvenqoColors.of(context);
-    return Material(
-      color: colors.surface,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onNewConversation,
-                style: FilledButton.styleFrom(backgroundColor: _Brand.blue),
-                icon: const Icon(Icons.add),
-                label: Text(t.newConversation),
-              ),
-            ),
-          ),
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : conversations.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      t.conversationsEmpty,
-                      style: TextStyle(color: colors.muted),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: conversations.length,
-                    itemBuilder: (context, index) {
-                      final conversation = conversations[index];
-                      return ListTile(
-                        selected: conversation.id == selectedId,
-                        title: Text(
-                          conversation.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () => onSelect(conversation),
-                        trailing: IconButton(
-                          tooltip: t.deleteConversation,
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => onDelete(conversation),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
+    return Material(color: colors.surface, child: Column(children: [
+      Padding(padding: const EdgeInsets.all(16), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: onNewConversation, style: FilledButton.styleFrom(backgroundColor: _Brand.blue), icon: const Icon(Icons.add), label: Text(t.newConversation)))),
+      Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : conversations.isEmpty ? Padding(padding: const EdgeInsets.all(24), child: Text(t.conversationsEmpty, style: TextStyle(color: colors.muted))) : ListView.builder(itemCount: conversations.length, itemBuilder: (context, index) {
+        final conversation = conversations[index];
+        return ListTile(selected: conversation.id == selectedId, title: Text(conversation.title, maxLines: 2, overflow: TextOverflow.ellipsis), onTap: () => onSelect(conversation), trailing: IconButton(tooltip: t.deleteConversation, icon: const Icon(Icons.delete_outline), onPressed: () => onDelete(conversation)));
+      })),
+    ]));
   }
 }
 
 class ChatHeader extends StatelessWidget {
-  const ChatHeader({
-    super.key,
-    required this.title,
-    required this.compact,
-    required this.onOpenConversations,
-  });
+  const ChatHeader({super.key, required this.title, required this.compact, required this.onOpenConversations});
   final String title;
   final bool compact;
   final VoidCallback onOpenConversations;
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border(bottom: BorderSide(color: colors.line)),
-      ),
-      child: Row(
-        children: [
-          if (compact)
-            IconButton(
-              tooltip: 'Conversations',
-              onPressed: onOpenConversations,
-              icon: const Icon(Icons.forum_outlined),
-            ),
-          Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const Icon(Icons.auto_awesome_outlined, color: _Brand.blue),
-        ],
-      ),
-    );
+    return Container(height: 72, padding: const EdgeInsets.symmetric(horizontal: 20), decoration: BoxDecoration(color: colors.surface, border: Border(bottom: BorderSide(color: colors.line))), child: Row(children: [
+      if (compact) IconButton(tooltip: 'Conversations', onPressed: onOpenConversations, icon: const Icon(Icons.forum_outlined)),
+      Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      const Icon(Icons.auto_awesome_outlined, color: _Brand.blue),
+    ]));
   }
 }
 
 class ChatMessages extends StatelessWidget {
-  const ChatMessages({
-    super.key,
-    required this.controller,
-    required this.messages,
-    required this.generating,
-    required this.onSuggestion,
-    required this.onRetry,
-    required this.empty,
-  });
+  const ChatMessages({super.key, required this.controller, required this.messages, required this.generating, required this.onSuggestion, required this.onRetry, required this.empty});
   final ScrollController controller;
   final List<ChatMessage> messages;
   final bool generating;
@@ -516,18 +349,11 @@ class ChatMessages extends StatelessWidget {
         ),
       );
     }
-    return ListView.builder(
-      controller: controller,
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-      itemCount: messages.length + (generating ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == messages.length) return const StreamingMessage();
-        final message = messages[index];
-        return message.role == ChatRole.user
-            ? UserMessage(message: message)
-            : AssistantMessage(message: message, onRetry: onRetry);
-      },
-    );
+    return ListView.builder(controller: controller, padding: const EdgeInsets.fromLTRB(20, 24, 20, 20), itemCount: messages.length + (generating ? 1 : 0), itemBuilder: (context, index) {
+      if (index == messages.length) return const StreamingMessage();
+      final message = messages[index];
+      return message.role == ChatRole.user ? UserMessage(message: message) : AssistantMessage(message: message, onRetry: onRetry);
+    });
   }
 }
 
@@ -537,56 +363,13 @@ class EmptyChatState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = _assistantStrings(context);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _Brand.blue.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.auto_awesome, color: _Brand.blue),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                t.title,
-                style: Theme.of(context).textTheme.headlineMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              Text(t.subtitle, textAlign: TextAlign.center),
-              const SizedBox(height: 22),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final item in t.suggestions)
-                    ActionChip(
-                      avatar: const Icon(Icons.arrow_outward, size: 16),
-                      label: Text(item),
-                      onPressed: () => onSuggestion(item),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              TextButton.icon(
-                onPressed: () => context.go('/connections'),
-                icon: const Icon(Icons.sync_alt),
-                label: Text(t.connectData),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 52, height: 52, decoration: BoxDecoration(color: _Brand.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.auto_awesome, color: _Brand.blue)),
+      const SizedBox(height: 18), Text(t.title, style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
+      const SizedBox(height: 10), Text(t.subtitle, textAlign: TextAlign.center),
+      const SizedBox(height: 22), Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [for (final item in t.suggestions) ActionChip(avatar: const Icon(Icons.arrow_outward, size: 16), label: Text(item), onPressed: () => onSuggestion(item))]),
+      const SizedBox(height: 20), TextButton.icon(onPressed: () => context.go('/connections'), icon: const Icon(Icons.sync_alt), label: Text(t.connectData)),
+    ]))));
   }
 }
 
@@ -594,134 +377,36 @@ class UserMessage extends StatelessWidget {
   const UserMessage({super.key, required this.message});
   final ChatMessage message;
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerRight,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 680),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 18),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _Brand.ink,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _assistantStrings(context).you,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            SelectableText(
-              message.content,
-              style: const TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
+  Widget build(BuildContext context) => Align(alignment: Alignment.centerRight, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Container(margin: const EdgeInsets.only(bottom: 18), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: _Brand.ink, borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_assistantStrings(context).you, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)), const SizedBox(height: 6), SelectableText(message.content, style: const TextStyle(color: Colors.white))]))));
 }
 
 class AssistantMessage extends StatelessWidget {
-  const AssistantMessage({
-    super.key,
-    required this.message,
-    required this.onRetry,
-  });
+  const AssistantMessage({super.key, required this.message, required this.onRetry});
   final ChatMessage message;
   final VoidCallback onRetry;
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 18),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            border: Border.all(color: colors.line),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.auto_awesome_outlined,
-                    size: 18,
-                    color: _Brand.blue,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _assistantStrings(context).avenqoAi,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: colors.ink,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (message.content.isNotEmpty)
-                MarkdownBody(data: message.content, selectable: true),
-              if (message.error != null)
-                MessageError(message: message.error!, onRetry: onRetry),
-              if (message.sources.isNotEmpty)
-                MessageSources(sources: message.sources),
-            ],
-          ),
-        ),
-      ),
-    );
+    return Align(alignment: Alignment.centerLeft, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Container(margin: const EdgeInsets.only(bottom: 18), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.surface, border: Border.all(color: colors.line), borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [const Icon(Icons.auto_awesome_outlined, size: 18, color: _Brand.blue), const SizedBox(width: 8), Text(_assistantStrings(context).avenqoAi, style: TextStyle(fontWeight: FontWeight.w700, color: colors.ink))]), const SizedBox(height: 10),
+      if (message.content.isNotEmpty) MarkdownBody(data: message.content, selectable: true),
+      if (message.error != null) MessageError(message: message.error!, onRetry: onRetry),
+      if (message.sources.isNotEmpty) MessageSources(sources: message.sources),
+    ]))));
   }
 }
 
 class StreamingMessage extends StatelessWidget {
   const StreamingMessage({super.key});
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Row(
-      children: [
-        const SizedBox.square(
-          dimension: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        const SizedBox(width: 10),
-        Text(_assistantStrings(context).thinking),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 16), child: Row(children: [const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10), Text(_assistantStrings(context).thinking)]));
 }
 
 class MessageSources extends StatelessWidget {
   const MessageSources({super.key, required this.sources});
   final List<ChatSource> sources;
   @override
-  Widget build(BuildContext context) => ExpansionTile(
-    tilePadding: EdgeInsets.zero,
-    title: Text(
-      '${_assistantStrings(context).sourcesLabel} · ${sources.length}',
-      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-    ),
-    children: [
-      for (final source in sources)
-        ListTile(
-          dense: true,
-          leading: const Icon(Icons.description_outlined, size: 18),
-          title: Text(source.name),
-        ),
-    ],
-  );
+  Widget build(BuildContext context) => ExpansionTile(tilePadding: EdgeInsets.zero, title: Text('${_assistantStrings(context).sourcesLabel} · ${sources.length}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)), children: [for (final source in sources) ListTile(dense: true, leading: const Icon(Icons.description_outlined, size: 18), title: Text(source.name))]);
 }
 
 class MessageError extends StatelessWidget {
@@ -731,118 +416,38 @@ class MessageError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, color: scheme.onErrorContainer),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(color: scheme.onErrorContainer),
-            ),
-          ),
-          TextButton(
-            onPressed: onRetry,
-            child: Text(_assistantStrings(context).retry),
-          ),
-        ],
-      ),
-    );
+    return Container(margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(6)), child: Row(children: [Icon(Icons.error_outline, color: scheme.onErrorContainer), const SizedBox(width: 8), Expanded(child: Text(message, style: TextStyle(color: scheme.onErrorContainer))), TextButton(onPressed: onRetry, child: Text(_assistantStrings(context).retry))]));
   }
 }
 
 class ChatErrorState extends StatelessWidget {
-  const ChatErrorState({
-    super.key,
-    required this.message,
-    required this.onRetry,
-    this.retryLabel,
-  });
+  const ChatErrorState({super.key, required this.message, required this.onRetry, this.retryLabel});
   final String message;
   final VoidCallback onRetry;
   final String? retryLabel;
   @override
-  Widget build(BuildContext context) => MaterialBanner(
-    content: Text(message),
-    actions: [
-      TextButton(
-        onPressed: onRetry,
-        child: Text(retryLabel ?? _assistantStrings(context).retry),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) => MaterialBanner(content: Text(message), actions: [TextButton(onPressed: onRetry, child: Text(retryLabel ?? _assistantStrings(context).retry))]);
 }
 
 class ChatComposer extends StatelessWidget {
-  const ChatComposer({
-    super.key,
-    required this.controller,
-    required this.generating,
-    required this.onSend,
-  });
+  const ChatComposer({super.key, required this.controller, required this.generating, required this.onSend});
   final TextEditingController controller;
   final bool generating;
   final ValueChanged<String?> onSend;
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    return Container(
-      color: colors.surface,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Focus(
-                onKeyEvent: (node, event) {
-                  if (event is KeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.enter &&
-                      !HardwareKeyboard.instance.isShiftPressed) {
-                    onSend(null);
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    hintText: 'Ask Avenqo anything about your business...',
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            generating
-                ? const SizedBox.square(
-                    dimension: 40,
-                    child: Padding(
-                      padding: EdgeInsets.all(10),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : Tooltip(
-                    message: 'Send message',
-                    child: IconButton.filled(
-                      onPressed: () => onSend(null),
-                      style: IconButton.styleFrom(backgroundColor: _Brand.blue),
-                      icon: const Icon(Icons.arrow_upward),
-                    ),
-                  ),
-          ],
-        ),
-      ),
-    );
+    return Container(color: colors.surface, padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), child: SafeArea(top: false, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Expanded(child: Focus(onKeyEvent: (node, event) {
+        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter && !HardwareKeyboard.instance.isShiftPressed) {
+          onSend(null);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      }, child: TextField(controller: controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(hintText: 'Ask Avenqo anything about your business...')))), const SizedBox(width: 10),
+        generating
+          ? const SizedBox.square(dimension: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
+          : Tooltip(message: 'Send message', child: IconButton.filled(onPressed: () => onSend(null), style: IconButton.styleFrom(backgroundColor: _Brand.blue), icon: const Icon(Icons.arrow_upward))),
+    ])));
   }
 }
