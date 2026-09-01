@@ -242,6 +242,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets(
+      'pricing français affiche les quotas sans Retail Intelligence',
+      (tester) async {
+        final previousLocale = _sharedTestLocale.code;
+        await _sharedTestLocale.setLocale('fr-CA');
+        addTearDown(() => _sharedTestLocale.setLocale(previousLocale));
+        tester.view.physicalSize = const Size(1440, 1200);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _wrapWithProviders(
+            MaterialApp(
+              theme: AppTheme.light,
+              home: PricingPage(api: unauthenticatedAuth.api, embedded: true),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle(const Duration(seconds: 1));
+
+        expect(find.text('2 modules inclus'), findsOneWidget);
+        expect(find.text('8 modules inclus'), findsOneWidget);
+        expect(find.text('Tous les modules inclus'), findsOneWidget);
+        expect(find.textContaining('Retail Intelligence'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('pricing mobile ne déborde pas', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;

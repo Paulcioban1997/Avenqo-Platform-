@@ -261,6 +261,7 @@ class _PricingContent extends StatelessWidget {
                       _PlanCard(
                         plan: pricing.plans[index],
                         price: _livePrice(index, pricing.plans[index]),
+                        moduleAllowance: _moduleAllowance(context, index),
                         featured: index == 1,
                         popularLabel: pricing.popular,
                         onPressed: index == pricing.plans.length - 1
@@ -327,12 +328,30 @@ class _PricingContent extends StatelessWidget {
     final price = plan['monthly_price_usd'];
     return price == null ? fallback.priceLabel : '\$$price USD';
   }
+
+  String _moduleAllowance(BuildContext context, int index) {
+    final language = AvenqoLocaleScope.of(context).code.split('-').first;
+    final count = index == 0 ? 2 : 8;
+    if (index >= 2) {
+      return switch (language) {
+        'fr' => 'Tous les modules inclus',
+        'ro' => 'Toate modulele incluse',
+        _ => 'All modules included',
+      };
+    }
+    return switch (language) {
+      'fr' => '$count modules inclus',
+      'ro' => '$count module incluse',
+      _ => '$count modules included',
+    };
+  }
 }
 
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.price,
+    required this.moduleAllowance,
     required this.featured,
     required this.popularLabel,
     required this.onPressed,
@@ -340,6 +359,7 @@ class _PlanCard extends StatelessWidget {
 
   final PricingPlan plan;
   final String price;
+  final String moduleAllowance;
   final bool featured;
   final String popularLabel;
   final VoidCallback onPressed;
@@ -427,7 +447,12 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: 22),
           Divider(color: featured ? Colors.white24 : colors.line),
           const SizedBox(height: 18),
-          for (final item in plan.items)
+          for (final item in [
+            moduleAllowance,
+            ...plan.items.where(
+              (item) => !item.toLowerCase().contains('retail intelligence'),
+            ),
+          ])
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Row(
