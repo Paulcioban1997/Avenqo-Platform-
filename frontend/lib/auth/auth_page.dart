@@ -169,44 +169,44 @@ class _AuthPageState extends State<AuthPage> {
     return Scaffold(
       backgroundColor: AvenqoColors.of(context).canvas,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth > 980;
-            final form = _FormCard(
-              title: copy.title,
-              subtitle: copy.subtitle,
-              child: _buildForm(t),
-            );
-            if (!wide) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _CompactHeader(tagline: t.tagline),
-                    const SizedBox(height: 20),
-                    form,
-                  ],
-                ),
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: _BrandPanel(tagline: t.tagline)),
-                Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(32),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
-                        child: form,
+        child: Column(
+          children: [
+            const _AuthHeader(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth > 980;
+                  final form = _FormCard(
+                    title: copy.title,
+                    subtitle: copy.subtitle,
+                    child: _buildForm(t),
+                  );
+                  if (!wide) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: form,
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: _BrandPanel(tagline: t.tagline)),
+                      Expanded(
+                        child: Center(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(32),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 760),
+                              child: form,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -645,28 +645,6 @@ class _BrandPanel extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  InkWell(
-                    onTap: () => context.go('/'),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.change_history,
-                          color: _Brand.blue,
-                          size: 26,
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Avenqo',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 26,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
                   Text(
                     tagline,
                     style: const TextStyle(
@@ -695,37 +673,56 @@ class _BrandPanel extends StatelessWidget {
   }
 }
 
-class _CompactHeader extends StatelessWidget {
-  const _CompactHeader({required this.tagline});
-
-  final String tagline;
+class _AuthHeader extends StatelessWidget {
+  const _AuthHeader();
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    return Row(
-      children: [
-        InkWell(
-          onTap: () => context.go('/'),
-          child: Row(
-            children: [
-              const Icon(Icons.change_history, color: _Brand.blue, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                'Avenqo',
-                style: TextStyle(
-                  color: colors.ink,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20,
+    return Material(
+      color: colors.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            InkWell(
+              onTap: () => context.go('/'),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.change_history,
+                    color: _Brand.blue,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Avenqo',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ThemeToggleButton(foregroundColor: colors.muted),
+                    LanguageSelector(foregroundColor: colors.muted),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const Spacer(),
-        ThemeToggleButton(foregroundColor: colors.muted),
-        LanguageSelector(foregroundColor: colors.muted),
-      ],
+      ),
     );
   }
 }
@@ -748,21 +745,13 @@ class _FormCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: colors.ink,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            ThemeToggleButton(foregroundColor: colors.muted),
-            LanguageSelector(foregroundColor: colors.muted),
-          ],
+        Text(
+          title,
+          style: TextStyle(
+            color: colors.ink,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
