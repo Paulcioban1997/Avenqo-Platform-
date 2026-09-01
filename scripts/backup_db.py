@@ -96,6 +96,7 @@ def main() -> None:
     print(
         "Backup démarré : "
         "env_database_url_present=true "
+        "settings_database_url_present=true "
         f"database_scheme={scheme or 'unknown'}"
     )
     service = BackupService(settings)  # type: ignore[arg-type]
