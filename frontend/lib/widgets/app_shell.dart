@@ -224,14 +224,18 @@ class _DestinationList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AvenqoLocaleScope.translationsOf(context).company;
+    final translations = AvenqoLocaleScope.translationsOf(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
       children: [
         for (var itemIndex = 0; itemIndex < appDestinations.length; itemIndex++) ...[
           if (appDestinations[itemIndex].sectionBreakBefore)
             const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
-          _buildTile(context, localizeDestination(appDestinations[itemIndex], t), itemIndex == index),
+          _buildTile(
+            context,
+            localizeDestination(appDestinations[itemIndex], translations),
+            itemIndex == index,
+          ),
         ],
         if (showAdminEntry) ...[
           const Padding(

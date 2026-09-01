@@ -18,6 +18,10 @@ from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.tenant_business import customers_router, sales_router
+from backend.app.routers.tenant_products_recommendations import (
+	products_router,
+	recommendations_router,
+)
 
 api_router = APIRouter()
 api_router.include_router(health_router, prefix="/api/v1")
@@ -47,6 +51,16 @@ api_router.include_router(
 )
 api_router.include_router(
 	customers_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	products_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	recommendations_router,
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )

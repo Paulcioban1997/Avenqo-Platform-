@@ -9,8 +9,11 @@ from backend.app.dependencies.auth import CurrentIdentity, get_current_identity,
 from backend.app.dependencies.billing import get_billing_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
+    AICreditBalanceResponse,
     ChangePlanRequest,
     CheckoutRequest,
+    CreditPackCheckoutRequest,
+    CreditPackResponse,
     InvoiceResponse,
     PlanResponse,
     RedirectResponse,
@@ -132,6 +135,43 @@ def invoices(
     skip = max(skip, 0)
     items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
     return items[skip : skip + limit]
+
+
+@router.get("/ai-credits", response_model=AICreditBalanceResponse)
+def ai_credit_balance(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: BillingService = Depends(get_billing_service),
+) -> AICreditBalanceResponse:
+    return AICreditBalanceResponse.model_validate(
+        service.get_credit_balance(
+            identity.user.company_id,
+            identity.user.company.subscription_plan,
+        )
+    )
+
+
+@router.get("/credit-packs", response_model=list[CreditPackResponse])
+def credit_packs(
+    _: CurrentIdentity = Depends(get_current_identity),
+    service: BillingService = Depends(get_billing_service),
+) -> list[CreditPackResponse]:
+    return [CreditPackResponse.model_validate(pack) for pack in service.list_credit_packs()]
+
+
+@router.post("/credit-packs/checkout", response_model=RedirectResponse)
+def credit_pack_checkout(
+    request: CreditPackCheckoutRequest,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: BillingService = Depends(get_billing_service),
+) -> RedirectResponse:
+    try:
+        return RedirectResponse(
+            url=service.create_credit_checkout(identity.user.company, request.pack_code)
+        )
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except BillingOperationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/webhook", include_in_schema=False)

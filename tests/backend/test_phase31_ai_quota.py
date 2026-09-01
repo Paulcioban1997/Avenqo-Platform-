@@ -23,7 +23,9 @@ from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.llm.base import LLMProvider
+from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.schemas import LLMGeneration
+from backend.app.ai.chat.exceptions import AIServiceUnavailableError
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.usage.policy import (
     MAX_CONVERSATION_HISTORY,
@@ -34,7 +36,7 @@ from backend.app.ai.usage.policy import (
 from backend.app.ai.usage.service import AIUsageService, tokens_from_usage
 from backend.app.config.settings import Settings
 from backend.app.models import Base, Company, User, UserRole
-from backend.app.models.ai_usage import TenantAIUsage
+from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIUsage
 
 pytestmark = pytest.mark.asyncio
 
@@ -90,6 +92,12 @@ class StubLLMProvider(LLMProvider):
 
     async def stream(self, *, system_instruction: str, prompt: str):
         yield self._content
+
+
+class FailingLLMProvider(StubLLMProvider):
+    async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
+        self.generate_calls += 1
+        raise LLMProviderError("provider failed")
 
 
 def _settings(limits: dict[str, dict[str, int]] | None = None) -> Settings:
@@ -184,6 +192,48 @@ def test_usage_service_tracks_tenant_quota_isolation(db_session) -> None:
     usage_b = service.get_usage(company_b.id, "demo")
     assert usage_a.ai_requests_count == 1
     assert usage_b.ai_requests_count == 1
+
+
+def test_credits_consume_monthly_before_purchased_and_keep_topups_across_reset(
+    db_session, monkeypatch
+) -> None:
+    company = _company(db_session, slug="credits")
+    service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 2}})),
+    )
+    service.add_purchased_credits(company.id, 3)
+
+    service.record_usage(company.id, "demo")
+    service.record_usage(company.id, "demo")
+    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 3
+
+    service.record_usage(company.id, "demo")
+    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 2
+
+    balance = db_session.get(TenantAICreditBalance, company.id)
+    balance.monthly_period = "2025-01"
+    reset = service.get_credit_balance(company.id, "demo")
+    assert reset["monthly_used"] == 0
+    assert reset["monthly_remaining"] == 2
+    assert reset["purchased_remaining"] == 2
+
+
+def test_purchased_credits_are_strictly_tenant_scoped(db_session) -> None:
+    company_a = _company(db_session, slug="credits-a")
+    company_b = _company(db_session, slug="credits-b")
+    service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 0}})),
+    )
+    service.add_purchased_credits(company_a.id, 1)
+    service.ensure_quota_available(company_a.id, "demo")
+    service.record_usage(company_a.id, "demo")
+
+    with pytest.raises(AIQuotaExceededError):
+        service.ensure_quota_available(company_a.id, "demo")
+    with pytest.raises(AIQuotaExceededError):
+        service.ensure_quota_available(company_b.id, "demo")
 
 
 def test_usage_rows_are_scoped_by_company_and_billing_period(db_session) -> None:
@@ -294,6 +344,31 @@ async def test_chat_service_records_usage_after_successful_send(db_session) -> N
     usage = usage_service.get_usage(company.id, "demo")
     assert usage.ai_requests_count == 1
     assert usage.llm_tokens_count == 15  # 10 input + 5 output (StubLLMProvider)
+
+
+async def test_chat_service_does_not_consume_purchased_credit_on_provider_failure(db_session) -> None:
+    company = _company(db_session, slug="failed-credit")
+    user = _user(db_session, company)
+    usage_service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 0}})),
+    )
+    usage_service.add_purchased_credits(company.id, 1)
+    conversations = ConversationService(db_session)
+    service = ChatService(
+        conversations,
+        RetrievalService(db_session),
+        FailingLLMProvider(),
+        usage_service=usage_service,
+    )
+    conversation = conversations.create(company.id, user.id, "Chat")
+
+    with pytest.raises(AIServiceUnavailableError):
+        await service.send(company.id, user.id, conversation.id, "hi", plan_code="demo")
+
+    balance = usage_service.get_credit_balance(company.id, "demo")
+    assert balance["purchased_remaining"] == 1
+    assert usage_service.get_usage(company.id, "demo").ai_requests_count == 0
 
 
 async def test_chat_service_stream_yields_safe_error_event_when_quota_exceeded(db_session) -> None:

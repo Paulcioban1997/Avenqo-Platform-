@@ -109,8 +109,9 @@ def compute_sales_summary(
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
     if product is not None:
+        product_field = "product_id" if "product_id" in reverse else "product_name"
         rows = tuple(
-            row for row in rows if str(_value(row, reverse, "product_id") or "") == product
+            row for row in rows if str(_value(row, reverse, product_field) or "") == product
         )
 
     revenue = 0.0
@@ -138,9 +139,15 @@ def compute_sales_trend(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     granularity: str = "month",
+    product: str | None = None,
 ) -> dict[str, object]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
+    if product is not None:
+        product_field = "product_id" if "product_id" in reverse else "product_name"
+        rows = tuple(
+            row for row in rows if str(_value(row, reverse, product_field) or "") == product
+        )
     revenue_by_period: dict[str, float] = defaultdict(float)
     orders_by_period: dict[str, set[object]] = defaultdict(set)
     row_count_by_period: dict[str, int] = defaultdict(int)
@@ -231,6 +238,108 @@ def compute_top_products(
             {"product_id": product_id, "value": round(value, 2)} for product_id, value in ranked
         ],
     }
+
+
+def compute_product_portfolio(
+    prepared: PreparedCompanyDataset,
+) -> list[dict[str, object]]:
+    """Aggregate safe product entities while reusing the shared sales formula."""
+
+    reverse = _reverse_mapping(prepared.canonical_columns)
+    entity_field = "product_id" if "product_id" in reverse else "product_name"
+    if entity_field not in reverse:
+        return []
+
+    by_product: dict[str, dict[str, object]] = {}
+    for row_index, row in enumerate(prepared.rows):
+        raw_entity = _value(row, reverse, entity_field)
+        if raw_entity is None:
+            continue
+        product_id = str(raw_entity)
+        product = by_product.setdefault(
+            product_id,
+            {
+                "product_id": product_id,
+                "name": None,
+                "category": None,
+                "quantity": 0.0 if "quantity" in reverse else None,
+                "customer_ids": set(),
+                "last_activity": None,
+                "latest_row_index": -1,
+                "stock_level": None,
+            },
+        )
+        name = _value(row, reverse, "product_name")
+        if name is not None:
+            product["name"] = str(name)
+        category = _value(row, reverse, "product_category")
+        if category is not None:
+            product["category"] = str(category)
+        quantity = _as_float(_value(row, reverse, "quantity"))
+        if quantity is not None and product["quantity"] is not None:
+            product["quantity"] = float(product["quantity"]) + quantity
+        customer_id = _value(row, reverse, "customer_id")
+        if customer_id is not None:
+            customer_ids = product["customer_ids"]
+            assert isinstance(customer_ids, set)
+            customer_ids.add(customer_id)
+        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        last_activity = product["last_activity"]
+        if timestamp is not None and (
+            last_activity is None or timestamp >= last_activity
+        ):
+            product["last_activity"] = timestamp
+            product["latest_row_index"] = row_index
+            stock = _as_float(_value(row, reverse, "inventory_level"))
+            if stock is not None:
+                product["stock_level"] = stock
+        elif timestamp is None and int(product["latest_row_index"]) < row_index:
+            product["latest_row_index"] = row_index
+            stock = _as_float(_value(row, reverse, "inventory_level"))
+            if stock is not None:
+                product["stock_level"] = stock
+
+    has_revenue = "total_amount" in reverse
+    has_unit_price = "unit_price" in reverse
+    result: list[dict[str, object]] = []
+    for product in by_product.values():
+        product_id = str(product["product_id"])
+        sales = compute_sales_summary(
+            prepared,
+            date_from=None,
+            date_to=None,
+            product=product_id,
+        )
+        quantity = product["quantity"]
+        revenue = float(sales["revenue"]) if has_revenue else None
+        average_price = (
+            round(revenue / float(quantity), 2)
+            if revenue is not None and quantity not in {None, 0, 0.0}
+            else None
+        )
+        if average_price is None and has_unit_price:
+            prices = [
+                price
+                for row in prepared.rows
+                if str(_value(row, reverse, entity_field) or "") == product_id
+                if (price := _as_float(_value(row, reverse, "unit_price"))) is not None
+            ]
+            average_price = round(sum(prices) / len(prices), 2) if prices else None
+        customer_ids = product.pop("customer_ids")
+        product.pop("latest_row_index")
+        assert isinstance(customer_ids, set)
+        product.update(
+            {
+                "revenue": revenue,
+                "orders": int(sales["orders"]),
+                "average_price": average_price,
+                "customer_reach": len(customer_ids) if "customer_id" in reverse else None,
+            }
+        )
+        if quantity is not None:
+            product["quantity"] = round(float(quantity), 2)
+        result.append(product)
+    return result
 
 
 def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, object]:

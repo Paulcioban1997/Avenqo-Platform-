@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
+from backend.app.ai.usage.service import AIUsageService
 from backend.app.models import BillingAccount, BillingInvoice, Company, StripeWebhookEvent
 from backend.app.services.stripe_gateway import BillingProvider
 from payments import PlanCode, get_plan
+from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
 
 
 class BillingConfigurationError(RuntimeError):
@@ -24,10 +26,17 @@ class BillingOperationError(ValueError):
 class BillingService:
     """Orchestre Stripe sans transmettre de logique de paiement aux modules IA."""
 
-    def __init__(self, session: Session, provider: BillingProvider, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: Session,
+        provider: BillingProvider,
+        settings: Settings,
+        usage_service: AIUsageService,
+    ) -> None:
         self._session = session
         self._provider = provider
         self._settings = settings
+        self._usage_service = usage_service
 
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
@@ -106,6 +115,37 @@ class BillingService:
             .order_by(BillingInvoice.issued_at.desc())
         ))
 
+    def list_credit_packs(self) -> list[dict[str, Any]]:
+        return [
+            {"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd}
+            for pack in AI_CREDIT_PACKS
+        ]
+
+    def get_credit_balance(self, company_id: UUID, plan_code: str) -> dict[str, Any]:
+        return self._usage_service.get_credit_balance(company_id, plan_code)
+
+    def create_credit_checkout(self, company: Company, pack_code: str) -> str:
+        account = self.get_account(company.id)
+        if account.status not in {"active", "trialing"}:
+            raise BillingOperationError("Un abonnement Avenqo actif est requis")
+        pack = self._credit_pack(pack_code)
+        if not account.stripe_customer_id:
+            raise BillingOperationError("Client Stripe introuvable pour cet abonnement")
+        metadata = {
+            "avenqo_kind": "ai_credit_pack",
+            "avenqo_company_id": str(company.id),
+            "avenqo_credit_pack": pack.code,
+            "avenqo_credits": str(pack.credits),
+        }
+        return self._provider.create_credit_checkout(
+            account.stripe_customer_id,
+            pack.credits,
+            pack.price_usd,
+            metadata,
+            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=success",
+            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=cancelled",
+        )
+
     def process_webhook(self, payload: bytes, signature: str) -> bool:
         if not self._settings.stripe_webhook_secret:
             raise BillingConfigurationError("STRIPE_WEBHOOK_SECRET n'est pas configuré")
@@ -124,6 +164,8 @@ class BillingService:
             self._sync_subscription(data)
         elif event_type.startswith("invoice."):
             self._sync_invoice(data)
+        elif event_type == "checkout.session.completed":
+            self._fulfill_credit_checkout(data)
         self._session.add(StripeWebhookEvent(
             stripe_event_id=event_id,
             event_type=event_type,
@@ -131,6 +173,38 @@ class BillingService:
         ))
         self._session.commit()
         return True
+
+    def _fulfill_credit_checkout(self, checkout: dict[str, Any]) -> None:
+        metadata = checkout.get("metadata") or {}
+        if metadata.get("avenqo_kind") != "ai_credit_pack":
+            return
+        if checkout.get("payment_status") != "paid":
+            raise BillingOperationError("Le paiement du pack de crédits n'est pas confirmé")
+        try:
+            company_id = UUID(str(metadata["avenqo_company_id"]))
+            pack_code = str(metadata["avenqo_credit_pack"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BillingOperationError("Métadonnées du pack de crédits invalides") from exc
+        account = self._session.scalar(
+            select(BillingAccount).where(BillingAccount.company_id == company_id)
+        )
+        if account is None or account.status not in {"active", "trialing"}:
+            raise BillingOperationError("Abonnement Avenqo inactif pour ce pack de crédits")
+        if str(checkout.get("customer") or "") != account.stripe_customer_id:
+            raise BillingOperationError("Client Stripe incompatible avec le tenant")
+        pack = self._credit_pack(pack_code)
+        if metadata.get("avenqo_credits") != str(pack.credits):
+            raise BillingOperationError("Quantité du pack de crédits invalide")
+        if checkout.get("currency") != "usd" or checkout.get("amount_total") != pack.price_usd * 100:
+            raise BillingOperationError("Montant du pack de crédits invalide")
+        self._usage_service.add_purchased_credits(company_id, pack.credits)
+
+    @staticmethod
+    def _credit_pack(code: str) -> AICreditPack:
+        try:
+            return get_ai_credit_pack(code)
+        except ValueError as exc:
+            raise BillingOperationError("Pack de crédits inconnu") from exc
 
     def _sync_subscription(self, subscription: dict[str, Any]) -> None:
         company_id = self._company_id(subscription)

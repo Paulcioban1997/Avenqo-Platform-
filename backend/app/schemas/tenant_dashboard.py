@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -28,10 +29,14 @@ class DashboardKPIResponse(BaseModel):
 
 
 class DashboardPriorityResponse(BaseModel):
+    id: str
+    type: str
     title: str
     explanation: str
     severity: str
     source_capability: str
+    evidence: dict[str, Any]
+    suggested_action: str
     action_route: str | None = None
 
 

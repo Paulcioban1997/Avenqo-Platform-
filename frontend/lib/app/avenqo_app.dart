@@ -21,6 +21,9 @@ import 'package:avenqo/pages/pricing_page.dart';
 import 'package:avenqo/pages/settings_page.dart';
 import 'package:avenqo/pages/sales_page.dart';
 import 'package:avenqo/pages/customers_page.dart';
+import 'package:avenqo/pages/products_page.dart';
+import 'package:avenqo/pages/recommendations_page.dart';
+import 'package:avenqo/pages/agents_page.dart';
 import 'package:avenqo/widgets/app_shell.dart';
 import 'package:avenqo/widgets/admin_shell.dart';
 import 'package:avenqo/features/admin/admin_dashboard_page.dart';
@@ -34,6 +37,7 @@ import 'package:avenqo/features/admin/admin_providers_page.dart';
 import 'package:avenqo/features/admin/admin_system_health_page.dart';
 import 'package:avenqo/features/admin/admin_support_page.dart';
 import 'package:avenqo/features/admin/admin_settings_page.dart';
+import 'package:avenqo/features/admin/admin_agents_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -134,6 +138,10 @@ class _AvenqoAppState extends State<AvenqoApp> {
             GoRoute(
               path: '/admin/companies',
               builder: (context, state) => AdminCompaniesPage(api: widget.auth.api),
+            ),
+            GoRoute(
+              path: '/admin/agents',
+              builder: (context, state) => const AdminAgentsPage(),
             ),
             GoRoute(
               path: '/admin/companies/:id',
@@ -271,9 +279,15 @@ List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) {
 Widget _protectedPage(String path, AuthController auth) {
   final companyId = auth.company?['id'];
   return switch (path) {
+    '/agents' => const AgentsPage(),
     '/dashboard' => DashboardPage(auth: auth),
     '/sales' => SalesPage(key: ValueKey('sales-$companyId'), api: auth.api),
     '/customers' => CustomersPage(key: ValueKey('customers-$companyId'), api: auth.api),
+    '/products' => ProductsPage(key: ValueKey('products-$companyId'), api: auth.api),
+    '/recommendations' => RecommendationsPage(
+      key: ValueKey('recommendations-$companyId'),
+      api: auth.api,
+    ),
     '/assistant' => AssistantPage(api: auth.api),
     '/support' => SupportPage(api: auth.api),
     '/team' => EmployeesPage(api: auth.api),

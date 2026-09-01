@@ -361,6 +361,30 @@ def test_exact_alias_mapping_company_b(phase26_environment) -> None:
     assert mapping["customer_comment"] == "review_text"
 
 
+def test_product_fields_are_automatically_mapped_without_user_configuration() -> None:
+    from shared.ai_engine.dataset_ingestion.column_mapper import SemanticColumnMapper
+
+    rows = [
+        {
+            "id_produit": "P1",
+            "product_name": "Coffee",
+            "categorie": "Drinks",
+            "stock_level": 8,
+        }
+    ]
+    mapping = {
+        item.original_column: item.suggested_field
+        for item in SemanticColumnMapper().suggest(tuple(rows[0]), rows)
+    }
+
+    assert mapping == {
+        "id_produit": "product_id",
+        "product_name": "product_name",
+        "categorie": "product_category",
+        "stock_level": "inventory_level",
+    }
+
+
 def test_ambiguous_column_triggers_review_required(phase26_environment) -> None:
     client, _, _ = phase26_environment
     response = _upload(client, "ambiguous.csv", AMBIGUOUS_CSV)

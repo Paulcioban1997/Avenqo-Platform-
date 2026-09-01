@@ -4,6 +4,8 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.ai.usage.policy import AIQuotaPolicy
+from backend.app.ai.usage.service import AIUsageService
 from backend.app.database import get_db
 from backend.app.services.billing_service import BillingService
 from backend.app.services.stripe_gateway import BillingProvider, StripeGateway
@@ -23,4 +25,5 @@ def get_billing_service(
     db: Session = Depends(get_db),
     provider: BillingProvider = Depends(get_billing_provider),
 ) -> BillingService:
-    return BillingService(db, provider, get_settings())
+    settings = get_settings()
+    return BillingService(db, provider, settings, AIUsageService(db, AIQuotaPolicy(settings)))

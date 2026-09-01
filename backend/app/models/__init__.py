@@ -2,7 +2,7 @@ from backend.app.models.account_token import AccountToken
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
-from backend.app.models.ai_usage import TenantAIUsage
+from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIUsage
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.auth_session import AuthSession
 from backend.app.models.base import (
@@ -71,6 +71,7 @@ __all__ = [
     "Prediction",
     "TimestampMixin",
     "StripeWebhookEvent",
+    "TenantAICreditBalance",
     "TenantAIUsage",
     "TrainingJob",
     "User",

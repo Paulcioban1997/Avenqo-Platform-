@@ -23,7 +23,10 @@ from backend.app.models import (
     ModelRegistry,
     TrainingJob,
 )
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
+from backend.app.services.tenant_products_service import TenantProductsService
+from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.main import create_application
 from shared.ai_engine.contracts import TenantContext
 
@@ -37,6 +40,13 @@ class _PreparedIngestion:
         if prepared.company_id != tenant.company_id:
             raise LookupError("Dataset not found")
         return prepared
+
+
+def _dashboard_service(session, prepared_by_id):
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared_by_id))
+    products = TenantProductsService(analytics)
+    recommendations = TenantRecommendationsService(analytics, products, None)
+    return TenantDashboardService(analytics, recommendations), recommendations
 
 
 def _prepared(company_id, dataset_id, rows, canonical_columns=None):
@@ -149,9 +159,10 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
                 {"date": "2026-08-28", "sale": "S2", "client": "C2", "amount": 50},
             ],
         )
-        service = TenantDashboardService(session, _PreparedIngestion({dataset_a.id: prepared}))
+        service, recommendations = _dashboard_service(session, {dataset_a.id: prepared})
 
         dashboard_a = service.build(TenantContext(company_a.id))
+        full_recommendations = recommendations.build(TenantContext(company_a.id))
         dashboard_b = service.build(TenantContext(company_b.id))
 
     kpis = {item["key"]: item for item in dashboard_a["kpis"]}
@@ -164,6 +175,20 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     assert kpis["average_order_value"]["value"] == 75
     assert kpis["revenue"]["previous_value"] == 0
     assert kpis["revenue"]["change_percent"] is None
+    assert dashboard_a["priorities"] == [
+        {
+            "id": item["id"],
+            "type": item["type"],
+            "title": item["title"],
+            "explanation": item["explanation"],
+            "severity": item["priority"],
+            "source_capability": item["source_capability"],
+            "evidence": item["evidence"],
+            "suggested_action": item["suggested_action"],
+            "action_route": item["action_route"],
+        }
+        for item in full_recommendations["recommendations"][:3]
+    ]
     assert dashboard_b["status"] == "no_data"
     assert all(not item["available"] for item in dashboard_b["kpis"])
 
@@ -235,7 +260,7 @@ def test_dashboard_reflects_partial_data_active_models_and_dataset_deletion(tmp_
         )
         _model(session, company, ready, "active_opportunity", active=True)
         _model(session, company, ready, "inactive_opportunity", active=False)
-        service = TenantDashboardService(session, _PreparedIngestion({ready.id: prepared}))
+        service, _ = _dashboard_service(session, {ready.id: prepared})
 
         dashboard = service.build(TenantContext(company.id))
 
@@ -267,7 +292,7 @@ def test_dashboard_handles_failed_and_unreadable_ready_datasets(tmp_path) -> Non
     with factory() as session:
         company = _company(session, "Failures", "USD")
         failed = _dataset(session, company, "failed.csv", DatasetStatus.FAILED)
-        service = TenantDashboardService(session, _PreparedIngestion({}))
+        service, _ = _dashboard_service(session, {})
 
         dashboard = service.build(TenantContext(company.id))
         assert dashboard["status"] == "error"

@@ -27,6 +27,10 @@ class CompanyDirectoryEntryResponse(BaseModel):
     plan_code: str
     subscription_status: str
     ai_requests_current_period: int
+    monthly_credits: int | None
+    monthly_credits_remaining: int | None
+    purchased_credits_remaining: int
+    total_credits_remaining: int | None
     has_connected_data_source: bool
 
 
@@ -40,6 +44,10 @@ class CompanyDetailResponse(BaseModel):
     cancel_at_period_end: bool
     current_period_end: datetime | None
     ai_requests_current_period: int
+    monthly_credits: int | None
+    monthly_credits_remaining: int | None
+    purchased_credits_remaining: int
+    total_credits_remaining: int | None
     users_count: int
     datasets_count: int
     trained_model_count: int

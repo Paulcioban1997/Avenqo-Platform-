@@ -85,6 +85,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Avenqo Admin'), findsNothing);
+    expect(find.text('Agents'), findsOneWidget);
   });
 
   testWidgets('un platform_admin voit l\'entrée Avenqo Admin dans sa navigation', (tester) async {
@@ -100,6 +101,11 @@ void main() {
     ));
     await tester.pump();
 
+    await tester.scrollUntilVisible(
+      find.text('Avenqo Admin'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Avenqo Admin'), findsOneWidget);
   });
 
@@ -117,5 +123,6 @@ void main() {
 
     expect(find.text('Avenqo Command Center'), findsOneWidget);
     expect(find.textContaining('PLATFORM'), findsOneWidget);
+    expect(find.text('Agents'), findsOneWidget);
   });
 }

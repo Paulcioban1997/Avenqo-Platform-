@@ -15,6 +15,7 @@ class AdminDestination {
 
 const adminDestinations = <AdminDestination>[
   AdminDestination(path: '/admin', label: 'Overview', icon: Icons.dashboard_outlined),
+  AdminDestination(path: '/admin/agents', label: 'Agents', icon: Icons.apps_outlined),
   AdminDestination(path: '/admin/companies', label: 'Companies', icon: Icons.apartment_outlined),
   AdminDestination(path: '/admin/subscriptions', label: 'Subscriptions', icon: Icons.workspace_premium_outlined),
   AdminDestination(path: '/admin/billing', label: 'Billing', icon: Icons.receipt_long_outlined),
@@ -28,8 +29,11 @@ const adminDestinations = <AdminDestination>[
 
 /// Localized labels for [adminDestinations], in the same order — used by
 /// [AdminShell] instead of the hardcoded English [AdminDestination.label].
-List<String> adminNavLabels(AdminStrings s) => [
+List<String> adminNavLabels(Translations translations) {
+  final s = translations.admin;
+  return [
       s.navOverview,
+  translations.agents.navLabel,
       s.navCompanies,
       s.navSubscriptions,
       s.navBilling,
@@ -40,4 +44,5 @@ List<String> adminNavLabels(AdminStrings s) => [
       s.navSupport,
       s.navSettings,
     ];
+}
 

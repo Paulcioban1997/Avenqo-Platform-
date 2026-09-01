@@ -42,12 +42,20 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
 
-    for expected in ("companies", "users", "billing_invoices", "audit_log_entries", "ai_conversations", "company_onboarding"):
+    for expected in (
+        "companies",
+        "users",
+        "billing_invoices",
+        "audit_log_entries",
+        "ai_conversations",
+        "company_onboarding",
+        "tenant_ai_credit_balances",
+    ):
         assert expected in tables
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0006_dataset_relationships"
+    assert current == "0007_tenant_ai_credit_balances"
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
@@ -94,8 +102,9 @@ def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:
     # une vraie base pré-Alembic ne l'aurait jamais eue. On l'exclut du
     # `create_all()` pour simuler fidèlement ce scénario et laisser la
     # migration 0003 la créer normalement via `upgrade(config, "head")`.
+    post_baseline_tables = {"company_onboarding", "tenant_ai_credit_balances"}
     tables_before_onboarding = [
-        table for table in Base.metadata.sorted_tables if table.name != "company_onboarding"
+        table for table in Base.metadata.sorted_tables if table.name not in post_baseline_tables
     ]
     Base.metadata.create_all(engine, tables=tables_before_onboarding)  # simule l'ancien comportement Phase 1-34
     inspector = inspect(engine)

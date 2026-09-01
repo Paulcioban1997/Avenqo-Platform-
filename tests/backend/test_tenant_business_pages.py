@@ -14,6 +14,8 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.tenant_business import (
     get_tenant_customers_service,
+    get_tenant_products_service,
+    get_tenant_recommendations_service,
     get_tenant_sales_service,
 )
 from backend.app.models import (
@@ -29,6 +31,8 @@ from backend.app.models import (
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import CustomerNotFound, TenantCustomersService
+from backend.app.services.tenant_products_service import ProductNotFound, TenantProductsService
+from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import InvalidSalesPeriod, TenantSalesService
 from backend.main import create_application
 from shared.ai_engine.contracts import TenantContext
@@ -53,6 +57,11 @@ class _PredictionService:
         self.calls.append((tenant, module_code, task_code, features))
         if task_code == "weekly_forecast":
             return {"result": {"forecast": [80.0, 90.0]}}
+        if task_code == "recommendation":
+            return {
+                "result": ["P2"] if features.get("customer_id") == "C1" else [],
+                "confidence": 0.7,
+            }
         customer_id = features.get("client")
         if task_code == "segmentation":
             return {"result": "loyal" if customer_id == "C1" else "new"}
@@ -179,6 +188,39 @@ def _services(session, prepared):
         TenantSalesService(session, analytics, predictions),
         TenantCustomersService(analytics, predictions),
         predictions,
+    )
+
+
+def _phase4d_services(session, prepared):
+    predictions = _PredictionService()
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared))
+    products = TenantProductsService(analytics)
+    recommendations = TenantRecommendationsService(analytics, products, predictions)
+    return products, recommendations, predictions
+
+
+def _product_prepared(company, dataset):
+    rows = [
+        {"date": "2026-07-20", "sale": "O0", "client": "C0", "product": "P1", "name": "Coffee", "category": "Drinks", "quantity": 2, "amount": 200, "stock": 8},
+        {"date": "2026-08-20", "sale": "O1", "client": "C1", "product": "P1", "name": "Coffee", "category": "Drinks", "quantity": 1, "amount": 50, "stock": 7},
+        {"date": "2026-08-25", "sale": "O2", "client": "C1", "product": "P2", "name": "Tea", "category": "Drinks", "quantity": 3, "amount": 90, "stock": 0},
+        {"date": "2026-08-28", "sale": "O3", "client": "C2", "product": "P2", "name": "Tea", "category": "Drinks", "quantity": 2, "amount": 60, "stock": 0},
+    ]
+    return _prepared(
+        company,
+        dataset,
+        rows,
+        columns={
+            "date": "order_timestamp",
+            "sale": "order_id",
+            "client": "customer_id",
+            "product": "product_id",
+            "name": "product_name",
+            "category": "product_category",
+            "quantity": "quantity",
+            "amount": "total_amount",
+            "stock": "inventory_level",
+        },
     )
 
 
@@ -375,3 +417,199 @@ def test_sales_and_customers_endpoints_are_tenant_derived_and_subscription_gated
     with TestClient(app) as client:
         blocked = client.get("/api/v1/customers/summary")
     assert blocked.status_code == 402
+
+
+def test_products_and_recommendations_endpoints_are_tenant_derived_and_subscription_gated(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'phase4d-api.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        active = _company(session, "Phase4D Active", "CAD")
+        inactive = _company(session, "Phase4D Inactive", "USD", subscription="inactive")
+
+    captured = []
+    products_payload = {
+        "status": "no_data",
+        "available": False,
+        "currency": "CAD",
+        "capabilities": [],
+        "summary": None,
+        "categories": [],
+        "trend": {"granularity": "month", "points": []},
+        "items": [],
+        "pagination": {"page": 1, "page_size": 25, "total": 0, "pages": 0},
+    }
+    recommendations_payload = {
+        "status": "no_data",
+        "currency": "CAD",
+        "generated_at": datetime.now(timezone.utc),
+        "recommendations": [],
+    }
+    app = create_application()
+
+    def override_db():
+        with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_tenant_context] = lambda: TenantContext(active.id)
+    app.dependency_overrides[get_tenant_products_service] = lambda: SimpleNamespace(
+        build=lambda tenant, **_kwargs: captured.append(("products", tenant)) or products_payload
+    )
+    app.dependency_overrides[get_tenant_recommendations_service] = lambda: SimpleNamespace(
+        build=lambda tenant: captured.append(("recommendations", tenant))
+        or recommendations_payload
+    )
+    with TestClient(app) as client:
+        products_response = client.get(f"/api/v1/products/summary?company_id={inactive.id}")
+        recommendations_response = client.get(
+            f"/api/v1/recommendations?company_id={inactive.id}"
+        )
+    assert products_response.status_code == 200
+    assert recommendations_response.status_code == 200
+    assert captured == [
+        ("products", TenantContext(active.id)),
+        ("recommendations", TenantContext(active.id)),
+    ]
+
+    app.dependency_overrides[get_tenant_context] = lambda: TenantContext(inactive.id)
+    with TestClient(app) as client:
+        blocked_products = client.get("/api/v1/products/summary")
+        blocked_recommendations = client.get("/api/v1/recommendations")
+    assert blocked_products.status_code == 402
+    assert blocked_recommendations.status_code == 402
+
+
+def test_products_reconcile_with_sales_and_expose_supported_metrics(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _product_prepared(company, dataset)
+    products, _recommendations, _ = _phase4d_services(session, prepared)
+    sales, _customers, _ = _services(session, prepared)
+
+    result = products.build(TenantContext(company.id), page_size=1)
+    sales_result = sales.build(TenantContext(company.id), period_key="year_to_date")
+
+    assert result["status"] == "ready"
+    assert result["currency"] == "CAD"
+    assert result["summary"] == {
+        "total_products": 2,
+        "active_products": 1,
+        "products_with_activity": 2,
+        "revenue": 400.0,
+        "units": 8.0,
+        "average_selling_price": 50.0,
+        "top_product_revenue_share": 62.5,
+        "out_of_stock_products": 1,
+    }
+    assert result["summary"]["revenue"] == sales_result["summary"]["revenue"]
+    assert result["categories"] == [
+        {
+            "category": "Drinks",
+            "product_count": 2,
+            "revenue": 400.0,
+            "units": 8.0,
+            "revenue_share": 100.0,
+        }
+    ]
+    assert result["pagination"]["pages"] == 2
+    assert result["trend"]["points"]
+
+
+def test_products_search_sort_filter_detail_and_tenant_isolation(business_environment):
+    session, company_a, company_b, dataset_a, prepared = business_environment
+    prepared[dataset_a.id] = _product_prepared(company_a, dataset_a)
+    products, _recommendations, _ = _phase4d_services(session, prepared)
+
+    searched = products.build(TenantContext(company_a.id), search="tea")
+    assert [item["product_id"] for item in searched["items"]] == ["P2"]
+    weak = products.build(TenantContext(company_a.id), performance="weak")
+    assert [item["product_id"] for item in weak["items"]] == ["P1"]
+    out = products.build(TenantContext(company_a.id), status="out_of_stock")
+    assert [item["product_id"] for item in out["items"]] == ["P2"]
+    detail = products.get_product(TenantContext(company_a.id), "P1")
+    assert detail["currency"] == "CAD"
+    assert detail["trend"]["points"]
+    with pytest.raises(ProductNotFound):
+        products.get_product(TenantContext(company_b.id), "P1")
+
+
+def test_products_missing_capabilities_remain_unavailable_or_none(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [{"article": "Coffee"}],
+        columns={"article": "product_name"},
+    )
+    products, _recommendations, _ = _phase4d_services(session, prepared)
+    result = products.build(TenantContext(company.id))
+    assert result["available"] is True
+    assert result["summary"]["revenue"] is None
+    assert result["summary"]["units"] is None
+    assert result["summary"]["out_of_stock_products"] is None
+    assert result["categories"] == []
+
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [{"amount": 10}],
+        columns={"amount": "total_amount"},
+    )
+    assert products.build(TenantContext(company.id))["available"] is False
+
+
+def test_recommendations_are_evidence_backed_ranked_deduplicated_and_have_no_fake_impact(
+    business_environment,
+):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _product_prepared(company, dataset)
+    _products, recommendations, _ = _phase4d_services(session, prepared)
+
+    result = recommendations.build(TenantContext(company.id))
+    items = result["recommendations"]
+
+    assert items
+    assert len({item["id"] for item in items}) == len(items)
+    assert all(item["evidence"] for item in items)
+    assert all(item["estimated_impact"] is None for item in items)
+    assert all(item["lifecycle"] == "active" for item in items)
+    priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
+    assert [priority_order[item["priority"]] for item in items] == sorted(
+        priority_order[item["priority"]] for item in items
+    )
+    assert "product_decline:P1" in {item["id"] for item in items}
+    assert "product_concentration:P1" in {item["id"] for item in items}
+
+
+def test_recommendations_only_consume_active_validated_same_dataset_model(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _product_prepared(company, dataset)
+    _model(session, company, dataset, "recommendation", "recommendation", active=False)
+    _products, recommendations, predictions = _phase4d_services(session, prepared)
+    result = recommendations.build(TenantContext(company.id))
+    assert "cross_sell_opportunity" not in {item["type"] for item in result["recommendations"]}
+    assert predictions.calls == []
+
+    _model(session, company, dataset, "recommendation", "recommendation", active=True)
+    result = recommendations.build(TenantContext(company.id))
+    model_item = next(item for item in result["recommendations"] if item["type"] == "cross_sell_opportunity")
+    assert model_item["source_model_version"] == "1"
+    assert model_item["estimated_impact"] is None
+    assert all(call[0].company_id == company.id for call in predictions.calls)
+
+
+def test_product_and_recommendation_outputs_invalidate_after_dataset_deletion(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _product_prepared(company, dataset)
+    products, recommendations, _ = _phase4d_services(session, prepared)
+    assert products.build(TenantContext(company.id))["available"] is True
+    assert recommendations.build(TenantContext(company.id))["recommendations"]
+
+    session.execute(delete(Dataset).where(Dataset.id == dataset.id))
+    session.commit()
+
+    assert products.build(TenantContext(company.id))["available"] is False
+    assert recommendations.build(TenantContext(company.id))["recommendations"] == []

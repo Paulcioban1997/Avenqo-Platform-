@@ -29,8 +29,13 @@ class AppDestination {
 /// Retourne [destination] avec son libellé/description traduits selon la
 /// langue active — la liste [appDestinations] elle-même reste un contenu
 /// fixe (chemins/icônes/tests unitaires), seule la présentation change.
-AppDestination localizeDestination(AppDestination destination, CompanyStrings t) {
+AppDestination localizeDestination(AppDestination destination, Translations translations) {
+  final t = translations.company;
   return switch (destination.path) {
+    '/agents' => destination.copyWith(
+      label: translations.agents.navLabel,
+      description: translations.agents.subtitle,
+    ),
     '/dashboard' => destination.copyWith(label: t.navOverviewLabel, description: t.navOverviewDescription),
     '/assistant' => destination.copyWith(label: t.navAssistantLabel, description: t.navAssistantDescription),
     '/sales' => destination.copyWith(label: t.navSalesLabel, description: t.navSalesDescription),
@@ -50,6 +55,12 @@ AppDestination localizeDestination(AppDestination destination, CompanyStrings t)
 }
 
 const appDestinations = <AppDestination>[
+  AppDestination(
+    path: '/agents',
+    label: 'Agents',
+    description: 'Specialized business capabilities in one workspace.',
+    icon: Icons.apps_outlined,
+  ),
   AppDestination(
     path: '/dashboard',
     label: 'Vue d’ensemble',

@@ -136,7 +136,7 @@ class _AdminNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labels = adminNavLabels(AvenqoLocaleScope.translationsOf(context).admin);
+    final labels = adminNavLabels(AvenqoLocaleScope.translationsOf(context));
     return SafeArea(
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(14, 20, 14, 12),

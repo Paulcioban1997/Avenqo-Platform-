@@ -4,14 +4,12 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from backend.app.ai.tools.business.analytics import compute_business_overview
-from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.tenant_analytics_service import (
     BUSINESS_METRIC_FIELDS,
     TenantAnalyticsService,
 )
+from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -30,8 +28,13 @@ class DashboardKPI:
 class TenantDashboardService:
     """Builds one tenant dashboard from READY Phase 4A outputs only."""
 
-    def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
-        self._analytics = TenantAnalyticsService(session, ingestion)
+    def __init__(
+        self,
+        analytics: TenantAnalyticsService,
+        recommendations: TenantRecommendationsService,
+    ) -> None:
+        self._analytics = analytics
+        self._recommendations = recommendations
 
     def build(self, tenant: TenantContext) -> dict[str, Any]:
         snapshot = self._analytics.load(tenant)
@@ -40,7 +43,9 @@ class TenantDashboardService:
             self._kpi(key, snapshot.prepared, snapshot.currency, period)
             for key in BUSINESS_METRIC_FIELDS
         ]
-        revenue = next(kpi for kpi in kpis if kpi.key == "revenue")
+        recommendations = self._recommendations.build_from_snapshot(tenant, snapshot)[
+            "recommendations"
+        ]
         return {
             "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
@@ -51,7 +56,20 @@ class TenantDashboardService:
             "period": period,
             "capabilities": sorted(snapshot.capabilities),
             "kpis": [asdict(kpi) for kpi in kpis],
-            "priorities": self._priorities(revenue),
+            "priorities": [
+                {
+                    "id": item["id"],
+                    "type": item["type"],
+                    "title": item["title"],
+                    "explanation": item["explanation"],
+                    "severity": item["priority"],
+                    "source_capability": item["source_capability"],
+                    "evidence": item["evidence"],
+                    "suggested_action": item["suggested_action"],
+                    "action_route": item["action_route"],
+                }
+                for item in recommendations[:3]
+            ],
             "connections": {
                 "total": len(snapshot.datasets),
                 "ready": snapshot.statuses.count("ready"),
@@ -78,22 +96,6 @@ class TenantDashboardService:
                 for model in snapshot.active_models[:5]
             ],
         }
-
-    @staticmethod
-    def _priorities(revenue: DashboardKPI) -> list[dict[str, str | None]]:
-        change = revenue.change_percent
-        if change is None or abs(change) < 10:
-            return []
-        declining = change < 0
-        return [
-            {
-                "title": "revenue_decline" if declining else "revenue_growth",
-                "explanation": "revenue_changed_materially",
-                "severity": "high" if declining else "medium",
-                "source_capability": "revenue",
-                "action_route": "/sales",
-            }
-        ]
 
     def _kpi(
         self,

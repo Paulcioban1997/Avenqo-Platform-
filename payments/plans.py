@@ -56,6 +56,22 @@ PLANS = PUBLIC_PLANS
 PLANS_BY_CODE = {plan.code: plan for plan in INTERNAL_COMPATIBILITY_PLANS}
 
 
+@dataclass(frozen=True, slots=True)
+class AICreditPack:
+    code: str
+    credits: int
+    price_usd: int
+
+
+AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
+    AICreditPack("starter", credits=5_000, price_usd=10),
+    AICreditPack("growth", credits=20_000, price_usd=29),
+    AICreditPack("scale", credits=50_000, price_usd=59),
+    AICreditPack("volume", credits=150_000, price_usd=149),
+)
+AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
+
+
 def get_plan(code: PlanCode | str) -> SubscriptionPlan:
     """Retourne l'offre correspondant Ã  son code stable."""
 
@@ -63,6 +79,13 @@ def get_plan(code: PlanCode | str) -> SubscriptionPlan:
         return PLANS_BY_CODE[PlanCode(code)]
     except (KeyError, ValueError) as exc:
         raise ValueError(f"Offre Avenqo inconnue : {code}") from exc
+
+
+def get_ai_credit_pack(code: str) -> AICreditPack:
+    try:
+        return AI_CREDIT_PACKS_BY_CODE[code]
+    except KeyError as exc:
+        raise ValueError(f"Pack de crédits Avenqo inconnu : {code}") from exc
 
 @dataclass(frozen=True, slots=True)
 class DataImportLimits:

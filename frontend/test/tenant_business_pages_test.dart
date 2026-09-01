@@ -6,6 +6,8 @@ import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/pages/customers_page.dart';
+import 'package:avenqo/pages/products_page.dart';
+import 'package:avenqo/pages/recommendations_page.dart';
 import 'package:avenqo/pages/sales_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,8 +26,10 @@ class _Tokens implements TokenStore {
 }
 
 class _LocaleStore implements LocalePreferenceStore {
+  _LocaleStore([this.code = 'en']);
+  final String code;
   @override
-  Future<String?> read() async => 'en';
+  Future<String?> read() async => code;
   @override
   Future<void> write(String code) async {}
 }
@@ -36,8 +40,8 @@ ApiClient _api() => ApiClient(
   baseUrl: 'https://avenqo.test/api/v1',
 );
 
-Future<Widget> _wrap(Widget child, {bool dark = false}) async {
-  final locale = LocaleController(store: _LocaleStore());
+Future<Widget> _wrap(Widget child, {bool dark = false, String localeCode = 'en'}) async {
+  final locale = LocaleController(store: _LocaleStore(localeCode));
   await locale.initialize();
   return AvenqoLocaleScope(
     controller: locale,
@@ -128,6 +132,83 @@ Map<String, dynamic> _customers({
         ]
       : [],
   'pagination': {'page': page, 'page_size': 1, 'total': 2, 'pages': 2},
+};
+
+Map<String, dynamic> _products({
+  String status = 'ready',
+  bool available = true,
+  int page = 1,
+}) => {
+  'status': status,
+  'available': available,
+  'currency': 'CAD',
+  'capabilities': ['products', 'revenue'],
+  'summary': available
+      ? {
+          'total_products': 2,
+          'active_products': 1,
+          'products_with_activity': 2,
+          'revenue': 400.0,
+          'units': 8.0,
+          'average_selling_price': 50.0,
+          'top_product_revenue_share': 62.5,
+          'out_of_stock_products': 1,
+        }
+      : null,
+  'categories': available
+      ? [
+          {'category': 'Drinks', 'product_count': 2, 'revenue': 400.0, 'units': 8.0, 'revenue_share': 100.0},
+        ]
+      : [],
+  'trend': {'granularity': 'day', 'points': []},
+  'items': available
+      ? [
+          {
+            'product_id': page == 1 ? 'P1' : 'P2',
+            'name': page == 1 ? 'Coffee' : 'Tea',
+            'category': 'Drinks',
+            'revenue': 250.0,
+            'quantity': 3.0,
+            'average_price': 83.33,
+            'last_activity': '2026-08-28T00:00:00',
+            'performance': 'weak',
+          },
+        ]
+      : [],
+  'pagination': {'page': page, 'page_size': 1, 'total': 2, 'pages': 2},
+};
+
+Map<String, dynamic> _recommendations({String status = 'ready', bool empty = false}) => {
+  'status': status,
+  'currency': 'CAD',
+  'generated_at': '2026-08-28T00:00:00Z',
+  'recommendations': empty
+      ? []
+      : [
+          {
+            'id': 'product_decline:P1',
+            'type': 'product_decline',
+            'title': 'product_decline',
+            'explanation': 'product_revenue_changed',
+            'priority': 'high',
+            'source_capability': 'products',
+            'evidence': {
+              'product_id': 'P1',
+              'product_name': 'Coffee',
+              'current': 50.0,
+              'comparison': 200.0,
+              'change_percent': -75.0,
+            },
+            'affected_entity': 'P1',
+            'confidence': 1.0,
+            'estimated_impact': null,
+            'suggested_action': 'review_product_performance',
+            'action_route': '/products',
+            'generated_at': '2026-08-28T00:00:00Z',
+            'source_model_version': null,
+            'lifecycle': 'active',
+          },
+        ],
 };
 
 void main() {
@@ -334,5 +415,140 @@ void main() {
       find.descendant(of: find.byType(DataTable), matching: find.text('C2')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Products loads supported KPIs and partial data in French dark mode', (tester) async {
+    final completer = Completer<Map<String, dynamic>>();
+    await tester.pumpWidget(
+      await _wrap(
+        ProductsPage(api: _api(), loader: (_, _, _, _, _) => completer.future),
+        dark: true,
+        localeCode: 'fr',
+      ),
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    completer.complete(_products(status: 'partial_ready'));
+    await tester.pumpAndSettle();
+    expect(find.text('Produits au total'), findsOneWidget);
+    expect(find.textContaining('encore en traitement'), findsOneWidget);
+    expect(find.text('Coffee'), findsOneWidget);
+    expect(find.textContaining('400'), findsOneWidget);
+  });
+
+  testWidgets('Products sends search, filter, sort and pagination to loader', (tester) async {
+    final calls = <(int, String, String?, String?, String)>[];
+    await tester.pumpWidget(
+      await _wrap(
+        ProductsPage(
+          api: _api(),
+          loader: (page, search, category, performance, sort) async {
+            calls.add((page, search, category, performance, sort));
+            return _products(page: page);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Tea');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    final weakSegment = find.descendant(
+      of: find.byType(SegmentedButton<String?>),
+      matching: find.text('Weak'),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(weakSegment);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byIcon(Icons.chevron_right));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.chevron_right));
+    await tester.pumpAndSettle();
+    expect(calls.last, (2, 'Tea', null, 'weak', 'revenue'));
+    expect(
+      find.descendant(of: find.byType(DataTable), matching: find.text('Tea')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Products opens tenant detail and handles unavailable and retry states', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      await _wrap(
+        ProductsPage(
+          api: _api(),
+          loader: (_, _, _, _, _) async {
+            calls += 1;
+            if (calls == 1) throw StateError('private');
+            return _products();
+          },
+          detailLoader: (id) async => {..._products()['items'][0], 'currency': 'CAD'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('private'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Coffee'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Coffee'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      await _wrap(ProductsPage(key: const ValueKey('none'), api: _api(), loader: (_, _, _, _, _) async => _products(available: false))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('unavailable'), findsOneWidget);
+  });
+
+  testWidgets('Recommendations localizes priority, evidence and routed action', (tester) async {
+    String? route;
+    await tester.pumpWidget(
+      await _wrap(
+        RecommendationsPage(
+          api: _api(),
+          loader: () async => _recommendations(status: 'partial_ready'),
+          onNavigate: (value) => route = value,
+        ),
+        dark: true,
+        localeCode: 'fr',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Les revenus de ce produit diminuent'), findsOneWidget);
+    expect(find.textContaining('Coffee : 50.0 contre 200.0'), findsOneWidget);
+    expect(find.textContaining('Priorité: high'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_forward));
+    expect(route, '/products');
+  });
+
+  testWidgets('Recommendations shows processing, empty and retry states', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      await _wrap(
+        RecommendationsPage(
+          api: _api(),
+          loader: () async {
+            calls += 1;
+            if (calls == 1) throw StateError('private');
+            return _recommendations(status: 'processing', empty: true);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Analyzing'), findsOneWidget);
+
+    await tester.pumpWidget(
+      await _wrap(RecommendationsPage(key: const ValueKey('empty'), api: _api(), loader: () async => _recommendations(empty: true))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No evidence-backed'), findsOneWidget);
   });
 }

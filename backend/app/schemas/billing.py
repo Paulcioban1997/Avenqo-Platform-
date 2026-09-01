@@ -25,6 +25,25 @@ class RedirectResponse(BaseModel):
     url: str
 
 
+class CreditPackResponse(BaseModel):
+    code: str
+    credits: int
+    price_usd: int
+
+
+class CreditPackCheckoutRequest(BaseModel):
+    pack_code: str = Field(min_length=1, max_length=64)
+
+
+class AICreditBalanceResponse(BaseModel):
+    billing_period: str
+    monthly_included: int | None
+    monthly_used: int
+    monthly_remaining: int | None
+    purchased_remaining: int
+    total_remaining: int | None
+
+
 class SubscriptionResponse(BaseModel):
     plan_code: str
     status: str

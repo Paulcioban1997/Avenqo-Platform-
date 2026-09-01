@@ -24,7 +24,18 @@ CANONICAL_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "product_id": (
         "product_id", "item_id", "sku", "product_code", "article_id",
-        "item_code", "product_sku",
+        "item_code", "product_sku", "id_produit",
+    ),
+    "product_name": (
+        "product", "product_name", "item_name", "article", "produit",
+    ),
+    "product_category": (
+        "category", "product_category", "item_category", "categorie",
+        "categorie_produit",
+    ),
+    "inventory_level": (
+        "stock", "stock_level", "inventory", "inventory_level",
+        "quantity_in_stock", "stock_quantity",
     ),
     "order_timestamp": (
         "date", "order_date", "created_at", "timestamp", "datetime",
@@ -60,6 +71,9 @@ CANONICAL_FIELD_SEMANTIC_TYPE: dict[str, tuple[SemanticType, ...]] = {
     "customer_id": (SemanticType.IDENTIFIER,),
     "order_id": (SemanticType.IDENTIFIER,),
     "product_id": (SemanticType.IDENTIFIER,),
+    "product_name": (SemanticType.TEXT, SemanticType.CATEGORICAL),
+    "product_category": (SemanticType.TEXT, SemanticType.CATEGORICAL),
+    "inventory_level": (SemanticType.INTEGER, SemanticType.FLOAT),
     "order_timestamp": (SemanticType.DATETIME,),
     "quantity": (SemanticType.INTEGER, SemanticType.FLOAT),
     "unit_price": (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER),

@@ -18,7 +18,10 @@ class BusinessPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final t = AvenqoLocaleScope.translationsOf(context).company;
-    final localized = localizeDestination(destination, t);
+    final localized = localizeDestination(
+      destination,
+      AvenqoLocaleScope.translationsOf(context),
+    );
     final content = _contentFor(destination.path, t) ??
         (t.businessDefaultTitle, t.businessDefaultDescription);
     return ListView(

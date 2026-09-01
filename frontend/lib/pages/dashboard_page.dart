@@ -435,7 +435,25 @@ class _PriorityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final declining = priority['title'] == 'revenue_decline';
+    final phase4d = AvenqoLocaleScope.translationsOf(context).phase4d;
+    final type = priority['type']?.toString() ?? priority['title']?.toString() ?? '';
+    final declining = type == 'revenue_decline' || type == 'product_decline';
+    final title = switch (type) {
+      'revenue_decline' => strings.revenueDeclineTitle,
+      'revenue_growth' => strings.revenueGrowthTitle,
+      'product_decline' => phase4d.productDeclineTitle,
+      'product_growth' => phase4d.productGrowthTitle,
+      'product_concentration' => phase4d.productConcentrationTitle,
+      'cross_sell_opportunity' => phase4d.crossSellOpportunityTitle,
+      _ => strings.prioritiesTitle,
+    };
+    final explanation = switch (type) {
+      'revenue_decline' || 'revenue_growth' => strings.revenueChangedExplanation,
+      'product_decline' || 'product_growth' => phase4d.productRevenueChangedExplanation,
+      'product_concentration' => phase4d.productConcentrationExplanation,
+      'cross_sell_opportunity' => phase4d.crossSellOpportunityExplanation,
+      _ => strings.revenueChangedExplanation,
+    };
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(
@@ -443,10 +461,10 @@ class _PriorityRow extends StatelessWidget {
         color: declining ? const Color(0xFFD1414B) : const Color(0xFF1B9E5A),
       ),
       title: Text(
-        declining ? strings.revenueDeclineTitle : strings.revenueGrowthTitle,
+        title,
         style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
       ),
-      subtitle: Text(strings.revenueChangedExplanation, style: TextStyle(color: colors.muted)),
+      subtitle: Text(explanation, style: TextStyle(color: colors.muted)),
     );
   }
 }

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -40,5 +40,26 @@ class TenantAIUsage(Base, TimestampMixin):
     llm_tokens_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tool_calls_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     predictive_requests_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    company: Mapped["Company"] = relationship()
+
+
+class TenantAICreditBalance(Base, TimestampMixin):
+    """Crédits Avenqo du tenant; seul l'inclus suit le cycle mensuel."""
+
+    __tablename__ = "tenant_ai_credit_balances"
+    __table_args__ = (
+        CheckConstraint("monthly_used >= 0", name="ck_ai_credit_monthly_used_nonnegative"),
+        CheckConstraint("purchased_balance >= 0", name="ck_ai_credit_purchased_nonnegative"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    monthly_period: Mapped[str] = mapped_column(String(7), nullable=False)
+    monthly_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    purchased_balance: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     company: Mapped["Company"] = relationship()

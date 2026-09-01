@@ -7,6 +7,8 @@ from backend.app.dependencies.datasets import get_company_dataset_ingestion_serv
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import TenantCustomersService
+from backend.app.services.tenant_products_service import TenantProductsService
+from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import TenantSalesService
 from shared.ai_engine.prediction.service import PredictionService
 
@@ -31,3 +33,17 @@ def get_tenant_customers_service(
     prediction_service: PredictionService = Depends(get_prediction_service),
 ) -> TenantCustomersService:
     return TenantCustomersService(analytics, prediction_service)
+
+
+def get_tenant_products_service(
+    analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
+) -> TenantProductsService:
+    return TenantProductsService(analytics)
+
+
+def get_tenant_recommendations_service(
+    analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
+    products: TenantProductsService = Depends(get_tenant_products_service),
+    prediction_service: PredictionService = Depends(get_prediction_service),
+) -> TenantRecommendationsService:
+    return TenantRecommendationsService(analytics, products, prediction_service)

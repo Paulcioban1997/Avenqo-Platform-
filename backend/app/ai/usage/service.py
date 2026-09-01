@@ -22,7 +22,7 @@ from backend.app.ai.usage.policy import (
     MONTHLY_TOOL_CALLS,
     AIQuotaPolicy,
 )
-from backend.app.models.ai_usage import TenantAIUsage
+from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIUsage
 from backend.app.models.enterprise_override import EnterpriseOverride
 
 _DEFAULT_PLAN = "demo"
@@ -69,9 +69,61 @@ class AIUsageService:
         `AIQuotaExceededError`, un message sûr et générique.
         """
 
-        usage = self._get_or_create(company_id, plan_code)
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
-        if limit is not None and usage.ai_requests_count >= limit:
+        if limit is None:
+            return
+        credits = self._get_or_create_credits(company_id)
+        if credits.monthly_used >= limit and credits.purchased_balance <= 0:
+            raise AIQuotaExceededError("Your current Avenqo AI usage limit has been reached.")
+
+    def get_credit_balance(self, company_id: UUID, plan_code: str | None) -> dict[str, int | str | None]:
+        credits = self._get_or_create_credits(company_id)
+        included = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
+        monthly_remaining = None if included is None else max(included - credits.monthly_used, 0)
+        total = None if monthly_remaining is None else monthly_remaining + credits.purchased_balance
+        return {
+            "billing_period": credits.monthly_period,
+            "monthly_included": included,
+            "monthly_used": credits.monthly_used,
+            "monthly_remaining": monthly_remaining,
+            "purchased_remaining": credits.purchased_balance,
+            "total_remaining": total,
+        }
+
+    def add_purchased_credits(self, company_id: UUID, credits: int) -> TenantAICreditBalance:
+        if credits <= 0:
+            raise ValueError("Credit amount must be positive")
+        balance = self._get_or_create_credits(company_id)
+        balance.purchased_balance += credits
+        self._db.flush()
+        return balance
+
+    def _get_or_create_credits(self, company_id: UUID) -> TenantAICreditBalance:
+        period = self.current_billing_period()
+        balance = self._db.scalar(
+            select(TenantAICreditBalance)
+            .where(TenantAICreditBalance.company_id == company_id)
+            .with_for_update()
+        )
+        if balance is None:
+            balance = TenantAICreditBalance(company_id=company_id, monthly_period=period)
+            self._db.add(balance)
+            self._db.flush()
+        elif balance.monthly_period != period:
+            balance.monthly_period = period
+            balance.monthly_used = 0
+        return balance
+
+    def _consume_credit(self, company_id: UUID, plan_code: str | None) -> None:
+        included = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
+        if included is None:
+            return
+        balance = self._get_or_create_credits(company_id)
+        if balance.monthly_used < included:
+            balance.monthly_used += 1
+        elif balance.purchased_balance > 0:
+            balance.purchased_balance -= 1
+        else:
             raise AIQuotaExceededError("Your current Avenqo AI usage limit has been reached.")
 
     def limit_for(self, company_id: UUID, plan_code: str | None, metric: str) -> int | None:
@@ -97,6 +149,7 @@ class AIUsageService:
     ) -> TenantAIUsage:
         """Incrémente les compteurs APRÈS un appel IA réussi."""
 
+        self._consume_credit(company_id, plan_code)
         usage = self._get_or_create(company_id, plan_code)
         usage.ai_requests_count += 1
         usage.llm_tokens_count += max(tokens, 0)

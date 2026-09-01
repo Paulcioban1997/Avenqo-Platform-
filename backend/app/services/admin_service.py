@@ -52,6 +52,10 @@ class CompanyDirectoryEntry:
     plan_code: str
     subscription_status: str
     ai_requests_current_period: int
+    monthly_credits: int | None
+    monthly_credits_remaining: int | None
+    purchased_credits_remaining: int
+    total_credits_remaining: int | None
     has_connected_data_source: bool
 
 
@@ -66,6 +70,10 @@ class CompanyDetail:
     cancel_at_period_end: bool
     current_period_end: datetime | None
     ai_requests_current_period: int
+    monthly_credits: int | None
+    monthly_credits_remaining: int | None
+    purchased_credits_remaining: int
+    total_credits_remaining: int | None
     users_count: int
     datasets_count: int
     trained_model_count: int
@@ -124,6 +132,9 @@ class AdminService:
                 select(BillingAccount).where(BillingAccount.company_id == company.id)
             )
             usage = self._usage_service.get_usage(company.id, company.subscription_plan)
+            credit_balance = self._usage_service.get_credit_balance(
+                company.id, company.subscription_plan
+            )
             has_dataset = self._db.scalar(
                 select(Dataset).where(Dataset.company_id == company.id).limit(1)
             )
@@ -136,6 +147,10 @@ class AdminService:
                     plan_code=company.subscription_plan,
                     subscription_status=account.status if account else "inactive",
                     ai_requests_current_period=usage.ai_requests_count,
+                    monthly_credits=credit_balance["monthly_included"],
+                    monthly_credits_remaining=credit_balance["monthly_remaining"],
+                    purchased_credits_remaining=int(credit_balance["purchased_remaining"]),
+                    total_credits_remaining=credit_balance["total_remaining"],
                     has_connected_data_source=has_dataset is not None,
                 )
             )
@@ -147,6 +162,7 @@ class AdminService:
             return None
         account = self._db.scalar(select(BillingAccount).where(BillingAccount.company_id == company_id))
         usage = self._usage_service.get_usage(company_id, company.subscription_plan)
+        credits = self._usage_service.get_credit_balance(company_id, company.subscription_plan)
         users_count = self._db.scalar(
             select(func.count()).select_from(User).where(User.company_id == company_id)
         ) or 0
@@ -169,6 +185,10 @@ class AdminService:
             cancel_at_period_end=account.cancel_at_period_end if account else False,
             current_period_end=account.current_period_end if account else None,
             ai_requests_current_period=usage.ai_requests_count,
+            monthly_credits=credits["monthly_included"],
+            monthly_credits_remaining=credits["monthly_remaining"],
+            purchased_credits_remaining=int(credits["purchased_remaining"]),
+            total_credits_remaining=credits["total_remaining"],
             users_count=int(users_count),
             datasets_count=int(datasets_count),
             trained_model_count=int(trained_model_count),

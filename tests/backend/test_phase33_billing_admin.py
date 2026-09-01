@@ -36,6 +36,7 @@ from backend.app.models import (
     EnterpriseOverride,
     User,
     UserRole,
+    TenantAICreditBalance,
 )
 from backend.app.services.audit_log_service import AuditLogService
 from backend.main import create_application
@@ -205,6 +206,10 @@ async def test_get_billing_status_tool_reports_own_plan_and_quota_state(db_sessi
 @pytest.fixture
 def admin_client(db_session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AUTH_JWT_SECRET", "a" * 32)
+    monkeypatch.setenv(
+        "AI_QUOTA_LIMITS",
+        '{"professional":{"monthly_ai_requests":1000},"enterprise":{"monthly_ai_requests":5000}}',
+    )
     get_settings.cache_clear()
     app = create_application()
 
@@ -250,7 +255,17 @@ def test_tenant_owner_is_denied_admin_access(db_session, admin_client: TestClien
 
 def test_platform_admin_can_view_dashboard_and_company_directory(db_session, admin_client: TestClient) -> None:
     company = _company(db_session, slug="admin-view-co", plan="professional")
+    current_period = AIUsageService(
+        db_session,
+        AIQuotaPolicy(Settings(AUTH_JWT_SECRET="a" * 32)),
+    ).current_billing_period()
     db_session.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
+    db_session.add(TenantAICreditBalance(
+        company_id=company.id,
+        monthly_period=current_period,
+        monthly_used=250,
+        purchased_balance=500,
+    ))
     db_session.commit()
     admin_company = _company(db_session, slug="avenqo-hq")
     admin_user = _user(db_session, admin_company, platform_admin=True)
@@ -267,6 +282,11 @@ def test_platform_admin_can_view_dashboard_and_company_directory(db_session, adm
     assert directory.status_code == 200
     names = {entry["name"] for entry in directory.json()}
     assert "Acme" in names
+    company_entry = next(entry for entry in directory.json() if entry["id"] == str(company.id))
+    assert company_entry["monthly_credits"] == 1000
+    assert company_entry["monthly_credits_remaining"] == 750
+    assert company_entry["purchased_credits_remaining"] == 500
+    assert company_entry["total_credits_remaining"] == 1250
 
 
 def test_platform_admin_can_set_enterprise_override_and_it_is_audited(db_session, admin_client: TestClient) -> None:

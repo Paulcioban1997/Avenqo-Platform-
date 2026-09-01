@@ -21,6 +21,9 @@ class Translations {
     required this.admin,
     required this.onboarding,
     required this.company,
+    required this.phase4d,
+    required this.phase4e,
+    required this.agents,
   });
 
   factory Translations.fromJson(Map<String, dynamic> json) {
@@ -64,6 +67,15 @@ class Translations {
       company: json['company'] != null
           ? CompanyStrings.fromJson(json['company'] as Map<String, dynamic>)
           : CompanyStrings.fallback(),
+        phase4d: json['phase4d'] != null
+          ? Phase4dStrings.fromJson(json['phase4d'] as Map<String, dynamic>)
+          : Phase4dStrings.fallback(),
+        phase4e: json['phase4e'] != null
+          ? Phase4eStrings.fromJson(json['phase4e'] as Map<String, dynamic>)
+          : Phase4eStrings.fallback(),
+        agents: json['agents'] != null
+          ? AgentStrings.fromJson(json['agents'] as Map<String, dynamic>)
+          : AgentStrings.fallback(),
     );
   }
 
@@ -86,6 +98,326 @@ class Translations {
   final AdminStrings admin;
   final OnboardingStrings onboarding;
   final CompanyStrings company;
+  final Phase4dStrings phase4d;
+  final Phase4eStrings phase4e;
+  final AgentStrings agents;
+}
+
+class AgentStrings {
+  const AgentStrings(this.values);
+
+  factory AgentStrings.fromJson(Map<String, dynamic> json) => AgentStrings(
+        json.map((key, value) => MapEntry(key, value as String)),
+      );
+
+  factory AgentStrings.fallback() => const AgentStrings({
+        'navLabel': 'Agents',
+        'title': 'Avenqo Agents',
+        'subtitle': 'Specialized business capabilities, connected in one workspace.',
+        'availableNow': 'Available now',
+        'comingSoon': 'Coming Soon',
+        'openAgent': 'Open agent',
+        'adminTitle': 'Agent Catalog',
+        'adminSubtitle': 'Platform capabilities and their current availability.',
+        'availableCount': 'Available agents',
+        'comingSoonCount': 'Coming Soon agents',
+        'retailName': 'Retail Intelligence',
+        'retailDescription': 'Operate sales, customers, products, recommendations, and retail analytics.',
+        'marketingName': 'Marketing AI',
+        'marketingDescription': 'Prepare campaigns, audiences, and measurable growth actions.',
+        'crmName': 'CRM AI',
+        'crmDescription': 'Prioritize relationships, opportunities, and next best actions.',
+        'hrName': 'HR AI',
+        'hrDescription': 'Support people operations, workforce insights, and employee workflows.',
+        'accountingName': 'Accounting AI',
+        'accountingDescription': 'Accelerate financial operations, controls, and reporting workflows.',
+        'ocrName': 'OCR AI',
+        'ocrDescription': 'Turn business documents into structured, usable information.',
+        'voiceName': 'Voice AI',
+        'voiceDescription': 'Prepare intelligent voice interactions connected to business context.',
+        'mediaName': 'Media AI',
+        'mediaDescription': 'Create, organize, and manage business media workflows.',
+        'legalName': 'Legal AI',
+        'legalDescription': 'Support contract analysis and controlled legal-document workflows.',
+        'appointmentsName': 'Appointments AI',
+        'appointmentsDescription': 'Coordinate bookings and availability across service-based businesses.',
+        'workflowName': 'Workflow Automation',
+        'workflowDescription': 'Connect repeatable tasks, approvals, and business processes.',
+      });
+
+  final Map<String, String> values;
+
+  String value(String key) => values[key] ?? AgentStrings.fallback().values[key] ?? key;
+  String get navLabel => value('navLabel');
+  String get title => value('title');
+  String get subtitle => value('subtitle');
+  String get availableNow => value('availableNow');
+  String get comingSoon => value('comingSoon');
+  String get openAgent => value('openAgent');
+  String get adminTitle => value('adminTitle');
+  String get adminSubtitle => value('adminSubtitle');
+  String get availableCount => value('availableCount');
+  String get comingSoonCount => value('comingSoonCount');
+}
+
+class Phase4eStrings {
+  const Phase4eStrings({
+    required this.creditsTitle,
+    required this.creditsSubtitle,
+    required this.monthlyAllowance,
+    required this.monthlyRemaining,
+    required this.purchasedRemaining,
+    required this.totalRemaining,
+    required this.billingPeriod,
+    required this.monthlyProgress,
+    required this.customAllowance,
+    required this.resetExplanation,
+    required this.packsTitle,
+    required this.packsSubtitle,
+    required this.creditsUnit,
+    required this.purchase,
+    required this.purchaseRequiresActive,
+    required this.priceUsd,
+    required this.adminSubtitle,
+    required this.company,
+    required this.plan,
+    required this.subscription,
+    required this.aiUsage,
+    required this.noCompanies,
+  });
+
+  factory Phase4eStrings.fromJson(Map<String, dynamic> json) => Phase4eStrings(
+        creditsTitle: json['creditsTitle'] as String,
+        creditsSubtitle: json['creditsSubtitle'] as String,
+        monthlyAllowance: json['monthlyAllowance'] as String,
+        monthlyRemaining: json['monthlyRemaining'] as String,
+        purchasedRemaining: json['purchasedRemaining'] as String,
+        totalRemaining: json['totalRemaining'] as String,
+        billingPeriod: json['billingPeriod'] as String,
+        monthlyProgress: json['monthlyProgress'] as String,
+        customAllowance: json['customAllowance'] as String,
+        resetExplanation: json['resetExplanation'] as String,
+        packsTitle: json['packsTitle'] as String,
+        packsSubtitle: json['packsSubtitle'] as String,
+        creditsUnit: json['creditsUnit'] as String,
+        purchase: json['purchase'] as String,
+        purchaseRequiresActive: json['purchaseRequiresActive'] as String,
+        priceUsd: json['priceUsd'] as String,
+        adminSubtitle: json['adminSubtitle'] as String,
+        company: json['company'] as String,
+        plan: json['plan'] as String,
+        subscription: json['subscription'] as String,
+        aiUsage: json['aiUsage'] as String,
+        noCompanies: json['noCompanies'] as String,
+      );
+
+  factory Phase4eStrings.fallback() => const Phase4eStrings(
+        creditsTitle: 'AI credits',
+        creditsSubtitle: 'Your monthly allowance and purchased credit balance.',
+        monthlyAllowance: 'Monthly allowance',
+        monthlyRemaining: 'Monthly remaining',
+        purchasedRemaining: 'Purchased remaining',
+        totalRemaining: 'Total remaining',
+        billingPeriod: 'Billing period',
+        monthlyProgress: '{used} of {included} credits used this period',
+        customAllowance: 'Contractual / custom',
+        resetExplanation: 'Monthly credits reset each billing period. Purchased credits carry over.',
+        packsTitle: 'Add AI credits',
+        packsSubtitle: 'One-time credit packs, fulfilled securely through Stripe.',
+        creditsUnit: 'credits',
+        purchase: 'Purchase',
+        purchaseRequiresActive: 'An active or trialing subscription is required to purchase credit packs.',
+        priceUsd: '\${price} USD',
+        adminSubtitle: 'Tenant-scoped balances and logical AI usage across Avenqo.',
+        company: 'Company',
+        plan: 'Plan',
+        subscription: 'Subscription',
+        aiUsage: 'AI usage',
+        noCompanies: 'No company credit data is available.',
+      );
+
+  final String creditsTitle;
+  final String creditsSubtitle;
+  final String monthlyAllowance;
+  final String monthlyRemaining;
+  final String purchasedRemaining;
+  final String totalRemaining;
+  final String billingPeriod;
+  final String monthlyProgress;
+  final String customAllowance;
+  final String resetExplanation;
+  final String packsTitle;
+  final String packsSubtitle;
+  final String creditsUnit;
+  final String purchase;
+  final String purchaseRequiresActive;
+  final String priceUsd;
+  final String adminSubtitle;
+  final String company;
+  final String plan;
+  final String subscription;
+  final String aiUsage;
+  final String noCompanies;
+}
+
+class Phase4dStrings {
+  const Phase4dStrings({
+    required this.productsTotal,
+    required this.productsActive,
+    required this.productsRevenue,
+    required this.productsUnits,
+    required this.productsAveragePrice,
+    required this.productsConcentration,
+    required this.productsSearch,
+    required this.productLabel,
+    required this.categoryLabel,
+    required this.revenueLabel,
+    required this.unitsLabel,
+    required this.averagePriceLabel,
+    required this.lastActivityLabel,
+    required this.performanceLabel,
+    required this.strongLabel,
+    required this.weakLabel,
+    required this.allLabel,
+    required this.sortLabel,
+    required this.partialReady,
+    required this.recommendationsEmpty,
+    required this.priorityLabel,
+    required this.evidenceLabel,
+    required this.suggestedActionLabel,
+    required this.productDeclineTitle,
+    required this.productGrowthTitle,
+    required this.productConcentrationTitle,
+    required this.crossSellOpportunityTitle,
+    required this.productRevenueChangedExplanation,
+    required this.productConcentrationExplanation,
+    required this.crossSellOpportunityExplanation,
+    required this.reviewProductPerformance,
+    required this.reviewProductConcentration,
+    required this.reviewCrossSellOpportunities,
+    required this.changeEvidence,
+    required this.concentrationEvidence,
+    required this.customerEvidence,
+  });
+
+  factory Phase4dStrings.fromJson(Map<String, dynamic> json) {
+    final fallback = Phase4dStrings.fallback();
+    String value(String key, String fallbackValue) => json[key] as String? ?? fallbackValue;
+    return Phase4dStrings(
+      productsTotal: value('productsTotal', fallback.productsTotal),
+      productsActive: value('productsActive', fallback.productsActive),
+      productsRevenue: value('productsRevenue', fallback.productsRevenue),
+      productsUnits: value('productsUnits', fallback.productsUnits),
+      productsAveragePrice: value('productsAveragePrice', fallback.productsAveragePrice),
+      productsConcentration: value('productsConcentration', fallback.productsConcentration),
+      productsSearch: value('productsSearch', fallback.productsSearch),
+      productLabel: value('productLabel', fallback.productLabel),
+      categoryLabel: value('categoryLabel', fallback.categoryLabel),
+      revenueLabel: value('revenueLabel', fallback.revenueLabel),
+      unitsLabel: value('unitsLabel', fallback.unitsLabel),
+      averagePriceLabel: value('averagePriceLabel', fallback.averagePriceLabel),
+      lastActivityLabel: value('lastActivityLabel', fallback.lastActivityLabel),
+      performanceLabel: value('performanceLabel', fallback.performanceLabel),
+      strongLabel: value('strongLabel', fallback.strongLabel),
+      weakLabel: value('weakLabel', fallback.weakLabel),
+      allLabel: value('allLabel', fallback.allLabel),
+      sortLabel: value('sortLabel', fallback.sortLabel),
+      partialReady: value('partialReady', fallback.partialReady),
+      recommendationsEmpty: value('recommendationsEmpty', fallback.recommendationsEmpty),
+      priorityLabel: value('priorityLabel', fallback.priorityLabel),
+      evidenceLabel: value('evidenceLabel', fallback.evidenceLabel),
+      suggestedActionLabel: value('suggestedActionLabel', fallback.suggestedActionLabel),
+      productDeclineTitle: value('productDeclineTitle', fallback.productDeclineTitle),
+      productGrowthTitle: value('productGrowthTitle', fallback.productGrowthTitle),
+      productConcentrationTitle: value('productConcentrationTitle', fallback.productConcentrationTitle),
+      crossSellOpportunityTitle: value('crossSellOpportunityTitle', fallback.crossSellOpportunityTitle),
+      productRevenueChangedExplanation: value('productRevenueChangedExplanation', fallback.productRevenueChangedExplanation),
+      productConcentrationExplanation: value('productConcentrationExplanation', fallback.productConcentrationExplanation),
+      crossSellOpportunityExplanation: value('crossSellOpportunityExplanation', fallback.crossSellOpportunityExplanation),
+      reviewProductPerformance: value('reviewProductPerformance', fallback.reviewProductPerformance),
+      reviewProductConcentration: value('reviewProductConcentration', fallback.reviewProductConcentration),
+      reviewCrossSellOpportunities: value('reviewCrossSellOpportunities', fallback.reviewCrossSellOpportunities),
+      changeEvidence: value('changeEvidence', fallback.changeEvidence),
+      concentrationEvidence: value('concentrationEvidence', fallback.concentrationEvidence),
+      customerEvidence: value('customerEvidence', fallback.customerEvidence),
+    );
+  }
+
+  factory Phase4dStrings.fallback() => const Phase4dStrings(
+        productsTotal: 'Total products',
+        productsActive: 'Active products',
+        productsRevenue: 'Product revenue',
+        productsUnits: 'Units sold',
+        productsAveragePrice: 'Average selling price',
+        productsConcentration: 'Top product revenue share',
+        productsSearch: 'Search products',
+        productLabel: 'Product',
+        categoryLabel: 'Category',
+        revenueLabel: 'Revenue',
+        unitsLabel: 'Units',
+        averagePriceLabel: 'Average price',
+        lastActivityLabel: 'Last activity',
+        performanceLabel: 'Performance',
+        strongLabel: 'Strong',
+        weakLabel: 'Weak',
+        allLabel: 'All',
+        sortLabel: 'Sort by',
+        partialReady: 'Some data is still processing. Ready results are shown below.',
+        recommendationsEmpty: 'No evidence-backed recommendation is available right now.',
+        priorityLabel: 'Priority',
+        evidenceLabel: 'Evidence',
+        suggestedActionLabel: 'Suggested action',
+        productDeclineTitle: 'Product revenue is declining',
+        productGrowthTitle: 'Product revenue is growing',
+        productConcentrationTitle: 'Revenue is concentrated in one product',
+        crossSellOpportunityTitle: 'Cross-sell opportunities are available',
+        productRevenueChangedExplanation: 'Revenue changed compared with the previous equivalent period.',
+        productConcentrationExplanation: 'One product represents a significant share of observed product revenue.',
+        crossSellOpportunityExplanation: 'The active validated recommendation model identified customers with relevant product suggestions.',
+        reviewProductPerformance: 'Review product performance',
+        reviewProductConcentration: 'Review product concentration',
+        reviewCrossSellOpportunities: 'Review cross-sell opportunities',
+        changeEvidence: '{entity}: {current} vs {comparison} ({change}%)',
+        concentrationEvidence: '{entity}: {current}% of product revenue',
+        customerEvidence: '{current} customers with recommendations',
+      );
+
+  final String productsTotal;
+  final String productsActive;
+  final String productsRevenue;
+  final String productsUnits;
+  final String productsAveragePrice;
+  final String productsConcentration;
+  final String productsSearch;
+  final String productLabel;
+  final String categoryLabel;
+  final String revenueLabel;
+  final String unitsLabel;
+  final String averagePriceLabel;
+  final String lastActivityLabel;
+  final String performanceLabel;
+  final String strongLabel;
+  final String weakLabel;
+  final String allLabel;
+  final String sortLabel;
+  final String partialReady;
+  final String recommendationsEmpty;
+  final String priorityLabel;
+  final String evidenceLabel;
+  final String suggestedActionLabel;
+  final String productDeclineTitle;
+  final String productGrowthTitle;
+  final String productConcentrationTitle;
+  final String crossSellOpportunityTitle;
+  final String productRevenueChangedExplanation;
+  final String productConcentrationExplanation;
+  final String crossSellOpportunityExplanation;
+  final String reviewProductPerformance;
+  final String reviewProductConcentration;
+  final String reviewCrossSellOpportunities;
+  final String changeEvidence;
+  final String concentrationEvidence;
+  final String customerEvidence;
 }
 
 class OnboardingStrings {
