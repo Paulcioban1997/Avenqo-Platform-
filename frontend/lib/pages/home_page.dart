@@ -102,8 +102,47 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key, this.initialSection});
+
+  final String? initialSection;
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final _featuresKey = GlobalKey();
+  final _modulesKey = GlobalKey();
+  final _faqKey = GlobalKey();
+  bool _handledInitialSection = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_handledInitialSection) return;
+    _handledInitialSection = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (widget.initialSection) {
+        case 'features':
+          _scrollTo(_featuresKey);
+        case 'modules':
+          _scrollTo(_modulesKey);
+      }
+    });
+  }
+
+  void _scrollTo(GlobalKey key) {
+    final sectionContext = key.currentContext;
+    if (sectionContext == null) return;
+    Scrollable.ensureVisible(
+      sectionContext,
+      duration: const Duration(milliseconds: 550),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,19 +151,26 @@ class HomePage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: const [
-            _Navbar(),
-            _Hero(),
-            _TrustStrip(),
-            _FeaturesSection(),
-            _ModulesSection(),
-            _StepsSection(),
-            _UsecasesSection(),
-            _WhySection(),
-            _PricingSection(),
-            _FaqSection(),
-            _FinalCtaSection(),
-            _Footer(),
+          children: [
+            _Navbar(
+              onFeatures: () => _scrollTo(_featuresKey),
+              onModules: () => _scrollTo(_modulesKey),
+            ),
+            const _Hero(),
+            const _TrustStrip(),
+            KeyedSubtree(key: _featuresKey, child: const _FeaturesSection()),
+            KeyedSubtree(key: _modulesKey, child: const _ModulesSection()),
+            const _StepsSection(),
+            const _UsecasesSection(),
+            const _WhySection(),
+            const _PricingSection(),
+            KeyedSubtree(key: _faqKey, child: const _FaqSection()),
+            const _FinalCtaSection(),
+            _Footer(
+              onFeatures: () => _scrollTo(_featuresKey),
+              onModules: () => _scrollTo(_modulesKey),
+              onFaq: () => _scrollTo(_faqKey),
+            ),
           ],
         ),
       ),
@@ -133,7 +179,10 @@ class HomePage extends StatelessWidget {
 }
 
 class _Navbar extends StatelessWidget {
-  const _Navbar();
+  const _Navbar({required this.onFeatures, required this.onModules});
+
+  final VoidCallback onFeatures;
+  final VoidCallback onModules;
 
   @override
   Widget build(BuildContext context) {
@@ -145,51 +194,71 @@ class _Navbar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth > 860;
+          final brand = InkWell(
+            onTap: () => context.go('/'),
+            child: const AvenqoBrand(iconSize: 38),
+          );
+          final preferences = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ThemeToggleButton(foregroundColor: colors.muted),
+              const SizedBox(width: 4),
+              const LanguageSelector(),
+            ],
+          );
+          final login = TextButton(
+            onPressed: () => context.go('/login'),
+            style: TextButton.styleFrom(foregroundColor: colors.muted),
+            child: Text(t.common.login),
+          );
+          final register = FilledButton.icon(
+            onPressed: () => context.go('/register'),
+            style: FilledButton.styleFrom(
+              backgroundColor: _Brand.blue,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.arrow_forward, size: 16),
+            label: Text(t.common.tryFree),
+          );
+          if (!wide) {
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    brand,
+                    const Spacer(),
+                    ThemeToggleButton(foregroundColor: colors.muted),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: LanguageSelector(),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: login),
+                    const SizedBox(width: 8),
+                    Expanded(child: register),
+                  ],
+                ),
+              ],
+            );
+          }
           return Row(
             children: [
-              InkWell(
-                onTap: () => context.go('/'),
-                child: const AvenqoBrand(),
-              ),
+              brand,
               const Spacer(),
-              if (wide) ...[
-                _NavLink(t.nav.features, () => context.go('/pricing')),
-                _NavLink(t.nav.modules, () => context.go('/pricing')),
-                _NavLink(t.nav.pricing, () => context.go('/pricing')),
-                const SizedBox(width: 20),
-              ],
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ThemeToggleButton(foregroundColor: colors.muted),
-                      const SizedBox(width: 4),
-                      const LanguageSelector(),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () => context.go('/login'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: colors.muted,
-                        ),
-                        child: Text(t.common.login),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: () => context.go('/register'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _Brand.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.arrow_forward, size: 16),
-                        label: Text(t.common.tryFree),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _NavLink(t.nav.features, onFeatures),
+              _NavLink(t.nav.modules, onModules),
+              _NavLink(t.nav.pricing, () => context.go('/pricing')),
+              const SizedBox(width: 20),
+              preferences,
+              const SizedBox(width: 8),
+              login,
+              const SizedBox(width: 8),
+              register,
             ],
           );
         },
@@ -2074,29 +2143,19 @@ class _FinalCtaSection extends StatelessWidget {
 }
 
 class _Footer extends StatelessWidget {
-  const _Footer();
+  const _Footer({
+    required this.onFeatures,
+    required this.onModules,
+    required this.onFaq,
+  });
 
-  static const _platformLinks = [
-    'Fonctionnalités',
-    'Modules',
-    'Tarifs',
-    'Fonctionnement',
-  ];
-  static const _companyLinks = [
-    'À propos',
-    'Contact',
-    'Sécurité',
-    'Partenaires',
-  ];
-  static const _resourcesLinks = [
-    'Documentation',
-    'FAQ',
-    'Confidentialité',
-    'Conditions',
-  ];
+  final VoidCallback onFeatures;
+  final VoidCallback onModules;
+  final VoidCallback onFaq;
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context);
     return _Section(
       color: _Brand.ink,
       child: Column(
@@ -2134,40 +2193,35 @@ class _Footer extends StatelessWidget {
                   ),
                 ],
               );
-              final columns = Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              final links = Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: wide ? WrapAlignment.end : WrapAlignment.start,
                 children: [
-                  Expanded(
-                    child: _FooterColumn(
-                      title: 'Plateforme',
-                      links: _platformLinks,
-                    ),
+                  _FooterLink(label: t.nav.features, onTap: onFeatures),
+                  _FooterLink(label: t.nav.modules, onTap: onModules),
+                  _FooterLink(
+                    label: t.nav.pricing,
+                    onTap: () => context.go('/pricing'),
                   ),
-                  Expanded(
-                    child: _FooterColumn(
-                      title: 'Entreprise',
-                      links: _companyLinks,
-                    ),
-                  ),
-                  Expanded(
-                    child: _FooterColumn(
-                      title: 'Ressources',
-                      links: _resourcesLinks,
-                    ),
+                  _FooterLink(label: t.faq.kicker, onTap: onFaq),
+                  _FooterLink(
+                    label: 'bonjour@avenqo.ca',
+                    onTap: _contactByEmail,
                   ),
                 ],
               );
               if (!wide) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [brand, const SizedBox(height: 32), columns],
+                  children: [brand, const SizedBox(height: 32), links],
                 );
               }
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(flex: 4, child: brand),
-                  Expanded(flex: 6, child: columns),
+                  Expanded(flex: 6, child: links),
                 ],
               );
             },
@@ -2185,59 +2239,18 @@ class _Footer extends StatelessWidget {
   }
 }
 
-class _FooterColumn extends StatelessWidget {
-  const _FooterColumn({required this.title, required this.links});
+class _FooterLink extends StatelessWidget {
+  const _FooterLink({required this.label, required this.onTap});
 
-  final String title;
-  final List<String> links;
-
-  static const _routes = {
-    'Fonctionnalités': '/pricing',
-    'Modules': '/pricing',
-    'Tarifs': '/pricing',
-    'Fonctionnement': '/pricing',
-    'À propos': '/pricing',
-    'Sécurité': '/pricing',
-    'Documentation': '/pricing',
-    'FAQ': '/pricing',
-  };
+  final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 14),
-        for (final link in links)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: InkWell(
-              onTap: () {
-                if (link == 'Contact' ||
-                    link == 'Partenaires' ||
-                    link == 'Confidentialité' ||
-                    link == 'Conditions') {
-                  _contactByEmail();
-                } else {
-                  context.go(_routes[link] ?? '/pricing');
-                }
-              },
-              child: Text(
-                link,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ),
-          ),
-      ],
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(foregroundColor: Colors.white70),
+      child: Text(label),
     );
   }
 }

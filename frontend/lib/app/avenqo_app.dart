@@ -82,7 +82,11 @@ class _AvenqoAppState extends State<AvenqoApp> {
         );
       },
       routes: [
-        GoRoute(path: '/', builder: (context, state) => const HomePage()),
+        GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              HomePage(initialSection: state.uri.queryParameters['section']),
+        ),
         GoRoute(
           path: '/onboarding',
           builder: (context, state) => OnboardingPage(auth: widget.auth),

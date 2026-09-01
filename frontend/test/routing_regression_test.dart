@@ -15,6 +15,7 @@ import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/pages/dashboard_page.dart';
 import 'package:avenqo/pages/home_page.dart';
+import 'package:avenqo/pages/pricing_page.dart';
 import 'package:avenqo/widgets/admin_shell.dart';
 import 'package:avenqo/widgets/app_shell.dart';
 import 'package:avenqo/widgets/language_selector.dart';
@@ -123,7 +124,16 @@ Future<void> _pumpApp(
               return null;
             },
             routes: [
-              GoRoute(path: '/', builder: (context, state) => const HomePage()),
+              GoRoute(
+                path: '/',
+                builder: (context, state) => HomePage(
+                  initialSection: state.uri.queryParameters['section'],
+                ),
+              ),
+              GoRoute(
+                path: '/pricing',
+                builder: (context, state) => PricingPage(api: auth.api),
+              ),
               GoRoute(
                 path: '/login',
                 builder: (context, state) =>
@@ -201,6 +211,52 @@ void main() {
 
       expect(find.byType(AuthPage), findsOneWidget);
       expect(find.byType(HomePage), findsNothing);
+    });
+
+    testWidgets('pricing reste complet et localisé sans réponse API', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1440, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _pumpApp(
+        tester,
+        initialRoute: '/pricing',
+        auth: unauthenticatedAuth,
+      );
+
+      final pricing = AvenqoLocaleScope.translationsOf(
+        tester.element(find.byType(PricingPage)),
+      ).pricing;
+      expect(find.text(pricing.title), findsOneWidget);
+      for (final plan in pricing.plans) {
+        expect(find.text(plan.title), findsOneWidget);
+        expect(find.text(plan.action), findsWidgets);
+      }
+      expect(find.byType(ThemeToggleButton), findsOneWidget);
+      expect(find.byType(LanguageSelector), findsOneWidget);
+      expect(find.text('Plans Avenqo'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pricing mobile ne déborde pas', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _pumpApp(
+        tester,
+        initialRoute: '/pricing',
+        auth: unauthenticatedAuth,
+      );
+
+      expect(find.byType(PricingPage), findsOneWidget);
+      expect(find.byType(ThemeToggleButton), findsOneWidget);
+      expect(find.byType(LanguageSelector), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('login desktop has one auth header and no app shell', (

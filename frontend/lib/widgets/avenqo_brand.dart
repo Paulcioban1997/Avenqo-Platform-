@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:flutter/material.dart';
 
-/// Logo Avenqo réutilisable — même icône que l'app (sharp, pas de rectangle
-/// noir), fonctionne en Light/Dark, taille configurable.
+/// Logo Avenqo officiel, réutilisable à une taille carrée configurable.
 class AvenqoBrandIcon extends StatelessWidget {
   const AvenqoBrandIcon({super.key, this.size = 22});
 
@@ -10,47 +9,14 @@ class AvenqoBrandIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Icône Avenqo : forme "A" stylisée en bleu brand, nette à toute taille.
-    // Pas d'asset image (évite le rectangle noir et les problèmes de résolution).
-    return CustomPaint(
-      size: Size.square(size),
-      painter: _AvenqoIconPainter(),
+    return Image.asset(
+      'assets/brand/avenqo-official.png',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.high,
     );
   }
-}
-
-class _AvenqoIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF087CF0)
-      ..style = PaintingStyle.fill;
-
-    final path = Path()
-      // Barre verticale gauche du A
-      ..moveTo(size.width * 0.35, size.height * 0.15)
-      ..lineTo(size.width * 0.5, size.height * 0.15)
-      ..lineTo(size.width * 0.5, size.height * 0.85)
-      ..lineTo(size.width * 0.35, size.height * 0.85)
-      ..close()
-      // Barre verticale droite du A
-      ..moveTo(size.width * 0.5, size.height * 0.15)
-      ..lineTo(size.width * 0.65, size.height * 0.15)
-      ..lineTo(size.width * 0.65, size.height * 0.85)
-      ..lineTo(size.width * 0.5, size.height * 0.85)
-      ..close()
-      // Barre horizontale du A
-      ..moveTo(size.width * 0.35, size.height * 0.45)
-      ..lineTo(size.width * 0.65, size.height * 0.45)
-      ..lineTo(size.width * 0.65, size.height * 0.55)
-      ..lineTo(size.width * 0.35, size.height * 0.55)
-      ..close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Logo + wordmark "Avenqo" — utilisé dans navbar, footer, cartes.
