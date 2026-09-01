@@ -140,7 +140,7 @@ class AuthService:
                 verification_email_sent = True
             except Exception:
                 # SMTP is an external side effect; never undo a committed account.
-                logger.exception("Verification email delivery failed for %s", user.email)
+                logger.warning("Verification email delivery failed")
         try:
             notify = getattr(self._notifier, "send_new_company", None)
             if notify:
@@ -258,9 +258,8 @@ class AuthService:
         try:
             self._notifier.send_email_verification(user.email, token)
         except Exception:
-            logger.exception("Verification email resend failed for %s", user.email)
-            return False
-        return True
+            logger.warning("Verification email resend failed")
+        return delivery_configured
 
     def forgot_password(self, email: str) -> None:
         user = self._session.scalar(select(User).where(User.email == email.strip().lower()))

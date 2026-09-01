@@ -260,11 +260,13 @@ def test_email_verification_smtp_utilise_le_domaine_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sent_messages = []
+    tls_started = False
 
     class FakeSMTP:
-        def __init__(self, host: str, port: int) -> None:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
             assert host == "smtp.example.test"
             assert port == 587
+            assert timeout == 10
 
         def __enter__(self):
             return self
@@ -273,7 +275,8 @@ def test_email_verification_smtp_utilise_le_domaine_production(
             return None
 
         def starttls(self) -> None:
-            return None
+            nonlocal tls_started
+            tls_started = True
 
         def login(self, username: str, password: str) -> None:
             assert username == "mailer@example.test"
@@ -296,12 +299,119 @@ def test_email_verification_smtp_utilise_le_domaine_production(
     notifier.send_email_verification("customer@example.ca", "safe-token")
 
     assert len(sent_messages) == 1
+    assert tls_started is True
     message = sent_messages[0]
     assert message["To"] == "customer@example.ca"
     assert message["From"] == "info@avenqo.ca"
     body = message.get_content()
     assert "https://app.avenqo.ca/verify-email?token=safe-token" in body
     assert "24 heures" in body
+
+
+def test_smtp_respecte_la_desactivation_starttls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            assert timeout == 10
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def starttls(self) -> None:
+            pytest.fail("STARTTLS ne doit pas être appelé")
+
+        def login(self, username: str, password: str) -> None:
+            return None
+
+        def send_message(self, message) -> None:
+            return None
+
+    monkeypatch.setattr("backend.app.services.account_notifications.smtplib.SMTP", FakeSMTP)
+    notifier = SMTPAccountNotifier(
+        Settings(
+            SMTP_HOST="smtp.example.test",
+            SMTP_USERNAME="mailer@example.test",
+            SMTP_PASSWORD="test-password",
+            SMTP_USE_TLS=False,
+        )
+    )
+
+    notifier.send_email_verification("customer@example.ca", "safe-token")
+
+
+def test_echec_smtp_est_journalise_sans_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "smtp-secret-value"
+    token = "verification-secret-token"
+    recipient = "private@example.ca"
+
+    class UnreachableSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            raise OSError(101, "Network is unreachable")
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.smtplib.SMTP",
+        UnreachableSMTP,
+    )
+    notifier = SMTPAccountNotifier(
+        Settings(
+            FRONTEND_URL="https://app.avenqo.ca",
+            SMTP_HOST="smtp.private.example",
+            SMTP_USERNAME="mailer@example.test",
+            SMTP_PASSWORD=secret,
+            SMTP_FROM_EMAIL="info@avenqo.ca",
+        )
+    )
+
+    with caplog.at_level("WARNING"), pytest.raises(OSError):
+        notifier.send_email_verification(recipient, token)
+
+    logs = caplog.text
+    assert "SMTP delivery failed" in logs
+    assert "port=587" in logs
+    assert "starttls=True" in logs
+    assert "errno=101" in logs
+    assert secret not in logs
+    assert token not in logs
+    assert recipient not in logs
+    assert "smtp.private.example" not in logs
+
+
+def test_renvoi_masque_lexistence_du_compte_si_smtp_echoue(auth_environment) -> None:
+    client, session_factory, _ = auth_environment
+    payload = registration_payload("resend-failure@acme.ca", "Resend Failure")
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+
+    class FailingNotifier:
+        email_delivery_configured = True
+
+        def send_email_verification(self, email: str, token: str) -> None:
+            raise OSError(101, "Network is unreachable")
+
+    client.app.dependency_overrides[get_account_notifier] = lambda: FailingNotifier()
+
+    existing = client.post(
+        "/api/v1/auth/email/resend",
+        json={"email": payload["email"]},
+    )
+    unknown = client.post(
+        "/api/v1/auth/email/resend",
+        json={"email": "unknown@example.ca"},
+    )
+
+    assert existing.status_code == unknown.status_code == 200
+    assert existing.json() == unknown.json()
+    assert existing.json()["email_delivery_configured"] is True
+    with session_factory() as session:
+        user = session.scalar(select(User).where(User.email == payload["email"]))
+        assert user is not None
+        assert user.email_verified_at is None
 
 
 def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:

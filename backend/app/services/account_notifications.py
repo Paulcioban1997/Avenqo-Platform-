@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from backend.app.config.settings import Settings
 
 logger = logging.getLogger(__name__)
+_SMTP_CONNECTION_TIMEOUT_SECONDS = 10
 
 
 class AccountNotifier(Protocol):
@@ -107,9 +108,23 @@ class SMTPAccountNotifier:
         message["Subject"] = subject
         message.set_content(body)
 
-        with smtplib.SMTP(self._settings.smtp_host, self._settings.smtp_port) as server:
-            if self._settings.smtp_use_tls:
-                server.starttls()
-            if self._settings.smtp_username and self._settings.smtp_password:
-                server.login(self._settings.smtp_username, self._settings.smtp_password)
-            server.send_message(message)
+        try:
+            with smtplib.SMTP(
+                self._settings.smtp_host,
+                self._settings.smtp_port,
+                timeout=_SMTP_CONNECTION_TIMEOUT_SECONDS,
+            ) as server:
+                if self._settings.smtp_use_tls:
+                    server.starttls()
+                if self._settings.smtp_username and self._settings.smtp_password:
+                    server.login(self._settings.smtp_username, self._settings.smtp_password)
+                server.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            logger.warning(
+                "SMTP delivery failed port=%s starttls=%s error_type=%s errno=%s",
+                self._settings.smtp_port,
+                self._settings.smtp_use_tls,
+                type(exc).__name__,
+                getattr(exc, "errno", None),
+            )
+            raise
