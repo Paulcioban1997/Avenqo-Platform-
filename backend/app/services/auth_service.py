@@ -267,7 +267,10 @@ class AuthService:
             return
         token = self._create_account_token(user, AccountTokenPurpose.PASSWORD_RESET, 1)
         self._session.commit()
-        self._notifier.send_password_reset(user.email, token)
+        try:
+            self._notifier.send_password_reset(user.email, token)
+        except Exception:
+            logger.warning("Password reset email delivery failed")
 
     def reset_password(self, raw_token: str, new_password: str) -> None:
         token = self._consume_account_token(raw_token, AccountTokenPurpose.PASSWORD_RESET)

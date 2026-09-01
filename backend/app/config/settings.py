@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     auth_jwt_issuer: str = Field(default="avenqo-api", alias="AUTH_JWT_ISSUER")
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
+    email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
+    email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
+    email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
+    email_from_name: str = Field(default="Avenqo", alias="EMAIL_FROM_NAME")
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
@@ -154,7 +158,7 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "smtp_host", "smtp_username", "smtp_password",
+        "email_api_key", "smtp_host", "smtp_username", "smtp_password",
         "stripe_secret_key", "stripe_webhook_secret",
         "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
         mode="before",
@@ -166,6 +170,14 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("email_provider")
+    @classmethod
+    def validate_email_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"smtp", "https_api"}:
+            raise ValueError("EMAIL_PROVIDER doit être 'smtp' ou 'https_api'")
+        return normalized
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -213,6 +225,16 @@ class Settings(BaseSettings):
 
     @property
     def email_delivery_configured(self) -> bool:
+        if self.email_provider == "https_api":
+            return self.https_email_delivery_configured
+        return self.smtp_delivery_configured
+
+    @property
+    def https_email_delivery_configured(self) -> bool:
+        return bool(self.email_api_key and self.email_from_email)
+
+    @property
+    def smtp_delivery_configured(self) -> bool:
         return bool(
             self.smtp_host
             and self.smtp_username

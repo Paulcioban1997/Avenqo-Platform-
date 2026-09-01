@@ -1,5 +1,6 @@
 ﻿from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from backend.app.core.security import decode_access_token, hash_token, verify_pa
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import AccountToken, Base, Company, CompanyModule, CompanyOnboarding, Module, User
-from backend.app.services.account_notifications import SMTPAccountNotifier
+from backend.app.services.account_notifications import HTTPSAccountNotifier, SMTPAccountNotifier
 from backend.main import create_application
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
@@ -303,9 +304,117 @@ def test_email_verification_smtp_utilise_le_domaine_production(
     message = sent_messages[0]
     assert message["To"] == "customer@example.ca"
     assert message["From"] == "info@avenqo.ca"
-    body = message.get_content()
+    body = message.get_body(preferencelist=("plain",)).get_content()
     assert "https://app.avenqo.ca/verify-email?token=safe-token" in body
     assert "24 heures" in body
+
+
+def test_configuration_production_selectionne_le_transport_https(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        EMAIL_PROVIDER="https_api",
+        EMAIL_API_KEY="provider-api-key",
+        EMAIL_FROM_EMAIL="info@avenqo.ca",
+        EMAIL_FROM_NAME="Avenqo",
+        FRONTEND_URL="https://app.avenqo.ca",
+        SMTP_HOST=None,
+        SMTP_USERNAME=None,
+        SMTP_PASSWORD=None,
+    )
+    monkeypatch.setattr("backend.app.dependencies.auth.get_settings", lambda: settings)
+
+    notifier = get_account_notifier()
+
+    assert isinstance(notifier, HTTPSAccountNotifier)
+    assert settings.email_delivery_configured is True
+    assert settings.smtp_delivery_configured is False
+
+
+def test_email_verification_https_envoie_le_payload_attendu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    class SuccessfulResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def fake_urlopen(request, timeout: int):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return SuccessfulResponse()
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        fake_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY="provider-api-key",
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            EMAIL_FROM_NAME="Avenqo",
+            FRONTEND_URL="https://app.avenqo.ca",
+            SMTP_HOST=None,
+            SMTP_USERNAME=None,
+            SMTP_PASSWORD=None,
+        )
+    )
+
+    notifier.send_email_verification("customer@example.ca", "safe-token")
+
+    request = captured["request"]
+    payload = json.loads(request.data)
+    assert request.full_url == "https://api.resend.com/emails"
+    assert captured["timeout"] == 10
+    assert request.get_header("Authorization") == "Bearer provider-api-key"
+    assert payload["from"] == "Avenqo <info@avenqo.ca>"
+    assert payload["to"] == ["customer@example.ca"]
+    assert payload["subject"] == "Vérifiez votre adresse email Avenqo"
+    assert "https://app.avenqo.ca/verify-email?token=safe-token" in payload["text"]
+    assert "https://app.avenqo.ca/verify-email?token=safe-token" in payload["html"]
+    assert "24 heures" in payload["text"]
+
+
+def test_echec_email_https_est_journalise_sans_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "provider-secret-value"
+    token = "verification-secret-token"
+    recipient = "private@example.ca"
+
+    def failing_urlopen(request, timeout: int):
+        raise OSError("HTTPS unavailable")
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY=secret,
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://app.avenqo.ca",
+        )
+    )
+
+    with caplog.at_level("WARNING"), pytest.raises(OSError):
+        notifier.send_email_verification(recipient, token)
+
+    logs = caplog.text
+    assert "HTTPS email delivery failed" in logs
+    assert "error_type=OSError" in logs
+    assert secret not in logs
+    assert token not in logs
+    assert recipient not in logs
 
 
 def test_smtp_respecte_la_desactivation_starttls(
@@ -383,18 +492,30 @@ def test_echec_smtp_est_journalise_sans_secrets(
     assert "smtp.private.example" not in logs
 
 
-def test_renvoi_masque_lexistence_du_compte_si_smtp_echoue(auth_environment) -> None:
+def test_renvoi_masque_lexistence_du_compte_si_https_echoue(
+    auth_environment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client, session_factory, _ = auth_environment
     payload = registration_payload("resend-failure@acme.ca", "Resend Failure")
     assert client.post("/api/v1/auth/register", json=payload).status_code == 201
 
-    class FailingNotifier:
-        email_delivery_configured = True
+    def failing_urlopen(request, timeout: int):
+        raise OSError("HTTPS unavailable")
 
-        def send_email_verification(self, email: str, token: str) -> None:
-            raise OSError(101, "Network is unreachable")
-
-    client.app.dependency_overrides[get_account_notifier] = lambda: FailingNotifier()
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY="provider-api-key",
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://app.avenqo.ca",
+        )
+    )
+    client.app.dependency_overrides[get_account_notifier] = lambda: notifier
 
     existing = client.post(
         "/api/v1/auth/email/resend",
@@ -611,6 +732,32 @@ def test_conflits_et_recuperation_ne_revelent_pas_les_comptes(auth_environment) 
         "/api/v1/auth/login",
         json={"email": payload["email"], "password": "Incorrect2026!"},
     ).status_code == 401
+
+
+def test_echec_livraison_reset_ne_revele_pas_le_compte(auth_environment) -> None:
+    client, _, _ = auth_environment
+    payload = registration_payload("reset-failure@acme.ca", "Reset Failure")
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+
+    class FailingNotifier:
+        email_delivery_configured = True
+
+        def send_password_reset(self, email: str, token: str) -> None:
+            raise OSError("HTTPS unavailable")
+
+    client.app.dependency_overrides[get_account_notifier] = lambda: FailingNotifier()
+
+    known = client.post(
+        "/api/v1/auth/password/forgot",
+        json={"email": payload["email"]},
+    )
+    unknown = client.post(
+        "/api/v1/auth/password/forgot",
+        json={"email": "unknown@example.ca"},
+    )
+
+    assert known.status_code == unknown.status_code == 200
+    assert known.json() == unknown.json()
 
 
 def test_gestion_employes_respecte_roles_et_tenants(auth_environment) -> None:

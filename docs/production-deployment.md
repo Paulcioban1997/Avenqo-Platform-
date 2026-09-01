@@ -28,11 +28,12 @@ secrets de la plateforme d'hébergement (jamais `backend/.env` en production).
 |---|---|---|
 | `ENVIRONMENT=production` | Oui | Active la validation stricte au démarrage, désactive `/docs`/`/redoc`/`/openapi.json`, force `Strict-Transport-Security`. |
 | `AUTH_JWT_SECRET` | Oui | ≥32 caractères, doit différer de la valeur de développement par défaut (le démarrage échoue sinon). |
-| `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` | Requis fonctionnellement | Sans configuration complète, l'API démarre mais signale que la livraison est indisponible. Pour Google Workspace, utiliser le mot de passe d'application du compte expéditeur dans le gestionnaire de secrets. |
-| `SMTP_PORT`, `SMTP_USE_TLS` | Non | Valeurs par défaut : `587` et `true`. |
+| `EMAIL_PROVIDER=https_api` | Oui pour Railway | Sélectionne le transport HTTPS transactionnel compatible Resend; Railway bloque SMTP hors plan Pro. |
+| `EMAIL_API_KEY`, `EMAIL_FROM_EMAIL`, `EMAIL_FROM_NAME` | Requis fonctionnellement | Clé dans le gestionnaire de secrets; domaine expéditeur vérifié chez le fournisseur. Le nom par défaut est `Avenqo`. |
+| `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_PORT`, `SMTP_USE_TLS` | Non | Transport legacy disponible avec `EMAIL_PROVIDER=smtp` pour les environnements compatibles. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_DEMO`, `STRIPE_PRICE_PROFESSIONAL` | Oui | Requis pour la facturation self-service Demo/Professional. Enterprise reste sur devis, sans prix Stripe fixe. |
 | `DATABASE_URL` | Oui | Doit être explicitement défini en production. Voir §4 — limite SQLite connue. |
-| `FRONTEND_URL` | Oui | Origine HTTPS utilisée pour les retours Checkout/Customer Portal. |
+| `FRONTEND_URL` | Oui | Origine HTTPS utilisée pour les liens de vérification/réinitialisation et les retours Checkout/Customer Portal. |
 | `ALLOWED_HOSTS` | Oui | Liste séparée par virgules (ex. `api.avenqo.ca`) ; `*` est refusé en production. |
 | `CORS_ORIGINS` | Oui | Domaines HTTPS exacts du frontend (ex. `https://app.avenqo.ca`) ; les origines localhost sont refusées en production. |
 | `RATE_LIMIT_*` | Optionnel | Voir §6 — limite technique par défaut raisonnable, ajustable. |

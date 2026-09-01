@@ -13,6 +13,7 @@ from backend.app.database import get_db
 from backend.app.models import AuthSession, User
 from backend.app.services.account_notifications import (
     AccountNotifier,
+    HTTPSAccountNotifier,
     LoggingAccountNotifier,
     SMTPAccountNotifier,
 )
@@ -33,6 +34,8 @@ class CurrentIdentity:
 
 def get_account_notifier() -> AccountNotifier:
     settings = get_settings()
+    if settings.email_provider == "https_api" and settings.email_delivery_configured:
+        return HTTPSAccountNotifier(settings)
     if settings.email_delivery_configured:
         return SMTPAccountNotifier(settings)
     return LoggingAccountNotifier()
