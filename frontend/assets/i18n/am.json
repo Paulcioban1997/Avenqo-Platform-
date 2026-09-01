@@ -704,10 +704,10 @@
     "retailCustomersLabel": "ደንበኞች",
     "retailProductsLabel": "ምርቶች",
     "retailRecommendationsLabel": "ምክሮች",
-    "adminViewLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "switchCompany": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "exitTenantView": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "tenantContextError": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know."
+    "adminViewLabel": "የአስተዳዳሪ እይታ - ኩባንያ",
+    "switchCompany": "ኩባንያ ይቀይሩ",
+    "exitTenantView": "ከተከራይ እይታ ውጣ",
+    "tenantContextError": "የተከራይ አውድ ሊረጋገጥ አልቻለም።"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

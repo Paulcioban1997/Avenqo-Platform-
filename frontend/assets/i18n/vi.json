@@ -704,10 +704,10 @@
     "retailCustomersLabel": "Khách hàng",
     "retailProductsLabel": "Sản phẩm",
     "retailRecommendationsLabel": "Đề xuất",
-    "adminViewLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "switchCompany": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "exitTenantView": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "tenantContextError": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know."
+    "adminViewLabel": "Chế độ xem của quản trị viên — Công ty",
+    "switchCompany": "Chuyển đổi công ty",
+    "exitTenantView": "Thoát khỏi chế độ xem đối tượng thuê",
+    "tenantContextError": "Bối cảnh của đối tượng thuê không thể được xác thực."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

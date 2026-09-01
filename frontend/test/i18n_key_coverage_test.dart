@@ -7,6 +7,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,6 +47,11 @@ Map<String, dynamic> _readLocaleJson(String code) {
   final file = File('assets/i18n/$code.json');
   return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
 }
+
+final RegExp _errorPageContamination = RegExp(
+  r'error\s*500|server error|404\s*not found|that(?:\x27|’|â€™)s an error|please try again later|<html|<!doctype',
+  caseSensitive: false,
+);
 
 void main() {
   final localesCatalog =
@@ -126,6 +132,47 @@ void main() {
         'workflowDescription',
       ]) {
         expect(agents[key], isNot(englishAgents[key]), reason: '$code agents.$key is still English');
+      }
+    }
+  });
+
+  test('all 44 Agent catalogs are complete and free of HTTP error-page contamination', () {
+    final requiredKeys = <String>{
+      'navLabel',
+      'title',
+      'subtitle',
+      'availableNow',
+      'comingSoon',
+      'openAgent',
+      'adminTitle',
+      'adminSubtitle',
+      'availableCount',
+      'comingSoonCount',
+      'retailOverviewLabel',
+      'retailSalesLabel',
+      'retailCustomersLabel',
+      'retailProductsLabel',
+      'retailRecommendationsLabel',
+      for (final agent in avenqoAgentRegistry) agent.nameKey,
+      for (final agent in avenqoAgentRegistry) agent.descriptionKey,
+    };
+    for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
+      final agents = _readLocaleJson(code)['agents'] as Map<String, dynamic>;
+      for (final key in requiredKeys) {
+        final value = agents[key]?.toString().trim() ?? '';
+        expect(value, isNotEmpty, reason: '$code agents.$key is empty or missing');
+        expect(
+          _errorPageContamination.hasMatch(value),
+          isFalse,
+          reason: '$code agents.$key contains HTTP/error-page content',
+        );
+      }
+      for (final entry in agents.entries) {
+        expect(
+          _errorPageContamination.hasMatch(entry.value.toString()),
+          isFalse,
+          reason: '$code agents.${entry.key} contains HTTP/error-page content',
+        );
       }
     }
   });

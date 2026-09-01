@@ -704,10 +704,10 @@
     "retailCustomersLabel": "গ্রাহক",
     "retailProductsLabel": "পণ্য",
     "retailRecommendationsLabel": "সুপারিশ",
-    "adminViewLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "switchCompany": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "exitTenantView": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "tenantContextError": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know."
+    "adminViewLabel": "অ্যাডমিন ভিউ - কোম্পানি",
+    "switchCompany": "কোম্পানি পরিবর্তন করুন",
+    "exitTenantView": "ভাড়াটে ভিউ থেকে প্রস্থান করুন",
+    "tenantContextError": "ভাড়াটে প্রসঙ্গ যাচাই করা যায়নি."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

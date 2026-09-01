@@ -658,14 +658,14 @@
     "themeToggleSwitchToLight": "التبديل إلى الوضع الفاتح"
   },
   "agents": {
-    "navLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
+    "navLabel": "الوكلاء",
     "title": "وكلاء أفينكو",
     "subtitle": "قدرات أعمال متخصصة، متصلة في مساحة عمل واحدة.",
     "availableNow": "متاح دلوقتي",
     "comingSoon": "قريبًا",
     "openAgent": "اكتشف",
-    "adminTitle": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "adminSubtitle": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
+    "adminTitle": "كتالوج الوكيل",
+    "adminSubtitle": "قدرات المنصة وتوافرها الحالي.",
     "availableCount": "الوكلاء المتاحون",
     "comingSoonCount": "قريبا وكلاء",
     "retailName": "ذكاء البيع بالتجزئة",
@@ -674,7 +674,7 @@
     "marketingDescription": "قم بإعداد الحملات والجماهير وإجراءات النمو القابلة للقياس.",
     "crmName": "إدارة علاقات العملاء AI",
     "crmDescription": "إدارة علاقات العملاء بالذكاء الاصطناعي لخط مبيعات أذكى.",
-    "hrName": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
+    "hrName": "الموارد البشرية الذكاء الاصطناعي",
     "hrDescription": "دعم عمليات الأفراد، ورؤى القوى العاملة، وسير عمل الموظفين.",
     "accountingName": "الذكاء الاصطناعي للمحاسبة",
     "accountingDescription": "أتمتة المحاسبة والتسوية المالية.",
@@ -704,10 +704,10 @@
     "retailCustomersLabel": "العملاء",
     "retailProductsLabel": "المنتجات",
     "retailRecommendationsLabel": "التوصيات",
-    "adminViewLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "switchCompany": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "exitTenantView": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "tenantContextError": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know."
+    "adminViewLabel": "عرض المسؤول - الشركة",
+    "switchCompany": "شركة التبديل",
+    "exitTenantView": "الخروج من عرض المستأجر",
+    "tenantContextError": "لا يمكن التحقق من صحة سياق المستأجر."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

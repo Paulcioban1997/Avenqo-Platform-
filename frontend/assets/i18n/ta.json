@@ -704,10 +704,10 @@
     "retailCustomersLabel": "வாடிக்கையாளர்கள்",
     "retailProductsLabel": "தயாரிப்புகள்",
     "retailRecommendationsLabel": "பரிந்துரைகள்",
-    "adminViewLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "switchCompany": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "exitTenantView": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
-    "tenantContextError": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know."
+    "adminViewLabel": "நிர்வாக பார்வை - நிறுவனம்",
+    "switchCompany": "நிறுவனத்தை மாற்றவும்",
+    "exitTenantView": "குத்தகைதாரர் பார்வையிலிருந்து வெளியேறு",
+    "tenantContextError": "குத்தகைதாரர் சூழலை சரிபார்க்க முடியவில்லை."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

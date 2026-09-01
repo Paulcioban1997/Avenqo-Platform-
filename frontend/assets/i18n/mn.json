@@ -658,7 +658,7 @@
     "themeToggleSwitchToLight": "Цайвар горимд шилжих"
   },
   "agents": {
-    "navLabel": "Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.",
+    "navLabel": "Агентууд",
     "title": "Avenqo агентууд",
     "subtitle": "Нэг ажлын талбарт холбогдсон бизнесийн мэргэшсэн чадварууд.",
     "availableNow": "Одоо боломжтой",
