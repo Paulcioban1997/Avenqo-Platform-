@@ -1,5 +1,6 @@
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/app_config.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/widgets/avenqo_brand.dart';
@@ -266,7 +267,9 @@ class _PricingContent extends StatelessWidget {
                         popularLabel: pricing.popular,
                         onPressed: index == pricing.plans.length - 1
                             ? () => launchUrl(
-                                Uri.parse('mailto:bonjour@avenqo.ca'),
+                                Uri.parse(
+                                  'mailto:${AppConfig.publicContactEmail}',
+                                ),
                               )
                             : () => context.go('/register'),
                       ),
@@ -550,11 +553,12 @@ class _PricingFooter extends StatelessWidget {
                 lightOnDark: true,
               );
               final contact = TextButton.icon(
-                onPressed: () =>
-                    launchUrl(Uri.parse('mailto:bonjour@avenqo.ca')),
+                onPressed: () => launchUrl(
+                  Uri.parse('mailto:${AppConfig.publicContactEmail}'),
+                ),
                 style: TextButton.styleFrom(foregroundColor: Colors.white70),
                 icon: const Icon(Icons.mail_outline, size: 17),
-                label: const Text('bonjour@avenqo.ca'),
+                label: const Text(AppConfig.publicContactEmail),
               );
               if (constraints.maxWidth < 520) {
                 return Column(

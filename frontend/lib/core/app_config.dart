@@ -1,5 +1,6 @@
 class AppConfig {
   const AppConfig._();
+  static const publicContactEmail = 'info@avenqo.ca';
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',

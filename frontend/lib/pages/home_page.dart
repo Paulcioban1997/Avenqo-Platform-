@@ -1,3 +1,4 @@
+import 'package:avenqo/core/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,7 +21,7 @@ class _Brand {
 }
 
 Future<void> _contactByEmail() async {
-  await launchUrl(Uri.parse('mailto:bonjour@avenqo.ca'));
+  await launchUrl(Uri.parse('mailto:${AppConfig.publicContactEmail}'));
 }
 
 /// Conteneur de section centré, aligné sur .page-shell / .section du site web.
@@ -1998,7 +1999,7 @@ class _FaqSection extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'bonjour@avenqo.ca',
+                      AppConfig.publicContactEmail,
                       style: TextStyle(
                         color: _Brand.blue,
                         fontSize: 13,
@@ -2226,7 +2227,7 @@ class _Footer extends StatelessWidget {
                   ),
                   _FooterLink(label: t.faq.kicker, onTap: onFaq),
                   _FooterLink(
-                    label: 'bonjour@avenqo.ca',
+                    label: AppConfig.publicContactEmail,
                     onTap: _contactByEmail,
                   ),
                 ],

@@ -239,6 +239,8 @@ void main() {
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
       expect(find.text('Plans Avenqo'), findsNothing);
+      expect(find.text('info@avenqo.ca'), findsOneWidget);
+      expect(find.text('bonjour@avenqo.ca'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
