@@ -60,6 +60,20 @@ final LocaleController _sharedTestLocale = LocaleController(
   store: _MemoryLocalePreferenceStore(),
 );
 
+void _expectOfficialAuthBrand({required double size}) {
+  final logo = find.byKey(const ValueKey('official-avenqo-logo'));
+  expect(logo, findsOneWidget);
+  final image = logo.evaluate().single.widget as Image;
+  expect(
+    (image.image as AssetImage).assetName,
+    'assets/brand/avenqo-official.png',
+  );
+  expect(image.width, size);
+  expect(image.height, size);
+  expect(find.byIcon(Icons.change_history), findsNothing);
+  expect(find.text('Avenqo'), findsNothing);
+}
+
 Widget _wrapWithProviders(Widget child) {
   return AvenqoThemeScope(
     controller: _sharedTestTheme,
@@ -202,7 +216,7 @@ void main() {
 
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
-      expect(find.text('Avenqo'), findsOneWidget);
+      _expectOfficialAuthBrand(size: 60);
       expect(find.byType(AppShell), findsNothing);
       expect(find.byType(AdminShell), findsNothing);
       expect(
@@ -226,7 +240,7 @@ void main() {
 
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
-      expect(find.text('Avenqo'), findsOneWidget);
+      _expectOfficialAuthBrand(size: 48);
       expect(find.byType(AppShell), findsNothing);
       expect(find.byType(AdminShell), findsNothing);
       expect(
@@ -247,6 +261,7 @@ void main() {
 
       expect(find.byType(AuthPage), findsOneWidget);
       expect(find.byType(HomePage), findsNothing);
+      _expectOfficialAuthBrand(size: 60);
     });
 
     testWidgets('Direct URL /dashboard sans session redirige vers /login', (
