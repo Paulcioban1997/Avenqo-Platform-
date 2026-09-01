@@ -106,6 +106,29 @@ class _PublicHeader extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _HeaderLink(
+                            t.nav.features,
+                            () => context.go('/?section=features'),
+                          ),
+                        ),
+                        Expanded(
+                          child: _HeaderLink(
+                            t.nav.modules,
+                            () => context.go('/?section=modules'),
+                          ),
+                        ),
+                        Expanded(
+                          child: _HeaderLink(
+                            t.nav.pricing,
+                            () => context.go('/pricing'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     const Align(
                       alignment: Alignment.centerRight,
                       child: LanguageSelector(),
@@ -133,7 +156,7 @@ class _PublicHeader extends StatelessWidget {
                     t.nav.modules,
                     () => context.go('/?section=modules'),
                   ),
-                  _HeaderLink(t.nav.pricing, () {}),
+                  _HeaderLink(t.nav.pricing, () => context.go('/pricing')),
                   const SizedBox(width: 16),
                   preferences,
                   const SizedBox(width: 8),
@@ -158,7 +181,13 @@ class _HeaderLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(onPressed: onPressed, child: Text(label));
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      ),
+      child: Text(label, textAlign: TextAlign.center),
+    );
   }
 }
 

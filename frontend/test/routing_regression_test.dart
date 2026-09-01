@@ -253,7 +253,13 @@ void main() {
         auth: unauthenticatedAuth,
       );
 
+      final translations = AvenqoLocaleScope.translationsOf(
+        tester.element(find.byType(PricingPage)),
+      );
       expect(find.byType(PricingPage), findsOneWidget);
+      expect(find.text(translations.nav.features), findsOneWidget);
+      expect(find.text(translations.nav.modules), findsOneWidget);
+      expect(find.text(translations.nav.pricing), findsOneWidget);
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
       expect(tester.takeException(), isNull);

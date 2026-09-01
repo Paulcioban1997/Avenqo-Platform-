@@ -231,6 +231,19 @@ class _Navbar extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: _NavLink(t.nav.features, onFeatures)),
+                    Expanded(child: _NavLink(t.nav.modules, onModules)),
+                    Expanded(
+                      child: _NavLink(
+                        t.nav.pricing,
+                        () => context.go('/pricing'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 const Align(
                   alignment: Alignment.centerRight,
                   child: LanguageSelector(),
@@ -278,8 +291,11 @@ class _NavLink extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     return TextButton(
       onPressed: onTap,
-      style: TextButton.styleFrom(foregroundColor: colors.muted),
-      child: Text(label),
+      style: TextButton.styleFrom(
+        foregroundColor: colors.muted,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      ),
+      child: Text(label, textAlign: TextAlign.center),
     );
   }
 }
@@ -692,16 +708,20 @@ class _PerformanceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: colors.ink,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
+              const SizedBox(width: 4),
               Text(period, style: TextStyle(color: colors.muted, fontSize: 9)),
             ],
           ),
