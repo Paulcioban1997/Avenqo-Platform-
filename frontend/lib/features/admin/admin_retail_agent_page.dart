@@ -43,28 +43,69 @@ class AdminRetailAgentPage extends StatefulWidget {
 }
 
 class _AdminRetailAgentPageState extends State<AdminRetailAgentPage> {
+  late String? _selectedCompanyId = widget.selectedCompanyId;
   late Future<dynamic> _future = _load();
 
-  Future<dynamic> _load() => widget.selectedCompanyId == null
-      ? widget.loader(widget.api)
-      : widget.api.post(
-          '/admin/companies/${widget.selectedCompanyId}/retail/context',
-        );
+  Future<dynamic> _load() async {
+    final companyId = _selectedCompanyId;
+    if (companyId == null) return widget.loader(widget.api);
+    try {
+      return await widget.api.post(
+        '/admin/companies/${Uri.encodeComponent(companyId)}/retail/context',
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode != 404 && error.statusCode != 422) rethrow;
+      _selectedCompanyId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.replace('/admin/agents/retail');
+      });
+      return widget.loader(widget.api);
+    }
+  }
 
   @override
   void didUpdateWidget(covariant AdminRetailAgentPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedCompanyId != widget.selectedCompanyId)
+    if (widget.selectedCompanyId != _selectedCompanyId) {
+      _selectedCompanyId = widget.selectedCompanyId;
       _future = _load();
+    }
+  }
+
+  void _selectCompany(String companyId) {
+    setState(() {
+      _selectedCompanyId = companyId;
+      _future = _load();
+    });
+    final onSelect = widget.onSelectCompany;
+    if (onSelect != null) {
+      onSelect(companyId);
+    } else {
+      context.go(
+        '/admin/agents/retail?company=${Uri.encodeQueryComponent(companyId)}',
+      );
+    }
   }
 
   Future<void> _leave({required bool switchCompany}) async {
-    final companyId = widget.selectedCompanyId;
-    if (companyId != null) {
-      await widget.api.post('/admin/companies/$companyId/retail/context/exit');
+    final companyId = _selectedCompanyId;
+    try {
+      if (companyId != null) {
+        await widget.api.post(
+          '/admin/companies/${Uri.encodeComponent(companyId)}/retail/context/exit',
+        );
+      }
+    } on Object {
+      // The explicit company ID is the context; a failed exit audit must not
+      // retain it in the UI or URL.
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _selectedCompanyId = null;
+        _future = widget.loader(widget.api);
+      });
+      context.go(switchCompany ? '/admin/agents/retail' : '/admin/agents');
     }
-    if (!mounted) return;
-    context.go(switchCompany ? '/admin/agents/retail' : '/admin/agents');
   }
 
   @override
@@ -80,12 +121,24 @@ class _AdminRetailAgentPageState extends State<AdminRetailAgentPage> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              AdminErrorState(message: strings.value('tenantContextError')),
+              AdminErrorState(
+                message: strings.value(
+                  _selectedCompanyId == null
+                      ? 'loadTenantsError'
+                      : 'tenantContextError',
+                ),
+              ),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
-                  onPressed: () => context.go('/admin/agents/retail'),
+                  onPressed: () {
+                    setState(() {
+                      _selectedCompanyId = null;
+                      _future = widget.loader(widget.api);
+                    });
+                    context.go('/admin/agents/retail');
+                  },
                   icon: const Icon(Icons.swap_horiz),
                   label: Text(strings.value('switchCompany')),
                 ),
@@ -93,11 +146,11 @@ class _AdminRetailAgentPageState extends State<AdminRetailAgentPage> {
             ],
           );
         }
-        if (widget.selectedCompanyId == null) {
+        if (_selectedCompanyId == null) {
           return _CompanySelector(
             companies: (snapshot.data as List<dynamic>)
                 .cast<Map<String, dynamic>>(),
-            onSelect: widget.onSelectCompany,
+            onSelect: _selectCompany,
             onView: widget.onViewCompany,
           );
         }
@@ -219,7 +272,9 @@ class _AdminRetailWorkspaceState extends State<_AdminRetailWorkspace> {
   @override
   Widget build(BuildContext context) {
     final strings = AvenqoLocaleScope.translationsOf(context).agents;
+    final localeCode = AvenqoLocaleScope.of(context).code;
     final colors = AvenqoColors.of(context);
+    final companyLabelSeparator = localeCode.startsWith('fr') ? ' : ' : ': ';
     return Column(
       children: [
         Material(
@@ -235,7 +290,8 @@ class _AdminRetailWorkspaceState extends State<_AdminRetailWorkspace> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '${strings.value('adminViewLabel')}: ${widget.companyName}',
+                    '${strings.value('adminViewLabel')}'
+                    '$companyLabelSeparator${widget.companyName}',
                     style: TextStyle(
                       color: colors.ink,
                       fontWeight: FontWeight.w800,

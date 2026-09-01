@@ -704,7 +704,7 @@
     "retailCustomersLabel": "Clients",
     "retailProductsLabel": "Produits",
     "retailRecommendationsLabel": "Recommandations",
-    "adminViewLabel": "Vue Administrateur — Entreprise",
+    "adminViewLabel": "Vue administrateur — Société",
     "switchCompany": "Changer de société",
     "exitTenantView": "Quitter la vue locataire",
     "tenantContextError": "Le contexte du locataire n'a pas pu être validé."

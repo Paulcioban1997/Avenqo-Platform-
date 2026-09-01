@@ -338,6 +338,12 @@ def test_admin_retail_context_requires_platform_admin_and_existing_company(
     assert exited.status_code == 204
     assert AuditLogService(db_session).recent(limit=1)[0].action == "admin_retail_context_exited"
 
+    mutation = admin_client.post(
+        f"/api/v1/admin/companies/{tenant.id}/retail/sales/summary",
+        headers=admin_headers,
+    )
+    assert mutation.status_code == 405
+
 
 def test_admin_retail_data_is_explicit_and_switching_never_leaks_previous_tenant(
     db_session,
