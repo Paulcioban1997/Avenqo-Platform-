@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:avenqo/app/app_theme.dart';
 import 'package:avenqo/app/theme_controller.dart';
 import 'package:avenqo/app/theme_scope.dart';
+import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/auth/auth_page.dart';
 import 'package:avenqo/core/api_client.dart';
@@ -324,6 +325,86 @@ void main() {
       expect(find.byType(AuthPage), findsOneWidget);
       expect(find.byType(HomePage), findsNothing);
       _expectOfficialAuthBrand(size: 42);
+    });
+
+    testWidgets('registration shows all modules and caps Demo at two', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpApp(
+        tester,
+        initialRoute: '/register',
+        auth: unauthenticatedAuth,
+      );
+
+      final fields = find.byType(TextFormField);
+      await tester.enterText(fields.at(0), 'Avenqo Test');
+      await tester.enterText(fields.at(2), '11-50');
+      await tester.enterText(fields.at(5), 'billing@avenqo.test');
+      final continueButton = find.byType(FilledButton);
+      await tester.ensureVisible(continueButton);
+      await tester.tap(continueButton);
+      await tester.pumpAndSettle();
+      await tester.tap(continueButton);
+      await tester.pumpAndSettle();
+
+      for (final module in avenqoAgentRegistry) {
+        expect(
+          find.byKey(ValueKey('signup-module-${module.id}')),
+          findsOneWidget,
+        );
+        final context = tester.element(find.byType(AuthPage));
+        final strings = AvenqoLocaleScope.translationsOf(context).agents;
+        expect(find.text(strings.value(module.nameKey)), findsOneWidget);
+        expect(find.text(strings.value(module.descriptionKey)), findsOneWidget);
+      }
+
+      for (final module in avenqoAgentRegistry.take(3)) {
+        final card = find.byKey(ValueKey('signup-module-${module.id}'));
+        await tester.ensureVisible(card);
+        await tester.tap(card);
+        await tester.pump();
+      }
+      expect(find.text('2 / 2'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
+
+      var backButton = find.byType(TextButton).first;
+      await tester.ensureVisible(backButton);
+      await tester.tap(backButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ListTile).at(1));
+      await tester.pump();
+      await tester.tap(find.byType(FilledButton));
+      await tester.pumpAndSettle();
+      for (final module in avenqoAgentRegistry.skip(2).take(7)) {
+        final card = find.byKey(ValueKey('signup-module-${module.id}'));
+        await tester.ensureVisible(card);
+        await tester.tap(card);
+        await tester.pump();
+      }
+      expect(find.text('8 / 8'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsNWidgets(8));
+
+      backButton = find.byType(TextButton).first;
+      await tester.ensureVisible(backButton);
+      await tester.tap(backButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ListTile).at(2));
+      await tester.pump();
+      await tester.tap(find.byType(FilledButton));
+      await tester.pumpAndSettle();
+      for (final module in avenqoAgentRegistry.skip(8)) {
+        final card = find.byKey(ValueKey('signup-module-${module.id}'));
+        await tester.ensureVisible(card);
+        await tester.tap(card);
+        await tester.pump();
+      }
+      expect(find.text('11 / 11'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsNWidgets(11));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Direct URL /dashboard sans session redirige vers /login', (

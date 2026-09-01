@@ -183,9 +183,7 @@ def test_onboarding_activates_selected_module_allowed_by_plan(onboarding_environ
     assert prepare.status_code != 403
 
 
-def test_onboarding_reports_module_unavailable_for_plan(onboarding_environment) -> None:
-    """Un module hors des modules sélectionnables du plan n'est jamais
-    activé en contournement de la facturation."""
+def test_onboarding_enforces_demo_two_module_limit(onboarding_environment) -> None:
     client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)
     headers = {"Authorization": f"Bearer {token}"}
@@ -196,11 +194,11 @@ def test_onboarding_reports_module_unavailable_for_plan(onboarding_environment) 
         json={
             "business_goals": ["increase_sales"],
             "team_size": "solo",
-            "selected_modules": ["crm"],
+            "selected_modules": ["retail", "crm", "accounting"],
         },
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["activated_modules"] == []
-    assert body["unavailable_modules"] == ["crm"]
+    assert set(body["activated_modules"]) == {"retail", "crm"}
+    assert body["unavailable_modules"] == ["accounting"]
 

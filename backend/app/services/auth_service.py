@@ -31,6 +31,9 @@ from backend.app.models import (
 )
 from backend.app.schemas.auth import RegisterRequest
 from backend.app.services.account_notifications import AccountNotifier
+from backend.app.services.onboarding_service import OnboardingService
+from payments.plans import get_plan
+from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,10 @@ class AuthenticationError(ValueError):
 
 class ConflictError(ValueError):
     """Une ressource unique existe déjà."""
+
+
+class InvalidModuleSelection(ValueError):
+    """La sélection contient un module non autorisé par l'offre."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +69,12 @@ class AuthService:
     def register(self, request: RegisterRequest) -> tuple[Company, User, bool]:
         email = str(request.email).strip().lower()
         company_email = str(request.company_email).strip().lower()
+        plan = get_plan(request.plan_code)
+        selected_modules = set(request.selected_modules)
+        if not plan.allows_selection(selected_modules):
+            raise InvalidModuleSelection(
+                "La sélection de modules dépasse la limite de cette offre"
+            )
         if self._session.scalar(select(User).where(User.email == email)):
             raise ConflictError("Un compte utilise déjà cet email")
         if self._session.scalar(select(Company).where(Company.email == company_email)):
@@ -98,10 +111,11 @@ class AuthService:
             password_hash=hash_password(request.password),
             role=UserRole.OWNER,
             is_active=True,
+            email_verified_at=datetime.now(timezone.utc),
         )
         self._session.add_all((company, user))
         self._session.flush()
-        if request.business_goals or request.current_tools:
+        if request.business_goals or request.current_tools or request.selected_modules:
             self._session.add(
                 CompanyOnboarding(
                     company_id=company.id,
@@ -113,6 +127,10 @@ class AuthService:
                 )
             )
             self._session.flush()
+        OnboardingService(self._session).activate_selected_modules(
+            TenantContext(company.id),
+            tuple(request.selected_modules),
+        )
         token = self._create_account_token(user, AccountTokenPurpose.EMAIL_VERIFICATION, 24)
         self._session.commit()
         verification_email_sent = False

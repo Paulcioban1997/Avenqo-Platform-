@@ -29,4 +29,4 @@ class OnboardingSubmitRequest(BaseModel):
     # "accounting"). Activés uniquement si le plan de l'entreprise les
     # autorise (voir `SubscriptionPlan.allows_module`) — jamais en
     # contournement de la facturation.
-    selected_modules: tuple[str, ...] = Field(default=(), max_length=10)
+    selected_modules: tuple[str, ...] = Field(default=(), max_length=11)

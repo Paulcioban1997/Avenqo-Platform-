@@ -31,6 +31,7 @@ class RegisterRequest(BaseModel):
     plan_code: str = Field(default="demo", pattern="^(demo|professional|enterprise)$")
     business_goals: list[str] = Field(default_factory=list, max_length=20)
     current_tools: list[str] = Field(default_factory=list, max_length=20)
+    selected_modules: list[str] = Field(default_factory=list, max_length=11)
 
     @field_validator("website", mode="before")
     @classmethod

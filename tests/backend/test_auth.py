@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.app.core.security import decode_access_token, verify_password
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
-from backend.app.models import Base, Company, CompanyOnboarding, User
+from backend.app.models import Base, Company, CompanyModule, CompanyOnboarding, Module, User
 from backend.main import create_application
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
@@ -106,11 +106,11 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
         assert users[0].password_hash != payload["password"]
         assert verify_password(payload["password"], users[0].password_hash)
 
-    unverified_login = client.post(
+    immediate_login = client.post(
         "/api/v1/auth/login",
         json={"email": payload["email"], "password": payload["password"]},
     )
-    assert unverified_login.status_code == 401
+    assert immediate_login.status_code == 200
 
     login = verify_and_login(client, notifier, payload["email"])
     token = login["access_token"]
@@ -173,6 +173,16 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
         "plan_code": "professional",
         "business_goals": ["increase_sales", "reduce_churn"],
         "current_tools": ["csv", "crm"],
+        "selected_modules": [
+            "retail",
+            "marketing",
+            "crm",
+            "hr",
+            "accounting",
+            "ocr",
+            "voice",
+            "media",
+        ],
     }
 
     response = client.post("/api/v1/auth/register", json=payload)
@@ -194,6 +204,12 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
         assert onboarding is not None
         assert onboarding.business_goals == ["increase_sales", "reduce_churn"]
         assert onboarding.current_tools == ["csv", "crm"]
+        selected_modules = session.execute(
+            select(Module.code)
+            .join(CompanyModule, CompanyModule.module_id == Module.id)
+            .where(CompanyModule.company_id == company.id)
+        ).scalars().all()
+        assert set(selected_modules) == set(payload["selected_modules"])
 
 
 def test_inscription_sans_site_web_est_valide(auth_environment) -> None:
@@ -208,6 +224,27 @@ def test_inscription_sans_site_web_est_valide(auth_environment) -> None:
         company = session.scalar(select(Company).where(Company.name == "No Site Company"))
         assert company is not None
         assert company.website is None
+
+
+def test_inscription_refuse_un_depassement_de_modules_sans_creer_de_compte(
+    auth_environment,
+) -> None:
+    client, session_factory, _ = auth_environment
+    payload = registration_payload("over-limit@acme.ca", "Over Limit Company") | {
+        "plan_code": "demo",
+        "selected_modules": ["retail", "crm", "accounting"],
+    }
+
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 400
+    with session_factory() as session:
+        assert session.scalar(
+            select(Company).where(Company.name == "Over Limit Company")
+        ) is None
+        assert session.scalar(
+            select(User).where(User.email == "over-limit@acme.ca")
+        ) is None
 
 
 def test_refresh_token_est_rotatif_et_jwt_altere_est_refuse(auth_environment) -> None:

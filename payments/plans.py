@@ -20,6 +20,7 @@ class SubscriptionPlan:
     code: PlanCode
     name: str
     selectable_modules: frozenset[str]
+    max_selectable_modules: int | None = None
     requires_sales_contact: bool = False
     monthly_price_usd: int | None = None
 
@@ -28,16 +29,49 @@ class SubscriptionPlan:
 
         return module_code in self.selectable_modules
 
+    def allows_selection(self, module_codes: set[str]) -> bool:
+        if not module_codes.issubset(self.selectable_modules):
+            return False
+        return (
+            self.max_selectable_modules is None
+            or len(module_codes) <= self.max_selectable_modules
+        )
 
-RETAIL_MODULES = frozenset({"retail"})
+
+MODULE_NAMES: dict[str, str] = {
+    "retail": "Retail Intelligence",
+    "marketing": "Marketing AI",
+    "crm": "CRM AI",
+    "hr": "HR AI",
+    "accounting": "Accounting AI",
+    "ocr": "OCR AI",
+    "voice": "Voice AI",
+    "media": "Media AI",
+    "legal": "Legal AI",
+    "appointments": "Appointments AI",
+    "workflow": "Workflow Automation",
+}
+ALL_MODULES = frozenset(MODULE_NAMES)
 
 PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
-    SubscriptionPlan(PlanCode.DEMO, "Demo", RETAIL_MODULES, monthly_price_usd=28),
-    SubscriptionPlan(PlanCode.PROFESSIONAL, "Professional", RETAIL_MODULES, monthly_price_usd=49),
+    SubscriptionPlan(
+        PlanCode.DEMO,
+        "Demo",
+        ALL_MODULES,
+        max_selectable_modules=2,
+        monthly_price_usd=28,
+    ),
+    SubscriptionPlan(
+        PlanCode.PROFESSIONAL,
+        "Professional",
+        ALL_MODULES,
+        max_selectable_modules=8,
+        monthly_price_usd=49,
+    ),
     SubscriptionPlan(
         PlanCode.ENTERPRISE,
         "Enterprise",
-        RETAIL_MODULES,
+        ALL_MODULES,
         requires_sales_contact=True,
     ),
 )
@@ -47,7 +81,7 @@ INTERNAL_COMPATIBILITY_PLANS: tuple[SubscriptionPlan, ...] = (
     SubscriptionPlan(
         PlanCode.CUSTOM_ENTERPRISE,
         "Custom Enterprise",
-        RETAIL_MODULES,
+        ALL_MODULES,
         requires_sales_contact=True,
     ),
 )

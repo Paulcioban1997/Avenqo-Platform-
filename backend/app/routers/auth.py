@@ -21,7 +21,12 @@ from backend.app.schemas.auth import (
     TokenRequest,
     UserResponse,
 )
-from backend.app.services.auth_service import AuthenticationError, AuthService, ConflictError
+from backend.app.services.auth_service import (
+    AuthenticationError,
+    AuthService,
+    ConflictError,
+    InvalidModuleSelection,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -73,6 +78,8 @@ def register(
         _, _, verification_email_sent = service.register(request)
     except ConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InvalidModuleSelection as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     email_delivery_configured = get_settings().smtp_host is not None
     if verification_email_sent:

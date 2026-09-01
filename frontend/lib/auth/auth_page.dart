@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
@@ -51,8 +52,7 @@ class _AuthPageState extends State<AuthPage> {
   int _signupStep = 0;
   String _signupIndustry = 'Retail';
   String _signupPlan = 'demo';
-  final _signupGoals = <String>{};
-  final _signupTools = <String>{};
+  final _signupModules = <String>{};
   String? _message;
   bool _isError = false;
   bool _obscurePassword = true;
@@ -95,7 +95,7 @@ class _AuthPageState extends State<AuthPage> {
   Future<void> _submit(AuthStrings t) async {
     if (!_formKey.currentState!.validate()) return;
     if (widget.mode == AuthMode.register &&
-        _signupStep == 2 &&
+        _signupStep == 3 &&
         _password.text != _passwordConfirmation.text) {
       _show(t.genericError, isError: true);
       return;
@@ -112,7 +112,7 @@ class _AuthPageState extends State<AuthPage> {
             return;
           }
           await widget.auth.register(_signupPayload());
-          _show(t.registerSuccess);
+          if (mounted) context.go('/billing');
         case AuthMode.forgot:
           await widget.auth.forgotPassword(_email.text);
           _show(t.forgotSuccess);
@@ -150,8 +150,7 @@ class _AuthPageState extends State<AuthPage> {
     'timezone': 'America/Toronto',
     'industry': _signupIndustry,
     'plan_code': _signupPlan,
-    'business_goals': _signupGoals.toList(),
-    'current_tools': _signupTools.toList(),
+    'selected_modules': _signupModules.toList(),
   };
 
   void _show(String message, {bool isError = false}) {
@@ -327,13 +326,14 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Widget _buildSignupForm(AuthStrings t) {
-    final onboarding = AvenqoLocaleScope.translationsOf(context).onboarding;
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final onboarding = translations.onboarding;
     final steps = [
       t.organisation,
-      onboarding.goalsLabel,
-      t.createOrganisation,
-      'Plan',
-      'Confirmation',
+      translations.pricing.kicker,
+      translations.steps.items[1].title,
+      t.registerTitle,
+      translations.finalCta.label,
     ];
     return Form(
       key: _formKey,
@@ -344,12 +344,10 @@ class _AuthPageState extends State<AuthPage> {
           const SizedBox(height: 24),
           switch (_signupStep) {
             0 => _signupOrganisation(t, onboarding),
-            1 => _signupNeeds(onboarding),
-            2 => _signupOwner(t),
-            3 => _signupPlans(
-              AvenqoLocaleScope.translationsOf(context).pricing,
-            ),
-            _ => _signupConfirmation(t),
+            1 => _signupPlans(translations.pricing),
+            2 => _signupModulesStep(translations),
+            3 => _signupOwner(t),
+            _ => _signupConfirmation(t, translations),
           },
           const SizedBox(height: 24),
           if (_message != null) ...[
@@ -431,48 +429,96 @@ class _AuthPageState extends State<AuthPage> {
         ],
       );
 
-  Widget _signupNeeds(OnboardingStrings t) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(t.goalsLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 12),
-      _choiceWrap([
-        ("increase_sales", t.goalIncreaseSales),
-        ("reduce_churn", t.goalReduceChurn),
-        ("optimize_pricing", t.goalOptimizePricing),
-        ("understand_customers", t.goalUnderstandCustomers),
-        ("automate_reports", t.goalAutomateReports),
-      ], _signupGoals),
-      const SizedBox(height: 24),
-      Text(t.toolsLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 12),
-      _choiceWrap([
-        ("csv", t.toolSpreadsheets),
-        ("ecommerce", t.toolEcommerce),
-        ("pos", t.toolPos),
-        ("accounting", t.toolAccounting),
-        ("crm", t.toolCrm),
-      ], _signupTools),
-    ],
-  );
-
-  Widget _choiceWrap(List<(String, String)> choices, Set<String> selected) =>
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final choice in choices)
-            FilterChip(
-              label: Text(choice.$2),
-              selected: selected.contains(choice.$1),
-              onSelected: (value) => setState(
-                () => value
-                    ? selected.add(choice.$1)
-                    : selected.remove(choice.$1),
+  Widget _signupModulesStep(Translations translations) {
+    final colors = AvenqoColors.of(context);
+    final limit = _moduleLimit;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    translations.steps.items[1].title,
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    translations.steps.items[1].text,
+                    style: TextStyle(color: colors.muted, height: 1.4),
+                  ),
+                ],
               ),
             ),
-        ],
-      );
+            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _Brand.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_signupModules.length} / $limit',
+                style: const TextStyle(
+                  color: _Brand.blueDark,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 560 ? 2 : 1;
+            const spacing = 12.0;
+            final width =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final module in avenqoAgentRegistry)
+                  SizedBox(
+                    width: width,
+                    child: _SignupModuleCard(
+                      key: ValueKey('signup-module-${module.id}'),
+                      module: module,
+                      strings: translations.agents,
+                      selected: _signupModules.contains(module.id),
+                      onTap: () => _toggleModule(module.id),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  int get _moduleLimit => switch (_signupPlan) {
+    'demo' => 2,
+    'professional' => 8,
+    _ => avenqoAgentRegistry.length,
+  };
+
+  void _toggleModule(String moduleId) {
+    setState(() {
+      if (!_signupModules.remove(moduleId) &&
+          _signupModules.length < _moduleLimit) {
+        _signupModules.add(moduleId);
+      }
+    });
+  }
 
   Widget _signupOwner(AuthStrings t) => Column(
     children: [
@@ -493,30 +539,45 @@ class _AuthPageState extends State<AuthPage> {
 
   Widget _signupPlans(PricingStrings pricing) => Column(
     children: [
-      for (final plan in pricing.plans)
+      for (var index = 0; index < pricing.plans.length; index++)
         Card(
-          color: _signupPlan == plan.tier.toLowerCase()
+          color: _signupPlan == _planCode(index)
               ? Theme.of(context).colorScheme.primaryContainer
               : null,
           child: ListTile(
-            onTap: () => setState(() => _signupPlan = plan.tier.toLowerCase()),
+            onTap: () => setState(() {
+              _signupPlan = _planCode(index);
+              final retained = _signupModules.take(_moduleLimit).toSet();
+              _signupModules
+                ..clear()
+                ..addAll(retained);
+            }),
             leading: Icon(
-              _signupPlan == plan.tier.toLowerCase()
+              _signupPlan == _planCode(index)
                   ? Icons.radio_button_checked
                   : Icons.radio_button_unchecked,
               color: Theme.of(context).colorScheme.primary,
             ),
             title: Text(
-              plan.tier,
+              pricing.plans[index].tier,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            subtitle: Text(plan.priceLabel),
+            subtitle: Text(pricing.plans[index].priceLabel),
           ),
         ),
     ],
   );
 
-  Widget _signupConfirmation(AuthStrings t) => Column(
+  String _planCode(int index) => switch (index) {
+    0 => 'demo',
+    1 => 'professional',
+    _ => 'enterprise',
+  };
+
+  Widget _signupConfirmation(
+    AuthStrings t,
+    Translations translations,
+  ) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(
@@ -528,8 +589,14 @@ class _AuthPageState extends State<AuthPage> {
         '${_company.text} · $_signupIndustry · ${_signupPlan.toUpperCase()}',
       ),
       Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
+      const SizedBox(height: 4),
+      Text(
+        _signupModules
+            .map((id) => translations.agents.value(agentById(id).nameKey))
+            .join(' · '),
+      ),
       const SizedBox(height: 8),
-      const Text('Your Avenqo workspace is ready to be created.'),
+      Text(translations.finalCta.title),
     ],
   );
 
@@ -582,6 +649,106 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 }
+
+class _SignupModuleCard extends StatelessWidget {
+  const _SignupModuleCard({
+    super.key,
+    required this.module,
+    required this.strings,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AvenqoAgentDefinition module;
+  final AgentStrings strings;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Material(
+      color: selected ? _Brand.blue.withValues(alpha: 0.08) : colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: selected ? _Brand.blue : colors.line,
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(
+                  _moduleIcon(module.iconIdentifier),
+                  color: _Brand.blue,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.value(module.nameKey),
+                      style: TextStyle(
+                        color: colors.ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      strings.value(module.descriptionKey),
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected ? Icons.check_circle : Icons.circle_outlined,
+                color: selected ? _Brand.blue : colors.muted,
+                size: 21,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+IconData _moduleIcon(String identifier) => switch (identifier) {
+  'storefront' => Icons.storefront_outlined,
+  'campaign' => Icons.campaign_outlined,
+  'contacts' => Icons.contacts_outlined,
+  'groups' => Icons.groups_outlined,
+  'account_balance' => Icons.account_balance_outlined,
+  'document_scanner' => Icons.document_scanner_outlined,
+  'mic' => Icons.mic_none_outlined,
+  'perm_media' => Icons.perm_media_outlined,
+  'gavel' => Icons.gavel_outlined,
+  'calendar_month' => Icons.calendar_month_outlined,
+  'account_tree' => Icons.account_tree_outlined,
+  _ => Icons.extension_outlined,
+};
 
 class _SignupProgress extends StatelessWidget {
   const _SignupProgress({required this.step, required this.labels});

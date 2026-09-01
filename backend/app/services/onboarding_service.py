@@ -14,8 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.models import Company, CompanyModule, CompanyOnboarding, Module
 from backend.app.models.base import CompanyModuleStatus, OnboardingStatus
 from backend.app.schemas.onboarding import OnboardingStatusResponse, OnboardingSubmitRequest
-from modules.catalog import MODULES_BY_CODE
-from payments.plans import get_plan
+from payments.plans import MODULE_NAMES, get_plan
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -36,7 +35,7 @@ class OnboardingService:
         record.refined_industry = request.refined_industry
         record.status = OnboardingStatus.COMPLETED
         record.completed_at = datetime.now(timezone.utc)
-        unavailable = self._activate_selected_modules(tenant, request.selected_modules)
+        unavailable = self.activate_selected_modules(tenant, request.selected_modules)
         self._session.commit()
         return self._to_response(record, tenant, unavailable_modules=unavailable)
 
@@ -55,7 +54,7 @@ class OnboardingService:
             self._session.commit()
         return record
 
-    def _activate_selected_modules(
+    def activate_selected_modules(
         self, tenant: TenantContext, module_codes: tuple[str, ...]
     ) -> tuple[str, ...]:
         """Active les modules optionnels choisis, en respectant le plan.
@@ -71,16 +70,23 @@ class OnboardingService:
         plan = get_plan(company.subscription_plan)
         now = datetime.now(timezone.utc)
         unavailable: list[str] = []
-        for code in module_codes:
-            if code not in MODULES_BY_CODE:
+        selected_count = 0
+        for code in dict.fromkeys(module_codes):
+            if code not in MODULE_NAMES:
                 continue
             if not plan.allows_module(code):
                 unavailable.append(code)
                 continue
+            if (
+                plan.max_selectable_modules is not None
+                and selected_count >= plan.max_selectable_modules
+            ):
+                unavailable.append(code)
+                continue
+            selected_count += 1
             module = self._session.scalar(select(Module).where(Module.code == code))
             if module is None:
-                definition = MODULES_BY_CODE[code]
-                module = Module(name=definition.name, code=code)
+                module = Module(name=MODULE_NAMES[code], code=code)
                 self._session.add(module)
                 self._session.flush()
             company_module = self._session.scalar(

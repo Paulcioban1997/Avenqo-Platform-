@@ -48,9 +48,11 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> register(Map<String, dynamic> request) async {
-    await _run(
-      () => api.post('/auth/register', body: request, authenticated: false),
-    );
+    await _run(() async {
+      final data = await api.register(request);
+      _account = {'user': data['user'], 'company': data['company']};
+      await _refreshSubscription();
+    });
   }
 
   Future<void> forgotPassword(String email) async {
