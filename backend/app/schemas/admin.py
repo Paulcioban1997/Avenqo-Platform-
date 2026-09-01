@@ -54,6 +54,11 @@ class CompanyDetailResponse(BaseModel):
     enterprise_override: dict[str, Any] | None
 
 
+class AdminTenantContextResponse(BaseModel):
+    company_id: UUID
+    company_name: str
+
+
 class SetEnterpriseOverrideRequest(BaseModel):
     quota_overrides: dict[str, int | None] = Field(default_factory=dict)
     capability_overrides: dict[str, bool] = Field(default_factory=dict)

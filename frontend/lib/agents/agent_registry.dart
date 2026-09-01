@@ -29,7 +29,7 @@ const avenqoAgentRegistry = <AvenqoAgentDefinition>[
     descriptionKey: 'retailDescription',
     iconIdentifier: 'storefront',
     availability: AvenqoAgentAvailability.available,
-    route: '/dashboard',
+    route: '/retail',
   ),
   AvenqoAgentDefinition(
     id: 'marketing',

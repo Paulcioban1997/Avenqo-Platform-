@@ -29,6 +29,7 @@ from backend.app.ai.usage.service import AIUsageService
 from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
+from backend.app.dependencies.tenant_business import get_tenant_sales_service
 from backend.app.models import (
     Base,
     BillingAccount,
@@ -240,6 +241,43 @@ def _access_token(db_session, user: User) -> str:
     return token
 
 
+class _TenantEchoSalesService:
+    def __init__(self, revenues: dict) -> None:
+        self.revenues = revenues
+
+    def build(self, tenant, **_) -> dict:
+        revenue = self.revenues[tenant.company_id]
+        return {
+            "status": "ready",
+            "available": True,
+            "currency": "USD",
+            "capabilities": ["sales"],
+            "period": {
+                "key": "last_30_days",
+                "start": None,
+                "end": None,
+                "comparison_start": None,
+                "comparison_end": None,
+                "date_filter_available": False,
+                "granularity": "day",
+            },
+            "summary": {
+                "revenue": revenue,
+                "orders": 1,
+                "average_order_value": revenue,
+                "rows_considered": 1,
+                "previous_revenue": None,
+                "previous_orders": None,
+                "revenue_change_percent": None,
+                "orders_change_percent": None,
+            },
+            "trend": {"granularity": "day", "points": []},
+            "strongest_period": None,
+            "weakest_period": None,
+            "forecast": None,
+        }
+
+
 def test_tenant_owner_is_denied_admin_access(db_session, admin_client: TestClient) -> None:
     company = _company(db_session, slug="tenant-co")
     owner = _user(db_session, company, platform_admin=False, role=UserRole.OWNER)
@@ -251,6 +289,102 @@ def test_tenant_owner_is_denied_admin_access(db_session, admin_client: TestClien
     )
 
     assert response.status_code in (401, 403)
+
+
+def test_admin_retail_context_requires_platform_admin_and_existing_company(
+    db_session,
+    admin_client: TestClient,
+) -> None:
+    tenant = _company(db_session, slug="retail-context-target")
+    owner = _user(db_session, tenant)
+    admin_company = _company(db_session, slug="retail-context-admin")
+    admin = _user(db_session, admin_company, platform_admin=True)
+    db_session.commit()
+
+    owner_headers = {"Authorization": f"Bearer {_access_token(db_session, owner)}"}
+    denied = admin_client.post(
+        f"/api/v1/admin/companies/{tenant.id}/retail/context",
+        headers=owner_headers,
+    )
+    assert denied.status_code == 403
+    denied_data = admin_client.get(
+        f"/api/v1/admin/companies/{tenant.id}/retail/sales/summary",
+        headers=owner_headers,
+    )
+    assert denied_data.status_code == 403
+
+    admin_headers = {"Authorization": f"Bearer {_access_token(db_session, admin)}"}
+    missing = admin_client.post(
+        f"/api/v1/admin/companies/{uuid4()}/retail/context",
+        headers=admin_headers,
+    )
+    assert missing.status_code == 404
+
+    selected = admin_client.post(
+        f"/api/v1/admin/companies/{tenant.id}/retail/context",
+        headers=admin_headers,
+    )
+    assert selected.status_code == 200
+    assert selected.json() == {"company_id": str(tenant.id), "company_name": tenant.name}
+    entered = AuditLogService(db_session).recent(limit=1)[0]
+    assert entered.action == "admin_retail_context_entered"
+    assert entered.actor_user_id == admin.id
+    assert entered.company_id == tenant.id
+
+    exited = admin_client.post(
+        f"/api/v1/admin/companies/{tenant.id}/retail/context/exit",
+        headers=admin_headers,
+    )
+    assert exited.status_code == 204
+    assert AuditLogService(db_session).recent(limit=1)[0].action == "admin_retail_context_exited"
+
+
+def test_admin_retail_data_is_explicit_and_switching_never_leaks_previous_tenant(
+    db_session,
+    admin_client: TestClient,
+) -> None:
+    tenant_a = _company(db_session, slug="retail-admin-a")
+    tenant_b = _company(db_session, slug="retail-admin-b")
+    admin_company = _company(db_session, slug="retail-admin-platform")
+    admin = _user(db_session, admin_company, platform_admin=True)
+    db_session.commit()
+    admin_client.app.dependency_overrides[get_tenant_sales_service] = lambda: _TenantEchoSalesService(
+        {tenant_a.id: 101.0, tenant_b.id: 202.0}
+    )
+    headers = {"Authorization": f"Bearer {_access_token(db_session, admin)}"}
+
+    no_context = admin_client.get("/api/v1/admin/retail/sales/summary", headers=headers)
+    assert no_context.status_code == 404
+
+    response_a = admin_client.get(
+        f"/api/v1/admin/companies/{tenant_a.id}/retail/sales/summary",
+        headers=headers,
+    )
+    response_b = admin_client.get(
+        f"/api/v1/admin/companies/{tenant_b.id}/retail/sales/summary",
+        headers=headers,
+    )
+    assert response_a.status_code == response_b.status_code == 200
+    assert response_a.json()["summary"]["revenue"] == 101.0
+    assert response_b.json()["summary"]["revenue"] == 202.0
+
+
+def test_normal_sales_route_still_uses_authenticated_client_tenant(
+    db_session,
+    admin_client: TestClient,
+) -> None:
+    tenant = _company(db_session, slug="normal-retail-tenant", plan="professional")
+    owner = _user(db_session, tenant)
+    db_session.add(BillingAccount(company_id=tenant.id, plan_code="professional", status="active"))
+    db_session.commit()
+    admin_client.app.dependency_overrides[get_tenant_sales_service] = lambda: _TenantEchoSalesService(
+        {tenant.id: 303.0}
+    )
+    headers = {"Authorization": f"Bearer {_access_token(db_session, owner)}"}
+
+    response = admin_client.get("/api/v1/sales/summary", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["summary"]["revenue"] == 303.0
 
 
 def test_platform_admin_can_view_dashboard_and_company_directory(db_session, admin_client: TestClient) -> None:

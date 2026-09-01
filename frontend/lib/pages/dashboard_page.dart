@@ -38,8 +38,7 @@ class DashboardData {
           .cast<Map<String, dynamic>>(),
       priorities: (json['priorities'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>(),
-      connections:
-          json['connections'] as Map<String, dynamic>? ?? const {},
+      connections: json['connections'] as Map<String, dynamic>? ?? const {},
       recentActivity: (json['recent_activity'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>(),
     );
@@ -65,20 +64,28 @@ class DashboardData {
 
 /// Point d'injection pour les tests : évite tout appel réseau réel dans les
 /// widget tests, sans changer le comportement par défaut en production.
-typedef DashboardDataLoader = Future<DashboardData> Function(AuthController auth);
+typedef DashboardDataLoader =
+    Future<DashboardData> Function(AuthController auth);
 
 Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
-  final payload = await auth.api
-      .get('/dashboard')
-      .timeout(const Duration(seconds: 10)) as Map<String, dynamic>;
+  final payload =
+      await auth.api.get('/dashboard').timeout(const Duration(seconds: 10))
+          as Map<String, dynamic>;
   return DashboardData.fromJson(payload);
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, required this.auth, DashboardDataLoader? loader})
-      : loader = loader ?? _defaultDashboardLoader;
+  const DashboardPage({
+    super.key,
+    required this.auth,
+    this.companyNameOverride,
+    this.readOnly = false,
+    DashboardDataLoader? loader,
+  }) : loader = loader ?? _defaultDashboardLoader;
 
   final AuthController auth;
+  final String? companyNameOverride;
+  final bool readOnly;
   final DashboardDataLoader loader;
 
   @override
@@ -103,7 +110,8 @@ class _DashboardPageState extends State<DashboardPage> {
     final company = widget.auth.company ?? const <String, dynamic>{};
     final user = widget.auth.user ?? const <String, dynamic>{};
     final wide = MediaQuery.sizeOf(context).width >= 1080;
-    final companyName = company['name']?.toString() ?? '';
+    final companyName =
+        widget.companyNameOverride ?? company['name']?.toString() ?? '';
     final firstName = user['first_name']?.toString();
 
     return Container(
@@ -112,15 +120,17 @@ class _DashboardPageState extends State<DashboardPage> {
         future: _future,
         builder: (context, snapshot) {
           final loading = snapshot.connectionState != ConnectionState.done;
-          final data = snapshot.data ?? const DashboardData(
-            status: 'no_data',
-            planCode: null,
-            currency: 'USD',
-            kpis: [],
-            priorities: [],
-            connections: {},
-            recentActivity: [],
-          );
+          final data =
+              snapshot.data ??
+              const DashboardData(
+                status: 'no_data',
+                planCode: null,
+                currency: 'USD',
+                kpis: [],
+                priorities: [],
+                connections: {},
+                recentActivity: [],
+              );
           return ListView(
             padding: EdgeInsets.all(wide ? 32 : 20),
             children: [
@@ -132,7 +142,9 @@ class _DashboardPageState extends State<DashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          firstName == null ? t.hello : '${t.hello}, $firstName',
+                          firstName == null
+                              ? t.hello
+                              : '${t.hello}, $firstName',
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
@@ -154,45 +166,54 @@ class _DashboardPageState extends State<DashboardPage> {
                     _PlanBadge(label: t.planLabel, plan: data.planCode!),
                 ],
               ),
-              if (company['onboarding_status'] == 'skipped') ...[
+              if (!widget.readOnly &&
+                  company['onboarding_status'] == 'skipped') ...[
                 const SizedBox(height: 16),
                 _ResumeOnboardingBanner(),
               ],
-              const SizedBox(height: 24),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final stacked = constraints.maxWidth < 760;
-                  final askCard = _HeroCard(
-                    icon: Icons.auto_awesome,
-                    title: t.askAvenqo,
-                    subtitle: t.askAvenqoSubtitle,
-                    cta: t.askAvenqoCta,
-                    dark: true,
-                    onTap: () => context.go('/assistant'),
-                  );
-                  final importCard = _HeroCard(
-                    icon: Icons.upload_file_outlined,
-                    title: t.importDataTitle,
-                    subtitle: t.importDataSubtitle,
-                    cta: t.importDataCta,
-                    dark: false,
-                    onTap: () => context.go('/connections'),
-                  );
-                  if (stacked) {
-                    return Column(children: [askCard, const SizedBox(height: 16), importCard]);
-                  }
-                  return IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: askCard),
-                        const SizedBox(width: 16),
-                        Expanded(child: importCard),
-                      ],
-                    ),
-                  );
-                },
-              ),
+              if (!widget.readOnly) ...[
+                const SizedBox(height: 24),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stacked = constraints.maxWidth < 760;
+                    final askCard = _HeroCard(
+                      icon: Icons.auto_awesome,
+                      title: t.askAvenqo,
+                      subtitle: t.askAvenqoSubtitle,
+                      cta: t.askAvenqoCta,
+                      dark: true,
+                      onTap: () => context.go('/assistant'),
+                    );
+                    final importCard = _HeroCard(
+                      icon: Icons.upload_file_outlined,
+                      title: t.importDataTitle,
+                      subtitle: t.importDataSubtitle,
+                      cta: t.importDataCta,
+                      dark: false,
+                      onTap: () => context.go('/connections'),
+                    );
+                    if (stacked) {
+                      return Column(
+                        children: [
+                          askCard,
+                          const SizedBox(height: 16),
+                          importCard,
+                        ],
+                      );
+                    }
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: askCard),
+                          const SizedBox(width: 16),
+                          Expanded(child: importCard),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 20),
               if (loading)
                 const Padding(
@@ -206,41 +227,83 @@ class _DashboardPageState extends State<DashboardPage> {
                   actionLabel: companyT.connectionsRetry,
                   onAction: _retry,
                 )
+              else if (data.status == 'no_data' && !widget.readOnly)
+                _EmptyDataBanner(
+                  title: t.connectDataTitle,
+                  cta: t.connectDataCta,
+                )
               else if (data.status == 'no_data')
-                _EmptyDataBanner(title: t.connectDataTitle, cta: t.connectDataCta)
+                _DashboardMessage(
+                  icon: Icons.query_stats,
+                  message: t.connectDataTitle,
+                )
               else if (data.status == 'processing')
                 _DashboardMessage(
                   icon: Icons.sync,
                   message: companyT.connectionsAnalyzing,
                 )
               else ...[
-                Text(t.thisMonth, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+                Text(
+                  t.thisMonth,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: colors.ink,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 GridView.count(
                   crossAxisCount: wide
                       ? 4
                       : MediaQuery.sizeOf(context).width >= 620
-                          ? 2
-                          : 1,
+                      ? 2
+                      : 1,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                    childAspectRatio: wide
+                  childAspectRatio: wide
                       ? 1.65
                       : MediaQuery.sizeOf(context).width >= 620
-                        ? 1.7
-                        : 2.2,
+                      ? 1.7
+                      : 2.2,
                   children: [
-                    _Metric.fromKpi(label: t.salesLabel, data: data, key: 'revenue', context: context),
-                    _Metric.fromKpi(label: t.ordersLabel, data: data, key: 'orders', context: context),
-                    _Metric.fromKpi(label: t.customersLabel, data: data, key: 'customers', context: context),
-                    _Metric.fromKpi(label: t.avgOrderLabel, data: data, key: 'average_order_value', context: context),
+                    _Metric.fromKpi(
+                      label: t.salesLabel,
+                      data: data,
+                      key: 'revenue',
+                      context: context,
+                    ),
+                    _Metric.fromKpi(
+                      label: t.ordersLabel,
+                      data: data,
+                      key: 'orders',
+                      context: context,
+                    ),
+                    _Metric.fromKpi(
+                      label: t.customersLabel,
+                      data: data,
+                      key: 'customers',
+                      context: context,
+                    ),
+                    _Metric.fromKpi(
+                      label: t.avgOrderLabel,
+                      data: data,
+                      key: 'average_order_value',
+                      context: context,
+                    ),
                   ],
                 ),
               ],
               const SizedBox(height: 28),
-              Text(t.prioritiesTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              Text(
+                t.prioritiesTitle,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: colors.ink,
+                ),
+              ),
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
@@ -253,9 +316,17 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: data.priorities.isEmpty
                       ? Row(
                           children: [
-                            const Icon(Icons.lightbulb_outline, color: _Brand.blue),
+                            const Icon(
+                              Icons.lightbulb_outline,
+                              color: _Brand.blue,
+                            ),
                             const SizedBox(width: 14),
-                            Expanded(child: Text(t.prioritiesEmpty, style: TextStyle(color: colors.muted))),
+                            Expanded(
+                              child: Text(
+                                t.prioritiesEmpty,
+                                style: TextStyle(color: colors.muted),
+                              ),
+                            ),
                           ],
                         )
                       : Column(
@@ -267,14 +338,31 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               const SizedBox(height: 28),
-              Text(t.connectionsTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              Text(
+                t.connectionsTitle,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: colors.ink,
+                ),
+              ),
               const SizedBox(height: 12),
               if (!loading && data.connections.isNotEmpty)
                 _ConnectionsSummary(data: data.connections, strings: companyT)
               else if (!loading)
-                _EmptyDataBanner(title: t.connectionsEmpty, cta: t.connectionsEmptyCta),
+                _EmptyDataBanner(
+                  title: t.connectionsEmpty,
+                  cta: t.connectionsEmptyCta,
+                ),
               const SizedBox(height: 28),
-              Text(t.activityTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              Text(
+                t.activityTitle,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: colors.ink,
+                ),
+              ),
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
@@ -295,16 +383,30 @@ class _DashboardPageState extends State<DashboardPage> {
                           children: [
                             const Icon(Icons.history, color: _Brand.blue),
                             const SizedBox(width: 14),
-                            Expanded(child: Text(t.activityEmpty, style: TextStyle(color: colors.muted))),
+                            Expanded(
+                              child: Text(
+                                t.activityEmpty,
+                                style: TextStyle(color: colors.muted),
+                              ),
+                            ),
                           ],
                         ),
                 ),
               ),
               const SizedBox(height: 28),
-              Text(t.stepsTitle, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: colors.ink)),
+              Text(
+                t.stepsTitle,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: colors.ink,
+                ),
+              ),
               const SizedBox(height: 12),
               _RecommendedSteps(
-                orgDone: company['onboarding_status'] != null && company['onboarding_status'] != 'pending',
+                orgDone:
+                    company['onboarding_status'] != null &&
+                    company['onboarding_status'] != 'pending',
                 dataDone: !loading && data.hasReadyData,
                 orgLabel: t.stepOrgLabel,
                 dataLabel: t.stepDataLabel,
@@ -348,7 +450,9 @@ class _HeroCard extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     final background = dark ? _Brand.ink : colors.surface;
     final textColor = dark ? Colors.white : colors.ink;
-    final subtitleColor = dark ? Colors.white.withValues(alpha: 0.75) : colors.muted;
+    final subtitleColor = dark
+        ? Colors.white.withValues(alpha: 0.75)
+        : colors.muted;
     return Material(
       color: background,
       borderRadius: BorderRadius.circular(14),
@@ -367,17 +471,36 @@ class _HeroCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: _Brand.blue, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: _Brand.blue,
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Icon(icon, color: Colors.white, size: 20),
               ),
               const SizedBox(height: 16),
-              Text(title, style: TextStyle(color: textColor, fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 6),
-              Text(subtitle, style: TextStyle(color: subtitleColor, fontSize: 13.5)),
+              Text(
+                subtitle,
+                style: TextStyle(color: subtitleColor, fontSize: 13.5),
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text(cta, style: const TextStyle(color: _Brand.blue, fontWeight: FontWeight.w700)),
+                  Text(
+                    cta,
+                    style: const TextStyle(
+                      color: _Brand.blue,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(width: 6),
                   const Icon(Icons.arrow_forward, size: 16, color: _Brand.blue),
                 ],
@@ -417,7 +540,9 @@ class _DashboardMessage extends StatelessWidget {
         children: [
           Icon(icon, color: _Brand.blue),
           const SizedBox(width: 14),
-          Expanded(child: Text(message, style: TextStyle(color: colors.ink))),
+          Expanded(
+            child: Text(message, style: TextStyle(color: colors.ink)),
+          ),
           if (actionLabel != null && onAction != null)
             TextButton(onPressed: onAction, child: Text(actionLabel!)),
         ],
@@ -436,7 +561,8 @@ class _PriorityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final phase4d = AvenqoLocaleScope.translationsOf(context).phase4d;
-    final type = priority['type']?.toString() ?? priority['title']?.toString() ?? '';
+    final type =
+        priority['type']?.toString() ?? priority['title']?.toString() ?? '';
     final declining = type == 'revenue_decline' || type == 'product_decline';
     final title = switch (type) {
       'revenue_decline' => strings.revenueDeclineTitle,
@@ -448,8 +574,10 @@ class _PriorityRow extends StatelessWidget {
       _ => strings.prioritiesTitle,
     };
     final explanation = switch (type) {
-      'revenue_decline' || 'revenue_growth' => strings.revenueChangedExplanation,
-      'product_decline' || 'product_growth' => phase4d.productRevenueChangedExplanation,
+      'revenue_decline' ||
+      'revenue_growth' => strings.revenueChangedExplanation,
+      'product_decline' ||
+      'product_growth' => phase4d.productRevenueChangedExplanation,
       'product_concentration' => phase4d.productConcentrationExplanation,
       'cross_sell_opportunity' => phase4d.crossSellOpportunityExplanation,
       _ => strings.revenueChangedExplanation,
@@ -501,7 +629,10 @@ class _ConnectionsSummary extends StatelessWidget {
             if ((data[status.$1] as num? ?? 0) > 0)
               Text(
                 '${data[status.$1]} ${status.$2}',
-                style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: colors.ink,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
         ],
       ),
@@ -526,7 +657,10 @@ class _ActivityRow extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.history, color: _Brand.blue),
-      title: Text(label, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+      title: Text(
+        label,
+        style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+      ),
       subtitle: Text(
         '${activity['title'] ?? ''}${date == null ? '' : ' · ${_formatDate(date)}'}',
         style: TextStyle(color: colors.muted),
@@ -575,7 +709,9 @@ class _RecommendedSteps extends StatelessWidget {
             for (var i = 0; i < steps.length; i++)
               ListTile(
                 leading: Icon(
-                  steps[i].$2 ? Icons.check_circle : Icons.radio_button_unchecked,
+                  steps[i].$2
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
                   color: steps[i].$2 ? const Color(0xFF1B9E5A) : colors.muted,
                 ),
                 title: Text(
@@ -617,7 +753,10 @@ class _ResumeOnboardingBanner extends StatelessWidget {
           const Icon(Icons.rocket_launch_outlined, color: _Brand.blue),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Text(t.title, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+            child: Text(
+              t.title,
+              style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+            ),
           ),
           OutlinedButton(
             onPressed: () => context.go('/onboarding'),
@@ -645,7 +784,11 @@ class _PlanBadge extends StatelessWidget {
       ),
       child: Text(
         '$label \u00b7 ${plan[0].toUpperCase()}${plan.substring(1)}',
-        style: const TextStyle(color: _Brand.blueDark, fontWeight: FontWeight.w700, fontSize: 12),
+        style: const TextStyle(
+          color: _Brand.blueDark,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -683,7 +826,10 @@ class _EmptyDataBanner extends StatelessWidget {
           ),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
-            child: Text(title, style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600)),
+            child: Text(
+              title,
+              style: TextStyle(color: colors.ink, fontWeight: FontWeight.w600),
+            ),
           ),
           FilledButton.icon(
             onPressed: () => context.go('/connections'),
@@ -749,10 +895,20 @@ class _Metric extends StatelessWidget {
           children: [
             Text(label, style: TextStyle(color: colors.muted)),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: colors.ink)),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: colors.ink,
+              ),
+            ),
             if (change != null) ...[
               const SizedBox(height: 4),
-              Text(change!, style: const TextStyle(color: Color(0xFF1B9E5A), fontSize: 12)),
+              Text(
+                change!,
+                style: const TextStyle(color: Color(0xFF1B9E5A), fontSize: 12),
+              ),
             ],
           ],
         ),

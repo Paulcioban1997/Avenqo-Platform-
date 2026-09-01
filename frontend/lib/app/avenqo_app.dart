@@ -24,6 +24,7 @@ import 'package:avenqo/pages/customers_page.dart';
 import 'package:avenqo/pages/products_page.dart';
 import 'package:avenqo/pages/recommendations_page.dart';
 import 'package:avenqo/pages/agents_page.dart';
+import 'package:avenqo/agents/retail_agent_shell.dart';
 import 'package:avenqo/widgets/app_shell.dart';
 import 'package:avenqo/widgets/admin_shell.dart';
 import 'package:avenqo/features/admin/admin_dashboard_page.dart';
@@ -38,13 +39,18 @@ import 'package:avenqo/features/admin/admin_system_health_page.dart';
 import 'package:avenqo/features/admin/admin_support_page.dart';
 import 'package:avenqo/features/admin/admin_settings_page.dart';
 import 'package:avenqo/features/admin/admin_agents_page.dart';
+import 'package:avenqo/features/admin/admin_retail_agent_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 
 class AvenqoApp extends StatefulWidget {
-  AvenqoApp({super.key, required this.auth, required this.locale, ThemeController? theme})
-      : theme = theme ?? ThemeController();
+  AvenqoApp({
+    super.key,
+    required this.auth,
+    required this.locale,
+    ThemeController? theme,
+  }) : theme = theme ?? ThemeController();
 
   final AuthController auth;
   final LocaleController locale;
@@ -65,7 +71,8 @@ class _AvenqoAppState extends State<AvenqoApp> {
           return null;
         }
         final path = state.uri.path;
-        final onboardingStatus = widget.auth.company?['onboarding_status'] as String?;
+        final onboardingStatus =
+            widget.auth.company?['onboarding_status'] as String?;
         return subscriptionRedirect(
           path: path,
           isAuthenticated: widget.auth.isAuthenticated,
@@ -122,6 +129,23 @@ class _AvenqoAppState extends State<AvenqoApp> {
                 builder: (context, state) =>
                     _protectedPage(destination.path, widget.auth),
               ),
+            ShellRoute(
+              builder: (context, state, child) =>
+                  RetailAgentShell(currentPath: state.uri.path, child: child),
+              routes: [
+                for (final destination in retailAgentDestinations)
+                  GoRoute(
+                    path: destination.path,
+                    builder: (context, state) =>
+                        _retailPage(destination.path, widget.auth),
+                  ),
+              ],
+            ),
+            for (final legacyPath in _legacyRetailRoutes.keys)
+              GoRoute(
+                path: legacyPath,
+                redirect: (context, state) => _legacyRetailRoutes[legacyPath],
+              ),
           ],
         ),
         ShellRoute(
@@ -133,15 +157,25 @@ class _AvenqoAppState extends State<AvenqoApp> {
           routes: [
             GoRoute(
               path: '/admin',
-              builder: (context, state) => AdminDashboardPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminDashboardPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/companies',
-              builder: (context, state) => AdminCompaniesPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminCompaniesPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/agents',
               builder: (context, state) => const AdminAgentsPage(),
+            ),
+            GoRoute(
+              path: '/admin/agents/retail',
+              builder: (context, state) => AdminRetailAgentPage(
+                api: widget.auth.api,
+                auth: widget.auth,
+                selectedCompanyId: state.uri.queryParameters['company'],
+              ),
             ),
             GoRoute(
               path: '/admin/companies/:id',
@@ -152,31 +186,38 @@ class _AvenqoAppState extends State<AvenqoApp> {
             ),
             GoRoute(
               path: '/admin/audit-log',
-              builder: (context, state) => AdminAuditLogPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminAuditLogPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/subscriptions',
-              builder: (context, state) => AdminSubscriptionsPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminSubscriptionsPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/billing',
-              builder: (context, state) => AdminBillingPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminBillingPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/ai-usage',
-              builder: (context, state) => AdminAiUsagePage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminAiUsagePage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/providers',
-              builder: (context, state) => AdminProvidersPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminProvidersPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/system-health',
-              builder: (context, state) => AdminSystemHealthPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminSystemHealthPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/support',
-              builder: (context, state) => AdminSupportPage(api: widget.auth.api),
+              builder: (context, state) =>
+                  AdminSupportPage(api: widget.auth.api),
             ),
             GoRoute(
               path: '/admin/settings',
@@ -199,10 +240,13 @@ class _AvenqoAppState extends State<AvenqoApp> {
         // ne pilotent que le "chrome" natif Material (tooltips, sélection de
         // texte, etc.) — on retombe sur l'anglais si le delegate ne supporte
         // pas la langue exacte, pour éviter tout crash MaterialLocalizations.
-        final effectiveLocale = GlobalMaterialLocalizations.delegate.isSupported(rawLocale)
+        final effectiveLocale =
+            GlobalMaterialLocalizations.delegate.isSupported(rawLocale)
             ? rawLocale
             : const Locale('en');
-        final supportedLocales = _supportedLocalesFrom(widget.locale.availableLocales);
+        final supportedLocales = _supportedLocalesFrom(
+          widget.locale.availableLocales,
+        );
         // La directionnalité RTL, elle, est pilotée directement par notre
         // propre catalogue de langues (_locales.json → LocaleInfo.isRtl),
         // pour être garantie même sur des langues que Flutter ne connaît pas.
@@ -224,7 +268,9 @@ class _AvenqoAppState extends State<AvenqoApp> {
                   textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
                   child: child!,
                 ),
-                home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+                home: const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                ),
               )
             : MaterialApp.router(
                 title: 'Avenqo',
@@ -277,17 +323,8 @@ List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) {
 }
 
 Widget _protectedPage(String path, AuthController auth) {
-  final companyId = auth.company?['id'];
   return switch (path) {
     '/agents' => const AgentsPage(),
-    '/dashboard' => DashboardPage(auth: auth),
-    '/sales' => SalesPage(key: ValueKey('sales-$companyId'), api: auth.api),
-    '/customers' => CustomersPage(key: ValueKey('customers-$companyId'), api: auth.api),
-    '/products' => ProductsPage(key: ValueKey('products-$companyId'), api: auth.api),
-    '/recommendations' => RecommendationsPage(
-      key: ValueKey('recommendations-$companyId'),
-      api: auth.api,
-    ),
     '/assistant' => AssistantPage(api: auth.api),
     '/support' => SupportPage(api: auth.api),
     '/team' => EmployeesPage(api: auth.api),
@@ -295,5 +332,37 @@ Widget _protectedPage(String path, AuthController auth) {
     '/connections' => ConnectionsPage(api: auth.api),
     '/settings' => SettingsPage(auth: auth),
     _ => BusinessPage(destination: destinationFor(path)),
+  };
+}
+
+const _legacyRetailRoutes = <String, String>{
+  '/dashboard': '/retail',
+  '/sales': '/retail/sales',
+  '/customers': '/retail/customers',
+  '/products': '/retail/products',
+  '/recommendations': '/retail/recommendations',
+};
+
+Widget _retailPage(String path, AuthController auth) {
+  final companyId = auth.company?['id'];
+  return switch (path) {
+    '/retail' => DashboardPage(auth: auth),
+    '/retail/sales' => SalesPage(
+      key: ValueKey('sales-$companyId'),
+      api: auth.api,
+    ),
+    '/retail/customers' => CustomersPage(
+      key: ValueKey('customers-$companyId'),
+      api: auth.api,
+    ),
+    '/retail/products' => ProductsPage(
+      key: ValueKey('products-$companyId'),
+      api: auth.api,
+    ),
+    '/retail/recommendations' => RecommendationsPage(
+      key: ValueKey('recommendations-$companyId'),
+      api: auth.api,
+    ),
+    _ => DashboardPage(auth: auth),
   };
 }

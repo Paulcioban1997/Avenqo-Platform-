@@ -10,7 +10,7 @@ void main() {
 
     final retail = agentById('retail');
     expect(retail.isAvailable, isTrue);
-    expect(retail.route, '/dashboard');
+    expect(retail.route, '/retail');
     expect(retail.nameKey, 'retailName');
 
     final futureAgents = avenqoAgentRegistry.where((agent) => agent.id != 'retail');
@@ -26,12 +26,12 @@ void main() {
     expect(appointments.requiredPlan, isNull);
   });
 
-  test('client and admin navigation expose Agents while Retail routes stay intact', () {
+  test('global navigation exposes Agents without standalone Retail functions', () {
     expect(appDestinations.map((item) => item.path), contains('/agents'));
     expect(adminDestinations.map((item) => item.path), contains('/admin/agents'));
     expect(
       appDestinations.map((item) => item.path),
-      containsAll(['/dashboard', '/sales', '/customers', '/products', '/recommendations']),
+      isNot(contains(anyOf('/dashboard', '/sales', '/customers', '/products', '/recommendations'))),
     );
   });
 }

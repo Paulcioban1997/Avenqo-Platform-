@@ -97,7 +97,7 @@ class AdminShell extends StatelessWidget {
           ),
           IconButton(
             tooltip: strings.backToWorkspace,
-            onPressed: () => context.go('/dashboard'),
+            onPressed: () => context.go('/admin/agents'),
             icon: const Icon(Icons.workspaces_outlined),
           ),
           IconButton(

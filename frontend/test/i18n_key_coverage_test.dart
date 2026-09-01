@@ -74,6 +74,7 @@ void main() {
   });
 
   final enLeaves = _leafKeyPaths(_readLocaleJson('en'));
+  final englishAgents = _readLocaleJson('en')['agents'] as Map<String, dynamic>;
 
   test('en.json (reference catalog) has at least one leaf key', () {
     expect(enLeaves, isNotEmpty);
@@ -106,4 +107,26 @@ void main() {
       expect(() => Translations.fromJson(json), returnsNormally);
     });
   }
+
+  test('French Agent catalog is translated and includes the approved Marketing copy', () {
+    for (final code in ['fr', 'fr-CA', 'fr-FR']) {
+      final agents = _readLocaleJson(code)['agents'] as Map<String, dynamic>;
+      expect(
+        agents['marketingDescription'],
+        'Préparez vos campagnes, vos audiences et vos actions de croissance mesurables.',
+      );
+      for (final key in [
+        'subtitle',
+        'adminTitle',
+        'adminSubtitle',
+        'availableCount',
+        'marketingDescription',
+        'hrDescription',
+        'appointmentsDescription',
+        'workflowDescription',
+      ]) {
+        expect(agents[key], isNot(englishAgents[key]), reason: '$code agents.$key is still English');
+      }
+    }
+  });
 }

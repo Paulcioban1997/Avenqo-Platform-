@@ -13,10 +13,16 @@ typedef CustomersLoader =
     Future<Map<String, dynamic>> Function(int page, String search);
 
 class CustomersPage extends StatefulWidget {
-  const CustomersPage({super.key, required this.api, this.loader});
+  const CustomersPage({
+    super.key,
+    required this.api,
+    this.loader,
+    this.readOnly = false,
+  });
 
   final ApiClient api;
   final CustomersLoader? loader;
+  final bool readOnly;
 
   @override
   State<CustomersPage> createState() => _CustomersPageState();
@@ -109,7 +115,11 @@ class _CustomersPageState extends State<CustomersPage> {
               onPressed: _reload,
             )
           else
-            _CustomersContent(data: snapshot.data!, onPage: _changePage),
+            _CustomersContent(
+              data: snapshot.data!,
+              onPage: _changePage,
+              readOnly: widget.readOnly,
+            ),
         ],
       ),
     );
@@ -117,9 +127,14 @@ class _CustomersPageState extends State<CustomersPage> {
 }
 
 class _CustomersContent extends StatelessWidget {
-  const _CustomersContent({required this.data, required this.onPage});
+  const _CustomersContent({
+    required this.data,
+    required this.onPage,
+    required this.readOnly,
+  });
   final Map<String, dynamic> data;
   final ValueChanged<int> onPage;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -130,8 +145,8 @@ class _CustomersContent extends StatelessWidget {
     if (data['available'] != true) {
       return _CustomerState(
         message: t.analyticsUnavailable,
-        action: t.businessConnectButton,
-        onPressed: () => context.go('/connections'),
+        action: readOnly ? null : t.businessConnectButton,
+        onPressed: readOnly ? null : () => context.go('/connections'),
       );
     }
     final summary = data['summary'] as Map<String, dynamic>;

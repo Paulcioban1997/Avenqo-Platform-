@@ -32,13 +32,16 @@ String? subscriptionRedirect({
     return isPublic ? null : '/login';
   }
   if (isAdminPath && !isPlatformAdmin) {
-    return hasActiveSubscription ? '/dashboard' : '/billing';
+    return hasActiveSubscription ? '/retail' : '/billing';
   }
   if (path == '/login') {
     if (isPlatformAdmin) return '/admin';
-    return hasActiveSubscription ? '/dashboard' : '/billing';
+    return hasActiveSubscription ? '/retail' : '/billing';
   }
-  if (isPlatformAdmin || isAdminPath || isPublic) {
+  if (isPlatformAdmin && !isAdminPath && !isPublic) {
+    return '/admin';
+  }
+  if (isAdminPath || isPublic) {
     return null;
   }
   if (!hasActiveSubscription && !subscriptionExemptPaths.contains(path)) {

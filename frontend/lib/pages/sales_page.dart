@@ -9,10 +9,16 @@ import 'package:avenqo/i18n/locale_scope.dart';
 typedef SalesLoader = Future<Map<String, dynamic>> Function(String period);
 
 class SalesPage extends StatefulWidget {
-  const SalesPage({super.key, required this.api, this.loader});
+  const SalesPage({
+    super.key,
+    required this.api,
+    this.loader,
+    this.readOnly = false,
+  });
 
   final ApiClient api;
   final SalesLoader? loader;
+  final bool readOnly;
 
   @override
   State<SalesPage> createState() => _SalesPageState();
@@ -106,6 +112,7 @@ class _SalesPageState extends State<SalesPage> {
           else
             _SalesContent(
               data: snapshot.data!,
+              readOnly: widget.readOnly,
               revenueLabel: dashboardT.salesLabel,
               ordersLabel: dashboardT.ordersLabel,
               averageLabel: dashboardT.avgOrderLabel,
@@ -119,12 +126,14 @@ class _SalesPageState extends State<SalesPage> {
 class _SalesContent extends StatelessWidget {
   const _SalesContent({
     required this.data,
+    required this.readOnly,
     required this.revenueLabel,
     required this.ordersLabel,
     required this.averageLabel,
   });
 
   final Map<String, dynamic> data;
+  final bool readOnly;
   final String revenueLabel;
   final String ordersLabel;
   final String averageLabel;
@@ -140,8 +149,8 @@ class _SalesContent extends StatelessWidget {
       return _StatePanel(
         icon: Icons.query_stats,
         message: t.analyticsUnavailable,
-        action: t.businessConnectButton,
-        onPressed: () => context.go('/connections'),
+        action: readOnly ? null : t.businessConnectButton,
+        onPressed: readOnly ? null : () => context.go('/connections'),
       );
     }
     final summary = data['summary'] as Map<String, dynamic>;

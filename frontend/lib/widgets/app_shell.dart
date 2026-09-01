@@ -26,8 +26,11 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedPath = currentPath == '/retail' || currentPath.startsWith('/retail/')
+        ? '/agents'
+        : currentPath;
     final selected = appDestinations.indexWhere(
-      (destination) => destination.path == currentPath,
+      (destination) => destination.path == selectedPath,
     );
     final index = selected < 0 ? 0 : selected;
     final compact = MediaQuery.sizeOf(context).width < 960;

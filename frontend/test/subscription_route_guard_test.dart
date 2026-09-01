@@ -24,13 +24,12 @@ String? redirect(
   bool authenticated = true,
   bool active = false,
   bool platformAdmin = false,
-}) =>
-    subscriptionRedirect(
-      path: path,
-      isAuthenticated: authenticated,
-      isPlatformAdmin: platformAdmin,
-      hasActiveSubscription: active,
-    );
+}) => subscriptionRedirect(
+  path: path,
+  isAuthenticated: authenticated,
+  isPlatformAdmin: platformAdmin,
+  hasActiveSubscription: active,
+);
 
 void main() {
   test('unauthenticated protected route redirects to login', () {
@@ -40,7 +39,7 @@ void main() {
   test('active and trialing tenant state allows the application', () {
     expect(subscriptionAllowsTenantApp('active'), isTrue);
     expect(subscriptionAllowsTenantApp('trialing'), isTrue);
-    expect(redirect('/dashboard', active: true), isNull);
+    expect(redirect('/retail', active: true), isNull);
   });
 
   test('inactive and canceled tenant state redirects to billing', () {
@@ -56,10 +55,25 @@ void main() {
     );
   });
 
-  test('platform admin follows the admin flow independently of subscription', () {
-    expect(redirect('/login', platformAdmin: true), '/admin');
-    expect(redirect('/admin', platformAdmin: true), isNull);
-  });
+  test(
+    'platform admin follows the admin flow independently of subscription',
+    () {
+      expect(redirect('/login', platformAdmin: true), '/admin');
+      expect(redirect('/admin', platformAdmin: true), isNull);
+      expect(redirect('/admin/agents', platformAdmin: true), isNull);
+      expect(redirect('/admin/agents/retail', platformAdmin: true), isNull);
+      expect(redirect('/retail', platformAdmin: true), '/admin');
+      expect(redirect('/connections', platformAdmin: true), '/admin');
+      expect(redirect('/support', platformAdmin: true), '/admin');
+    },
+  );
+
+  test(
+    'subscribed client is returned from admin routes to Retail Intelligence',
+    () {
+      expect(redirect('/admin/agents', active: true), '/retail');
+    },
+  );
 
   test('billing route is exempt and cannot redirect-loop', () {
     expect(redirect('/billing'), isNull);
@@ -71,40 +85,46 @@ void main() {
     expect(redirect('/pricing'), isNull);
   });
 
-  test('authentication initialization waits for subscription resolution', () async {
-    final subscriptionResponse = Completer<http.Response>();
-    final client = MockClient((request) async {
-      if (request.url.path.endsWith('/auth/me')) {
-        return http.Response(
-          '{"user":{"is_platform_admin":false},"company":{"id":"company-1"}}',
-          200,
-        );
-      }
-      if (request.url.path.endsWith('/billing/subscription')) {
-        return subscriptionResponse.future;
-      }
-      return http.Response('{}', 404);
-    });
-    final auth = AuthController(
-      ApiClient(
-        tokenStore: _SessionTokenStore(),
-        httpClient: client,
-        baseUrl: 'https://avenqo.test/api/v1',
-      ),
-    );
+  test(
+    'authentication initialization waits for subscription resolution',
+    () async {
+      final subscriptionResponse = Completer<http.Response>();
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/auth/me')) {
+          return http.Response(
+            '{"user":{"is_platform_admin":false},"company":{"id":"company-1"}}',
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/billing/subscription')) {
+          return subscriptionResponse.future;
+        }
+        return http.Response('{}', 404);
+      });
+      final auth = AuthController(
+        ApiClient(
+          tokenStore: _SessionTokenStore(),
+          httpClient: client,
+          baseUrl: 'https://avenqo.test/api/v1',
+        ),
+      );
 
-    final initialization = auth.initialize();
-    await Future<void>.delayed(Duration.zero);
-    expect(auth.initialized, isFalse);
+      final initialization = auth.initialize();
+      await Future<void>.delayed(Duration.zero);
+      expect(auth.initialized, isFalse);
 
-    subscriptionResponse.complete(
-      http.Response('{"plan_code":"demo","status":"canceled"}', 200),
-    );
-    await initialization;
+      subscriptionResponse.complete(
+        http.Response('{"plan_code":"demo","status":"canceled"}', 200),
+      );
+      await initialization;
 
-    expect(auth.initialized, isTrue);
-    expect(auth.subscriptionStatus, 'canceled');
-    expect(auth.hasActiveSubscription, isFalse);
-    expect(redirect('/dashboard', active: auth.hasActiveSubscription), '/billing');
-  });
+      expect(auth.initialized, isTrue);
+      expect(auth.subscriptionStatus, 'canceled');
+      expect(auth.hasActiveSubscription, isFalse);
+      expect(
+        redirect('/dashboard', active: auth.hasActiveSubscription),
+        '/billing',
+      );
+    },
+  );
 }

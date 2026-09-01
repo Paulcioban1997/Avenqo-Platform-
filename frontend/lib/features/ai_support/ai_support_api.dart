@@ -12,22 +12,27 @@ class AiSupportApi {
   final ApiClient _client;
 
   Future<List<Conversation>> listConversations() async {
-    final response = await _client.get('/support/chat/conversations') as List<dynamic>;
+    final response =
+        await _client.get('/support/chat/conversations') as List<dynamic>;
     return response
         .map((item) => Conversation.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
   Future<Conversation> createConversation(String title) async {
-    final response = await _client.post(
-      '/support/chat/conversations',
-      body: {'title': title},
-    ) as Map<String, dynamic>;
+    final response =
+        await _client.post(
+              '/support/chat/conversations',
+              body: {'title': title},
+            )
+            as Map<String, dynamic>;
     return Conversation.fromJson(response);
   }
 
   Future<ConversationDetail> getConversation(String id) async {
-    final response = await _client.get('/support/chat/conversations/$id') as Map<String, dynamic>;
+    final response =
+        await _client.get('/support/chat/conversations/$id')
+            as Map<String, dynamic>;
     return ConversationDetail.fromJson(response);
   }
 
@@ -35,9 +40,14 @@ class AiSupportApi {
     await _client.delete('/support/chat/conversations/$id');
   }
 
-  Stream<ChatStreamEvent> streamMessage(String conversationId, String content) =>
-      _client.postSseEvents(
+  Stream<ChatStreamEvent> streamMessage(
+    String conversationId,
+    String content,
+  ) => _client
+      .postSseEvents(
         '/support/chat/conversations/$conversationId/messages/stream',
         body: {'content': content},
-      ).map(ChatStreamEvent.fromJson);
+      )
+      .timeout(const Duration(seconds: 60))
+      .map(ChatStreamEvent.fromJson);
 }
