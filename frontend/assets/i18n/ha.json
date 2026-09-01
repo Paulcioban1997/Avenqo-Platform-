@@ -372,7 +372,9 @@
     "verifySuccess": "An tabbatar da imel ɗinku. Yanzu kuna iya shiga.",
     "resetSuccess": "An canza kalmar sirri. Yanzu kuna iya shiga.",
     "genericError": "Sabis din bai samuwa na ɗan lokaci ba.",
-    "verifyButton": "Tabbatar da imel ɗinku"
+    "verifyButton": "Tabbatar da imel ɗinku",
+    "verificationResent": "Idan asusun yana wanzu, an aika imel na tabbatarwa.",
+    "emailDeliveryUnavailable": "Isar da imel ba ya samuwa na ɗan lokaci. Tuntuɓi tallafi ko sake gwadawa daga baya."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Duban Admin - Kamfanin",
     "switchCompany": "Canja kamfani",
     "exitTenantView": "Fita kallon mai haya",
-    "tenantContextError": "An kasa tantance mahallin mai haya."
+    "tenantContextError": "An kasa tantance mahallin mai haya.",
+    "adminCompaniesUnauthorized": "Ba ka da izinin shiga kundin kamfanoni.",
+    "adminCompaniesUnavailable": "Kundin kamfanoni ba ya samuwa na ɗan lokaci. Sake gwadawa daga baya."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

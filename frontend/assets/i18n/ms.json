@@ -372,7 +372,9 @@
     "verifySuccess": "E-mel anda telah disahkan. Anda kini boleh log masuk.",
     "resetSuccess": "Kata laluan telah ditukar. Anda kini boleh log masuk.",
     "genericError": "Perkhidmatan tidak tersedia buat sementara waktu.",
-    "verifyButton": "Sahkan e-mel anda"
+    "verifyButton": "Sahkan e-mel anda",
+    "verificationResent": "Jika akaun wujud, e-mel pengesahan telah dihantar.",
+    "emailDeliveryUnavailable": "Penghantaran e-mel tidak tersedia buat sementara waktu. Hubungi sokongan atau cuba lagi kemudian."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Paparan pentadbir — Syarikat",
     "switchCompany": "Tukar syarikat",
     "exitTenantView": "Keluar dari pandangan penyewa",
-    "tenantContextError": "Konteks penyewa tidak dapat disahkan."
+    "tenantContextError": "Konteks penyewa tidak dapat disahkan.",
+    "adminCompaniesUnauthorized": "Anda tidak dibenarkan mengakses direktori syarikat.",
+    "adminCompaniesUnavailable": "Direktori syarikat tidak tersedia buat sementara waktu. Cuba lagi kemudian."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

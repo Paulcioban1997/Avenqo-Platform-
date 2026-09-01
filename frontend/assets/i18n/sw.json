@@ -372,7 +372,9 @@
     "verifySuccess": "Barua pepe yako imethibitishwa. Sasa unaweza kuingia.",
     "resetSuccess": "Nenosiri limebadilishwa. Sasa unaweza kuingia.",
     "genericError": "Huduma haipatikani kwa muda.",
-    "verifyButton": "Thibitisha barua pepe yako"
+    "verifyButton": "Thibitisha barua pepe yako",
+    "verificationResent": "Ikiwa akaunti ipo, barua pepe ya uthibitishaji imetumwa.",
+    "emailDeliveryUnavailable": "Uwasilishaji wa barua pepe haupatikani kwa muda. Wasiliana na usaidizi au ujaribu tena baadaye."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Mtazamo wa msimamizi - Kampuni",
     "switchCompany": "Badilisha kampuni",
     "exitTenantView": "Ondoka kwenye mtazamo wa mpangaji",
-    "tenantContextError": "Muktadha wa mpangaji haukuweza kuthibitishwa."
+    "tenantContextError": "Muktadha wa mpangaji haukuweza kuthibitishwa.",
+    "adminCompaniesUnauthorized": "Huna ruhusa ya kufikia saraka ya kampuni.",
+    "adminCompaniesUnavailable": "Saraka ya kampuni haipatikani kwa muda. Jaribu tena baadaye."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

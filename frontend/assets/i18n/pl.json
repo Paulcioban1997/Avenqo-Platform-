@@ -372,7 +372,9 @@
     "verifySuccess": "Adres e-mail potwierdzony. Możesz się teraz zalogować.",
     "resetSuccess": "Hasło zmienione. Możesz się teraz zalogować.",
     "genericError": "Usługa jest tymczasowo niedostępna.",
-    "verifyButton": "Potwierdź swój e-mail"
+    "verifyButton": "Potwierdź swój e-mail",
+    "verificationResent": "Jeśli konto istnieje, wysłano wiadomość weryfikacyjną.",
+    "emailDeliveryUnavailable": "Wysyłanie wiadomości e-mail jest tymczasowo niedostępne. Skontaktuj się z pomocą techniczną lub spróbuj ponownie później."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Widok administracyjny — Firma",
     "switchCompany": "Zmień firmę",
     "exitTenantView": "Wyjdź z widoku najemcy",
-    "tenantContextError": "Nie można zweryfikować kontekstu dzierżawy."
+    "tenantContextError": "Nie można zweryfikować kontekstu dzierżawy.",
+    "adminCompaniesUnauthorized": "Nie masz uprawnień dostępu do katalogu firm.",
+    "adminCompaniesUnavailable": "Katalog firm jest tymczasowo niedostępny. Spróbuj ponownie później."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

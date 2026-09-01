@@ -372,7 +372,9 @@
     "verifySuccess": "이메일이 인증되었습니다. 이제 로그인할 수 있습니다.",
     "resetSuccess": "비밀번호가 변경되었습니다. 이제 로그인할 수 있습니다.",
     "genericError": "서비스가 일시적으로 사용할 수 없습니다.",
-    "verifyButton": "이메일 인증"
+    "verifyButton": "이메일 인증",
+    "verificationResent": "계정이 존재하면 확인 이메일이 전송되었습니다.",
+    "emailDeliveryUnavailable": "이메일 전송을 일시적으로 사용할 수 없습니다. 지원팀에 문의하거나 나중에 다시 시도하세요."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "관리 보기 — 회사",
     "switchCompany": "회사 전환",
     "exitTenantView": "테넌트 보기 종료",
-    "tenantContextError": "테넌트 컨텍스트를 확인할 수 없습니다."
+    "tenantContextError": "테넌트 컨텍스트를 확인할 수 없습니다.",
+    "adminCompaniesUnauthorized": "회사 디렉터리에 액세스할 권한이 없습니다.",
+    "adminCompaniesUnavailable": "회사 디렉터리를 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

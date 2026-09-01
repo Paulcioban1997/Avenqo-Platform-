@@ -32,6 +32,8 @@ COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend backend
+COPY alembic.ini alembic.ini
+COPY alembic alembic
 COPY shared shared
 COPY payments payments
 COPY modules modules

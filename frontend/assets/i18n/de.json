@@ -372,7 +372,9 @@
     "verifySuccess": "E-Mail-Adresse bestätigt. Sie können sich nun anmelden.",
     "resetSuccess": "Passwort geändert. Sie können sich nun anmelden.",
     "genericError": "Der Dienst ist vorübergehend nicht verfügbar.",
-    "verifyButton": "E-Mail bestätigen"
+    "verifyButton": "E-Mail bestätigen",
+    "verificationResent": "Falls das Konto existiert, wurde eine Bestätigungsmail gesendet.",
+    "emailDeliveryUnavailable": "Der E-Mail-Versand ist vorübergehend nicht verfügbar. Kontaktieren Sie den Support oder versuchen Sie es später erneut."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Admin-Ansicht – Unternehmen",
     "switchCompany": "Firma wechseln",
     "exitTenantView": "Mieteransicht verlassen",
-    "tenantContextError": "Der Mandantenkontext konnte nicht validiert werden."
+    "tenantContextError": "Der Mandantenkontext konnte nicht validiert werden.",
+    "adminCompaniesUnauthorized": "Sie sind nicht berechtigt, auf das Unternehmensverzeichnis zuzugreifen.",
+    "adminCompaniesUnavailable": "Das Unternehmensverzeichnis ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

@@ -372,7 +372,9 @@
     "verifySuccess": "E-posta adresi doğrulandı. Şimdi giriş yapabilirsiniz.",
     "resetSuccess": "Şifre değiştirildi. Şimdi giriş yapabilirsiniz.",
     "genericError": "Hizmet geçici olarak kullanılamıyor.",
-    "verifyButton": "E-postanızı doğrulayın"
+    "verifyButton": "E-postanızı doğrulayın",
+    "verificationResent": "Hesap varsa bir doğrulama e-postası gönderildi.",
+    "emailDeliveryUnavailable": "E-posta teslimi geçici olarak kullanılamıyor. Desteğe başvurun veya daha sonra tekrar deneyin."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Yönetici görünümü — Şirket",
     "switchCompany": "Şirket değiştir",
     "exitTenantView": "Kiracı görünümünden çık",
-    "tenantContextError": "Kiracı bağlamı doğrulanamadı."
+    "tenantContextError": "Kiracı bağlamı doğrulanamadı.",
+    "adminCompaniesUnauthorized": "Şirket dizinine erişim yetkiniz yok.",
+    "adminCompaniesUnavailable": "Şirket dizini geçici olarak kullanılamıyor. Daha sonra tekrar deneyin."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

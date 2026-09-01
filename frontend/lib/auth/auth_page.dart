@@ -30,12 +30,14 @@ class AuthPage extends StatefulWidget {
     required this.mode,
     this.initialToken,
     this.initialEmail,
+    this.emailDeliveryUnavailable = false,
   });
 
   final AuthController auth;
   final AuthMode mode;
   final String? initialToken;
   final String? initialEmail;
+  final bool emailDeliveryUnavailable;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -120,16 +122,27 @@ class _AuthPageState extends State<AuthPage> {
       switch (widget.mode) {
         case AuthMode.login:
           await widget.auth.login(_email.text, _password.text);
-          if (mounted) context.go('/dashboard');
+          if (mounted) {
+            context.go(
+              widget.auth.isPlatformAdmin
+                  ? '/admin'
+                  : widget.auth.hasActiveSubscription
+                  ? '/dashboard'
+                  : '/billing',
+            );
+          }
         case AuthMode.register:
           if (_signupStep < 4) {
             setState(() => _signupStep++);
             return;
           }
-          await widget.auth.register(_signupPayload());
+          final response = await widget.auth.register(_signupPayload());
           if (mounted) {
             final email = Uri.encodeQueryComponent(_email.text.trim());
-            context.go('/verify-email?email=$email');
+            final delivery = response['email_delivery_configured'] == true
+                ? 'sent'
+                : 'unavailable';
+            context.go('/verify-email?email=$email&delivery=$delivery');
           }
         case AuthMode.forgot:
           await widget.auth.forgotPassword(_email.text);
@@ -185,8 +198,13 @@ class _AuthPageState extends State<AuthPage> {
       return;
     }
     try {
-      await widget.auth.resendVerification(_email.text);
-      _show(t.forgotSuccess);
+      final response = await widget.auth.resendVerification(_email.text);
+      _show(
+        response['email_delivery_configured'] == true
+            ? t.verificationResent
+            : t.emailDeliveryUnavailable,
+        isError: response['email_delivery_configured'] != true,
+      );
     } on ApiException catch (error) {
       _show(error.message, isError: true);
     }
@@ -275,7 +293,11 @@ class _AuthPageState extends State<AuthPage> {
             ),
           if (widget.mode == AuthMode.verify &&
               widget.initialEmail?.isNotEmpty == true) ...[
-            Text(t.registerSuccess),
+            Text(
+              widget.emailDeliveryUnavailable
+                  ? t.emailDeliveryUnavailable
+                  : t.registerSuccess,
+            ),
             const SizedBox(height: 14),
           ],
           if ([
@@ -333,9 +355,7 @@ class _AuthPageState extends State<AuthPage> {
           if (widget.mode == AuthMode.verify) ...[
             const SizedBox(height: 8),
             IconButton(
-              onPressed: widget.auth.busy
-                  ? null
-                  : () => _resendVerification(t),
+              onPressed: widget.auth.busy ? null : () => _resendVerification(t),
               tooltip: t.registerSuccess,
               icon: const Icon(Icons.refresh),
             ),

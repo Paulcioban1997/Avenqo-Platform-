@@ -372,7 +372,9 @@
     "verifySuccess": "আপনার ইমেইল যাচাই করা হয়েছে। এখন আপনি লগইন করতে পারেন।",
     "resetSuccess": "পাসওয়ার্ড পরিবর্তিত হয়েছে। এখন আপনি লগইন করতে পারেন।",
     "genericError": "পরিষেবা সাময়িকভাবে অনুপলব্ধ।",
-    "verifyButton": "আপনার ইমেইল যাচাই করুন"
+    "verifyButton": "আপনার ইমেইল যাচাই করুন",
+    "verificationResent": "যদি অ্যাকাউন্টটি থাকে, তাহলে একটি যাচাইকরণ ইমেল পাঠানো হয়েছে।",
+    "emailDeliveryUnavailable": "ইমেল সরবরাহ সাময়িকভাবে অনুপলব্ধ। সহায়তার সাথে যোগাযোগ করুন বা পরে আবার চেষ্টা করুন।"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "অ্যাডমিন ভিউ - কোম্পানি",
     "switchCompany": "কোম্পানি পরিবর্তন করুন",
     "exitTenantView": "ভাড়াটে ভিউ থেকে প্রস্থান করুন",
-    "tenantContextError": "ভাড়াটে প্রসঙ্গ যাচাই করা যায়নি."
+    "tenantContextError": "ভাড়াটে প্রসঙ্গ যাচাই করা যায়নি.",
+    "adminCompaniesUnauthorized": "আপনার কোম্পানি ডিরেক্টরি ব্যবহারের অনুমতি নেই।",
+    "adminCompaniesUnavailable": "কোম্পানি ডিরেক্টরি সাময়িকভাবে অনুপলব্ধ। পরে আবার চেষ্টা করুন।"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

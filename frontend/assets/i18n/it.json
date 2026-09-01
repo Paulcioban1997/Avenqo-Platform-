@@ -372,7 +372,9 @@
     "verifySuccess": "Indirizzo email verificato. Ora puoi accedere.",
     "resetSuccess": "Password modificata. Ora puoi accedere.",
     "genericError": "Il servizio è temporaneamente non disponibile.",
-    "verifyButton": "Verifica la tua email"
+    "verifyButton": "Verifica la tua email",
+    "verificationResent": "Se l'account esiste, è stata inviata un'email di verifica.",
+    "emailDeliveryUnavailable": "L'invio di email è temporaneamente non disponibile. Contatta il supporto o riprova più tardi."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Visualizzazione amministratore: Azienda",
     "switchCompany": "Cambia azienda",
     "exitTenantView": "Esci dalla visualizzazione inquilino",
-    "tenantContextError": "Non è stato possibile convalidare il contesto del tenant."
+    "tenantContextError": "Non è stato possibile convalidare il contesto del tenant.",
+    "adminCompaniesUnauthorized": "Non sei autorizzato ad accedere all'elenco delle aziende.",
+    "adminCompaniesUnavailable": "L'elenco delle aziende è temporaneamente non disponibile. Riprova più tardi."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

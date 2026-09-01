@@ -372,7 +372,9 @@
     "verifySuccess": "ኢሜይልዎ ተረጋግጧል። አሁን መግባት ይችላሉ።",
     "resetSuccess": "የይለፍ ቃል ተቀይሯል። አሁን መግባት ይችላሉ።",
     "genericError": "አገልግሎቱ ለጊዜው አይገኝም።",
-    "verifyButton": "ኢሜይልዎን ያረጋግጡ"
+    "verifyButton": "ኢሜይልዎን ያረጋግጡ",
+    "verificationResent": "መለያው ካለ፣ የማረጋገጫ ኢሜይል ተልኳል።",
+    "emailDeliveryUnavailable": "ኢሜይል ማድረስ ለጊዜው አይገኝም። ድጋፍን ያነጋግሩ ወይም ቆይተው ይሞክሩ።"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "የአስተዳዳሪ እይታ - ኩባንያ",
     "switchCompany": "ኩባንያ ይቀይሩ",
     "exitTenantView": "ከተከራይ እይታ ውጣ",
-    "tenantContextError": "የተከራይ አውድ ሊረጋገጥ አልቻለም።"
+    "tenantContextError": "የተከራይ አውድ ሊረጋገጥ አልቻለም።",
+    "adminCompaniesUnauthorized": "የኩባንያዎችን ማውጫ ለመድረስ ፈቃድ የለዎትም።",
+    "adminCompaniesUnavailable": "የኩባንያዎች ማውጫ ለጊዜው አይገኝም። ቆይተው ይሞክሩ።"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

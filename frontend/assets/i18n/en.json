@@ -372,7 +372,9 @@
     "verifySuccess": "Email verified. You can now log in.",
     "resetSuccess": "Password changed. You can now log in.",
     "genericError": "The service is temporarily unavailable.",
-    "verifyButton": "Verify your email"
+    "verifyButton": "Verify your email",
+    "verificationResent": "If the account exists, a verification email has been sent.",
+    "emailDeliveryUnavailable": "Email delivery is temporarily unavailable. Contact support or try again later."
   },
   "dashboardHome": {
     "hello": "Hello",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Admin view — Company",
     "switchCompany": "Switch company",
     "exitTenantView": "Exit tenant view",
-    "tenantContextError": "The tenant context could not be validated."
+    "tenantContextError": "The tenant context could not be validated.",
+    "adminCompaniesUnauthorized": "You are not authorized to access the company directory.",
+    "adminCompaniesUnavailable": "The company directory is temporarily unavailable. Try again later."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

@@ -372,7 +372,9 @@
     "verifySuccess": "E-mail verificado. Você já pode entrar.",
     "resetSuccess": "Senha alterada. Você já pode entrar.",
     "genericError": "O serviço está temporariamente indisponível.",
-    "verifyButton": "Verifique seu e-mail"
+    "verifyButton": "Verifique seu e-mail",
+    "verificationResent": "Se a conta existe, um email de verificação foi enviado.",
+    "emailDeliveryUnavailable": "A entrega de emails está temporariamente indisponível. Contate o suporte ou tente novamente mais tarde."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Visualização do administrador — Empresa",
     "switchCompany": "Mudar de empresa",
     "exitTenantView": "Sair da visualização do locatário",
-    "tenantContextError": "O contexto do locatário não pôde ser validado."
+    "tenantContextError": "O contexto do locatário não pôde ser validado.",
+    "adminCompaniesUnauthorized": "Você não está autorizado para acessar o diretório de empresas.",
+    "adminCompaniesUnavailable": "O diretório de empresas está temporariamente indisponível. Tente novamente mais tarde."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

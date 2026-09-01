@@ -372,7 +372,9 @@
     "verifySuccess": "Email đã được xác minh. Bạn có thể đăng nhập ngay bây giờ.",
     "resetSuccess": "Mật khẩu đã được thay đổi. Bạn có thể đăng nhập ngay bây giờ.",
     "genericError": "Dịch vụ tạm thời không khả dụng.",
-    "verifyButton": "Xác minh email của bạn"
+    "verifyButton": "Xác minh email của bạn",
+    "verificationResent": "Nếu tài khoản tồn tại, email xác minh đã được gửi.",
+    "emailDeliveryUnavailable": "Tính năng gửi email tạm thời không khả dụng. Liên hệ bộ phận hỗ trợ hoặc thử lại sau."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Chế độ xem của quản trị viên — Công ty",
     "switchCompany": "Chuyển đổi công ty",
     "exitTenantView": "Thoát khỏi chế độ xem đối tượng thuê",
-    "tenantContextError": "Bối cảnh của đối tượng thuê không thể được xác thực."
+    "tenantContextError": "Bối cảnh của đối tượng thuê không thể được xác thực.",
+    "adminCompaniesUnauthorized": "Bạn không được phép truy cập danh bạ công ty.",
+    "adminCompaniesUnavailable": "Danh bạ công ty tạm thời không khả dụng. Hãy thử lại sau."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

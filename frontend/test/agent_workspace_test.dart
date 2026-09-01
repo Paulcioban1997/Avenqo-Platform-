@@ -219,6 +219,39 @@ void main() {
     expect(find.text('No companies available.'), findsOneWidget);
   });
 
+  for (final scenario in [
+    (
+      status: 403,
+      message: 'You are not authorized to access the company directory.',
+    ),
+    (
+      status: 503,
+      message:
+          'The company directory is temporarily unavailable. Try again later.',
+    ),
+  ]) {
+    testWidgets(
+      'admin company directory shows the ${scenario.status} flow message',
+      (tester) async {
+        final api = ApiClient(
+          tokenStore: _TokenStore(),
+          baseUrl: 'https://avenqo.test/api/v1',
+          httpClient: MockClient(
+            (_) async =>
+                http.Response('{"detail":"request failed"}', scenario.status),
+          ),
+        );
+        await api.initialize();
+
+        await tester.pumpWidget(await _wrap(AdminRetailAgentPage(api: api)));
+        await tester.pumpAndSettle();
+
+        expect(find.text(scenario.message), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'selected admin tenant is validated before its Retail data loads',
     (tester) async {

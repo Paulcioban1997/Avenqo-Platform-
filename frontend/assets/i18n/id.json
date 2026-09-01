@@ -372,7 +372,9 @@
     "verifySuccess": "Email Anda telah diverifikasi. Anda sekarang dapat masuk.",
     "resetSuccess": "Kata sandi telah diubah. Anda sekarang dapat masuk.",
     "genericError": "Layanan sementara tidak tersedia.",
-    "verifyButton": "Verifikasi email Anda"
+    "verifyButton": "Verifikasi email Anda",
+    "verificationResent": "Jika akun tersebut ada, email verifikasi telah dikirim.",
+    "emailDeliveryUnavailable": "Pengiriman email tidak tersedia untuk sementara. Hubungi dukungan atau coba lagi nanti."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Tampilan admin — Perusahaan",
     "switchCompany": "Ganti perusahaan",
     "exitTenantView": "Keluar dari tampilan penyewa",
-    "tenantContextError": "Konteks penyewa tidak dapat divalidasi."
+    "tenantContextError": "Konteks penyewa tidak dapat divalidasi.",
+    "adminCompaniesUnauthorized": "Anda tidak berwenang mengakses direktori perusahaan.",
+    "adminCompaniesUnavailable": "Direktori perusahaan tidak tersedia untuk sementara. Coba lagi nanti."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

@@ -372,7 +372,9 @@
     "verifySuccess": "អ៊ីមែលរបស់អ្នកត្រូវបានផ្ទៀងផ្ទាត់។ ឥឡូវអ្នកអាចចូលប្រើបាន។",
     "resetSuccess": "ពាក្យសម្ងាត់ត្រូវបានផ្លាស់ប្តូរ។ ឥឡូវអ្នកអាចចូលប្រើបាន។",
     "genericError": "សេវាកម្មមិនអាចប្រើបានជាបណ្តោះអាសន្ន។",
-    "verifyButton": "ផ្ទៀងផ្ទាត់អ៊ីមែលរបស់អ្នក"
+    "verifyButton": "ផ្ទៀងផ្ទាត់អ៊ីមែលរបស់អ្នក",
+    "verificationResent": "ប្រសិនបើគណនីមាន អ៊ីមែលផ្ទៀងផ្ទាត់ត្រូវបានផ្ញើរួចហើយ។",
+    "emailDeliveryUnavailable": "ការផ្ញើអ៊ីមែលមិនអាចប្រើបានជាបណ្ដោះអាសន្ន។ សូមទាក់ទងផ្នែកជំនួយ ឬព្យាយាមម្ដងទៀតនៅពេលក្រោយ។"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "ទិដ្ឋភាពអ្នកគ្រប់គ្រង - ក្រុមហ៊ុន",
     "switchCompany": "ប្តូរក្រុមហ៊ុន",
     "exitTenantView": "ចាកចេញពីទិដ្ឋភាពអ្នកជួល",
-    "tenantContextError": "បរិបទអ្នកជួលមិនអាចផ្ទៀងផ្ទាត់បានទេ។"
+    "tenantContextError": "បរិបទអ្នកជួលមិនអាចផ្ទៀងផ្ទាត់បានទេ។",
+    "adminCompaniesUnauthorized": "អ្នកមិនមានសិទ្ធិចូលប្រើបញ្ជីក្រុមហ៊ុនទេ។",
+    "adminCompaniesUnavailable": "បញ្ជីក្រុមហ៊ុនមិនអាចប្រើបានជាបណ្ដោះអាសន្ន។ សូមព្យាយាមម្ដងទៀតនៅពេលក្រោយ។"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

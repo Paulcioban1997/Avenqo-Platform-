@@ -372,7 +372,9 @@
     "verifySuccess": "თქვენი ელფოსტა დადასტურდა. ახლა შეგიძლიათ შესვლა.",
     "resetSuccess": "პაროლი შეიცვალა. ახლა შეგიძლიათ შესვლა.",
     "genericError": "სერვისი დროებით მიუწვდომელია.",
-    "verifyButton": "დაადასტურეთ თქვენი ელფოსტა"
+    "verifyButton": "დაადასტურეთ თქვენი ელფოსტა",
+    "verificationResent": "თუ ანგარიში არსებობს, დამადასტურებელი ელფოსტა გაიგზავნა.",
+    "emailDeliveryUnavailable": "ელფოსტის მიწოდება დროებით მიუწვდომელია. დაუკავშირდით მხარდაჭერას ან სცადეთ მოგვიანებით."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "ადმინისტრატორის ხედი — კომპანია",
     "switchCompany": "გადართვა კომპანია",
     "exitTenantView": "მოიჯარე ხედიდან გასვლა",
-    "tenantContextError": "მოიჯარე კონტექსტის დადასტურება ვერ მოხერხდა."
+    "tenantContextError": "მოიჯარე კონტექსტის დადასტურება ვერ მოხერხდა.",
+    "adminCompaniesUnauthorized": "თქვენ არ გაქვთ კომპანიების დირექტორიაზე წვდომის უფლება.",
+    "adminCompaniesUnavailable": "კომპანიების დირექტორია დროებით მიუწვდომელია. სცადეთ მოგვიანებით."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

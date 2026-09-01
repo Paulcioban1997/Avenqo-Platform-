@@ -372,7 +372,9 @@
     "verifySuccess": "ایمیل شما تأیید شد. اکنون می‌توانید وارد شوید.",
     "resetSuccess": "رمز عبور تغییر کرد. اکنون می‌توانید وارد شوید.",
     "genericError": "سرویس موقتاً در دسترس نیست.",
-    "verifyButton": "ایمیل خود را تأیید کنید"
+    "verifyButton": "ایمیل خود را تأیید کنید",
+    "verificationResent": "اگر حساب وجود داشته باشد، ایمیل تأیید ارسال شده است.",
+    "emailDeliveryUnavailable": "ارسال ایمیل موقتاً در دسترس نیست. با پشتیبانی تماس بگیرید یا بعداً دوباره تلاش کنید."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "نمای مدیریت - شرکت",
     "switchCompany": "شرکت سوئیچ",
     "exitTenantView": "خروج از نمای مستاجر",
-    "tenantContextError": "زمینه مستاجر تأیید نشد."
+    "tenantContextError": "زمینه مستاجر تأیید نشد.",
+    "adminCompaniesUnauthorized": "شما اجازه دسترسی به فهرست شرکت‌ها را ندارید.",
+    "adminCompaniesUnavailable": "فهرست شرکت‌ها موقتاً در دسترس نیست. بعداً دوباره تلاش کنید."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

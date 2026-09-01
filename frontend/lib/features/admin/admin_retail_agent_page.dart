@@ -98,8 +98,8 @@ class _AdminRetailAgentPageState extends State<AdminRetailAgentPage> {
     } on Object {
       // The explicit company ID is the context; a failed exit audit must not
       // retain it in the UI or URL.
-    } finally {
-      if (!mounted) return;
+    }
+    if (mounted) {
       setState(() {
         _selectedCompanyId = null;
         _future = widget.loader(widget.api);
@@ -118,16 +118,23 @@ class _AdminRetailAgentPageState extends State<AdminRetailAgentPage> {
           return const AdminLoadingState();
         }
         if (snapshot.hasError) {
+          final error = snapshot.error;
+          final errorKey =
+              error is ApiException &&
+                  (error.statusCode == 401 || error.statusCode == 403)
+              ? 'adminCompaniesUnauthorized'
+              : error is ApiException &&
+                    (error.isTimeout ||
+                        error.statusCode == null ||
+                        error.statusCode! >= 500)
+              ? 'adminCompaniesUnavailable'
+              : _selectedCompanyId == null
+              ? 'loadTenantsError'
+              : 'tenantContextError';
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              AdminErrorState(
-                message: strings.value(
-                  _selectedCompanyId == null
-                      ? 'loadTenantsError'
-                      : 'tenantContextError',
-                ),
-              ),
+              AdminErrorState(message: strings.value(errorKey)),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerLeft,

@@ -372,7 +372,9 @@
     "verifySuccess": "Adresă de email verificată. Vă puteți conecta.",
     "resetSuccess": "Parolă schimbată. Vă puteți conecta.",
     "genericError": "Serviciul este temporar indisponibil.",
-    "verifyButton": "Verificați-vă emailul"
+    "verifyButton": "Verificați-vă emailul",
+    "verificationResent": "Dacă contul există, un email de verificare a fost trimis.",
+    "emailDeliveryUnavailable": "Trimiterea emailurilor este temporar indisponibilă. Contactați suportul sau încercați din nou mai târziu."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Vizualizare administrator — Companie",
     "switchCompany": "Schimbați compania",
     "exitTenantView": "Ieși din vizualizarea chiriașilor",
-    "tenantContextError": "Contextul chiriașului nu a putut fi validat."
+    "tenantContextError": "Contextul chiriașului nu a putut fi validat.",
+    "adminCompaniesUnauthorized": "Nu sunteți autorizat să accesați directorul companiilor.",
+    "adminCompaniesUnavailable": "Directorul companiilor este temporar indisponibil. Încercați din nou mai târziu."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

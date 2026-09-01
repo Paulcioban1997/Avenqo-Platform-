@@ -117,6 +117,8 @@ class _AvenqoAppState extends State<AvenqoApp> {
             mode: AuthMode.verify,
             initialToken: state.uri.queryParameters['token'],
             initialEmail: state.uri.queryParameters['email'],
+            emailDeliveryUnavailable:
+                state.uri.queryParameters['delivery'] == 'unavailable',
           ),
         ),
         GoRoute(

@@ -372,7 +372,9 @@
     "verifySuccess": "Adresse email vérifiée. Vous pouvez vous connecter.",
     "resetSuccess": "Mot de passe modifié. Vous pouvez vous connecter.",
     "genericError": "Le service est temporairement indisponible.",
-    "verifyButton": "Vérifier votre email"
+    "verifyButton": "Vérifier votre email",
+    "verificationResent": "Si le compte existe, un email de vérification a été envoyé.",
+    "emailDeliveryUnavailable": "La livraison des emails est temporairement indisponible. Contactez le support ou réessayez plus tard."
   },
   "dashboardHome": {
     "hello": "Bonjour",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Vue administrateur — Société",
     "switchCompany": "Changer de société",
     "exitTenantView": "Quitter la vue locataire",
-    "tenantContextError": "Le contexte du locataire n'a pas pu être validé."
+    "tenantContextError": "Le contexte du locataire n'a pas pu être validé.",
+    "adminCompaniesUnauthorized": "Vous n'êtes pas autorisé à accéder au répertoire des entreprises.",
+    "adminCompaniesUnavailable": "Le répertoire des entreprises est temporairement indisponible. Réessayez plus tard."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

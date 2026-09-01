@@ -372,7 +372,9 @@
     "verifySuccess": "Email-адресу підтверджено. Тепер ви можете увійти.",
     "resetSuccess": "Пароль змінено. Тепер ви можете увійти.",
     "genericError": "Сервіс тимчасово недоступний.",
-    "verifyButton": "Підтвердіть ваш email"
+    "verifyButton": "Підтвердіть ваш email",
+    "verificationResent": "Якщо обліковий запис існує, надіслано лист для підтвердження.",
+    "emailDeliveryUnavailable": "Надсилання листів тимчасово недоступне. Зв'яжіться зі службою підтримки або спробуйте пізніше."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Перегляд адміністратора — Компанія",
     "switchCompany": "Змінити компанію",
     "exitTenantView": "Вийти з перегляду орендаря",
-    "tenantContextError": "Не вдалося перевірити контекст орендаря."
+    "tenantContextError": "Не вдалося перевірити контекст орендаря.",
+    "adminCompaniesUnauthorized": "У вас немає дозволу на доступ до каталогу компаній.",
+    "adminCompaniesUnavailable": "Каталог компаній тимчасово недоступний. Спробуйте пізніше."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

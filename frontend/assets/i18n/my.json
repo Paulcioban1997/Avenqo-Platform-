@@ -372,7 +372,9 @@
     "verifySuccess": "သင့်အီးမေးလ်ကို အတည်ပြုပြီးပါပြီ။ ယခု ဝင်ရောက်နိုင်ပါပြီ။",
     "resetSuccess": "စကားဝှက် ပြောင်းလဲပြီးပါပြီ။ ယခု ဝင်ရောက်နိုင်ပါပြီ။",
     "genericError": "ဝန်ဆောင်မှုကို ယာယီ မရရှိနိုင်ပါ။",
-    "verifyButton": "သင့်အီးမေးလ်ကို အတည်ပြုပါ"
+    "verifyButton": "သင့်အီးမေးလ်ကို အတည်ပြုပါ",
+    "verificationResent": "အကောင့်ရှိပါက အတည်ပြုအီးမေးလ် ပို့ပြီးပါပြီ။",
+    "emailDeliveryUnavailable": "အီးမေးလ်ပို့ဆောင်မှုကို ယာယီအသုံးမပြုနိုင်ပါ။ အကူအညီဌာနကို ဆက်သွယ်ပါ သို့မဟုတ် နောက်မှ ထပ်မံကြိုးစားပါ။"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "စီမံခန့်ခွဲသူအမြင် — ကုမ္ပဏီ",
     "switchCompany": "ကုမ္ပဏီပြောင်းပါ။",
     "exitTenantView": "အိမ်ငှားမြင်ကွင်းမှ ထွက်ပါ။",
-    "tenantContextError": "အိမ်ငှားအကြောင်းအရာကို အတည်ပြု၍မရပါ။"
+    "tenantContextError": "အိမ်ငှားအကြောင်းအရာကို အတည်ပြု၍မရပါ။",
+    "adminCompaniesUnauthorized": "ကုမ္ပဏီလမ်းညွှန်ကို ဝင်ရောက်ကြည့်ရှုရန် သင့်တွင် ခွင့်ပြုချက်မရှိပါ။",
+    "adminCompaniesUnavailable": "ကုမ္ပဏီလမ်းညွှန်ကို ယာယီအသုံးမပြုနိုင်ပါ။ နောက်မှ ထပ်မံကြိုးစားပါ။"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

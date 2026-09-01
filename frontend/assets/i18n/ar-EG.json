@@ -372,7 +372,9 @@
     "verifySuccess": "تم تأكيد بريدك الإلكتروني. تقدر تسجّل دخولك دلوقتي.",
     "resetSuccess": "اتغيّرت كلمة السر. تقدر تسجّل دخولك دلوقتي.",
     "genericError": "الخدمة مش متاحة دلوقتي.",
-    "verifyButton": "أكّد بريدك الإلكتروني"
+    "verifyButton": "أكّد بريدك الإلكتروني",
+    "verificationResent": "لو الحساب موجود، تم إرسال بريد إلكتروني للتأكيد.",
+    "emailDeliveryUnavailable": "إرسال البريد الإلكتروني مش متاح مؤقتًا. تواصل مع الدعم أو حاول تاني لاحقًا."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "عرض المسؤول - الشركة",
     "switchCompany": "شركة التبديل",
     "exitTenantView": "الخروج من عرض المستأجر",
-    "tenantContextError": "لا يمكن التحقق من صحة سياق المستأجر."
+    "tenantContextError": "لا يمكن التحقق من صحة سياق المستأجر.",
+    "adminCompaniesUnauthorized": "مش مسموح لك تدخل على دليل الشركات.",
+    "adminCompaniesUnavailable": "دليل الشركات مش متاح مؤقتًا. حاول تاني لاحقًا."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

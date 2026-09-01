@@ -372,7 +372,9 @@
     "verifySuccess": "Адрес эл. почты подтверждён. Теперь вы можете войти.",
     "resetSuccess": "Пароль изменён. Теперь вы можете войти.",
     "genericError": "Сервис временно недоступен.",
-    "verifyButton": "Подтвердите ваш email"
+    "verifyButton": "Подтвердите ваш email",
+    "verificationResent": "Если учетная запись существует, отправлено письмо для подтверждения.",
+    "emailDeliveryUnavailable": "Отправка писем временно недоступна. Свяжитесь с поддержкой или повторите попытку позже."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Просмотр администратора — Компания",
     "switchCompany": "Сменить компанию",
     "exitTenantView": "Выйти из режима арендатора",
-    "tenantContextError": "Не удалось проверить контекст клиента."
+    "tenantContextError": "Не удалось проверить контекст клиента.",
+    "adminCompaniesUnauthorized": "У вас нет доступа к каталогу компаний.",
+    "adminCompaniesUnavailable": "Каталог компаний временно недоступен. Повторите попытку позже."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

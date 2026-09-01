@@ -372,7 +372,9 @@
     "verifySuccess": "Таны и-мэйл баталгаажсан байна. Одоо та нэвтрэх боломжтой.",
     "resetSuccess": "Нууц үг солигдсон байна. Одоо та нэвтрэх боломжтой.",
     "genericError": "Үйлчилгээ түр зуур ашиглах боломжгүй.",
-    "verifyButton": "И-мэйлээ баталгаажуулна уу"
+    "verifyButton": "И-мэйлээ баталгаажуулна уу",
+    "verificationResent": "Хэрэв бүртгэл байгаа бол баталгаажуулах имэйл илгээгдсэн.",
+    "emailDeliveryUnavailable": "Имэйл хүргэлт түр хугацаанд боломжгүй байна. Тусламжтай холбогдох эсвэл дараа дахин оролдоно уу."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Админ харах — Компани",
     "switchCompany": "Компаниа солих",
     "exitTenantView": "Түрээслэгчийн харагдацаас гарах",
-    "tenantContextError": "Түрээслэгчийн нөхцөл байдлыг баталгаажуулж чадсангүй."
+    "tenantContextError": "Түрээслэгчийн нөхцөл байдлыг баталгаажуулж чадсангүй.",
+    "adminCompaniesUnauthorized": "Та компанийн лавлахад хандах эрхгүй байна.",
+    "adminCompaniesUnavailable": "Компанийн лавлах түр хугацаанд боломжгүй байна. Дараа дахин оролдоно уу."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

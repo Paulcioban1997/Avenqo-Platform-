@@ -372,7 +372,9 @@
     "verifySuccess": "آپ کا ای میل تصدیق ہو گیا ہے۔ اب آپ لاگ ان کر سکتے ہیں۔",
     "resetSuccess": "پاس ورڈ تبدیل ہو گیا۔ اب آپ لاگ ان کر سکتے ہیں۔",
     "genericError": "سروس عارضی طور پر دستیاب نہیں ہے۔",
-    "verifyButton": "اپنا ای میل تصدیق کریں"
+    "verifyButton": "اپنا ای میل تصدیق کریں",
+    "verificationResent": "اگر اکاؤنٹ موجود ہے تو تصدیقی ای میل بھیج دی گئی ہے۔",
+    "emailDeliveryUnavailable": "ای میل کی ترسیل عارضی طور پر دستیاب نہیں ہے۔ سپورٹ سے رابطہ کریں یا بعد میں دوبارہ کوشش کریں۔"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "ایڈمن ویو - کمپنی",
     "switchCompany": "کمپنی کو تبدیل کریں۔",
     "exitTenantView": "کرایہ دار کے نظارے سے باہر نکلیں۔",
-    "tenantContextError": "کرایہ دار کے سیاق و سباق کی توثیق نہیں کی جا سکی۔"
+    "tenantContextError": "کرایہ دار کے سیاق و سباق کی توثیق نہیں کی جا سکی۔",
+    "adminCompaniesUnauthorized": "آپ کو کمپنی کی فہرست تک رسائی کی اجازت نہیں ہے۔",
+    "adminCompaniesUnavailable": "کمپنی کی فہرست عارضی طور پر دستیاب نہیں ہے۔ بعد میں دوبارہ کوشش کریں۔"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

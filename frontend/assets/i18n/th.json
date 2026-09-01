@@ -372,7 +372,9 @@
     "verifySuccess": "ยืนยันอีเมลของคุณเรียบร้อยแล้ว ตอนนี้คุณสามารถเข้าสู่ระบบได้",
     "resetSuccess": "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว ตอนนี้คุณสามารถเข้าสู่ระบบได้",
     "genericError": "บริการไม่พร้อมใช้งานชั่วคราว",
-    "verifyButton": "ยืนยันอีเมลของคุณ"
+    "verifyButton": "ยืนยันอีเมลของคุณ",
+    "verificationResent": "หากมีบัญชีนี้ ระบบได้ส่งอีเมลยืนยันแล้ว",
+    "emailDeliveryUnavailable": "การส่งอีเมลไม่พร้อมใช้งานชั่วคราว โปรดติดต่อฝ่ายสนับสนุนหรือลองอีกครั้งภายหลัง"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "มุมมองผู้ดูแลระบบ — บริษัท",
     "switchCompany": "เปลี่ยนบริษัท",
     "exitTenantView": "ออกจากมุมมองผู้เช่า",
-    "tenantContextError": "ไม่สามารถตรวจสอบบริบทของผู้เช่าได้"
+    "tenantContextError": "ไม่สามารถตรวจสอบบริบทของผู้เช่าได้",
+    "adminCompaniesUnauthorized": "คุณไม่ได้รับอนุญาตให้เข้าถึงไดเรกทอรีบริษัท",
+    "adminCompaniesUnavailable": "ไดเรกทอรีบริษัทไม่พร้อมใช้งานชั่วคราว โปรดลองอีกครั้งภายหลัง"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

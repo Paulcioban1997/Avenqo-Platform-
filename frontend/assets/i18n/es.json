@@ -372,7 +372,9 @@
     "verifySuccess": "Correo verificado. Ya puedes iniciar sesión.",
     "resetSuccess": "Contraseña cambiada. Ya puedes iniciar sesión.",
     "genericError": "El servicio no está disponible temporalmente.",
-    "verifyButton": "Verifica tu correo"
+    "verifyButton": "Verifica tu correo",
+    "verificationResent": "Si la cuenta existe, se ha enviado un email de verificación.",
+    "emailDeliveryUnavailable": "El envío de emails no está disponible temporalmente. Contacte con soporte o inténtelo más tarde."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Vista de administrador: empresa",
     "switchCompany": "Cambiar de empresa",
     "exitTenantView": "Salir de la vista de inquilino",
-    "tenantContextError": "No se pudo validar el contexto del inquilino."
+    "tenantContextError": "No se pudo validar el contexto del inquilino.",
+    "adminCompaniesUnauthorized": "No está autorizado para acceder al directorio de empresas.",
+    "adminCompaniesUnavailable": "El directorio de empresas no está disponible temporalmente. Inténtelo más tarde."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

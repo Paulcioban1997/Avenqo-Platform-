@@ -372,7 +372,9 @@
     "verifySuccess": "Ձեր էլ. հասցեն հաստատվել է։ Այժմ կարող եք մուտք գործել։",
     "resetSuccess": "Ընդլայնագիրը փոփոխվել է։ Այժմ կարող եք մուտք գործել։",
     "genericError": "Ծառայությունը ձայն անհասանելի է համար մի ժամանակ։",
-    "verifyButton": "Հաստատեք ձեր էլ. հասցեն"
+    "verifyButton": "Հաստատեք ձեր էլ. հասցեն",
+    "verificationResent": "Եթե հաշիվը գոյություն ունի, հաստատման նամակ է ուղարկվել։",
+    "emailDeliveryUnavailable": "Էլփոստի առաքումը ժամանակավորապես հասանելի չէ։ Կապվեք աջակցության հետ կամ փորձեք ավելի ուշ։"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Ադմինիստրատորի տեսք — Ընկերություն",
     "switchCompany": "Անջատիչ ընկերություն",
     "exitTenantView": "Դուրս գալ վարձակալի տեսքից",
-    "tenantContextError": "Վարձակալի համատեքստը չհաջողվեց վավերացնել:"
+    "tenantContextError": "Վարձակալի համատեքստը չհաջողվեց վավերացնել:",
+    "adminCompaniesUnauthorized": "Դուք լիազորված չեք մուտք գործել ընկերությունների գրացուցակ։",
+    "adminCompaniesUnavailable": "Ընկերությունների գրացուցակը ժամանակավորապես հասանելի չէ։ Փորձեք ավելի ուշ։"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

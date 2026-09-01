@@ -141,6 +141,23 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
     ).status_code == 401
 
 
+def test_inscription_invalide_retourne_422_sans_exposer_le_mot_de_passe(
+    auth_environment,
+) -> None:
+    client, _, _ = auth_environment
+    payload = registration_payload("invalid@acme.ca", "Invalid Company")
+    payload["password"] = "weakpassword"
+
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["details"][0]["loc"] == ["body", "password"]
+    assert "weakpassword" not in response.text
+    assert "ctx" not in response.text
+
+
 def test_inscription_signale_une_erreur_smtp_sans_effacer_le_compte(auth_environment) -> None:
     client, _, notifier = auth_environment
     app = client.app
@@ -216,6 +233,27 @@ def test_verification_expiration_rejeu_et_renvoi_restent_lies_au_bon_compte(
         assert first_user.is_platform_admin is False
         assert second_user is not None and second_user.email_verified_at is None
         assert first_user.company_id != second_user.company_id
+
+
+def test_renvoi_verification_reste_non_bloquant_sans_smtp(auth_environment) -> None:
+    client, _, _ = auth_environment
+
+    class UnconfiguredNotifier:
+        email_delivery_configured = False
+
+        def send_email_verification(self, email: str, token: str) -> None:
+            raise AssertionError("unconfigured email delivery must not be called")
+
+    client.app.dependency_overrides[get_account_notifier] = lambda: UnconfiguredNotifier()
+
+    response = client.post(
+        "/api/v1/auth/email/resend",
+        json={"email": "owner@acme.ca"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email_delivery_configured"] is False
+    assert "temporairement indisponible" in response.json()["message"].lower()
 
 
 def test_email_verification_smtp_utilise_le_domaine_production(

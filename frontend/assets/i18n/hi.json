@@ -372,7 +372,9 @@
     "verifySuccess": "आपका ईमेल सत्यापित हो गया है। अब आप लॉगिन कर सकते हैं।",
     "resetSuccess": "पासवर्ड बदल दिया गया है। अब आप लॉगिन कर सकते हैं।",
     "genericError": "सेवा अस्थायी रूप से अनुपलब्ध है।",
-    "verifyButton": "अपना ईमेल सत्यापित करें"
+    "verifyButton": "अपना ईमेल सत्यापित करें",
+    "verificationResent": "यदि खाता मौजूद है, तो सत्यापन ईमेल भेजा गया है।",
+    "emailDeliveryUnavailable": "ईमेल डिलीवरी अस्थायी रूप से अनुपलब्ध है। सहायता से संपर्क करें या बाद में फिर से प्रयास करें।"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "व्यवस्थापक दृश्य - कंपनी",
     "switchCompany": "कंपनी बदलें",
     "exitTenantView": "किरायेदार दृश्य से बाहर निकलें",
-    "tenantContextError": "किरायेदार संदर्भ सत्यापित नहीं किया जा सका."
+    "tenantContextError": "किरायेदार संदर्भ सत्यापित नहीं किया जा सका.",
+    "adminCompaniesUnauthorized": "आप कंपनी निर्देशिका तक पहुँचने के लिए अधिकृत नहीं हैं।",
+    "adminCompaniesUnavailable": "कंपनी निर्देशिका अस्थायी रूप से अनुपलब्ध है। बाद में फिर से प्रयास करें।"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

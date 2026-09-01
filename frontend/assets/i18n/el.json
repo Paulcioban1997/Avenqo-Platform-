@@ -372,7 +372,9 @@
     "verifySuccess": "Η διεύθυνση email επιβεβαιώθηκε. Μπορείτε τώρα να συνδεθείτε.",
     "resetSuccess": "Ο κωδικός αλλάχθηκε. Μπορείτε τώρα να συνδεθείτε.",
     "genericError": "Η υπηρεσία είναι προσωρινά μη διαθέσιμη.",
-    "verifyButton": "Επιβεβαιώστε το email σας"
+    "verifyButton": "Επιβεβαιώστε το email σας",
+    "verificationResent": "Εάν ο λογαριασμός υπάρχει, έχει σταλεί email επιβεβαίωσης.",
+    "emailDeliveryUnavailable": "Η αποστολή email δεν είναι προσωρινά διαθέσιμη. Επικοινωνήστε με την υποστήριξη ή δοκιμάστε ξανά αργότερα."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Προβολή διαχειριστή — Εταιρεία",
     "switchCompany": "Αλλαγή εταιρείας",
     "exitTenantView": "Έξοδος από την προβολή μισθωτή",
-    "tenantContextError": "Δεν ήταν δυνατή η επικύρωση του πλαισίου μισθωτή."
+    "tenantContextError": "Δεν ήταν δυνατή η επικύρωση του πλαισίου μισθωτή.",
+    "adminCompaniesUnauthorized": "Δεν έχετε εξουσιοδότηση πρόσβασης στον κατάλογο εταιρειών.",
+    "adminCompaniesUnavailable": "Ο κατάλογος εταιρειών δεν είναι προσωρινά διαθέσιμος. Δοκιμάστε ξανά αργότερα."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

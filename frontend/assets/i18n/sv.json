@@ -372,7 +372,9 @@
     "verifySuccess": "E-postadress bekräftad. Du kan nu logga in.",
     "resetSuccess": "Lösenord ändrat. Du kan nu logga in.",
     "genericError": "Tjänsten är tillfälligt otillgänglig.",
-    "verifyButton": "Bekräfta din e-post"
+    "verifyButton": "Bekräfta din e-post",
+    "verificationResent": "Om kontot finns har ett verifieringsmeddelande skickats.",
+    "emailDeliveryUnavailable": "E-postleverans är tillfälligt otillgänglig. Kontakta supporten eller försök igen senare."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Adminvy — Företag",
     "switchCompany": "Byt företag",
     "exitTenantView": "Avsluta hyresgästvy",
-    "tenantContextError": "Hyresgästkontexten kunde inte valideras."
+    "tenantContextError": "Hyresgästkontexten kunde inte valideras.",
+    "adminCompaniesUnauthorized": "Du har inte behörighet att öppna företagskatalogen.",
+    "adminCompaniesUnavailable": "Företagskatalogen är tillfälligt otillgänglig. Försök igen senare."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

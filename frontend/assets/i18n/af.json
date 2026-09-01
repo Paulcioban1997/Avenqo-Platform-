@@ -372,7 +372,9 @@
     "verifySuccess": "Jou e-pos is geverifieer. Jy kan nou aanmeld.",
     "resetSuccess": "Wagwoord is verander. Jy kan nou aanmeld.",
     "genericError": "Diens tans nie beskikbaar nie.",
-    "verifyButton": "Verifieer jou e-pos"
+    "verifyButton": "Verifieer jou e-pos",
+    "verificationResent": "Indien die rekening bestaan, is 'n verifikasie-e-pos gestuur.",
+    "emailDeliveryUnavailable": "E-posaflewering is tydelik onbeskikbaar. Kontak ondersteuning of probeer later weer."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Admin-aansig — Maatskappy",
     "switchCompany": "Verander maatskappy",
     "exitTenantView": "Verlaat huurder-aansig",
-    "tenantContextError": "Die huurderkonteks kon nie bekragtig word nie."
+    "tenantContextError": "Die huurderkonteks kon nie bekragtig word nie.",
+    "adminCompaniesUnauthorized": "U is nie gemagtig om toegang tot die maatskappygids te verkry nie.",
+    "adminCompaniesUnavailable": "Die maatskappygids is tydelik onbeskikbaar. Probeer later weer."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

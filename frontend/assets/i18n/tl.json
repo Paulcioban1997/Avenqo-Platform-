@@ -372,7 +372,9 @@
     "verifySuccess": "Na-verify na ang iyong email. Maaari ka nang mag-log in.",
     "resetSuccess": "Nabago na ang password. Maaari ka nang mag-log in.",
     "genericError": "Pansamantalang hindi available ang serbisyo.",
-    "verifyButton": "I-verify ang iyong email"
+    "verifyButton": "I-verify ang iyong email",
+    "verificationResent": "Kung mayroon ang account, naipadala na ang email sa pagpapatunay.",
+    "emailDeliveryUnavailable": "Pansamantalang hindi available ang pagpapadala ng email. Makipag-ugnayan sa suporta o subukan ulit mamaya."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Admin view — Kumpanya",
     "switchCompany": "Lumipat ng kumpanya",
     "exitTenantView": "Lumabas sa view ng nangungupahan",
-    "tenantContextError": "Hindi ma-validate ang konteksto ng nangungupahan."
+    "tenantContextError": "Hindi ma-validate ang konteksto ng nangungupahan.",
+    "adminCompaniesUnauthorized": "Wala kang pahintulot na ma-access ang direktoryo ng mga kumpanya.",
+    "adminCompaniesUnavailable": "Pansamantalang hindi available ang direktoryo ng mga kumpanya. Subukan ulit mamaya."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

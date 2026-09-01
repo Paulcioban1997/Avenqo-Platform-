@@ -372,7 +372,9 @@
     "verifySuccess": "E-mailová adresa ověřena. Nyní se můžete přihlásit.",
     "resetSuccess": "Heslo změněno. Nyní se můžete přihlásit.",
     "genericError": "Služba je dočasně nedostupná.",
-    "verifyButton": "Ověřte svůj e-mail"
+    "verifyButton": "Ověřte svůj e-mail",
+    "verificationResent": "Pokud účet existuje, byl odeslán ověřovací e-mail.",
+    "emailDeliveryUnavailable": "Doručování e-mailů je dočasně nedostupné. Kontaktujte podporu nebo to zkuste později."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Zobrazení správce — Společnost",
     "switchCompany": "Přepnout společnost",
     "exitTenantView": "Ukončit pohled nájemce",
-    "tenantContextError": "Kontext tenanta nelze ověřit."
+    "tenantContextError": "Kontext tenanta nelze ověřit.",
+    "adminCompaniesUnauthorized": "Nemáte oprávnění přistupovat k adresáři společností.",
+    "adminCompaniesUnavailable": "Adresář společností je dočasně nedostupný. Zkuste to později."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

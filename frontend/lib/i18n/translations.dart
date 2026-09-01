@@ -846,6 +846,8 @@ class AuthStrings {
     required this.continueLabel,
     required this.forgotSuccess,
     required this.verifySuccess,
+    required this.verificationResent,
+    required this.emailDeliveryUnavailable,
     required this.resetSuccess,
     required this.genericError,
   });
@@ -880,6 +882,8 @@ class AuthStrings {
         continueLabel: json['continueLabel'] as String,
         forgotSuccess: json['forgotSuccess'] as String,
         verifySuccess: json['verifySuccess'] as String,
+        verificationResent: json['verificationResent'] as String,
+        emailDeliveryUnavailable: json['emailDeliveryUnavailable'] as String,
         resetSuccess: json['resetSuccess'] as String,
         genericError: json['genericError'] as String,
       );
@@ -914,6 +918,8 @@ class AuthStrings {
         continueLabel: 'Continue',
         forgotSuccess: 'If the account exists, an email has been sent.',
         verifySuccess: 'Email verified. You can now log in.',
+        verificationResent: 'If the account exists, a verification email has been sent.',
+        emailDeliveryUnavailable: 'Email delivery is temporarily unavailable. Contact support or try again later.',
         resetSuccess: 'Password changed. You can now log in.',
         genericError: 'The service is temporarily unavailable.',
       );
@@ -947,6 +953,8 @@ class AuthStrings {
   final String continueLabel;
   final String forgotSuccess;
   final String verifySuccess;
+  final String verificationResent;
+  final String emailDeliveryUnavailable;
   final String resetSuccess;
   final String genericError;
 }

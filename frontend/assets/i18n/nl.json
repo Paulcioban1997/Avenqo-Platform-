@@ -372,7 +372,9 @@
     "verifySuccess": "E-mailadres bevestigd. U kunt nu inloggen.",
     "resetSuccess": "Wachtwoord gewijzigd. U kunt nu inloggen.",
     "genericError": "De service is tijdelijk niet beschikbaar.",
-    "verifyButton": "Bevestig uw e-mail"
+    "verifyButton": "Bevestig uw e-mail",
+    "verificationResent": "Als het account bestaat, is een verificatie-e-mail verzonden.",
+    "emailDeliveryUnavailable": "E-mailbezorging is tijdelijk niet beschikbaar. Neem contact op met ondersteuning of probeer het later opnieuw."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "Beheerderweergave — Bedrijf",
     "switchCompany": "Van bedrijf wisselen",
     "exitTenantView": "Sluit de huurderweergave af",
-    "tenantContextError": "De tenantcontext kan niet worden gevalideerd."
+    "tenantContextError": "De tenantcontext kan niet worden gevalideerd.",
+    "adminCompaniesUnauthorized": "U bent niet gemachtigd om de bedrijfsdirectory te openen.",
+    "adminCompaniesUnavailable": "De bedrijfsdirectory is tijdelijk niet beschikbaar. Probeer het later opnieuw."
   },
   "phase4e": {
     "creditsTitle": "AI credits",

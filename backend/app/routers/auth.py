@@ -117,8 +117,16 @@ def resend_verification(
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
-    service.resend_verification(str(request.email))
-    return MessageResponse(message="Si le compte existe, un email a Ã©tÃ© envoyÃ©.")
+    email_delivery_configured = service.resend_verification(str(request.email))
+    message = (
+        "Si le compte existe, un email a été envoyé."
+        if email_delivery_configured
+        else "La livraison des emails est temporairement indisponible. Contactez le support."
+    )
+    return MessageResponse(
+        message=message,
+        email_delivery_configured=email_delivery_configured,
+    )
 
 
 @router.post(

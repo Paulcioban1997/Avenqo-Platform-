@@ -244,13 +244,23 @@ class AuthService:
         self._session.commit()
         return token.user
 
-    def resend_verification(self, email: str) -> None:
+    def resend_verification(self, email: str) -> bool:
+        delivery_configured = bool(
+            getattr(self._notifier, "email_delivery_configured", True)
+        )
         user = self._session.scalar(select(User).where(User.email == email.strip().lower()))
         if user is None or user.email_verified_at is not None:
-            return
+            return delivery_configured
+        if not delivery_configured:
+            return False
         token = self._create_account_token(user, AccountTokenPurpose.EMAIL_VERIFICATION, 24)
         self._session.commit()
-        self._notifier.send_email_verification(user.email, token)
+        try:
+            self._notifier.send_email_verification(user.email, token)
+        except Exception:
+            logger.exception("Verification email resend failed for %s", user.email)
+            return False
+        return True
 
     def forgot_password(self, email: str) -> None:
         user = self._session.scalar(select(User).where(User.email == email.strip().lower()))

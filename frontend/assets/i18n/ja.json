@@ -372,7 +372,9 @@
     "verifySuccess": "メールが確認されました。今すぐログインできます。",
     "resetSuccess": "パスワードが変更されました。今すぐログインできます。",
     "genericError": "サービスは一時的に利用できません。",
-    "verifyButton": "メールアドレスを確認"
+    "verifyButton": "メールアドレスを確認",
+    "verificationResent": "アカウントが存在する場合、確認メールが送信されています。",
+    "emailDeliveryUnavailable": "メール配信は一時的に利用できません。サポートにお問い合わせいただくか、後でもう一度お試しください。"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "管理者ビュー — 会社",
     "switchCompany": "会社を切り替える",
     "exitTenantView": "テナントビューを終了する",
-    "tenantContextError": "テナント コンテキストを検証できませんでした。"
+    "tenantContextError": "テナント コンテキストを検証できませんでした。",
+    "adminCompaniesUnauthorized": "企業ディレクトリにアクセスする権限がありません。",
+    "adminCompaniesUnavailable": "企業ディレクトリは一時的に利用できません。後でもう一度お試しください。"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

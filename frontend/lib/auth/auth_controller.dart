@@ -55,14 +55,18 @@ class AuthController extends ChangeNotifier {
     return response;
   }
 
-  Future<void> resendVerification(String email) async {
-    await _run(
-      () => api.post(
-        '/auth/email/resend',
-        body: {'email': email.trim()},
-        authenticated: false,
-      ),
-    );
+  Future<Map<String, dynamic>> resendVerification(String email) async {
+    var response = <String, dynamic>{};
+    await _run(() async {
+      response =
+          await api.post(
+                '/auth/email/resend',
+                body: {'email': email.trim()},
+                authenticated: false,
+              )
+              as Map<String, dynamic>;
+    });
+    return response;
   }
 
   Future<void> forgotPassword(String email) async {

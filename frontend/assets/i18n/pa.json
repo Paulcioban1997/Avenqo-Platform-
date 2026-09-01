@@ -372,7 +372,9 @@
     "verifySuccess": "ਤੁਹਾਡੀ ਈਮੇਲ ਦੀ ਪੁਸ਼ਟੀ ਹੋ ਗਈ ਹੈ। ਤੁਸੀਂ ਹੁਣ ਲੌਗਇਨ ਕਰ ਸਕਦੇ ਹੋ।",
     "resetSuccess": "ਪਾਸਵਰਡ ਬਦਲ ਦਿੱਤਾ ਗਿਆ ਹੈ। ਤੁਸੀਂ ਹੁਣ ਲੌਗਇਨ ਕਰ ਸਕਦੇ ਹੋ।",
     "genericError": "ਸੇਵਾ ਇਸ ਵੇਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
-    "verifyButton": "ਆਪਣੀ ਈਮੇਲ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ"
+    "verifyButton": "ਆਪਣੀ ਈਮੇਲ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ",
+    "verificationResent": "ਜੇ ਖਾਤਾ ਮੌਜੂਦ ਹੈ, ਤਾਂ ਪੁਸ਼ਟੀਕਰਨ ਈਮੇਲ ਭੇਜੀ ਗਈ ਹੈ।",
+    "emailDeliveryUnavailable": "ਈਮੇਲ ਡਿਲੀਵਰੀ ਅਸਥਾਈ ਤੌਰ 'ਤੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਸਹਾਇਤਾ ਨਾਲ ਸੰਪਰਕ ਕਰੋ ਜਾਂ ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "ਐਡਮਿਨ ਦ੍ਰਿਸ਼ - ਕੰਪਨੀ",
     "switchCompany": "ਕੰਪਨੀ ਬਦਲੋ",
     "exitTenantView": "ਕਿਰਾਏਦਾਰ ਦ੍ਰਿਸ਼ ਤੋਂ ਬਾਹਰ ਨਿਕਲੋ",
-    "tenantContextError": "ਕਿਰਾਏਦਾਰ ਸੰਦਰਭ ਨੂੰ ਪ੍ਰਮਾਣਿਤ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ।"
+    "tenantContextError": "ਕਿਰਾਏਦਾਰ ਸੰਦਰਭ ਨੂੰ ਪ੍ਰਮਾਣਿਤ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ।",
+    "adminCompaniesUnauthorized": "ਤੁਹਾਨੂੰ ਕੰਪਨੀ ਡਾਇਰੈਕਟਰੀ ਤੱਕ ਪਹੁੰਚ ਕਰਨ ਦੀ ਇਜਾਜ਼ਤ ਨਹੀਂ ਹੈ।",
+    "adminCompaniesUnavailable": "ਕੰਪਨੀ ਡਾਇਰੈਕਟਰੀ ਅਸਥਾਈ ਤੌਰ 'ਤੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਬਾਅਦ ਵਿੱਚ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
   },
   "phase4e": {
     "creditsTitle": "AI credits",

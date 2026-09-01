@@ -372,7 +372,9 @@
     "verifySuccess": "האימייל אומת. עכשיו תוכלו להתחבר.",
     "resetSuccess": "הסיסמה שונתה. עכשיו תוכלו להתחבר.",
     "genericError": "השירות אינו זמין כרגע.",
-    "verifyButton": "אמתו את האימייל שלכם"
+    "verifyButton": "אמתו את האימייל שלכם",
+    "verificationResent": "אם החשבון קיים, נשלחה הודעת אימות.",
+    "emailDeliveryUnavailable": "שליחת דוא״ל אינה זמינה זמנית. פנו לתמיכה או נסו שוב מאוחר יותר."
   },
   "dashboardHome": {
     "revenueDeclineTitle": "Review the recent revenue decline",
@@ -714,7 +716,9 @@
     "adminViewLabel": "תצוגת מנהל - חברה",
     "switchCompany": "להחליף חברה",
     "exitTenantView": "צא מנוף הדייר",
-    "tenantContextError": "לא ניתן לאמת את הקשר הדייר."
+    "tenantContextError": "לא ניתן לאמת את הקשר הדייר.",
+    "adminCompaniesUnauthorized": "אין לך הרשאה לגשת למדריך החברות.",
+    "adminCompaniesUnavailable": "מדריך החברות אינו זמין זמנית. נסו שוב מאוחר יותר."
   },
   "phase4e": {
     "creditsTitle": "AI credits",
