@@ -430,10 +430,11 @@ class ChatErrorState extends StatelessWidget {
 }
 
 class ChatComposer extends StatelessWidget {
-  const ChatComposer({super.key, required this.controller, required this.generating, required this.onSend});
+  const ChatComposer({super.key, required this.controller, required this.generating, required this.onSend, this.onStop});
   final TextEditingController controller;
   final bool generating;
   final ValueChanged<String?> onSend;
+  final VoidCallback? onStop;
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
@@ -446,7 +447,9 @@ class ChatComposer extends StatelessWidget {
         return KeyEventResult.ignored;
       }, child: TextField(controller: controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(hintText: 'Ask Avenqo anything about your business...')))), const SizedBox(width: 10),
         generating
-          ? const SizedBox.square(dimension: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
+          ? onStop == null
+            ? const SizedBox.square(dimension: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
+            : Tooltip(message: 'Stop generating', child: IconButton.filled(onPressed: onStop, style: IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error), icon: const Icon(Icons.stop)))
           : Tooltip(message: 'Send message', child: IconButton.filled(onPressed: () => onSend(null), style: IconButton.styleFrom(backgroundColor: _Brand.blue), icon: const Icon(Icons.arrow_upward))),
     ])));
   }
