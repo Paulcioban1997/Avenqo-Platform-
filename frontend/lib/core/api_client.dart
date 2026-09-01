@@ -50,11 +50,12 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> request) async {
-    await post('/auth/register', body: request, authenticated: false);
-    return login(
-      request['email'].toString().trim(),
-      request['password'].toString(),
-    );
+    return await post(
+          '/auth/register',
+          body: request,
+          authenticated: false,
+        )
+        as Map<String, dynamic>;
   }
 
   Future<void> clearSession() async {

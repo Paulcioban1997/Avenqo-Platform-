@@ -112,8 +112,12 @@ class _AvenqoAppState extends State<AvenqoApp> {
         ),
         GoRoute(
           path: '/verify-email',
-          builder: (context, state) =>
-              AuthPage(auth: widget.auth, mode: AuthMode.verify),
+          builder: (context, state) => AuthPage(
+            auth: widget.auth,
+            mode: AuthMode.verify,
+            initialToken: state.uri.queryParameters['token'],
+            initialEmail: state.uri.queryParameters['email'],
+          ),
         ),
         GoRoute(
           path: '/reset-password',

@@ -57,18 +57,14 @@ void main() {
     },
   );
 
-  test('register logs in immediately and persists the session', () async {
+  test('register waits for email verification without creating a session', () async {
     final store = _TestTokenStore();
     final requestedPaths = <String>[];
     final client = MockClient((request) async {
       requestedPaths.add(request.url.path);
-      if (request.url.path.endsWith('/auth/register')) {
-        return http.Response('{"message":"Compte créé"}', 201);
-      }
       return http.Response(
-        '{"access_token":"access-123","refresh_token":"refresh-456",'
-        '"user":{"id":"user-1"},"company":{"id":"company-1"}}',
-        200,
+        '{"message":"Compte créé","email_delivery_configured":true}',
+        201,
       );
     });
     final api = ApiClient(
@@ -83,10 +79,10 @@ void main() {
       'selected_modules': ['retail', 'crm'],
     });
 
-    expect(requestedPaths, ['/api/v1/auth/register', '/api/v1/auth/login']);
-    expect(response['user']['id'], 'user-1');
-    expect(store.accessToken, 'access-123');
-    expect(store.refreshToken, 'refresh-456');
-    expect(api.hasSession, isTrue);
+    expect(requestedPaths, ['/api/v1/auth/register']);
+    expect(response['email_delivery_configured'], isTrue);
+    expect(store.accessToken, isNull);
+    expect(store.refreshToken, isNull);
+    expect(api.hasSession, isFalse);
   });
 }

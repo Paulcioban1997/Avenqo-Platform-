@@ -196,8 +196,18 @@ class Settings(BaseSettings):
             ):
                 if not value:
                     missing.append(name)
-            if not self.frontend_url.startswith("https://"):
+            if self.frontend_url.rstrip("/") != "https://app.avenqo.ca":
                 missing.append("FRONTEND_URL")
+            for name, value in (
+                ("SMTP_HOST", self.smtp_host),
+                ("SMTP_USERNAME", self.smtp_username),
+                ("SMTP_PASSWORD", self.smtp_password),
+                ("SMTP_FROM_EMAIL", self.smtp_from_email),
+            ):
+                if not value:
+                    missing.append(name)
+            if "smtp_from_email" not in self.model_fields_set:
+                missing.append("SMTP_FROM_EMAIL")
             if not self.cors_origins or any(
                 not origin.startswith("https://") for origin in self.cors_origins
             ):
@@ -209,11 +219,16 @@ class Settings(BaseSettings):
                     "Configuration production manquante ou non sécurisée : "
                     + ", ".join(missing)
                 )
-            # SMTP volontairement NON bloquant au dÃ©marrage : l'app doit pouvoir
-            # dÃ©marrer sans serveur email. Sans SMTP_HOST, `get_account_notifier`
-            # retombe sur LoggingAccountNotifier et les rÃ©ponses signalent
-            # `email_delivery_configured=false` (erreur claire, jamais un crash).
         return self
+
+    @property
+    def email_delivery_configured(self) -> bool:
+        return bool(
+            self.smtp_host
+            and self.smtp_username
+            and self.smtp_password
+            and self.smtp_from_email
+        )
 
     @property
     def billing_enabled(self) -> bool:

@@ -111,7 +111,7 @@ class AuthService:
             password_hash=hash_password(request.password),
             role=UserRole.OWNER,
             is_active=True,
-            email_verified_at=datetime.now(timezone.utc),
+            email_verified_at=None,
         )
         self._session.add_all((company, user))
         self._session.flush()
@@ -134,12 +134,13 @@ class AuthService:
         token = self._create_account_token(user, AccountTokenPurpose.EMAIL_VERIFICATION, 24)
         self._session.commit()
         verification_email_sent = False
-        try:
-            self._notifier.send_email_verification(user.email, token)
-            verification_email_sent = True
-        except Exception:
-            # SMTP is an external side effect; never undo a committed account.
-            logger.exception("Verification email delivery failed for %s", user.email)
+        if getattr(self._notifier, "email_delivery_configured", True):
+            try:
+                self._notifier.send_email_verification(user.email, token)
+                verification_email_sent = True
+            except Exception:
+                # SMTP is an external side effect; never undo a committed account.
+                logger.exception("Verification email delivery failed for %s", user.email)
         try:
             notify = getattr(self._notifier, "send_new_company", None)
             if notify:

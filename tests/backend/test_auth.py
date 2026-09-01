@@ -1,4 +1,5 @@
 ﻿from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -6,10 +7,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.core.security import decode_access_token, verify_password
+from backend.app.config.settings import Settings
+from backend.app.core.security import decode_access_token, hash_token, verify_password
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
-from backend.app.models import Base, Company, CompanyModule, CompanyOnboarding, Module, User
+from backend.app.models import AccountToken, Base, Company, CompanyModule, CompanyOnboarding, Module, User
+from backend.app.services.account_notifications import SMTPAccountNotifier
 from backend.main import create_application
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
@@ -21,6 +24,8 @@ class RecordingNotifier:
     def __init__(self) -> None:
         self.verification_tokens: dict[str, str] = {}
         self.reset_tokens: dict[str, str] = {}
+
+    email_delivery_configured = True
 
     def send_email_verification(self, email: str, token: str) -> None:
         self.verification_tokens[email] = token
@@ -96,6 +101,7 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
     response = client.post("/api/v1/auth/register", json=payload)
 
     assert response.status_code == 201
+    assert response.json()["email_delivery_configured"] is True
     assert payload["email"] in notifier.verification_tokens
     with session_factory() as session:
         companies = session.scalars(select(Company)).all()
@@ -103,6 +109,8 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
         assert len(companies) == len(users) == 1
         assert users[0].company_id == companies[0].id
         assert users[0].role.value == "owner"
+        assert users[0].is_platform_admin is False
+        assert users[0].email_verified_at is None
         assert users[0].password_hash != payload["password"]
         assert verify_password(payload["password"], users[0].password_hash)
 
@@ -110,7 +118,8 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
         "/api/v1/auth/login",
         json={"email": payload["email"], "password": payload["password"]},
     )
-    assert immediate_login.status_code == 200
+    assert immediate_login.status_code == 401
+    assert "vérifiée" in immediate_login.text
 
     login = verify_and_login(client, notifier, payload["email"])
     token = login["access_token"]
@@ -121,6 +130,7 @@ def test_inscription_cree_tenant_owner_et_session_revoquable(auth_environment) -
     identity = client.get("/api/v1/auth/me", headers=headers)
     assert identity.status_code == 200
     assert identity.json()["user"]["company_id"] == login["company"]["id"]
+    assert identity.json()["user"]["is_platform_admin"] is False
     assert "company:manage" in identity.json()["user"]["permissions"]
 
     assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
@@ -158,6 +168,102 @@ def test_inscription_signale_une_erreur_smtp_sans_effacer_le_compte(auth_environ
     assert token is None
     verify = client.post("/api/v1/auth/verify-email", json={"token": "deadbeef" * 4})
     assert verify.status_code == 400
+
+
+def test_verification_expiration_rejeu_et_renvoi_restent_lies_au_bon_compte(
+    auth_environment,
+) -> None:
+    client, session_factory, notifier = auth_environment
+    first = registration_payload("verify-first@acme.ca", "Verify First")
+    second = registration_payload("verify-second@nova.ca", "Verify Second")
+    assert client.post("/api/v1/auth/register", json=first).status_code == 201
+    assert client.post("/api/v1/auth/register", json=second).status_code == 201
+    first_token = notifier.verification_tokens[first["email"]]
+
+    with session_factory() as session:
+        account_token = session.scalar(
+            select(AccountToken).where(AccountToken.token_hash == hash_token(first_token))
+        )
+        assert account_token is not None
+        account_token.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        session.commit()
+
+    assert client.post(
+        "/api/v1/auth/email/verify", json={"token": first_token}
+    ).status_code == 400
+    resend = client.post(
+        "/api/v1/auth/email/resend", json={"email": first["email"]}
+    )
+    unknown = client.post(
+        "/api/v1/auth/email/resend", json={"email": "unrelated@example.ca"}
+    )
+    assert resend.status_code == unknown.status_code == 200
+    assert resend.json() == unknown.json()
+
+    replacement_token = notifier.verification_tokens[first["email"]]
+    assert replacement_token != first_token
+    assert client.post(
+        "/api/v1/auth/email/verify", json={"token": replacement_token}
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/auth/email/verify", json={"token": replacement_token}
+    ).status_code == 400
+
+    with session_factory() as session:
+        first_user = session.scalar(select(User).where(User.email == first["email"]))
+        second_user = session.scalar(select(User).where(User.email == second["email"]))
+        assert first_user is not None and first_user.email_verified_at is not None
+        assert first_user.is_platform_admin is False
+        assert second_user is not None and second_user.email_verified_at is None
+        assert first_user.company_id != second_user.company_id
+
+
+def test_email_verification_smtp_utilise_le_domaine_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_messages = []
+
+    class FakeSMTP:
+        def __init__(self, host: str, port: int) -> None:
+            assert host == "smtp.example.test"
+            assert port == 587
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def starttls(self) -> None:
+            return None
+
+        def login(self, username: str, password: str) -> None:
+            assert username == "mailer@example.test"
+            assert password
+
+        def send_message(self, message) -> None:
+            sent_messages.append(message)
+
+    monkeypatch.setattr("backend.app.services.account_notifications.smtplib.SMTP", FakeSMTP)
+    notifier = SMTPAccountNotifier(
+        Settings(
+            FRONTEND_URL="https://app.avenqo.ca",
+            SMTP_HOST="smtp.example.test",
+            SMTP_USERNAME="mailer@example.test",
+            SMTP_PASSWORD="test-password",
+            SMTP_FROM_EMAIL="info@avenqo.ca",
+        )
+    )
+
+    notifier.send_email_verification("customer@example.ca", "safe-token")
+
+    assert len(sent_messages) == 1
+    message = sent_messages[0]
+    assert message["To"] == "customer@example.ca"
+    assert message["From"] == "info@avenqo.ca"
+    body = message.get_content()
+    assert "https://app.avenqo.ca/verify-email?token=safe-token" in body
+    assert "24 heures" in body
 
 
 def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:

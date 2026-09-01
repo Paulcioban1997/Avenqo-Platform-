@@ -64,25 +64,22 @@ def test_production_requires_non_default_jwt_secret() -> None:
         Settings(ENVIRONMENT="production")
 
 
-def test_production_allows_optional_smtp_and_enterprise_price() -> None:
-    settings = Settings(
-        ENVIRONMENT="production",
-        DATABASE_URL="sqlite:///./var/avenqo-production.db",
-        AUTH_JWT_SECRET="a" * 32,
-        SMTP_HOST="",
-        STRIPE_SECRET_KEY="sk_test_x",
-        STRIPE_WEBHOOK_SECRET="whsec_x",
-        STRIPE_PRICE_DEMO="price_demo",
-        STRIPE_PRICE_PROFESSIONAL="price_pro",
-        STRIPE_PRICE_ENTERPRISE="",
-        FRONTEND_URL="https://app.avenqo.ca",
-        CORS_ORIGINS="https://app.avenqo.ca",
-        ALLOWED_HOSTS="api.avenqo.ca",
-    )
-    assert settings.environment == "production"
-    assert settings.smtp_host is None
-    assert settings.stripe_price_enterprise is None
-    assert settings.billing_enabled is True
+def test_production_requires_email_delivery_configuration() -> None:
+    with pytest.raises(ValueError, match="SMTP_HOST"):
+        Settings(
+            ENVIRONMENT="production",
+            DATABASE_URL="sqlite:///./var/avenqo-production.db",
+            AUTH_JWT_SECRET="a" * 32,
+            SMTP_HOST="",
+            STRIPE_SECRET_KEY="sk_test_x",
+            STRIPE_WEBHOOK_SECRET="whsec_x",
+            STRIPE_PRICE_DEMO="price_demo",
+            STRIPE_PRICE_PROFESSIONAL="price_pro",
+            STRIPE_PRICE_ENTERPRISE="",
+            FRONTEND_URL="https://app.avenqo.ca",
+            CORS_ORIGINS="https://app.avenqo.ca",
+            ALLOWED_HOSTS="api.avenqo.ca",
+        )
 
 
 def test_production_settings_accepted_when_fully_configured() -> None:
@@ -91,6 +88,9 @@ def test_production_settings_accepted_when_fully_configured() -> None:
         DATABASE_URL="sqlite:///./var/avenqo-production.db",
         AUTH_JWT_SECRET="b" * 32,
         SMTP_HOST="smtp.avenqo.ca",
+        SMTP_USERNAME="info@avenqo.ca",
+        SMTP_PASSWORD="test-password",
+        SMTP_FROM_EMAIL="info@avenqo.ca",
         STRIPE_SECRET_KEY="sk_test_x",
         STRIPE_WEBHOOK_SECRET="whsec_x",
         STRIPE_PRICE_DEMO="price_demo",
@@ -101,6 +101,7 @@ def test_production_settings_accepted_when_fully_configured() -> None:
         ALLOWED_HOSTS="api.avenqo.ca",
     )
     assert settings.environment == "production"
+    assert settings.email_delivery_configured is True
     assert settings.billing_enabled is True
 
 
@@ -109,6 +110,9 @@ def test_docs_disabled_in_production(monkeypatch: pytest.MonkeyPatch, db_session
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_session.bind.url.database}")
     monkeypatch.setenv("AUTH_JWT_SECRET", "c" * 32)
     monkeypatch.setenv("SMTP_HOST", "smtp.avenqo.ca")
+    monkeypatch.setenv("SMTP_USERNAME", "info@avenqo.ca")
+    monkeypatch.setenv("SMTP_PASSWORD", "test-password")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "info@avenqo.ca")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")

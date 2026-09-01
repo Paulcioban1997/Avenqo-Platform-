@@ -24,10 +24,18 @@ class _Brand {
 }
 
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key, required this.auth, required this.mode});
+  const AuthPage({
+    super.key,
+    required this.auth,
+    required this.mode,
+    this.initialToken,
+    this.initialEmail,
+  });
 
   final AuthController auth;
   final AuthMode mode;
+  final String? initialToken;
+  final String? initialEmail;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -56,6 +64,13 @@ class _AuthPageState extends State<AuthPage> {
   String? _message;
   bool _isError = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _token.text = widget.initialToken ?? '';
+    _email.text = widget.initialEmail ?? '';
+  }
 
   @override
   void dispose() {
@@ -112,13 +127,16 @@ class _AuthPageState extends State<AuthPage> {
             return;
           }
           await widget.auth.register(_signupPayload());
-          if (mounted) context.go('/billing');
+          if (mounted) {
+            final email = Uri.encodeQueryComponent(_email.text.trim());
+            context.go('/verify-email?email=$email');
+          }
         case AuthMode.forgot:
           await widget.auth.forgotPassword(_email.text);
           _show(t.forgotSuccess);
         case AuthMode.verify:
           await widget.auth.verifyEmail(_token.text);
-          _show(t.verifySuccess);
+          if (mounted) context.go('/login');
         case AuthMode.reset:
           await widget.auth.resetPassword(_token.text, _password.text);
           _show(t.resetSuccess);
@@ -159,6 +177,19 @@ class _AuthPageState extends State<AuthPage> {
       _message = message;
       _isError = isError;
     });
+  }
+
+  Future<void> _resendVerification(AuthStrings t) async {
+    if (_email.text.trim().isEmpty) {
+      _show(t.requiredField, isError: true);
+      return;
+    }
+    try {
+      await widget.auth.resendVerification(_email.text);
+      _show(t.forgotSuccess);
+    } on ApiException catch (error) {
+      _show(error.message, isError: true);
+    }
   }
 
   @override
@@ -233,8 +264,20 @@ class _AuthPageState extends State<AuthPage> {
             AuthMode.login,
             AuthMode.register,
             AuthMode.forgot,
+            AuthMode.verify,
           ].contains(widget.mode))
-            _field(_email, t.email, t: t, email: true),
+            _field(
+              _email,
+              t.email,
+              t: t,
+              email: true,
+              optional: widget.mode == AuthMode.verify,
+            ),
+          if (widget.mode == AuthMode.verify &&
+              widget.initialEmail?.isNotEmpty == true) ...[
+            Text(t.registerSuccess),
+            const SizedBox(height: 14),
+          ],
           if ([
             AuthMode.login,
             AuthMode.register,
@@ -287,6 +330,16 @@ class _AuthPageState extends State<AuthPage> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
           ),
+          if (widget.mode == AuthMode.verify) ...[
+            const SizedBox(height: 8),
+            IconButton(
+              onPressed: widget.auth.busy
+                  ? null
+                  : () => _resendVerification(t),
+              tooltip: t.registerSuccess,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
           if (widget.mode == AuthMode.login) ...[
             const SizedBox(height: 8),
             TextButton(

@@ -47,12 +47,22 @@ class AuthController extends ChangeNotifier {
     });
   }
 
-  Future<void> register(Map<String, dynamic> request) async {
+  Future<Map<String, dynamic>> register(Map<String, dynamic> request) async {
+    var response = <String, dynamic>{};
     await _run(() async {
-      final data = await api.register(request);
-      _account = {'user': data['user'], 'company': data['company']};
-      await _refreshSubscription();
+      response = await api.register(request);
     });
+    return response;
+  }
+
+  Future<void> resendVerification(String email) async {
+    await _run(
+      () => api.post(
+        '/auth/email/resend',
+        body: {'email': email.trim()},
+        authenticated: false,
+      ),
+    );
   }
 
   Future<void> forgotPassword(String email) async {

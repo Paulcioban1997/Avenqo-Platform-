@@ -33,7 +33,7 @@ class CurrentIdentity:
 
 def get_account_notifier() -> AccountNotifier:
     settings = get_settings()
-    if settings.smtp_host:
+    if settings.email_delivery_configured:
         return SMTPAccountNotifier(settings)
     return LoggingAccountNotifier()
 

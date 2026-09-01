@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class AccountNotifier(Protocol):
+    email_delivery_configured: bool
+
     def send_email_verification(self, email: str, token: str) -> None: ...
     def send_password_reset(self, email: str, token: str) -> None: ...
 
@@ -20,6 +22,8 @@ class AccountNotifier(Protocol):
 
 class LoggingAccountNotifier:
     """Adaptateur local lorsque SMTP n'est pas configurÃ©."""
+
+    email_delivery_configured = False
 
     def send_email_verification(self, email: str, token: str) -> None:
         logger.info("Email de vÃ©rification demandÃ© pour %s", email)
@@ -34,10 +38,12 @@ class LoggingAccountNotifier:
 class SMTPAccountNotifier:
     """Envoie les liens de compte avec le serveur SMTP configurÃ©."""
 
+    email_delivery_configured = True
+
     def __init__(self, settings: Settings) -> None:
-        if not settings.smtp_host:
+        if not settings.email_delivery_configured:
             raise ValueError(
-                "SMTP non configuré : définir SMTP_HOST pour activer l'envoi d'emails"
+                "SMTP non configuré : définir l'hôte et les identifiants d'envoi"
             )
         self._settings = settings
 
@@ -46,7 +52,15 @@ class SMTPAccountNotifier:
         self._send(
             email,
             "VÃ©rifiez votre adresse email Avenqo",
-            f"Bienvenue sur Avenqo. VÃ©rifiez votre adresse email : {link}",
+            "\n".join(
+                (
+                    "Bienvenue sur Avenqo.",
+                    "",
+                    f"Vérifiez votre adresse email : {link}",
+                    "",
+                    "Ce lien expire dans 24 heures et ne peut être utilisé qu'une fois.",
+                )
+            ),
         )
 
     def send_password_reset(self, email: str, token: str) -> None:

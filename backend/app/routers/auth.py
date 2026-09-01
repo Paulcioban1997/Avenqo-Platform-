@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from backend.app.config.settings import get_settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
@@ -81,14 +80,13 @@ def register(
     except InvalidModuleSelection as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    email_delivery_configured = get_settings().smtp_host is not None
     if verification_email_sent:
         message = "Compte créé. Vérifiez votre adresse email."
     else:
         message = "Compte créé. L'email de vérification n'a pas pu être envoyé. Vous pouvez demander un renvoi."
     return MessageResponse(
         message=message,
-        email_delivery_configured=email_delivery_configured and verification_email_sent,
+        email_delivery_configured=verification_email_sent,
     )
 
 
