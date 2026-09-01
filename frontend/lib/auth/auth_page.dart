@@ -679,7 +679,7 @@ class _AuthHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final logoSize = MediaQuery.sizeOf(context).width < 480 ? 48.0 : 60.0;
+    final logoSize = MediaQuery.sizeOf(context).width < 480 ? 36.0 : 42.0;
     return Material(
       color: colors.surface,
       child: Padding(
@@ -688,13 +688,27 @@ class _AuthHeader extends StatelessWidget {
           children: [
             InkWell(
               onTap: () => context.go('/'),
-              child: Image.asset(
-                'assets/brand/avenqo-official.png',
-                key: const ValueKey('official-avenqo-logo'),
-                width: logoSize,
-                height: logoSize,
-                fit: BoxFit.contain,
-                semanticLabel: 'Avenqo',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/brand/avenqo-official.png',
+                    key: const ValueKey('official-avenqo-logo'),
+                    width: logoSize,
+                    height: logoSize,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'Logo Avenqo',
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Avenqo',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
               ),
             ),
             const Spacer(),

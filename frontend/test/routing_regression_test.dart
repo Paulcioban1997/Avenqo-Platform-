@@ -71,7 +71,7 @@ void _expectOfficialAuthBrand({required double size}) {
   expect(image.width, size);
   expect(image.height, size);
   expect(find.byIcon(Icons.change_history), findsNothing);
-  expect(find.text('Avenqo'), findsNothing);
+  expect(find.text('Avenqo'), findsOneWidget);
 }
 
 Widget _wrapWithProviders(Widget child) {
@@ -216,7 +216,7 @@ void main() {
 
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
-      _expectOfficialAuthBrand(size: 60);
+      _expectOfficialAuthBrand(size: 42);
       expect(find.byType(AppShell), findsNothing);
       expect(find.byType(AdminShell), findsNothing);
       expect(
@@ -240,7 +240,7 @@ void main() {
 
       expect(find.byType(ThemeToggleButton), findsOneWidget);
       expect(find.byType(LanguageSelector), findsOneWidget);
-      _expectOfficialAuthBrand(size: 48);
+      _expectOfficialAuthBrand(size: 36);
       expect(find.byType(AppShell), findsNothing);
       expect(find.byType(AdminShell), findsNothing);
       expect(
@@ -261,7 +261,7 @@ void main() {
 
       expect(find.byType(AuthPage), findsOneWidget);
       expect(find.byType(HomePage), findsNothing);
-      _expectOfficialAuthBrand(size: 60);
+      _expectOfficialAuthBrand(size: 42);
     });
 
     testWidgets('Direct URL /dashboard sans session redirige vers /login', (
