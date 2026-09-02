@@ -134,6 +134,9 @@ void main() {
       final locale = await _readyController();
       await tester.pumpWidget(_wrap(locale, const HomePage()));
       await tester.pumpAndSettle();
+      final pricing = AvenqoLocaleScope.translationsOf(
+        tester.element(find.byType(HomePage)),
+      ).pricing;
 
       expect(find.text('DEMO'), findsOneWidget);
       expect(find.text('PROFESSIONAL'), findsOneWidget);
@@ -147,7 +150,29 @@ void main() {
       expect(find.textContaining(r'$299'), findsNothing);
       expect(find.text(r'$28 USD / mois'), findsOneWidget);
       expect(find.text(r'$49 USD / mois'), findsOneWidget);
+      expect(find.text(r'$$28 USD / mois'), findsNothing);
+      expect(find.text(r'$$49 USD / mois'), findsNothing);
+      for (final plan in pricing.plans) {
+        expect(find.text(plan.creditAllowance), findsOneWidget);
+        expect(find.text(plan.creditExtra), findsOneWidget);
+      }
+      expect(find.text(pricing.popular.toUpperCase()), findsOneWidget);
+      final demoPriceY = tester.getTopLeft(find.text(r'$28 USD / mois')).dy;
+      final demoAllowanceY = tester
+          .getTopLeft(find.text(pricing.plans.first.creditAllowance))
+          .dy;
+      final demoExtraY = tester
+          .getTopLeft(find.text(pricing.plans.first.creditExtra))
+          .dy;
+      final demoFeatureY = tester
+          .getTopLeft(find.text(pricing.plans.first.items[1]))
+          .dy;
+      expect(demoAllowanceY, greaterThan(demoPriceY));
+      expect(demoExtraY, greaterThan(demoAllowanceY));
+      expect(demoExtraY, lessThan(demoFeatureY));
       expect(find.text('Contacter les ventes'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
     },
   );
+
 }

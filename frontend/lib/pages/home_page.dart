@@ -1779,6 +1779,8 @@ class _PricingSection extends StatelessWidget {
                     tier: t.plans[i].tier,
                     title: t.plans[i].title,
                     priceLabel: t.plans[i].priceLabel,
+                    creditAllowance: t.plans[i].creditAllowance,
+                    creditExtra: t.plans[i].creditExtra,
                     items: t.plans[i].items,
                     action: t.plans[i].action,
                     onAction:
@@ -1825,6 +1827,8 @@ class _PricingCard extends StatelessWidget {
     required this.tier,
     required this.title,
     required this.priceLabel,
+    required this.creditAllowance,
+    required this.creditExtra,
     required this.items,
     required this.action,
     required this.onAction,
@@ -1835,6 +1839,8 @@ class _PricingCard extends StatelessWidget {
   final String tier;
   final String title;
   final String priceLabel;
+  final String creditAllowance;
+  final String creditExtra;
   final List<String> items;
   final String action;
   final VoidCallback onAction;
@@ -1901,6 +1907,56 @@ class _PricingCard extends StatelessWidget {
               color: fg,
               fontSize: 18,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.auto_awesome, size: 17, color: _Brand.blue),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  creditAllowance,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: _Brand.blue.withValues(alpha: featured ? 0.18 : 0.08),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.add_circle_outline,
+                  size: 16,
+                  color: _Brand.blue,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    creditExtra,
+                    style: TextStyle(
+                      color: mutedFg,
+                      fontSize: 12,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
