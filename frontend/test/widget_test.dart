@@ -93,12 +93,13 @@ void main() {
     ];
 
     expect(appDestinations.map((item) => item.label), containsAll([
-      'Vue d’ensemble',
+      'Agents',
       'AI Assistant',
-      'Ventes',
-      'Clients',
-      'Produits',
-      'Rapports',
+      'Connexions',
+      'Équipe',
+      'Facturation',
+      'Paramètres',
+      'Avenqo Support',
     ]));
     for (final word in forbidden) {
       expect(content, isNot(contains(word)));
