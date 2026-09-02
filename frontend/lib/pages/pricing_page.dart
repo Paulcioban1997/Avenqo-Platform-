@@ -335,7 +335,7 @@ class _PricingContent extends StatelessWidget {
     final price = plan['monthly_price_usd'];
     return price == null
       ? fallback.priceLabel
-      : monthlyPrice.replaceFirst('{price}', '\$$price');
+      : monthlyPrice.replaceFirst('{price}', '$price');
   }
 
   String _moduleAllowance(BuildContext context, int index) {

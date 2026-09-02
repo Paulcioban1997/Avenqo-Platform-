@@ -278,12 +278,21 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
+        final pricingApi = ApiClient(
+          tokenStore: _MemoryTokenStore(),
+          httpClient: MockClient((request) async => http.Response(
+                '[{"monthly_price_usd":28},{"monthly_price_usd":49},'
+                '{"monthly_price_usd":null}]',
+                200,
+              )),
+          baseUrl: 'https://avenqo.test/api/v1',
+        );
 
         await tester.pumpWidget(
           _wrapWithProviders(
             MaterialApp(
               theme: AppTheme.light,
-              home: PricingPage(api: unauthenticatedAuth.api, embedded: true),
+              home: PricingPage(api: pricingApi, embedded: true),
             ),
           ),
         );
@@ -292,6 +301,10 @@ void main() {
         expect(find.text('2 modules inclus'), findsOneWidget);
         expect(find.text('8 modules inclus'), findsOneWidget);
         expect(find.text('Tous les modules inclus'), findsOneWidget);
+        expect(find.text(r'$28 USD / mois'), findsOneWidget);
+        expect(find.text(r'$49 USD / mois'), findsOneWidget);
+        expect(find.text(r'$$28 USD / mois'), findsNothing);
+        expect(find.text(r'$$49 USD / mois'), findsNothing);
         expect(find.text('6 500 crédits IA inclus par mois'), findsOneWidget);
         expect(find.text('25 000 crédits IA inclus par mois'), findsOneWidget);
         expect(find.text('Crédits IA sur mesure'), findsOneWidget);
