@@ -64,7 +64,7 @@ class _AvenqoAppState extends State<AvenqoApp> {
       GoRoute(path: '/', builder: (context, state) => HomePage(initialSection: state.uri.queryParameters['section'])),
       GoRoute(path: '/onboarding', builder: (context, state) => OnboardingPage(auth: widget.auth)),
       GoRoute(path: '/pricing', builder: (context, state) => PricingPage(api: widget.auth.api)),
-      GoRoute(path: '/login', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.login)),
+      GoRoute(path: '/login', builder: (context, state) => Stack(children: [AuthPage(auth: widget.auth, mode: AuthMode.login), Positioned(right: 20, bottom: 20, child: SafeArea(child: Material(color: Colors.transparent, child: TextButton.icon(onPressed: () => context.go('/verify-email'), icon: const Icon(Icons.mark_email_unread_outlined), label: const Text('Vérifier / renvoyer l’email')))))])),
       GoRoute(path: '/register', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.register)),
       GoRoute(path: '/forgot-password', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.forgot)),
       GoRoute(path: '/verify-email', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.verify, initialToken: state.uri.queryParameters['token'], initialEmail: state.uri.queryParameters['email'], emailDeliveryUnavailable: state.uri.queryParameters['delivery'] == 'unavailable')),
