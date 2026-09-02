@@ -18,8 +18,7 @@ class BillingProvider(Protocol):
     def create_credit_checkout(
         self,
         customer_id: str,
-        credits: int,
-        price_usd: int,
+        price_id: str,
         metadata: dict[str, str],
         success_url: str,
         cancel_url: str,
@@ -59,6 +58,7 @@ class StripeGateway:
             line_items=[{"price": price_id, "quantity": 1}],
             client_reference_id=company_id,
             subscription_data={"metadata": {"avenqo_company_id": company_id}},
+            adaptive_pricing={"enabled": True},
             success_url=success_url,
             cancel_url=cancel_url,
             api_key=self._api_key,
@@ -70,8 +70,7 @@ class StripeGateway:
     def create_credit_checkout(
         self,
         customer_id: str,
-        credits: int,
-        price_usd: int,
+        price_id: str,
         metadata: dict[str, str],
         success_url: str,
         cancel_url: str,
@@ -79,18 +78,10 @@ class StripeGateway:
         checkout = stripe.checkout.Session.create(
             mode="payment",
             customer=customer_id,
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": price_usd * 100,
-                    "product_data": {
-                        "name": f"Avenqo AI credits - {credits:,} credits",
-                    },
-                },
-                "quantity": 1,
-            }],
+            line_items=[{"price": price_id, "quantity": 1}],
             metadata=metadata,
             payment_intent_data={"metadata": metadata},
+            adaptive_pricing={"enabled": True},
             success_url=success_url,
             cancel_url=cancel_url,
             api_key=self._api_key,

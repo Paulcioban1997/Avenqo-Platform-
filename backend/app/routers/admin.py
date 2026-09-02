@@ -18,6 +18,7 @@ from backend.app.dependencies.admin import (
     get_audit_log_service,
 )
 from backend.app.dependencies.auth import CurrentIdentity, require_platform_admin
+from backend.app.dependencies.billing import get_billing_service
 from backend.app.dependencies.dashboard import get_tenant_dashboard_service
 from backend.app.dependencies.tenant_business import (
     get_tenant_customers_service,
@@ -34,6 +35,7 @@ from backend.app.schemas.admin import (
     DashboardResponse,
     SetEnterpriseOverrideRequest,
 )
+from backend.app.schemas.billing import InvoiceResponse
 from backend.app.schemas.tenant_business import (
     CustomerListItemResponse,
     TenantCustomersResponse,
@@ -57,6 +59,7 @@ from backend.app.routers.tenant_products_recommendations import (
     recommendations as get_tenant_recommendations,
 )
 from backend.app.services.admin_service import AdminService
+from backend.app.services.billing_service import BillingService
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
@@ -98,6 +101,20 @@ def get_company(company_id: UUID, service: AdminService = Depends(get_admin_serv
     if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
     return CompanyDetailResponse(**asdict(detail))
+
+
+@router.get(
+    "/companies/{company_id}/billing/invoices",
+    response_model=list[InvoiceResponse],
+)
+def list_company_invoices(
+    company_id: UUID,
+    service: BillingService = Depends(get_billing_service),
+) -> list[InvoiceResponse]:
+    return [
+        InvoiceResponse.model_validate(invoice)
+        for invoice in service.list_invoices(company_id)
+    ]
 
 
 @router.post(

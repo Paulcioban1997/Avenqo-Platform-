@@ -44,7 +44,7 @@ class _PricingPageState extends State<PricingPage> {
       },
     );
 
-    if (widget.embedded) return content;
+    if (widget.embedded) return SingleChildScrollView(child: content);
     return Scaffold(
       backgroundColor: colors.canvas,
       body: SingleChildScrollView(
@@ -261,7 +261,11 @@ class _PricingContent extends StatelessWidget {
                     for (var index = 0; index < pricing.plans.length; index++)
                       _PlanCard(
                         plan: pricing.plans[index],
-                        price: _livePrice(index, pricing.plans[index]),
+                        price: _livePrice(
+                          index,
+                          pricing.plans[index],
+                          pricing.monthlyPrice,
+                        ),
                         moduleAllowance: _moduleAllowance(context, index),
                         featured: index == 1,
                         popularLabel: pricing.popular,
@@ -323,13 +327,15 @@ class _PricingContent extends StatelessWidget {
     );
   }
 
-  String _livePrice(int index, PricingPlan fallback) {
+  String _livePrice(int index, PricingPlan fallback, String monthlyPrice) {
     if (index >= livePlans.length || livePlans[index] is! Map) {
       return fallback.priceLabel;
     }
     final plan = livePlans[index] as Map;
     final price = plan['monthly_price_usd'];
-    return price == null ? fallback.priceLabel : '\$$price USD';
+    return price == null
+      ? fallback.priceLabel
+      : monthlyPrice.replaceFirst('{price}', '\$$price');
   }
 
   String _moduleAllowance(BuildContext context, int index) {
@@ -445,6 +451,52 @@ class _PlanCard extends StatelessWidget {
               color: foreground,
               fontSize: 24,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.auto_awesome, size: 18, color: _blue),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  plan.creditAllowance,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 15,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: featured ? 0.18 : 0.08),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.add_circle_outline, size: 17, color: _blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    plan.creditExtra,
+                    style: TextStyle(
+                      color: secondary,
+                      fontSize: 13,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 22),

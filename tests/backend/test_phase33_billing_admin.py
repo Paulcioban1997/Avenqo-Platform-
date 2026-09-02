@@ -13,6 +13,7 @@ architecture Stripe telle quelle.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -33,6 +34,7 @@ from backend.app.dependencies.tenant_business import get_tenant_sales_service
 from backend.app.models import (
     Base,
     BillingAccount,
+    BillingInvoice,
     Company,
     EnterpriseOverride,
     User,
@@ -207,6 +209,7 @@ async def test_get_billing_status_tool_reports_own_plan_and_quota_state(db_sessi
 @pytest.fixture
 def admin_client(db_session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AUTH_JWT_SECRET", "a" * 32)
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_admin")
     monkeypatch.setenv(
         "AI_QUOTA_LIMITS",
         '{"professional":{"monthly_ai_requests":1000},"enterprise":{"monthly_ai_requests":5000}}',
@@ -427,6 +430,46 @@ def test_platform_admin_can_view_dashboard_and_company_directory(db_session, adm
     assert company_entry["monthly_credits_remaining"] == 750
     assert company_entry["purchased_credits_remaining"] == 500
     assert company_entry["total_credits_remaining"] == 1250
+
+
+def test_platform_admin_can_view_company_invoices_but_tenant_owner_cannot(
+    db_session,
+    admin_client: TestClient,
+) -> None:
+    tenant = _company(db_session, slug="invoice-tenant")
+    owner = _user(db_session, tenant)
+    admin_company = _company(db_session, slug="invoice-admin")
+    admin = _user(db_session, admin_company, platform_admin=True)
+    db_session.add(BillingInvoice(
+        company_id=tenant.id,
+        stripe_invoice_id="in_admin_visible",
+        number="AVQ-1001",
+        plan_code="professional",
+        status="paid",
+        currency="cad",
+        amount_due=6700,
+        amount_paid=6700,
+        hosted_invoice_url="https://invoice.stripe.test/in_admin_visible",
+        invoice_pdf="https://invoice.stripe.test/in_admin_visible.pdf",
+        period_start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        period_end=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        issued_at=datetime.now(timezone.utc),
+    ))
+    db_session.commit()
+    path = f"/api/v1/admin/companies/{tenant.id}/billing/invoices"
+
+    denied = admin_client.get(
+        path,
+        headers={"Authorization": f"Bearer {_access_token(db_session, owner)}"},
+    )
+    allowed = admin_client.get(
+        path,
+        headers={"Authorization": f"Bearer {_access_token(db_session, admin)}"},
+    )
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+    assert [invoice["number"] for invoice in allowed.json()] == ["AVQ-1001"]
 
 
 def test_platform_admin_can_set_enterprise_override_and_it_is_audited(db_session, admin_client: TestClient) -> None:

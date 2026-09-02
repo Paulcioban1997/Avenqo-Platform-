@@ -98,6 +98,18 @@ class AIUsageService:
         self._db.flush()
         return balance
 
+    def reset_credits_for_renewal(
+        self,
+        company_id: UUID,
+        billing_period: str,
+    ) -> TenantAICreditBalance:
+        balance = self._get_or_create_credits(company_id)
+        balance.monthly_period = billing_period
+        balance.monthly_used = 0
+        balance.purchased_balance = 0
+        self._db.flush()
+        return balance
+
     def _get_or_create_credits(self, company_id: UUID) -> TenantAICreditBalance:
         period = self.current_billing_period()
         balance = self._db.scalar(
@@ -109,9 +121,6 @@ class AIUsageService:
             balance = TenantAICreditBalance(company_id=company_id, monthly_period=period)
             self._db.add(balance)
             self._db.flush()
-        elif balance.monthly_period != period:
-            balance.monthly_period = period
-            balance.monthly_used = 0
         return balance
 
     def _consume_credit(self, company_id: UUID, plan_code: str | None) -> None:

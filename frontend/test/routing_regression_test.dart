@@ -241,6 +241,30 @@ void main() {
       expect(find.text('Plans Avenqo'), findsNothing);
       expect(find.text('info@avenqo.ca'), findsOneWidget);
       expect(find.text('bonjour@avenqo.ca'), findsNothing);
+      expect(find.text('6,500 AI credits included per month'), findsOneWidget);
+      expect(
+        find.text('Extra before renewal: +6,500 credits for \$10 USD'),
+        findsOneWidget,
+      );
+      expect(find.text('25,000 AI credits included per month'), findsOneWidget);
+      expect(
+        find.text('Extra before renewal: +25,000 credits for \$25 USD'),
+        findsOneWidget,
+      );
+      expect(find.text('Custom AI credits'), findsOneWidget);
+      expect(
+        find.text('Custom credit packs/limits according to contract'),
+        findsOneWidget,
+      );
+      final demoPriceY = tester.getTopLeft(find.text(r'$28 USD / month')).dy;
+      final demoCreditsY = tester
+          .getTopLeft(find.text('6,500 AI credits included per month'))
+          .dy;
+      final demoFeatureY = tester
+          .getTopLeft(find.text('Built-in Avenqo assistant'))
+          .dy;
+      expect(demoCreditsY, greaterThan(demoPriceY));
+      expect(demoCreditsY, lessThan(demoFeatureY));
       expect(tester.takeException(), isNull);
     });
 
@@ -268,6 +292,13 @@ void main() {
         expect(find.text('2 modules inclus'), findsOneWidget);
         expect(find.text('8 modules inclus'), findsOneWidget);
         expect(find.text('Tous les modules inclus'), findsOneWidget);
+        expect(find.text('6 500 crédits IA inclus par mois'), findsOneWidget);
+        expect(find.text('25 000 crédits IA inclus par mois'), findsOneWidget);
+        expect(find.text('Crédits IA sur mesure'), findsOneWidget);
+        expect(
+          find.text('Packs et limites de crédits personnalisés selon le contrat'),
+          findsOneWidget,
+        );
         expect(find.textContaining('Retail Intelligence'), findsNothing);
         expect(tester.takeException(), isNull);
       },

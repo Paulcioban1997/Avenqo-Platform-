@@ -115,10 +115,19 @@ class BillingService:
             .order_by(BillingInvoice.issued_at.desc())
         ))
 
-    def list_credit_packs(self) -> list[dict[str, Any]]:
+    def list_credit_packs(
+        self,
+        company_id: UUID,
+        fallback_plan_code: str,
+    ) -> list[dict[str, Any]]:
+        account = self._session.scalar(
+            select(BillingAccount).where(BillingAccount.company_id == company_id)
+        )
+        plan_code = account.plan_code if account is not None else fallback_plan_code
         return [
             {"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd}
             for pack in AI_CREDIT_PACKS
+            if pack.plan_code.value == plan_code
         ]
 
     def get_credit_balance(self, company_id: UUID, plan_code: str) -> dict[str, Any]:
@@ -129,18 +138,20 @@ class BillingService:
         if account.status not in {"active", "trialing"}:
             raise BillingOperationError("Un abonnement Avenqo actif est requis")
         pack = self._credit_pack(pack_code)
+        if pack.plan_code.value != account.plan_code:
+            raise BillingOperationError("Pack de crédits indisponible pour cette offre")
         if not account.stripe_customer_id:
             raise BillingOperationError("Client Stripe introuvable pour cet abonnement")
         metadata = {
             "avenqo_kind": "ai_credit_pack",
             "avenqo_company_id": str(company.id),
             "avenqo_credit_pack": pack.code,
+            "avenqo_plan_code": account.plan_code,
             "avenqo_credits": str(pack.credits),
         }
         return self._provider.create_credit_checkout(
             account.stripe_customer_id,
-            pack.credits,
-            pack.price_usd,
+            self._required_credit_price(account.plan_code),
             metadata,
             f"{self._settings.frontend_url.rstrip('/')}/billing?credits=success",
             f"{self._settings.frontend_url.rstrip('/')}/billing?credits=cancelled",
@@ -195,8 +206,12 @@ class BillingService:
         pack = self._credit_pack(pack_code)
         if metadata.get("avenqo_credits") != str(pack.credits):
             raise BillingOperationError("Quantité du pack de crédits invalide")
-        if checkout.get("currency") != "usd" or checkout.get("amount_total") != pack.price_usd * 100:
-            raise BillingOperationError("Montant du pack de crédits invalide")
+        if metadata.get("avenqo_plan_code") != account.plan_code:
+            raise BillingOperationError("Offre du pack de crédits incompatible")
+        if pack.plan_code.value != account.plan_code:
+            raise BillingOperationError("Pack de crédits incompatible avec l'abonnement")
+        if not checkout.get("currency") or not isinstance(checkout.get("amount_total"), int):
+            raise BillingOperationError("Résultat de paiement Stripe incomplet")
         self._usage_service.add_purchased_credits(company_id, pack.credits)
 
     @staticmethod
@@ -226,19 +241,28 @@ class BillingService:
 
     def _sync_invoice(self, invoice: dict[str, Any]) -> None:
         company_id = self._invoice_company_id(invoice)
+        account = self.get_account(company_id)
         existing = self._session.scalar(select(BillingInvoice).where(
             BillingInvoice.stripe_invoice_id == str(invoice["id"]),
         ))
         issued_at = datetime.fromtimestamp(int(invoice["created"]), timezone.utc)
+        lines = (invoice.get("lines") or {}).get("data") or []
+        line = lines[0] if lines else {}
+        period = line.get("period") or {}
+        price_id = str((line.get("price") or {}).get("id") or "")
+        plan_code = self._settings.stripe_plan_code(price_id) or account.plan_code
         values = {
             "company_id": company_id,
             "number": invoice.get("number"),
+            "plan_code": plan_code,
             "status": str(invoice.get("status") or "unknown"),
             "currency": str(invoice["currency"]),
             "amount_due": int(invoice.get("amount_due", 0)),
             "amount_paid": int(invoice.get("amount_paid", 0)),
             "hosted_invoice_url": invoice.get("hosted_invoice_url"),
             "invoice_pdf": invoice.get("invoice_pdf"),
+            "period_start": self._stripe_datetime(period.get("start")),
+            "period_end": self._stripe_datetime(period.get("end")),
             "issued_at": issued_at,
         }
         if existing is None:
@@ -249,6 +273,19 @@ class BillingService:
         else:
             for field, value in values.items():
                 setattr(existing, field, value)
+        if (
+            invoice.get("status") == "paid"
+            and invoice.get("billing_reason") == "subscription_cycle"
+        ):
+            period_start = values["period_start"] or issued_at
+            self._usage_service.reset_credits_for_renewal(
+                company_id,
+                period_start.strftime("%Y-%m"),
+            )
+
+    @staticmethod
+    def _stripe_datetime(timestamp: object) -> datetime | None:
+        return datetime.fromtimestamp(int(timestamp), timezone.utc) if timestamp else None
 
     def _invoice_company_id(self, invoice: dict[str, Any]) -> UUID:
         parent = invoice.get("parent") or {}
@@ -276,4 +313,12 @@ class BillingService:
         price_id = self._settings.stripe_price_id(plan_code.value)
         if not price_id:
             raise BillingConfigurationError(f"Prix Stripe non configuré pour {plan_code.value}")
+        return price_id
+
+    def _required_credit_price(self, plan_code: str) -> str:
+        price_id = self._settings.stripe_credit_price_id(plan_code)
+        if not price_id:
+            raise BillingConfigurationError(
+                f"Prix Stripe du pack de crédits non configuré pour {plan_code}"
+            )
         return price_id

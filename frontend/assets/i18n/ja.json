@@ -222,24 +222,28 @@
       {
         "tier": "Demo",
         "title": "ご自身のデータでAvenqoを試す",
-        "priceLabel": "無料",
+        "priceLabel": "$28 USD / month",
         "items": [
           "期間限定アクセス",
           "デモデータまたは独自データ",
           "メールサポート"
         ],
-        "action": "デモをリクエスト"
+        "action": "デモをリクエスト",
+        "creditAllowance": "6,500 AI credits included per month",
+        "creditExtra": "Extra before renewal: +6,500 credits for $10 USD"
       },
       {
         "tier": "Professional",
         "title": "成長を目指す企業向け",
-        "priceLabel": "お問い合わせください",
+        "priceLabel": "$49 USD / month",
         "items": [
           "すべてのコアモジュール",
           "拡張可能なユーザー数",
           "優先サポート"
         ],
-        "action": "お問い合わせ"
+        "action": "お問い合わせ",
+        "creditAllowance": "25,000 AI credits included per month",
+        "creditExtra": "Extra before renewal: +25,000 credits for $25 USD"
       },
       {
         "tier": "Enterprise",
@@ -250,9 +254,12 @@
           "専任アカウントマネージャー",
           "サービスレベル契約"
         ],
-        "action": "営業に問い合わせる"
+        "action": "営業に問い合わせる",
+        "creditAllowance": "Custom AI credits",
+        "creditExtra": "Custom credit packs/limits according to contract"
       }
-    ]
+    ],
+    "monthlyPrice": "${price} USD / month"
   },
   "faq": {
     "kicker": "よくある質問",
@@ -730,7 +737,7 @@
     "billingPeriod": "Billing period",
     "monthlyProgress": "{used} of {included} credits used this period",
     "customAllowance": "Contractual / custom",
-    "resetExplanation": "Monthly credits reset each billing period. Purchased credits carry over.",
+    "resetExplanation": "Monthly usage and purchased credits reset at each successful subscription renewal.",
     "packsTitle": "Add AI credits",
     "packsSubtitle": "One-time credit packs, fulfilled securely through Stripe.",
     "creditsUnit": "credits",
@@ -742,7 +749,35 @@
     "plan": "Plan",
     "subscription": "Subscription",
     "aiUsage": "AI usage",
-    "noCompanies": "No company credit data is available."
+    "noCompanies": "No company credit data is available.",
+    "billing": {
+      "cancelSubscription": "Cancel subscription",
+      "cancelTitle": "Cancel subscription?",
+      "cancelMessage": "Your access will continue until the end of the paid period.",
+      "cancelConfirm": "Schedule cancellation",
+      "keepSubscription": "Keep subscription",
+      "effectiveEnd": "Access ends on {date}",
+      "invoicePeriod": "{start} to {end}",
+      "viewInvoice": "View invoices",
+      "downloadPdf": "Download PDF",
+      "noInvoices": "No invoices yet.",
+      "statusInactive": "Inactive",
+      "statusTrialing": "Trialing",
+      "statusActive": "Active",
+      "statusPastDue": "Past due",
+      "statusCancelingAtPeriodEnd": "Canceling at period end",
+      "statusCanceled": "Canceled",
+      "statusUnknown": "Unknown",
+      "invoicePaid": "Paid",
+      "invoiceOpen": "Open",
+      "invoiceDraft": "Draft",
+      "invoiceVoid": "Void",
+      "invoiceUncollectible": "Uncollectible",
+      "planDemo": "Demo",
+      "planProfessional": "Professional",
+      "planEnterprise": "Enterprise",
+      "nextRenewal": "Next renewal: {date}"
+    }
   },
   "phase4d": {
     "productsTotal": "Total products",

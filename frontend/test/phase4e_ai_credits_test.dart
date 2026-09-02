@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 class _TokenStore implements TokenStore {
   @override
@@ -37,6 +38,7 @@ ApiClient _api(http.Client client) => ApiClient(
     );
 
 Future<Widget> _wrap(Widget child, {bool dark = false}) async {
+  await initializeDateFormatting('en');
   final locale = LocaleController(store: _LocaleStore());
   await locale.initialize();
   return AvenqoLocaleScope(
@@ -56,21 +58,19 @@ BillingData _billingData({String status = 'active', bool enterprise = false}) =>
         'plan_code': enterprise ? 'enterprise' : 'professional',
         'status': status,
         'cancel_at_period_end': false,
+        'current_period_end': '2026-09-30T00:00:00Z',
       },
       invoices: const [],
       balance: {
         'billing_period': '2026-08',
-        'monthly_included': enterprise ? null : 10000,
+        'monthly_included': enterprise ? null : 25000,
         'monthly_used': 2500,
-        'monthly_remaining': enterprise ? null : 7500,
-        'purchased_remaining': 5000,
-        'total_remaining': enterprise ? null : 12500,
+        'monthly_remaining': enterprise ? null : 22500,
+        'purchased_remaining': 25000,
+        'total_remaining': enterprise ? null : 47500,
       },
       packs: const [
-        {'code': 'starter', 'credits': 5000, 'price_usd': 10},
-        {'code': 'growth', 'credits': 20000, 'price_usd': 29},
-        {'code': 'scale', 'credits': 50000, 'price_usd': 59},
-        {'code': 'volume', 'credits': 150000, 'price_usd': 149},
+        {'code': 'professional_extra', 'credits': 25000, 'price_usd': 25},
       ],
     );
 
@@ -96,22 +96,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI credits'), findsOneWidget);
-    expect(find.text('10,000'), findsOneWidget);
-    expect(find.text('12,500'), findsOneWidget);
+    expect(find.text('25,000'), findsNWidgets(2));
+    expect(find.text('47,500'), findsOneWidget);
+    expect(find.textContaining('Next renewal:'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text(r'$10 USD'),
+      find.text(r'$25 USD'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text(r'$10 USD'), findsOneWidget);
+    expect(find.text(r'$25 USD'), findsOneWidget);
 
+    await tester.scrollUntilVisible(
+      find.text('Purchase').first,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -80));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Purchase').first);
     await tester.pumpAndSettle();
     expect(requested?.path, '/api/v1/billing/credit-packs/checkout');
     expect(requested.toString(), isNot(contains('company')));
-    expect(requestBody, {'pack_code': 'starter'});
+    expect(requestBody, {'pack_code': 'professional_extra'});
     expect(launched, Uri.parse('https://checkout.stripe.test/credits'));
+  });
+
+  testWidgets('active customer confirms period-end cancellation', (tester) async {
+    Uri? requested;
+    final api = _api(MockClient((request) async {
+      requested = request.url;
+      return http.Response(
+        '{"plan_code":"professional","status":"canceling_at_period_end",'
+        '"cancel_at_period_end":true,"current_period_end":"2026-09-30T00:00:00Z"}',
+        200,
+      );
+    }));
+
+    await tester.pumpWidget(await _wrap(BillingPage(
+      api: api,
+      loader: (_) async => _billingData(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel subscription'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cancel subscription?'), findsOneWidget);
+    await tester.tap(find.text('Schedule cancellation'));
+    await tester.pumpAndSettle();
+
+    expect(requested?.path, '/api/v1/billing/cancel');
   });
 
   testWidgets('inactive Enterprise client sees contractual allowance and disabled packs on mobile dark mode', (tester) async {
@@ -147,6 +180,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final companies = [{
+      'id': 'company-acme',
       'name': 'Acme Canada',
       'plan_code': 'professional',
       'subscription_status': 'active',
@@ -166,7 +200,12 @@ void main() {
     expect(find.byType(DataTable), findsOneWidget);
     expect(find.text('Acme Canada'), findsOneWidget);
     expect(find.text('12,500'), findsOneWidget);
-    expect(find.text('ACTIVE'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(-1200, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('No invoices yet.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -194,7 +233,7 @@ void main() {
     expect(find.byType(DataTable), findsNothing);
     expect(find.text('Enterprise North'), findsOneWidget);
     expect(find.text('Contractual / custom'), findsNWidgets(3));
-    expect(find.text('TRIALING'), findsOneWidget);
+    expect(find.text('Trialing'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

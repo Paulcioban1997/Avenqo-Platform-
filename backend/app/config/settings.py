@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
     stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
+    stripe_price_credit_demo: str | None = Field(default=None, alias="STRIPE_PRICE_CREDIT_DEMO")
+    stripe_price_credit_professional: str | None = Field(
+        default=None,
+        alias="STRIPE_PRICE_CREDIT_PROFESSIONAL",
+    )
     stripe_price_enterprise: str | None = Field(default=None, alias="STRIPE_PRICE_ENTERPRISE")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
@@ -161,6 +166,7 @@ class Settings(BaseSettings):
         "email_api_key", "smtp_host", "smtp_username", "smtp_password",
         "stripe_secret_key", "stripe_webhook_secret",
         "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
+        "stripe_price_credit_demo", "stripe_price_credit_professional",
         mode="before",
     )
     @classmethod
@@ -279,6 +285,12 @@ class Settings(BaseSettings):
             self.stripe_price_professional: "professional",
         }
         return prices.get(price_id)
+
+    def stripe_credit_price_id(self, plan_code: str) -> str | None:
+        return {
+            "demo": self.stripe_price_credit_demo,
+            "professional": self.stripe_price_credit_professional,
+        }.get(plan_code)
 
 
 @lru_cache(maxsize=1)

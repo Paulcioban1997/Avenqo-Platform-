@@ -202,6 +202,7 @@ class Phase4eStrings {
     required this.subscription,
     required this.aiUsage,
     required this.noCompanies,
+    required this.billing,
   });
 
   factory Phase4eStrings.fromJson(Map<String, dynamic> json) => Phase4eStrings(
@@ -227,6 +228,9 @@ class Phase4eStrings {
         subscription: json['subscription'] as String,
         aiUsage: json['aiUsage'] as String,
         noCompanies: json['noCompanies'] as String,
+        billing: (json['billing'] as Map<String, dynamic>).map(
+          (key, value) => MapEntry(key, value as String),
+        ),
       );
 
   factory Phase4eStrings.fallback() => const Phase4eStrings(
@@ -252,6 +256,33 @@ class Phase4eStrings {
         subscription: 'Subscription',
         aiUsage: 'AI usage',
         noCompanies: 'No company credit data is available.',
+        billing: {
+          'cancelSubscription': 'Cancel subscription',
+          'cancelTitle': 'Cancel subscription?',
+          'cancelMessage': 'Your access will continue until the end of the paid period.',
+          'cancelConfirm': 'Schedule cancellation',
+          'keepSubscription': 'Keep subscription',
+          'effectiveEnd': 'Access ends on {date}',
+          'invoicePeriod': '{start} to {end}',
+          'viewInvoice': 'View invoices',
+          'downloadPdf': 'Download PDF',
+          'noInvoices': 'No invoices yet.',
+          'statusInactive': 'Inactive',
+          'statusTrialing': 'Trialing',
+          'statusActive': 'Active',
+          'statusPastDue': 'Past due',
+          'statusCancelingAtPeriodEnd': 'Canceling at period end',
+          'statusCanceled': 'Canceled',
+          'statusUnknown': 'Unknown',
+          'invoicePaid': 'Paid',
+          'invoiceOpen': 'Open',
+          'invoiceDraft': 'Draft',
+          'invoiceVoid': 'Void',
+          'invoiceUncollectible': 'Uncollectible',
+          'planDemo': 'Demo',
+          'planProfessional': 'Professional',
+          'planEnterprise': 'Enterprise',
+        },
       );
 
   final String creditsTitle;
@@ -276,6 +307,35 @@ class Phase4eStrings {
   final String subscription;
   final String aiUsage;
   final String noCompanies;
+  final Map<String, String> billing;
+
+  String billingValue(String key) => billing[key] ?? key;
+
+  String subscriptionStatus(String status) => billingValue(switch (status) {
+        'inactive' => 'statusInactive',
+        'trialing' => 'statusTrialing',
+        'active' => 'statusActive',
+        'past_due' => 'statusPastDue',
+        'canceling_at_period_end' => 'statusCancelingAtPeriodEnd',
+        'canceled' => 'statusCanceled',
+        _ => 'statusUnknown',
+      });
+
+  String invoiceStatus(String status) => billingValue(switch (status) {
+        'paid' => 'invoicePaid',
+        'open' => 'invoiceOpen',
+        'draft' => 'invoiceDraft',
+        'void' => 'invoiceVoid',
+        'uncollectible' => 'invoiceUncollectible',
+        _ => 'statusUnknown',
+      });
+
+  String planName(String plan) => billingValue(switch (plan) {
+        'demo' => 'planDemo',
+        'professional' => 'planProfessional',
+        'enterprise' || 'custom_enterprise' => 'planEnterprise',
+        _ => 'statusUnknown',
+      });
 }
 
 class Phase4dStrings {
@@ -1687,6 +1747,8 @@ class PricingPlan {
     required this.tier,
     required this.title,
     required this.priceLabel,
+    required this.creditAllowance,
+    required this.creditExtra,
     required this.items,
     required this.action,
   });
@@ -1695,6 +1757,8 @@ class PricingPlan {
         tier: json['tier'] as String,
         title: json['title'] as String,
         priceLabel: json['priceLabel'] as String,
+        creditAllowance: json['creditAllowance'] as String,
+        creditExtra: json['creditExtra'] as String,
         items: (json['items'] as List<dynamic>).cast<String>(),
         action: json['action'] as String,
       );
@@ -1702,6 +1766,8 @@ class PricingPlan {
   final String tier;
   final String title;
   final String priceLabel;
+  final String creditAllowance;
+  final String creditExtra;
   final List<String> items;
   final String action;
 }
@@ -1713,6 +1779,7 @@ class PricingStrings {
     required this.subtitle,
     required this.popular,
     required this.priceLabel,
+    required this.monthlyPrice,
     required this.plans,
   });
 
@@ -1722,6 +1789,7 @@ class PricingStrings {
         subtitle: json['subtitle'] as String,
         popular: json['popular'] as String,
         priceLabel: json['priceLabel'] as String,
+        monthlyPrice: json['monthlyPrice'] as String,
         plans: (json['plans'] as List<dynamic>)
             .map((e) => PricingPlan.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -1732,6 +1800,7 @@ class PricingStrings {
   final String subtitle;
   final String popular;
   final String priceLabel;
+  final String monthlyPrice;
   final List<PricingPlan> plans;
 }
 

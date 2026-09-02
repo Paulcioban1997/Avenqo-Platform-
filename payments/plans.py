@@ -93,15 +93,19 @@ PLANS_BY_CODE = {plan.code: plan for plan in INTERNAL_COMPATIBILITY_PLANS}
 @dataclass(frozen=True, slots=True)
 class AICreditPack:
     code: str
+    plan_code: PlanCode
     credits: int
     price_usd: int
 
 
 AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
-    AICreditPack("starter", credits=5_000, price_usd=10),
-    AICreditPack("growth", credits=20_000, price_usd=29),
-    AICreditPack("scale", credits=50_000, price_usd=59),
-    AICreditPack("volume", credits=150_000, price_usd=149),
+    AICreditPack("demo_extra", PlanCode.DEMO, credits=6_500, price_usd=10),
+    AICreditPack(
+        "professional_extra",
+        PlanCode.PROFESSIONAL,
+        credits=25_000,
+        price_usd=25,
+    ),
 )
 AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
 

@@ -129,7 +129,7 @@ void main() {
   );
 
   testWidgets(
-    'pricing shows Demo/Professional/Enterprise only, no Essentiel, no invented prices',
+    'pricing shows the exact Demo/Professional/Enterprise commercial model',
     (tester) async {
       final locale = await _readyController();
       await tester.pumpWidget(_wrap(locale, const HomePage()));
@@ -145,7 +145,8 @@ void main() {
       expect(find.textContaining(r'$29'), findsNothing);
       expect(find.textContaining(r'$99'), findsNothing);
       expect(find.textContaining(r'$299'), findsNothing);
-      expect(find.text('Tarification à confirmer'), findsNWidgets(2));
+      expect(find.text(r'$28 USD / mois'), findsOneWidget);
+      expect(find.text(r'$49 USD / mois'), findsOneWidget);
       expect(find.text('Contacter les ventes'), findsNWidgets(2));
     },
   );

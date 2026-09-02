@@ -49,12 +49,15 @@ class BillingInvoice(Base):
     )
     stripe_invoice_id: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    plan_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     amount_due: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_paid: Mapped[int] = mapped_column(BigInteger, nullable=False)
     hosted_invoice_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     invoice_pdf: Mapped[str | None] = mapped_column(Text, nullable=True)
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

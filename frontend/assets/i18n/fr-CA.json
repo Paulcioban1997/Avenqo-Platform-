@@ -222,24 +222,28 @@
       {
         "tier": "Demo",
         "title": "Pour découvrir Avenqo",
-        "priceLabel": "Tarification à confirmer",
+        "priceLabel": "$28 USD / mois",
         "items": [
           "Accès à Retail Intelligence",
           "Assistant Avenqo intégré",
           "Espace sécurisé"
         ],
-        "action": "Essayer Avenqo"
+        "action": "Essayer Avenqo",
+        "creditAllowance": "6 500 crédits IA inclus par mois",
+        "creditExtra": "Supplément avant renouvellement : +6 500 crédits pour 10 USD"
       },
       {
         "tier": "Professional",
         "title": "Pour les entreprises qui veulent aller plus loin",
-        "priceLabel": "Tarification à confirmer",
+        "priceLabel": "$49 USD / mois",
         "items": [
           "Retail Intelligence complet",
           "Automatisations avancées",
           "Accompagnement prioritaire"
         ],
-        "action": "Commencer"
+        "action": "Commencer",
+        "creditAllowance": "25 000 crédits IA inclus par mois",
+        "creditExtra": "Supplément avant renouvellement : +25 000 crédits pour 25 USD"
       },
       {
         "tier": "Enterprise",
@@ -250,9 +254,12 @@
           "Gouvernance dédiée",
           "Accompagnement dédié"
         ],
-        "action": "Contacter les ventes"
+        "action": "Contacter les ventes",
+        "creditAllowance": "Crédits IA sur mesure",
+        "creditExtra": "Packs et limites de crédits personnalisés selon le contrat"
       }
-    ]
+    ],
+    "monthlyPrice": "${price} USD / mois"
   },
   "faq": {
     "kicker": "Questions fréquentes",
@@ -730,7 +737,7 @@
     "billingPeriod": "Billing period",
     "monthlyProgress": "{used} of {included} credits used this period",
     "customAllowance": "Contractual / custom",
-    "resetExplanation": "Monthly credits reset each billing period. Purchased credits carry over.",
+    "resetExplanation": "L’usage mensuel et les crédits achetés sont remis à zéro à chaque renouvellement d’abonnement payé.",
     "packsTitle": "Add AI credits",
     "packsSubtitle": "One-time credit packs, fulfilled securely through Stripe.",
     "creditsUnit": "credits",
@@ -742,7 +749,35 @@
     "plan": "Plan",
     "subscription": "Subscription",
     "aiUsage": "AI usage",
-    "noCompanies": "No company credit data is available."
+    "noCompanies": "No company credit data is available.",
+    "billing": {
+      "cancelSubscription": "Annuler l’abonnement",
+      "cancelTitle": "Annuler l’abonnement ?",
+      "cancelMessage": "Votre accès continuera jusqu’à la fin de la période payée.",
+      "cancelConfirm": "Programmer l’annulation",
+      "keepSubscription": "Conserver l’abonnement",
+      "effectiveEnd": "Accès jusqu’au {date}",
+      "invoicePeriod": "Du {start} au {end}",
+      "viewInvoice": "Voir les factures",
+      "downloadPdf": "Télécharger le PDF",
+      "noInvoices": "Aucune facture pour le moment.",
+      "statusInactive": "Inactif",
+      "statusTrialing": "Période d’essai",
+      "statusActive": "Actif",
+      "statusPastDue": "Paiement en retard",
+      "statusCancelingAtPeriodEnd": "Annulation en fin de période",
+      "statusCanceled": "Annulé",
+      "statusUnknown": "Inconnu",
+      "invoicePaid": "Payée",
+      "invoiceOpen": "Ouverte",
+      "invoiceDraft": "Brouillon",
+      "invoiceVoid": "Annulée",
+      "invoiceUncollectible": "Irrécouvrable",
+      "planDemo": "Démo",
+      "planProfessional": "Professionnel",
+      "planEnterprise": "Entreprise",
+      "nextRenewal": "Prochain renouvellement : {date}"
+    }
   },
   "phase4d": {
     "productsTotal": "Produits au total",

@@ -107,7 +107,40 @@ class _BillingPageState extends State<BillingPage> {
     }
   }
 
-  void _retry() => setState(() => _future = widget.loader(widget.api));
+  Future<void> _cancelSubscription(BuildContext context, Phase4eStrings strings) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.billingValue('cancelTitle')),
+        content: Text(strings.billingValue('cancelMessage')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(strings.billingValue('keepSubscription')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(strings.billingValue('cancelConfirm')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await widget.api.post('/billing/cancel');
+      if (mounted) _retry();
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    }
+  }
+
+  void _retry() => setState(() {
+        _future = widget.loader(widget.api);
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +155,10 @@ class _BillingPageState extends State<BillingPage> {
         final planCode = subscription?['plan_code']?.toString() ?? 'demo';
         final billingStatus =
             subscription?['status']?.toString().toLowerCase() ?? 'inactive';
+        final localeCode = AvenqoLocaleScope.of(context).code;
+        final currentPeriodEnd = DateTime.tryParse(
+          subscription?['current_period_end']?.toString() ?? '',
+        );
         final needsCheckout = const {
           'inactive',
           'canceled',
@@ -178,10 +215,10 @@ class _BillingPageState extends State<BillingPage> {
               Card(
                 child: ListTile(
                   title: Text(
-                    '${t.billingPlanPrefix}$planCode',
+                    '${t.billingPlanPrefix}${creditsT.planName(planCode)}',
                   ),
                   subtitle: Text(
-                    '${t.billingStatusPrefix}${subscription?['status'] ?? 'inactive'}',
+                    '${t.billingStatusPrefix}${creditsT.subscriptionStatus(billingStatus)}',
                   ),
                   trailing: subscription?['cancel_at_period_end'] == true
                       ? Chip(label: Text(t.billingCancelScheduled))
@@ -196,6 +233,34 @@ class _BillingPageState extends State<BillingPage> {
                     onPressed: () => _startCheckout(context, planCode),
                     icon: const Icon(Icons.credit_card),
                     label: Text(t.settingsManageSubscription),
+                  ),
+                ),
+              ],
+              if (const {'active', 'trialing'}.contains(billingStatus)) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => _cancelSubscription(context, creditsT),
+                  icon: const Icon(Icons.event_busy_outlined),
+                  label: Text(creditsT.billingValue('cancelSubscription')),
+                ),
+              ],
+              if (billingStatus == 'canceling_at_period_end' && currentPeriodEnd != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  creditsT.billingValue('effectiveEnd').replaceFirst(
+                    '{date}',
+                    DateFormat.yMMMd(localeCode).format(currentPeriodEnd.toLocal()),
+                  ),
+                ),
+              ],
+              if (const {'active', 'trialing'}.contains(billingStatus) &&
+                  subscription?['cancel_at_period_end'] != true &&
+                  currentPeriodEnd != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  creditsT.billingValue('nextRenewal').replaceFirst(
+                    '{date}',
+                    DateFormat.yMMMd(localeCode).format(currentPeriodEnd.toLocal()),
                   ),
                 ),
               ],
@@ -217,17 +282,44 @@ class _BillingPageState extends State<BillingPage> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 10),
+              if (invoices.isEmpty) Text(creditsT.billingValue('noInvoices')),
               for (final invoice in invoices)
-                ListTile(
-                  leading: const Icon(Icons.receipt_outlined),
-                  title: Text(
-                    invoice['number']?.toString() ?? t.billingInvoiceFallback,
-                  ),
-                  subtitle: Text(invoice['status'].toString()),
-                  trailing: Text(
-                    '${(invoice['amount_paid'] as num) / 100} ${invoice['currency'].toString().toUpperCase()}',
-                  ),
-                ),
+                Builder(builder: (context) {
+                  final periodStart = DateTime.tryParse(invoice['period_start']?.toString() ?? '');
+                  final periodEnd = DateTime.tryParse(invoice['period_end']?.toString() ?? '');
+                  final status = creditsT.invoiceStatus(invoice['status'].toString());
+                  final period = periodStart != null && periodEnd != null
+                      ? creditsT.billingValue('invoicePeriod')
+                          .replaceFirst('{start}', DateFormat.yMMMd(localeCode).format(periodStart.toLocal()))
+                          .replaceFirst('{end}', DateFormat.yMMMd(localeCode).format(periodEnd.toLocal()))
+                      : null;
+                  return ListTile(
+                    leading: const Icon(Icons.receipt_outlined),
+                    title: Text(invoice['number']?.toString() ?? t.billingInvoiceFallback),
+                    subtitle: Text(period == null ? status : '$status · $period'),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        Text(NumberFormat.simpleCurrency(
+                          locale: localeCode,
+                          name: invoice['currency'].toString().toUpperCase(),
+                        ).format((invoice['amount_paid'] as num) / 100)),
+                        if (invoice['hosted_invoice_url'] != null)
+                          IconButton(
+                            tooltip: creditsT.billingValue('viewInvoice'),
+                            onPressed: () => widget.launcher(Uri.parse(invoice['hosted_invoice_url'].toString())),
+                            icon: const Icon(Icons.open_in_new),
+                          ),
+                        if (invoice['invoice_pdf'] != null)
+                          IconButton(
+                            tooltip: creditsT.billingValue('downloadPdf'),
+                            onPressed: () => widget.launcher(Uri.parse(invoice['invoice_pdf'].toString())),
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
             ],
           ],
         );

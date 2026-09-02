@@ -40,8 +40,26 @@ Les variables sont listÃ©es dans `backend/.env.example`:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_DEMO`
 - `STRIPE_PRICE_PROFESSIONAL`
+- `STRIPE_PRICE_CREDIT_DEMO`
+- `STRIPE_PRICE_CREDIT_PROFESSIONAL`
 
 Enterprise n'a pas de Price ID fixe et ne peut pas ouvrir de Checkout self-service.
+
+Les Prices de crédits sont des paiements uniques configurés dans Stripe:
+
+- Demo: 6 500 crédits supplémentaires pour 10 USD.
+- Professional: 25 000 crédits supplémentaires pour 25 USD.
+
+Les crédits achetés s'accumulent pendant la période de facturation. Après le paiement réussi de la facture de renouvellement (`invoice.paid` avec `billing_reason=subscription_cycle`), Avenqo remet l'usage mensuel et le solde acheté à zéro, puis démarre la nouvelle allocation incluse.
+
+## Réglages Stripe Dashboard requis
+
+- Activer Adaptive Pricing / les devises localisées pour les Prices Demo, Professional et leurs deux packs de crédits utilisés par Checkout. Stripe reste la source autoritaire du montant et de la devise facturés.
+- Dans les réglages d'emails clients, activer l'envoi des factures finalisées et des reçus de paiement réussi.
+- Dans la configuration du Customer Portal, autoriser l'annulation d'abonnement en fin de période de facturation.
+- Abonner l'endpoint webhook aux événements `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated` et `customer.subscription.deleted`.
+
+Stripe crée automatiquement les factures récurrentes des abonnements. Avenqo en conserve un snapshot tenant-scoped (montants, devise, offre, période, état et liens Stripe) après réception du webhook signé.
 
 ## Validation
 

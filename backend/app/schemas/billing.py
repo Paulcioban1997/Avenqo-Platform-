@@ -54,12 +54,15 @@ class SubscriptionResponse(BaseModel):
 class InvoiceResponse(BaseModel):
     id: UUID
     number: str | None
+    plan_code: str | None
     status: str
     currency: str
     amount_due: int
     amount_paid: int
     hosted_invoice_url: str | None
     invoice_pdf: str | None
+    period_start: datetime | None
+    period_end: datetime | None
     issued_at: datetime
 
     model_config = {"from_attributes": True}

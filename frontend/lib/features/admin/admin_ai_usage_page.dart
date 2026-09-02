@@ -22,6 +22,40 @@ class AdminAiUsagePage extends StatelessWidget {
   final ApiClient api;
   final AdminCreditLoader loader;
 
+  Future<void> _showInvoices(
+    BuildContext context,
+    Map<String, dynamic> company,
+    Phase4eStrings strings,
+  ) async {
+    final invoices = ((await api.get(
+      '/admin/companies/${company['id']}/billing/invoices',
+    )) as List<dynamic>);
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('${strings.billingValue('viewInvoice')} · ${company['name']}'),
+        content: SizedBox(
+          width: 560,
+          child: invoices.isEmpty
+              ? Text(strings.billingValue('noInvoices'))
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final invoice in invoices)
+                      ListTile(
+                        leading: const Icon(Icons.receipt_outlined),
+                        title: Text(invoice['number']?.toString() ?? '—'),
+                        subtitle: Text(strings.invoiceStatus(invoice['status'].toString())),
+                        trailing: Text(invoice['currency'].toString().toUpperCase()),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AvenqoLocaleScope.translationsOf(context).admin;
@@ -92,25 +126,34 @@ class _AdminCreditsTable extends StatelessWidget {
             DataColumn(label: Text(strings.purchasedRemaining), numeric: true),
             DataColumn(label: Text(strings.totalRemaining), numeric: true),
             DataColumn(label: Text(strings.aiUsage), numeric: true),
+            DataColumn(label: Text(strings.billingValue('viewInvoice'))),
           ],
-          rows: [for (final company in companies) _row(company, strings)],
+          rows: [for (final company in companies) _row(context, company, strings)],
         ),
       ),
     );
   }
 }
 
-DataRow _row(Map<String, dynamic> company, Phase4eStrings strings) {
+DataRow _row(BuildContext context, Map<String, dynamic> company, Phase4eStrings strings) {
   final status = company['subscription_status']?.toString() ?? 'inactive';
   return DataRow(cells: [
     DataCell(Text(company['name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700))),
-    DataCell(Text(company['plan_code']?.toString() ?? '—')),
-    DataCell(AdminStatusBadge(label: status.toUpperCase(), tone: _subscriptionTone(status))),
+    DataCell(Text(strings.planName(company['plan_code']?.toString() ?? ''))),
+    DataCell(AdminStatusBadge(label: strings.subscriptionStatus(status), tone: _subscriptionTone(status))),
     DataCell(Text(_credits(company['monthly_credits'], strings))),
     DataCell(Text(_credits(company['monthly_credits_remaining'], strings))),
     DataCell(Text(_credits(company['purchased_credits_remaining'], strings))),
     DataCell(Text(_credits(company['total_credits_remaining'], strings))),
     DataCell(Text(_credits(company['ai_requests_current_period'], strings))),
+    DataCell(IconButton(
+      tooltip: strings.billingValue('viewInvoice'),
+      onPressed: () {
+        final page = context.findAncestorWidgetOfExactType<AdminAiUsagePage>();
+        page?._showInvoices(context, company, strings);
+      },
+      icon: const Icon(Icons.receipt_long_outlined),
+    )),
   ]);
 }
 
@@ -145,10 +188,21 @@ class _AdminCompanyCreditCard extends StatelessWidget {
         children: [
           Row(children: [
             Expanded(child: Text(company['name']?.toString() ?? '—', style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w800))),
-            AdminStatusBadge(label: status.toUpperCase(), tone: _subscriptionTone(status)),
+            AdminStatusBadge(label: strings.subscriptionStatus(status), tone: _subscriptionTone(status)),
           ]),
           const SizedBox(height: 4),
-          Text(company['plan_code']?.toString() ?? '—', style: TextStyle(color: colors.muted)),
+          Text(strings.planName(company['plan_code']?.toString() ?? ''), style: TextStyle(color: colors.muted)),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              tooltip: strings.billingValue('viewInvoice'),
+              onPressed: () {
+                final page = context.findAncestorWidgetOfExactType<AdminAiUsagePage>();
+                page?._showInvoices(context, company, strings);
+              },
+              icon: const Icon(Icons.receipt_long_outlined),
+            ),
+          ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 20,

@@ -34,7 +34,11 @@ manage_billing = require_permission("billing:manage")
 def subscription_response(account) -> SubscriptionResponse:
     return SubscriptionResponse(
         plan_code=account.plan_code,
-        status=account.status,
+        status=(
+            "canceling_at_period_end"
+            if account.cancel_at_period_end and account.status in {"active", "trialing"}
+            else account.status
+        ),
         current_period_end=account.current_period_end,
         cancel_at_period_end=account.cancel_at_period_end,
     )
@@ -152,10 +156,16 @@ def ai_credit_balance(
 
 @router.get("/credit-packs", response_model=list[CreditPackResponse])
 def credit_packs(
-    _: CurrentIdentity = Depends(get_current_identity),
+    identity: CurrentIdentity = Depends(get_current_identity),
     service: BillingService = Depends(get_billing_service),
 ) -> list[CreditPackResponse]:
-    return [CreditPackResponse.model_validate(pack) for pack in service.list_credit_packs()]
+    return [
+        CreditPackResponse.model_validate(pack)
+        for pack in service.list_credit_packs(
+            identity.user.company_id,
+            identity.user.company.subscription_plan,
+        )
+    ]
 
 
 @router.post("/credit-packs/checkout", response_model=RedirectResponse)
