@@ -11,10 +11,6 @@ import 'package:avenqo/widgets/theme_toggle_button.dart';
 
 enum AuthMode { login, register, forgot, verify, reset }
 
-/// Palette Avenqo, alignée sur lib/pages/home_page.dart (source de vérité
-/// visuelle) : même bleu/encre que la landing page. `blue`/`blueDark`/`ink`
-/// sont l'accent de marque fixe (ink sert uniquement au panneau héro sombre
-/// _BrandPanel) ; le texte/fond de contenu passe par [AvenqoColors.of].
 class _Brand {
   const _Brand._();
 
@@ -100,10 +96,7 @@ class _AuthPageState extends State<AuthPage> {
   ({String title, String subtitle}) _copy(AuthStrings t) =>
       switch (widget.mode) {
         AuthMode.login => (title: t.loginTitle, subtitle: t.loginSubtitle),
-        AuthMode.register => (
-          title: t.registerTitle,
-          subtitle: t.registerSubtitle,
-        ),
+        AuthMode.register => (title: t.registerTitle, subtitle: t.registerSubtitle),
         AuthMode.forgot => (title: t.forgotTitle, subtitle: t.forgotSubtitle),
         AuthMode.verify => (title: t.verifyTitle, subtitle: t.verifySubtitle),
         AuthMode.reset => (title: t.resetTitle, subtitle: t.resetSubtitle),
@@ -127,8 +120,8 @@ class _AuthPageState extends State<AuthPage> {
               widget.auth.isPlatformAdmin
                   ? '/admin'
                   : widget.auth.hasActiveSubscription
-                  ? '/dashboard'
-                  : '/billing',
+                      ? '/dashboard'
+                      : '/billing',
             );
           }
         case AuthMode.register:
@@ -157,32 +150,30 @@ class _AuthPageState extends State<AuthPage> {
     } on ApiException catch (error) {
       _show(error.message, isError: true);
     } catch (error) {
-      // Erreur non-métier (réseau, CORS, parsing...) : on log le détail en
-      // dev pour pouvoir diagnostiquer sans jamais l'exposer à l'utilisateur.
       debugPrint('AuthPage._submit: unexpected error: $error');
       _show(t.genericError, isError: true);
     }
   }
 
   Map<String, dynamic> _signupPayload() => {
-    'company_name': _company.text,
-    'company_email': _companyEmail.text,
-    'billing_email': _companyEmail.text,
-    'first_name': _firstName.text,
-    'last_name': _lastName.text,
-    'job_title': _jobTitle.text,
-    'phone': _phone.text,
-    'email': _email.text,
-    'password': _password.text,
-    'country': _country.text,
-    'region': _region.text,
-    'company_size': _companySize.text,
-    'preferred_language': Localizations.localeOf(context).languageCode,
-    'timezone': 'America/Toronto',
-    'industry': _signupIndustry,
-    'plan_code': _signupPlan,
-    'selected_modules': _signupModules.toList(),
-  };
+        'company_name': _company.text,
+        'company_email': _companyEmail.text,
+        'billing_email': _companyEmail.text,
+        'first_name': _firstName.text,
+        'last_name': _lastName.text,
+        'job_title': _jobTitle.text,
+        'phone': _phone.text,
+        'email': _email.text,
+        'password': _password.text,
+        'country': _country.text,
+        'region': _region.text,
+        'company_size': _companySize.text,
+        'preferred_language': Localizations.localeOf(context).languageCode,
+        'timezone': 'America/Toronto',
+        'industry': _signupIndustry,
+        'plan_code': _signupPlan,
+        'selected_modules': _signupModules.toList(),
+      };
 
   void _show(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -198,7 +189,7 @@ class _AuthPageState extends State<AuthPage> {
       return;
     }
     try {
-      final response = await widget.auth.resendVerification(_email.text);
+      final response = await widget.auth.resendVerification(_email.text.trim());
       _show(
         response['email_delivery_configured'] == true
             ? t.verificationResent
@@ -267,23 +258,7 @@ class _AuthPageState extends State<AuthPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.mode == AuthMode.register) ...[
-            _field(_company, t.organisation, t: t),
-            _field(_companyEmail, t.billingEmail, t: t, email: true),
-            Row(
-              children: [
-                Expanded(child: _field(_firstName, t.firstName, t: t)),
-                const SizedBox(width: 12),
-                Expanded(child: _field(_lastName, t.lastName, t: t)),
-              ],
-            ),
-          ],
-          if ([
-            AuthMode.login,
-            AuthMode.register,
-            AuthMode.forgot,
-            AuthMode.verify,
-          ].contains(widget.mode))
+          if ([AuthMode.login, AuthMode.forgot, AuthMode.verify].contains(widget.mode))
             _field(
               _email,
               t.email,
@@ -300,13 +275,10 @@ class _AuthPageState extends State<AuthPage> {
             ),
             const SizedBox(height: 14),
           ],
-          if ([
-            AuthMode.login,
-            AuthMode.register,
-            AuthMode.reset,
-          ].contains(widget.mode))
+          if ([AuthMode.login, AuthMode.reset].contains(widget.mode))
             _field(_password, t.password, t: t, password: true),
-          if ([AuthMode.verify, AuthMode.reset].contains(widget.mode))
+          if ([AuthMode.verify, AuthMode.reset].contains(widget.mode) &&
+              widget.initialToken?.isNotEmpty != true)
             _field(_token, t.emailToken, t: t),
           if (_message != null) ...[
             Container(
@@ -354,14 +326,19 @@ class _AuthPageState extends State<AuthPage> {
           ),
           if (widget.mode == AuthMode.verify) ...[
             const SizedBox(height: 8),
-            IconButton(
+            TextButton.icon(
               onPressed: widget.auth.busy ? null : () => _resendVerification(t),
-              tooltip: t.registerSuccess,
               icon: const Icon(Icons.refresh),
+              label: Text(t.verifyTitle),
             ),
           ],
           if (widget.mode == AuthMode.login) ...[
             const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: widget.auth.busy ? null : () => _resendVerification(t),
+              icon: const Icon(Icons.mark_email_unread_outlined),
+              label: Text(t.verifyTitle),
+            ),
             TextButton(
               onPressed: () => context.go('/forgot-password'),
               child: Text(
@@ -476,21 +453,15 @@ class _AuthPageState extends State<AuthPage> {
             decoration: InputDecoration(
               labelText: onboarding.refineIndustryLabel,
             ),
-            items:
-                const [
-                      'Retail',
-                      'E-commerce',
-                      'Professional Services',
-                      'Technology',
-                      'Manufacturing',
-                      'Healthcare',
-                      'Other',
-                    ]
-                    .map(
-                      (value) =>
-                          DropdownMenuItem(value: value, child: Text(value)),
-                    )
-                    .toList(),
+            items: const [
+              'Retail',
+              'E-commerce',
+              'Professional Services',
+              'Technology',
+              'Manufacturing',
+              'Healthcare',
+              'Other',
+            ].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
             onChanged: (value) =>
                 setState(() => _signupIndustry = value ?? _signupIndustry),
           ),
@@ -579,10 +550,10 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   int get _moduleLimit => switch (_signupPlan) {
-    'demo' => 2,
-    'professional' => 8,
-    _ => avenqoAgentRegistry.length,
-  };
+        'demo' => 2,
+        'professional' => 8,
+        _ => avenqoAgentRegistry.length,
+      };
 
   void _toggleModule(String moduleId) {
     setState(() {
@@ -594,84 +565,79 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Widget _signupOwner(AuthStrings t) => Column(
-    children: [
-      Row(
         children: [
-          Expanded(child: _field(_firstName, t.firstName, t: t)),
-          const SizedBox(width: 12),
-          Expanded(child: _field(_lastName, t.lastName, t: t)),
+          Row(
+            children: [
+              Expanded(child: _field(_firstName, t.firstName, t: t)),
+              const SizedBox(width: 12),
+              Expanded(child: _field(_lastName, t.lastName, t: t)),
+            ],
+          ),
+          _field(_jobTitle, 'Role / title', t: t),
+          _field(_email, t.email, t: t, email: true),
+          _field(_password, t.password, t: t, password: true),
+          _field(_passwordConfirmation, 'Confirm password', t: t, password: true),
+          _field(_phone, 'Phone (optional)', t: t, optional: true),
         ],
-      ),
-      _field(_jobTitle, 'Role / title', t: t),
-      _field(_email, t.email, t: t, email: true),
-      _field(_password, t.password, t: t, password: true),
-      _field(_passwordConfirmation, 'Confirm password', t: t, password: true),
-      _field(_phone, 'Phone (optional)', t: t, optional: true),
-    ],
-  );
+      );
 
   Widget _signupPlans(PricingStrings pricing) => Column(
-    children: [
-      for (var index = 0; index < pricing.plans.length; index++)
-        Card(
-          color: _signupPlan == _planCode(index)
-              ? Theme.of(context).colorScheme.primaryContainer
-              : null,
-          child: ListTile(
-            onTap: () => setState(() {
-              _signupPlan = _planCode(index);
-              final retained = _signupModules.take(_moduleLimit).toSet();
-              _signupModules
-                ..clear()
-                ..addAll(retained);
-            }),
-            leading: Icon(
-              _signupPlan == _planCode(index)
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              color: Theme.of(context).colorScheme.primary,
+        children: [
+          for (var index = 0; index < pricing.plans.length; index++)
+            Card(
+              color: _signupPlan == _planCode(index)
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : null,
+              child: ListTile(
+                onTap: () => setState(() {
+                  _signupPlan = _planCode(index);
+                  final retained = _signupModules.take(_moduleLimit).toSet();
+                  _signupModules
+                    ..clear()
+                    ..addAll(retained);
+                }),
+                leading: Icon(
+                  _signupPlan == _planCode(index)
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: Text(
+                  pricing.plans[index].tier,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(pricing.plans[index].priceLabel),
+              ),
             ),
-            title: Text(
-              pricing.plans[index].tier,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            subtitle: Text(pricing.plans[index].priceLabel),
-          ),
-        ),
-    ],
-  );
+        ],
+      );
 
   String _planCode(int index) => switch (index) {
-    0 => 'demo',
-    1 => 'professional',
-    _ => 'enterprise',
-  };
+        0 => 'demo',
+        1 => 'professional',
+        _ => 'enterprise',
+      };
 
-  Widget _signupConfirmation(
-    AuthStrings t,
-    Translations translations,
-  ) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        t.registerTitle,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-      ),
-      const SizedBox(height: 8),
-      Text(
-        '${_company.text} · $_signupIndustry · ${_signupPlan.toUpperCase()}',
-      ),
-      Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
-      const SizedBox(height: 4),
-      Text(
-        _signupModules
-            .map((id) => translations.agents.value(agentById(id).nameKey))
-            .join(' · '),
-      ),
-      const SizedBox(height: 8),
-      Text(translations.finalCta.title),
-    ],
-  );
+  Widget _signupConfirmation(AuthStrings t, Translations translations) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.registerTitle,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text('${_company.text} · $_signupIndustry · ${_signupPlan.toUpperCase()}'),
+          Text('${_firstName.text} ${_lastName.text} · ${_email.text}'),
+          const SizedBox(height: 4),
+          Text(
+            _signupModules
+                .map((id) => translations.agents.value(agentById(id).nameKey))
+                .join(' · '),
+          ),
+          const SizedBox(height: 8),
+          Text(translations.finalCta.title),
+        ],
+      );
 
   Widget _field(
     TextEditingController controller,
@@ -709,8 +675,8 @@ class _AuthPageState extends State<AuthPage> {
           if (controller == _website) {
             final candidate =
                 text.startsWith('http://') || text.startsWith('https://')
-                ? text
-                : 'https://$text';
+                    ? text
+                    : 'https://$text';
             final uri = Uri.tryParse(candidate);
             if (uri == null || uri.host.isEmpty || !uri.host.contains('.')) {
               return t.genericError;
@@ -809,19 +775,19 @@ class _SignupModuleCard extends StatelessWidget {
 }
 
 IconData _moduleIcon(String identifier) => switch (identifier) {
-  'storefront' => Icons.storefront_outlined,
-  'campaign' => Icons.campaign_outlined,
-  'contacts' => Icons.contacts_outlined,
-  'groups' => Icons.groups_outlined,
-  'account_balance' => Icons.account_balance_outlined,
-  'document_scanner' => Icons.document_scanner_outlined,
-  'mic' => Icons.mic_none_outlined,
-  'perm_media' => Icons.perm_media_outlined,
-  'gavel' => Icons.gavel_outlined,
-  'calendar_month' => Icons.calendar_month_outlined,
-  'account_tree' => Icons.account_tree_outlined,
-  _ => Icons.extension_outlined,
-};
+      'storefront' => Icons.storefront_outlined,
+      'campaign' => Icons.campaign_outlined,
+      'contacts' => Icons.contacts_outlined,
+      'groups' => Icons.groups_outlined,
+      'account_balance' => Icons.account_balance_outlined,
+      'document_scanner' => Icons.document_scanner_outlined,
+      'mic' => Icons.mic_none_outlined,
+      'perm_media' => Icons.perm_media_outlined,
+      'gavel' => Icons.gavel_outlined,
+      'calendar_month' => Icons.calendar_month_outlined,
+      'account_tree' => Icons.account_tree_outlined,
+      _ => Icons.extension_outlined,
+    };
 
 class _SignupProgress extends StatelessWidget {
   const _SignupProgress({required this.step, required this.labels});
