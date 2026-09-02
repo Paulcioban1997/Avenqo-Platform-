@@ -171,6 +171,10 @@ class BillingService:
 
         event_type = str(event["type"])
         data = event["data"]["object"]
+        if hasattr(data, "to_dict_recursive"):
+            data = data.to_dict_recursive()
+        elif hasattr(data, "to_dict"):
+            data = data.to_dict()
         if event_type.startswith("customer.subscription."):
             self._sync_subscription(data)
         elif event_type.startswith("invoice."):
