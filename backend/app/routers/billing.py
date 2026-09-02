@@ -1,5 +1,7 @@
 """Routes de facturation Stripe du tenant courant."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +28,8 @@ from backend.app.services.billing_service import (
 )
 from backend.app.models import BillingAccount
 from payments import PLANS
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
@@ -192,6 +196,7 @@ async def webhook(
 ) -> dict[str, bool]:
     try:
         processed = service.process_webhook(await request.body(), stripe_signature)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide") from exc
+    except Exception:
+        logger.exception("Stripe webhook processing failed")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide")
     return {"processed": processed}
