@@ -53,6 +53,10 @@ final RegExp _errorPageContamination = RegExp(
   caseSensitive: false,
 );
 
+Set<String> _placeholders(String value) => RegExp(
+      r'\$?\{[^}]+\}',
+    ).allMatches(value).map((match) => match.group(0)!).toSet();
+
 void main() {
   final localesCatalog =
       jsonDecode(File('assets/i18n/_locales.json').readAsStringSync()) as List<dynamic>;
@@ -173,6 +177,77 @@ void main() {
           isFalse,
           reason: '$code agents.${entry.key} contains HTTP/error-page content',
         );
+      }
+    }
+  });
+
+  test('all 44 Billing and AI credit catalogs are localized and preserve placeholders', () {
+    final english = _readLocaleJson('en')['phase4e'] as Map<String, dynamic>;
+    final englishLeaves = <String, String>{};
+
+    void collect(dynamic node, String prefix) {
+      for (final entry in (node as Map<String, dynamic>).entries) {
+        final path = prefix.isEmpty ? entry.key : '$prefix.${entry.key}';
+        if (entry.value is String) {
+          englishLeaves[path] = entry.value as String;
+        } else {
+          collect(entry.value, path);
+        }
+      }
+    }
+
+    String valueAt(Map<String, dynamic> node, String path) => path
+        .split('.')
+        .fold<dynamic>(node, (value, key) => value[key]) as String;
+
+    collect(english, '');
+    for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
+      final phase4e = _readLocaleJson(code)['phase4e'] as Map<String, dynamic>;
+      for (final entry in englishLeaves.entries) {
+        final value = valueAt(phase4e, entry.key);
+        expect(value.trim(), isNotEmpty, reason: '$code phase4e.${entry.key} is empty');
+        expect(
+          _placeholders(value),
+          equals(_placeholders(entry.value)),
+          reason: '$code phase4e.${entry.key} changed placeholders',
+        );
+        if (code != 'en' && entry.key != 'priceUsd' && entry.value.length > 8) {
+          expect(
+            value,
+            isNot(entry.value),
+            reason: '$code phase4e.${entry.key} is still an English placeholder',
+          );
+        }
+      }
+    }
+  });
+
+  test('all 44 catalogs localize the company labels rendered by the Billing page', () {
+    const keys = [
+      'billingTitle',
+      'billingPortalButton',
+      'billingUnavailable',
+      'billingPlanPrefix',
+      'billingStatusPrefix',
+      'billingCancelScheduled',
+      'settingsManageSubscription',
+      'billingInvoicesTitle',
+      'billingInvoiceFallback',
+      'connectionsRetry',
+    ];
+    final english = _readLocaleJson('en')['company'] as Map<String, dynamic>;
+    for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
+      final company = _readLocaleJson(code)['company'] as Map<String, dynamic>;
+      for (final key in keys) {
+        final value = company[key]?.toString().trim() ?? '';
+        expect(value, isNotEmpty, reason: '$code company.$key is empty');
+        if (code != 'en' && (key == 'billingTitle' || english[key].toString().length > 8)) {
+          expect(
+            value,
+            isNot(english[key]),
+            reason: '$code company.$key is still an English placeholder',
+          );
+        }
       }
     }
   });

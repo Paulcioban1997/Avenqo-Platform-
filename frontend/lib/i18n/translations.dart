@@ -243,7 +243,8 @@ class Phase4eStrings {
         billingPeriod: 'Billing period',
         monthlyProgress: '{used} of {included} credits used this period',
         customAllowance: 'Contractual / custom',
-        resetExplanation: 'Monthly credits reset each billing period. Purchased credits carry over.',
+        resetExplanation:
+          'Monthly usage and purchased credits reset at each successful subscription renewal.',
         packsTitle: 'Add AI credits',
         packsSubtitle: 'One-time credit packs, fulfilled securely through Stripe.',
         creditsUnit: 'credits',

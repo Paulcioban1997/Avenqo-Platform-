@@ -74,7 +74,89 @@ BillingData _billingData({String status = 'active', bool enterprise = false}) =>
       ],
     );
 
+BillingData _startingBillingData(String planCode) {
+  final professional = planCode == 'professional';
+  final included = professional ? 25000 : 6500;
+  return BillingData(
+    subscription: {
+      'plan_code': planCode,
+      'status': 'active',
+      'cancel_at_period_end': false,
+      'current_period_end': '2026-09-30T00:00:00Z',
+    },
+    invoices: const [],
+    balance: {
+      'billing_period': '2026-09',
+      'monthly_included': included,
+      'monthly_used': 0,
+      'monthly_remaining': included,
+      'purchased_remaining': 0,
+      'total_remaining': included,
+    },
+    packs: [
+      {
+        'code': professional ? 'professional_extra' : 'demo_extra',
+        'credits': included,
+        'price_usd': professional ? 25 : 10,
+      },
+    ],
+  );
+}
+
+void _expectCreditMetric(WidgetTester tester, String label, String value) {
+  final metric = find.ancestor(
+    of: find.text(label),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is SizedBox && widget.width == 190,
+    ),
+  );
+  expect(metric, findsOneWidget);
+  expect(find.descendant(of: metric, matching: find.text(value)), findsOneWidget);
+}
+
 void main() {
+  testWidgets('active Demo and Professional start with exact included balances and packs', (
+    tester,
+  ) async {
+    final api = _api(MockClient((_) async => http.Response('{}', 200)));
+
+    await tester.pumpWidget(await _wrap(BillingPage(
+      key: const ValueKey('demo-billing'),
+      api: api,
+      loader: (_) async => _startingBillingData('demo'),
+    )));
+    await tester.pumpAndSettle();
+    _expectCreditMetric(tester, 'Monthly allowance', '6,500');
+    _expectCreditMetric(tester, 'Monthly remaining', '6,500');
+    _expectCreditMetric(tester, 'Purchased remaining', '0');
+    _expectCreditMetric(tester, 'Total remaining', '6,500');
+    expect(find.text('Contractual / custom'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text(r'$10 USD'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('6,500 credits'), findsOneWidget);
+
+    await tester.pumpWidget(await _wrap(BillingPage(
+      key: const ValueKey('professional-billing'),
+      api: api,
+      loader: (_) async => _startingBillingData('professional'),
+    )));
+    await tester.pumpAndSettle();
+    _expectCreditMetric(tester, 'Monthly allowance', '25,000');
+    _expectCreditMetric(tester, 'Monthly remaining', '25,000');
+    _expectCreditMetric(tester, 'Purchased remaining', '0');
+    _expectCreditMetric(tester, 'Total remaining', '25,000');
+    expect(find.text('Contractual / custom'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text(r'$25 USD'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('25,000 credits'), findsOneWidget);
+  });
+
   testWidgets('client sees credit balance and opens tenant-derived Stripe checkout', (tester) async {
     Uri? launched;
     Uri? requested;
