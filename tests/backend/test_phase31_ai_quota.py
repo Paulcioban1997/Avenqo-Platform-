@@ -194,29 +194,30 @@ def test_usage_service_tracks_tenant_quota_isolation(db_session) -> None:
     assert usage_b.ai_requests_count == 1
 
 
-def test_credits_consume_monthly_before_purchased_and_keep_topups_across_reset(
-    db_session, monkeypatch
+def test_demo_credits_consume_included_before_purchased_and_expire_at_renewal(
+    db_session,
 ) -> None:
     company = _company(db_session, slug="credits")
     service = AIUsageService(
         db_session,
-        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 2}})),
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 6_500}})),
     )
-    service.add_purchased_credits(company.id, 3)
-
-    service.record_usage(company.id, "demo")
-    service.record_usage(company.id, "demo")
-    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 3
-
-    service.record_usage(company.id, "demo")
-    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 2
+    service.add_purchased_credits(company.id, 6_500)
 
     balance = db_session.get(TenantAICreditBalance, company.id)
-    balance.monthly_period = "2025-01"
+    balance.monthly_used = 6_499
+    service.record_usage(company.id, "demo")
+    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 6_500
+
+    service.record_usage(company.id, "demo")
+    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 6_499
+
+    service.reset_credits_for_renewal(company.id, "2025-02")
     reset = service.get_credit_balance(company.id, "demo")
     assert reset["monthly_used"] == 0
-    assert reset["monthly_remaining"] == 2
-    assert reset["purchased_remaining"] == 2
+    assert reset["monthly_remaining"] == 6_500
+    assert reset["purchased_remaining"] == 0
+    assert reset["total_remaining"] == 6_500
 
 
 def test_purchased_credits_are_strictly_tenant_scoped(db_session) -> None:

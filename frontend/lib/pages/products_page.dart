@@ -531,14 +531,16 @@ class _ProductDetailDialog extends StatelessWidget {
       child: FutureBuilder<Map<String, dynamic>>(
         future: future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError)
+          }
+          if (snapshot.hasError) {
             return Text(
               AvenqoLocaleScope.translationsOf(
                 context,
               ).company.connectionsGenericError,
             );
+          }
           final item = snapshot.data!;
           final currency = item['currency']?.toString() ?? 'USD';
           final locale = Localizations.localeOf(context).toLanguageTag();

@@ -55,7 +55,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0007_tenant_ai_credit_balances"
+    assert current == "0008_billing_invoice_periods"
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
@@ -107,6 +107,10 @@ def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:
         table for table in Base.metadata.sorted_tables if table.name not in post_baseline_tables
     ]
     Base.metadata.create_all(engine, tables=tables_before_onboarding)  # simule l'ancien comportement Phase 1-34
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN period_end"))
+        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN period_start"))
+        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN plan_code"))
     inspector = inspect(engine)
     assert "audit_log_entries" in inspector.get_table_names()
 
