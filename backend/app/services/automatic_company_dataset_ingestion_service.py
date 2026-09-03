@@ -172,6 +172,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         for dataset in datasets:
             try:
                 self._refresh_mapping_suggestions(dataset)
+                self.ensure_cleaning_artifacts(tenant, dataset)
                 resolved = self._resolve_mapping_without_blocking(tenant, dataset)
                 if resolved.status == DatasetStatus.READY:
                     resolved = self._finalize_automatic_pipeline(tenant, resolved)

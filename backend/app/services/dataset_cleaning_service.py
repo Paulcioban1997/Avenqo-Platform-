@@ -21,7 +21,9 @@ from reportlab.lib import colors
 from backend.app.models import DatasetStatus
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.dataset_ingestion.exceptions import DatasetIngestionError
 from shared.ai_engine.dataset_ingestion.cleaning import CleaningReport
+from shared.ai_engine.dataset_ingestion.quality import assess_quality
 
 
 class DatasetNotReadyForExport(ValueError):
@@ -59,18 +61,21 @@ class DatasetCleaningService:
         quality_status: str | None = None
         quality_reasons: list[str] = []
 
-        if dataset.status == DatasetStatus.READY:
-            prepared = self._ingestion.get_prepared_dataset(tenant, dataset_id)
-            cleaned_rows = [dict(row) for row in prepared.rows]
-            cleaning_report = prepared.cleaning_report
-            mappings = dict(prepared.canonical_columns)
-            quality_status = prepared.quality.status.value
-            quality_reasons = list(prepared.quality.reasons)
-        elif dataset.mapping is not None:
+        metadata = self._metadata(version.artifact_path)
+        try:
+            cleaned_rows = [
+                dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)
+            ]
+        except DatasetIngestionError as exc:
+            raise DatasetNotReadyForExport(str(exc)) from exc
+        cleaning_report = self._report(metadata, len(original_rows), len(cleaned_rows))
+        quality = assess_quality(cleaning_report)
+        quality_status = quality.status.value
+        quality_reasons = list(quality.reasons)
+        if dataset.mapping is not None:
             mappings = dict(dataset.mapping.mapping_json.get("accepted") or {})
 
         bounded_limit = max(1, min(limit, self._MAX_PREVIEW_ROWS))
-        metadata = self._metadata(version.artifact_path)
         summary = self._summary(
             dataset.columns_count,
             version.version_number,
@@ -103,10 +108,8 @@ class DatasetCleaningService:
 
     def export(self, tenant: TenantContext, dataset_id: UUID, export_format: str) -> tuple[bytes, str, str]:
         detail = self.detail(tenant, dataset_id, limit=self._MAX_PREVIEW_ROWS)
-        if detail["status"] != "ready":
-            raise DatasetNotReadyForExport("The cleaned dataset is not ready for export.")
         dataset = self._ingestion.get(tenant, dataset_id)
-        rows = [dict(row) for row in self._ingestion.get_prepared_dataset(tenant, dataset_id).rows]
+        rows = [dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)]
         safe_stem = Path(dataset.name).stem or "dataset"
         normalized = export_format.casefold()
         if normalized == "csv":
@@ -130,6 +133,23 @@ class DatasetCleaningService:
     @staticmethod
     def _empty_report(rows: int) -> CleaningReport:
         return CleaningReport(rows, rows, 0, 0, 0, 0, 0)
+
+    @staticmethod
+    def _report(
+        metadata: dict[str, Any],
+        original_rows: int,
+        cleaned_rows: int,
+    ) -> CleaningReport:
+        persisted = dict(metadata.get("cleaning_report") or {})
+        return CleaningReport(
+            rows_before=int(persisted.get("original_row_count", original_rows)),
+            rows_after=int(persisted.get("cleaned_row_count", cleaned_rows)),
+            duplicates_removed=int(persisted.get("duplicate_rows_removed", 0)),
+            numeric_conversions=int(persisted.get("numeric_normalizations", 0)),
+            date_conversions=int(persisted.get("date_normalizations", 0)),
+            null_cells_detected=int(persisted.get("missing_values_detected", 0)),
+            invalid_rows=int(persisted.get("invalid_rows_rejected", 0)),
+        )
 
     @staticmethod
     def _metadata(artifact_path: str | None) -> dict[str, Any]:

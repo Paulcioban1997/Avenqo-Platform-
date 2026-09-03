@@ -150,7 +150,8 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Voir les données nettoyées'));
+    expect(find.text('Voir les données nettoyées'), findsOneWidget);
+    await tester.tap(find.text('Voir les données nettoyées'));
     await tester.pumpAndSettle();
 
     expect(find.text('Résumé du nettoyage'), findsOneWidget);
@@ -184,7 +185,7 @@ void main() {
     expect(find.text('sales.csv'), findsOneWidget);
   });
 
-  testWidgets('attention-required dataset exposes detail but not exports', (
+  testWidgets('attention-required dataset exposes cleaned detail and exports', (
     tester,
   ) async {
     final client = MockClient((request) async {
@@ -198,7 +199,7 @@ void main() {
         '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
       )) {
         return http.Response(
-          '{"name":"needs-mapping.csv","status":"attention_required","version":1,"summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"mappings_applied":{}},"original_preview":[{"buyer":"C1","paid":"12.50"}],"cleaned_preview":[]}',
+          '{"name":"needs-mapping.csv","status":"attention_required","version":1,"summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"mappings_applied":{}},"original_preview":[{"buyer":" C1 ","paid":"12.50"}],"cleaned_preview":[{"buyer":"C1","paid":"12.50"}]}',
           200,
         );
       }
@@ -211,7 +212,8 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Voir les données nettoyées'));
+    expect(find.text('Voir les données nettoyées'), findsOneWidget);
+    await tester.tap(find.text('Voir les données nettoyées'));
     await tester.pumpAndSettle();
 
     expect(find.text('Attention required · v1'), findsOneWidget);
@@ -219,9 +221,12 @@ void main() {
       find.textContaining('confirmation manuelle'),
       findsOneWidget,
     );
+    expect(find.text('CSV'), findsOneWidget);
+    expect(find.text('DOCX'), findsOneWidget);
+
+    await tester.tap(find.text('Après'));
+    await tester.pumpAndSettle();
     expect(find.text('C1'), findsOneWidget);
-    expect(find.text('CSV'), findsNothing);
-    expect(find.text('DOCX'), findsNothing);
   });
 
   testWidgets('ambiguous mapping can be confirmed and promoted to ready', (

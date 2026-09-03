@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,6 +36,7 @@ from backend.app.models import (
     DatasetRelationship,
     DatasetStatus,
     DatasetVersion,
+    DatasetVersionStatus,
     Module,
 )
 from backend.app.repositories import SQLAlchemyModuleEntitlements
@@ -530,7 +532,7 @@ def test_duplicate_rows_removed_reported_as_warning(phase26_environment) -> None
 
 
 def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) -> None:
-    client, _, tenants = phase26_environment
+    client, session_factory, tenants = phase26_environment
     content = (
         b"client_ref,sale_date,amount_paid\n"
         b" C1 ,2024-01-01,$45.99\n"
@@ -550,6 +552,7 @@ def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) ->
     assert detail["summary"]["duplicate_rows_removed"] == 1
     assert detail["summary"]["numeric_normalizations"] == 2
     assert detail["summary"]["date_normalizations"] == 2
+    assert detail["summary"]["inferred_data_types"]["amount_paid"] == "string"
     assert detail["summary"]["outlier_handling"] is None
     assert len(detail["original_preview"]) == 3
     assert len(detail["cleaned_preview"]) == 1
@@ -572,12 +575,17 @@ def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) ->
     assert docx_export.status_code == 200
     assert docx_export.content.startswith(b"PK")
 
+    with session_factory() as session:
+        dataset = session.get(Dataset, UUID(dataset_id))
+        current_version = next(item for item in dataset.versions if item.is_current)
+        assert Path(current_version.artifact_path).read_bytes() == content
+
     tenants["current"]["tenant"] = tenants["company_b"]
     assert client.get(f"/api/v1/datasets/{dataset_id}/cleaning").status_code == 404
     assert client.get(f"/api/v1/datasets/{dataset_id}/export/csv").status_code == 404
 
 
-def test_attention_required_exposes_original_detail_but_blocks_exports(
+def test_attention_required_exposes_cleaned_detail_and_exports(
     phase26_environment,
 ) -> None:
     client, _, _ = phase26_environment
@@ -588,16 +596,23 @@ def test_attention_required_exposes_original_detail_but_blocks_exports(
     assert detail_response.status_code == 200
     detail = detail_response.json()
     assert detail["status"] == "attention_required"
-    assert detail["cleaning_status"] == "configuration_required"
+    assert detail["cleaning_status"] in {"good", "warning"}
     assert detail["summary"]["original_row_count"] == 3
+    assert detail["summary"]["cleaned_row_count"] == 3
     assert detail["original_preview"][0]["customer_review"] == "Great service and fast"
-    assert detail["cleaned_preview"] == []
-    assert detail["preview_total"] == 0
+    assert detail["cleaned_preview"][0]["customer_review"] == "Great service and fast"
+    assert detail["preview_total"] == 3
     assert len(detail["transformation_history"]) == 1
+
+    with phase26_environment[1]() as session:
+        dataset = session.get(Dataset, UUID(dataset_id))
+        current_version = next(item for item in dataset.versions if item.is_current)
+        assert current_version.status == DatasetVersionStatus.VALIDATED
 
     for export_format in ("csv", "xlsx", "pdf", "docx"):
         response = client.get(f"/api/v1/datasets/{dataset_id}/export/{export_format}")
-        assert response.status_code == 409
+        assert response.status_code == 200
+        assert response.content
 
 
 def test_reconcile_endpoint_reports_promoted_and_ambiguous_datasets(
@@ -694,6 +709,27 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             }
         ]
 
+        current_version = next(item for item in ambiguous.versions if item.is_current)
+        raw_path = Path(current_version.artifact_path)
+        original_content = raw_path.read_bytes()
+        prepared_path = raw_path.parent.parent / "prepared" / "prepared.json"
+        metadata_path = raw_path.parent.parent / "metadata" / "metadata.json"
+        assert prepared_path.is_file()
+        assert metadata_path.is_file()
+        prepared_path.unlink()
+        metadata_path.unlink()
+
+        reconciled = service.reconcile_existing(tenant)
+        recovered = next(item for item in reconciled if item.id == ambiguous.id)
+        assert recovered.status == DatasetStatus.MAPPING_REQUIRED
+        assert prepared_path.is_file()
+        assert metadata_path.is_file()
+        assert service.get_cleaned_rows(tenant, ambiguous.id)
+        assert raw_path.read_bytes() == original_content
+        assert set(session.scalars(select(Dataset.id)).all()) == initial_ids | {
+            ambiguous.id
+        }
+
         with pytest.raises(InvalidMappingError, match="Select a source column"):
             service.submit_mapping(tenant, ambiguous.id, {})
 
@@ -705,6 +741,9 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
         assert confirmed.status == DatasetStatus.READY
         assert confirmed.mapping.mapping_json["accepted"]["gross_amount"] == "total_amount"
         assert "transaction_total" not in confirmed.mapping.mapping_json["accepted"]
+        assert next(
+            item for item in confirmed.versions if item.is_current
+        ).status == DatasetVersionStatus.READY
 
         unknown = service.upload(
             tenant,

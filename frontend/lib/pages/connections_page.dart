@@ -668,10 +668,10 @@ class _DatasetRow extends StatelessWidget {
             ),
           ),
           if (isReady || needsAttention)
-            IconButton(
-              tooltip: t.connectionsCleaning['view'],
+            TextButton.icon(
               onPressed: isDeleting ? null : () => onViewCleaning(dataset),
-              icon: const Icon(Icons.table_view_outlined),
+              icon: const Icon(Icons.table_view_outlined, size: 18),
+              label: Text(t.connectionsCleaning['view']!),
             ),
           if (needsAttention)
             IconButton(
@@ -959,9 +959,28 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                 ),
                 if (!isReady) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    widget.t.connectionsMappingSubtitle,
-                    style: TextStyle(color: colors.muted),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _Brand.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.cleaning_services_outlined,
+                          color: _Brand.blue,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${widget.t.connectionsReadyTitle}: ${widget.t.connectionsCleaning['summary']}. ${widget.t.connectionsMappingSubtitle}',
+                            style: TextStyle(color: colors.ink),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
                 const SizedBox(height: 18),
@@ -1023,25 +1042,19 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (isReady)
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final format in const [
-                        'CSV',
-                        'XLSX',
-                        'PDF',
-                        'DOCX',
-                      ])
-                        OutlinedButton.icon(
-                          onPressed: _exporting
-                              ? null
-                              : () => _export(format.toLowerCase()),
-                          icon: const Icon(Icons.download_outlined, size: 18),
-                          label: Text(format),
-                        ),
-                    ],
-                  ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final format in const ['CSV', 'XLSX', 'PDF', 'DOCX'])
+                      OutlinedButton.icon(
+                        onPressed: _exporting
+                            ? null
+                            : () => _export(format.toLowerCase()),
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: Text(format),
+                      ),
+                  ],
+                ),
               ],
             );
           },
