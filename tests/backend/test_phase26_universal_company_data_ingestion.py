@@ -218,6 +218,28 @@ def test_upload_csv_creates_ready_dataset(phase26_environment) -> None:
     assert body["columns"] == 8
 
 
+def test_same_tenant_imports_multiple_ready_datasets_with_different_schemas(
+    phase26_environment,
+) -> None:
+    client, _, _ = phase26_environment
+
+    customers = _upload(
+        client,
+        "customers.csv",
+        b"customer_id,email\nC-1,one@example.ca\nC-2,two@example.ca\n",
+    )
+    orders = _upload(
+        client,
+        "orders.csv",
+        b"order_id,order_timestamp\nO-1,2026-08-01\nO-2,2026-08-02\n",
+    )
+
+    assert customers.status_code == orders.status_code == 201
+    assert customers.json()["status"] == orders.json()["status"] == "ready"
+    listed = client.get("/api/v1/datasets").json()
+    assert {dataset["name"] for dataset in listed} == {"customers.csv", "orders.csv"}
+
+
 def test_upload_xlsx_creates_dataset(phase26_environment) -> None:
     client, _, _ = phase26_environment
     response = _upload(
