@@ -9,7 +9,11 @@ var
 *.db
 *.sqlite3
 tests
-frontend
+frontend/*
+!frontend/assets/
+frontend/assets/*
+!frontend/assets/i18n/
+!frontend/assets/i18n/**
 docs
 notebooks
 platform_knowledge
