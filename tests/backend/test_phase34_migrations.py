@@ -8,6 +8,7 @@ réelle — toujours un fichier SQLite temporaire dédié.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -35,6 +36,8 @@ def temp_db_url(tmp_path: Path) -> str:
 
 
 def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> None:
+    application_logger = logging.getLogger("backend.app.services.training_dispatcher")
+    application_logger.disabled = False
     config = _alembic_config(temp_db_url)
     command.upgrade(config, "head")
 
@@ -55,7 +58,8 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0008_billing_invoice_periods"
+    assert current == "0009_billing_invoice_fiscal_fields"
+    assert application_logger.disabled is False
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
@@ -108,9 +112,28 @@ def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:
     ]
     Base.metadata.create_all(engine, tables=tables_before_onboarding)  # simule l'ancien comportement Phase 1-34
     with engine.begin() as connection:
-        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN period_end"))
-        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN period_start"))
-        connection.execute(text("ALTER TABLE billing_invoices DROP COLUMN plan_code"))
+        connection.execute(text("DROP INDEX ix_billing_invoices_stripe_subscription_id"))
+        connection.execute(text("DROP INDEX ix_billing_invoices_stripe_customer_id"))
+        post_baseline_invoice_columns = (
+            "period_end",
+            "period_start",
+            "plan_code",
+            "stripe_subscription_id",
+            "stripe_customer_id",
+            "subtotal",
+            "discount_total",
+            "tax_total",
+            "total",
+            "line_items",
+            "billing_details",
+            "tax_identifiers",
+            "customer_email",
+            "paid_at",
+            "due_at",
+            "email_sent_at",
+        )
+        for column in post_baseline_invoice_columns:
+            connection.execute(text(f"ALTER TABLE billing_invoices DROP COLUMN {column}"))
     inspector = inspect(engine)
     assert "audit_log_entries" in inspector.get_table_names()
 
