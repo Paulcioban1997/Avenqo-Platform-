@@ -22,6 +22,6 @@ flutter pub get
 echo "=== Build Avenqo Web ==="
 flutter build web \
   --release \
-  --dart-define=API_BASE_URL=https://api.avenqo.ca/api/v1
+  --dart-define=API_BASE_URL=https://avenqo-platform-sandbox.up.railway.app/api/v1
 
 echo "=== Avenqo Flutter build completed ==="
