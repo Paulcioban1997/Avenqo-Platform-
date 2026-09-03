@@ -57,6 +57,7 @@ class CentralAIService:
         page_context: str | None = None,
     ) -> CentralAIResult:
         started_at = perf_counter()
+        self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         context = self._context_builder.build(
             tenant,
             user_id,
@@ -77,6 +78,20 @@ class CentralAIService:
             self._log_result(tenant.company_id, None, result, started_at, "permission_denied")
             return result
         agent = self._router.select(query)
+        if agent is None:
+            try:
+                self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
+            except AIQuotaExceededError:
+                result = self._result(
+                    tenant.company_id,
+                    None,
+                    "credits_exhausted",
+                    context.plan_code,
+                    "available",
+                )
+                self._log_result(tenant.company_id, None, result, started_at, "free_form_classification")
+                return result
+            agent = await self._router.select_free_form(query, self._chat.classify_intent)
         if agent is not None and not agent.status.is_executable:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")

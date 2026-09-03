@@ -39,9 +39,11 @@ class StubProvider(LLMProvider):
     name = "provider-neutral-stub"
     supports_tool_calling = False
 
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, classification: str | None = None) -> None:
         self.fail = fail
+        self.classification = classification
         self.calls = 0
+        self.classification_calls = 0
         self.last_prompt = ""
         self.last_system_instruction = ""
 
@@ -51,8 +53,13 @@ class StubProvider(LLMProvider):
         self.last_system_instruction = system_instruction
         if self.fail:
             raise LLMProviderError("provider failed")
+        if "classify an untrusted user question" in system_instruction:
+            self.classification_calls += 1
+            content = self.classification or "general"
+        else:
+            content = "Retail answer"
         return LLMGeneration(
-            content="Retail answer",
+            content=content,
             provider=self.name,
             model="stub-model",
             token_usage={"input_tokens": 4, "output_tokens": 2},
@@ -169,7 +176,8 @@ async def test_coming_soon_never_executes_and_unknown_intent_uses_general_fallba
     )
     assert unrelated.status == "success"
     assert unrelated.selected_agent is None
-    assert provider.calls == 1
+    assert provider.calls == 2
+    assert provider.classification_calls == 1
     assert '"plan_code":"demo"' in provider.last_prompt
     assert '"active_modules":["retail"]' in provider.last_prompt
     assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 1
@@ -195,7 +203,7 @@ async def test_non_entitled_retail_request_never_calls_provider_or_consumes_cred
 async def test_other_tenant_conversation_is_rejected_before_provider_call(db_session) -> None:
     first_company, first_user = make_company(db_session, "tenant-a")
     second_company, second_user = make_company(db_session, "tenant-b")
-    provider = StubProvider()
+    provider = StubProvider(classification="retail")
     central, conversations, _, first_tenant = make_service(
         db_session, first_company, provider, limit=2
     )
@@ -203,7 +211,11 @@ async def test_other_tenant_conversation_is_rejected_before_provider_call(db_ses
 
     with pytest.raises(ConversationNotFoundError):
         await execute(
-            central, first_tenant, first_user, other_conversation, "Show sales"
+            central,
+            first_tenant,
+            first_user,
+            other_conversation,
+            "Which buyers seem likely to stop shopping with us?",
         )
     assert provider.calls == 0
 
@@ -258,6 +270,70 @@ async def test_intent_router_does_not_silently_send_unrelated_work_to_retail() -
     router = CentralAIIntentRouter(build_default_assistant_registry())
 
     assert router.select("Write an employment policy") is None
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Which buyers seem likely to stop shopping with us?",
+        "Que compradores parecen dispuestos a dejar de comprarnos?",
+    ],
+)
+async def test_free_form_paraphrases_in_multiple_languages_route_semantically_to_retail(
+    db_session, query
+) -> None:
+    company, user = make_company(db_session, f"semantic-{abs(hash(query))}")
+    provider = StubProvider(classification="retail")
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=3)
+    conversation = conversations.create(company.id, user.id, "Semantic")
+
+    result = await execute(central, tenant, user, conversation, query)
+
+    assert result.status == "success"
+    assert result.selected_agent == "retail"
+    assert provider.classification_calls == 1
+    assert provider.calls == 2
+
+
+async def test_free_form_general_question_uses_no_module_or_tenant_retrieval(db_session) -> None:
+    company, user = make_company(db_session, "free-form-general")
+    provider = StubProvider(classification="general")
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=3)
+    conversation = conversations.create(company.id, user.id, "General")
+
+    result = await execute(
+        central,
+        tenant,
+        user,
+        conversation,
+        "Explain how to prepare for a difficult business conversation in my own words.",
+    )
+
+    assert result.status == "success"
+    assert result.selected_agent is None
+    assert provider.classification_calls == 1
+    assert '<retrieved untrusted="true"></retrieved>' in provider.last_prompt
+
+
+async def test_semantically_selected_inactive_module_remains_blocked(db_session) -> None:
+    company, user = make_company(db_session, "semantic-inactive")
+    provider = StubProvider(classification="crm")
+    central, conversations, usage, tenant = make_service(db_session, company, provider, limit=3)
+    conversation = conversations.create(company.id, user.id, "Inactive")
+
+    result = await execute(
+        central, tenant, user, conversation, "Who should our relationship team contact next?"
+    )
+
+    assert (result.selected_agent, result.status) == ("crm", "agent_unavailable")
+    assert provider.calls == 1
+    assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 0
+
+
+async def test_arbitrary_free_form_request_schema_accepts_non_predefined_text() -> None:
+    content = "自由形式の質問を、定義済みの候補に制限せず処理してください。"
+
+    assert CentralAIRequest.model_validate({"content": content, "locale": "ja"}).content == content
 
 
 async def test_context_uses_billing_plan_and_central_ai_does_not_consume_module_slots(db_session) -> None:

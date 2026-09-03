@@ -90,6 +90,21 @@ class ChatService:
     def provider_name(self) -> str:
         return self._provider.name
 
+    async def classify_intent(self, system_instruction: str, prompt: str) -> str:
+        """Classify untrusted text without tenant retrieval, tools, or credit consumption."""
+
+        try:
+            generation = await self._provider.generate(
+                system_instruction=system_instruction,
+                prompt=prompt,
+            )
+        except LLMProviderError as exc:
+            raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
+        return generation.content
+
+    def validate_conversation(self, tenant_id: UUID, user_id: UUID, conversation_id: UUID) -> None:
+        self._conversations.get(tenant_id, user_id, conversation_id)
+
     def _available_tools(self, *, permissions: frozenset[str], plan_code: str | None, capabilities: frozenset[str], allowed_tool_names: frozenset[str] | None = None):
         if self._orchestrator is None or self._tool_registry is None:
             return ()
