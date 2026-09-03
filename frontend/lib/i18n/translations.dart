@@ -205,33 +205,43 @@ class Phase4eStrings {
     required this.billing,
   });
 
-  factory Phase4eStrings.fromJson(Map<String, dynamic> json) => Phase4eStrings(
-        creditsTitle: json['creditsTitle'] as String,
-        creditsSubtitle: json['creditsSubtitle'] as String,
-        monthlyAllowance: json['monthlyAllowance'] as String,
-        monthlyRemaining: json['monthlyRemaining'] as String,
-        purchasedRemaining: json['purchasedRemaining'] as String,
-        totalRemaining: json['totalRemaining'] as String,
-        billingPeriod: json['billingPeriod'] as String,
-        monthlyProgress: json['monthlyProgress'] as String,
-        customAllowance: json['customAllowance'] as String,
-        resetExplanation: json['resetExplanation'] as String,
-        packsTitle: json['packsTitle'] as String,
-        packsSubtitle: json['packsSubtitle'] as String,
-        creditsUnit: json['creditsUnit'] as String,
-        purchase: json['purchase'] as String,
-        purchaseRequiresActive: json['purchaseRequiresActive'] as String,
-        priceUsd: json['priceUsd'] as String,
-        adminSubtitle: json['adminSubtitle'] as String,
-        company: json['company'] as String,
-        plan: json['plan'] as String,
-        subscription: json['subscription'] as String,
-        aiUsage: json['aiUsage'] as String,
-        noCompanies: json['noCompanies'] as String,
-        billing: (json['billing'] as Map<String, dynamic>).map(
-          (key, value) => MapEntry(key, value as String),
-        ),
-      );
+  factory Phase4eStrings.fromJson(Map<String, dynamic> json) {
+    final fallback = Phase4eStrings.fallback();
+    String value(String key, String fallbackValue) =>
+        json[key] is String ? json[key] as String : fallbackValue;
+    final localizedBilling = json['billing'] is Map<String, dynamic>
+        ? json['billing'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final billing = <String, String>{...fallback.billing};
+    for (final entry in localizedBilling.entries) {
+      if (entry.value is String) billing[entry.key] = entry.value as String;
+    }
+    return Phase4eStrings(
+      creditsTitle: value('creditsTitle', fallback.creditsTitle),
+      creditsSubtitle: value('creditsSubtitle', fallback.creditsSubtitle),
+      monthlyAllowance: value('monthlyAllowance', fallback.monthlyAllowance),
+      monthlyRemaining: value('monthlyRemaining', fallback.monthlyRemaining),
+      purchasedRemaining: value('purchasedRemaining', fallback.purchasedRemaining),
+      totalRemaining: value('totalRemaining', fallback.totalRemaining),
+      billingPeriod: value('billingPeriod', fallback.billingPeriod),
+      monthlyProgress: value('monthlyProgress', fallback.monthlyProgress),
+      customAllowance: value('customAllowance', fallback.customAllowance),
+      resetExplanation: value('resetExplanation', fallback.resetExplanation),
+      packsTitle: value('packsTitle', fallback.packsTitle),
+      packsSubtitle: value('packsSubtitle', fallback.packsSubtitle),
+      creditsUnit: value('creditsUnit', fallback.creditsUnit),
+      purchase: value('purchase', fallback.purchase),
+      purchaseRequiresActive: value('purchaseRequiresActive', fallback.purchaseRequiresActive),
+      priceUsd: value('priceUsd', fallback.priceUsd),
+      adminSubtitle: value('adminSubtitle', fallback.adminSubtitle),
+      company: value('company', fallback.company),
+      plan: value('plan', fallback.plan),
+      subscription: value('subscription', fallback.subscription),
+      aiUsage: value('aiUsage', fallback.aiUsage),
+      noCompanies: value('noCompanies', fallback.noCompanies),
+      billing: billing,
+    );
+  }
 
   factory Phase4eStrings.fallback() => const Phase4eStrings(
         creditsTitle: 'AI credits',

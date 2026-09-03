@@ -25,6 +25,7 @@ class SubscriptionPlan:
     max_selectable_modules: int | None = None
     requires_sales_contact: bool = False
     monthly_price_usd: int | None = None
+    monthly_ai_credits: int | None = None
 
     def allows_module(self, module_code: str) -> bool:
         """Indique si le module peut Ãªtre choisi avec cette offre."""
@@ -50,6 +51,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         ALL_MODULES,
         max_selectable_modules=2,
         monthly_price_usd=28,
+        monthly_ai_credits=6_500,
     ),
     SubscriptionPlan(
         PlanCode.PROFESSIONAL,
@@ -57,6 +59,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         ALL_MODULES,
         max_selectable_modules=8,
         monthly_price_usd=49,
+        monthly_ai_credits=25_000,
     ),
     SubscriptionPlan(
         PlanCode.ENTERPRISE,

@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
+import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,6 +81,7 @@ void main() {
       localesCatalog.map((e) => (e as Map<String, dynamic>)['code'] as String).toList();
 
   test('exactly the 43 expected locales are registered in _locales.json', () {
+    expect(defaultLocaleCode, 'fr-CA');
     expect(registeredCodes.toSet(), equals(kExpectedLocaleCodes.toSet()));
     expect(registeredCodes.length, 43);
     // Le legacy `fr` ne doit JAMAIS apparaître comme option visible.

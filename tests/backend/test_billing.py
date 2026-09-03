@@ -440,6 +440,51 @@ def test_active_demo_account_controls_wallet_when_company_plan_is_stale(
     }
 
 
+def test_active_plan_wallet_uses_catalog_allowance_without_quota_environment(
+    billing_environment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="catalog-wallet@acme.ca")
+    headers = auth_headers(login)
+    provider.events.append(subscription_event(login["company"]["id"], plan_code="demo"))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    monkeypatch.delenv("AI_QUOTA_LIMITS")
+    get_settings.cache_clear()
+
+    demo = client.get("/api/v1/billing/ai-credits", headers=headers).json()
+    assert demo == {
+        "billing_period": demo["billing_period"],
+        "monthly_included": 6500,
+        "monthly_used": 0,
+        "monthly_remaining": 6500,
+        "purchased_remaining": 0,
+        "total_remaining": 6500,
+    }
+
+    provider.events.append(
+        subscription_event(
+            login["company"]["id"],
+            event_id="evt_professional_wallet",
+            plan_code="professional",
+        )
+    )
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    professional = client.get("/api/v1/billing/ai-credits", headers=headers).json()
+    assert professional["monthly_included"] == 25000
+    assert professional["monthly_remaining"] == 25000
+    assert professional["purchased_remaining"] == 0
+    assert professional["total_remaining"] == 25000
+
+
 def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_environment) -> None:
     client, provider, notifier = billing_environment
     login_a = create_owner(client, notifier, email="credits-a@acme.ca", company_name="Credits A")

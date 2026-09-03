@@ -28,4 +28,4 @@ class LocaleInfo {
   bool get isRtl => direction == 'rtl';
 }
 
-const String defaultLocaleCode = 'fr';
+const String defaultLocaleCode = 'fr-CA';

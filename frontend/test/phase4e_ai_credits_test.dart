@@ -6,6 +6,7 @@ import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/features/admin/admin_ai_usage_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/pages/billing_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,10 +42,10 @@ ApiClient _api(http.Client client) => ApiClient(
       baseUrl: 'https://avenqo.test/api/v1',
     );
 
-Future<Widget> _wrap(Widget child, {bool dark = false, String localeCode = 'en'}) async {
+Future<Widget> _wrap(Widget child, {bool dark = false, String localeCode = 'en', LocaleController? localeController}) async {
   await initializeDateFormatting(localeCode);
-  final locale = LocaleController(store: _LocaleStore(localeCode));
-  await locale.initialize();
+  final locale = localeController ?? LocaleController(store: _LocaleStore(localeCode));
+  if (locale.translations == null) await locale.initialize();
   return AvenqoLocaleScope(
     controller: locale,
     child: MaterialApp(
@@ -135,11 +136,11 @@ void main() {
 
     for (final frenchText in [
       'Crédits IA',
-      'Votre allocation mensuelle et votre solde créditeur acheté.',
+      'Votre allocation mensuelle et le solde de vos crédits achetés.',
       'Allocation mensuelle',
-      'Mensuel restant',
-      'Achat restant',
-      'Total restant',
+      'Allocation mensuelle restante',
+      'Crédits achetés restants',
+      'Total disponible',
     ]) {
       expect(find.text(frenchText), findsOneWidget);
     }
@@ -155,6 +156,7 @@ void main() {
     ]) {
       expect(find.text(englishText), findsNothing);
     }
+    expect(find.text('Annuler l’abonnement'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Ajouter des crédits IA'),
       300,
@@ -162,16 +164,67 @@ void main() {
     );
     expect(find.text('Ajouter des crédits IA'), findsOneWidget);
     expect(
-      find.text('Packs de crédits uniques, remplis en toute sécurité via Stripe.'),
+      find.text('Packs de crédits à achat unique, traités en toute sécurité par Stripe.'),
       findsOneWidget,
     );
-    expect(find.text('Achat'), findsOneWidget);
+    expect(find.text('Acheter'), findsOneWidget);
+    final purchaseButton = tester.widget<FilledButton>(
+      find.ancestor(of: find.text('Acheter'), matching: find.byType(FilledButton)),
+    );
+    expect(purchaseButton.onPressed, isNotNull);
     expect(find.text('Add AI credits'), findsNothing);
     expect(
       find.text('One-time credit packs, fulfilled securely through Stripe.'),
       findsNothing,
     );
     expect(find.text('Purchase'), findsNothing);
+  });
+
+  testWidgets('Billing updates from English to fr-CA without remounting', (
+    tester,
+  ) async {
+    final locale = LocaleController(store: const _LocaleStore('en'));
+    await locale.initialize();
+    await tester.pumpWidget(await _wrap(
+      BillingPage(
+        api: _api(MockClient((_) async => http.Response('{}', 200))),
+        loader: (_) async => _startingBillingData('demo'),
+      ),
+      localeController: locale,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('AI credits'), findsOneWidget);
+
+    await locale.setLocale('fr-CA');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Crédits IA'), findsOneWidget);
+    for (final englishText in [
+      'AI credits',
+      'Your monthly allowance and purchased credit balance.',
+      'Billing period',
+      'Monthly allowance',
+      'Monthly remaining',
+      'Purchased remaining',
+      'Total remaining',
+      'Add AI credits',
+      'One-time credit packs, fulfilled securely through Stripe.',
+      'Purchase',
+    ]) {
+      expect(find.textContaining(englishText), findsNothing);
+    }
+  });
+
+  test('Phase4e fallback fills only genuinely missing keys', () {
+    final strings = Phase4eStrings.fromJson({
+      'creditsTitle': 'Crédits localisés',
+      'billing': {'statusActive': 'Actif localisé'},
+    });
+
+    expect(strings.creditsTitle, 'Crédits localisés');
+    expect(strings.monthlyAllowance, 'Monthly allowance');
+    expect(strings.subscriptionStatus('active'), 'Actif localisé');
+    expect(strings.billingValue('cancelSubscription'), 'Cancel subscription');
   });
 
   testWidgets('active Demo and Professional start with exact included balances and packs', (
