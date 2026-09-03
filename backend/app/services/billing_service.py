@@ -130,7 +130,11 @@ class BillingService:
             if pack.plan_code.value == plan_code
         ]
 
-    def get_credit_balance(self, company_id: UUID, plan_code: str) -> dict[str, Any]:
+    def get_credit_balance(self, company_id: UUID, fallback_plan_code: str) -> dict[str, Any]:
+        account = self._session.scalar(
+            select(BillingAccount).where(BillingAccount.company_id == company_id)
+        )
+        plan_code = account.plan_code if account is not None else fallback_plan_code
         return self._usage_service.get_credit_balance(company_id, plan_code)
 
     def create_credit_checkout(self, company: Company, pack_code: str) -> str:

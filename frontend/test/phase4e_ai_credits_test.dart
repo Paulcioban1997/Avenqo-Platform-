@@ -25,8 +25,12 @@ class _TokenStore implements TokenStore {
 }
 
 class _LocaleStore implements LocalePreferenceStore {
+  const _LocaleStore([this.code = 'en']);
+
+  final String code;
+
   @override
-  Future<String?> read() async => 'en';
+  Future<String?> read() async => code;
   @override
   Future<void> write(String code) async {}
 }
@@ -37,9 +41,9 @@ ApiClient _api(http.Client client) => ApiClient(
       baseUrl: 'https://avenqo.test/api/v1',
     );
 
-Future<Widget> _wrap(Widget child, {bool dark = false}) async {
-  await initializeDateFormatting('en');
-  final locale = LocaleController(store: _LocaleStore());
+Future<Widget> _wrap(Widget child, {bool dark = false, String localeCode = 'en'}) async {
+  await initializeDateFormatting(localeCode);
+  final locale = LocaleController(store: _LocaleStore(localeCode));
   await locale.initialize();
   return AvenqoLocaleScope(
     controller: locale,
@@ -115,6 +119,61 @@ void _expectCreditMetric(WidgetTester tester, String label, String value) {
 }
 
 void main() {
+  testWidgets('fr-CA Billing runtime uses the French Phase4e catalog', (
+    tester,
+  ) async {
+    final api = _api(MockClient((_) async => http.Response('{}', 200)));
+
+    await tester.pumpWidget(await _wrap(
+      BillingPage(
+        api: api,
+        loader: (_) async => _startingBillingData('demo'),
+      ),
+      localeCode: 'fr-CA',
+    ));
+    await tester.pumpAndSettle();
+
+    for (final frenchText in [
+      'Crédits IA',
+      'Votre allocation mensuelle et votre solde créditeur acheté.',
+      'Allocation mensuelle',
+      'Mensuel restant',
+      'Achat restant',
+      'Total restant',
+    ]) {
+      expect(find.text(frenchText), findsOneWidget);
+    }
+    expect(find.textContaining('Période de facturation:'), findsOneWidget);
+    for (final englishText in [
+      'AI credits',
+      'Your monthly allowance and purchased credit balance.',
+      'Monthly allowance',
+      'Monthly remaining',
+      'Purchased remaining',
+      'Total remaining',
+      'Billing period',
+    ]) {
+      expect(find.text(englishText), findsNothing);
+    }
+    await tester.scrollUntilVisible(
+      find.text('Ajouter des crédits IA'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Ajouter des crédits IA'), findsOneWidget);
+    expect(
+      find.text('Packs de crédits uniques, remplis en toute sécurité via Stripe.'),
+      findsOneWidget,
+    );
+    expect(find.text('Achat'), findsOneWidget);
+    expect(find.text('Add AI credits'), findsNothing);
+    expect(
+      find.text('One-time credit packs, fulfilled securely through Stripe.'),
+      findsNothing,
+    );
+    expect(find.text('Purchase'), findsNothing);
+  });
+
   testWidgets('active Demo and Professional start with exact included balances and packs', (
     tester,
   ) async {

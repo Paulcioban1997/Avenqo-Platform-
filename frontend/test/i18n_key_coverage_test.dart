@@ -8,8 +8,22 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:avenqo/agents/agent_registry.dart';
+import 'package:avenqo/core/token_store.dart';
+import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _LocaleStore implements LocalePreferenceStore {
+  const _LocaleStore(this.code);
+
+  final String code;
+
+  @override
+  Future<String?> read() async => code;
+
+  @override
+  Future<void> write(String code) async {}
+}
 
 const List<String> kExpectedLocaleCodes = [
   'fr-CA', 'fr-FR', 'en', 'es', 'pt', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
@@ -58,6 +72,8 @@ Set<String> _placeholders(String value) => RegExp(
     ).allMatches(value).map((match) => match.group(0)!).toSet();
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final localesCatalog =
       jsonDecode(File('assets/i18n/_locales.json').readAsStringSync()) as List<dynamic>;
   final registeredCodes =
@@ -249,6 +265,51 @@ void main() {
           );
         }
       }
+    }
+  });
+
+  test('all registered locales load their Billing strings at runtime', () async {
+    for (final code in kExpectedLocaleCodes) {
+      final source = _readLocaleJson(code);
+      final expected = Phase4eStrings.fromJson(
+        source['phase4e'] as Map<String, dynamic>,
+      );
+      final expectedCompany = source['company'] as Map<String, dynamic>;
+      final controller = LocaleController(store: _LocaleStore(code));
+
+      await controller.initialize();
+
+      expect(controller.code, code);
+      final actual = controller.translations!.phase4e;
+      expect(actual.creditsTitle, expected.creditsTitle);
+      expect(actual.creditsSubtitle, expected.creditsSubtitle);
+      expect(actual.monthlyAllowance, expected.monthlyAllowance);
+      expect(actual.monthlyRemaining, expected.monthlyRemaining);
+      expect(actual.purchasedRemaining, expected.purchasedRemaining);
+      expect(actual.totalRemaining, expected.totalRemaining);
+      expect(actual.billingPeriod, expected.billingPeriod);
+      expect(actual.monthlyProgress, expected.monthlyProgress);
+      expect(actual.customAllowance, expected.customAllowance);
+      expect(actual.resetExplanation, expected.resetExplanation);
+      expect(actual.packsTitle, expected.packsTitle);
+      expect(actual.packsSubtitle, expected.packsSubtitle);
+      expect(actual.creditsUnit, expected.creditsUnit);
+      expect(actual.purchase, expected.purchase);
+      expect(actual.purchaseRequiresActive, expected.purchaseRequiresActive);
+      expect(actual.priceUsd, expected.priceUsd);
+      expect(actual.billing, expected.billing);
+
+      final company = controller.translations!.company;
+      expect(company.billingTitle, expectedCompany['billingTitle']);
+      expect(company.billingPortalButton, expectedCompany['billingPortalButton']);
+      expect(company.billingUnavailable, expectedCompany['billingUnavailable']);
+      expect(company.billingPlanPrefix, expectedCompany['billingPlanPrefix']);
+      expect(company.billingStatusPrefix, expectedCompany['billingStatusPrefix']);
+      expect(company.billingCancelScheduled, expectedCompany['billingCancelScheduled']);
+      expect(company.settingsManageSubscription, expectedCompany['settingsManageSubscription']);
+      expect(company.billingInvoicesTitle, expectedCompany['billingInvoicesTitle']);
+      expect(company.billingInvoiceFallback, expectedCompany['billingInvoiceFallback']);
+      expect(company.connectionsRetry, expectedCompany['connectionsRetry']);
     }
   });
 }

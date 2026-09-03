@@ -2,6 +2,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.dependencies.billing import get_billing_provider
-from backend.app.models import Base
+from backend.app.models import Base, Company
 from backend.app.services.stripe_gateway import StripeGateway
 from backend.main import create_application
 
@@ -399,6 +400,44 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     assert policy.limit_for("demo", MONTHLY_AI_REQUESTS) == 6500
     assert policy.limit_for("professional", MONTHLY_AI_REQUESTS) == 25000
     assert policy.limit_for("enterprise", MONTHLY_AI_REQUESTS) is None
+
+
+def test_active_demo_account_controls_wallet_when_company_plan_is_stale(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="demo-wallet@acme.ca")
+    headers = auth_headers(login)
+    company_id = login["company"]["id"]
+    provider.events.append(subscription_event(company_id, plan_code="demo"))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        company = session.get(Company, UUID(company_id))
+        assert company is not None
+        company.subscription_plan = "enterprise"
+        session.commit()
+    engine.dispose()
+
+    subscription = client.get("/api/v1/billing/subscription", headers=headers)
+    balance = client.get("/api/v1/billing/ai-credits", headers=headers)
+
+    assert subscription.json()["plan_code"] == "demo"
+    assert subscription.json()["status"] == "active"
+    assert balance.json() == {
+        "billing_period": balance.json()["billing_period"],
+        "monthly_included": 6500,
+        "monthly_used": 0,
+        "monthly_remaining": 6500,
+        "purchased_remaining": 0,
+        "total_remaining": 6500,
+    }
 
 
 def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_environment) -> None:
