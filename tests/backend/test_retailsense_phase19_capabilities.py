@@ -31,6 +31,7 @@ Aucune logique Olist : tous les datasets ci-dessous sont génériques
 from __future__ import annotations
 
 import inspect
+import logging
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -481,7 +482,9 @@ def test_synthetic_data_generation_is_future_capability_only() -> None:
 
 def test_multi_capability_dataset_creates_independent_jobs_and_active_models(
     phase19_environment,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.INFO, logger="backend.app.services.training_dispatcher")
     client, session_factory, tenant, _model_root, _app, _create_company = phase19_environment
 
     response = client.post(
@@ -492,13 +495,15 @@ def test_multi_capability_dataset_creates_independent_jobs_and_active_models(
     assert response.status_code == 201
 
     ai_jobs = _ai_jobs(session_factory, tenant.company_id)
-    # bad_review et churn (classification, cible non résolvable ici -> échouent
-    # chacun seul, sans jamais bloquer les autres), price et demand
-    # (regression), weekly_forecast (forecasting, Phase 20 :
-    # "order_date"/"quantity" résolus), et recommendation (Phase 22 :
-    # "customer_id"/"product_id"/"quantity" résolus) : six jobs indépendants
-    # créés à partir d'un seul dataset.
-    assert len(ai_jobs) == 6
+    # bad_review et churn partagent la capacité classification, mais aucune de
+    # leurs cibles métier n'est présente : elles sont non applicables et ne
+    # créent pas de job voué à l'échec. Les quatre tâches réellement prêtes
+    # restent indépendantes.
+    assert len(ai_jobs) == 4
+    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED}
+    assert "task=bad_review" in caplog.text
+    assert "task=churn" in caplog.text
+    assert caplog.text.count("skipped as not applicable") >= 2
 
     registry_rows = _registry_rows(session_factory, tenant.company_id)
     by_task = {row.task_code: row for row in registry_rows}
@@ -518,6 +523,7 @@ def test_multi_capability_dataset_creates_independent_jobs_and_active_models(
 def test_one_dataset_creates_six_independent_tasks_without_tenant_leakage(
     phase19_environment,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Une entreprise + un dataset produisent six entraînements isolés.
 
@@ -528,6 +534,7 @@ def test_one_dataset_creates_six_independent_tasks_without_tenant_leakage(
     exclusivement par les méthodes spécialisées du même `TrainingService`.
     """
 
+    caplog.set_level(logging.INFO, logger="backend.app.services.training_dispatcher")
     client, session_factory, tenant_a, model_root, _app, create_company = phase19_environment
     tenant_b = create_company("No Data Retailer")
 
@@ -558,20 +565,19 @@ def test_one_dataset_creates_six_independent_tasks_without_tenant_leakage(
     }
     ai_jobs = _ai_jobs(session_factory, tenant_a.company_id)
     # Phase 21 : "churn" partage la capacité "classification" avec
-    # "bad_review" et est donc lui aussi dispatché, mais ce dataset ne
-    # contient aucun signal de churn : son job échoue seul, sans jamais
-    # bloquer ni désactiver les sept tâches réellement exécutables. Phase 22 :
-    # "recommendation" rejoint désormais les tâches réellement exécutables.
-    assert len(ai_jobs) == 8
-    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED, JobStatus.FAILED}
-    completed_jobs = [job for job in ai_jobs if job.status == JobStatus.COMPLETED]
-    assert len(completed_jobs) == 7
+    # "bad_review", mais sa cible n'existe pas dans ce dataset. Le garde de
+    # readiness l'ignore avant planification; les sept tâches applicables
+    # s'exécutent indépendamment.
+    assert len(ai_jobs) == 7
+    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED}
+    assert "task=churn" in caplog.text
+    assert "skipped as not applicable" in caplog.text
 
     with session_factory() as session:
         training_jobs = session.scalars(
             select(TrainingJob).where(TrainingJob.company_id == tenant_a.company_id)
         ).all()
-    assert len(training_jobs) == 8
+    assert len(training_jobs) == 7
     assert len({job.dataset_id for job in training_jobs}) == 1
 
     registry_rows = _registry_rows(session_factory, tenant_a.company_id)
