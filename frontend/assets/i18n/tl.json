@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Magpatuloy",
     "connectionsImportedAtLabel": "Na-import",
     "connectionsUploadedFileSuccessLabel": "Matagumpay na na-import ang data",
-    "connectionsCleaning": {"view": "Tingnan ang nilinis na data", "summary": "Buod ng paglilinis", "before": "Bago", "after": "Pagkatapos"},
+    "connectionsCleaning": {
+      "view": "Tingnan ang nilinis na data",
+      "summary": "Buod ng paglilinis",
+      "before": "Bago",
+      "after": "Pagkatapos"
+    },
     "themeToggleSwitchToDark": "Lumipat sa madilim na mode",
     "themeToggleSwitchToLight": "Lumipat sa maliwanag na mode"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Propesyonal",
       "planEnterprise": "Pang-enterprise",
-      "nextRenewal": "Susunod na pag-renew: {date}"
+      "nextRenewal": "Susunod na pag-renew: {date}",
+      "downloadCsv": "I-download ang CSV",
+      "downloadXlsx": "I-download ang XLSX",
+      "invoiceDate": "Petsa ng invoice",
+      "subtotal": "Subtotal",
+      "taxes": "Mga buwis",
+      "total": "Kabuuan",
+      "previous": "Nakaraan",
+      "next": "Susunod",
+      "officialInvoice": "Opisyal na invoice ng Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Bayad na ang invoice {number}",
+    "greeting": "Kumusta {company}, bayad na ang iyong Avenqo invoice.",
+    "totalPaid": "Kabuuang bayad",
+    "status": "Katayuan",
+    "invoiceNumber": "Walang available na invoice",
+    "plan": "Plano",
+    "billingPeriod": "Panahon ng pagsingil",
+    "subtotal": "Subtotal",
+    "taxes": "Mga buwis",
+    "viewInvoice": "Tingnan ang mga invoice",
+    "downloadPdf": "Mag-download ng PDF"
   }
 }

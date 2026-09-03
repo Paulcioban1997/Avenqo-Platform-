@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Continue",
     "connectionsImportedAtLabel": "Imported",
     "connectionsUploadedFileSuccessLabel": "Data imported successfully",
-    "connectionsCleaning": {"view": "View cleaned data", "summary": "Cleaning summary", "before": "Before", "after": "After"},
+    "connectionsCleaning": {
+      "view": "View cleaned data",
+      "summary": "Cleaning summary",
+      "before": "Before",
+      "after": "After"
+    },
     "themeToggleSwitchToDark": "Switch to dark mode",
     "themeToggleSwitchToLight": "Switch to light mode"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Professional",
       "planEnterprise": "Enterprise",
-      "nextRenewal": "Next renewal: {date}"
+      "nextRenewal": "Next renewal: {date}",
+      "downloadCsv": "Download CSV",
+      "downloadXlsx": "Download XLSX",
+      "invoiceDate": "Invoice date",
+      "subtotal": "Subtotal",
+      "taxes": "Taxes",
+      "total": "Total",
+      "previous": "Previous",
+      "next": "Next",
+      "officialInvoice": "Official Stripe invoice"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Invoice {number} paid",
+    "greeting": "Hello {company}, your Avenqo invoice has been paid.",
+    "totalPaid": "Total paid",
+    "status": "Status",
+    "invoiceNumber": "Invoice",
+    "plan": "Plan",
+    "billingPeriod": "Billing period",
+    "subtotal": "Subtotal",
+    "taxes": "Taxes",
+    "viewInvoice": "View invoices",
+    "downloadPdf": "Download PDF"
   }
 }

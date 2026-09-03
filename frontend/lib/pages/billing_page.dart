@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/file_picker/app_file_picker.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,26 +19,29 @@ class BillingData {
     required this.invoices,
     required this.balance,
     required this.packs,
+    this.invoiceTotal,
   });
 
   final Map<String, dynamic> subscription;
   final List<dynamic> invoices;
   final Map<String, dynamic> balance;
   final List<Map<String, dynamic>> packs;
+  final int? invoiceTotal;
 }
 
 Future<BillingData> _loadBillingData(ApiClient api) async {
   final values = await Future.wait([
     api.get('/billing/subscription'),
-    api.get('/billing/invoices'),
+    api.get('/billing/invoices/history?offset=0&limit=20'),
     api.get('/billing/ai-credits'),
     api.get('/billing/credit-packs'),
   ]);
   return BillingData(
     subscription: values[0] as Map<String, dynamic>,
-    invoices: values[1] as List<dynamic>,
+    invoices: (values[1] as Map<String, dynamic>)['items'] as List<dynamic>,
     balance: values[2] as Map<String, dynamic>,
     packs: (values[3] as List<dynamic>).cast<Map<String, dynamic>>(),
+    invoiceTotal: (values[1] as Map<String, dynamic>)['total'] as int,
   );
 }
 
@@ -282,48 +286,104 @@ class _BillingPageState extends State<BillingPage> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 10),
-              if (invoices.isEmpty) Text(creditsT.billingValue('noInvoices')),
-              for (final invoice in invoices)
-                Builder(builder: (context) {
-                  final periodStart = DateTime.tryParse(invoice['period_start']?.toString() ?? '');
-                  final periodEnd = DateTime.tryParse(invoice['period_end']?.toString() ?? '');
-                  final status = creditsT.invoiceStatus(invoice['status'].toString());
-                  final period = periodStart != null && periodEnd != null
-                      ? creditsT.billingValue('invoicePeriod')
-                          .replaceFirst('{start}', DateFormat.yMMMd(localeCode).format(periodStart.toLocal()))
-                          .replaceFirst('{end}', DateFormat.yMMMd(localeCode).format(periodEnd.toLocal()))
-                      : null;
-                  return ListTile(
-                    leading: const Icon(Icons.receipt_outlined),
-                    title: Text(invoice['number']?.toString() ?? t.billingInvoiceFallback),
-                    subtitle: Text(period == null ? status : '$status · $period'),
-                    trailing: Wrap(
-                      spacing: 4,
-                      children: [
-                        Text(NumberFormat.simpleCurrency(
-                          locale: localeCode,
-                          name: invoice['currency'].toString().toUpperCase(),
-                        ).format((invoice['amount_paid'] as num) / 100)),
-                        if (invoice['hosted_invoice_url'] != null)
-                          IconButton(
-                            tooltip: creditsT.billingValue('viewInvoice'),
-                            onPressed: () => widget.launcher(Uri.parse(invoice['hosted_invoice_url'].toString())),
-                            icon: const Icon(Icons.open_in_new),
-                          ),
-                        if (invoice['invoice_pdf'] != null)
-                          IconButton(
-                            tooltip: creditsT.billingValue('downloadPdf'),
-                            onPressed: () => widget.launcher(Uri.parse(invoice['invoice_pdf'].toString())),
-                            icon: const Icon(Icons.picture_as_pdf_outlined),
-                          ),
-                      ],
-                    ),
-                  );
-                }),
+              _InvoiceHistory(
+                api: widget.api,
+                launcher: widget.launcher,
+                initialInvoices: invoices.cast<Map<String, dynamic>>(),
+                initialTotal: data.invoiceTotal ?? invoices.length,
+                localeCode: localeCode,
+                strings: creditsT,
+                invoiceFallback: t.billingInvoiceFallback,
+              ),
             ],
           ],
         );
       },
+    );
+  }
+}
+
+class _InvoiceHistory extends StatefulWidget {
+  const _InvoiceHistory({required this.api, required this.launcher, required this.initialInvoices, required this.initialTotal, required this.localeCode, required this.strings, required this.invoiceFallback});
+  final ApiClient api;
+  final ExternalUrlLauncher launcher;
+  final List<Map<String, dynamic>> initialInvoices;
+  final int initialTotal;
+  final String localeCode;
+  final Phase4eStrings strings;
+  final String invoiceFallback;
+
+  @override
+  State<_InvoiceHistory> createState() => _InvoiceHistoryState();
+}
+
+class _InvoiceHistoryState extends State<_InvoiceHistory> {
+  static const _pageSize = 20;
+  late List<Map<String, dynamic>> _invoices = widget.initialInvoices;
+  late int _total = widget.initialTotal;
+  int _offset = 0;
+  bool _loading = false;
+
+  Future<void> _loadPage(int offset) async {
+    setState(() => _loading = true);
+    try {
+      final response = await widget.api.get('/billing/invoices/history?offset=$offset&limit=$_pageSize') as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _offset = offset;
+        _total = response['total'] as int;
+        _invoices = (response['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+      });
+    } on ApiException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _download(Map<String, dynamic> invoice, String format) async {
+    try {
+      final file = await widget.api.download('/billing/invoices/${invoice['id']}/export/$format');
+      await saveExportFile(file.fileName, file.bytes);
+    } on ApiException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_invoices.isEmpty) return Text(widget.strings.billingValue('noInvoices'));
+    return Column(children: [
+      for (final invoice in _invoices) _invoiceRow(invoice),
+      if (_total > _pageSize) Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+        IconButton(tooltip: widget.strings.billingValue('previous'), onPressed: _loading || _offset == 0 ? null : () => _loadPage((_offset - _pageSize).clamp(0, _total)), icon: const Icon(Icons.chevron_left)),
+        Text('${(_offset ~/ _pageSize) + 1} / ${(_total / _pageSize).ceil()}'),
+        IconButton(tooltip: widget.strings.billingValue('next'), onPressed: _loading || _offset + _pageSize >= _total ? null : () => _loadPage(_offset + _pageSize), icon: const Icon(Icons.chevron_right)),
+      ]),
+    ]);
+  }
+
+  Widget _invoiceRow(Map<String, dynamic> invoice) {
+    final periodStart = DateTime.tryParse(invoice['period_start']?.toString() ?? '');
+    final periodEnd = DateTime.tryParse(invoice['period_end']?.toString() ?? '');
+    final issuedAt = DateTime.tryParse(invoice['issued_at']?.toString() ?? '');
+    final status = widget.strings.invoiceStatus(invoice['status'].toString());
+    final currency = invoice['currency'].toString().toUpperCase();
+    final period = periodStart != null && periodEnd != null
+        ? widget.strings.billingValue('invoicePeriod').replaceFirst('{start}', DateFormat.yMMMd(widget.localeCode).format(periodStart.toLocal())).replaceFirst('{end}', DateFormat.yMMMd(widget.localeCode).format(periodEnd.toLocal()))
+        : null;
+    final total = NumberFormat.currency(locale: widget.localeCode, symbol: '', decimalDigits: 2).format((invoice['total'] as num) / 100).trim();
+    return ListTile(
+      leading: const Icon(Icons.receipt_outlined),
+      title: Text(invoice['number']?.toString() ?? widget.invoiceFallback),
+      subtitle: Text([if (issuedAt != null) DateFormat.yMMMd(widget.localeCode).format(issuedAt.toLocal()), widget.strings.planName(invoice['plan_code']?.toString() ?? ''), status, ?period].join(' · ')),
+      trailing: Wrap(spacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text('$total $currency'),
+        if (invoice['hosted_invoice_url'] != null) IconButton(tooltip: widget.strings.billingValue('viewInvoice'), onPressed: () => widget.launcher(Uri.parse(invoice['hosted_invoice_url'].toString())), icon: const Icon(Icons.open_in_new)),
+        if (invoice['invoice_pdf'] != null) IconButton(tooltip: widget.strings.billingValue('downloadPdf'), onPressed: () => widget.launcher(Uri.parse(invoice['invoice_pdf'].toString())), icon: const Icon(Icons.picture_as_pdf_outlined)),
+        IconButton(tooltip: widget.strings.billingValue('downloadCsv'), onPressed: () => _download(invoice, 'csv'), icon: const Icon(Icons.table_view_outlined)),
+        IconButton(tooltip: widget.strings.billingValue('downloadXlsx'), onPressed: () => _download(invoice, 'xlsx'), icon: const Icon(Icons.grid_on_outlined)),
+      ]),
     );
   }
 }

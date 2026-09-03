@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Continuă",
     "connectionsImportedAtLabel": "Importat",
     "connectionsUploadedFileSuccessLabel": "Date importate cu succes",
-    "connectionsCleaning": {"view": "Vezi datele curățate", "summary": "Rezumatul curățării", "before": "Înainte", "after": "După"},
+    "connectionsCleaning": {
+      "view": "Vezi datele curățate",
+      "summary": "Rezumatul curățării",
+      "before": "Înainte",
+      "after": "După"
+    },
     "themeToggleSwitchToDark": "Comută la modul întunecat",
     "themeToggleSwitchToLight": "Comută la modul luminos"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demonstrație",
       "planProfessional": "Profesional",
       "planEnterprise": "Întreprindere",
-      "nextRenewal": "Următoarea reînnoire: {date}"
+      "nextRenewal": "Următoarea reînnoire: {date}",
+      "downloadCsv": "Descarcă CSV",
+      "downloadXlsx": "Descarcă XLSX",
+      "invoiceDate": "Data facturii",
+      "subtotal": "Subtotal",
+      "taxes": "Taxe",
+      "total": "Total",
+      "previous": "Anterior",
+      "next": "Următor",
+      "officialInvoice": "Factura oficială Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Factura {number} plătită",
+    "greeting": "Bună {company}, factura Avenqo a fost plătită.",
+    "totalPaid": "Total plătit",
+    "status": "Stare",
+    "invoiceNumber": "Factură",
+    "plan": "Plan",
+    "billingPeriod": "Perioada de facturare",
+    "subtotal": "Subtotal",
+    "taxes": "Taxe",
+    "viewInvoice": "Vizualizați factura",
+    "downloadPdf": "Descărcați PDF"
   }
 }

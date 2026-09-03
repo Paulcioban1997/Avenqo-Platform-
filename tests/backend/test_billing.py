@@ -16,18 +16,49 @@ from backend.app.dependencies.auth import get_account_notifier
 from backend.app.dependencies.billing import get_billing_provider
 from backend.app.models import Base, Company
 from backend.app.services.stripe_gateway import StripeGateway
+from backend.app.services.account_notifications import AccountNotificationService
+from backend.app.services.invoice_fiscal_service import InvoiceFiscalService
 from backend.main import create_application
 
 
 class RecordingNotifier:
     def __init__(self) -> None:
         self.verification_tokens: dict[str, str] = {}
+        self.invoice_emails: list[dict[str, Any]] = []
+
+    email_delivery_configured = True
 
     def send_email_verification(self, email: str, token: str) -> None:
         self.verification_tokens[email] = token
 
     def send_password_reset(self, email: str, token: str) -> None:
         pass
+
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+        self.invoice_emails.append({
+            "recipient": recipient,
+            "company_id": str(company.id),
+            "invoice_id": str(invoice.id),
+        })
+
+
+class RecordingEmailTransport:
+    def __init__(self) -> None:
+        self.messages: list[dict[str, str]] = []
+
+    def send(
+        self,
+        recipient: str,
+        subject: str,
+        text_body: str,
+        html_body: str,
+    ) -> None:
+        self.messages.append({
+            "recipient": recipient,
+            "subject": subject,
+            "text_body": text_body,
+            "html_body": html_body,
+        })
 
 
 class FakeStripeProvider:
@@ -182,25 +213,42 @@ def invoice_event(
     event_id: str = "evt_invoice",
     event_type: str = "invoice.paid",
     billing_reason: str | None = None,
+    invoice_id: str = "in_acme",
+    plan_code: str = "professional",
 ) -> dict[str, Any]:
     return {
         "id": event_id,
         "type": event_type,
         "data": {"object": {
-            "id": "in_acme",
+            "id": invoice_id,
             "customer": f"cus_{company_id}",
+            "customer_email": "stripe-billing@acme.ca",
+            "customer_name": "Acme Retail",
+            "customer_address": {"country": "CA", "postal_code": "H2X 1Y4"},
+            "customer_tax_ids": [{"type": "ca_bn", "value": "123456789"}],
             "number": "AVQ-0001",
             "status": "paid" if event_type == "invoice.paid" else "open",
             "billing_reason": billing_reason,
             "currency": "cad",
+            "subtotal": 6000,
+            "total_discount_amounts": [],
+            "total_tax_amounts": [{"amount": 700}],
+            "total": 6700,
             "amount_due": 6700,
             "amount_paid": 6700 if event_type == "invoice.paid" else 0,
             "hosted_invoice_url": "https://invoice.stripe.test/in_acme",
             "invoice_pdf": "https://invoice.stripe.test/in_acme.pdf",
             "created": 1_750_000_000,
+            "due_date": 1_752_000_000,
+            "status_transitions": {"paid_at": 1_750_000_100 if event_type == "invoice.paid" else None},
             "metadata": {"avenqo_company_id": company_id},
+            "parent": {"subscription_details": {"subscription": "sub_acme"}},
             "lines": {"data": [{
-                "price": {"id": "price_professional"},
+                "description": f"Avenqo {plan_code.title()}",
+                "quantity": 1,
+                "amount": 6000,
+                "currency": "cad",
+                "price": {"id": f"price_{plan_code}", "product": f"prod_{plan_code}"},
                 "period": {"start": 1_749_000_000, "end": 1_751_000_000},
             }]},
         }},
@@ -729,7 +777,8 @@ def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> N
     nova = create_owner(client, notifier, "owner@nova.ca", "Nova Commerce")
     company_id = acme["company"]["id"]
     paid_event = invoice_event(company_id)
-    provider.events.extend([paid_event, paid_event])
+    repeated_invoice = invoice_event(company_id, event_id="evt_invoice_replayed")
+    provider.events.extend([paid_event, repeated_invoice])
     first = client.post(
         "/api/v1/billing/webhook",
         content=b"{}",
@@ -741,18 +790,93 @@ def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> N
         headers={"Stripe-Signature": "valid_signature"},
     )
     assert first.json() == {"processed": True}
-    assert second.json() == {"processed": False}
+    assert second.json() == {"processed": True}
     invoices = client.get("/api/v1/billing/invoices", headers=auth_headers(acme)).json()
     assert len(invoices) == 1
-    assert invoices[0] | {} == {
-        **invoices[0],
-        "plan_code": "professional",
-        "currency": "cad",
-        "amount_paid": 6700,
-        "status": "paid",
-    }
+    invoice = invoices[0]
+    assert invoice["plan_code"] == "professional"
+    assert invoice["currency"] == "cad"
+    assert invoice["subtotal"] == 6000
+    assert invoice["tax_total"] == 700
+    assert invoice["total"] == 6700
+    assert invoice["amount_paid"] == 6700
+    assert invoice["status"] == "paid"
+    assert invoice["stripe_subscription_id"] == "sub_acme"
+    assert invoice["line_items"][0]["product_id"] == "prod_professional"
+    assert invoice["billing_details"]["address"]["country"] == "CA"
+    assert invoice["tax_identifiers"][0]["type"] == "ca_bn"
     assert invoices[0]["period_start"] is not None
     assert invoices[0]["period_end"] is not None
+    assert len(notifier.invoice_emails) == 1
+    assert notifier.invoice_emails[0]["recipient"] == "billing+owner@acme.ca"
+
+    invoice_id = invoice["id"]
+    history = client.get(
+        "/api/v1/billing/invoices/history?offset=0&limit=1",
+        headers=auth_headers(acme),
+    ).json()
+    assert history["total"] == 1
+    assert history["items"][0]["id"] == invoice_id
+
+    csv_export = client.get(
+        f"/api/v1/billing/invoices/{invoice_id}/export/csv",
+        headers=auth_headers(acme),
+    )
+    assert csv_export.status_code == 200
+    assert "AVQ-0001" in csv_export.text
+    assert "6700" in csv_export.text
+
+    xlsx_export = client.get(
+        "/api/v1/billing/invoices/export/xlsx",
+        params={"start": "2025-01-01T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
+        headers=auth_headers(acme),
+    )
+    assert xlsx_export.status_code == 200
+    assert xlsx_export.content.startswith(b"PK")
+
+    fiscal_export = client.get(
+        "/api/v1/billing/invoices/export/csv?fiscal_year=2025",
+        headers=auth_headers(acme),
+    )
+    assert fiscal_export.status_code == 200
+    assert "in_acme" in fiscal_export.text
+    fiscal = client.get(
+        "/api/v1/billing/invoices/fiscal/2025",
+        headers=auth_headers(acme),
+    ).json()
+    assert fiscal == {
+        "fiscal_year": 2025,
+        "invoices_paid": 1,
+        "totals_by_currency": [{
+            "currency": "CAD",
+            "subscription_expense": 6000,
+            "taxes_paid": 700,
+            "total_paid": 6700,
+        }],
+        "missing_or_unpaid_invoices": 0,
+    }
+    fiscal_pdf = client.get(
+        "/api/v1/billing/invoices/fiscal/2025/pdf",
+        headers=auth_headers(acme),
+    )
+    assert fiscal_pdf.status_code == 200
+    assert fiscal_pdf.content.startswith(b"%PDF")
+    assert "fiscal-summary" in fiscal_pdf.headers["content-disposition"]
+
+    official_pdf = client.get(
+        f"/api/v1/billing/invoices/{invoice_id}/pdf",
+        headers=auth_headers(acme),
+        follow_redirects=False,
+    )
+    assert official_pdf.status_code == 307
+    assert official_pdf.headers["location"] == "https://invoice.stripe.test/in_acme.pdf"
+
+    for path in (
+        f"/api/v1/billing/invoices/{invoice_id}",
+        f"/api/v1/billing/invoices/{invoice_id}/pdf",
+        f"/api/v1/billing/invoices/{invoice_id}/export/csv",
+    ):
+        assert client.get(path, headers=auth_headers(nova), follow_redirects=False).status_code == 404
     provider.events.append(invoice_event(
         company_id,
         event_id="evt_invoice_failed",
@@ -765,9 +889,82 @@ def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> N
     )
     assert failed.json() == {"processed": True}
     assert client.get("/api/v1/billing/invoices", headers=auth_headers(acme)).json()[0]["status"] == "open"
+    assert len(notifier.invoice_emails) == 1
     assert client.get("/api/v1/billing/invoices", headers=auth_headers(nova)).json() == []
     assert client.post(
         "/api/v1/billing/webhook",
         content=b"{}",
         headers={"Stripe-Signature": "invalid"},
     ).status_code == 400
+
+
+@pytest.mark.parametrize("plan_code", ["demo", "professional"])
+def test_subscription_invoice_uses_stripe_plan_and_currency(
+    billing_environment,
+    plan_code: str,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(
+        client,
+        notifier,
+        email=f"{plan_code}@acme.ca",
+        company_name=f"{plan_code.title()} Company",
+    )
+    provider.events.append(
+        invoice_event(
+            login["company"]["id"],
+            event_id=f"evt_{plan_code}_invoice",
+            invoice_id=f"in_{plan_code}",
+            plan_code=plan_code,
+        )
+    )
+
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    invoice = client.get(
+        "/api/v1/billing/invoices",
+        headers=auth_headers(login),
+    ).json()[0]
+    assert invoice["plan_code"] == plan_code
+    assert invoice["currency"] == "cad"
+    assert invoice["amount_paid"] == 6700
+
+
+def test_invoice_email_uses_existing_transport_and_localized_stripe_values(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="correo@acme.ca", company_name="Acme España")
+    company_id = login["company"]["id"]
+    provider.events.append(invoice_event(company_id, event_id="evt_email_content"))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        company = session.get(Company, UUID(company_id))
+        assert company is not None
+        company.preferred_language = "es"
+        invoice = InvoiceFiscalService(session).get_company_invoices(company.id)[0][0]
+        transport = RecordingEmailTransport()
+        AccountNotificationService(get_settings(), transport).send_invoice_paid(
+            company.billing_email,
+            company,
+            invoice,
+        )
+
+    assert len(transport.messages) == 1
+    message = transport.messages[0]
+    assert message["recipient"] == "billing+correo@acme.ca"
+    assert message["subject"] == "Factura AVQ-0001 pagada"
+    assert "Total pagado: 67.00 CAD" in message["text_body"]
+    assert "https://invoice.stripe.test/in_acme.pdf" in message["text_body"]
+    assert "<p>" in message["html_body"]
+    engine.dispose()

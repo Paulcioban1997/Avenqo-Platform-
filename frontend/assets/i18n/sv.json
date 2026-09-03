@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Fortsätt",
     "connectionsImportedAtLabel": "Importerad",
     "connectionsUploadedFileSuccessLabel": "Data importerade",
-    "connectionsCleaning": {"view": "Visa rensade data", "summary": "Rensningsöversikt", "before": "Före", "after": "Efter"},
+    "connectionsCleaning": {
+      "view": "Visa rensade data",
+      "summary": "Rensningsöversikt",
+      "before": "Före",
+      "after": "Efter"
+    },
     "themeToggleSwitchToDark": "Byt till mörkt läge",
     "themeToggleSwitchToLight": "Byt till ljust läge"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Professionell",
       "planEnterprise": "Företag",
-      "nextRenewal": "N??sta f??rnyelse: {date}"
+      "nextRenewal": "N??sta f??rnyelse: {date}",
+      "downloadCsv": "Ladda ner CSV",
+      "downloadXlsx": "Ladda ner XLSX",
+      "invoiceDate": "Fakturadatum",
+      "subtotal": "Delsumma",
+      "taxes": "Skatter",
+      "total": "Totalt",
+      "previous": "Föregående",
+      "next": "Nästa",
+      "officialInvoice": "Officiell Stripe-faktura"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Faktura {number} betald",
+    "greeting": "Hej {company}, er Avenqo-faktura har betalats.",
+    "totalPaid": "Totalt betalt",
+    "status": "Status",
+    "invoiceNumber": "Faktura",
+    "plan": "Abonnemang",
+    "billingPeriod": "Faktureringsperiod",
+    "subtotal": "Delsumma",
+    "taxes": "Skatter",
+    "viewInvoice": "Visa fakturor",
+    "downloadPdf": "Ladda ner PDF"
   }
 }

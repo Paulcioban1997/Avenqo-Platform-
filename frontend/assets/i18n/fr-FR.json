@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Continuer",
     "connectionsImportedAtLabel": "Importé",
     "connectionsUploadedFileSuccessLabel": "Données importées avec succès",
-    "connectionsCleaning": {"view": "Voir les données nettoyées", "summary": "Résumé du nettoyage", "before": "Avant", "after": "Après"},
+    "connectionsCleaning": {
+      "view": "Voir les données nettoyées",
+      "summary": "Résumé du nettoyage",
+      "before": "Avant",
+      "after": "Après"
+    },
     "themeToggleSwitchToDark": "Passer en mode sombre",
     "themeToggleSwitchToLight": "Passer en mode clair"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Démo",
       "planProfessional": "Professionnel",
       "planEnterprise": "Entreprise",
-      "nextRenewal": "Prochain renouvellement : {date}"
+      "nextRenewal": "Prochain renouvellement : {date}",
+      "downloadCsv": "Télécharger le CSV",
+      "downloadXlsx": "Télécharger le XLSX",
+      "invoiceDate": "Date de facture",
+      "subtotal": "Sous-total",
+      "taxes": "Taxes",
+      "total": "Total",
+      "previous": "Précédent",
+      "next": "Suivant",
+      "officialInvoice": "Facture officielle Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity} : {current} contre {comparison} ({change} %)",
     "concentrationEvidence": "{entity} : {current} % du chiffre d’affaires produit",
     "customerEvidence": "{current} clients avec des recommandations"
+  },
+  "invoiceEmail": {
+    "subject": "Facture {number} payée",
+    "greeting": "Bonjour {company}, votre facture Avenqo a été payée.",
+    "totalPaid": "Total payé",
+    "status": "Statut",
+    "invoiceNumber": "Facture",
+    "plan": "Plan",
+    "billingPeriod": "Période de facturation",
+    "subtotal": "Sous-total",
+    "taxes": "Taxes",
+    "viewInvoice": "Voir les factures",
+    "downloadPdf": "Télécharger le PDF"
   }
 }

@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Pokračovat",
     "connectionsImportedAtLabel": "Importováno",
     "connectionsUploadedFileSuccessLabel": "Data úspěšně importována",
-    "connectionsCleaning": {"view": "Zobrazit vyčištěná data", "summary": "Souhrn čištění", "before": "Před", "after": "Po"},
+    "connectionsCleaning": {
+      "view": "Zobrazit vyčištěná data",
+      "summary": "Souhrn čištění",
+      "before": "Před",
+      "after": "Po"
+    },
     "themeToggleSwitchToDark": "Přepnout na tmavý režim",
     "themeToggleSwitchToLight": "Přepnout na světlý režim"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Profesion??ln??",
       "planEnterprise": "Podnik",
-      "nextRenewal": "Dal???? obnoven??: {date}"
+      "nextRenewal": "Dal???? obnoven??: {date}",
+      "downloadCsv": "Stáhnout CSV",
+      "downloadXlsx": "Stáhnout XLSX",
+      "invoiceDate": "Datum faktury",
+      "subtotal": "Mezisoučet",
+      "taxes": "Daně",
+      "total": "Celkem",
+      "previous": "Předchozí",
+      "next": "Další",
+      "officialInvoice": "Oficiální faktura Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Faktura {number} zaplacena",
+    "greeting": "Dobrý den {company}, faktura Avenqo byla zaplacena.",
+    "totalPaid": "Celkem zaplaceno",
+    "status": "Stav",
+    "invoiceNumber": "Faktura",
+    "plan": "Pl??n",
+    "billingPeriod": "Faktura??n?? obdob??",
+    "subtotal": "Mezisoučet",
+    "taxes": "Daně",
+    "viewInvoice": "Zobrazit faktury",
+    "downloadPdf": "St??hnout PDF"
   }
 }

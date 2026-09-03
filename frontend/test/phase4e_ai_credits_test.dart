@@ -417,6 +417,38 @@ void main() {
     expect(launched, Uri.parse('https://checkout.stripe.test/credits'));
   });
 
+  testWidgets('Spanish billing history keeps Stripe CAD currency and localized actions', (tester) async {
+    final data = _billingData();
+    final invoiceData = BillingData(
+      subscription: data.subscription,
+      balance: data.balance,
+      packs: data.packs,
+      invoiceTotal: 21,
+      invoices: const [{
+        'id': '11111111-1111-1111-1111-111111111111',
+        'number': 'AVQ-2026-001', 'plan_code': 'professional', 'status': 'paid',
+        'currency': 'cad', 'total': 4900, 'issued_at': '2026-08-20T10:00:00Z',
+        'period_start': '2026-08-01T00:00:00Z', 'period_end': '2026-09-01T00:00:00Z',
+        'hosted_invoice_url': 'https://invoice.stripe.test/view',
+        'invoice_pdf': 'https://invoice.stripe.test/official.pdf',
+      }],
+    );
+    await tester.pumpWidget(await _wrap(BillingPage(
+      api: _api(MockClient((_) async => http.Response('{}', 404))),
+      loader: (_) async => invoiceData,
+    ), localeCode: 'es'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('AVQ-2026-001'), 300, scrollable: find.byType(Scrollable).first);
+
+    expect(find.textContaining('CAD'), findsOneWidget);
+    expect(find.byTooltip('Ver facturas'), findsOneWidget);
+    expect(find.byTooltip('Descargar PDF'), findsOneWidget);
+    expect(find.byTooltip('Descargar CSV'), findsOneWidget);
+    expect(find.byTooltip('Descargar XLSX'), findsOneWidget);
+    expect(find.byTooltip('Anterior'), findsOneWidget);
+    expect(find.byTooltip('Siguiente'), findsOneWidget);
+  });
+
   testWidgets('active customer confirms period-end cancellation', (tester) async {
     Uri? requested;
     final api = _api(MockClient((request) async {

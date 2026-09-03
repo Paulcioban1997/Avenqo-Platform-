@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Gaan voort",
     "connectionsImportedAtLabel": "Ingevoer",
     "connectionsUploadedFileSuccessLabel": "Data suksesvol ingevoer",
-    "connectionsCleaning": {"view": "Bekyk skoongemaakte data", "summary": "Skoonmaakopsomming", "before": "Voor", "after": "Na"},
+    "connectionsCleaning": {
+      "view": "Bekyk skoongemaakte data",
+      "summary": "Skoonmaakopsomming",
+      "before": "Voor",
+      "after": "Na"
+    },
     "themeToggleSwitchToDark": "Skakel na donker modus",
     "themeToggleSwitchToLight": "Skakel na ligte modus"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Professioneel",
       "planEnterprise": "Onderneming",
-      "nextRenewal": "Volgende hernuwing: {date}"
+      "nextRenewal": "Volgende hernuwing: {date}",
+      "downloadCsv": "Laai CSV af",
+      "downloadXlsx": "Laai XLSX af",
+      "invoiceDate": "Faktuurdatum",
+      "subtotal": "Subtotaal",
+      "taxes": "Belasting",
+      "total": "Totaal",
+      "previous": "Vorige",
+      "next": "Volgende",
+      "officialInvoice": "Amptelike Stripe-faktuur"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Faktuur {number} betaal",
+    "greeting": "Hallo {company}, u Avenqo-faktuur is betaal.",
+    "totalPaid": "Totaal betaal",
+    "status": "Status",
+    "invoiceNumber": "Faktuur",
+    "plan": "Beplan",
+    "billingPeriod": "Faktureringstydperk",
+    "subtotal": "Subtotaal",
+    "taxes": "Belasting",
+    "viewInvoice": "Bekyk fakture",
+    "downloadPdf": "Laai PDF af"
   }
 }

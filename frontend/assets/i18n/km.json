@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "បន្ត",
     "connectionsImportedAtLabel": "បាននាំចូល",
     "connectionsUploadedFileSuccessLabel": "ទិន្នន័យបាននាំចូលដោយជោគជ័យ",
-    "connectionsCleaning": {"view": "មើលទិន្នន័យដែលបានសម្អាត", "summary": "សេចក្តីសង្ខេបការសម្អាត", "before": "មុន", "after": "ក្រោយ"},
+    "connectionsCleaning": {
+      "view": "មើលទិន្នន័យដែលបានសម្អាត",
+      "summary": "សេចក្តីសង្ខេបការសម្អាត",
+      "before": "មុន",
+      "after": "ក្រោយ"
+    },
     "themeToggleSwitchToDark": "ប្តូរទៅរបៀបងងឹត",
     "themeToggleSwitchToLight": "ប្តូរទៅរបៀបភ្លឺ"
   },
@@ -777,7 +782,16 @@
       "planDemo": "ការបង្ហាញ",
       "planProfessional": "វិជ្ជាជីវៈ",
       "planEnterprise": "សហគ្រាស",
-      "nextRenewal": "ការបន្តបន្ទាប់៖ {date}"
+      "nextRenewal": "ការបន្តបន្ទាប់៖ {date}",
+      "downloadCsv": "ទាញយក CSV",
+      "downloadXlsx": "ទាញយក XLSX",
+      "invoiceDate": "កាលបរិច្ឆេទវិក្កយបត្រ",
+      "subtotal": "សរុបរង",
+      "taxes": "ពន្ធ",
+      "total": "សរុប",
+      "previous": "មុន",
+      "next": "បន្ទាប់",
+      "officialInvoice": "វិក្កយបត្រ Stripe ផ្លូវការ"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "វិក្កយបត្រ {number} បានបង់",
+    "greeting": "សួស្តី {company} វិក្កយបត្រ Avenqo របស់អ្នកបានបង់ហើយ។",
+    "totalPaid": "សរុបបានបង់",
+    "status": "ស្ថានភាព",
+    "invoiceNumber": "គ្មានវិក្កយបត្រអាចប្រើបានទេ",
+    "plan": "ផែនការ",
+    "billingPeriod": "រយៈពេលចេញវិក្កយបត្រ",
+    "subtotal": "សរុបរង",
+    "taxes": "ពន្ធ",
+    "viewInvoice": "មើលវិក្កយបត្រ",
+    "downloadPdf": "ទាញយក PDF"
   }
 }

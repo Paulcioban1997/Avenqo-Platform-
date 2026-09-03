@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "جاری رکھیں",
     "connectionsImportedAtLabel": "درآمد شدہ",
     "connectionsUploadedFileSuccessLabel": "ڈیٹا کامیابی سے درآمد ہوا",
-    "connectionsCleaning": {"view": "صاف کیا گیا ڈیٹا دیکھیں", "summary": "صفائی کا خلاصہ", "before": "پہلے", "after": "بعد"},
+    "connectionsCleaning": {
+      "view": "صاف کیا گیا ڈیٹا دیکھیں",
+      "summary": "صفائی کا خلاصہ",
+      "before": "پہلے",
+      "after": "بعد"
+    },
     "themeToggleSwitchToDark": "ڈارک موڈ پر جائیں",
     "themeToggleSwitchToLight": "لائٹ موڈ پر جائیں"
   },
@@ -777,7 +782,16 @@
       "planDemo": "????????",
       "planProfessional": "????????????????",
       "planEnterprise": "??????????????????",
-      "nextRenewal": "???????? ??????????: {date}"
+      "nextRenewal": "???????? ??????????: {date}",
+      "downloadCsv": "CSV ڈاؤن لوڈ",
+      "downloadXlsx": "XLSX ڈاؤن لوڈ",
+      "invoiceDate": "انوائس کی تاریخ",
+      "subtotal": "ذیلی کل",
+      "taxes": "ٹیکس",
+      "total": "کل",
+      "previous": "پچھلا",
+      "next": "اگلا",
+      "officialInvoice": "سرکاری Stripe انوائس"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "انوائس {number} ادا شدہ",
+    "greeting": "سلام {company}، آپ کی Avenqo انوائس ادا ہو گئی ہے۔",
+    "totalPaid": "کل ادائیگی",
+    "status": "حالت",
+    "invoiceNumber": "کوئی انوائس دستیاب نہیں",
+    "plan": "????????????",
+    "billingPeriod": "???? ???? ??????",
+    "subtotal": "ذیلی کل",
+    "taxes": "ٹیکس",
+    "viewInvoice": "???????????? ????????????",
+    "downloadPdf": "PDF ???????? ?????? ????????"
   }
 }

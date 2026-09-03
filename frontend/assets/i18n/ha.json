@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Ci gaba",
     "connectionsImportedAtLabel": "An shigo da shi",
     "connectionsUploadedFileSuccessLabel": "An shigo da bayanai cikin nasara",
-    "connectionsCleaning": {"view": "Duba bayanan da aka tsaftace", "summary": "Takaitaccen tsaftacewa", "before": "Kafin", "after": "Bayan"},
+    "connectionsCleaning": {
+      "view": "Duba bayanan da aka tsaftace",
+      "summary": "Takaitaccen tsaftacewa",
+      "before": "Kafin",
+      "after": "Bayan"
+    },
     "themeToggleSwitchToDark": "Canja zuwa yanayin duhu",
     "themeToggleSwitchToLight": "Canja zuwa yanayin haske"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Kwararren",
       "planEnterprise": "Kasuwanci",
-      "nextRenewal": "Sabuntawa na gaba: {date}"
+      "nextRenewal": "Sabuntawa na gaba: {date}",
+      "downloadCsv": "Sauke CSV",
+      "downloadXlsx": "Sauke XLSX",
+      "invoiceDate": "Ranar daftari",
+      "subtotal": "Jimillar ƙasa",
+      "taxes": "Haraji",
+      "total": "Jimilla",
+      "previous": "Na baya",
+      "next": "Na gaba",
+      "officialInvoice": "Dafatar Stripe ta hukuma"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "An biya daftari {number}",
+    "greeting": "Sannu {company}, an biya daftarin Avenqo ɗinku.",
+    "totalPaid": "Jimillar da aka biya",
+    "status": "Matsayi",
+    "invoiceNumber": "Takardar kuɗi",
+    "plan": "Tsari",
+    "billingPeriod": "Lokacin biyan kuɗi",
+    "subtotal": "Jimillar ƙasa",
+    "taxes": "Haraji",
+    "viewInvoice": "Duba takardun kuɗi",
+    "downloadPdf": "Zazzage PDF"
   }
 }

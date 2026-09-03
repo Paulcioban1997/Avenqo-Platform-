@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.ai.usage.service import AIUsageService
-from backend.app.models import BillingAccount, BillingInvoice, Company, StripeWebhookEvent
+from backend.app.models import BillingAccount, BillingInvoice, Company, StripeWebhookEvent, User, UserRole
+from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.stripe_gateway import BillingProvider
 from payments import PlanCode, get_plan
 from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
@@ -32,11 +33,13 @@ class BillingService:
         provider: BillingProvider,
         settings: Settings,
         usage_service: AIUsageService,
+        notifier: AccountNotifier,
     ) -> None:
         self._session = session
         self._provider = provider
         self._settings = settings
         self._usage_service = usage_service
+        self._notifier = notifier
 
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
@@ -269,25 +272,52 @@ class BillingService:
         period = line.get("period") or {}
         price_id = str((line.get("price") or {}).get("id") or "")
         plan_code = self._settings.stripe_plan_code(price_id) or account.plan_code
+        parent = invoice.get("parent") or {}
+        subscription_details = parent.get("subscription_details") or {}
+        subscription_id = (
+            subscription_details.get("subscription")
+            or invoice.get("subscription")
+            or account.stripe_subscription_id
+        )
+        discounts = invoice.get("total_discount_amounts") or []
+        taxes = invoice.get("total_tax_amounts") or []
+        status_transitions = invoice.get("status_transitions") or {}
         values = {
             "company_id": company_id,
+            "stripe_subscription_id": str(subscription_id) if subscription_id else None,
+            "stripe_customer_id": str(invoice.get("customer") or "") or None,
             "number": invoice.get("number"),
             "plan_code": plan_code,
             "status": str(invoice.get("status") or "unknown"),
             "currency": str(invoice["currency"]),
+            "subtotal": int(invoice.get("subtotal", 0)),
+            "discount_total": sum(int(item.get("amount", 0)) for item in discounts),
+            "tax_total": sum(int(item.get("amount", 0)) for item in taxes),
+            "total": int(invoice.get("total", invoice.get("amount_due", 0))),
             "amount_due": int(invoice.get("amount_due", 0)),
             "amount_paid": int(invoice.get("amount_paid", 0)),
+            "line_items": [self._line_item_snapshot(item) for item in lines],
+            "billing_details": {
+                "name": invoice.get("customer_name"),
+                "address": invoice.get("customer_address"),
+                "phone": invoice.get("customer_phone"),
+            },
+            "tax_identifiers": invoice.get("customer_tax_ids") or [],
+            "customer_email": invoice.get("customer_email"),
             "hosted_invoice_url": invoice.get("hosted_invoice_url"),
             "invoice_pdf": invoice.get("invoice_pdf"),
             "period_start": self._stripe_datetime(period.get("start")),
             "period_end": self._stripe_datetime(period.get("end")),
             "issued_at": issued_at,
+            "paid_at": self._stripe_datetime(status_transitions.get("paid_at")),
+            "due_at": self._stripe_datetime(invoice.get("due_date")),
         }
         if existing is None:
-            self._session.add(BillingInvoice(
+            existing = BillingInvoice(
                 stripe_invoice_id=str(invoice["id"]),
                 **values,
-            ))
+            )
+            self._session.add(existing)
         else:
             for field, value in values.items():
                 setattr(existing, field, value)
@@ -300,6 +330,38 @@ class BillingService:
                 company_id,
                 period_start.strftime("%Y-%m"),
             )
+        if invoice.get("status") == "paid" and existing.email_sent_at is None:
+            recipient = self._invoice_recipient(account.company, values["customer_email"])
+            if recipient and getattr(self._notifier, "email_delivery_configured", True):
+                self._notifier.send_invoice_paid(recipient, account.company, existing)
+                existing.email_sent_at = datetime.now(timezone.utc)
+
+    @staticmethod
+    def _line_item_snapshot(line: dict[str, Any]) -> dict[str, Any]:
+        price = line.get("price") or {}
+        return {
+            "description": line.get("description"),
+            "quantity": line.get("quantity"),
+            "amount": int(line.get("amount", 0)),
+            "currency": line.get("currency"),
+            "price_id": price.get("id"),
+            "product_id": price.get("product"),
+        }
+
+    def _invoice_recipient(self, company: Company, stripe_email: object) -> str | None:
+        if company.billing_email.strip():
+            return company.billing_email.strip().lower()
+        if stripe_email:
+            return str(stripe_email).strip().lower()
+        owner = self._session.scalar(
+            select(User)
+            .where(
+                User.company_id == company.id,
+                User.role.in_((UserRole.OWNER, UserRole.ADMIN)),
+            )
+            .order_by(User.role.asc())
+        )
+        return owner.email if owner else None
 
     @staticmethod
     def _stripe_datetime(timestamp: object) -> datetime | None:

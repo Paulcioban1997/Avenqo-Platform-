@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "ادامه",
     "connectionsImportedAtLabel": "وارد شد",
     "connectionsUploadedFileSuccessLabel": "داده‌ها با موفقیت وارد شدند",
-    "connectionsCleaning": {"view": "مشاهده داده‌های پاک‌سازی‌شده", "summary": "خلاصه پاک‌سازی", "before": "قبل", "after": "بعد"},
+    "connectionsCleaning": {
+      "view": "مشاهده داده‌های پاک‌سازی‌شده",
+      "summary": "خلاصه پاک‌سازی",
+      "before": "قبل",
+      "after": "بعد"
+    },
     "themeToggleSwitchToDark": "تغییر به حالت تیره",
     "themeToggleSwitchToLight": "تغییر به حالت روشن"
   },
@@ -777,7 +782,16 @@
       "planDemo": "نسخه ی نمایشی",
       "planProfessional": "حرفه ای",
       "planEnterprise": "تصدی",
-      "nextRenewal": "تمدید بعدی: {date}"
+      "nextRenewal": "تمدید بعدی: {date}",
+      "downloadCsv": "دانلود CSV",
+      "downloadXlsx": "دانلود XLSX",
+      "invoiceDate": "تاریخ فاکتور",
+      "subtotal": "جمع جزء",
+      "taxes": "مالیات",
+      "total": "مجموع",
+      "previous": "قبلی",
+      "next": "بعدی",
+      "officialInvoice": "فاکتور رسمی Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "فاکتور {number} پرداخت شد",
+    "greeting": "سلام {company}، فاکتور Avenqo پرداخت شد.",
+    "totalPaid": "مجموع پرداختی",
+    "status": "وضعیت",
+    "invoiceNumber": "فاکتور",
+    "plan": "برنامه ریزی کنید",
+    "billingPeriod": "دوره صورتحساب",
+    "subtotal": "جمع جزء",
+    "taxes": "مالیات",
+    "viewInvoice": "مشاهده فاکتورها",
+    "downloadPdf": "PDF را دانلود کنید"
   }
 }

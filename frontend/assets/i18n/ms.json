@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Teruskan",
     "connectionsImportedAtLabel": "Diimport",
     "connectionsUploadedFileSuccessLabel": "Data berjaya diimport",
-    "connectionsCleaning": {"view": "Lihat data yang dibersihkan", "summary": "Ringkasan pembersihan", "before": "Sebelum", "after": "Selepas"},
+    "connectionsCleaning": {
+      "view": "Lihat data yang dibersihkan",
+      "summary": "Ringkasan pembersihan",
+      "before": "Sebelum",
+      "after": "Selepas"
+    },
     "themeToggleSwitchToDark": "Tukar ke mod gelap",
     "themeToggleSwitchToLight": "Tukar ke mod terang"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Profesional",
       "planEnterprise": "Perusahaan",
-      "nextRenewal": "Pembaharuan seterusnya: {date}"
+      "nextRenewal": "Pembaharuan seterusnya: {date}",
+      "downloadCsv": "Muat turun CSV",
+      "downloadXlsx": "Muat turun XLSX",
+      "invoiceDate": "Tarikh invois",
+      "subtotal": "Subjumlah",
+      "taxes": "Cukai",
+      "total": "Jumlah",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "officialInvoice": "Invois rasmi Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Invois {number} dibayar",
+    "greeting": "Hai {company}, invois Avenqo anda telah dibayar.",
+    "totalPaid": "Jumlah dibayar",
+    "status": "Status",
+    "invoiceNumber": "Tiada invois tersedia",
+    "plan": "Rancang",
+    "billingPeriod": "Tempoh pengebilan",
+    "subtotal": "Subjumlah",
+    "taxes": "Cukai",
+    "viewInvoice": "Lihat invois",
+    "downloadPdf": "Muat turun PDF"
   }
 }

@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "متابعة",
     "connectionsImportedAtLabel": "تم الاستيراد",
     "connectionsUploadedFileSuccessLabel": "تم استيراد البيانات بنجاح",
-    "connectionsCleaning": {"view": "عرض البيانات المنظفة", "summary": "ملخص التنظيف", "before": "قبل", "after": "بعد"},
+    "connectionsCleaning": {
+      "view": "عرض البيانات المنظفة",
+      "summary": "ملخص التنظيف",
+      "before": "قبل",
+      "after": "بعد"
+    },
     "themeToggleSwitchToDark": "التبديل إلى الوضع الداكن",
     "themeToggleSwitchToLight": "التبديل إلى الوضع الفاتح"
   },
@@ -777,7 +782,16 @@
       "planDemo": "تجريبي",
       "planProfessional": "احترافي",
       "planEnterprise": "مَشرُوع",
-      "nextRenewal": "التجديد التالي: {date}"
+      "nextRenewal": "التجديد التالي: {date}",
+      "downloadCsv": "تنزيل CSV",
+      "downloadXlsx": "تنزيل XLSX",
+      "invoiceDate": "تاريخ الفاتورة",
+      "subtotal": "المجموع الفرعي",
+      "taxes": "الضرائب",
+      "total": "الإجمالي",
+      "previous": "السابق",
+      "next": "التالي",
+      "officialInvoice": "فاتورة Stripe الرسمية"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "تم دفع الفاتورة {number}",
+    "greeting": "مرحبًا {company}، تم دفع فاتورة Avenqo.",
+    "totalPaid": "إجمالي المدفوع",
+    "status": "الحالة",
+    "invoiceNumber": "فاتورة",
+    "plan": "يخطط",
+    "billingPeriod": "فترة الفاتورة",
+    "subtotal": "المجموع الفرعي",
+    "taxes": "الضرائب",
+    "viewInvoice": "عرض الفواتير",
+    "downloadPdf": "تحميل قوات الدفاع الشعبي"
   }
 }

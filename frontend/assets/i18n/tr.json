@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Devam et",
     "connectionsImportedAtLabel": "İçe aktarıldı",
     "connectionsUploadedFileSuccessLabel": "Veriler başarıyla içe aktarıldı",
-    "connectionsCleaning": {"view": "Temizlenmiş verileri görüntüle", "summary": "Temizleme özeti", "before": "Önce", "after": "Sonra"},
+    "connectionsCleaning": {
+      "view": "Temizlenmiş verileri görüntüle",
+      "summary": "Temizleme özeti",
+      "before": "Önce",
+      "after": "Sonra"
+    },
     "themeToggleSwitchToDark": "Koyu moda geç",
     "themeToggleSwitchToLight": "Açık moda geç"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Profesyonel",
       "planEnterprise": "Kurumsal",
-      "nextRenewal": "Sonraki yenileme: {date}"
+      "nextRenewal": "Sonraki yenileme: {date}",
+      "downloadCsv": "CSV indir",
+      "downloadXlsx": "XLSX indir",
+      "invoiceDate": "Fatura tarihi",
+      "subtotal": "Ara toplam",
+      "taxes": "Vergiler",
+      "total": "Toplam",
+      "previous": "Önceki",
+      "next": "Sonraki",
+      "officialInvoice": "Resmî Stripe faturası"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "{number} numaralı fatura ödendi",
+    "greeting": "Merhaba {company}, Avenqo faturanız ödendi.",
+    "totalPaid": "Ödenen toplam",
+    "status": "Durum",
+    "invoiceNumber": "Fatura",
+    "plan": "Planı",
+    "billingPeriod": "Faturalama d??nemi",
+    "subtotal": "Ara toplam",
+    "taxes": "Vergiler",
+    "viewInvoice": "Faturalar?? g??r??nt??le",
+    "downloadPdf": "PDF indir"
   }
 }

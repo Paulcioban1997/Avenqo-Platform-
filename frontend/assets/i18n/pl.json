@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Kontynuuj",
     "connectionsImportedAtLabel": "Zaimportowano",
     "connectionsUploadedFileSuccessLabel": "Dane zaimportowane pomyślnie",
-    "connectionsCleaning": {"view": "Wyświetl oczyszczone dane", "summary": "Podsumowanie czyszczenia", "before": "Przed", "after": "Po"},
+    "connectionsCleaning": {
+      "view": "Wyświetl oczyszczone dane",
+      "summary": "Podsumowanie czyszczenia",
+      "before": "Przed",
+      "after": "Po"
+    },
     "themeToggleSwitchToDark": "Przełącz na tryb ciemny",
     "themeToggleSwitchToLight": "Przełącz na tryb jasny"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demonstracja",
       "planProfessional": "Profesjonalny",
       "planEnterprise": "Przedsi??biorstwo",
-      "nextRenewal": "Nast??pne odnowienie: {date}"
+      "nextRenewal": "Nast??pne odnowienie: {date}",
+      "downloadCsv": "Pobierz CSV",
+      "downloadXlsx": "Pobierz XLSX",
+      "invoiceDate": "Data faktury",
+      "subtotal": "Suma częściowa",
+      "taxes": "Podatki",
+      "total": "Razem",
+      "previous": "Poprzednia",
+      "next": "Następna",
+      "officialInvoice": "Oficjalna faktura Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Faktura {number} opłacona",
+    "greeting": "Witaj {company}, faktura Avenqo została opłacona.",
+    "totalPaid": "Łącznie zapłacono",
+    "status": "Status",
+    "invoiceNumber": "Faktura",
+    "plan": "Plan",
+    "billingPeriod": "Okres rozliczeniowy",
+    "subtotal": "Suma częściowa",
+    "taxes": "Podatki",
+    "viewInvoice": "Wy??wietl faktury",
+    "downloadPdf": "Pobierz PDF"
   }
 }

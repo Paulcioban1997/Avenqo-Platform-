@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Doorgaan",
     "connectionsImportedAtLabel": "Geïmporteerd",
     "connectionsUploadedFileSuccessLabel": "Gegevens succesvol geïmporteerd",
-    "connectionsCleaning": {"view": "Opgeschoonde gegevens bekijken", "summary": "Opschoningssamenvatting", "before": "Voor", "after": "Na"},
+    "connectionsCleaning": {
+      "view": "Opgeschoonde gegevens bekijken",
+      "summary": "Opschoningssamenvatting",
+      "before": "Voor",
+      "after": "Na"
+    },
     "themeToggleSwitchToDark": "Overschakelen naar donkere modus",
     "themeToggleSwitchToLight": "Overschakelen naar lichte modus"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Professioneel",
       "planEnterprise": "Onderneming",
-      "nextRenewal": "Volgende verlenging: {date}"
+      "nextRenewal": "Volgende verlenging: {date}",
+      "downloadCsv": "CSV downloaden",
+      "downloadXlsx": "XLSX downloaden",
+      "invoiceDate": "Factuurdatum",
+      "subtotal": "Subtotaal",
+      "taxes": "Belastingen",
+      "total": "Totaal",
+      "previous": "Vorige",
+      "next": "Volgende",
+      "officialInvoice": "Officiële Stripe-factuur"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Factuur {number} betaald",
+    "greeting": "Hallo {company}, uw Avenqo-factuur is betaald.",
+    "totalPaid": "Totaal betaald",
+    "status": "Status",
+    "invoiceNumber": "Factuur",
+    "plan": "Plan",
+    "billingPeriod": "Factureringsperiode",
+    "subtotal": "Subtotaal",
+    "taxes": "Belastingen",
+    "viewInvoice": "Facturen bekijken",
+    "downloadPdf": "PDF downloaden"
   }
 }

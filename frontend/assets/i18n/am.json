@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "ቀጥል",
     "connectionsImportedAtLabel": "ገብቷል",
     "connectionsUploadedFileSuccessLabel": "ውሂብ በተሳካ ሁኔታ ገብቷል",
-    "connectionsCleaning": {"view": "የተጸዳ ውሂብን ይመልከቱ", "summary": "የማጽዳት ማጠቃለያ", "before": "በፊት", "after": "በኋላ"},
+    "connectionsCleaning": {
+      "view": "የተጸዳ ውሂብን ይመልከቱ",
+      "summary": "የማጽዳት ማጠቃለያ",
+      "before": "በፊት",
+      "after": "በኋላ"
+    },
     "themeToggleSwitchToDark": "ወደ ጨለማ ሁነታ ቀይር",
     "themeToggleSwitchToLight": "ወደ ብርሃን ሁነታ ቀይር"
   },
@@ -777,7 +782,16 @@
       "planDemo": "ማሳያ",
       "planProfessional": "ፕሮፌሽናል",
       "planEnterprise": "ድርጅት",
-      "nextRenewal": "ቀጣይ እድሳት፡ {date}"
+      "nextRenewal": "ቀጣይ እድሳት፡ {date}",
+      "downloadCsv": "CSV አውርድ",
+      "downloadXlsx": "XLSX አውርድ",
+      "invoiceDate": "የደረሰኝ ቀን",
+      "subtotal": "ንዑስ ድምር",
+      "taxes": "ግብሮች",
+      "total": "ጠቅላላ",
+      "previous": "ቀዳሚ",
+      "next": "ቀጣይ",
+      "officialInvoice": "ይፋዊ Stripe ደረሰኝ"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "ደረሰኝ {number} ተከፍሏል",
+    "greeting": "ሰላም {company}፣ የAvenqo ደረሰኝዎ ተከፍሏል።",
+    "totalPaid": "ጠቅላላ የተከፈለ",
+    "status": "ሁኔታ",
+    "invoiceNumber": "ደረሰኝ",
+    "plan": "እቅድ",
+    "billingPeriod": "የክፍያ ጊዜ",
+    "subtotal": "ንዑስ ድምር",
+    "taxes": "ግብሮች",
+    "viewInvoice": "ደረሰኞችን ይመልከቱ",
+    "downloadPdf": "ፒዲኤፍ አውርድ"
   }
 }

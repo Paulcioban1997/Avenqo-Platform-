@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Continuar",
     "connectionsImportedAtLabel": "Importado",
     "connectionsUploadedFileSuccessLabel": "Dados importados com sucesso",
-    "connectionsCleaning": {"view": "Ver dados limpos", "summary": "Resumo da limpeza", "before": "Antes", "after": "Depois"},
+    "connectionsCleaning": {
+      "view": "Ver dados limpos",
+      "summary": "Resumo da limpeza",
+      "before": "Antes",
+      "after": "Depois"
+    },
     "themeToggleSwitchToDark": "Mudar para o modo escuro",
     "themeToggleSwitchToLight": "Mudar para o modo claro"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Demonstra????o",
       "planProfessional": "Profissional",
       "planEnterprise": "Empresa",
-      "nextRenewal": "Pr??xima renova????o: {date}"
+      "nextRenewal": "Pr??xima renova????o: {date}",
+      "downloadCsv": "Baixar CSV",
+      "downloadXlsx": "Baixar XLSX",
+      "invoiceDate": "Data da fatura",
+      "subtotal": "Subtotal",
+      "taxes": "Impostos",
+      "total": "Total",
+      "previous": "Anterior",
+      "next": "Seguinte",
+      "officialInvoice": "Fatura oficial Stripe"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Fatura {number} paga",
+    "greeting": "Olá {company}, a sua fatura Avenqo foi paga.",
+    "totalPaid": "Total pago",
+    "status": "Estado",
+    "invoiceNumber": "Fatura",
+    "plan": "Plano",
+    "billingPeriod": "Per??odo de faturamento",
+    "subtotal": "Subtotal",
+    "taxes": "Impostos",
+    "viewInvoice": "Visualizar faturas",
+    "downloadPdf": "Descargar PDF"
   }
 }

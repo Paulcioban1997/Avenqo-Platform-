@@ -108,6 +108,22 @@ void main() {
     expect(enLeaves, isNotEmpty);
   });
 
+  test('all 44 catalogs contain required invoice UI and email keys', () {
+    for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
+      final json = _readLocaleJson(code);
+      final billing = (json['phase4e'] as Map<String, dynamic>)['billing'] as Map<String, dynamic>;
+      final email = json['invoiceEmail'] as Map<String, dynamic>;
+      expect(billing.keys, containsAll([
+        'downloadCsv', 'downloadXlsx', 'invoiceDate', 'subtotal', 'taxes',
+        'total', 'previous', 'next', 'officialInvoice',
+      ]), reason: '$code invoice billing keys');
+      expect(email.keys, containsAll([
+        'subject', 'greeting', 'invoiceNumber', 'plan', 'billingPeriod',
+        'subtotal', 'taxes', 'totalPaid', 'status', 'viewInvoice', 'downloadPdf',
+      ]), reason: '$code invoice email keys');
+    }
+  });
+
   for (final code in kExpectedLocaleCodes) {
     test('$code.json has 100% key parity with en.json (no missing/extra keys)', () {
       final json = _readLocaleJson(code);

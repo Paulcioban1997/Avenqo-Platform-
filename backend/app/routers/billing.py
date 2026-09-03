@@ -1,14 +1,17 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
+from datetime import datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse as HTTPRedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
-from backend.app.dependencies.billing import get_billing_service
+from backend.app.dependencies.billing import get_billing_service, get_invoice_fiscal_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
@@ -17,6 +20,8 @@ from backend.app.schemas.billing import (
     CreditPackCheckoutRequest,
     CreditPackResponse,
     InvoiceResponse,
+    InvoiceFiscalSummaryResponse,
+    InvoiceHistoryResponse,
     PlanResponse,
     RedirectResponse,
     SubscriptionResponse,
@@ -25,6 +30,11 @@ from backend.app.services.billing_service import (
     BillingConfigurationError,
     BillingOperationError,
     BillingService,
+)
+from backend.app.services.invoice_fiscal_service import (
+    InvoiceExportFormatError,
+    InvoiceFiscalService,
+    InvoiceNotFoundError,
 )
 from backend.app.models import BillingAccount
 from payments import PLANS
@@ -143,6 +153,144 @@ def invoices(
     skip = max(skip, 0)
     items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
     return items[skip : skip + limit]
+
+
+@router.get("/invoices/history", response_model=InvoiceHistoryResponse)
+def invoice_history(
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+    offset: int = 0,
+    limit: int = 20,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
+) -> InvoiceHistoryResponse:
+    items, total = service.get_company_invoices(
+        identity.user.company_id,
+        start=start,
+        end=end,
+        fiscal_year=fiscal_year,
+        offset=offset,
+        limit=limit,
+    )
+    bounded_limit = min(max(limit, 1), 200)
+    return InvoiceHistoryResponse(
+        items=[InvoiceResponse.model_validate(invoice) for invoice in items],
+        total=total,
+        offset=max(offset, 0),
+        limit=bounded_limit,
+    )
+
+
+@router.get("/invoices/export/{export_format}")
+def invoice_history_export(
+    export_format: str,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
+) -> Response:
+    try:
+        content, media_type, file_name = service.get_invoice_export(
+            identity.user.company_id,
+            export_format.lower(),
+            start=start,
+            end=end,
+            fiscal_year=fiscal_year,
+        )
+    except InvoiceExportFormatError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
+
+
+@router.get("/invoices/fiscal/{fiscal_year}", response_model=InvoiceFiscalSummaryResponse)
+def invoice_fiscal_summary(
+    fiscal_year: int,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> InvoiceFiscalSummaryResponse:
+    if fiscal_year < 2000 or fiscal_year > 2200:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid fiscal year")
+    return InvoiceFiscalSummaryResponse.model_validate(
+        service.get_paid_subscription_totals(identity.user.company_id, fiscal_year)
+    )
+
+
+@router.get("/invoices/fiscal/{fiscal_year}/pdf")
+def invoice_fiscal_pdf(
+    fiscal_year: int,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> Response:
+    if fiscal_year < 2000 or fiscal_year > 2200:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid fiscal year")
+    content, media_type, file_name = service.get_fiscal_summary_pdf(
+        identity.user.company_id,
+        fiscal_year,
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
+def invoice_detail(
+    invoice_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> InvoiceResponse:
+    try:
+        return InvoiceResponse.model_validate(
+            service.get_invoice(identity.user.company_id, invoice_id)
+        )
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+def official_invoice_pdf(
+    invoice_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> HTTPRedirectResponse:
+    try:
+        invoice = service.get_invoice(identity.user.company_id, invoice_id)
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if not invoice.invoice_pdf:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official Stripe PDF unavailable")
+    return HTTPRedirectResponse(invoice.invoice_pdf, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/invoices/{invoice_id}/export/{export_format}")
+def single_invoice_export(
+    invoice_id: UUID,
+    export_format: str,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> Response:
+    try:
+        content, media_type, file_name = service.get_invoice_export(
+            identity.user.company_id,
+            export_format.lower(),
+            invoice_id=invoice_id,
+        )
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvoiceExportFormatError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
 
 
 @router.get("/ai-credits", response_model=AICreditBalanceResponse)

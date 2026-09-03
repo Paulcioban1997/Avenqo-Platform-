@@ -670,7 +670,12 @@
     "connectionsContinueLabel": "Үргэлжлүүлэх",
     "connectionsImportedAtLabel": "Импортлосон",
     "connectionsUploadedFileSuccessLabel": "Өгөгдлийг амжилттай импортлолоо",
-    "connectionsCleaning": {"view": "Цэвэрлэсэн өгөгдлийг харах", "summary": "Цэвэрлэгээний хураангуй", "before": "Өмнө", "after": "Дараа"},
+    "connectionsCleaning": {
+      "view": "Цэвэрлэсэн өгөгдлийг харах",
+      "summary": "Цэвэрлэгээний хураангуй",
+      "before": "Өмнө",
+      "after": "Дараа"
+    },
     "themeToggleSwitchToDark": "Бараан горимд шилжих",
     "themeToggleSwitchToLight": "Цайвар горимд шилжих"
   },
@@ -777,7 +782,16 @@
       "planDemo": "Демо",
       "planProfessional": "Мэргэжлийн",
       "planEnterprise": "Аж ахуйн нэгж",
-      "nextRenewal": "Дараагийн шинэчлэлт: {date}"
+      "nextRenewal": "Дараагийн шинэчлэлт: {date}",
+      "downloadCsv": "CSV татах",
+      "downloadXlsx": "XLSX татах",
+      "invoiceDate": "Нэхэмжлэхийн огноо",
+      "subtotal": "Дэд дүн",
+      "taxes": "Татвар",
+      "total": "Нийт",
+      "previous": "Өмнөх",
+      "next": "Дараах",
+      "officialInvoice": "Stripe-ийн албан ёсны нэхэмжлэх"
     }
   },
   "phase4d": {
@@ -817,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "{number} нэхэмжлэх төлөгдсөн",
+    "greeting": "Сайн байна уу {company}, таны Avenqo нэхэмжлэх төлөгдлөө.",
+    "totalPaid": "Нийт төлсөн",
+    "status": "Төлөв",
+    "invoiceNumber": "Нэхэмжлэх байхгүй байна",
+    "plan": "Төлөвлөгөө",
+    "billingPeriod": "Тооцооны хугацаа",
+    "subtotal": "Дэд дүн",
+    "taxes": "Татвар",
+    "viewInvoice": "Нэхэмжлэхийг харах",
+    "downloadPdf": "PDF татаж авах"
   }
 }

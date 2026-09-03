@@ -471,6 +471,22 @@ def test_platform_admin_can_view_company_invoices_but_tenant_owner_cannot(
     assert allowed.status_code == 200
     assert [invoice["number"] for invoice in allowed.json()] == ["AVQ-1001"]
 
+    summary_path = f"/api/v1/admin/companies/{tenant.id}/billing/summary/2026"
+    denied_summary = admin_client.get(
+        summary_path,
+        headers={"Authorization": f"Bearer {_access_token(db_session, owner)}"},
+    )
+    allowed_summary = admin_client.get(
+        summary_path,
+        headers={"Authorization": f"Bearer {_access_token(db_session, admin)}"},
+    )
+    assert denied_summary.status_code == 403
+    assert allowed_summary.status_code == 200
+    assert allowed_summary.json()["company_id"] == str(tenant.id)
+    assert allowed_summary.json()["invoice_count"] == 1
+    assert allowed_summary.json()["latest_invoice"]["status"] == "paid"
+    assert allowed_summary.json()["latest_invoice"]["currency"] == "CAD"
+
 
 def test_platform_admin_can_set_enterprise_override_and_it_is_audited(db_session, admin_client: TestClient) -> None:
     company = _company(db_session, slug="enterprise-co", plan="enterprise")
