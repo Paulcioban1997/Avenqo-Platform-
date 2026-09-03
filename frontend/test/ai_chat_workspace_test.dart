@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'How are sales?');
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
     expect(find.text('How are sales?'), findsOneWidget);
@@ -74,7 +74,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'Prioritize my CRM leads');
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
     expect(find.text('This specialist is Coming Soon.'), findsOneWidget);
@@ -95,7 +95,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'Show sales trends');
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
     expect(find.text('Your AI credits are exhausted. Add credits to continue.'), findsOneWidget);
@@ -111,7 +111,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: AssistantPage(api: chatApi(client))));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Conversations'));
+    await tester.tap(find.byIcon(Icons.forum_outlined));
     await tester.pumpAndSettle();
     expect(find.text('New conversation'), findsOneWidget);
   });

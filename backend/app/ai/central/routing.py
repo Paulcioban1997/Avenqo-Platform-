@@ -14,10 +14,13 @@ _COMING_SOON_KEYWORDS = {
     "accounting": frozenset({"accounting", "comptabilite", "invoice", "invoices", "facture", "factures", "finance"}),
     "legal": frozenset({"legal", "juridique", "contract", "contracts", "contrat", "contrats"}),
     "marketing": frozenset({"marketing", "campaign", "campaigns", "campagne", "campagnes", "audience"}),
-    "real_estate": frozenset({"realestate", "immobilier", "property", "properties"}),
-    "restaurant": frozenset({"restaurant", "menu", "reservation"}),
-    "clinic": frozenset({"clinic", "clinique", "patient", "patients"}),
-    "customer_support": frozenset({"support", "ticket", "tickets", "helpdesk"}),
+    "appointments": frozenset({"appointment", "appointments", "rendez", "schedule", "booking"}),
+    "ocr": frozenset({"ocr", "document", "documents", "scan", "extract"}),
+    "hr": frozenset({"employee", "employees", "rh", "recrutement", "recruitment"}),
+    "voice": frozenset({"voice", "voix", "call", "calls"}),
+    "media": frozenset({"media", "image", "video", "creative"}),
+    "workflow": frozenset({"workflow", "automation", "automatisation"}),
+    "ai_agents": frozenset({"agent", "agents", "autonomous"}),
 }
 
 _RETAIL_KEYWORDS = frozenset(

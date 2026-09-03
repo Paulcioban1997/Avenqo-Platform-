@@ -7,6 +7,8 @@ class CentralAIRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1, max_length=12000)
+    page_context: str | None = Field(default=None, max_length=200)
+    locale: str | None = Field(default=None, min_length=2, max_length=16, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2})?$")
 
 
 class CentralAIResponse(BaseModel):

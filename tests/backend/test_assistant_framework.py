@@ -44,7 +44,7 @@ def test_retail_assistant_resolves_as_available() -> None:
 def test_future_assistants_resolve_as_coming_soon_and_cannot_execute() -> None:
     registry = build_default_assistant_registry()
 
-    for slug in ("crm", "accounting", "legal", "marketing"):
+    for slug in ("crm", "accounting", "legal", "marketing", "appointments", "ocr", "hr", "voice", "media", "workflow", "ai_agents"):
         definition = registry.get(slug)
         assert definition is not None
         assert definition.status is AssistantStatus.COMING_SOON

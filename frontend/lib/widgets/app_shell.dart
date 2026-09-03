@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/app/destinations.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/features/ai_chat/central_ai_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/floating_central_ai.dart';
 import 'package:avenqo/widgets/language_selector.dart';
 import 'package:avenqo/widgets/theme_toggle_button.dart';
 
@@ -12,7 +14,7 @@ class _Brand {
   static const blue = Color(0xFF087CF0);
 }
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.auth,
@@ -25,16 +27,29 @@ class AppShell extends StatelessWidget {
   final Widget child;
 
   @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  late final CentralAIController _centralAI = CentralAIController(widget.auth.api);
+
+  @override
+  void dispose() {
+    _centralAI.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final selectedPath = currentPath == '/retail' || currentPath.startsWith('/retail/')
+    final selectedPath = widget.currentPath == '/retail' || widget.currentPath.startsWith('/retail/')
         ? '/agents'
-        : currentPath;
+        : widget.currentPath;
     final selected = appDestinations.indexWhere(
       (destination) => destination.path == selectedPath,
     );
     final index = selected < 0 ? 0 : selected;
     final compact = MediaQuery.sizeOf(context).width < 960;
-    final showAskCta = currentPath != '/assistant';
+    final showAskCta = widget.currentPath != '/assistant';
     final askCta = AvenqoLocaleScope.translationsOf(context).dashboardHome.askAvenqoCta;
     return Scaffold(
       appBar: AppBar(
@@ -73,7 +88,7 @@ class AppShell extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 180),
                 child: Text(
-                  auth.company?['name']?.toString() ?? 'Avenqo',
+                  widget.auth.company?['name']?.toString() ?? 'Avenqo',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -82,7 +97,7 @@ class AppShell extends StatelessWidget {
           ),
           IconButton(
             tooltip: AvenqoLocaleScope.translationsOf(context).company.settingsLogout,
-            onPressed: auth.busy ? null : auth.logout,
+            onPressed: widget.auth.busy ? null : widget.auth.logout,
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -92,26 +107,39 @@ class AppShell extends StatelessWidget {
               child: _SidebarContent(
                 index: index,
                 onSelect: context.go,
-                showAdminEntry: auth.isPlatformAdmin,
-                auth: auth,
+                showAdminEntry: widget.auth.isPlatformAdmin,
+                auth: widget.auth,
               ),
             )
           : null,
-      body: Row(
-        children: [
-          if (!compact)
-            SizedBox(
-              width: 260,
-              child: _SidebarContent(
-                index: index,
-                onSelect: context.go,
-                showAdminEntry: auth.isPlatformAdmin,
-                auth: auth,
-              ),
+      body: CentralAIControllerScope(
+        controller: _centralAI,
+        child: Stack(
+          children: [
+            Row(
+              children: [
+                if (!compact)
+                  SizedBox(
+                    width: 260,
+                    child: _SidebarContent(
+                      index: index,
+                      onSelect: context.go,
+                      showAdminEntry: widget.auth.isPlatformAdmin,
+                      auth: widget.auth,
+                    ),
+                  ),
+                const VerticalDivider(width: 1),
+                Expanded(child: widget.child),
+              ],
             ),
-          const VerticalDivider(width: 1),
-          Expanded(child: child),
-        ],
+            if (showAskCta)
+              FloatingCentralAI(
+                api: widget.auth.api,
+                controller: _centralAI,
+                currentPath: widget.currentPath,
+              ),
+          ],
+        ),
       ),
     );
   }
