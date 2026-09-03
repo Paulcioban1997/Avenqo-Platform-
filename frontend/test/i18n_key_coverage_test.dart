@@ -42,7 +42,7 @@ const List<String> kLegacyAliasLocaleCodes = ['fr'];
 /// via `Translations.fromJson`'s `json['x'] != null ? ... : Fallback()`
 /// pattern — every one of the 42 locales must genuinely define them.
 const List<String> kFallbackProneSections = [
-  'assistant', 'auth', 'dashboardHome', 'admin', 'onboarding', 'company', 'agents',
+  'assistant', 'auth', 'dashboardHome', 'admin', 'onboarding', 'company', 'agents', 'phase4e',
 ];
 
 Set<String> _leafKeyPaths(dynamic node, [String prefix = '']) {

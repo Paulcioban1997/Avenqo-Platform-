@@ -15,6 +15,7 @@ from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import AccountToken, Base, Company, CompanyModule, CompanyOnboarding, Module, User
 from backend.app.services.account_notifications import HTTPSAccountNotifier, SMTPAccountNotifier
 from backend.main import create_application
+from modules.registry import BUSINESS_MODULE_REGISTRY
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
 
@@ -584,7 +585,12 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
             .join(CompanyModule, CompanyModule.module_id == Module.id)
             .where(CompanyModule.company_id == company.id)
         ).scalars().all()
-        assert set(selected_modules) == set(payload["selected_modules"])
+        available_selected_modules = {
+            module.key
+            for module in BUSINESS_MODULE_REGISTRY
+            if module.is_available and module.key in payload["selected_modules"]
+        }
+        assert set(selected_modules) == available_selected_modules
 
 
 def test_inscription_sans_site_web_est_valide(auth_environment) -> None:

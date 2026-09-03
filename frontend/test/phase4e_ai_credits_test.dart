@@ -120,6 +120,107 @@ void _expectCreditMetric(WidgetTester tester, String label, String value) {
 }
 
 void main() {
+  final billingLocaleCases = <String, Map<String, String>>{
+    'fr-CA': {
+      'creditsTitle': 'Crédits IA',
+      'billingPeriod': 'Période de facturation:',
+      'monthlyAllowance': 'Allocation mensuelle',
+      'monthlyRemaining': 'Allocation mensuelle restante',
+      'purchasedRemaining': 'Crédits achetés restants',
+      'totalRemaining': 'Total disponible',
+      'cancelSubscription': 'Annuler l’abonnement',
+      'packsTitle': 'Ajouter des crédits IA',
+      'packsSubtitle': 'Packs de crédits à achat unique, traités en toute sécurité par Stripe.',
+      'purchase': 'Acheter',
+      'noInvoices': 'Aucune facture pour le moment.',
+    },
+    'ro': {
+      'creditsTitle': 'Credite IA',
+      'billingPeriod': 'Perioada de facturare:',
+      'monthlyAllowance': 'Alocare lunară',
+      'monthlyRemaining': 'Sold lunar rămas',
+      'purchasedRemaining': 'Credite cumpărate rămase',
+      'totalRemaining': 'Total disponibil',
+      'cancelSubscription': 'Anulați abonamentul',
+      'packsTitle': 'Adăugați credite IA',
+      'packsSubtitle': 'Pachete de credite cu achiziție unică, procesate în siguranță prin Stripe.',
+      'purchase': 'Cumpărați',
+      'noInvoices': 'Nicio factură încă.',
+    },
+    'en': {
+      'creditsTitle': 'AI credits',
+      'billingPeriod': 'Billing period:',
+      'monthlyAllowance': 'Monthly allowance',
+      'monthlyRemaining': 'Monthly remaining',
+      'purchasedRemaining': 'Purchased remaining',
+      'totalRemaining': 'Total remaining',
+      'cancelSubscription': 'Cancel subscription',
+      'packsTitle': 'Add AI credits',
+      'packsSubtitle': 'One-time credit packs, fulfilled securely through Stripe.',
+      'purchase': 'Purchase',
+      'noInvoices': 'No invoices yet.',
+    },
+    'es': {
+      'creditsTitle': 'Créditos de IA',
+      'billingPeriod': 'Período de facturación:',
+      'monthlyAllowance': 'Asignación mensual',
+      'monthlyRemaining': 'Asignación mensual restante',
+      'purchasedRemaining': 'Créditos comprados restantes',
+      'totalRemaining': 'Total disponible',
+      'cancelSubscription': 'Cancelar suscripción',
+      'packsTitle': 'Añadir créditos de IA',
+      'packsSubtitle': 'Paquetes de créditos de compra única, procesados de forma segura mediante Stripe.',
+      'purchase': 'Comprar',
+      'noInvoices': 'Aún no hay facturas.',
+    },
+  };
+
+  for (final entry in billingLocaleCases.entries) {
+    testWidgets('Billing renders the ${entry.key} runtime catalog', (tester) async {
+      final expected = entry.value;
+      await tester.pumpWidget(await _wrap(
+        BillingPage(
+          api: _api(MockClient((_) async => http.Response('{}', 200))),
+          loader: (_) async => _startingBillingData('demo'),
+        ),
+        localeCode: entry.key,
+      ));
+      await tester.pumpAndSettle();
+
+      for (final key in [
+        'creditsTitle',
+        'monthlyAllowance',
+        'monthlyRemaining',
+        'purchasedRemaining',
+        'totalRemaining',
+        'cancelSubscription',
+      ]) {
+        expect(find.text(expected[key]!), findsOneWidget);
+      }
+      expect(find.textContaining(expected['billingPeriod']!), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text(expected['packsTitle']!),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      for (final key in ['packsTitle', 'packsSubtitle', 'purchase']) {
+        expect(find.text(expected[key]!), findsOneWidget);
+      }
+      await tester.scrollUntilVisible(
+        find.text(expected['noInvoices']!),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text(expected['noInvoices']!), findsOneWidget);
+      if (entry.key != 'en') {
+        for (final englishText in billingLocaleCases['en']!.values) {
+          expect(find.text(englishText), findsNothing);
+        }
+      }
+    });
+  }
+
   testWidgets('fr-CA Billing runtime uses the French Phase4e catalog', (
     tester,
   ) async {
