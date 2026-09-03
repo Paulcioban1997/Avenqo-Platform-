@@ -24,6 +24,7 @@ from backend.app.schemas.company_datasets import (
     CompanyDatasetProfileResponse,
     CompanyDatasetUploadResponse,
     DatasetCleaningDetailResponse,
+    DatasetReconciliationResponse,
     MappingOverrideRequest,
     MappingOverrideResponse,
 )
@@ -235,6 +236,9 @@ def get_company_dataset_profile(
     except CompanyDatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
+    mapping_payload = (
+        summary.dataset.mapping.mapping_json if summary.dataset.mapping is not None else {}
+    )
     return CompanyDatasetProfileResponse(
         dataset_id=summary.dataset.id,
         status=summary.dataset.status,
@@ -270,6 +274,10 @@ def get_company_dataset_profile(
                 reason=s.reason,
             )
             for s in summary.mapping_suggestions
+        ),
+        accepted_mapping=dict(mapping_payload.get("accepted") or {}),
+        required_confirmation=tuple(
+            mapping_payload.get("required_confirmation") or ()
         ),
         review_required=summary.review_required,
         quality_status=summary.quality_status.value if summary.quality_status else None,
@@ -307,6 +315,21 @@ def submit_company_dataset_mapping(
         status=dataset.status,
         mapping=accepted,
         approved=approved,
+    )
+
+
+@router.post("/reconcile", response_model=DatasetReconciliationResponse)
+def reconcile_company_datasets(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+) -> DatasetReconciliationResponse:
+    datasets = service.reconcile_existing(tenant)
+    return DatasetReconciliationResponse(
+        reviewed=len(datasets),
+        promoted_to_ready=sum(item.status == DatasetStatus.READY for item in datasets),
+        attention_required=sum(
+            item.status == DatasetStatus.MAPPING_REQUIRED for item in datasets
+        ),
     )
 
 

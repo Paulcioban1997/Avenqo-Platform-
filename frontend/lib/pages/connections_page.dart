@@ -64,6 +64,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   Future<void> _loadDatasets() async {
     setState(() => _state = _ViewState.loading);
     try {
+      try {
+        await widget.api.post('/datasets/reconcile');
+      } on ApiException {
+        // Listing remains available if reconciliation is temporarily unavailable.
+      }
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
       setState(() {
         _datasets = datasets.cast<Map<String, dynamic>>();
@@ -267,6 +272,22 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     );
   }
 
+  Future<void> _showMappingDetails(Map<String, dynamic> dataset) async {
+    final id = dataset['id']?.toString();
+    if (id == null) return;
+    final promoted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DatasetMappingDialog(
+        api: widget.api,
+        datasetId: id,
+        t: AvenqoLocaleScope.translationsOf(context).company,
+      ),
+    );
+    if (promoted == true && mounted) {
+      await _loadDatasets();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
@@ -288,6 +309,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 onAddFiles: _addFiles,
                 onDeleteDataset: _deleteDataset,
                 onViewCleaning: _showCleaningDetails,
+                onReviewMapping: _showMappingDetails,
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
                 t: t,
@@ -377,6 +399,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.onAddFiles,
     required this.onDeleteDataset,
     required this.onViewCleaning,
+    required this.onReviewMapping,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -387,6 +410,7 @@ class _ConnectedDataView extends StatelessWidget {
   final VoidCallback onAddFiles;
   final Future<void> Function(String datasetId) onDeleteDataset;
   final void Function(Map<String, dynamic> dataset) onViewCleaning;
+  final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -498,6 +522,7 @@ class _ConnectedDataView extends StatelessWidget {
                     ),
                     onDeleteDataset: onDeleteDataset,
                     onViewCleaning: onViewCleaning,
+                    onReviewMapping: onReviewMapping,
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
                     t: t,
@@ -518,6 +543,7 @@ class _DatasetRow extends StatelessWidget {
     required this.isDeleting,
     required this.onDeleteDataset,
     required this.onViewCleaning,
+    required this.onReviewMapping,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -528,6 +554,7 @@ class _DatasetRow extends StatelessWidget {
   final bool isDeleting;
   final Future<void> Function(String datasetId) onDeleteDataset;
   final void Function(Map<String, dynamic> dataset) onViewCleaning;
+  final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -646,6 +673,12 @@ class _DatasetRow extends StatelessWidget {
               onPressed: isDeleting ? null : () => onViewCleaning(dataset),
               icon: const Icon(Icons.table_view_outlined),
             ),
+          if (needsAttention)
+            IconButton(
+              tooltip: t.connectionsMappingTitle,
+              onPressed: isDeleting ? null : () => onReviewMapping(dataset),
+              icon: const Icon(Icons.tune),
+            ),
           if (isReady) ...[
             IconButton(
               tooltip: t.connectionsGoDashboard,
@@ -678,6 +711,166 @@ class _DatasetRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _DatasetMappingDialog extends StatefulWidget {
+  const _DatasetMappingDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetMappingDialog> createState() => _DatasetMappingDialogState();
+}
+
+class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
+  late final Future<Map<String, dynamic>> _profile = _load();
+  final Map<String, String?> _selected = {};
+  bool _initialized = false;
+  bool _submitting = false;
+  String? _error;
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/profile')
+          as Map<String, dynamic>;
+
+  void _initialize(Map<String, dynamic> profile) {
+    if (_initialized) return;
+    final accepted = (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+    final conflicts = (profile['required_confirmation'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final conflictingColumns = {
+      for (final conflict in conflicts)
+        for (final column in (conflict['columns'] as List<dynamic>? ?? const []))
+          column.toString(),
+    };
+    for (final suggestion
+        in (profile['mapping_suggestions'] as List<dynamic>? ?? const [])) {
+      final item = suggestion as Map<String, dynamic>;
+      final column = item['original_column'].toString();
+      _selected[column] = conflictingColumns.contains(column)
+          ? null
+          : accepted[column]?.toString();
+    }
+    _initialized = true;
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final mapping = {
+        for (final entry in _selected.entries)
+          if (entry.value != null) entry.key: entry.value!,
+      };
+      final response = await widget.api.post(
+        '/datasets/${widget.datasetId}/mapping',
+        body: {'mapping': mapping},
+      ) as Map<String, dynamic>;
+      if (!mounted) return;
+      if (response['status'] == 'ready') {
+        Navigator.of(context).pop(true);
+      } else {
+        setState(() => _error = widget.t.connectionsMappingSubtitle);
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.t.connectionsMappingTitle),
+      content: SizedBox(
+        width: 680,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _profile,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              return Text(widget.t.connectionsGenericError);
+            }
+            final profile = snapshot.data!;
+            _initialize(profile);
+            final suggestions =
+                (profile['mapping_suggestions'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.t.connectionsMappingSubtitle),
+                  const SizedBox(height: 16),
+                  for (final item in suggestions) ...[
+                    Text(
+                      item['original_column'].toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selected[item['original_column'].toString()],
+                      isExpanded: true,
+                      items: [
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text(widget.t.connectionsMappingIgnore),
+                        ),
+                        for (final option in {
+                          if (item['suggested_field'] != null)
+                            item['suggested_field'].toString(),
+                          for (final value
+                              in (item['alternatives'] as List<dynamic>? ?? const []))
+                            value.toString(),
+                        })
+                          DropdownMenuItem<String?>(
+                            value: option,
+                            child: Text(option),
+                          ),
+                      ],
+                      onChanged: _submitting
+                          ? null
+                          : (value) => _selected[item['original_column'].toString()] = value,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item['reason']?.toString() ?? '',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (_error != null)
+                    Text(_error!, style: const TextStyle(color: _Brand.red)),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: Text(widget.t.connectionsConfirmMapping),
+        ),
+      ],
     );
   }
 }

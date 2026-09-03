@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.database import get_db
+from backend.app.ai.tools.business.analytics import compute_business_overview
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.tenant_business import (
     get_tenant_customers_service,
@@ -209,6 +211,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
 ):
     session, company, company_b, _dataset_a, prepared = business_environment
     prepared.clear()
+    customers_data = _dataset(session, company, "party-records.csv")
     orders = _dataset(session, company, "commerce-events.csv")
     items = _dataset(session, company, "line-facts.csv")
     products_data = _dataset(session, company, "catalog-data.csv")
@@ -217,6 +220,12 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
 
     prepared.update(
         {
+            customers_data.id: _prepared(
+                company,
+                customers_data,
+                [{"buyer": "C1"}, {"buyer": "C2"}],
+                {"buyer": "customer_id"},
+            ),
             orders.id: _prepared(
                 company,
                 orders,
@@ -231,12 +240,17 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
                 company,
                 items,
                 [
-                    {"order_ref": "O1", "sku": "P1", "units": 1},
-                    {"order_ref": "O1", "sku": "P2", "units": 1},
-                    {"order_ref": "O2", "sku": "P1", "units": 2},
-                    {"order_ref": "O3", "sku": "P2", "units": 1},
+                    {"order_ref": "O1", "sku": "P1", "units": 1, "each": 30.0},
+                    {"order_ref": "O1", "sku": "P2", "units": 1, "each": 70.0},
+                    {"order_ref": "O2", "sku": "P1", "units": 2, "each": 100.0},
+                    {"order_ref": "O3", "sku": "P2", "units": 1, "each": 20.0},
                 ],
-                {"order_ref": "order_id", "sku": "product_id", "units": "quantity"},
+                {
+                    "order_ref": "order_id",
+                    "sku": "product_id",
+                    "units": "quantity",
+                    "each": "unit_price",
+                },
             ),
             products_data.id: _prepared(
                 company,
@@ -267,6 +281,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     )
 
     for left, right, field in (
+        (orders, customers_data, "customer_id"),
         (items, orders, "order_id"),
         (items, products_data, "product_id"),
         (orders, payments, "order_id"),
@@ -316,7 +331,8 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     assert customer_result["summary"]["repeat_customers"] == 1
     assert product_result["summary"]["total_products"] == 2
     assert product_result["summary"]["units"] == 5.0
-    assert all(item["revenue"] is None for item in product_result["items"])
+    assert sum(item["revenue"] for item in product_result["items"]) == 320.0
+    assert {item["average_price"] for item in product_result["items"]} == {76.67, 45.0}
     growth = next(
         item
         for item in recommendation_result["recommendations"]
@@ -330,6 +346,39 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     assert tool_result.data["revenue"] == 320.0
     assert tool_result.data["customers"] == 2
     assert all(item.get("revenue") != 9999.0 for item in product_result["items"])
+
+
+def test_line_quantity_and_unit_price_derive_real_zero_revenue(
+    business_environment,
+):
+    session, company, _company_b, _dataset_a, prepared = business_environment
+    prepared.clear()
+    lines = _dataset(session, company, "line-values.csv")
+    prepared[lines.id] = _prepared(
+        company,
+        lines,
+        [
+            {"sale": "O1", "units": 2, "price_each": 0.0},
+            {"sale": "O2", "units": 3, "price_each": 10.0},
+        ],
+        {
+            "sale": "order_id",
+            "units": "quantity",
+            "price_each": "unit_price",
+        },
+    )
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared))
+
+    source = analytics.load(TenantContext(company.id)).source_for(
+        frozenset({"total_amount", "order_id"})
+    )
+
+    assert source is not None
+    overview = compute_business_overview(source)
+    assert overview["revenue"] == 30.0
+    assert overview["orders"] == 2
+    zero_source = replace(source, rows=(source.rows[0],))
+    assert compute_business_overview(zero_source)["revenue"] == 0.0
 
 
 def _product_prepared(company, dataset):

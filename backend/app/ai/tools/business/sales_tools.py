@@ -63,7 +63,12 @@ class GetBusinessOverviewTool(AITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: BusinessOverviewArgs) -> ToolResult:
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"total_amount", "order_id", "customer_id"}),
+        )
         data = compute_business_overview(prepared)
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
@@ -90,7 +95,12 @@ class GetSalesSummaryTool(AITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesSummaryArgs) -> ToolResult:
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"total_amount", "order_id"}),
+        )
         data = compute_sales_summary(
             prepared,
             date_from=_to_datetime(arguments.date_from, end_of_day=False),
@@ -116,7 +126,12 @@ class GetSalesTrendTool(AITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesTrendArgs) -> ToolResult:
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"total_amount", "order_timestamp"}),
+        )
         data = compute_sales_trend(prepared)
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
@@ -141,7 +156,12 @@ class GetSalesComparisonTool(AITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesComparisonArgs) -> ToolResult:
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"total_amount", "order_timestamp"}),
+        )
         data = compute_sales_comparison(
             prepared,
             current_from=_to_datetime(arguments.current_from, end_of_day=False),
@@ -179,7 +199,17 @@ class GetTopProductsTool(AITool):
                 error=f"Unsupported metric '{arguments.metric}'. Allowed: {', '.join(TOP_PRODUCTS_METRICS)}.",
             )
         top_n = max(1, min(arguments.top_n, 50))
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        metric_field = {
+            "revenue": "total_amount",
+            "quantity": "quantity",
+            "orders": "order_id",
+        }[arguments.metric]
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"product_id", metric_field}),
+        )
         data = compute_top_products(
             prepared,
             top_n=top_n,

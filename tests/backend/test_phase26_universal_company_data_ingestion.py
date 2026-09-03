@@ -13,6 +13,7 @@ from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,12 +32,20 @@ from backend.app.models import (
     CompanyModule,
     CompanyModuleStatus,
     Dataset,
+    DatasetRelationship,
+    DatasetStatus,
     DatasetVersion,
     Module,
 )
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
-from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.automatic_company_dataset_ingestion_service import (
+    AutomaticCompanyDatasetIngestionService,
+)
+from backend.app.services.company_dataset_ingestion_service import (
+    CompanyDatasetIngestionService,
+    InvalidMappingError,
+)
 from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
@@ -409,6 +418,38 @@ def test_product_fields_are_automatically_mapped_without_user_configuration() ->
     }
 
 
+def test_generic_commerce_identifiers_dates_and_amounts_map_semantically() -> None:
+    from shared.ai_engine.dataset_ingestion.column_mapper import SemanticColumnMapper
+
+    rows = [
+        {
+            "checkout_id": "O-1",
+            "merchant_code": "S-1",
+            "payment_ref": "PAY-1",
+            "feedback_id": "REV-1",
+            "purchase_date": "2026-08-20",
+            "fulfilled_at": "2026-08-22",
+            "gross_amount": 42.5,
+            "shipping_cost": 3.5,
+        }
+    ]
+    mapping = {
+        item.original_column: item.suggested_field
+        for item in SemanticColumnMapper().suggest(tuple(rows[0]), rows)
+    }
+
+    assert mapping == {
+        "checkout_id": "order_id",
+        "merchant_code": "seller_id",
+        "payment_ref": "payment_id",
+        "feedback_id": "review_id",
+        "purchase_date": "order_timestamp",
+        "fulfilled_at": "delivery_timestamp",
+        "gross_amount": "total_amount",
+        "shipping_cost": "freight_amount",
+    }
+
+
 def test_ambiguous_column_triggers_review_required(phase26_environment) -> None:
     client, _, _ = phase26_environment
     response = _upload(client, "ambiguous.csv", AMBIGUOUS_CSV)
@@ -557,6 +598,125 @@ def test_attention_required_exposes_original_detail_but_blocks_exports(
     for export_format in ("csv", "xlsx", "pdf", "docx"):
         response = client.get(f"/api/v1/datasets/{dataset_id}/export/{export_format}")
         assert response.status_code == 409
+
+
+def test_reconcile_endpoint_reports_promoted_and_ambiguous_datasets(
+    phase26_environment,
+) -> None:
+    client, _, tenants = phase26_environment
+    promoted = Dataset(
+        company_id=tenants["company_a"].company_id,
+        name="safe.csv",
+        type="csv",
+        source="safe.csv",
+        status=DatasetStatus.READY,
+    )
+    ambiguous = Dataset(
+        company_id=tenants["company_a"].company_id,
+        name="ambiguous.csv",
+        type="csv",
+        source="ambiguous.csv",
+        status=DatasetStatus.MAPPING_REQUIRED,
+    )
+    app = client.app
+    original = app.dependency_overrides[get_company_dataset_ingestion_service]
+    app.dependency_overrides[get_company_dataset_ingestion_service] = lambda: SimpleNamespace(
+        reconcile_existing=lambda tenant: (promoted, ambiguous)
+    )
+    try:
+        response = client.post("/api/v1/datasets/reconcile")
+    finally:
+        app.dependency_overrides[get_company_dataset_ingestion_service] = original
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "reviewed": 2,
+        "promoted_to_ready": 1,
+        "attention_required": 1,
+    }
+
+
+def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
+    phase26_environment,
+) -> None:
+    _client, session_factory, tenants = phase26_environment
+    tenant = tenants["company_a"]
+    dispatched: list = []
+    with session_factory() as session:
+        service = AutomaticCompanyDatasetIngestionService(
+            session=session,
+            storage=LocalDatasetStorage(tenants["artifact_root"] / "company_datasets"),
+            quota=DataImportPolicy(session),
+            max_upload_bytes=5 * 1024 * 1024,
+            dispatcher=SimpleNamespace(
+                dispatch=lambda resolved_tenant, dataset: dispatched.append(
+                    (resolved_tenant.company_id, dataset.id)
+                )
+            ),
+        )
+        customers = service.upload(
+            tenant,
+            "retail",
+            "people-export.csv",
+            b"buyer_uuid\nC1\nC2\n",
+        )
+        orders = service.upload(
+            tenant,
+            "retail",
+            "commerce-export.csv",
+            b"checkout_id,buyer_uuid,purchase_date,payment_value\nO1,C1,2026-08-01,10\nO2,C1,2026-08-02,20\nO3,C2,2026-08-03,0\n",
+        )
+
+        assert customers.status == orders.status == DatasetStatus.READY
+        assert orders.mapping.mapping_json["accepted"]["payment_value"] == "total_amount"
+        relationships = session.scalars(select(DatasetRelationship)).all()
+        assert {item.canonical_field for item in relationships} == {"customer_id"}
+
+        initial_ids = set(session.scalars(select(Dataset.id)).all())
+        orders.status = DatasetStatus.MAPPING_REQUIRED
+        session.commit()
+        reconciled = service.reconcile_existing(tenant)
+        assert [item.id for item in reconciled] == [orders.id]
+        assert reconciled[0].status == DatasetStatus.READY
+        assert set(session.scalars(select(Dataset.id)).all()) == initial_ids
+
+        ambiguous = service.upload(
+            tenant,
+            "retail",
+            "ambiguous-values.csv",
+            b"checkout_id,transaction_total,gross_amount\nO1,10,12\nO2,20,22\n",
+        )
+        assert ambiguous.status == DatasetStatus.MAPPING_REQUIRED
+        assert ambiguous.mapping.mapping_json["required_confirmation"] == [
+            {
+                "canonical_field": "total_amount",
+                "columns": ["gross_amount", "transaction_total"],
+            }
+        ]
+
+        with pytest.raises(InvalidMappingError, match="Select a source column"):
+            service.submit_mapping(tenant, ambiguous.id, {})
+
+        confirmed = service.submit_mapping(
+            tenant,
+            ambiguous.id,
+            {"gross_amount": "total_amount"},
+        )
+        assert confirmed.status == DatasetStatus.READY
+        assert confirmed.mapping.mapping_json["accepted"]["gross_amount"] == "total_amount"
+        assert "transaction_total" not in confirmed.mapping.mapping_json["accepted"]
+
+        unknown = service.upload(
+            tenant,
+            "retail",
+            "unknown-schema.csv",
+            b"opaque_label,mystery_blob\nA,foo\nB,bar\n",
+        )
+        assert unknown.status == DatasetStatus.MAPPING_REQUIRED
+        assert unknown.mapping.mapping_json["accepted"] == {}
+        with pytest.raises(InvalidMappingError, match="business concept"):
+            service.submit_mapping(tenant, unknown.id, {})
+        assert dispatched
 
 
 def test_currency_string_converted_to_numeric(phase26_environment) -> None:

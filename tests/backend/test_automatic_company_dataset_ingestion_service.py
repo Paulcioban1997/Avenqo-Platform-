@@ -45,6 +45,29 @@ def test_unresolved_mapping_is_never_auto_accepted() -> None:
     )
 
 
+def test_duplicate_safe_candidates_require_customer_confirmation() -> None:
+    conflicts = AutomaticCompanyDatasetIngestionService._mapping_conflicts(
+        {
+            "transaction_total": "total_amount",
+            "gross_amount": "total_amount",
+            "checkout_id": "order_id",
+        }
+    )
+
+    assert conflicts == [
+        {
+            "canonical_field": "total_amount",
+            "columns": ["gross_amount", "transaction_total"],
+        }
+    ]
+
+
+def test_unique_safe_candidates_do_not_require_confirmation() -> None:
+    assert AutomaticCompanyDatasetIngestionService._mapping_conflicts(
+        {"payment_value": "total_amount", "checkout_id": "order_id"}
+    ) == []
+
+
 def test_canonicalize_rows_preserves_originals_and_adds_canonical_aliases() -> None:
     rows = [
         {

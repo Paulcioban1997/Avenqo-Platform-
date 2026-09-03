@@ -18,6 +18,7 @@ from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyD
 @dataclass(frozen=True, slots=True)
 class DashboardKPI:
     key: str
+    state: str
     value: float | int | None
     previous_value: float | int | None
     absolute_change: float | int | None
@@ -108,7 +109,20 @@ class TenantDashboardService:
         required = BUSINESS_METRIC_FIELDS[key]
         source = snapshot.source_for(required)
         if source is None:
-            return DashboardKPI(key, None, None, None, None, None, False)
+            processing = snapshot.status == "processing" or any(
+                status in {"analyzing", "preparing_data", "training_ai"}
+                for status in snapshot.statuses
+            )
+            return DashboardKPI(
+                key,
+                "PROCESSING" if processing else "UNAVAILABLE",
+                None,
+                None,
+                None,
+                None,
+                None,
+                False,
+            )
 
         current_rows, previous_rows = self._period_rows(source, period)
         current = compute_business_overview(self._with_rows(source, current_rows))[key]
@@ -122,6 +136,7 @@ class TenantDashboardService:
         monetary = key in {"revenue", "average_order_value"}
         return DashboardKPI(
             key,
+            "AVAILABLE",
             current,
             previous,
             absolute,

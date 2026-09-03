@@ -60,6 +60,8 @@ class CompanyDatasetProfileResponse(BaseModel):
     column_count: int
     columns: tuple[ColumnProfileResponse, ...]
     mapping_suggestions: tuple[ColumnMappingSuggestionResponse, ...]
+    accepted_mapping: dict[str, str]
+    required_confirmation: tuple[dict[str, Any], ...]
     review_required: bool
     quality_status: str | None
     quality_reasons: tuple[str, ...]
@@ -92,6 +94,12 @@ class MappingOverrideResponse(BaseModel):
     status: DatasetStatus
     mapping: dict[str, str]
     approved: bool
+
+
+class DatasetReconciliationResponse(BaseModel):
+    reviewed: int
+    promoted_to_ready: int
+    attention_required: int
 
 
 class CapabilityDatasetResponse(BaseModel):

@@ -224,6 +224,67 @@ void main() {
     expect(find.text('DOCX'), findsNothing);
   });
 
+  testWidgets('ambiguous mapping can be confirmed and promoted to ready', (
+    tester,
+  ) async {
+    var ready = false;
+    Map<String, dynamic>? submittedMapping;
+    final client = MockClient((request) async {
+      if (request.method == 'POST' && request.url.path.endsWith('/reconcile')) {
+        return http.Response(
+          '{"reviewed":1,"promoted_to_ready":0,"attention_required":1}',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"44444444-4444-4444-4444-444444444444","name":"transactions.csv","status":"${ready ? 'ready' : 'mapping_required'}","pipeline_status":"${ready ? 'ready' : 'attention_required'}"}]',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/profile')) {
+        return http.Response(
+          '{"accepted_mapping":{"transaction_total":"total_amount","gross_amount":"total_amount"},"required_confirmation":[{"canonical_field":"total_amount","columns":["gross_amount","transaction_total"]}],"mapping_suggestions":[{"original_column":"transaction_total","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact total"},{"original_column":"gross_amount","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact gross amount"}]}',
+          200,
+        );
+      }
+      if (request.method == 'POST' && request.url.path.endsWith('/mapping')) {
+        submittedMapping = jsonDecode(request.body) as Map<String, dynamic>;
+        ready = true;
+        return http.Response(
+          '{"dataset_id":"44444444-4444-4444-4444-444444444444","status":"ready","mapping":{"gross_amount":"total_amount"},"approved":true}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    expect(find.text('transaction_total'), findsOneWidget);
+    expect(find.text('gross_amount'), findsOneWidget);
+
+    final dropdowns = find.byType(DropdownButtonFormField<String?>);
+    await tester.tap(dropdowns.at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('total_amount').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+
+    expect(submittedMapping, {
+      'mapping': {'gross_amount': 'total_amount'},
+    });
+    expect(find.byIcon(Icons.tune), findsNothing);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+  });
+
   testWidgets('Connections polls until automatic training is ready', (
     tester,
   ) async {

@@ -49,7 +49,7 @@ class TenantAnalyticsSnapshot:
 
     def source_for(self, required_fields: frozenset[str]) -> PreparedCompanyDataset | None:
         candidates = [
-            (item, self._compose_from(item))
+            (item, self._with_derived_revenue(self._compose_from(item)))
             for item in self.prepared
         ]
         usable = [
@@ -71,6 +71,48 @@ class TenantAnalyticsSnapshot:
             default=None,
         )
         return selected[1] if selected is not None else None
+
+    @staticmethod
+    def _with_derived_revenue(
+        prepared: PreparedCompanyDataset,
+    ) -> PreparedCompanyDataset:
+        reverse = {
+            canonical: original
+            for original, canonical in prepared.canonical_columns.items()
+        }
+        if "total_amount" in reverse:
+            return prepared
+        quantity_column = reverse.get("quantity")
+        price_column = reverse.get("unit_price")
+        if quantity_column is None or price_column is None:
+            return prepared
+
+        derived_column = "__avenqo_total_amount"
+        rows: list[dict[str, object]] = []
+        for row in prepared.rows:
+            output = dict(row)
+            try:
+                output[derived_column] = float(row[quantity_column]) * float(
+                    row[price_column]
+                )
+            except (KeyError, TypeError, ValueError):
+                output[derived_column] = None
+            rows.append(output)
+        return PreparedCompanyDataset(
+            company_id=prepared.company_id,
+            dataset_id=prepared.dataset_id,
+            version=prepared.version,
+            canonical_columns={
+                **prepared.canonical_columns,
+                derived_column: "total_amount",
+            },
+            rows=tuple(rows),
+            profile=prepared.profile,
+            mapping=prepared.mapping,
+            cleaning_report=prepared.cleaning_report,
+            quality=prepared.quality,
+            capability_readiness=prepared.capability_readiness,
+        )
 
     def _compose_from(self, anchor: PreparedCompanyDataset) -> PreparedCompanyDataset:
         prepared_by_id = {item.dataset_id: item for item in self.prepared}

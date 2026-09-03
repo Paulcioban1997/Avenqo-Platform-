@@ -261,6 +261,9 @@ class CompanyDatasetIngestionService:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
 
+    def reconcile_existing(self, tenant: TenantContext) -> tuple[Dataset, ...]:
+        return ()
+
     def get_module_code(self, tenant: TenantContext, dataset_id: UUID) -> str | None:
         """Module Avenqo associé à l'import, utilisé uniquement pour gérer
         l'exécution de capacités métier optionnelles sur ce dataset

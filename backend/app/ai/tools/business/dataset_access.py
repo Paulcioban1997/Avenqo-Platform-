@@ -41,12 +41,16 @@ def load_latest_prepared_dataset(
     session: Session,
     ingestion: CompanyDatasetIngestionService,
     tenant: TenantContext,
+    required_fields: frozenset[str] = frozenset(),
 ) -> PreparedCompanyDataset:
     """Charge la même vue READY composée que les pages Retail du tenant."""
 
-    source = TenantAnalyticsService(session, ingestion).load(tenant).source_for(frozenset())
+    snapshot = TenantAnalyticsService(session, ingestion).load(tenant)
+    source = snapshot.source_for(required_fields)
     if source is None and (dataset := latest_ready_dataset(session, tenant)) is not None:
-        source = ingestion.get_prepared_dataset(tenant, dataset.id)
+        fallback = ingestion.get_prepared_dataset(tenant, dataset.id)
+        if required_fields <= set(fallback.canonical_columns.values()):
+            source = fallback
     if source is None:
         logger.warning(
             "ai_prepared_dataset tenant_id=%s dataset_id=%s dataset_status=%s prepared_dataset_available=false",
@@ -54,6 +58,18 @@ def load_latest_prepared_dataset(
             None,
             None,
         )
+        if snapshot.datasets:
+            available = {
+                canonical
+                for prepared in snapshot.prepared
+                for canonical in prepared.canonical_columns.values()
+            }
+            missing = sorted(required_fields - available)
+            details = ", ".join(missing) if missing else "dataset relationships"
+            raise ToolUnavailableError(
+                "Business data is connected but not yet computable. "
+                f"Complete mapping or relationships for: {details}."
+            )
         raise ToolUnavailableError(
             "No business data is available yet for this company. Connect your business data first."
         )
