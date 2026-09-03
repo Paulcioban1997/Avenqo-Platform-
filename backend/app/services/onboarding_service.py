@@ -8,13 +8,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from backend.app.models import Company, CompanyModule, CompanyOnboarding, Module
-from backend.app.models.base import CompanyModuleStatus, OnboardingStatus
+from backend.app.models import CompanyOnboarding
+from backend.app.models.base import OnboardingStatus
 from backend.app.schemas.onboarding import OnboardingStatusResponse, OnboardingSubmitRequest
-from payments.plans import MODULE_NAMES, get_plan
+from backend.app.services.module_entitlement_service import (
+    ModuleEntitlementError,
+    ModuleEntitlementService,
+)
+from modules.registry import BUSINESS_MODULES_BY_KEY
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -64,65 +67,19 @@ class OnboardingService:
         """
         if not module_codes:
             return ()
-        company = self._session.get(Company, tenant.company_id)
-        if company is None:
-            return ()
-        plan = get_plan(company.subscription_plan)
-        now = datetime.now(timezone.utc)
+        entitlements = ModuleEntitlementService(self._session)
         unavailable: list[str] = []
-        selected_count = 0
         for code in dict.fromkeys(module_codes):
-            if code not in MODULE_NAMES:
+            if code not in BUSINESS_MODULES_BY_KEY:
                 continue
-            if not plan.allows_module(code):
+            try:
+                entitlements.activate_module(tenant, code)
+            except ModuleEntitlementError:
                 unavailable.append(code)
-                continue
-            if (
-                plan.max_selectable_modules is not None
-                and selected_count >= plan.max_selectable_modules
-            ):
-                unavailable.append(code)
-                continue
-            selected_count += 1
-            module = self._session.scalar(select(Module).where(Module.code == code))
-            if module is None:
-                module = Module(name=MODULE_NAMES[code], code=code)
-                self._session.add(module)
-                self._session.flush()
-            company_module = self._session.scalar(
-                select(CompanyModule).where(
-                    CompanyModule.company_id == tenant.company_id,
-                    CompanyModule.module_id == module.id,
-                )
-            )
-            if company_module is None:
-                self._session.add(
-                    CompanyModule(
-                        company_id=tenant.company_id,
-                        module_id=module.id,
-                        activated_at=now,
-                        status=CompanyModuleStatus.ACTIVE,
-                    )
-                )
-            else:
-                company_module.status = CompanyModuleStatus.ACTIVE
-                company_module.activated_at = now
-                company_module.expires_at = None
         return tuple(unavailable)
 
     def _active_module_codes(self, tenant: TenantContext) -> tuple[str, ...]:
-        now = datetime.now(timezone.utc)
-        codes = self._session.execute(
-            select(Module.code)
-            .join(CompanyModule, CompanyModule.module_id == Module.id)
-            .where(
-                CompanyModule.company_id == tenant.company_id,
-                CompanyModule.status == CompanyModuleStatus.ACTIVE,
-                CompanyModule.activated_at <= now,
-                or_(CompanyModule.expires_at.is_(None), CompanyModule.expires_at > now),
-            )
-        ).scalars().all()
-        return tuple(codes)
+        return ModuleEntitlementService(self._session).get_active_modules(tenant)
 
     def _to_response(
         self,

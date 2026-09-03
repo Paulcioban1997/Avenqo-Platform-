@@ -15,6 +15,7 @@ class AdminCompanyDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AvenqoLocaleScope.translationsOf(context).admin;
+    final agentStrings = AvenqoLocaleScope.translationsOf(context).agents;
     final colors = AvenqoColors.of(context);
     return FutureBuilder<dynamic>(
       future: api.get('/admin/companies/$companyId'),
@@ -119,6 +120,26 @@ class AdminCompanyDetailPage extends StatelessWidget {
                       Divider(height: 24, color: colors.line),
                       _DetailRow(label: s.enterpriseOverride, value: s.active),
                     ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              AdminSectionHeader(title: agentStrings.adminTitle),
+              const SizedBox(height: 12),
+              AdminCard(
+                child: Column(
+                  children: [
+                    _DetailRow(
+                      label: agentStrings.availableCount,
+                      value: '${detail?['active_module_count'] ?? 0} / ${detail?['module_limit'] ?? '∞'} (${detail?['remaining_module_slots'] ?? '∞'})',
+                    ),
+                    Divider(height: 24, color: colors.line),
+                    _DetailRow(
+                      label: agentStrings.availableNow,
+                      value: ((detail?['active_modules'] as List<dynamic>?) ?? const []).isEmpty
+                          ? '—'
+                          : (detail?['active_modules'] as List<dynamic>).join(', '),
+                    ),
                   ],
                 ),
               ),

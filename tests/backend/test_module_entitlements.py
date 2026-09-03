@@ -3,7 +3,14 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from backend.app.models import Base, Company, CompanyModule, CompanyModuleStatus, Module
+from backend.app.models import (
+    Base,
+    BillingAccount,
+    Company,
+    CompanyModule,
+    CompanyModuleStatus,
+    Module,
+)
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from shared.ai_engine.contracts import TenantContext
 
@@ -12,7 +19,12 @@ def test_sqlalchemy_entitlements_require_active_company_module() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
-        tables=[Company.__table__, Module.__table__, CompanyModule.__table__],
+        tables=[
+            Company.__table__,
+            Module.__table__,
+            CompanyModule.__table__,
+            BillingAccount.__table__,
+        ],
     )
 
     with Session(engine) as session:

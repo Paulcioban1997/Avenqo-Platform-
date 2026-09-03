@@ -9,11 +9,19 @@ class AgentCatalog extends StatelessWidget {
     required this.strings,
     this.onOpen,
     this.showAccessActions = false,
+    this.moduleStates = const {},
+    this.activeLabel,
+    this.limitLabel,
+    this.onToggle,
   });
 
   final AgentStrings strings;
   final ValueChanged<AvenqoAgentDefinition>? onOpen;
   final bool showAccessActions;
+  final Map<String, String> moduleStates;
+  final String? activeLabel;
+  final String? limitLabel;
+  final ValueChanged<AvenqoAgentDefinition>? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +44,22 @@ class AgentCatalog extends StatelessWidget {
                 child: _AgentCard(
                   agent: agent,
                   strings: strings,
-                  onOpen: showAccessActions && agent.isAvailable
+                  state: moduleStates[agent.id],
+                  activeLabel: activeLabel,
+                  limitLabel: limitLabel,
+                  onToggle: onToggle == null
+                      ? null
+                      : () => onToggle!.call(agent),
+                  onOpen: showAccessActions &&
+                          (moduleStates.isEmpty
+                              ? agent.isAvailable
+                              : moduleStates[agent.id] == 'active')
                       ? () => onOpen?.call(agent)
                       : null,
-                  showAccessAction: showAccessActions && agent.isAvailable,
+                  showAccessAction: showAccessActions &&
+                      (moduleStates.isEmpty
+                          ? agent.isAvailable
+                          : moduleStates[agent.id] == 'active'),
                 ),
               ),
           ],
@@ -53,20 +73,38 @@ class _AgentCard extends StatelessWidget {
   const _AgentCard({
     required this.agent,
     required this.strings,
+    required this.state,
+    required this.activeLabel,
+    required this.limitLabel,
+    required this.onToggle,
     required this.onOpen,
     required this.showAccessAction,
   });
 
   final AvenqoAgentDefinition agent;
   final AgentStrings strings;
+  final String? state;
+  final String? activeLabel;
+  final String? limitLabel;
+  final VoidCallback? onToggle;
   final VoidCallback? onOpen;
   final bool showAccessAction;
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final available = agent.isAvailable;
+    final available = state == null
+        ? agent.isAvailable
+        : const {'active', 'available'}.contains(state);
     final accent = available ? const Color(0xFF087CF0) : colors.muted;
+    final badgeLabel = switch (state) {
+      'active' => activeLabel ?? strings.availableNow,
+      'limit_reached' => limitLabel ?? strings.availableNow,
+      'coming_soon' => strings.comingSoon,
+      'unavailable' => strings.comingSoon,
+      'upgrade_required' => strings.comingSoon,
+      _ => available ? strings.availableNow : strings.comingSoon,
+    };
     return Container(
       constraints: const BoxConstraints(minHeight: 230),
       padding: const EdgeInsets.all(20),
@@ -100,7 +138,17 @@ class _AgentCard extends StatelessWidget {
                   style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w800),
                 ),
               ),
-            ],
+              if (state != null)
+                Tooltip(
+                  message: badgeLabel,
+                  child: Switch(
+                    value: state == 'active',
+                    onChanged: const {'active', 'available'}.contains(state)
+                        ? (_) => onToggle?.call()
+                        : null,
+                  ),
+                ),
+              ],
           ),
           const SizedBox(height: 16),
           Text(
@@ -109,7 +157,7 @@ class _AgentCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _AvailabilityBadge(
-            label: available ? strings.availableNow : strings.comingSoon,
+            label: badgeLabel,
             available: available,
           ),
           if (showAccessAction) ...[

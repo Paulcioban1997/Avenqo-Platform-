@@ -15,6 +15,7 @@ from backend.app.routers.employees import router as employees_router
 from backend.app.routers.health import router as health_router
 from backend.app.routers.internal_retraining import router as internal_retraining_router
 from backend.app.routers.internal_versioning import router as internal_versioning_router
+from backend.app.routers.modules import router as modules_router
 from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.training import router as training_router
@@ -76,6 +77,11 @@ api_router.include_router(
 	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(onboarding_router, prefix="/api/v1")
+api_router.include_router(
+	modules_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
 api_router.include_router(
 	retail_router,
 	prefix="/api/v1",

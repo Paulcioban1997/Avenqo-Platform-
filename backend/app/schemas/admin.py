@@ -51,6 +51,10 @@ class CompanyDetailResponse(BaseModel):
     users_count: int
     datasets_count: int
     trained_model_count: int
+    active_module_count: int
+    module_limit: int | None
+    active_modules: tuple[str, ...]
+    remaining_module_slots: int | None
     enterprise_override: dict[str, Any] | None
 
 

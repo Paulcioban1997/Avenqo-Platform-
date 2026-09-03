@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from modules.registry import BUSINESS_MODULE_REGISTRY
+
 
 class PlanCode(StrEnum):
     """Codes stables utilisÃ©s par Avenqo et les futurs adaptateurs de paiement."""
@@ -38,19 +40,7 @@ class SubscriptionPlan:
         )
 
 
-MODULE_NAMES: dict[str, str] = {
-    "retail": "Retail Intelligence",
-    "marketing": "Marketing AI",
-    "crm": "CRM AI",
-    "hr": "HR AI",
-    "accounting": "Accounting AI",
-    "ocr": "OCR AI",
-    "voice": "Voice AI",
-    "media": "Media AI",
-    "legal": "Legal AI",
-    "appointments": "Appointments AI",
-    "workflow": "Workflow Automation",
-}
+MODULE_NAMES = {module.key: module.display_name for module in BUSINESS_MODULE_REGISTRY}
 ALL_MODULES = frozenset(MODULE_NAMES)
 
 PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (

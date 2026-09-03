@@ -3,6 +3,7 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/features/admin/admin_agents_page.dart';
+import 'package:avenqo/features/admin/admin_company_detail_page.dart';
 import 'package:avenqo/features/admin/admin_retail_agent_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -99,6 +100,83 @@ Future<(Widget, GoRouter)> _adminRetailRouter(
 }
 
 void main() {
+  testWidgets('admin company detail displays module entitlement summary', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      tokenStore: _TokenStore(),
+      httpClient: MockClient((_) async => http.Response('''{
+        "name":"Example Inc.",
+        "country":"CA",
+        "joined_at":"2026-01-01T00:00:00Z",
+        "plan_code":"professional",
+        "subscription_status":"active",
+        "active_module_count":1,
+        "module_limit":2,
+        "remaining_module_slots":1,
+        "active_modules":["Retail Intelligence"]
+      }''', 200)),
+      baseUrl: 'https://avenqo.test/api/v1',
+    );
+    await api.initialize();
+
+    await tester.pumpWidget(await _wrap(
+      AdminCompanyDetailPage(api: api, companyId: 'company-1'),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Agent Catalog'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Agent Catalog'), findsOneWidget);
+    expect(find.text('1 / 2 (1)'), findsOneWidget);
+    expect(find.text('Retail Intelligence'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('client catalog uses backend entitlement states and toggles modules', (
+    tester,
+  ) async {
+    Uri? actionUri;
+    final response = '''{
+      "company_id":"00000000-0000-0000-0000-000000000001",
+      "plan_code":"demo",
+      "active_modules":["retail"],
+      "module_limit":2,
+      "remaining_module_slots":1,
+      "modules":[
+        {"key":"retail","state":"active"},
+        {"key":"crm","state":"coming_soon"}
+      ]
+    }''';
+    final api = ApiClient(
+      tokenStore: _TokenStore(),
+      httpClient: MockClient((request) async {
+        if (request.method == 'POST') actionUri = request.url;
+        return http.Response(response, 200);
+      }),
+      baseUrl: 'https://avenqo.test/api/v1',
+    );
+    await api.initialize();
+
+    await tester.pumpWidget(await _wrap(AgentsPage(api: api)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('Discover'), findsOneWidget);
+    expect(find.byType(Switch), findsNWidgets(2));
+    expect(tester.widget<Switch>(find.byType(Switch).at(1)).onChanged, isNull);
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(actionUri?.path, '/api/v1/modules/retail/deactivate');
+    expect(actionUri.toString(), isNot(contains('company')));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('client catalog opens the existing Retail route only', (
     tester,
   ) async {

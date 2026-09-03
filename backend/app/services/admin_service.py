@@ -27,6 +27,8 @@ from backend.app.models import (
     User,
 )
 from backend.app.services.audit_log_service import AuditLogService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from shared.ai_engine.contracts import TenantContext
 
 _ACTIVE_STATUSES = {"active", "trialing"}
 _PAST_DUE_STATUSES = {"past_due", "unpaid", "incomplete"}
@@ -77,6 +79,10 @@ class CompanyDetail:
     users_count: int
     datasets_count: int
     trained_model_count: int
+    active_module_count: int
+    module_limit: int | None
+    active_modules: tuple[str, ...]
+    remaining_module_slots: int | None
     enterprise_override: dict[str, Any] | None
 
 
@@ -175,6 +181,14 @@ class AdminService:
         override = self._db.scalar(
             select(EnterpriseOverride).where(EnterpriseOverride.company_id == company_id)
         )
+        module_entitlements = ModuleEntitlementService(self._db).summary(
+            TenantContext(company_id)
+        )
+        active_module_names = tuple(
+            module.display_name
+            for module in module_entitlements.modules
+            if module.active
+        )
         return CompanyDetail(
             id=company.id,
             name=company.name,
@@ -192,6 +206,10 @@ class AdminService:
             users_count=int(users_count),
             datasets_count=int(datasets_count),
             trained_model_count=int(trained_model_count),
+            active_module_count=len(module_entitlements.active_modules),
+            module_limit=module_entitlements.module_limit,
+            active_modules=active_module_names,
+            remaining_module_slots=module_entitlements.remaining_module_slots,
             enterprise_override=(
                 {
                     "quota_overrides": override.quota_overrides,
