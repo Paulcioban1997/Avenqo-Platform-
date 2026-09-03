@@ -573,6 +573,7 @@ class _DatasetRow extends StatelessWidget {
         dataset['pipeline_status']?.toString() ?? dataset['status']?.toString();
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
+    final needsAttention = status == 'attention_required';
     final isError =
         status == 'failed' || status == 'invalid' || status == 'rejected';
     final statusLabel = switch (status) {
@@ -639,12 +640,13 @@ class _DatasetRow extends StatelessWidget {
               ],
             ),
           ),
-          if (isReady) ...[
+          if (isReady || needsAttention)
             IconButton(
               tooltip: t.connectionsCleaning['view'],
               onPressed: isDeleting ? null : () => onViewCleaning(dataset),
               icon: const Icon(Icons.table_view_outlined),
             ),
+          if (isReady) ...[
             IconButton(
               tooltip: t.connectionsGoDashboard,
               onPressed: isDeleting ? null : onGoToDashboard,
@@ -741,6 +743,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
             }
             final detail = snapshot.data!;
             final summary = detail['summary'] as Map<String, dynamic>;
+            final isReady = detail['status'] == 'ready';
             final before = (detail['original_preview'] as List<dynamic>)
                 .cast<Map<String, dynamic>>();
             final after = (detail['cleaned_preview'] as List<dynamic>)
@@ -758,9 +761,16 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${widget.t.connectionsReadyTitle} · v${detail['version']}',
+                  '${isReady ? widget.t.connectionsReadyTitle : widget.t.connectionsAttentionRequired} · v${detail['version']}',
                   style: TextStyle(color: colors.muted),
                 ),
+                if (!isReady) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.t.connectionsMappingSubtitle,
+                    style: TextStyle(color: colors.muted),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 Text(
                   widget.t.connectionsCleaning['summary']!,
@@ -820,19 +830,25 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final format in const ['CSV', 'XLSX', 'PDF', 'DOCX'])
-                      OutlinedButton.icon(
-                        onPressed: _exporting
-                            ? null
-                            : () => _export(format.toLowerCase()),
-                        icon: const Icon(Icons.download_outlined, size: 18),
-                        label: Text(format),
-                      ),
-                  ],
-                ),
+                if (isReady)
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final format in const [
+                        'CSV',
+                        'XLSX',
+                        'PDF',
+                        'DOCX',
+                      ])
+                        OutlinedButton.icon(
+                          onPressed: _exporting
+                              ? null
+                              : () => _export(format.toLowerCase()),
+                          icon: const Icon(Icons.download_outlined, size: 18),
+                          label: Text(format),
+                        ),
+                    ],
+                  ),
               ],
             );
           },

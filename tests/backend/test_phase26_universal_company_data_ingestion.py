@@ -536,6 +536,29 @@ def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) ->
     assert client.get(f"/api/v1/datasets/{dataset_id}/export/csv").status_code == 404
 
 
+def test_attention_required_exposes_original_detail_but_blocks_exports(
+    phase26_environment,
+) -> None:
+    client, _, _ = phase26_environment
+    upload = _upload(client, "ambiguous.csv", AMBIGUOUS_CSV)
+    dataset_id = upload.json()["dataset_id"]
+
+    detail_response = client.get(f"/api/v1/datasets/{dataset_id}/cleaning")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["status"] == "attention_required"
+    assert detail["cleaning_status"] == "configuration_required"
+    assert detail["summary"]["original_row_count"] == 3
+    assert detail["original_preview"][0]["customer_review"] == "Great service and fast"
+    assert detail["cleaned_preview"] == []
+    assert detail["preview_total"] == 0
+    assert len(detail["transformation_history"]) == 1
+
+    for export_format in ("csv", "xlsx", "pdf", "docx"):
+        response = client.get(f"/api/v1/datasets/{dataset_id}/export/{export_format}")
+        assert response.status_code == 409
+
+
 def test_currency_string_converted_to_numeric(phase26_environment) -> None:
     client, _, _ = phase26_environment
     dataset_id = _upload(client, "company_a.csv", COMPANY_A_CSV).json()["dataset_id"]

@@ -7,6 +7,7 @@ from typing import Any
 from backend.app.ai.tools.business.analytics import compute_business_overview
 from backend.app.services.tenant_analytics_service import (
     BUSINESS_METRIC_FIELDS,
+    TenantAnalyticsSnapshot,
     TenantAnalyticsService,
 )
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
@@ -40,7 +41,7 @@ class TenantDashboardService:
         snapshot = self._analytics.load(tenant)
         period = self._period(snapshot.prepared)
         kpis = [
-            self._kpi(key, snapshot.prepared, snapshot.currency, period)
+            self._kpi(key, snapshot, snapshot.currency, period)
             for key in BUSINESS_METRIC_FIELDS
         ]
         recommendations = self._recommendations.build_from_snapshot(tenant, snapshot)[
@@ -100,15 +101,12 @@ class TenantDashboardService:
     def _kpi(
         self,
         key: str,
-        prepared: tuple[PreparedCompanyDataset, ...],
+        snapshot: TenantAnalyticsSnapshot,
         currency: str,
         period: dict[str, datetime | None],
     ) -> DashboardKPI:
         required = BUSINESS_METRIC_FIELDS[key]
-        source = next(
-            (item for item in prepared if required <= set(item.canonical_columns.values())),
-            None,
-        )
+        source = snapshot.source_for(required)
         if source is None:
             return DashboardKPI(key, None, None, None, None, None, False)
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 from backend.app.models import Dataset, DatasetStatus
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -41,10 +42,12 @@ def load_latest_prepared_dataset(
     ingestion: CompanyDatasetIngestionService,
     tenant: TenantContext,
 ) -> PreparedCompanyDataset:
-    """Charge le dernier dataset prêt du tenant, ou lève `ToolUnavailableError`."""
+    """Charge la même vue READY composée que les pages Retail du tenant."""
 
-    dataset = latest_ready_dataset(session, tenant)
-    if dataset is None:
+    source = TenantAnalyticsService(session, ingestion).load(tenant).source_for(frozenset())
+    if source is None and (dataset := latest_ready_dataset(session, tenant)) is not None:
+        source = ingestion.get_prepared_dataset(tenant, dataset.id)
+    if source is None:
         logger.warning(
             "ai_prepared_dataset tenant_id=%s dataset_id=%s dataset_status=%s prepared_dataset_available=false",
             tenant.company_id,
@@ -54,11 +57,10 @@ def load_latest_prepared_dataset(
         raise ToolUnavailableError(
             "No business data is available yet for this company. Connect your business data first."
         )
-    prepared = ingestion.get_prepared_dataset(tenant, dataset.id)
     logger.info(
         "ai_prepared_dataset tenant_id=%s dataset_id=%s dataset_status=%s prepared_dataset_available=true",
         tenant.company_id,
-        dataset.id,
-        dataset.status.value,
+        source.dataset_id,
+        DatasetStatus.READY.value,
     )
-    return prepared
+    return source

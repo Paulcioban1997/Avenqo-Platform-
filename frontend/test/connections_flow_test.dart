@@ -137,7 +137,7 @@ void main() {
         '/datasets/11111111-1111-1111-1111-111111111111/cleaning',
       )) {
         return http.Response(
-          '{"name":"sales.csv","version":1,"summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}]}',
+          '{"name":"sales.csv","status":"ready","version":1,"summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}]}',
           200,
         );
       }
@@ -182,6 +182,46 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
     expect(find.text('sales.csv'), findsOneWidget);
+  });
+
+  testWidgets('attention-required dataset exposes detail but not exports', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","rows_count":2,"columns_count":2}]',
+          200,
+        );
+      }
+      if (request.url.path.endsWith(
+        '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
+      )) {
+        return http.Response(
+          '{"name":"needs-mapping.csv","status":"attention_required","version":1,"summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"mappings_applied":{}},"original_preview":[{"buyer":"C1","paid":"12.50"}],"cleaned_preview":[]}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Voir les données nettoyées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attention required · v1'), findsOneWidget);
+    expect(
+      find.textContaining('confirmation manuelle'),
+      findsOneWidget,
+    );
+    expect(find.text('C1'), findsOneWidget);
+    expect(find.text('CSV'), findsNothing);
+    expect(find.text('DOCX'), findsNothing);
   });
 
   testWidgets('Connections polls until automatic training is ready', (
