@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "המשך",
     "connectionsImportedAtLabel": "יובא",
     "connectionsUploadedFileSuccessLabel": "הנתונים יובאו בהצלחה",
+    "connectionsCleaning": {
+      "view": "הצגת נתונים מנוקים",
+      "summary": "סיכום ניקוי",
+      "before": "לפני",
+      "after": "אחרי"
+    },
     "themeToggleSwitchToDark": "החלף למצב כהה",
     "themeToggleSwitchToLight": "החלף למצב בהיר"
   },
@@ -776,7 +782,16 @@
       "planDemo": "הַדגָמָה",
       "planProfessional": "מִקצוֹעִי",
       "planEnterprise": "מִפְעָל",
-      "nextRenewal": "החידוש הבא: {date}"
+      "nextRenewal": "החידוש הבא: {date}",
+      "downloadCsv": "הורדת CSV",
+      "downloadXlsx": "הורדת XLSX",
+      "invoiceDate": "תאריך חשבונית",
+      "subtotal": "סכום ביניים",
+      "taxes": "מסים",
+      "total": "סה״כ",
+      "previous": "הקודם",
+      "next": "הבא",
+      "officialInvoice": "חשבונית Stripe רשמית"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "חשבונית {number} שולמה",
+    "greeting": "שלום {company}, חשבונית Avenqo שולמה.",
+    "totalPaid": "סה״כ שולם",
+    "status": "סטטוס",
+    "invoiceNumber": "חשבונית",
+    "plan": "לְתַכְנֵן",
+    "billingPeriod": "תקופת חיוב",
+    "subtotal": "סכום ביניים",
+    "taxes": "מסים",
+    "viewInvoice": "צפה בחשבוניות",
+    "downloadPdf": "הורד PDF"
   }
 }

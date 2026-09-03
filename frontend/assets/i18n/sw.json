@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "Endelea",
     "connectionsImportedAtLabel": "Imeingizwa",
     "connectionsUploadedFileSuccessLabel": "Data imeingizwa kwa mafanikio",
+    "connectionsCleaning": {
+      "view": "Tazama data iliyosafishwa",
+      "summary": "Muhtasari wa usafishaji",
+      "before": "Kabla",
+      "after": "Baada"
+    },
     "themeToggleSwitchToDark": "Badilisha kwenda hali ya giza",
     "themeToggleSwitchToLight": "Badilisha kwenda hali ya mwanga"
   },
@@ -776,7 +782,16 @@
       "planDemo": "Onyesho",
       "planProfessional": "Mtaalamu",
       "planEnterprise": "Biashara",
-      "nextRenewal": "Usasishaji unaofuata: {date}"
+      "nextRenewal": "Usasishaji unaofuata: {date}",
+      "downloadCsv": "Pakua CSV",
+      "downloadXlsx": "Pakua XLSX",
+      "invoiceDate": "Tarehe ya ankara",
+      "subtotal": "Jumla ndogo",
+      "taxes": "Kodi",
+      "total": "Jumla",
+      "previous": "Iliyotangulia",
+      "next": "Inayofuata",
+      "officialInvoice": "Ankara rasmi ya Stripe"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Ankara {number} imelipwa",
+    "greeting": "Habari {company}, ankara yako ya Avenqo imelipwa.",
+    "totalPaid": "Jumla iliyolipwa",
+    "status": "Hali",
+    "invoiceNumber": "Ankara",
+    "plan": "Mpango",
+    "billingPeriod": "Kipindi cha bili",
+    "subtotal": "Jumla ndogo",
+    "taxes": "Kodi",
+    "viewInvoice": "Tazama ankara",
+    "downloadPdf": "Pakua PDF"
   }
 }

@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "続ける",
     "connectionsImportedAtLabel": "インポート済み",
     "connectionsUploadedFileSuccessLabel": "データのインポートに成功しました",
+    "connectionsCleaning": {
+      "view": "クリーニング済みデータを表示",
+      "summary": "クリーニング概要",
+      "before": "処理前",
+      "after": "処理後"
+    },
     "themeToggleSwitchToDark": "ダークモードに切り替える",
     "themeToggleSwitchToLight": "ライトモードに切り替える"
   },
@@ -776,7 +782,16 @@
       "planDemo": "??????",
       "planProfessional": "???????????????????????????",
       "planEnterprise": "????????????????????????",
-      "nextRenewal": "???????????????{date}"
+      "nextRenewal": "???????????????{date}",
+      "downloadCsv": "CSVをダウンロード",
+      "downloadXlsx": "XLSXをダウンロード",
+      "invoiceDate": "請求日",
+      "subtotal": "小計",
+      "taxes": "税金",
+      "total": "合計",
+      "previous": "前へ",
+      "next": "次へ",
+      "officialInvoice": "Stripe公式請求書"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "請求書{number}の支払い完了",
+    "greeting": "{company}様、Avenqo請求書のお支払いが完了しました。",
+    "totalPaid": "支払総額",
+    "status": "ステータス",
+    "invoiceNumber": "利用可能な請求書はありません",
+    "plan": "?????????",
+    "billingPeriod": "????????????",
+    "subtotal": "小計",
+    "taxes": "税金",
+    "viewInvoice": "??????????????????",
+    "downloadPdf": "PDF?????????????????????"
   }
 }

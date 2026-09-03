@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.database import get_db
+from backend.app.ai.tools.business.analytics import compute_business_overview
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.tenant_business import (
     get_tenant_customers_service,
@@ -23,6 +25,7 @@ from backend.app.models import (
     BillingAccount,
     Company,
     Dataset,
+    DatasetRelationship,
     DatasetStatus,
     JobStatus,
     Mapping,
@@ -31,11 +34,14 @@ from backend.app.models import (
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import CustomerNotFound, TenantCustomersService
+from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.app.services.tenant_products_service import ProductNotFound, TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import InvalidSalesPeriod, TenantSalesService
 from backend.main import create_application
 from shared.ai_engine.contracts import TenantContext
+from backend.app.ai.tools.business.sales_tools import BusinessOverviewArgs, GetBusinessOverviewTool
+from backend.app.ai.tools.contracts import ToolExecutionContext
 
 
 class _PreparedIngestion:
@@ -197,6 +203,182 @@ def _phase4d_services(session, prepared):
     products = TenantProductsService(analytics)
     recommendations = TenantRecommendationsService(analytics, products, predictions)
     return products, recommendations, predictions
+
+
+@pytest.mark.asyncio
+async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_leakage(
+    business_environment,
+):
+    session, company, company_b, _dataset_a, prepared = business_environment
+    prepared.clear()
+    customers_data = _dataset(session, company, "party-records.csv")
+    orders = _dataset(session, company, "commerce-events.csv")
+    items = _dataset(session, company, "line-facts.csv")
+    products_data = _dataset(session, company, "catalog-data.csv")
+    payments = _dataset(session, company, "settlements.csv")
+    foreign = _dataset(session, company_b, "foreign-settlements.csv")
+
+    prepared.update(
+        {
+            customers_data.id: _prepared(
+                company,
+                customers_data,
+                [{"buyer": "C1"}, {"buyer": "C2"}],
+                {"buyer": "customer_id"},
+            ),
+            orders.id: _prepared(
+                company,
+                orders,
+                [
+                    {"order": "O1", "buyer": "C1", "when": "2026-07-01"},
+                    {"order": "O2", "buyer": "C1", "when": "2026-08-01"},
+                    {"order": "O3", "buyer": "C2", "when": "2026-08-15"},
+                ],
+                {"order": "order_id", "buyer": "customer_id", "when": "order_timestamp"},
+            ),
+            items.id: _prepared(
+                company,
+                items,
+                [
+                    {"order_ref": "O1", "sku": "P1", "units": 1, "each": 30.0},
+                    {"order_ref": "O1", "sku": "P2", "units": 1, "each": 70.0},
+                    {"order_ref": "O2", "sku": "P1", "units": 2, "each": 100.0},
+                    {"order_ref": "O3", "sku": "P2", "units": 1, "each": 20.0},
+                ],
+                {
+                    "order_ref": "order_id",
+                    "sku": "product_id",
+                    "units": "quantity",
+                    "each": "unit_price",
+                },
+            ),
+            products_data.id: _prepared(
+                company,
+                products_data,
+                [
+                    {"sku": "P1", "label": "Coffee", "group": "Drinks"},
+                    {"sku": "P2", "label": "Tea", "group": "Drinks"},
+                ],
+                {"sku": "product_id", "label": "product_name", "group": "product_category"},
+            ),
+            payments.id: _prepared(
+                company,
+                payments,
+                [
+                    {"sale": "O1", "paid": 100.0},
+                    {"sale": "O2", "paid": 200.0},
+                    {"sale": "O3", "paid": 20.0},
+                ],
+                {"sale": "order_id", "paid": "total_amount"},
+            ),
+            foreign.id: _prepared(
+                company_b,
+                foreign,
+                [{"sale": "O1", "paid": 9999.0}],
+                {"sale": "order_id", "paid": "total_amount"},
+            ),
+        }
+    )
+
+    for left, right, field in (
+        (orders, customers_data, "customer_id"),
+        (items, orders, "order_id"),
+        (items, products_data, "product_id"),
+        (orders, payments, "order_id"),
+    ):
+        session.add(
+            DatasetRelationship(
+                company_id=company.id,
+                left_dataset_id=left.id,
+                right_dataset_id=right.id,
+                left_column=field,
+                right_column=field,
+                canonical_field=field,
+                overlap_ratio=1.0,
+                confidence=1.0,
+            )
+        )
+    session.commit()
+
+    ingestion = _PreparedIngestion(prepared)
+    analytics = TenantAnalyticsService(session, ingestion)
+    predictions = _PredictionService()
+    sales = TenantSalesService(session, analytics, predictions)
+    customers = TenantCustomersService(analytics, predictions)
+    products = TenantProductsService(analytics)
+    recommendations = TenantRecommendationsService(analytics, products, None)
+    dashboard = TenantDashboardService(analytics, recommendations)
+    tenant = TenantContext(company.id)
+
+    sales_result = sales.build(tenant, period_key="last_90_days")
+    customer_result = customers.build(tenant)
+    product_result = products.build(tenant)
+    dashboard_result = dashboard.build(tenant)
+    recommendation_result = recommendations.build(tenant)
+    tool = GetBusinessOverviewTool(session, ingestion)
+    tool_result = await tool.run(
+        ToolExecutionContext(
+            tenant=tenant,
+            user_id=uuid4(),
+            permissions=frozenset({"ai:use"}),
+            request_id="multi-ready",
+        ),
+        BusinessOverviewArgs(),
+    )
+
+    assert sales_result["summary"]["revenue"] == 320.0
+    assert customer_result["summary"]["total_customers"] == 2
+    assert customer_result["summary"]["repeat_customers"] == 1
+    assert product_result["summary"]["total_products"] == 2
+    assert product_result["summary"]["units"] == 5.0
+    assert sum(item["revenue"] for item in product_result["items"]) == 320.0
+    assert {item["average_price"] for item in product_result["items"]} == {76.67, 45.0}
+    growth = next(
+        item
+        for item in recommendation_result["recommendations"]
+        if item["type"] == "revenue_growth"
+    )
+    assert growth["evidence"]["current"] == 220.0
+    kpis = {item["key"]: item for item in dashboard_result["kpis"]}
+    assert kpis["revenue"]["value"] == 220.0
+    assert kpis["average_order_value"]["value"] == 110.0
+    assert "average_order_value" in dashboard_result["capabilities"]
+    assert tool_result.data["revenue"] == 320.0
+    assert tool_result.data["customers"] == 2
+    assert all(item.get("revenue") != 9999.0 for item in product_result["items"])
+
+
+def test_line_quantity_and_unit_price_derive_real_zero_revenue(
+    business_environment,
+):
+    session, company, _company_b, _dataset_a, prepared = business_environment
+    prepared.clear()
+    lines = _dataset(session, company, "line-values.csv")
+    prepared[lines.id] = _prepared(
+        company,
+        lines,
+        [
+            {"sale": "O1", "units": 2, "price_each": 0.0},
+            {"sale": "O2", "units": 3, "price_each": 10.0},
+        ],
+        {
+            "sale": "order_id",
+            "units": "quantity",
+            "price_each": "unit_price",
+        },
+    )
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared))
+
+    source = analytics.load(TenantContext(company.id)).source_for(
+        frozenset({"total_amount", "order_id"})
+    )
+
+    assert source is not None
+    overview = compute_business_overview(source)
+    assert overview["revenue"] == 30.0
+    assert overview["orders"] == 2
+    zero_source = replace(source, rows=(source.rows[0],))
+    assert compute_business_overview(zero_source)["revenue"] == 0.0
 
 
 def _product_prepared(company, dataset):

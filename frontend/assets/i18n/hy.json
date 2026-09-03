@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "Շարունակել",
     "connectionsImportedAtLabel": "Ներմուծված է",
     "connectionsUploadedFileSuccessLabel": "Տվյալները հաջողությամբ ներմուծվեցին",
+    "connectionsCleaning": {
+      "view": "Դիտել մաքրված տվյալները",
+      "summary": "Մաքրման ամփոփում",
+      "before": "Առաջ",
+      "after": "Հետո"
+    },
     "themeToggleSwitchToDark": "Անցնել մուգ ռեժիմի",
     "themeToggleSwitchToLight": "Անցնել լուսավոր ռեժիմի"
   },
@@ -776,7 +782,16 @@
       "planDemo": "Դեմո",
       "planProfessional": "Պրոֆեսիոնալ",
       "planEnterprise": "Ձեռնարկություն",
-      "nextRenewal": "Հաջորդ թարմացումը՝ {date}"
+      "nextRenewal": "Հաջորդ թարմացումը՝ {date}",
+      "downloadCsv": "Ներբեռնել CSV",
+      "downloadXlsx": "Ներբեռնել XLSX",
+      "invoiceDate": "Հաշիվ-ապրանքագրի ամսաթիվ",
+      "subtotal": "Ենթագումար",
+      "taxes": "Հարկեր",
+      "total": "Ընդամենը",
+      "previous": "Նախորդ",
+      "next": "Հաջորդ",
+      "officialInvoice": "Stripe-ի պաշտոնական հաշիվ"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "{number} հաշիվը վճարված է",
+    "greeting": "Բարև {company}, ձեր Avenqo հաշիվը վճարված է։",
+    "totalPaid": "Ընդամենը վճարված",
+    "status": "Կարգավիճակ",
+    "invoiceNumber": "Հաշիվ-ապրանքագիր",
+    "plan": "Պլանավորել",
+    "billingPeriod": "Վճարման ժամանակաշրջան",
+    "subtotal": "Ենթագումար",
+    "taxes": "Հարկեր",
+    "viewInvoice": "Դիտեք հաշիվ-ապրանքագրերը",
+    "downloadPdf": "Ներբեռնեք PDF"
   }
 }

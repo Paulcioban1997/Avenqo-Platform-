@@ -1981,6 +1981,7 @@ class CompanyStrings {
     required this.connectionsContinueLabel,
     required this.connectionsImportedAtLabel,
     required this.connectionsUploadedFileSuccessLabel,
+    required this.connectionsCleaning,
     required this.businessDefaultTitle,
     required this.businessDefaultDescription,
     required this.businessConnectButton,
@@ -2058,6 +2059,7 @@ class CompanyStrings {
   factory CompanyStrings.fromJson(Map<String, dynamic> json) {
     final fallback = CompanyStrings.fallback();
     String s(String key) => json[key] as String? ?? fallback._byKey(key);
+    final cleaning = json['connectionsCleaning'] as Map<String, dynamic>?;
     return CompanyStrings(
       navOverviewLabel: s('navOverviewLabel'),
       navOverviewDescription: s('navOverviewDescription'),
@@ -2128,6 +2130,10 @@ class CompanyStrings {
       connectionsContinueLabel: s('connectionsContinueLabel'),
       connectionsImportedAtLabel: s('connectionsImportedAtLabel'),
       connectionsUploadedFileSuccessLabel: s('connectionsUploadedFileSuccessLabel'),
+      connectionsCleaning: {
+        for (final key in const ['view', 'summary', 'before', 'after'])
+          key: cleaning?[key] as String? ?? fallback.connectionsCleaning[key]!,
+      },
       businessDefaultTitle: s('businessDefaultTitle'),
       businessDefaultDescription: s('businessDefaultDescription'),
       businessConnectButton: s('businessConnectButton'),
@@ -2273,6 +2279,12 @@ class CompanyStrings {
         connectionsContinueLabel: 'Continue',
         connectionsImportedAtLabel: 'Imported',
         connectionsUploadedFileSuccessLabel: 'Data imported successfully',
+        connectionsCleaning: {
+          'view': 'View cleaned data',
+          'summary': 'Cleaning summary',
+          'before': 'Before',
+          'after': 'After',
+        },
         businessDefaultTitle: 'Your space is ready',
         businessDefaultDescription: 'Connect your tools to see up-to-date information here.',
         businessConnectButton: 'Connect my tools',
@@ -2561,6 +2573,7 @@ class CompanyStrings {
   final String connectionsContinueLabel;
   final String connectionsImportedAtLabel;
   final String connectionsUploadedFileSuccessLabel;
+  final Map<String, String> connectionsCleaning;
   final String businessDefaultTitle;
   final String businessDefaultDescription;
   final String businessConnectButton;

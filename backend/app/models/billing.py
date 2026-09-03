@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,17 +48,30 @@ class BillingInvoice(Base):
         nullable=False,
     )
     stripe_invoice_id: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     plan_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    subtotal: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    discount_total: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    tax_total: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     amount_due: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_paid: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    line_items: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    billing_details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    tax_identifiers: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    customer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hosted_invoice_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     invoice_pdf: Mapped[str | None] = mapped_column(Text, nullable=True)
     period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class StripeWebhookEvent(Base):

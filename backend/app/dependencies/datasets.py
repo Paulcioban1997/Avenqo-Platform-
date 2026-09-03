@@ -17,6 +17,7 @@ from backend.app.services.automatic_company_dataset_ingestion_service import (
 from backend.app.services.capability_execution_gate import CapabilityExecutionGate
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.data_import_policy import DataImportPolicy
+from backend.app.services.dataset_cleaning_service import DatasetCleaningService
 from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from modules.entitlements import ModuleAccessService
@@ -66,3 +67,9 @@ def get_capability_execution_gate(
         service,
         access=ModuleAccessService(SQLAlchemyModuleEntitlements(db)),
     )
+
+
+def get_dataset_cleaning_service(
+    service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+) -> DatasetCleaningService:
+    return DatasetCleaningService(service)

@@ -86,10 +86,32 @@ class ChatService:
         self.last_stream_sources = []
         self.last_tool_call_results = ()
 
-    def _available_tools(self, *, permissions: frozenset[str], plan_code: str | None, capabilities: frozenset[str]):
+    @property
+    def provider_name(self) -> str:
+        return self._provider.name
+
+    async def classify_intent(self, system_instruction: str, prompt: str) -> str:
+        """Classify untrusted text without tenant retrieval, tools, or credit consumption."""
+
+        try:
+            generation = await self._provider.generate(
+                system_instruction=system_instruction,
+                prompt=prompt,
+            )
+        except LLMProviderError as exc:
+            raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
+        return generation.content
+
+    def validate_conversation(self, tenant_id: UUID, user_id: UUID, conversation_id: UUID) -> None:
+        self._conversations.get(tenant_id, user_id, conversation_id)
+
+    def _available_tools(self, *, permissions: frozenset[str], plan_code: str | None, capabilities: frozenset[str], allowed_tool_names: frozenset[str] | None = None):
         if self._orchestrator is None or self._tool_registry is None:
             return ()
-        return self._tool_registry.available_for(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+        tools = self._tool_registry.available_for(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+        if allowed_tool_names is None:
+            return tools
+        return tuple(tool for tool in tools if tool.name in allowed_tool_names)
 
     def _client_error_message(self, exc: LLMProviderError) -> str:
         if not self._debug_mode:
@@ -121,18 +143,22 @@ class ChatService:
         company_country: str = "",
         company_currency: str = "USD",
         company_timezone: str = "UTC",
+        trusted_context: str = "",
+        client_context: str = "",
+        allowed_tool_names: frozenset[str] | None = None,
+        retrieve_tenant_data: bool = True,
     ):
         if self._usage_service is not None:
             self._usage_service.ensure_quota_available(tenant_id, plan_code)
 
         self._conversations.get(tenant_id, user_id, conversation_id)
         self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.USER, query)
-        sources = self._retrieval.retrieve_context(tenant_id, query)
+        sources = self._retrieval.retrieve_context(tenant_id, query) if retrieve_tenant_data else []
         history = "\n".join(f"{message.role.value}: {message.content}" for message in self._conversations.messages(tenant_id, conversation_id))
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
-        prompt = f"<conversation>{history}</conversation>\n<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
+        prompt = f"<trusted_server_context>{trusted_context}</trusted_server_context>\n<client_context untrusted=\"true\">{client_context}</client_context>\n<conversation>{history}</conversation>\n<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
 
-        available_tools = self._available_tools(permissions=permissions, plan_code=plan_code, capabilities=capabilities)
+        available_tools = self._available_tools(permissions=permissions, plan_code=plan_code, capabilities=capabilities, allowed_tool_names=allowed_tool_names)
         logger.info(
             "ai_chat_request tenant_id=%s user_id=%s provider=%s available_tools_count=%d",
             tenant_id,

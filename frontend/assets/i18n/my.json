@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "ဆက်လက်ရန်",
     "connectionsImportedAtLabel": "တင်သွင်းပြီး",
     "connectionsUploadedFileSuccessLabel": "ဒေတာအောင်မြင်စွာတင်သွင်းပြီးပါပြီ",
+    "connectionsCleaning": {
+      "view": "သန့်စင်ပြီး ဒေတာကို ကြည့်ရန်",
+      "summary": "သန့်စင်မှု အကျဉ်းချုပ်",
+      "before": "မတိုင်မီ",
+      "after": "ပြီးနောက်"
+    },
     "themeToggleSwitchToDark": "မှောင်မိုက်မုဒ်သို့ ပြောင်းပါ",
     "themeToggleSwitchToLight": "အလင်းမုဒ်သို့ ပြောင်းပါ"
   },
@@ -776,7 +782,16 @@
       "planDemo": "ဒီမို",
       "planProfessional": "အတတ်ပညာ",
       "planEnterprise": "လုပ်ငန်း",
-      "nextRenewal": "နောက်တစ်ခု သက်တမ်းတိုးခြင်း- {date}"
+      "nextRenewal": "နောက်တစ်ခု သက်တမ်းတိုးခြင်း- {date}",
+      "downloadCsv": "CSV ဒေါင်းလုဒ်",
+      "downloadXlsx": "XLSX ဒေါင်းလုဒ်",
+      "invoiceDate": "ငွေတောင်းခံလွှာ ရက်စွဲ",
+      "subtotal": "စုစုပေါင်းခွဲ",
+      "taxes": "အခွန်",
+      "total": "စုစုပေါင်း",
+      "previous": "ယခင်",
+      "next": "နောက်",
+      "officialInvoice": "တရားဝင် Stripe ငွေတောင်းခံလွှာ"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "ငွေတောင်းခံလွှာ {number} ပေးချေပြီး",
+    "greeting": "မင်္ဂလာပါ {company}၊ သင်၏ Avenqo ငွေတောင်းခံလွှာ ပေးချေပြီးပါပြီ။",
+    "totalPaid": "စုစုပေါင်းပေးချေမှု",
+    "status": "အခြေအနေ",
+    "invoiceNumber": "ငွေတောင်းခံလွှာ မရရှိနိုင်ပါ",
+    "plan": "အစီအစဉ်",
+    "billingPeriod": "ငွေတောင်းခံသည့်ကာလ",
+    "subtotal": "စုစုပေါင်းခွဲ",
+    "taxes": "အခွန်",
+    "viewInvoice": "ငွေတောင်းခံလွှာများကို ကြည့်ရှုပါ။",
+    "downloadPdf": "PDF ဒေါင်းလုဒ်လုပ်ပါ။"
   }
 }

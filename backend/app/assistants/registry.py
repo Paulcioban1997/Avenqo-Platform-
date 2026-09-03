@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
 from backend.app.ai.tools.business.registry_factory import RETAIL_MODULE_CODE
+from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
 RETAIL_TOOL_NAMES: frozenset[str] = frozenset(
     {
@@ -54,35 +55,23 @@ def build_default_assistant_registry() -> AssistantRegistry:
     """Registre de référence Avenqo : Retail AVAILABLE, futurs assistants COMING_SOON."""
 
     registry = AssistantRegistry()
-    registry.register(
-        AssistantDefinition(
-            slug="retail",
-            name_key="assistant.retail.name",
-            description_key="assistant.retail.description",
-            status=AssistantStatus.AVAILABLE,
-            category="business",
-            module_code=RETAIL_MODULE_CODE,
-            allowed_tool_names=RETAIL_TOOL_NAMES,
-        )
-    )
-    for slug, category in (
-        ("crm", "business"),
-        ("accounting", "business"),
-        ("legal", "business"),
-        ("marketing", "business"),
-        ("real_estate", "business"),
-        ("restaurant", "business"),
-        ("clinic", "business"),
-        ("customer_support", "business"),
-    ):
+    for module in BUSINESS_MODULE_REGISTRY:
+        status = {
+            ModuleAvailability.AVAILABLE: AssistantStatus.AVAILABLE,
+            ModuleAvailability.COMING_SOON: AssistantStatus.COMING_SOON,
+            ModuleAvailability.UNAVAILABLE: AssistantStatus.DISABLED,
+        }[module.availability]
         registry.register(
             AssistantDefinition(
-                slug=slug,
-                name_key=f"assistant.{slug}.name",
-                description_key=f"assistant.{slug}.description",
-                status=AssistantStatus.COMING_SOON,
-                category=category,
-                module_code=None,
+                slug=module.key,
+                name_key=f"assistant.{module.key}.name",
+                description_key=f"assistant.{module.key}.description",
+                status=status,
+                category=module.category,
+                module_code=module.key,
+                allowed_tool_names=RETAIL_TOOL_NAMES
+                if module.key == RETAIL_MODULE_CODE
+                else frozenset(),
             )
         )
     return registry

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -59,10 +60,29 @@ class CompanyDatasetProfileResponse(BaseModel):
     column_count: int
     columns: tuple[ColumnProfileResponse, ...]
     mapping_suggestions: tuple[ColumnMappingSuggestionResponse, ...]
+    accepted_mapping: dict[str, str]
+    required_confirmation: tuple[dict[str, Any], ...]
     review_required: bool
     quality_status: str | None
     quality_reasons: tuple[str, ...]
     capability_readiness: tuple[CapabilityReadinessResponse, ...]
+
+
+class DatasetCleaningDetailResponse(BaseModel):
+    dataset_id: UUID
+    name: str
+    status: str
+    cleaning_status: str
+    quality_reasons: list[str]
+    version: int
+    timestamp: datetime
+    summary: dict[str, Any]
+    original_preview: list[dict[str, Any]]
+    cleaned_preview: list[dict[str, Any]]
+    preview_offset: int
+    preview_limit: int
+    preview_total: int
+    transformation_history: list[dict[str, Any]]
 
 
 class MappingOverrideRequest(BaseModel):
@@ -74,6 +94,12 @@ class MappingOverrideResponse(BaseModel):
     status: DatasetStatus
     mapping: dict[str, str]
     approved: bool
+
+
+class DatasetReconciliationResponse(BaseModel):
+    reviewed: int
+    promoted_to_ready: int
+    attention_required: int
 
 
 class CapabilityDatasetResponse(BaseModel):

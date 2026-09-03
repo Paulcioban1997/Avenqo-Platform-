@@ -459,6 +459,28 @@ async def test_tool_raises_unavailable_when_no_ready_dataset_exists(db_session) 
         await tool.run(context, sales_tools.BusinessOverviewArgs())
 
 
+async def test_tool_reports_incomplete_mapping_when_company_data_exists(db_session) -> None:
+    company = Company(name="Mapped Later", slug="mapped-later", email="later@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
+    db_session.add(company); db_session.flush()
+    db_session.add(
+        Dataset(
+            company_id=company.id,
+            name="payments.csv",
+            type="csv",
+            source="payments.csv",
+            rows_count=2,
+            columns_count=2,
+            status=DatasetStatus.MAPPING_REQUIRED,
+        )
+    )
+    db_session.commit()
+    context = ToolExecutionContext(tenant=TenantContext(company_id=company.id), user_id=uuid4(), permissions=frozenset({"ai:use"}), request_id="r")
+    tool = GetBusinessOverviewTool(session=db_session, ingestion=EmptyIngestionService())
+
+    with pytest.raises(ToolUnavailableError, match="connected but not yet computable"):
+        await tool.run(context, sales_tools.BusinessOverviewArgs())
+
+
 async def test_latest_ready_dataset_is_tenant_scoped(db_session) -> None:
     company_a = Company(name="A", slug="a", email="a2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")
     company_b = Company(name="B", slug="b", email="b2@example.com", country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="demo")

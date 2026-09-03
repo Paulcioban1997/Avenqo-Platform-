@@ -10,6 +10,7 @@ prÃ©paration, en rÃ©utilisant les mÃªmes fondations tenant-isolÃ©es
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -230,22 +231,21 @@ class CompanyDatasetIngestionService:
         )
         dataset.versions.append(version_record)
 
-        if review_required:
-            dataset.status = DatasetStatus.MAPPING_REQUIRED
-            self._session.add(dataset)
-            self._session.commit()
-            return dataset
-
         try:
-            self._finalize_dataset(
+            self._persist_cleaning(
                 tenant, dataset, rows, loaded.columns, accepted_mapping, version_number
             )
-            version_record.status = DatasetVersionStatus.READY
         except Exception:
             dataset.status = DatasetStatus.FAILED
             self._session.add(dataset)
             self._session.commit()
             raise
+        if review_required:
+            dataset.status = DatasetStatus.MAPPING_REQUIRED
+            version_record.status = DatasetVersionStatus.VALIDATED
+        else:
+            dataset.status = DatasetStatus.READY
+            version_record.status = DatasetVersionStatus.READY
         self._session.add(dataset)
         self._session.commit()
         return dataset
@@ -260,6 +260,9 @@ class CompanyDatasetIngestionService:
         if dataset is None:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
+
+    def reconcile_existing(self, tenant: TenantContext) -> tuple[Dataset, ...]:
+        return ()
 
     def get_module_code(self, tenant: TenantContext, dataset_id: UUID) -> str | None:
         """Module Avenqo associé à l'import, utilisé uniquement pour gérer
@@ -389,7 +392,68 @@ class CompanyDatasetIngestionService:
             capability_readiness=readiness,
         )
 
+    def get_cleaned_rows(
+        self,
+        tenant: TenantContext,
+        dataset_id: UUID,
+    ) -> tuple[dict, ...]:
+        dataset = self.get(tenant, dataset_id)
+        current_version = next((item for item in dataset.versions if item.is_current), None)
+        if current_version is None or not current_version.artifact_path:
+            raise DatasetIngestionError("No current cleaned dataset version is available.")
+        prepared_path = (
+            Path(current_version.artifact_path).parent.parent / "prepared" / "prepared.json"
+        )
+        try:
+            payload = json.loads(prepared_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DatasetIngestionError("Cleaned dataset artifact is unavailable.") from exc
+        if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
+            raise DatasetIngestionError("Cleaned dataset artifact is invalid.")
+        return tuple(dict(row) for row in payload)
+
+    def ensure_cleaning_artifacts(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+    ) -> None:
+        if dataset.company_id != tenant.company_id:
+            raise DatasetNotFoundError("Dataset introuvable")
+        rows = self._reload_current_version_rows(dataset)
+        columns = tuple(dict.fromkeys(key for row in rows for key in row)) if rows else ()
+        accepted = (
+            dict(dataset.mapping.mapping_json.get("accepted") or {})
+            if dataset.mapping is not None
+            else {}
+        )
+        version_number = max((item.version_number for item in dataset.versions), default=1)
+        self._persist_cleaning(
+            tenant, dataset, rows, columns, accepted, version_number
+        )
+        current_version = next((item for item in dataset.versions if item.is_current), None)
+        if current_version is not None and dataset.status == DatasetStatus.MAPPING_REQUIRED:
+            current_version.status = DatasetVersionStatus.VALIDATED
+        self._session.add(dataset)
+        self._session.commit()
+
     def _finalize_dataset(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+        rows: list[dict],
+        columns: tuple[str, ...],
+        accepted_mapping: dict[str, str],
+        version_number: int,
+    ) -> None:
+        self._persist_cleaning(
+            tenant, dataset, rows, columns, accepted_mapping, version_number
+        )
+        dataset.status = DatasetStatus.READY
+        current_version = next((item for item in dataset.versions if item.is_current), None)
+        if current_version is not None:
+            current_version.status = DatasetVersionStatus.READY
+
+    def _persist_cleaning(
         self,
         tenant: TenantContext,
         dataset: Dataset,
@@ -429,13 +493,34 @@ class CompanyDatasetIngestionService:
             version_number,
             {
                 "canonical_columns": accepted_mapping,
+                "inferred_data_types": {
+                    str(column.get("name")): str(column.get("inferred_type"))
+                    for column in (
+                        dataset.profile.schema_json.get("columns", [])
+                        if dataset.profile is not None
+                        else []
+                    )
+                },
                 "quality_status": quality.status.value,
                 "quality_reasons": list(quality.reasons),
-                "rows_count": len(cleaned_rows),
-                "columns_count": len(columns),
+                "cleaning_report": {
+                    "original_row_count": cleaning_report.rows_before,
+                    "cleaned_row_count": cleaning_report.rows_after,
+                    "column_count": len(columns),
+                    "columns_renamed": {},
+                    "missing_values_detected": cleaning_report.null_cells_detected,
+                    "missing_values_corrected": 0,
+                    "duplicate_rows_detected": cleaning_report.duplicates_removed,
+                    "duplicate_rows_removed": cleaning_report.duplicates_removed,
+                    "invalid_rows_rejected": 0,
+                    "numeric_normalizations": cleaning_report.numeric_conversions,
+                    "date_normalizations": cleaning_report.date_conversions,
+                    "outlier_handling": None,
+                    "mappings_applied": accepted_mapping,
+                    "dataset_version": version_number,
+                },
             },
         )
-        dataset.status = DatasetStatus.READY
 
     def _find_existing_dataset(self, tenant: TenantContext, name: str) -> Dataset | None:
         return self._session.scalar(

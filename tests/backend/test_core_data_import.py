@@ -46,7 +46,7 @@ from tests.subscription_helpers import activate_subscription_by_id, add_active_s
 
 
 def _csv(row_marker: str) -> bytes:
-    return f"id,age,segment\n1,20,{row_marker}\n2,30,{row_marker}\n".encode()
+    return f"customer_id,age,segment\n1,20,{row_marker}\n2,30,{row_marker}\n".encode()
 
 
 # ---------------------------------------------------------------------------

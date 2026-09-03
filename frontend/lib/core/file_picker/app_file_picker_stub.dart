@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
 
 import 'picked_file.dart';
 
@@ -22,4 +23,8 @@ Future<List<PickedFile>> pickDataFiles() async {
     files.add(PickedFile(platformFile.name, await platformFile.readAsBytes()));
   }
   return files;
+}
+
+Future<void> saveExportFile(String fileName, Uint8List bytes) async {
+  await FilePicker.saveFile(fileName: fileName, bytes: bytes);
 }

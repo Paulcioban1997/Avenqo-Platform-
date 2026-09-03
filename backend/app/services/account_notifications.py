@@ -10,6 +10,7 @@ from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from pathlib import Path
 
 from backend.app.config.settings import Settings
 
@@ -26,6 +27,7 @@ class AccountNotifier(Protocol):
     def send_password_reset(self, email: str, token: str) -> None: ...
 
     def send_new_company(self, company: object, user: object, request: object) -> None: ...
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None: ...
 
 
 class EmailTransport(Protocol):
@@ -51,6 +53,9 @@ class LoggingAccountNotifier:
 
     def send_new_company(self, company: object, user: object, request: object) -> None:
         logger.info("Nouvelle entreprise Avenqo enregistrée")
+
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+        logger.info("Notification de facture Avenqo demandée invoice_id=%s", invoice.id)
 
 
 class AccountNotificationService:
@@ -110,6 +115,43 @@ class AccountNotificationService:
             )
         )
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
+
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+        labels = self._invoice_labels(company.preferred_language)
+        amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
+        period = "—"
+        if invoice.period_start and invoice.period_end:
+            period = f"{invoice.period_start.date().isoformat()} – {invoice.period_end.date().isoformat()}"
+        body = "\n".join(
+            (
+                labels["greeting"].replace("{company}", company.name),
+                "",
+                f"{labels['invoiceNumber']}: {invoice.number or invoice.stripe_invoice_id}",
+                f"{labels['plan']}: {invoice.plan_code or '—'}",
+                f"{labels['billingPeriod']}: {period}",
+                f"{labels['subtotal']}: {amount(invoice.subtotal)}",
+                f"{labels['taxes']}: {amount(invoice.tax_total)}",
+                f"{labels['totalPaid']}: {amount(invoice.amount_paid)}",
+                f"{labels['status']}: {invoice.status}",
+                "",
+                f"{labels['viewInvoice']}: {invoice.hosted_invoice_url or '—'}",
+                f"{labels['downloadPdf']}: {invoice.invoice_pdf or '—'}",
+            )
+        )
+        self._send(
+            recipient,
+            labels["subject"].replace("{number}", invoice.number or invoice.stripe_invoice_id),
+            body,
+        )
+
+    @staticmethod
+    def _invoice_labels(locale: str) -> dict[str, str]:
+        catalog_dir = Path(__file__).resolve().parents[3] / "frontend" / "assets" / "i18n"
+        fallback = json.loads((catalog_dir / "en.json").read_text(encoding="utf-8"))["invoiceEmail"]
+        catalog_path = catalog_dir / f"{locale}.json"
+        if not catalog_path.exists():
+            return fallback
+        return {**fallback, **json.loads(catalog_path.read_text(encoding="utf-8")).get("invoiceEmail", {})}
 
     def _account_link(self, path: str, token: str) -> str:
         base_url = self._settings.frontend_url.rstrip("/")

@@ -173,6 +173,7 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     assert kpis["orders"]["value"] == 2
     assert kpis["customers"]["value"] == 2
     assert kpis["average_order_value"]["value"] == 75
+    assert all(item["state"] == "AVAILABLE" for item in kpis.values())
     assert kpis["revenue"]["previous_value"] == 0
     assert kpis["revenue"]["change_percent"] is None
     assert dashboard_a["priorities"] == [
@@ -191,6 +192,7 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     ]
     assert dashboard_b["status"] == "no_data"
     assert all(not item["available"] for item in dashboard_b["kpis"])
+    assert all(item["state"] == "UNAVAILABLE" for item in dashboard_b["kpis"])
 
 
 def test_dashboard_endpoint_is_tenant_derived_and_subscription_gated(tmp_path) -> None:
@@ -304,6 +306,7 @@ def test_dashboard_handles_failed_and_unreadable_ready_datasets(tmp_path) -> Non
 
     assert unreadable["status"] == "processing"
     assert all(not item["available"] for item in unreadable["kpis"])
+    assert all(item["state"] == "PROCESSING" for item in unreadable["kpis"])
 
 
 def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:

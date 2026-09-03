@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "继续",
     "connectionsImportedAtLabel": "已导入",
     "connectionsUploadedFileSuccessLabel": "数据导入成功",
+    "connectionsCleaning": {
+      "view": "查看清理后的数据",
+      "summary": "数据清理摘要",
+      "before": "之前",
+      "after": "之后"
+    },
     "themeToggleSwitchToDark": "切换到深色模式",
     "themeToggleSwitchToLight": "切换到浅色模式"
   },
@@ -776,7 +782,16 @@
       "planDemo": "??????",
       "planProfessional": "?????????",
       "planEnterprise": "?????????",
-      "nextRenewal": "???????????????{date}"
+      "nextRenewal": "???????????????{date}",
+      "downloadCsv": "下载 CSV",
+      "downloadXlsx": "下载 XLSX",
+      "invoiceDate": "发票日期",
+      "subtotal": "小计",
+      "taxes": "税费",
+      "total": "总计",
+      "previous": "上一页",
+      "next": "下一页",
+      "officialInvoice": "Stripe 官方发票"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "发票 {number} 已支付",
+    "greeting": "{company}，您的 Avenqo 发票已支付。",
+    "totalPaid": "已付总额",
+    "status": "状态",
+    "invoiceNumber": "无可用发票",
+    "plan": "??????",
+    "billingPeriod": "????????????",
+    "subtotal": "小计",
+    "taxes": "税费",
+    "viewInvoice": "????????????",
+    "downloadPdf": "?????? PDF"
   }
 }

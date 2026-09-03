@@ -38,6 +38,7 @@ COPY shared shared
 COPY payments payments
 COPY modules modules
 COPY scripts scripts
+COPY frontend/assets/i18n frontend/assets/i18n
 
 RUN useradd --create-home --shell /usr/sbin/nologin avenqo \
     && chown -R avenqo:avenqo /srv

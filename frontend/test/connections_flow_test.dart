@@ -123,6 +123,49 @@ void main() {
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
 
+  testWidgets('A ready dataset exposes its cleaning summary and previews', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","rows_count":2,"columns_count":2,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.url.path.endsWith(
+        '/datasets/11111111-1111-1111-1111-111111111111/cleaning',
+      )) {
+        return http.Response(
+          '{"name":"sales.csv","status":"ready","version":1,"summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}]}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voir les données nettoyées'), findsOneWidget);
+    await tester.tap(find.text('Voir les données nettoyées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Résumé du nettoyage'), findsOneWidget);
+    expect(find.textContaining('3 → 2'), findsOneWidget);
+    expect(find.text('Avant'), findsOneWidget);
+    expect(find.text('Après'), findsOneWidget);
+    expect(find.text('CSV'), findsOneWidget);
+    expect(find.text('DOCX'), findsOneWidget);
+
+    await tester.tap(find.text('Après'));
+    await tester.pumpAndSettle();
+    expect(find.text('12.5'), findsOneWidget);
+  });
+
   testWidgets('Connections lists a dataset still being processed', (
     tester,
   ) async {
@@ -140,6 +183,111 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
     expect(find.text('sales.csv'), findsOneWidget);
+  });
+
+  testWidgets('attention-required dataset exposes cleaned detail and exports', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","rows_count":2,"columns_count":2}]',
+          200,
+        );
+      }
+      if (request.url.path.endsWith(
+        '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
+      )) {
+        return http.Response(
+          '{"name":"needs-mapping.csv","status":"attention_required","version":1,"summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"mappings_applied":{}},"original_preview":[{"buyer":" C1 ","paid":"12.50"}],"cleaned_preview":[{"buyer":"C1","paid":"12.50"}]}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voir les données nettoyées'), findsOneWidget);
+    await tester.tap(find.text('Voir les données nettoyées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attention required · v1'), findsOneWidget);
+    expect(
+      find.textContaining('confirmation manuelle'),
+      findsOneWidget,
+    );
+    expect(find.text('CSV'), findsOneWidget);
+    expect(find.text('DOCX'), findsOneWidget);
+
+    await tester.tap(find.text('Après'));
+    await tester.pumpAndSettle();
+    expect(find.text('C1'), findsOneWidget);
+  });
+
+  testWidgets('ambiguous mapping can be confirmed and promoted to ready', (
+    tester,
+  ) async {
+    var ready = false;
+    Map<String, dynamic>? submittedMapping;
+    final client = MockClient((request) async {
+      if (request.method == 'POST' && request.url.path.endsWith('/reconcile')) {
+        return http.Response(
+          '{"reviewed":1,"promoted_to_ready":0,"attention_required":1}',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"44444444-4444-4444-4444-444444444444","name":"transactions.csv","status":"${ready ? 'ready' : 'mapping_required'}","pipeline_status":"${ready ? 'ready' : 'attention_required'}"}]',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/profile')) {
+        return http.Response(
+          '{"accepted_mapping":{"transaction_total":"total_amount","gross_amount":"total_amount"},"required_confirmation":[{"canonical_field":"total_amount","columns":["gross_amount","transaction_total"]}],"mapping_suggestions":[{"original_column":"transaction_total","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact total"},{"original_column":"gross_amount","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact gross amount"}]}',
+          200,
+        );
+      }
+      if (request.method == 'POST' && request.url.path.endsWith('/mapping')) {
+        submittedMapping = jsonDecode(request.body) as Map<String, dynamic>;
+        ready = true;
+        return http.Response(
+          '{"dataset_id":"44444444-4444-4444-4444-444444444444","status":"ready","mapping":{"gross_amount":"total_amount"},"approved":true}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    expect(find.text('transaction_total'), findsOneWidget);
+    expect(find.text('gross_amount'), findsOneWidget);
+
+    final dropdowns = find.byType(DropdownButtonFormField<String?>);
+    await tester.tap(dropdowns.at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('total_amount').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+
+    expect(submittedMapping, {
+      'mapping': {'gross_amount': 'total_amount'},
+    });
+    expect(find.byIcon(Icons.tune), findsNothing);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
   });
 
   testWidgets('Connections polls until automatic training is ready', (
@@ -207,9 +355,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
 
-    await tester.tap(
-      find.widgetWithIcon(FilledButton, Icons.delete_outline),
-    );
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.delete_outline));
     await tester.pumpAndSettle();
 
     expect(deleteCalled, isTrue);

@@ -15,6 +15,7 @@ un jeu de données spécifique.
 
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 
 import pytest
@@ -236,7 +237,7 @@ def test_upload_reaches_task_resolution_and_dispatches_matching_task(workflow_en
 
 
 def test_dataset_with_multiple_capabilities_creates_independent_jobs_per_task(
-    workflow_environment,
+    workflow_environment, caplog,
 ) -> None:
     """Un dataset rendant plusieurs tâches possibles génère plusieurs jobs indépendants.
 
@@ -246,6 +247,7 @@ def test_dataset_with_multiple_capabilities_creates_independent_jobs_per_task(
     par entreprise").
     """
 
+    caplog.set_level(logging.INFO, logger="backend.app.services.training_dispatcher")
     client, session_factory, tenant = workflow_environment
 
     response = client.post(
@@ -269,17 +271,17 @@ def test_dataset_with_multiple_capabilities_creates_independent_jobs_per_task(
     # Quatre tâches câblées ("price"/regression, "demand"/regression,
     # "bad_review"/classification, "weekly_forecast"/forecasting depuis la
     # Phase 20) sont toutes détectées comme possibles par les données : quatre
-    # jobs indépendants, jamais un seul job "fusionné". Phase 21 : "churn"
-    # partage la capacité "classification" avec "bad_review" et est donc lui
-    # aussi dispatché, mais ce dataset ne contient aucun signal de churn :
-    # son job échoue seul, sans jamais bloquer ni désactiver les quatre
-    # tâches réellement exécutables. Phase 22 : "recommendation" (30 lignes,
+    # jobs indépendants, jamais un seul job "fusionné". "churn" partage la
+    # capacité "classification" avec "bad_review", mais sa cible n'existe pas
+    # dans ce dataset : il est donc non applicable et aucun job en échec n'est
+    # créé. Phase 22 : "recommendation" (30 lignes,
     # customer_id/product_id/quantity) est également détectée et s'entraîne
     # avec succès (au-dessus du seuil minimum d'interactions).
-    assert len(ai_jobs) == 6
-    assert len(training_jobs) == 6
-    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED, JobStatus.FAILED}
-    assert len([job for job in ai_jobs if job.status == JobStatus.COMPLETED]) == 5
+    assert len(ai_jobs) == 5
+    assert len(training_jobs) == 5
+    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED}
+    assert "task=churn" in caplog.text
+    assert "skipped as not applicable" in caplog.text
 
     assert len(registry_rows) == 5
     by_task = {row.task_code: row for row in registry_rows}

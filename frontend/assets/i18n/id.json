@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "Lanjutkan",
     "connectionsImportedAtLabel": "Diimpor",
     "connectionsUploadedFileSuccessLabel": "Data berhasil diimpor",
+    "connectionsCleaning": {
+      "view": "Lihat data yang dibersihkan",
+      "summary": "Ringkasan pembersihan",
+      "before": "Sebelum",
+      "after": "Sesudah"
+    },
     "themeToggleSwitchToDark": "Beralih ke mode gelap",
     "themeToggleSwitchToLight": "Beralih ke mode terang"
   },
@@ -776,7 +782,16 @@
       "planDemo": "Demo",
       "planProfessional": "Profesional",
       "planEnterprise": "Perusahaan",
-      "nextRenewal": "Pembaruan berikutnya: {date}"
+      "nextRenewal": "Pembaruan berikutnya: {date}",
+      "downloadCsv": "Unduh CSV",
+      "downloadXlsx": "Unduh XLSX",
+      "invoiceDate": "Tanggal faktur",
+      "subtotal": "Subtotal",
+      "taxes": "Pajak",
+      "total": "Total",
+      "previous": "Sebelumnya",
+      "next": "Berikutnya",
+      "officialInvoice": "Faktur resmi Stripe"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Faktur {number} dibayar",
+    "greeting": "Halo {company}, faktur Avenqo Anda telah dibayar.",
+    "totalPaid": "Total dibayar",
+    "status": "Status",
+    "invoiceNumber": "Tidak ada faktur yang tersedia",
+    "plan": "Rencana",
+    "billingPeriod": "Periode penagihan",
+    "subtotal": "Subtotal",
+    "taxes": "Pajak",
+    "viewInvoice": "Lihat faktur",
+    "downloadPdf": "Unduh PDF"
   }
 }

@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "გაგრძელება",
     "connectionsImportedAtLabel": "შემოტანილია",
     "connectionsUploadedFileSuccessLabel": "მონაცემები წარმატებით შემოტანილია",
+    "connectionsCleaning": {
+      "view": "გასუფთავებული მონაცემების ნახვა",
+      "summary": "გასუფთავების შეჯამება",
+      "before": "მანამდე",
+      "after": "შემდეგ"
+    },
     "themeToggleSwitchToDark": "გადართვა მუქ რეჟიმზე",
     "themeToggleSwitchToLight": "გადართვა ნათელ რეჟიმზე"
   },
@@ -776,7 +782,16 @@
       "planDemo": "დემო",
       "planProfessional": "პროფესიონალი",
       "planEnterprise": "საწარმო",
-      "nextRenewal": "შემდეგი განახლება: {date}"
+      "nextRenewal": "შემდეგი განახლება: {date}",
+      "downloadCsv": "CSV-ის ჩამოტვირთვა",
+      "downloadXlsx": "XLSX-ის ჩამოტვირთვა",
+      "invoiceDate": "ინვოისის თარიღი",
+      "subtotal": "შუალედური ჯამი",
+      "taxes": "გადასახადები",
+      "total": "სულ",
+      "previous": "წინა",
+      "next": "შემდეგი",
+      "officialInvoice": "Stripe-ის ოფიციალური ინვოისი"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "ინვოისი {number} გადახდილია",
+    "greeting": "გამარჯობა {company}, თქვენი Avenqo ინვოისი გადახდილია.",
+    "totalPaid": "სულ გადახდილი",
+    "status": "სტატუსი",
+    "invoiceNumber": "ინვოისი",
+    "plan": "გეგმავენ",
+    "billingPeriod": "ბილინგის პერიოდი",
+    "subtotal": "შუალედური ჯამი",
+    "taxes": "გადასახადები",
+    "viewInvoice": "იხილეთ ინვოისები",
+    "downloadPdf": "ჩამოტვირთეთ PDF"
   }
 }

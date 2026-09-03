@@ -1,10 +1,9 @@
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
-import 'package:avenqo/features/ai_chat/ai_chat_api.dart';
+import 'package:avenqo/features/ai_chat/central_ai_controller.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
@@ -23,9 +22,16 @@ AssistantStrings _assistantStrings(BuildContext context) =>
     AvenqoLocaleScope.maybeTranslationsOf(context)?.assistant ?? AssistantStrings.fallback();
 
 class AssistantPage extends StatefulWidget {
-  const AssistantPage({super.key, required this.api});
+  const AssistantPage({
+    super.key,
+    required this.api,
+    this.controller,
+    this.pageContext,
+  });
 
   final ApiClient api;
+  final CentralAIController? controller;
+  final String? pageContext;
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -35,149 +41,57 @@ class _AssistantPageState extends State<AssistantPage> {
   final _composer = TextEditingController();
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  late final AiChatApi _chat = AiChatApi(widget.api);
-  List<Conversation> _conversations = const [];
-  List<ChatMessage> _messages = const [];
-  Conversation? _selected;
-  bool _loadingConversations = true;
-  bool _loadingMessages = false;
-  bool _generating = false;
+  CentralAIController? _controller;
+  bool _ownsController = false;
   bool _nearBottom = true;
-  String? _error;
-  int? _remainingAiCredits;
-  bool _creditsExhausted = false;
-
-  String _devFriendlyMessage(ApiException error) {
-    if (kReleaseMode) return error.message;
-    final detail = error.message.toLowerCase();
-    if (error.statusCode == 401) return 'DEV: erreur_auth';
-    if (error.statusCode == 429 || detail.contains('quota')) return 'DEV: quota_atteint';
-    if (detail.contains('provider_non_configure')) return 'DEV: provider_non_configure';
-    if (detail.contains('provider_inaccessible')) return 'DEV: backend_ou_provider_inaccessible';
-    if (detail.contains('no business data') || detail.contains('dataset')) return 'DEV: dataset_indisponible';
-    return 'DEV: ${error.message}';
-  }
-
+  int _lastMessageCount = 0;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_trackScrollPosition);
-    _loadConversations();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controller != null) return;
+    final scoped = CentralAIControllerScope.maybeOf(context);
+    _controller = widget.controller ?? scoped ?? CentralAIController(widget.api);
+    _ownsController = widget.controller == null && scoped == null;
+    _controller!.addListener(_onControllerChanged);
+    _controller!.initialize();
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_onControllerChanged);
+    if (_ownsController) _controller?.dispose();
     _composer.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadConversations() async {
-    setState(() {
-      _loadingConversations = true;
-      _error = null;
-    });
-    try {
-      final conversations = await _chat.listConversations();
-      if (mounted) setState(() => _conversations = conversations);
-    } on ApiException {
-      if (mounted) {
-        setState(() => _error = "Avenqo couldn't load your conversations. Please try again.");
-      }
-    } finally {
-      if (mounted) setState(() => _loadingConversations = false);
-    }
-  }
-
-  Future<void> _selectConversation(Conversation conversation) async {
-    if (_generating) return;
-    setState(() {
-      _selected = conversation;
-      _messages = const [];
-      _loadingMessages = true;
-      _error = null;
-    });
-    try {
-      final detail = await _chat.getConversation(conversation.id);
-      if (mounted && _selected?.id == conversation.id) {
-        setState(() => _messages = detail.messages);
-        _scrollToBottom(force: true);
-      }
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        if (error.statusCode == 404) {
-          _conversations = _conversations.where((item) => item.id != conversation.id).toList();
-          _selected = null;
-        }
-        _error = "Avenqo couldn't open this conversation. Please try again.";
-      });
-    } finally {
-      if (mounted) setState(() => _loadingMessages = false);
-    }
-  }
-
-  void _newConversation() {
-    if (_generating) return;
-    setState(() {
-      _selected = null;
-      _messages = const [];
-      _error = null;
-    });
+  void _onControllerChanged() {
+    if (!mounted) return;
+    final shouldScroll = _controller!.messages.length != _lastMessageCount;
+    _lastMessageCount = _controller!.messages.length;
+    setState(() {});
+    if (shouldScroll) _scrollToBottom(force: true);
   }
 
   Future<void> _send([String? suggestedText]) async {
     final content = (suggestedText ?? _composer.text).trim();
-    if (content.isEmpty || _generating) return;
+    if (content.isEmpty || _controller!.generating) return;
     _composer.clear();
-    try {
-      var conversation = _selected;
-      if (conversation == null) {
-        conversation = await _chat.createConversation(_titleFor(content));
-        if (!mounted) return;
-        setState(() {
-          _selected = conversation;
-          _conversations = [conversation!, ..._conversations];
-        });
-      }
-      final now = DateTime.now();
-      setState(() {
-        _generating = true;
-        _error = null;
-        _creditsExhausted = false;
-        _messages = [
-          ..._messages,
-          ChatMessage(id: 'local-user-${now.microsecondsSinceEpoch}', role: ChatRole.user, content: content, createdAt: now),
-          ChatMessage(id: 'local-assistant-${now.microsecondsSinceEpoch}', role: ChatRole.assistant, content: '', createdAt: now),
-        ];
-      });
-      _scrollToBottom(force: true);
-      final result = await _chat.sendCentralMessage(conversation.id, content);
-      if (!mounted) return;
-      final response = result.answer ?? _messageForStatus(result.status);
-      setState(() {
-        final last = _messages.last;
-        _messages = [
-          ..._messages.take(_messages.length - 1),
-          last.copyWith(content: response),
-        ];
-        _remainingAiCredits = result.remainingAiCredits;
-        _creditsExhausted = result.status == 'credits_exhausted';
-        _generating = false;
-      });
-      _scrollToBottom();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _generating = false;
-        _error = error.statusCode == 401
-            ? 'Your session has expired. Please sign in again.'
-            : (kReleaseMode
-                ? "Avenqo couldn't start this conversation. Please try again."
-                : _devFriendlyMessage(error));
-      });
-    }
+    await _controller!.send(
+      content,
+      statusMessage: _messageForStatus,
+      pageContext: widget.pageContext,
+        locale: AvenqoLocaleScope.maybeTranslationsOf(context) == null
+          ? null
+          : AvenqoLocaleScope.of(context).code,
+    );
   }
 
   String _messageForStatus(String status) {
@@ -192,29 +106,13 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   void _retryLastMessage() {
-    for (final message in _messages.reversed) {
-      if (message.role == ChatRole.user) {
-        _send(message.content);
-        return;
-      }
-    }
-  }
-
-  Future<void> _deleteConversation(Conversation conversation) async {
-    if (_generating) return;
-    try {
-      await _chat.deleteConversation(conversation.id);
-      if (!mounted) return;
-      setState(() {
-        _conversations = _conversations.where((item) => item.id != conversation.id).toList();
-        if (_selected?.id == conversation.id) {
-          _selected = null;
-          _messages = const [];
-        }
-      });
-    } on ApiException {
-      if (mounted) setState(() => _error = "Avenqo couldn't delete this conversation. Please try again.");
-    }
+    _controller!.retryLastMessage(
+      statusMessage: _messageForStatus,
+      pageContext: widget.pageContext,
+        locale: AvenqoLocaleScope.maybeTranslationsOf(context) == null
+          ? null
+          : AvenqoLocaleScope.of(context).code,
+    );
   }
 
   void _trackScrollPosition() {
@@ -232,21 +130,20 @@ class _AssistantPageState extends State<AssistantPage> {
     });
   }
 
-  String _titleFor(String content) => content.length > 54 ? '${content.substring(0, 54)}...' : content;
-
   @override
   Widget build(BuildContext context) {
+    final controller = _controller!;
     final compact = MediaQuery.sizeOf(context).width < 900;
     final sidebar = ConversationSidebar(
-      conversations: _conversations,
-      selectedId: _selected?.id,
-      loading: _loadingConversations,
-      onNewConversation: _newConversation,
+      conversations: controller.conversations,
+      selectedId: controller.selected?.id,
+      loading: controller.loadingConversations,
+      onNewConversation: controller.newConversation,
       onSelect: (conversation) {
         if (compact) Navigator.of(context).pop();
-        _selectConversation(conversation);
+        controller.selectConversation(conversation);
       },
-      onDelete: _deleteConversation,
+      onDelete: controller.deleteConversation,
     );
     final t = _assistantStrings(context);
     return Scaffold(
@@ -256,28 +153,28 @@ class _AssistantPageState extends State<AssistantPage> {
         if (!compact) SizedBox(width: 276, child: sidebar),
         if (!compact) const VerticalDivider(width: 1),
         Expanded(child: Column(children: [
-          ChatHeader(title: _selected?.title ?? t.avenqoAi, compact: compact, onOpenConversations: () => _scaffoldKey.currentState?.openEndDrawer()),
-          if (_error != null) ChatErrorState(message: _error!, retryLabel: t.retry, onRetry: _loadConversations),
+          ChatHeader(title: controller.selected?.title ?? t.avenqoAi, compact: compact, onOpenConversations: () => _scaffoldKey.currentState?.openEndDrawer()),
+          if (controller.errorCode != null) ChatErrorState(message: t.requestUnavailable, retryLabel: t.retry, onRetry: controller.loadConversations),
           Expanded(
-            child: _loadingMessages
+            child: controller.loadingMessages
                 ? const Center(child: CircularProgressIndicator())
                 : ChatMessages(
                     controller: _scrollController,
-                    messages: _messages,
-                    generating: _generating,
+                    messages: controller.messages,
+                    generating: controller.generating,
                     onSuggestion: _send,
                     onRetry: _retryLastMessage,
-                    empty: _selected == null && _messages.isEmpty,
+                    empty: controller.selected == null && controller.messages.isEmpty,
                   ),
           ),
-          if (!_nearBottom && _messages.isNotEmpty)
+          if (!_nearBottom && controller.messages.isNotEmpty)
             Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.only(right: 24), child: FilledButton.tonalIcon(onPressed: () => _scrollToBottom(force: true), icon: const Icon(Icons.arrow_downward), label: Text(t.newest)))),
-          if (_remainingAiCredits != null)
+          if (controller.remainingAiCredits != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
               child: Row(children: [
-                Expanded(child: Text('${t.remainingCredits}: $_remainingAiCredits')),
-                if (_creditsExhausted)
+                Expanded(child: Text('${t.remainingCredits}: ${controller.remainingAiCredits}')),
+                if (controller.creditsExhausted)
                   FilledButton.icon(
                     onPressed: () => context.go('/billing'),
                     icon: const Icon(Icons.account_balance_wallet_outlined),
@@ -285,7 +182,7 @@ class _AssistantPageState extends State<AssistantPage> {
                   ),
               ]),
             ),
-          ChatComposer(controller: _composer, generating: _generating, onSend: _send),
+          ChatComposer(controller: _composer, generating: controller.generating, onSend: _send),
         ])),
       ]),
     );
@@ -324,7 +221,7 @@ class ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     return Container(height: 72, padding: const EdgeInsets.symmetric(horizontal: 20), decoration: BoxDecoration(color: colors.surface, border: Border(bottom: BorderSide(color: colors.line))), child: Row(children: [
-      if (compact) IconButton(tooltip: 'Conversations', onPressed: onOpenConversations, icon: const Icon(Icons.forum_outlined)),
+      if (compact) IconButton(tooltip: _assistantStrings(context).newConversation, onPressed: onOpenConversations, icon: const Icon(Icons.forum_outlined)),
       Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis)),
       const Icon(Icons.auto_awesome_outlined, color: _Brand.blue),
     ]));
@@ -342,10 +239,12 @@ class ChatMessages extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (empty) {
-      return SingleChildScrollView(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height,
-          child: EmptyChatState(onSuggestion: onSuggestion),
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: EmptyChatState(onSuggestion: onSuggestion),
+          ),
         ),
       );
     }
@@ -445,12 +344,12 @@ class ChatComposer extends StatelessWidget {
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
-      }, child: TextField(controller: controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(hintText: 'Ask Avenqo anything about your business...')))), const SizedBox(width: 10),
+      }, child: TextField(controller: controller, minLines: 1, maxLines: 5, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: _assistantStrings(context).subtitle)))), const SizedBox(width: 10),
         generating
           ? onStop == null
             ? const SizedBox.square(dimension: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
-            : Tooltip(message: 'Stop generating', child: IconButton.filled(onPressed: onStop, style: IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error), icon: const Icon(Icons.stop)))
-          : Tooltip(message: 'Send message', child: IconButton.filled(onPressed: () => onSend(null), style: IconButton.styleFrom(backgroundColor: _Brand.blue), icon: const Icon(Icons.arrow_upward))),
+            : Tooltip(message: _assistantStrings(context).thinking, child: IconButton.filled(onPressed: onStop, style: IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error), icon: const Icon(Icons.stop)))
+          : Tooltip(message: _assistantStrings(context).avenqoAi, child: IconButton.filled(onPressed: () => onSend(null), style: IconButton.styleFrom(backgroundColor: _Brand.blue), icon: const Icon(Icons.arrow_upward))),
     ])));
   }
 }

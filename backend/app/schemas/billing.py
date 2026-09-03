@@ -53,16 +53,51 @@ class SubscriptionResponse(BaseModel):
 
 class InvoiceResponse(BaseModel):
     id: UUID
+    stripe_invoice_id: str
+    stripe_subscription_id: str | None
+    stripe_customer_id: str | None
     number: str | None
     plan_code: str | None
     status: str
     currency: str
+    subtotal: int
+    discount_total: int
+    tax_total: int
+    total: int
     amount_due: int
     amount_paid: int
+    line_items: list[dict]
+    billing_details: dict
+    tax_identifiers: list[dict]
     hosted_invoice_url: str | None
     invoice_pdf: str | None
     period_start: datetime | None
     period_end: datetime | None
     issued_at: datetime
+    paid_at: datetime | None
+    due_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class InvoiceHistoryResponse(BaseModel):
+    items: list[InvoiceResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class InvoiceFiscalSummaryResponse(BaseModel):
+    fiscal_year: int
+    invoices_paid: int
+    totals_by_currency: list[dict]
+    missing_or_unpaid_invoices: int
+
+
+class AdminInvoiceSummaryResponse(BaseModel):
+    company_id: UUID
+    company_name: str
+    plan_code: str
+    invoice_count: int
+    latest_invoice: dict | None
+    fiscal_totals: InvoiceFiscalSummaryResponse

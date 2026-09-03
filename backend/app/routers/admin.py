@@ -35,7 +35,7 @@ from backend.app.schemas.admin import (
     DashboardResponse,
     SetEnterpriseOverrideRequest,
 )
-from backend.app.schemas.billing import InvoiceResponse
+from backend.app.schemas.billing import AdminInvoiceSummaryResponse, InvoiceResponse
 from backend.app.schemas.tenant_business import (
     CustomerListItemResponse,
     TenantCustomersResponse,
@@ -60,6 +60,8 @@ from backend.app.routers.tenant_products_recommendations import (
 )
 from backend.app.services.admin_service import AdminService
 from backend.app.services.billing_service import BillingService
+from backend.app.services.invoice_fiscal_service import InvoiceFiscalService, InvoiceNotFoundError
+from backend.app.dependencies.billing import get_invoice_fiscal_service
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
@@ -115,6 +117,25 @@ def list_company_invoices(
         InvoiceResponse.model_validate(invoice)
         for invoice in service.list_invoices(company_id)
     ]
+
+
+@router.get(
+    "/companies/{company_id}/billing/summary/{fiscal_year}",
+    response_model=AdminInvoiceSummaryResponse,
+)
+def company_billing_summary(
+    company_id: UUID,
+    fiscal_year: int,
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> AdminInvoiceSummaryResponse:
+    if fiscal_year < 2000 or fiscal_year > 2200:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid fiscal year")
+    try:
+        return AdminInvoiceSummaryResponse.model_validate(
+            service.get_admin_company_summary(company_id, fiscal_year)
+        )
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post(

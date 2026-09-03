@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "계속",
     "connectionsImportedAtLabel": "가져옴",
     "connectionsUploadedFileSuccessLabel": "데이터를 성공적으로 가져왔습니다",
+    "connectionsCleaning": {
+      "view": "정리된 데이터 보기",
+      "summary": "데이터 정리 요약",
+      "before": "이전",
+      "after": "이후"
+    },
     "themeToggleSwitchToDark": "다크 모드로 전환",
     "themeToggleSwitchToLight": "라이트 모드로 전환"
   },
@@ -776,7 +782,16 @@
       "planDemo": "??????",
       "planProfessional": "???????????????",
       "planEnterprise": "??????????????????",
-      "nextRenewal": "?????? ??????: {date}"
+      "nextRenewal": "?????? ??????: {date}",
+      "downloadCsv": "CSV 다운로드",
+      "downloadXlsx": "XLSX 다운로드",
+      "invoiceDate": "청구서 날짜",
+      "subtotal": "소계",
+      "taxes": "세금",
+      "total": "합계",
+      "previous": "이전",
+      "next": "다음",
+      "officialInvoice": "Stripe 공식 청구서"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "청구서 {number} 결제 완료",
+    "greeting": "{company}님, Avenqo 청구서가 결제되었습니다.",
+    "totalPaid": "총 결제액",
+    "status": "상태",
+    "invoiceNumber": "사용 가능한 인보이스가 없습니다",
+    "plan": "?????????",
+    "billingPeriod": "?????? ??????",
+    "subtotal": "소계",
+    "taxes": "세금",
+    "viewInvoice": "????????? ??????",
+    "downloadPdf": "PDF ????????????"
   }
 }

@@ -44,13 +44,13 @@ async def message(
             conversation_id,
             request.content,
             permissions=frozenset(permissions_for(identity.user.role)),
-            plan_code=company.subscription_plan,
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=str(uuid4()),
-            user_language=company.preferred_language or "fr",
+            user_language=request.locale or company.preferred_language or "fr",
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
+            page_context=request.page_context,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc

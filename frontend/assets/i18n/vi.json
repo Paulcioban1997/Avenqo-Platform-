@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "Tiếp tục",
     "connectionsImportedAtLabel": "Đã nhập",
     "connectionsUploadedFileSuccessLabel": "Đã nhập dữ liệu thành công",
+    "connectionsCleaning": {
+      "view": "Xem dữ liệu đã làm sạch",
+      "summary": "Tóm tắt làm sạch",
+      "before": "Trước",
+      "after": "Sau"
+    },
     "themeToggleSwitchToDark": "Chuyển sang chế độ tối",
     "themeToggleSwitchToLight": "Chuyển sang chế độ sáng"
   },
@@ -776,7 +782,16 @@
       "planDemo": "B???n demo",
       "planProfessional": "Chuy??n nghi???p",
       "planEnterprise": "Doanh nghi???p",
-      "nextRenewal": "Gia h???n ti???p theo: {date}"
+      "nextRenewal": "Gia h???n ti???p theo: {date}",
+      "downloadCsv": "Tải CSV",
+      "downloadXlsx": "Tải XLSX",
+      "invoiceDate": "Ngày hóa đơn",
+      "subtotal": "Tạm tính",
+      "taxes": "Thuế",
+      "total": "Tổng",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "officialInvoice": "Hóa đơn Stripe chính thức"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "Hóa đơn {number} đã thanh toán",
+    "greeting": "Xin chào {company}, hóa đơn Avenqo của bạn đã được thanh toán.",
+    "totalPaid": "Tổng đã trả",
+    "status": "Trạng thái",
+    "invoiceNumber": "Không có hóa đơn nào khả dụng",
+    "plan": "G??i",
+    "billingPeriod": "K??? thanh to??n",
+    "subtotal": "Tạm tính",
+    "taxes": "Thuế",
+    "viewInvoice": "Xem h??a ????n",
+    "downloadPdf": "T???i PDF"
   }
 }

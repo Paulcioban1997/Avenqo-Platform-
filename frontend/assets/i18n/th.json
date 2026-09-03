@@ -670,6 +670,12 @@
     "connectionsContinueLabel": "ดำเนินการต่อ",
     "connectionsImportedAtLabel": "นำเข้าแล้ว",
     "connectionsUploadedFileSuccessLabel": "นำเข้าข้อมูลสำเร็จแล้ว",
+    "connectionsCleaning": {
+      "view": "ดูข้อมูลที่ล้างแล้ว",
+      "summary": "สรุปการล้างข้อมูล",
+      "before": "ก่อน",
+      "after": "หลัง"
+    },
     "themeToggleSwitchToDark": "สลับเป็นโหมดมืด",
     "themeToggleSwitchToLight": "สลับเป็นโหมดสว่าง"
   },
@@ -776,7 +782,16 @@
       "planDemo": "สาธิต",
       "planProfessional": "มืออาชีพ",
       "planEnterprise": "องค์กร",
-      "nextRenewal": "การต่ออายุครั้งถัดไป: {date}"
+      "nextRenewal": "การต่ออายุครั้งถัดไป: {date}",
+      "downloadCsv": "ดาวน์โหลด CSV",
+      "downloadXlsx": "ดาวน์โหลด XLSX",
+      "invoiceDate": "วันที่ใบแจ้งหนี้",
+      "subtotal": "ยอดรวมย่อย",
+      "taxes": "ภาษี",
+      "total": "ยอดรวม",
+      "previous": "ก่อนหน้า",
+      "next": "ถัดไป",
+      "officialInvoice": "ใบแจ้งหนี้ Stripe อย่างเป็นทางการ"
     }
   },
   "phase4d": {
@@ -816,5 +831,18 @@
     "changeEvidence": "{entity}: {current} vs {comparison} ({change}%)",
     "concentrationEvidence": "{entity}: {current}% of product revenue",
     "customerEvidence": "{current} customers with recommendations"
+  },
+  "invoiceEmail": {
+    "subject": "ชำระใบแจ้งหนี้ {number} แล้ว",
+    "greeting": "สวัสดี {company} ใบแจ้งหนี้ Avenqo ของคุณได้รับการชำระแล้ว",
+    "totalPaid": "ยอดชำระทั้งหมด",
+    "status": "สถานะ",
+    "invoiceNumber": "ไม่มีใบแจ้งหนี้ที่ใช้ได้",
+    "plan": "วางแผน",
+    "billingPeriod": "ระยะเวลาการเรียกเก็บเงิน",
+    "subtotal": "ยอดรวมย่อย",
+    "taxes": "ภาษี",
+    "viewInvoice": "ดูใบแจ้งหนี้",
+    "downloadPdf": "ดาวน์โหลดไฟล์ PDF"
   }
 }

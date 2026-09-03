@@ -64,6 +64,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   Future<void> _loadDatasets() async {
     setState(() => _state = _ViewState.loading);
     try {
+      try {
+        await widget.api.post('/datasets/reconcile');
+      } on ApiException {
+        // Listing remains available if reconciliation is temporarily unavailable.
+      }
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
       setState(() {
         _datasets = datasets.cast<Map<String, dynamic>>();
@@ -236,9 +241,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     } on ApiException catch (exc) {
       if (!mounted) return;
       setState(() => _deletingDatasetIds.remove(datasetId));
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(exc.message)),
-      );
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(exc.message)));
     } on Object {
       if (!mounted) return;
       setState(() => _deletingDatasetIds.remove(datasetId));
@@ -251,6 +256,35 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
           ),
         ),
       );
+    }
+  }
+
+  void _showCleaningDetails(Map<String, dynamic> dataset) {
+    final id = dataset['id']?.toString();
+    if (id == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => _DatasetCleaningDialog(
+        api: widget.api,
+        datasetId: id,
+        t: AvenqoLocaleScope.translationsOf(context).company,
+      ),
+    );
+  }
+
+  Future<void> _showMappingDetails(Map<String, dynamic> dataset) async {
+    final id = dataset['id']?.toString();
+    if (id == null) return;
+    final promoted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DatasetMappingDialog(
+        api: widget.api,
+        datasetId: id,
+        t: AvenqoLocaleScope.translationsOf(context).company,
+      ),
+    );
+    if (promoted == true && mounted) {
+      await _loadDatasets();
     }
   }
 
@@ -274,6 +308,8 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 deletingDatasetIds: _deletingDatasetIds,
                 onAddFiles: _addFiles,
                 onDeleteDataset: _deleteDataset,
+                onViewCleaning: _showCleaningDetails,
+                onReviewMapping: _showMappingDetails,
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
                 t: t,
@@ -362,6 +398,8 @@ class _ConnectedDataView extends StatelessWidget {
     required this.deletingDatasetIds,
     required this.onAddFiles,
     required this.onDeleteDataset,
+    required this.onViewCleaning,
+    required this.onReviewMapping,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -371,6 +409,8 @@ class _ConnectedDataView extends StatelessWidget {
   final Set<String> deletingDatasetIds;
   final VoidCallback onAddFiles;
   final Future<void> Function(String datasetId) onDeleteDataset;
+  final void Function(Map<String, dynamic> dataset) onViewCleaning;
+  final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -441,7 +481,10 @@ class _ConnectedDataView extends StatelessWidget {
             child: ExpansionTile(
               key: const PageStorageKey<String>('connected-datasets-dropdown'),
               initiallyExpanded: false,
-              tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 6,
+              ),
               childrenPadding: EdgeInsets.zero,
               leading: Container(
                 width: 38,
@@ -478,6 +521,8 @@ class _ConnectedDataView extends StatelessWidget {
                       datasets[i]['id']?.toString(),
                     ),
                     onDeleteDataset: onDeleteDataset,
+                    onViewCleaning: onViewCleaning,
+                    onReviewMapping: onReviewMapping,
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
                     t: t,
@@ -497,6 +542,8 @@ class _DatasetRow extends StatelessWidget {
     required this.isLast,
     required this.isDeleting,
     required this.onDeleteDataset,
+    required this.onViewCleaning,
+    required this.onReviewMapping,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -506,6 +553,8 @@ class _DatasetRow extends StatelessWidget {
   final bool isLast;
   final bool isDeleting;
   final Future<void> Function(String datasetId) onDeleteDataset;
+  final void Function(Map<String, dynamic> dataset) onViewCleaning;
+  final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -520,18 +569,15 @@ class _DatasetRow extends StatelessWidget {
           children: [
             const Icon(Icons.delete_outline, color: _Brand.red),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                name,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(MaterialLocalizations.of(dialogContext).cancelButtonLabel),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -550,10 +596,11 @@ class _DatasetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final status = dataset['pipeline_status']?.toString() ??
-      dataset['status']?.toString();
+    final status =
+        dataset['pipeline_status']?.toString() ?? dataset['status']?.toString();
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
+    final needsAttention = status == 'attention_required';
     final isError =
         status == 'failed' || status == 'invalid' || status == 'rejected';
     final statusLabel = switch (status) {
@@ -620,6 +667,18 @@ class _DatasetRow extends StatelessWidget {
               ],
             ),
           ),
+          if (isReady || needsAttention)
+            TextButton.icon(
+              onPressed: isDeleting ? null : () => onViewCleaning(dataset),
+              icon: const Icon(Icons.table_view_outlined, size: 18),
+              label: Text(t.connectionsCleaning['view']!),
+            ),
+          if (needsAttention)
+            IconButton(
+              tooltip: t.connectionsMappingTitle,
+              onPressed: isDeleting ? null : () => onReviewMapping(dataset),
+              icon: const Icon(Icons.tune),
+            ),
           if (isReady) ...[
             IconButton(
               tooltip: t.connectionsGoDashboard,
@@ -651,6 +710,413 @@ class _DatasetRow extends StatelessWidget {
               ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _DatasetMappingDialog extends StatefulWidget {
+  const _DatasetMappingDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetMappingDialog> createState() => _DatasetMappingDialogState();
+}
+
+class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
+  late final Future<Map<String, dynamic>> _profile = _load();
+  final Map<String, String?> _selected = {};
+  bool _initialized = false;
+  bool _submitting = false;
+  String? _error;
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/profile')
+          as Map<String, dynamic>;
+
+  void _initialize(Map<String, dynamic> profile) {
+    if (_initialized) return;
+    final accepted = (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+    final conflicts = (profile['required_confirmation'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final conflictingColumns = {
+      for (final conflict in conflicts)
+        for (final column in (conflict['columns'] as List<dynamic>? ?? const []))
+          column.toString(),
+    };
+    for (final suggestion
+        in (profile['mapping_suggestions'] as List<dynamic>? ?? const [])) {
+      final item = suggestion as Map<String, dynamic>;
+      final column = item['original_column'].toString();
+      _selected[column] = conflictingColumns.contains(column)
+          ? null
+          : accepted[column]?.toString();
+    }
+    _initialized = true;
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final mapping = {
+        for (final entry in _selected.entries)
+          if (entry.value != null) entry.key: entry.value!,
+      };
+      final response = await widget.api.post(
+        '/datasets/${widget.datasetId}/mapping',
+        body: {'mapping': mapping},
+      ) as Map<String, dynamic>;
+      if (!mounted) return;
+      if (response['status'] == 'ready') {
+        Navigator.of(context).pop(true);
+      } else {
+        setState(() => _error = widget.t.connectionsMappingSubtitle);
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.t.connectionsMappingTitle),
+      content: SizedBox(
+        width: 680,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _profile,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              return Text(widget.t.connectionsGenericError);
+            }
+            final profile = snapshot.data!;
+            _initialize(profile);
+            final suggestions =
+                (profile['mapping_suggestions'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.t.connectionsMappingSubtitle),
+                  const SizedBox(height: 16),
+                  for (final item in suggestions) ...[
+                    Text(
+                      item['original_column'].toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selected[item['original_column'].toString()],
+                      isExpanded: true,
+                      items: [
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text(widget.t.connectionsMappingIgnore),
+                        ),
+                        for (final option in {
+                          if (item['suggested_field'] != null)
+                            item['suggested_field'].toString(),
+                          for (final value
+                              in (item['alternatives'] as List<dynamic>? ?? const []))
+                            value.toString(),
+                        })
+                          DropdownMenuItem<String?>(
+                            value: option,
+                            child: Text(option),
+                          ),
+                      ],
+                      onChanged: _submitting
+                          ? null
+                          : (value) => _selected[item['original_column'].toString()] = value,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item['reason']?.toString() ?? '',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (_error != null)
+                    Text(_error!, style: const TextStyle(color: _Brand.red)),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: Text(widget.t.connectionsConfirmMapping),
+        ),
+      ],
+    );
+  }
+}
+
+class _DatasetCleaningDialog extends StatefulWidget {
+  const _DatasetCleaningDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetCleaningDialog> createState() => _DatasetCleaningDialogState();
+}
+
+class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
+  late final Future<Map<String, dynamic>> _detail = _load();
+  bool _exporting = false;
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/cleaning')
+          as Map<String, dynamic>;
+
+  Future<void> _export(String format) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final file = await widget.api.download(
+        '/datasets/${widget.datasetId}/export/$format',
+      );
+      await saveExportFile(file.fileName, file.bytes);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return AlertDialog(
+      title: Text(widget.t.connectionsCleaning['view']!),
+      content: SizedBox(
+        width: 820,
+        height: 560,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _detail,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              return Center(child: Text(widget.t.connectionsGenericError));
+            }
+            final detail = snapshot.data!;
+            final summary = detail['summary'] as Map<String, dynamic>;
+            final isReady = detail['status'] == 'ready';
+            final before = (detail['original_preview'] as List<dynamic>)
+                .cast<Map<String, dynamic>>();
+            final after = (detail['cleaned_preview'] as List<dynamic>)
+                .cast<Map<String, dynamic>>();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail['name'].toString(),
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${isReady ? widget.t.connectionsReadyTitle : widget.t.connectionsAttentionRequired} · v${detail['version']}',
+                  style: TextStyle(color: colors.muted),
+                ),
+                if (!isReady) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _Brand.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.cleaning_services_outlined,
+                          color: _Brand.blue,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${widget.t.connectionsReadyTitle}: ${widget.t.connectionsCleaning['summary']}. ${widget.t.connectionsMappingSubtitle}',
+                            style: TextStyle(color: colors.ink),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Text(
+                  widget.t.connectionsCleaning['summary']!,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    _CleaningMetric(
+                      icon: Icons.table_rows_outlined,
+                      value:
+                          '${summary['original_row_count']} → ${summary['cleaned_row_count']} ${widget.t.connectionsStatRowsLabel.toLowerCase()}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.view_column_outlined,
+                      value:
+                          '${summary['column_count']} ${widget.t.connectionsStatColumnsLabel.toLowerCase()}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.content_copy_outlined,
+                      value: '${summary['duplicate_rows_removed']}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.account_tree_outlined,
+                      value:
+                          '${(summary['mappings_applied'] as Map<String, dynamic>).length}',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          tabs: [
+                            Tab(text: widget.t.connectionsCleaning['before']),
+                            Tab(text: widget.t.connectionsCleaning['after']),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _PreviewTable(rows: before),
+                              _PreviewTable(rows: after),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final format in const ['CSV', 'XLSX', 'PDF', 'DOCX'])
+                      OutlinedButton.icon(
+                        onPressed: _exporting
+                            ? null
+                            : () => _export(format.toLowerCase()),
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: Text(format),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(MaterialLocalizations.of(context).closeButtonLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _CleaningMetric extends StatelessWidget {
+  const _CleaningMetric({required this.icon, required this.value});
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) =>
+      Chip(avatar: Icon(icon, size: 16), label: Text(value));
+}
+
+class _PreviewTable extends StatelessWidget {
+  const _PreviewTable({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final columns = rows.first.keys.take(8).toList();
+    return Scrollbar(
+      child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              for (final column in columns) DataColumn(label: Text(column)),
+            ],
+            rows: [
+              for (final row in rows.take(20))
+                DataRow(
+                  cells: [
+                    for (final column in columns)
+                      DataCell(
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 180),
+                          child: Text(
+                            row[column]?.toString() ?? '',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -161,6 +161,7 @@ class TrainingDispatcher:
             task_code: spec
             for task_code, spec in module_specs.items()
             if spec.capability in executable_capabilities
+            and self._is_task_compatible(dataset, task_code, spec, rows)
         }
         if not executable_specs:
             return []
@@ -205,6 +206,40 @@ class TrainingDispatcher:
                 )
             )
         return ai_jobs
+
+    def _is_task_compatible(
+        self,
+        dataset: Dataset,
+        task_code: str,
+        spec: Any,
+        rows: list[dict[str, Any]],
+    ) -> bool:
+        columns = tuple(dict.fromkeys(key for row in rows for key in row))
+        try:
+            if spec.family in ("clustering", "anomaly_detection"):
+                return True
+            if spec.family == "recommendation":
+                user_column = self._resolver.resolve(columns, spec.user_column_aliases)
+                item_column = self._resolver.resolve(columns, spec.item_column_aliases)
+                if user_column == item_column:
+                    raise TargetColumnUnresolved(
+                        "Client and product columns resolved to the same column."
+                    )
+                return True
+
+            self._resolver.resolve(columns, spec.target_aliases)
+            if spec.family == "forecasting":
+                self._resolver.resolve(columns, spec.time_column_aliases)
+            return True
+        except TargetColumnUnresolved as exc:
+            logger.info(
+                "Automatic training skipped as not applicable company=%s dataset=%s task=%s reason=%s",
+                dataset.company_id,
+                dataset.id,
+                task_code,
+                str(exc),
+            )
+            return False
 
     def _load_dataset_rows(self, dataset: Dataset) -> list[dict[str, Any]]:
         """Relit le CSV importé et réapplique le même typage qu'à l'import.
@@ -314,6 +349,16 @@ class TrainingDispatcher:
                 retraining_reason=None,
                 triggered_rules=(),
             )
+        except TargetColumnUnresolved as exc:
+            logger.info(
+                "Automatic training became not applicable company=%s dataset=%s module=%s task=%s reason=%s",
+                tenant.company_id,
+                dataset_id,
+                module_code,
+                task_code,
+                str(exc),
+            )
+            self._cancel(session, ai_job, training_job, started_at)
         except Exception:
             logger.exception(
                 "Automatic training failed for company=%s module=%s task=%s",
@@ -1114,6 +1159,22 @@ class TrainingDispatcher:
         )
         for row in previous:
             row.is_active = False
+
+    @staticmethod
+    def _cancel(
+        session: Session,
+        ai_job: AIJob,
+        training_job: TrainingJob,
+        started_at: datetime,
+    ) -> None:
+        completed_at = datetime.now(timezone.utc)
+        ai_job.status = JobStatus.CANCELLED
+        ai_job.completed_at = completed_at
+        ai_job.duration_seconds = int((completed_at - started_at).total_seconds())
+        ai_job.logs = STAGE_READY
+        training_job.status = JobStatus.CANCELLED
+        training_job.completed_at = completed_at
+        session.commit()
 
     @staticmethod
     def _fail(

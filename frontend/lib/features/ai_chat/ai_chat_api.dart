@@ -32,11 +32,18 @@ class AiChatApi {
 
   Future<CentralAIResponse> sendCentralMessage(
     String conversationId,
-    String content,
+    String content, {
+    String? pageContext,
+    String? locale,
+  }
   ) async {
     final response = await _client.post(
       '/ai/central/conversations/$conversationId/messages',
-      body: {'content': content},
+      body: {
+        'content': content,
+        'page_context': ?pageContext,
+        'locale': ?locale,
+      },
     ) as Map<String, dynamic>;
     return CentralAIResponse.fromJson(response);
   }

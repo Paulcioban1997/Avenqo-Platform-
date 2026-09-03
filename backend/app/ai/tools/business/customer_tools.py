@@ -38,7 +38,12 @@ class GetCustomerSummaryTool(AITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: CustomerSummaryArgs) -> ToolResult:
-        prepared = load_latest_prepared_dataset(self._session, self._ingestion, context.tenant)
+        prepared = load_latest_prepared_dataset(
+            self._session,
+            self._ingestion,
+            context.tenant,
+            frozenset({"customer_id", "order_id"}),
+        )
         data = compute_customer_summary(prepared)
         return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),))
 

@@ -154,13 +154,8 @@ class TenantProductsService:
 
     @staticmethod
     def source_for(snapshot: TenantAnalyticsSnapshot) -> PreparedCompanyDataset | None:
-        return next(
-            (
-                item
-                for item in snapshot.prepared
-                if _PRODUCT_FIELDS & set(item.canonical_columns.values())
-            ),
-            None,
+        return snapshot.source_for(frozenset({"product_id"})) or snapshot.source_for(
+            frozenset({"product_name"})
         )
 
     @staticmethod
