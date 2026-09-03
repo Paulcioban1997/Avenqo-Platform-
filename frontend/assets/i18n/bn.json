@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "চালিয়ে যান",
     "connectionsImportedAtLabel": "আমদানিকৃত",
     "connectionsUploadedFileSuccessLabel": "ডেটা সফলভাবে আমদানি হয়েছে",
+    "connectionsCleaning": {"view": "পরিষ্কার করা ডেটা দেখুন", "summary": "পরিষ্কারের সারাংশ", "before": "আগে", "after": "পরে"},
     "themeToggleSwitchToDark": "ডার্ক মোডে যান",
     "themeToggleSwitchToLight": "লাইট মোডে যান"
   },

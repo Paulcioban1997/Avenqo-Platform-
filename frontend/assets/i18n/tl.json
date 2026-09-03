@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Magpatuloy",
     "connectionsImportedAtLabel": "Na-import",
     "connectionsUploadedFileSuccessLabel": "Matagumpay na na-import ang data",
+    "connectionsCleaning": {"view": "Tingnan ang nilinis na data", "summary": "Buod ng paglilinis", "before": "Bago", "after": "Pagkatapos"},
     "themeToggleSwitchToDark": "Lumipat sa madilim na mode",
     "themeToggleSwitchToLight": "Lumipat sa maliwanag na mode"
   },

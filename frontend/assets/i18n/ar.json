@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "متابعة",
     "connectionsImportedAtLabel": "تم الاستيراد",
     "connectionsUploadedFileSuccessLabel": "تم استيراد البيانات بنجاح",
+    "connectionsCleaning": {"view": "عرض البيانات المنظفة", "summary": "ملخص التنظيف", "before": "قبل", "after": "بعد"},
     "themeToggleSwitchToDark": "التبديل إلى الوضع الداكن",
     "themeToggleSwitchToLight": "التبديل إلى الوضع الفاتح"
   },

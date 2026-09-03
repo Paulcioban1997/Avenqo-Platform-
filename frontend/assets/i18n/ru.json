@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Продолжить",
     "connectionsImportedAtLabel": "Импортировано",
     "connectionsUploadedFileSuccessLabel": "Данные успешно импортированы",
+    "connectionsCleaning": {"view": "Просмотреть очищенные данные", "summary": "Сводка очистки", "before": "До", "after": "После"},
     "themeToggleSwitchToDark": "Переключиться на тёмный режим",
     "themeToggleSwitchToLight": "Переключиться на светлый режим"
   },

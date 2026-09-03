@@ -17,4 +17,6 @@ def test_pipeline_status_tracks_ingestion_and_training_without_technical_details
     assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.RUNNING)) == "training_ai"
     assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.COMPLETED)) == "ready"
     assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.FAILED)) == "attention_required"
+    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.CANCELLED)) == "ready"
+    assert _pipeline_status(_dataset(DatasetStatus.MAPPING_REQUIRED)) == "attention_required"
     assert _pipeline_status(_dataset(DatasetStatus.FAILED)) == "failed"

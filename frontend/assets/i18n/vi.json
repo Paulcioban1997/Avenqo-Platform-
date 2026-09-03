@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Tiếp tục",
     "connectionsImportedAtLabel": "Đã nhập",
     "connectionsUploadedFileSuccessLabel": "Đã nhập dữ liệu thành công",
+    "connectionsCleaning": {"view": "Xem dữ liệu đã làm sạch", "summary": "Tóm tắt làm sạch", "before": "Trước", "after": "Sau"},
     "themeToggleSwitchToDark": "Chuyển sang chế độ tối",
     "themeToggleSwitchToLight": "Chuyển sang chế độ sáng"
   },

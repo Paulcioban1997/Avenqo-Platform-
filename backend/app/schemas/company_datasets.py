@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -63,6 +64,23 @@ class CompanyDatasetProfileResponse(BaseModel):
     quality_status: str | None
     quality_reasons: tuple[str, ...]
     capability_readiness: tuple[CapabilityReadinessResponse, ...]
+
+
+class DatasetCleaningDetailResponse(BaseModel):
+    dataset_id: UUID
+    name: str
+    status: str
+    cleaning_status: str
+    quality_reasons: list[str]
+    version: int
+    timestamp: datetime
+    summary: dict[str, Any]
+    original_preview: list[dict[str, Any]]
+    cleaned_preview: list[dict[str, Any]]
+    preview_offset: int
+    preview_limit: int
+    preview_total: int
+    transformation_history: list[dict[str, Any]]
 
 
 class MappingOverrideRequest(BaseModel):

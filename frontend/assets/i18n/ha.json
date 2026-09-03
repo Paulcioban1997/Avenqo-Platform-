@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Ci gaba",
     "connectionsImportedAtLabel": "An shigo da shi",
     "connectionsUploadedFileSuccessLabel": "An shigo da bayanai cikin nasara",
+    "connectionsCleaning": {"view": "Duba bayanan da aka tsaftace", "summary": "Takaitaccen tsaftacewa", "before": "Kafin", "after": "Bayan"},
     "themeToggleSwitchToDark": "Canja zuwa yanayin duhu",
     "themeToggleSwitchToLight": "Canja zuwa yanayin haske"
   },

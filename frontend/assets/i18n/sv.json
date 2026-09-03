@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Fortsätt",
     "connectionsImportedAtLabel": "Importerad",
     "connectionsUploadedFileSuccessLabel": "Data importerade",
+    "connectionsCleaning": {"view": "Visa rensade data", "summary": "Rensningsöversikt", "before": "Före", "after": "Efter"},
     "themeToggleSwitchToDark": "Byt till mörkt läge",
     "themeToggleSwitchToLight": "Byt till ljust läge"
   },

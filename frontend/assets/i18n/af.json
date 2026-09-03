@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Gaan voort",
     "connectionsImportedAtLabel": "Ingevoer",
     "connectionsUploadedFileSuccessLabel": "Data suksesvol ingevoer",
+    "connectionsCleaning": {"view": "Bekyk skoongemaakte data", "summary": "Skoonmaakopsomming", "before": "Voor", "after": "Na"},
     "themeToggleSwitchToDark": "Skakel na donker modus",
     "themeToggleSwitchToLight": "Skakel na ligte modus"
   },

@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "続ける",
     "connectionsImportedAtLabel": "インポート済み",
     "connectionsUploadedFileSuccessLabel": "データのインポートに成功しました",
+    "connectionsCleaning": {"view": "クリーニング済みデータを表示", "summary": "クリーニング概要", "before": "処理前", "after": "処理後"},
     "themeToggleSwitchToDark": "ダークモードに切り替える",
     "themeToggleSwitchToLight": "ライトモードに切り替える"
   },

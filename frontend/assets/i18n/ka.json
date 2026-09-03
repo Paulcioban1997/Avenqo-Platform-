@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "გაგრძელება",
     "connectionsImportedAtLabel": "შემოტანილია",
     "connectionsUploadedFileSuccessLabel": "მონაცემები წარმატებით შემოტანილია",
+    "connectionsCleaning": {"view": "გასუფთავებული მონაცემების ნახვა", "summary": "გასუფთავების შეჯამება", "before": "მანამდე", "after": "შემდეგ"},
     "themeToggleSwitchToDark": "გადართვა მუქ რეჟიმზე",
     "themeToggleSwitchToLight": "გადართვა ნათელ რეჟიმზე"
   },

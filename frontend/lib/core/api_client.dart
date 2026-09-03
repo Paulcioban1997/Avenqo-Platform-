@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:avenqo/core/app_config.dart';
@@ -14,6 +15,13 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class DownloadedFile {
+  const DownloadedFile(this.bytes, this.fileName);
+
+  final Uint8List bytes;
+  final String fileName;
 }
 
 class ApiClient {
@@ -50,11 +58,7 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> request) async {
-    return await post(
-          '/auth/register',
-          body: request,
-          authenticated: false,
-        )
+    return await post('/auth/register', body: request, authenticated: false)
         as Map<String, dynamic>;
   }
 
@@ -82,6 +86,36 @@ class ApiClient {
 
   Future<dynamic> delete(String path) {
     return _request('DELETE', path, authenticated: true);
+  }
+
+  Future<DownloadedFile> download(
+    String path, {
+    bool retryAfterRefresh = true,
+  }) async {
+    final headers = <String, String>{};
+    if (_accessToken != null) headers['Authorization'] = 'Bearer $_accessToken';
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .get(Uri.parse('$_baseUrl$path'), headers: headers)
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw const ApiException('Avenqo request timed out', isTimeout: true);
+    } on Object {
+      throw const ApiException('Avenqo request failed');
+    }
+    if (response.statusCode == 401 && retryAfterRefresh && await _refresh()) {
+      return download(path, retryAfterRefresh: false);
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _decode(response);
+    }
+    final disposition = response.headers['content-disposition'] ?? '';
+    final match = RegExp(r'filename="?([^";]+)').firstMatch(disposition);
+    return DownloadedFile(
+      response.bodyBytes,
+      match?.group(1) ?? 'avenqo-export',
+    );
   }
 
   /// Envoi multipart authentifié (ex. `/datasets/upload`) : `fields` devient

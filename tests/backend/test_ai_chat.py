@@ -50,6 +50,26 @@ def test_retrieval_excludes_other_tenant_datasets(chat_session) -> None:
     assert all(result.metadata["dataset_id"] != "Secret B" for result in results)
 
 
+def test_retrieval_excludes_tenant_datasets_that_are_not_ready(chat_session) -> None:
+    session, company_a, _, _, _ = chat_session
+    session.add(
+        Dataset(
+            company_id=company_a.id,
+            name="Still cleaning",
+            type="csv",
+            source="cleaning.csv",
+            rows_count=10,
+            columns_count=2,
+            status=DatasetStatus.CLEANING,
+        )
+    )
+    session.commit()
+
+    results = RetrievalService(session).retrieve_context(company_a.id, "sales")
+
+    assert [result.name for result in results] == ["Sales A"]
+
+
 def test_llm_factory_selects_configured_provider() -> None:
     provider = LLMProviderFactory.create(Settings(LLM_PROVIDER="openai"))
 

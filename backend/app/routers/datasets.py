@@ -3,13 +3,15 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.core.permissions import permissions_for
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.datasets import (
     get_capability_execution_gate,
     get_company_dataset_ingestion_service,
+    get_dataset_cleaning_service,
     get_dataset_import_service,
 )
 from backend.app.dependencies.training import get_training_dispatcher
@@ -21,6 +23,7 @@ from backend.app.schemas.company_datasets import (
     ColumnProfileResponse,
     CompanyDatasetProfileResponse,
     CompanyDatasetUploadResponse,
+    DatasetCleaningDetailResponse,
     MappingOverrideRequest,
     MappingOverrideResponse,
 )
@@ -32,6 +35,11 @@ from backend.app.services.company_dataset_ingestion_service import (
     InvalidMappingError,
 )
 from backend.app.services.data_import_policy import DataImportQuotaExceeded
+from backend.app.services.dataset_cleaning_service import (
+    DatasetCleaningService,
+    DatasetNotReadyForExport,
+    UnsupportedDatasetExport,
+)
 from backend.app.services.dataset_import_service import (
     DatasetImportError,
     DatasetImportService,
@@ -48,9 +56,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
+def require_dataset_read(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    if not {"data:read", "data:manage"}.intersection(permissions_for(identity.user.role)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission insuffisante",
+        )
+    return identity
+
+
 def _pipeline_status(dataset) -> str:
     if dataset.status in {DatasetStatus.FAILED, DatasetStatus.INVALID, DatasetStatus.REJECTED}:
         return "failed"
+    if dataset.status == DatasetStatus.MAPPING_REQUIRED:
+        return "attention_required"
     if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
         return "analyzing"
     jobs = list(dataset.training_jobs)
@@ -60,7 +81,7 @@ def _pipeline_status(dataset) -> str:
         return "training_ai"
     if any(job.status == JobStatus.PENDING for job in jobs):
         return "preparing_data"
-    if all(job.status in {JobStatus.FAILED, JobStatus.CANCELLED} for job in jobs):
+    if any(job.status == JobStatus.FAILED for job in jobs):
         return "attention_required"
     return "ready"
 
@@ -286,6 +307,48 @@ def submit_company_dataset_mapping(
         status=dataset.status,
         mapping=accepted,
         approved=approved,
+    )
+
+
+@router.get("/{dataset_id}/cleaning", response_model=DatasetCleaningDetailResponse)
+def get_dataset_cleaning_detail(
+    dataset_id: UUID,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    tenant: TenantContext = Depends(get_tenant_context),
+    _: CurrentIdentity = Depends(require_dataset_read),
+    service: DatasetCleaningService = Depends(get_dataset_cleaning_service),
+) -> DatasetCleaningDetailResponse:
+    try:
+        return DatasetCleaningDetailResponse.model_validate(
+            service.detail(tenant, dataset_id, offset=offset, limit=limit)
+        )
+    except CompanyDatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetNotReadyForExport as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/export/{export_format}")
+def export_cleaned_dataset(
+    dataset_id: UUID,
+    export_format: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    _: CurrentIdentity = Depends(require_dataset_read),
+    service: DatasetCleaningService = Depends(get_dataset_cleaning_service),
+) -> Response:
+    try:
+        content, media_type, filename = service.export(tenant, dataset_id, export_format)
+    except CompanyDatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetNotReadyForExport as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except UnsupportedDatasetExport as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

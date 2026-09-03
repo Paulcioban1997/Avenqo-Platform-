@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "បន្ត",
     "connectionsImportedAtLabel": "បាននាំចូល",
     "connectionsUploadedFileSuccessLabel": "ទិន្នន័យបាននាំចូលដោយជោគជ័យ",
+    "connectionsCleaning": {"view": "មើលទិន្នន័យដែលបានសម្អាត", "summary": "សេចក្តីសង្ខេបការសម្អាត", "before": "មុន", "after": "ក្រោយ"},
     "themeToggleSwitchToDark": "ប្តូរទៅរបៀបងងឹត",
     "themeToggleSwitchToLight": "ប្តូរទៅរបៀបភ្លឺ"
   },

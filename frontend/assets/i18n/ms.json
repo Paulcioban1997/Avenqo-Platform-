@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Teruskan",
     "connectionsImportedAtLabel": "Diimport",
     "connectionsUploadedFileSuccessLabel": "Data berjaya diimport",
+    "connectionsCleaning": {"view": "Lihat data yang dibersihkan", "summary": "Ringkasan pembersihan", "before": "Sebelum", "after": "Selepas"},
     "themeToggleSwitchToDark": "Tukar ke mod gelap",
     "themeToggleSwitchToLight": "Tukar ke mod terang"
   },

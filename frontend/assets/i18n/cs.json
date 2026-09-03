@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Pokračovat",
     "connectionsImportedAtLabel": "Importováno",
     "connectionsUploadedFileSuccessLabel": "Data úspěšně importována",
+    "connectionsCleaning": {"view": "Zobrazit vyčištěná data", "summary": "Souhrn čištění", "before": "Před", "after": "Po"},
     "themeToggleSwitchToDark": "Přepnout na tmavý režim",
     "themeToggleSwitchToLight": "Přepnout na světlý režim"
   },

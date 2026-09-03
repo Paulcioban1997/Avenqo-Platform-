@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "계속",
     "connectionsImportedAtLabel": "가져옴",
     "connectionsUploadedFileSuccessLabel": "데이터를 성공적으로 가져왔습니다",
+    "connectionsCleaning": {"view": "정리된 데이터 보기", "summary": "데이터 정리 요약", "before": "이전", "after": "이후"},
     "themeToggleSwitchToDark": "다크 모드로 전환",
     "themeToggleSwitchToLight": "라이트 모드로 전환"
   },

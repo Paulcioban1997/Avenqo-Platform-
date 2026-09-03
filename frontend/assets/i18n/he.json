@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "המשך",
     "connectionsImportedAtLabel": "יובא",
     "connectionsUploadedFileSuccessLabel": "הנתונים יובאו בהצלחה",
+    "connectionsCleaning": {"view": "הצגת נתונים מנוקים", "summary": "סיכום ניקוי", "before": "לפני", "after": "אחרי"},
     "themeToggleSwitchToDark": "החלף למצב כהה",
     "themeToggleSwitchToLight": "החלף למצב בהיר"
   },

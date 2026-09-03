@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "ਜਾਰੀ ਰੱਖੋ",
     "connectionsImportedAtLabel": "ਇੰਪੋਰਟ ਕੀਤਾ",
     "connectionsUploadedFileSuccessLabel": "ਡਾਟਾ ਸਫਲਤਾਪੂਰਵਕ ਇੰਪੋਰਟ ਹੋਇਆ",
+    "connectionsCleaning": {"view": "ਸਾਫ਼ ਕੀਤਾ ਡਾਟਾ ਵੇਖੋ", "summary": "ਸਫ਼ਾਈ ਸੰਖੇਪ", "before": "ਪਹਿਲਾਂ", "after": "ਬਾਅਦ"},
     "themeToggleSwitchToDark": "ਡਾਰਕ ਮੋਡ ਵਿੱਚ ਬਦਲੋ",
     "themeToggleSwitchToLight": "ਲਾਈਟ ਮੋਡ ਵਿੱਚ ਬਦਲੋ"
   },

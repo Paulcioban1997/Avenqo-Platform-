@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Үргэлжлүүлэх",
     "connectionsImportedAtLabel": "Импортлосон",
     "connectionsUploadedFileSuccessLabel": "Өгөгдлийг амжилттай импортлолоо",
+    "connectionsCleaning": {"view": "Цэвэрлэсэн өгөгдлийг харах", "summary": "Цэвэрлэгээний хураангуй", "before": "Өмнө", "after": "Дараа"},
     "themeToggleSwitchToDark": "Бараан горимд шилжих",
     "themeToggleSwitchToLight": "Цайвар горимд шилжих"
   },

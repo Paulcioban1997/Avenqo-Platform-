@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Endelea",
     "connectionsImportedAtLabel": "Imeingizwa",
     "connectionsUploadedFileSuccessLabel": "Data imeingizwa kwa mafanikio",
+    "connectionsCleaning": {"view": "Tazama data iliyosafishwa", "summary": "Muhtasari wa usafishaji", "before": "Kabla", "after": "Baada"},
     "themeToggleSwitchToDark": "Badilisha kwenda hali ya giza",
     "themeToggleSwitchToLight": "Badilisha kwenda hali ya mwanga"
   },

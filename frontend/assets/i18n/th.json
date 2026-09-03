@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "ดำเนินการต่อ",
     "connectionsImportedAtLabel": "นำเข้าแล้ว",
     "connectionsUploadedFileSuccessLabel": "นำเข้าข้อมูลสำเร็จแล้ว",
+    "connectionsCleaning": {"view": "ดูข้อมูลที่ล้างแล้ว", "summary": "สรุปการล้างข้อมูล", "before": "ก่อน", "after": "หลัง"},
     "themeToggleSwitchToDark": "สลับเป็นโหมดมืด",
     "themeToggleSwitchToLight": "สลับเป็นโหมดสว่าง"
   },

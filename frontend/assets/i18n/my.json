@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "ဆက်လက်ရန်",
     "connectionsImportedAtLabel": "တင်သွင်းပြီး",
     "connectionsUploadedFileSuccessLabel": "ဒေတာအောင်မြင်စွာတင်သွင်းပြီးပါပြီ",
+    "connectionsCleaning": {"view": "သန့်စင်ပြီး ဒေတာကို ကြည့်ရန်", "summary": "သန့်စင်မှု အကျဉ်းချုပ်", "before": "မတိုင်မီ", "after": "ပြီးနောက်"},
     "themeToggleSwitchToDark": "မှောင်မိုက်မုဒ်သို့ ပြောင်းပါ",
     "themeToggleSwitchToLight": "အလင်းမုဒ်သို့ ပြောင်းပါ"
   },

@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Doorgaan",
     "connectionsImportedAtLabel": "Geïmporteerd",
     "connectionsUploadedFileSuccessLabel": "Gegevens succesvol geïmporteerd",
+    "connectionsCleaning": {"view": "Opgeschoonde gegevens bekijken", "summary": "Opschoningssamenvatting", "before": "Voor", "after": "Na"},
     "themeToggleSwitchToDark": "Overschakelen naar donkere modus",
     "themeToggleSwitchToLight": "Overschakelen naar lichte modus"
   },

@@ -123,6 +123,48 @@ void main() {
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
 
+  testWidgets('A ready dataset exposes its cleaning summary and previews', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","rows_count":2,"columns_count":2,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.url.path.endsWith(
+        '/datasets/11111111-1111-1111-1111-111111111111/cleaning',
+      )) {
+        return http.Response(
+          '{"name":"sales.csv","version":1,"summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}]}',
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Voir les données nettoyées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Résumé du nettoyage'), findsOneWidget);
+    expect(find.textContaining('3 → 2'), findsOneWidget);
+    expect(find.text('Avant'), findsOneWidget);
+    expect(find.text('Après'), findsOneWidget);
+    expect(find.text('CSV'), findsOneWidget);
+    expect(find.text('DOCX'), findsOneWidget);
+
+    await tester.tap(find.text('Après'));
+    await tester.pumpAndSettle();
+    expect(find.text('12.5'), findsOneWidget);
+  });
+
   testWidgets('Connections lists a dataset still being processed', (
     tester,
   ) async {
@@ -207,9 +249,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
 
-    await tester.tap(
-      find.widgetWithIcon(FilledButton, Icons.delete_outline),
-    );
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.delete_outline));
     await tester.pumpAndSettle();
 
     expect(deleteCalled, isTrue);

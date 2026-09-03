@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Devam et",
     "connectionsImportedAtLabel": "İçe aktarıldı",
     "connectionsUploadedFileSuccessLabel": "Veriler başarıyla içe aktarıldı",
+    "connectionsCleaning": {"view": "Temizlenmiş verileri görüntüle", "summary": "Temizleme özeti", "before": "Önce", "after": "Sonra"},
     "themeToggleSwitchToDark": "Koyu moda geç",
     "themeToggleSwitchToLight": "Açık moda geç"
   },

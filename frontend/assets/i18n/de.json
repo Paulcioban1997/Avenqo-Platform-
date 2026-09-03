@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Weiter",
     "connectionsImportedAtLabel": "Importiert",
     "connectionsUploadedFileSuccessLabel": "Daten erfolgreich importiert",
+    "connectionsCleaning": {"view": "Bereinigte Daten anzeigen", "summary": "Bereinigungsübersicht", "before": "Vorher", "after": "Nachher"},
     "themeToggleSwitchToDark": "Zum dunklen Modus wechseln",
     "themeToggleSwitchToLight": "Zum hellen Modus wechseln"
   },

@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "जारी रखें",
     "connectionsImportedAtLabel": "आयातित",
     "connectionsUploadedFileSuccessLabel": "डेटा सफलतापूर्वक आयात हुआ",
+    "connectionsCleaning": {"view": "साफ़ किया गया डेटा देखें", "summary": "सफ़ाई सारांश", "before": "पहले", "after": "बाद में"},
     "themeToggleSwitchToDark": "डार्क मोड पर स्विच करें",
     "themeToggleSwitchToLight": "लाइट मोड पर स्विच करें"
   },

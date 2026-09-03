@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "جاری رکھیں",
     "connectionsImportedAtLabel": "درآمد شدہ",
     "connectionsUploadedFileSuccessLabel": "ڈیٹا کامیابی سے درآمد ہوا",
+    "connectionsCleaning": {"view": "صاف کیا گیا ڈیٹا دیکھیں", "summary": "صفائی کا خلاصہ", "before": "پہلے", "after": "بعد"},
     "themeToggleSwitchToDark": "ڈارک موڈ پر جائیں",
     "themeToggleSwitchToLight": "لائٹ موڈ پر جائیں"
   },

@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Շարունակել",
     "connectionsImportedAtLabel": "Ներմուծված է",
     "connectionsUploadedFileSuccessLabel": "Տվյալները հաջողությամբ ներմուծվեցին",
+    "connectionsCleaning": {"view": "Դիտել մաքրված տվյալները", "summary": "Մաքրման ամփոփում", "before": "Առաջ", "after": "Հետո"},
     "themeToggleSwitchToDark": "Անցնել մուգ ռեժիմի",
     "themeToggleSwitchToLight": "Անցնել լուսավոր ռեժիմի"
   },

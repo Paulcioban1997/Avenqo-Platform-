@@ -40,6 +40,7 @@ from backend.app.services.company_dataset_ingestion_service import CompanyDatase
 from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.data_import_policy import DataImportPolicy
 from backend.main import create_application
+from backend.app.routers.datasets import require_dataset_read
 from modules.entitlements import ModuleAccessService
 from shared.ai_engine.contracts import TenantContext
 from tests.subscription_helpers import add_active_subscription
@@ -189,6 +190,7 @@ def phase26_environment(
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_tenant_context] = lambda: current["tenant"]
+    app.dependency_overrides[require_dataset_read] = lambda: object()
     app.dependency_overrides[get_company_dataset_ingestion_service] = override_ingestion_service
     app.dependency_overrides[get_dataset_import_service] = override_dataset_import_service
     with TestClient(app) as client:
@@ -484,6 +486,54 @@ def test_duplicate_rows_removed_reported_as_warning(phase26_environment) -> None
     dataset_id = response.json()["dataset_id"]
     profile = client.get(f"/api/v1/datasets/{dataset_id}/profile").json()
     assert profile["quality_status"] in {"good", "warning"}
+
+
+def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) -> None:
+    client, _, tenants = phase26_environment
+    content = (
+        b"client_ref,sale_date,amount_paid\n"
+        b" C1 ,2024-01-01,$45.99\n"
+        b" C1 ,2024-01-01,$45.99\n"
+        b"C2,2024-01-02,$12.50\n"
+    )
+    upload = _upload(client, "cleaning.csv", content)
+    assert upload.status_code == 201
+    dataset_id = upload.json()["dataset_id"]
+
+    detail_response = client.get(f"/api/v1/datasets/{dataset_id}/cleaning?limit=1")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["status"] == "ready"
+    assert detail["summary"]["original_row_count"] == 3
+    assert detail["summary"]["cleaned_row_count"] == 2
+    assert detail["summary"]["duplicate_rows_removed"] == 1
+    assert detail["summary"]["numeric_normalizations"] == 2
+    assert detail["summary"]["date_normalizations"] == 2
+    assert detail["summary"]["outlier_handling"] is None
+    assert len(detail["original_preview"]) == 3
+    assert len(detail["cleaned_preview"]) == 1
+    assert detail["cleaned_preview"][0]["client_ref"] == "C1"
+
+    csv_export = client.get(f"/api/v1/datasets/{dataset_id}/export/csv")
+    assert csv_export.status_code == 200
+    assert b"C1,2024-01-01T00:00:00,45.99" in csv_export.content
+
+    xlsx_export = client.get(f"/api/v1/datasets/{dataset_id}/export/xlsx")
+    assert xlsx_export.status_code == 200
+    workbook = pytest.importorskip("openpyxl").load_workbook(BytesIO(xlsx_export.content))
+    assert workbook.active.max_row == 3
+
+    pdf_export = client.get(f"/api/v1/datasets/{dataset_id}/export/pdf")
+    assert pdf_export.status_code == 200
+    assert pdf_export.content.startswith(b"%PDF")
+
+    docx_export = client.get(f"/api/v1/datasets/{dataset_id}/export/docx")
+    assert docx_export.status_code == 200
+    assert docx_export.content.startswith(b"PK")
+
+    tenants["current"]["tenant"] = tenants["company_b"]
+    assert client.get(f"/api/v1/datasets/{dataset_id}/cleaning").status_code == 404
+    assert client.get(f"/api/v1/datasets/{dataset_id}/export/csv").status_code == 404
 
 
 def test_currency_string_converted_to_numeric(phase26_environment) -> None:

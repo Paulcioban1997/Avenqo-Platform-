@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "继续",
     "connectionsImportedAtLabel": "已导入",
     "connectionsUploadedFileSuccessLabel": "数据导入成功",
+    "connectionsCleaning": {"view": "查看清理后的数据", "summary": "数据清理摘要", "before": "之前", "after": "之后"},
     "themeToggleSwitchToDark": "切换到深色模式",
     "themeToggleSwitchToLight": "切换到浅色模式"
   },

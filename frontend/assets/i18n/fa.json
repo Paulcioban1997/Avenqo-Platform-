@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "ادامه",
     "connectionsImportedAtLabel": "وارد شد",
     "connectionsUploadedFileSuccessLabel": "داده‌ها با موفقیت وارد شدند",
+    "connectionsCleaning": {"view": "مشاهده داده‌های پاک‌سازی‌شده", "summary": "خلاصه پاک‌سازی", "before": "قبل", "after": "بعد"},
     "themeToggleSwitchToDark": "تغییر به حالت تیره",
     "themeToggleSwitchToLight": "تغییر به حالت روشن"
   },

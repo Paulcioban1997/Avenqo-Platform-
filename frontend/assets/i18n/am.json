@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "ቀጥል",
     "connectionsImportedAtLabel": "ገብቷል",
     "connectionsUploadedFileSuccessLabel": "ውሂብ በተሳካ ሁኔታ ገብቷል",
+    "connectionsCleaning": {"view": "የተጸዳ ውሂብን ይመልከቱ", "summary": "የማጽዳት ማጠቃለያ", "before": "በፊት", "after": "በኋላ"},
     "themeToggleSwitchToDark": "ወደ ጨለማ ሁነታ ቀይር",
     "themeToggleSwitchToLight": "ወደ ብርሃን ሁነታ ቀይር"
   },

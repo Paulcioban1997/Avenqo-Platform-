@@ -670,6 +670,7 @@
     "connectionsContinueLabel": "Συνέχεια",
     "connectionsImportedAtLabel": "Εισήχθη",
     "connectionsUploadedFileSuccessLabel": "Τα δεδομένα εισήχθησαν με επιτυχία",
+    "connectionsCleaning": {"view": "Προβολή καθαρισμένων δεδομένων", "summary": "Σύνοψη καθαρισμού", "before": "Πριν", "after": "Μετά"},
     "themeToggleSwitchToDark": "Εναλλαγή σε σκούρα λειτουργία",
     "themeToggleSwitchToLight": "Εναλλαγή σε φωτεινή λειτουργία"
   },

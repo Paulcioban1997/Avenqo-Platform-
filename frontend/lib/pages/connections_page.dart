@@ -236,9 +236,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     } on ApiException catch (exc) {
       if (!mounted) return;
       setState(() => _deletingDatasetIds.remove(datasetId));
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(exc.message)),
-      );
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(exc.message)));
     } on Object {
       if (!mounted) return;
       setState(() => _deletingDatasetIds.remove(datasetId));
@@ -252,6 +252,19 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         ),
       );
     }
+  }
+
+  void _showCleaningDetails(Map<String, dynamic> dataset) {
+    final id = dataset['id']?.toString();
+    if (id == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => _DatasetCleaningDialog(
+        api: widget.api,
+        datasetId: id,
+        t: AvenqoLocaleScope.translationsOf(context).company,
+      ),
+    );
   }
 
   @override
@@ -274,6 +287,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 deletingDatasetIds: _deletingDatasetIds,
                 onAddFiles: _addFiles,
                 onDeleteDataset: _deleteDataset,
+                onViewCleaning: _showCleaningDetails,
                 onGoToDashboard: () => context.go('/dashboard'),
                 onAskAvenqo: () => context.go('/assistant'),
                 t: t,
@@ -362,6 +376,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.deletingDatasetIds,
     required this.onAddFiles,
     required this.onDeleteDataset,
+    required this.onViewCleaning,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -371,6 +386,7 @@ class _ConnectedDataView extends StatelessWidget {
   final Set<String> deletingDatasetIds;
   final VoidCallback onAddFiles;
   final Future<void> Function(String datasetId) onDeleteDataset;
+  final void Function(Map<String, dynamic> dataset) onViewCleaning;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -441,7 +457,10 @@ class _ConnectedDataView extends StatelessWidget {
             child: ExpansionTile(
               key: const PageStorageKey<String>('connected-datasets-dropdown'),
               initiallyExpanded: false,
-              tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 6,
+              ),
               childrenPadding: EdgeInsets.zero,
               leading: Container(
                 width: 38,
@@ -478,6 +497,7 @@ class _ConnectedDataView extends StatelessWidget {
                       datasets[i]['id']?.toString(),
                     ),
                     onDeleteDataset: onDeleteDataset,
+                    onViewCleaning: onViewCleaning,
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
                     t: t,
@@ -497,6 +517,7 @@ class _DatasetRow extends StatelessWidget {
     required this.isLast,
     required this.isDeleting,
     required this.onDeleteDataset,
+    required this.onViewCleaning,
     required this.onGoToDashboard,
     required this.onAskAvenqo,
     required this.t,
@@ -506,6 +527,7 @@ class _DatasetRow extends StatelessWidget {
   final bool isLast;
   final bool isDeleting;
   final Future<void> Function(String datasetId) onDeleteDataset;
+  final void Function(Map<String, dynamic> dataset) onViewCleaning;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
@@ -520,18 +542,15 @@ class _DatasetRow extends StatelessWidget {
           children: [
             const Icon(Icons.delete_outline, color: _Brand.red),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                name,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(MaterialLocalizations.of(dialogContext).cancelButtonLabel),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -550,8 +569,8 @@ class _DatasetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final status = dataset['pipeline_status']?.toString() ??
-      dataset['status']?.toString();
+    final status =
+        dataset['pipeline_status']?.toString() ?? dataset['status']?.toString();
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
     final isError =
@@ -622,6 +641,11 @@ class _DatasetRow extends StatelessWidget {
           ),
           if (isReady) ...[
             IconButton(
+              tooltip: t.connectionsCleaning['view'],
+              onPressed: isDeleting ? null : () => onViewCleaning(dataset),
+              icon: const Icon(Icons.table_view_outlined),
+            ),
+            IconButton(
               tooltip: t.connectionsGoDashboard,
               onPressed: isDeleting ? null : onGoToDashboard,
               icon: const Icon(Icons.dashboard_outlined),
@@ -651,6 +675,226 @@ class _DatasetRow extends StatelessWidget {
               ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _DatasetCleaningDialog extends StatefulWidget {
+  const _DatasetCleaningDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetCleaningDialog> createState() => _DatasetCleaningDialogState();
+}
+
+class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
+  late final Future<Map<String, dynamic>> _detail = _load();
+  bool _exporting = false;
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/cleaning')
+          as Map<String, dynamic>;
+
+  Future<void> _export(String format) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final file = await widget.api.download(
+        '/datasets/${widget.datasetId}/export/$format',
+      );
+      await saveExportFile(file.fileName, file.bytes);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return AlertDialog(
+      title: Text(widget.t.connectionsCleaning['view']!),
+      content: SizedBox(
+        width: 820,
+        height: 560,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _detail,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              return Center(child: Text(widget.t.connectionsGenericError));
+            }
+            final detail = snapshot.data!;
+            final summary = detail['summary'] as Map<String, dynamic>;
+            final before = (detail['original_preview'] as List<dynamic>)
+                .cast<Map<String, dynamic>>();
+            final after = (detail['cleaned_preview'] as List<dynamic>)
+                .cast<Map<String, dynamic>>();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail['name'].toString(),
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${widget.t.connectionsReadyTitle} · v${detail['version']}',
+                  style: TextStyle(color: colors.muted),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  widget.t.connectionsCleaning['summary']!,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    _CleaningMetric(
+                      icon: Icons.table_rows_outlined,
+                      value:
+                          '${summary['original_row_count']} → ${summary['cleaned_row_count']} ${widget.t.connectionsStatRowsLabel.toLowerCase()}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.view_column_outlined,
+                      value:
+                          '${summary['column_count']} ${widget.t.connectionsStatColumnsLabel.toLowerCase()}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.content_copy_outlined,
+                      value: '${summary['duplicate_rows_removed']}',
+                    ),
+                    _CleaningMetric(
+                      icon: Icons.account_tree_outlined,
+                      value:
+                          '${(summary['mappings_applied'] as Map<String, dynamic>).length}',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          tabs: [
+                            Tab(text: widget.t.connectionsCleaning['before']),
+                            Tab(text: widget.t.connectionsCleaning['after']),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _PreviewTable(rows: before),
+                              _PreviewTable(rows: after),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final format in const ['CSV', 'XLSX', 'PDF', 'DOCX'])
+                      OutlinedButton.icon(
+                        onPressed: _exporting
+                            ? null
+                            : () => _export(format.toLowerCase()),
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: Text(format),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(MaterialLocalizations.of(context).closeButtonLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _CleaningMetric extends StatelessWidget {
+  const _CleaningMetric({required this.icon, required this.value});
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) =>
+      Chip(avatar: Icon(icon, size: 16), label: Text(value));
+}
+
+class _PreviewTable extends StatelessWidget {
+  const _PreviewTable({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final columns = rows.first.keys.take(8).toList();
+    return Scrollbar(
+      child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              for (final column in columns) DataColumn(label: Text(column)),
+            ],
+            rows: [
+              for (final row in rows.take(20))
+                DataRow(
+                  cells: [
+                    for (final column in columns)
+                      DataCell(
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 180),
+                          child: Text(
+                            row[column]?.toString() ?? '',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
