@@ -1,6 +1,7 @@
 """Routes minces d'import et de consultation des datasets."""
 
 import logging
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
@@ -69,6 +70,23 @@ def require_dataset_read(
     return identity
 
 
+def _current_source_missing(dataset) -> bool:
+    """Detect a dataset whose original raw artifact is gone from storage.
+
+    This happens for records created before persistent storage existed (the
+    file lived on ephemeral container disk). It must never be reported as
+    "ready" or as a semantic "attention_required" mapping issue — it is a
+    distinct, honest, reprocessing-required situation.
+    """
+    current_version = next((item for item in dataset.versions if item.is_current), None)
+    if current_version is None or not current_version.artifact_path:
+        return False
+    expected_rows = int(current_version.row_count or dataset.rows_count or 0)
+    if expected_rows <= 0:
+        return False
+    return not Path(current_version.artifact_path).is_file()
+
+
 def _pipeline_status(dataset) -> str:
     if dataset.status in {DatasetStatus.FAILED, DatasetStatus.INVALID, DatasetStatus.REJECTED}:
         return "failed"
@@ -76,6 +94,11 @@ def _pipeline_status(dataset) -> str:
         return "attention_required"
     if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
         return "analyzing"
+    if _current_source_missing(dataset):
+        # Genuinely unrecoverable without a re-upload: report it as a
+        # processing error rather than misleading "ready"/"attention_required"
+        # (semantic-mapping) labels that do not describe the real problem.
+        return "failed"
     jobs = list(dataset.training_jobs)
     if not jobs:
         return "ready"

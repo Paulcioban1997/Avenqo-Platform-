@@ -667,7 +667,7 @@ class _DatasetRow extends StatelessWidget {
               ],
             ),
           ),
-          if (isReady || needsAttention)
+          if (isReady || needsAttention || isError)
             TextButton.icon(
               onPressed: isDeleting ? null : () => onViewCleaning(dataset),
               icon: const Icon(Icons.table_view_outlined, size: 18),
