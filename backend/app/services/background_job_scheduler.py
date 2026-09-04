@@ -1,4 +1,4 @@
-"""Implémentation FastAPI du port `JobScheduler` de l'AI Engine.
+"""Implémentations FastAPI du port `JobScheduler` de l'AI Engine.
 
 L'AI Engine ne dépend jamais de FastAPI (architecture stabilisée) : ce
 module vit uniquement côté backend et adapte le port
@@ -19,12 +19,7 @@ from shared.ai_engine.jobs.models import AIEngineJob
 
 
 class FastAPIBackgroundJobScheduler:
-    """Exécute les jobs IA en tâche de fond FastAPI (in-process, sans file externe).
-
-    La tâche continue de s'exécuter côté serveur même si l'utilisateur ferme
-    son navigateur : elle est planifiée sur la réponse HTTP, pas sur la
-    connexion client.
-    """
+    """Exécute les jobs IA en tâche de fond FastAPI (in-process)."""
 
     def __init__(
         self,
@@ -41,4 +36,31 @@ class FastAPIBackgroundJobScheduler:
     def schedule(self, job: AIEngineJob, run_at: datetime) -> str:
         # Aucune planification différée en tâche de fond in-process : le job
         # démarre immédiatement pour cette première implémentation.
+        return self.enqueue(job)
+
+
+class FastAPISubprocessJobScheduler:
+    """Planifie seulement le lancement d'un worker isolé après la réponse HTTP.
+
+    L'objectif n'est plus d'exécuter l'AutoML dans le process API lui-même,
+    mais de démarrer rapidement un nouveau process Python dédié. Cela réduit
+    le risque que `joblib`/`loky` ou un modèle gourmand en mémoire fasse
+    tomber le worker HTTP qui sert aussi le frontend.
+    """
+
+    def __init__(
+        self,
+        background_tasks: BackgroundTasks,
+        launcher: Callable[[AIEngineJob], None],
+    ) -> None:
+        self._tasks = background_tasks
+        self._launcher = launcher
+
+    def enqueue(self, job: AIEngineJob) -> str:
+        self._tasks.add_task(self._launcher, job)
+        return str(job.id)
+
+    def schedule(self, job: AIEngineJob, run_at: datetime) -> str:
+        # Même comportement : le worker isolé est lancé dès la fin de la
+        # requête, sans planificateur différé supplémentaire.
         return self.enqueue(job)

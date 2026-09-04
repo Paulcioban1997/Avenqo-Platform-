@@ -16,6 +16,7 @@ from shared.ai_engine.evaluation.sklearn_metrics import evaluate_model
 from shared.ai_engine.evaluation.model_quality import compare_with_naive_baseline
 from shared.ai_engine.explainability.service import explain_supervised
 from shared.ai_engine.preprocessing.imbalance import analyze_class_balance, build_resampler
+from shared.ai_engine.preprocessing.data_sampling import sample_features_and_target
 from shared.ai_engine.preprocessing.tabular import (
     build_model_pipeline,
     build_preprocessor,
@@ -43,6 +44,11 @@ def train_classifier(
     test_size: float = 0.2,
     random_seed: int = 42,
     cross_validation_folds: int = 3,
+    search_max_rows: int | None = None,
+    final_fit_max_rows: int | None = None,
+    permutation_max_rows: int | None = None,
+    explanation_max_rows: int | None = None,
+    max_parallel_jobs: int = 1,
 ) -> SupervisedTrainingResult:
     """Exécute toutes les étapes d'une classification supervisée."""
 
@@ -78,22 +84,48 @@ def train_classifier(
                 name: build_model_pipeline(preprocessor, estimator, "classification")
                 for name, estimator in estimators.items()
             }
+        search_features, search_target = sample_features_and_target(
+            train_features,
+            train_target,
+            search_max_rows,
+            random_seed=random_seed,
+            stratify=True,
+        )
         search = run_hyperparameter_search(
             pipelines,
             parameter_spaces,
-            train_features,
-            train_target,
+            search_features,
+            search_target,
             run_context.search_method,
             scoring="accuracy",
             cross_validation_folds=effective_folds,
             random_seed=random_seed,
+            max_parallel_jobs=max_parallel_jobs,
         )
+        fit_features, fit_target = sample_features_and_target(
+            train_features,
+            train_target,
+            final_fit_max_rows,
+            random_seed=random_seed,
+            stratify=True,
+        )
+        final_pipeline = clone(search.best_pipeline)
+        final_pipeline.fit(fit_features, fit_target)
         report = evaluate_model(
-            search.best_pipeline,
+            final_pipeline,
             test_features,
             test_target,
             "classification",
             random_seed,
+            permutation_max_rows=permutation_max_rows,
+            permutation_max_parallel_jobs=max_parallel_jobs,
+        )
+        explanation_features, _ = sample_features_and_target(
+            test_features,
+            test_target,
+            explanation_max_rows,
+            random_seed=random_seed,
+            stratify=True,
         )
         quality = compare_with_naive_baseline(
             train_target,
@@ -102,8 +134,8 @@ def train_classifier(
             "classification",
         )
         explanation = explain_supervised(
-            search.best_pipeline,
-            test_features,
+            final_pipeline,
+            explanation_features,
             search.model_name,
             "classification",
             report.feature_importance,
@@ -111,7 +143,7 @@ def train_classifier(
         )
         reference_baseline = capture_reference_baseline(
             test_features,
-            search.best_pipeline.predict(test_features),
+            final_pipeline.predict(test_features),
             test_target,
             report.metrics,
             search.model_name,
@@ -119,7 +151,7 @@ def train_classifier(
             columns,
             random_seed,
         )
-        paths = save_model(search.best_pipeline, destination)
+        paths = save_model(final_pipeline, destination)
         experiment_logger.complete(
             run,
             run_context,
@@ -135,7 +167,7 @@ def train_classifier(
         )
         return SupervisedTrainingResult(
             model_name=search.model_name,
-            pipeline=search.best_pipeline,
+            pipeline=final_pipeline,
             best_parameters=search.best_parameters,
             metrics=report.metrics,
             feature_importance=report.feature_importance,

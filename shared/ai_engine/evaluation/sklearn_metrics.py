@@ -26,6 +26,7 @@ from shared.ai_engine.explainability.feature_importance import compute_native_im
 from shared.ai_engine.explainability.permutation_importance import (
     compute_permutation_importance,
 )
+from shared.ai_engine.preprocessing.data_sampling import sample_features_and_target
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,8 @@ def evaluate_model(
     target: pd.Series,
     task_type: Literal["classification", "regression"],
     random_seed: int = 42,
+    permutation_max_rows: int | None = None,
+    permutation_max_parallel_jobs: int = 1,
 ) -> EvaluationReport:
     """Évalue le Pipeline sur des données qui n'ont pas servi à l'entraîner."""
 
@@ -51,15 +54,23 @@ def evaluate_model(
         else _regression_metrics(target, predictions)
     )
     scoring = "accuracy" if task_type == "classification" else "neg_root_mean_squared_error"
+    sampled_features, sampled_target = sample_features_and_target(
+        features,
+        target,
+        permutation_max_rows,
+        random_seed=random_seed,
+        stratify=task_type == "classification",
+    )
     return EvaluationReport(
         metrics=metrics,
         feature_importance=compute_native_importance(pipeline),
         permutation_importance=compute_permutation_importance(
             pipeline,
-            features,
-            target,
+            sampled_features,
+            sampled_target,
             scoring,
             random_seed,
+            max_parallel_jobs=permutation_max_parallel_jobs,
         ),
     )
 

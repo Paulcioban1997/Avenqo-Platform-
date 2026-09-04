@@ -25,6 +25,7 @@ from shared.ai_engine.evaluation.anomaly_metrics import (
     evaluate_anomalies,
     rank_anomaly_candidates,
 )
+from shared.ai_engine.preprocessing.data_sampling import sample_frame
 from shared.ai_engine.preprocessing.tabular import (
     build_clustering_pipeline,
     build_preprocessor,
@@ -45,16 +46,19 @@ def train_anomaly_detector(
     parameter_spaces: Mapping[str, Mapping[str, Any]],
     destination: Path,
     experiment_logger: ExperimentLogger,
+    max_rows: int | None = None,
+    random_seed: int = 42,
 ) -> AnomalyTrainingResult:
     """Prétraite les données, cherche les paramètres et journalise le Run."""
 
     run = experiment_logger.start(dataset, version, run_context)
     started = perf_counter()
     try:
-        columns = detect_feature_columns(data)
+        working_data = sample_frame(data, max_rows, random_seed=random_seed)
+        columns = detect_feature_columns(working_data)
         preprocessor = build_preprocessor(columns)
         model_name, best_pipeline, best_parameters, labels, metrics = _search_anomalies(
-            data,
+            working_data,
             preprocessor,
             estimators,
             parameter_spaces,

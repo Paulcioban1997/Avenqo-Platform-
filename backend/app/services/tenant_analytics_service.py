@@ -14,7 +14,7 @@ from backend.app.models import (
     ModelRegistry,
     TrainingJob,
 )
-from backend.app.routers.datasets import _pipeline_status
+from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
@@ -37,6 +37,7 @@ class TenantAnalyticsSnapshot:
     company: Company | None
     datasets: tuple[Dataset, ...]
     statuses: tuple[str, ...]
+    training_statuses: tuple[str, ...]
     prepared: tuple[PreparedCompanyDataset, ...]
     relationships: tuple[DatasetRelationship, ...]
     active_models: tuple[ModelRegistry, ...]
@@ -236,6 +237,11 @@ class TenantAnalyticsService:
             ).all()
         )
         statuses = tuple(_pipeline_status(dataset) for dataset in datasets)
+        training_statuses = tuple(
+            status
+            for dataset in datasets
+            if (status := _training_status(dataset)) not in {None, "not_applicable"}
+        )
         prepared = self._prepared_ready_datasets(tenant, datasets)
         prepared_ids = {item.dataset_id for item in prepared}
         relationships = tuple(
@@ -264,6 +270,7 @@ class TenantAnalyticsService:
             company=company,
             datasets=datasets,
             statuses=statuses,
+            training_statuses=training_statuses,
             prepared=prepared,
             relationships=relationships,
             active_models=active_models,

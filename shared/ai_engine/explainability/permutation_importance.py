@@ -22,6 +22,7 @@ def compute_permutation_importance(
     scoring: str,
     random_seed: int = 42,
     n_repeats: int = 5,
+    max_parallel_jobs: int = 1,
 ) -> Mapping[str, float]:
     """Baisse de score moyenne quand chaque variable est mélangée aléatoirement."""
 
@@ -32,7 +33,7 @@ def compute_permutation_importance(
         scoring=scoring,
         n_repeats=n_repeats,
         random_state=random_seed,
-        n_jobs=-1,
+        n_jobs=max(1, max_parallel_jobs),
     )
     columns = (
         list(features.columns)

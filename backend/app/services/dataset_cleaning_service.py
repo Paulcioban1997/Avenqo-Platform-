@@ -128,6 +128,8 @@ class DatasetCleaningService:
             "summary": summary,
             "original_preview": original_rows[: self._REPORT_PREVIEW_ROWS],
             "cleaned_preview": cleaned_rows[offset : offset + bounded_limit],
+            "column_strategies": list(metadata.get("column_strategies") or []),
+            "export_formats": ["csv", "xlsx", "pdf", "docx"],
             "preview_offset": offset,
             "preview_limit": bounded_limit,
             "preview_total": len(cleaned_rows),
@@ -183,6 +185,9 @@ class DatasetCleaningService:
             date_conversions=int(persisted.get("date_normalizations", 0)),
             null_cells_detected=int(persisted.get("missing_values_detected", 0)),
             invalid_rows=int(persisted.get("invalid_rows_rejected", 0)),
+            boolean_conversions=int(persisted.get("boolean_normalizations", 0)),
+            invalid_values_detected=int(persisted.get("invalid_values_detected", 0)),
+            invalid_values_corrected=int(persisted.get("invalid_values_corrected", 0)),
         )
 
     def _metadata(self, company_id: UUID, dataset_id: UUID, version_number: int) -> dict[str, Any]:
@@ -214,9 +219,12 @@ class DatasetCleaningService:
             "duplicate_rows_detected": report.duplicates_removed,
             "duplicate_rows_removed": report.duplicates_removed,
             "invalid_rows_rejected": 0,
+            "invalid_values_detected": report.invalid_values_detected,
+            "invalid_values_corrected": report.invalid_values_corrected,
             "normalization_performed": report.numeric_conversions + report.date_conversions > 0,
             "date_normalizations": report.date_conversions,
             "numeric_normalizations": report.numeric_conversions,
+            "boolean_normalizations": report.boolean_conversions,
             "outlier_handling": None,
             "mappings_applied": mappings,
             "dataset_version": version,

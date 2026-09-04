@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from backend.app.models import DatasetStatus, JobStatus
-from backend.app.routers.datasets import _pipeline_status
+from backend.app.routers.datasets import _pipeline_status, _training_status
 
 
 def _dataset(status: DatasetStatus, *jobs: JobStatus, versions=()):
@@ -20,13 +20,20 @@ def _version(*, is_current: bool, artifact_path: str | None, row_count: int = 0)
 
 def test_pipeline_status_tracks_ingestion_and_training_without_technical_details() -> None:
     assert _pipeline_status(_dataset(DatasetStatus.PARSING)) == "analyzing"
-    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.PENDING)) == "preparing_data"
-    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.RUNNING)) == "training_ai"
+    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.PENDING)) == "ready"
+    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.RUNNING)) == "ready"
     assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.COMPLETED)) == "ready"
-    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.FAILED)) == "attention_required"
+    assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.FAILED)) == "ready"
     assert _pipeline_status(_dataset(DatasetStatus.READY, JobStatus.CANCELLED)) == "ready"
     assert _pipeline_status(_dataset(DatasetStatus.MAPPING_REQUIRED)) == "attention_required"
     assert _pipeline_status(_dataset(DatasetStatus.FAILED)) == "failed"
+
+    assert _training_status(_dataset(DatasetStatus.PARSING)) is None
+    assert _training_status(_dataset(DatasetStatus.READY, JobStatus.PENDING)) == "preparing_data"
+    assert _training_status(_dataset(DatasetStatus.READY, JobStatus.RUNNING)) == "training_ai"
+    assert _training_status(_dataset(DatasetStatus.READY, JobStatus.COMPLETED)) == "ready"
+    assert _training_status(_dataset(DatasetStatus.READY, JobStatus.FAILED)) == "training_failed"
+    assert _training_status(_dataset(DatasetStatus.READY, JobStatus.CANCELLED)) == "ready"
 
 
 def test_ready_dataset_with_missing_source_artifact_is_never_reported_as_ready(

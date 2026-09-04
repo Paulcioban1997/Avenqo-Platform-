@@ -99,21 +99,32 @@ def _pipeline_status(dataset) -> str:
         # processing error rather than misleading "ready"/"attention_required"
         # (semantic-mapping) labels that do not describe the real problem.
         return "failed"
+    return "ready"
+
+
+def _training_status(dataset) -> str | None:
+    if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
+        return None
+    if _current_source_missing(dataset):
+        return None
     jobs = list(dataset.training_jobs)
     if not jobs:
-        return "ready"
+        return "not_applicable"
     if any(job.status == JobStatus.RUNNING for job in jobs):
         return "training_ai"
     if any(job.status == JobStatus.PENDING for job in jobs):
         return "preparing_data"
     if any(job.status == JobStatus.FAILED for job in jobs):
-        return "attention_required"
+        return "training_failed"
+    if any(job.status == JobStatus.COMPLETED for job in jobs):
+        return "ready"
     return "ready"
 
 
 def dataset_response(dataset) -> DatasetResponse:
     profile = dataset.profile
     quality = dataset.quality_report
+    training_status = _training_status(dataset)
     
     # Handle case where profile or quality_report might be None
     if profile is None:
@@ -133,6 +144,8 @@ def dataset_response(dataset) -> DatasetResponse:
             quality_score=0.0,
             status=dataset.status,
             pipeline_status=_pipeline_status(dataset),
+            training_status=training_status,
+            training_retryable=training_status == "training_failed",
             uploaded_at=dataset.uploaded_at,
             columns=[],
             distributions={},
@@ -166,6 +179,8 @@ def dataset_response(dataset) -> DatasetResponse:
         quality_score=quality_data["quality_score"],
         status=dataset.status,
         pipeline_status=_pipeline_status(dataset),
+        training_status=training_status,
+        training_retryable=training_status == "training_failed",
         uploaded_at=dataset.uploaded_at,
         columns=profile.schema_json["columns"],
         distributions=profile.distribution_json,

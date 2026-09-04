@@ -27,6 +27,7 @@ from shared.ai_engine.evaluation.clustering_metrics import (
     evaluate_clusters,
     rank_clustering_candidates,
 )
+from shared.ai_engine.preprocessing.data_sampling import sample_frame
 from shared.ai_engine.preprocessing.tabular import (
     build_clustering_pipeline,
     build_preprocessor,
@@ -47,17 +48,20 @@ def train_clusterer(
     parameter_spaces: Mapping[str, Mapping[str, Any]],
     destination: Path,
     experiment_logger: ExperimentLogger,
+    max_rows: int | None = None,
+    random_seed: int = 42,
 ) -> ClusteringTrainingResult:
     """Prétraite les données, cherche les paramètres et journalise le Run."""
 
     run = experiment_logger.start(dataset, version, run_context)
     started = perf_counter()
     try:
-        columns = detect_feature_columns(data)
+        working_data = sample_frame(data, max_rows, random_seed=random_seed)
+        columns = detect_feature_columns(working_data)
         preprocessor = build_preprocessor(columns)
-        transformed = preprocessor.fit_transform(data)
+        transformed = preprocessor.fit_transform(working_data)
         model_name, best_pipeline, best_parameters, labels, metrics = _search_clusters(
-            data,
+            working_data,
             transformed,
             preprocessor,
             estimators,

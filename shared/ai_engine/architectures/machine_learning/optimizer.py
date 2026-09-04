@@ -62,6 +62,7 @@ def run_hyperparameter_search(
     cross_validation_folds: int = 3,
     random_seed: int = 42,
     randomized_iterations: int = 20,
+    max_parallel_jobs: int = 1,
 ) -> HyperparameterSearchResult:
     """Entraîne chaque Pipeline et conserve celui au meilleur score CV."""
 
@@ -79,6 +80,7 @@ def run_hyperparameter_search(
             cross_validation_folds,
             random_seed,
             randomized_iterations,
+            max_parallel_jobs,
         )
         search.fit(features, target)
         results.append(HyperparameterSearchResult(model_name, search, raw_space))
@@ -100,12 +102,13 @@ def _build_search(
     folds: int,
     random_seed: int,
     randomized_iterations: int,
+    max_parallel_jobs: int,
 ) -> GridSearchCV | RandomizedSearchCV:
     common = {
         "estimator": pipeline,
         "scoring": scoring,
         "cv": folds,
-        "n_jobs": -1,
+        "n_jobs": max(1, max_parallel_jobs),
         "refit": True,
         "error_score": "raise",
     }

@@ -46,6 +46,31 @@ class Settings(BaseSettings):
     artifact_root: str = Field(default="var/artifacts", alias="ARTIFACT_ROOT")
     model_registry_root: str = Field(default="var/models", alias="MODEL_REGISTRY_ROOT")
     dataset_max_upload_mb: int = Field(default=50, alias="DATASET_MAX_UPLOAD_MB")
+    training_execution_mode: str = Field(default="auto", alias="TRAINING_EXECUTION_MODE")
+    training_search_max_rows: int = Field(default=50_000, ge=1, alias="TRAINING_SEARCH_MAX_ROWS")
+    training_final_fit_max_rows: int = Field(default=120_000, ge=1, alias="TRAINING_FINAL_FIT_MAX_ROWS")
+    training_unsupervised_max_rows: int = Field(default=30_000, ge=1, alias="TRAINING_UNSUPERVISED_MAX_ROWS")
+    training_recommendation_search_max_rows: int = Field(
+        default=80_000,
+        ge=1,
+        alias="TRAINING_RECOMMENDATION_SEARCH_MAX_ROWS",
+    )
+    training_recommendation_final_fit_max_rows: int = Field(
+        default=160_000,
+        ge=1,
+        alias="TRAINING_RECOMMENDATION_FINAL_FIT_MAX_ROWS",
+    )
+    training_explainability_max_rows: int = Field(
+        default=2_000,
+        ge=1,
+        alias="TRAINING_EXPLAINABILITY_MAX_ROWS",
+    )
+    training_search_max_parallel_jobs: int = Field(
+        default=1,
+        ge=1,
+        le=4,
+        alias="TRAINING_SEARCH_MAX_PARALLEL_JOBS",
+    )
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles
@@ -185,6 +210,16 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER doit être 'smtp' ou 'https_api'")
         return normalized
 
+    @field_validator("training_execution_mode")
+    @classmethod
+    def validate_training_execution_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"auto", "inline", "subprocess"}:
+            raise ValueError(
+                "TRAINING_EXECUTION_MODE doit être 'auto', 'inline' ou 'subprocess'"
+            )
+        return normalized
+
     @field_validator("debug", mode="before")
     @classmethod
     def parse_debug(cls, value: object) -> object:
@@ -257,6 +292,16 @@ class Settings(BaseSettings):
             and self.stripe_webhook_secret
             and self.stripe_price_demo
             and self.stripe_price_professional
+        )
+
+    @property
+    def resolved_training_execution_mode(self) -> str:
+        if self.training_execution_mode != "auto":
+            return self.training_execution_mode
+        return (
+            "inline"
+            if self.environment.lower() in {"development", "dev", "test"}
+            else "subprocess"
         )
 
     @property

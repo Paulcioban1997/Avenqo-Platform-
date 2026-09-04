@@ -557,6 +557,12 @@ def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) ->
     assert len(detail["original_preview"]) == 3
     assert len(detail["cleaned_preview"]) == 1
     assert detail["cleaned_preview"][0]["client_ref"] == "C1"
+    assert detail["export_formats"] == ["csv", "xlsx", "pdf", "docx"]
+    strategies = {
+        item["column_name"]: item for item in detail["column_strategies"]
+    }
+    assert strategies["sale_date"]["suggested_missing_strategy"] == "leave_empty"
+    assert "normalize_date" in strategies["sale_date"]["applied_strategies"]
 
     csv_export = client.get(f"/api/v1/datasets/{dataset_id}/export/csv")
     assert csv_export.status_code == 200

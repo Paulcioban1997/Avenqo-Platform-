@@ -36,6 +36,7 @@ from backend.app.models import (
     TrainingJob,
 )
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.training_execution_controls import TrainingExecutionControls
 from backend.app.services.target_resolution_service import (
     TargetColumnUnresolved,
     TargetResolutionService,
@@ -109,6 +110,7 @@ class TrainingDispatcher:
         training_service: TrainingService,
         ai_model_registry: AIModelRegistry,
         target_resolver: TargetResolutionService,
+        execution_controls: TrainingExecutionControls,
         scheduler: JobScheduler | None = None,
         task_resolver: TaskResolutionService | None = None,
     ) -> None:
@@ -116,6 +118,7 @@ class TrainingDispatcher:
         self._training = training_service
         self._registry = ai_model_registry
         self._resolver = target_resolver
+        self._execution_controls = execution_controls
         self._scheduler = scheduler
         # Phase 18.2 : détecte, à partir des données réellement importées,
         # quelles capacités IA génériques sont possibles (voir
@@ -790,6 +793,7 @@ class TrainingDispatcher:
             schema=DetectedSchema(tables={}),
         )
         parameter_spaces = spec.build_parameter_spaces()
+        row_count = len(data)
         run_context = TrainingRunContext(
             dataset=DatasetSnapshot(
                 dataset_id=dataset.id,
@@ -837,7 +841,8 @@ class TrainingDispatcher:
                 ),
                 python_version=platform.python_version(),
                 library_versions={"scikit-learn": sklearn.__version__},
-                code_version="training-dispatcher-v1",
+                code_version="training-dispatcher-v2",
+                limitations=self._resource_limitations(spec.family, row_count),
             ),
             # RandomizedSearchCV : les grilles professionnelles de
             # shared/ai_engine/hyperparameters/ sont volumineuses ; un
@@ -866,6 +871,7 @@ class TrainingDispatcher:
                 run_context=run_context,
                 estimators=spec.build_estimators(),
                 parameter_spaces=parameter_spaces,
+                max_rows=self._execution_controls.unsupervised_max_rows,
             )
             model_type = "clustering"
         elif spec.family == "recommendation":
@@ -880,6 +886,8 @@ class TrainingDispatcher:
                 parameter_spaces=parameter_spaces,
                 minimum_interactions=spec.minimum_interactions,
                 top_k=spec.top_k,
+                search_max_rows=self._execution_controls.recommendation_search_max_rows,
+                final_fit_max_rows=self._execution_controls.recommendation_final_fit_max_rows,
             )
             model_type = "recommendation"
         elif spec.family == "anomaly_detection":
@@ -890,6 +898,7 @@ class TrainingDispatcher:
                 run_context=run_context,
                 estimators=spec.build_estimators(),
                 parameter_spaces=parameter_spaces,
+                max_rows=self._execution_controls.unsupervised_max_rows,
             )
             model_type = "anomaly_detection"
         elif spec.family == "forecasting":
@@ -919,6 +928,11 @@ class TrainingDispatcher:
                 run_context=run_context,
                 estimators=spec.build_estimators(),
                 parameter_spaces=parameter_spaces,
+                search_max_rows=self._execution_controls.search_max_rows,
+                final_fit_max_rows=self._execution_controls.final_fit_max_rows,
+                permutation_max_rows=self._execution_controls.explainability_max_rows,
+                explanation_max_rows=self._execution_controls.explainability_max_rows,
+                max_parallel_jobs=self._execution_controls.search_max_parallel_jobs,
             )
             model_type = "regression"
         else:
@@ -930,10 +944,49 @@ class TrainingDispatcher:
                 run_context=run_context,
                 estimators=spec.build_estimators(),
                 parameter_spaces=parameter_spaces,
+                search_max_rows=self._execution_controls.search_max_rows,
+                final_fit_max_rows=self._execution_controls.final_fit_max_rows,
+                permutation_max_rows=self._execution_controls.explainability_max_rows,
+                explanation_max_rows=self._execution_controls.explainability_max_rows,
+                max_parallel_jobs=self._execution_controls.search_max_parallel_jobs,
             )
             model_type = "classification"
 
         return result, model_type, run_context
+
+    def _resource_limitations(self, family: str, row_count: int) -> tuple[str, ...]:
+        limits = [f"search_parallelism_capped_at_{self._execution_controls.search_max_parallel_jobs}"]
+        if family in {"classification", "regression"}:
+            if row_count > self._execution_controls.search_max_rows:
+                limits.append(
+                    f"search_sample_capped_at_{self._execution_controls.search_max_rows}_rows"
+                )
+            if row_count > self._execution_controls.final_fit_max_rows:
+                limits.append(
+                    f"final_fit_sample_capped_at_{self._execution_controls.final_fit_max_rows}_rows"
+                )
+            if row_count > self._execution_controls.explainability_max_rows:
+                limits.append(
+                    "explainability_sample_capped_at_"
+                    f"{self._execution_controls.explainability_max_rows}_rows"
+                )
+        elif family in {"clustering", "anomaly_detection"}:
+            if row_count > self._execution_controls.unsupervised_max_rows:
+                limits.append(
+                    f"unsupervised_sample_capped_at_{self._execution_controls.unsupervised_max_rows}_rows"
+                )
+        elif family == "recommendation":
+            if row_count > self._execution_controls.recommendation_search_max_rows:
+                limits.append(
+                    "recommendation_search_sample_capped_at_"
+                    f"{self._execution_controls.recommendation_search_max_rows}_rows"
+                )
+            if row_count > self._execution_controls.recommendation_final_fit_max_rows:
+                limits.append(
+                    "recommendation_final_fit_sample_capped_at_"
+                    f"{self._execution_controls.recommendation_final_fit_max_rows}_rows"
+                )
+        return tuple(limits)
 
     def _finalize_and_persist(
         self,

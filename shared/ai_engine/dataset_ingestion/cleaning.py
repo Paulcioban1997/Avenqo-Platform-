@@ -31,6 +31,24 @@ class CleaningReport:
     date_conversions: int
     null_cells_detected: int
     invalid_rows: int
+    boolean_conversions: int = 0
+    invalid_values_detected: int = 0
+    invalid_values_corrected: int = 0
+    column_reports: tuple["ColumnCleaningReport", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnCleaningReport:
+    column_name: str
+    canonical_field: str | None
+    semantic_type: str
+    missing_values_detected: int
+    missing_values_corrected: int
+    invalid_values_detected: int
+    invalid_values_corrected: int
+    numeric_conversions: int
+    date_conversions: int
+    boolean_conversions: int
 
 
 class CompanyDatasetCleaner:
@@ -48,44 +66,94 @@ class CompanyDatasetCleaner:
 
         numeric_conversions = 0
         date_conversions = 0
+        boolean_conversions = 0
         null_cells_detected = 0
+        invalid_values_detected = 0
+        invalid_values_corrected = 0
         invalid_row_flags: list[bool] = []
+        column_stats: dict[str, dict[str, Any]] = {}
 
         cleaned_rows: list[dict[str, Any]] = []
         for row in deduplicated:
             cleaned_row = dict(row)
             row_invalid = False
-            for original_column, canonical_field in mapping.items():
-                if original_column not in cleaned_row:
+            for column_name in list(cleaned_row):
+                canonical_field = mapping.get(column_name)
+                expected_types = CANONICAL_FIELD_SEMANTIC_TYPE.get(canonical_field, ())
+                stats = column_stats.setdefault(
+                    column_name,
+                    self._new_column_stats(column_name, canonical_field, expected_types),
+                )
+                value = cleaned_row[column_name]
+                if value is None:
+                    stats["missing_values_detected"] += 1
+                    null_cells_detected += 1
                     continue
-                value = cleaned_row[original_column]
+
+                original_value = value
                 expected_types = CANONICAL_FIELD_SEMANTIC_TYPE.get(canonical_field, ())
 
                 if SemanticType.DATETIME in expected_types:
                     converted, ok = self._convert_date(value)
-                    if value is not None and ok:
+                    if ok and converted != value:
                         date_conversions += 1
-                    if value is not None and not ok:
+                        stats["date_conversions"] += 1
+                    if not ok:
                         row_invalid = True
-                    cleaned_row[original_column] = converted
+                        invalid_values_detected += 1
+                        invalid_values_corrected += 1
+                        stats["invalid_values_detected"] += 1
+                        stats["invalid_values_corrected"] += 1
+                        converted = None
+                    cleaned_row[column_name] = converted
                 elif any(t in expected_types for t in (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER)):
                     converted, ok = self._convert_numeric(value)
-                    if value is not None and ok:
+                    if ok and converted != value:
                         numeric_conversions += 1
-                    if value is not None and not ok:
+                        stats["numeric_conversions"] += 1
+                    if not ok:
                         row_invalid = True
-                    cleaned_row[original_column] = converted
+                        invalid_values_detected += 1
+                        invalid_values_corrected += 1
+                        stats["invalid_values_detected"] += 1
+                        stats["invalid_values_corrected"] += 1
+                        converted = None
+                    cleaned_row[column_name] = converted
                 elif SemanticType.BOOLEAN in expected_types:
-                    cleaned_row[original_column] = self._convert_boolean(value)
+                    converted, changed = self._convert_boolean(value)
+                    if changed:
+                        boolean_conversions += 1
+                        stats["boolean_conversions"] += 1
+                    cleaned_row[column_name] = converted
 
-            for value in cleaned_row.values():
-                if value is None:
+                if original_value is not None and cleaned_row[column_name] is None:
                     null_cells_detected += 1
+
+            for column_name, value in list(cleaned_row.items()):
+                if value is None:
+                    continue
                 if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
                     row_invalid = True
+                    invalid_values_detected += 1
+                    invalid_values_corrected += 1
+                    stats = column_stats.setdefault(
+                        column_name,
+                        self._new_column_stats(
+                            column_name,
+                            mapping.get(column_name),
+                            CANONICAL_FIELD_SEMANTIC_TYPE.get(mapping.get(column_name), ()),
+                        ),
+                    )
+                    stats["invalid_values_detected"] += 1
+                    stats["invalid_values_corrected"] += 1
+                    cleaned_row[column_name] = None
 
             invalid_row_flags.append(row_invalid)
             cleaned_rows.append(cleaned_row)
+
+        column_reports = tuple(
+            ColumnCleaningReport(**column_stats[name]) for name in sorted(column_stats)
+        )
 
         return tuple(cleaned_rows), CleaningReport(
             rows_before=rows_before,
@@ -95,6 +163,10 @@ class CompanyDatasetCleaner:
             date_conversions=date_conversions,
             null_cells_detected=null_cells_detected,
             invalid_rows=sum(invalid_row_flags),
+            boolean_conversions=boolean_conversions,
+            invalid_values_detected=invalid_values_detected,
+            invalid_values_corrected=invalid_values_corrected,
+            column_reports=column_reports,
         )
 
     @staticmethod
@@ -154,13 +226,44 @@ class CompanyDatasetCleaner:
         return value, False
 
     @staticmethod
-    def _convert_boolean(value: Any) -> Any:
+    def _convert_boolean(value: Any) -> tuple[Any, bool]:
         if value is None or isinstance(value, bool):
-            return value
+            return value, False
         if isinstance(value, str):
             lowered = value.strip().lower()
             if lowered in _BOOLEAN_TRUE:
-                return True
+                return True, True
             if lowered in _BOOLEAN_FALSE:
-                return False
-        return value
+                return False, True
+        return value, False
+
+    @staticmethod
+    def _new_column_stats(
+        column_name: str,
+        canonical_field: str | None,
+        expected_types: Sequence[SemanticType],
+    ) -> dict[str, Any]:
+        semantic_type = "text"
+        if SemanticType.DATETIME in expected_types:
+            semantic_type = "datetime"
+        elif any(
+            t in expected_types
+            for t in (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER)
+        ):
+            semantic_type = "numeric"
+        elif SemanticType.BOOLEAN in expected_types:
+            semantic_type = "boolean"
+        elif not expected_types:
+            semantic_type = "unmapped"
+        return {
+            "column_name": column_name,
+            "canonical_field": canonical_field,
+            "semantic_type": semantic_type,
+            "missing_values_detected": 0,
+            "missing_values_corrected": 0,
+            "invalid_values_detected": 0,
+            "invalid_values_corrected": 0,
+            "numeric_conversions": 0,
+            "date_conversions": 0,
+            "boolean_conversions": 0,
+        }

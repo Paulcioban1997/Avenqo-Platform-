@@ -29,6 +29,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
 from shared.ai_engine.contracts import DatasetArtifact
+from shared.ai_engine.preprocessing.data_sampling import sample_frame
 from shared.ai_engine.training.experiment_logger import ExperimentLogger
 from shared.ai_engine.training.recommendation_result import RecommendationTrainingResult
 from shared.ai_engine.training.recommender import ItemBasedRecommender
@@ -52,6 +53,9 @@ def train_recommender(
     experiment_logger: ExperimentLogger,
     minimum_interactions: int = 20,
     top_k: int = 5,
+    search_max_rows: int | None = None,
+    final_fit_max_rows: int | None = None,
+    random_seed: int = 42,
 ) -> RecommendationTrainingResult:
     """Prépare les interactions, cherche la meilleure configuration, sauvegarde et journalise."""
 
@@ -73,12 +77,27 @@ def train_recommender(
             # sens (rien à pondérer), jamais de valeur inventée.
             weighting_options = ["implicit"]
 
+        search_interactions = sample_frame(
+            interactions,
+            search_max_rows,
+            random_seed=random_seed,
+        )
         best_parameters, best_metrics = _search_best_configuration(
-            interactions, n_neighbors_options, weighting_options, top_k
+            search_interactions,
+            n_neighbors_options,
+            weighting_options,
+            top_k,
         )
 
+        fit_interactions = sample_frame(
+            interactions,
+            final_fit_max_rows,
+            random_seed=random_seed,
+        )
         recommender = _fit_recommender(
-            interactions, best_parameters["weighting"], best_parameters["n_neighbors"]
+            fit_interactions,
+            best_parameters["weighting"],
+            best_parameters["n_neighbors"],
         )
         model_path = _save_recommender(recommender, destination)
 

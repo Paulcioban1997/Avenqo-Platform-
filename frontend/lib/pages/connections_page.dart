@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -114,10 +115,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
   void _syncPolling() {
     final shouldPoll = _datasets.any((dataset) {
-      final status = dataset['pipeline_status']?.toString();
-      return status == 'analyzing' ||
-          status == 'preparing_data' ||
-          status == 'training_ai';
+      final pipelineStatus = dataset['pipeline_status']?.toString();
+      final trainingStatus = dataset['training_status']?.toString();
+      return pipelineStatus == 'analyzing' ||
+          trainingStatus == 'preparing_data' ||
+          trainingStatus == 'training_ai';
     });
     if (!shouldPoll) {
       _pollTimer?.cancel();
@@ -374,6 +376,29 @@ String _pluralize(int n, String one, String other) {
   return template.replaceAll('{n}', '$n');
 }
 
+String _cleaningText(CompanyStrings t, String key) =>
+    t.connectionsCleaning[key] ??
+    CompanyStrings.fallback().connectionsCleaning[key] ??
+    key.replaceAll('_', ' ');
+
+String _humanizeCode(String value) {
+  if (value.isEmpty) return '—';
+  final normalized = value.replaceAll('_', ' ');
+  return normalized[0].toUpperCase() + normalized.substring(1);
+}
+
+String? _trainingStatusLabel(CompanyStrings t, String? status) => switch (status) {
+  'preparing_data' => t.connectionsPreparingData,
+  'training_ai' => t.connectionsTrainingAi,
+  'training_failed' => _cleaningText(t, 'trainingFailed'),
+  _ => null,
+};
+
+Color _trainingStatusColor(String? status) => switch (status) {
+  'training_failed' => _Brand.red,
+  _ => _Brand.blue,
+};
+
 class _PendingFile {
   _PendingFile({required this.fileName, required this.bytes});
   final String fileName;
@@ -598,6 +623,8 @@ class _DatasetRow extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     final status =
         dataset['pipeline_status']?.toString() ?? dataset['status']?.toString();
+    final trainingStatus = dataset['training_status']?.toString();
+    final trainingLabel = _trainingStatusLabel(t, trainingStatus);
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated';
     final needsAttention = status == 'attention_required';
@@ -611,14 +638,107 @@ class _DatasetRow extends StatelessWidget {
       'failed' || 'invalid' || 'rejected' => t.connectionsProcessingError,
       _ => t.connectionsAnalyzing,
     };
+    final metadata = [
+      if (dataset['rows_count'] != null)
+        '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
+      if (dataset['columns_count'] != null)
+        '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
+      if (dataset['uploaded_at'] != null)
+        '${t.connectionsImportedAtLabel} ${dataset['uploaded_at'].toString().split('T').first}',
+    ].join(' · ');
+    final actions = <Widget>[
+      if (isReady || needsAttention || isError)
+        TextButton.icon(
+          onPressed: isDeleting ? null : () => onViewCleaning(dataset),
+          icon: const Icon(Icons.table_view_outlined, size: 18),
+          label: Text(_cleaningText(t, 'view')),
+        ),
+      if (needsAttention)
+        IconButton(
+          tooltip: t.connectionsMappingTitle,
+          onPressed: isDeleting ? null : () => onReviewMapping(dataset),
+          icon: const Icon(Icons.tune),
+        ),
+      if (isReady)
+        IconButton(
+          tooltip: t.connectionsGoDashboard,
+          onPressed: isDeleting ? null : onGoToDashboard,
+          icon: const Icon(Icons.dashboard_outlined),
+        ),
+      if (isReady)
+        IconButton(
+          tooltip: t.connectionsAskAvenqo,
+          onPressed: isDeleting ? null : onAskAvenqo,
+          icon: const Icon(Icons.smart_toy_outlined),
+        ),
+      if (id != null)
+        isDeleting
+            ? const SizedBox(
+                width: 40,
+                height: 40,
+                child: Padding(
+                  padding: EdgeInsets.all(10),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : IconButton(
+                tooltip: t.connectionsRemoveFile,
+                onPressed: () => _confirmDelete(context, id),
+                icon: const Icon(Icons.delete_outline, color: _Brand.red),
+              ),
+    ];
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         border: isLast ? null : Border(bottom: BorderSide(color: colors.line)),
       ),
-      child: Row(
-        children: [
-          Icon(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final titleBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                dataset['name']?.toString() ?? '—',
+                style: TextStyle(
+                  color: colors.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                statusLabel,
+                style: TextStyle(
+                  color: isError
+                      ? _Brand.red
+                      : (isReady ? _Brand.green : _Brand.blue),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (trainingLabel != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  trainingLabel,
+                  style: TextStyle(
+                    color: _trainingStatusColor(trainingStatus),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (metadata.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  metadata,
+                  style: TextStyle(color: colors.muted, fontSize: 12),
+                ),
+              ],
+            ],
+          );
+          final leadingIcon = Icon(
             isError
                 ? Icons.error_outline
                 : isReady
@@ -627,89 +747,48 @@ class _DatasetRow extends StatelessWidget {
             color: isError
                 ? _Brand.red
                 : (isReady ? _Brand.green : _Brand.blue),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
+          );
+          final actionBar = Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: compact ? WrapAlignment.start : WrapAlignment.end,
+            children: actions,
+          );
+
+          if (compact) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  dataset['name']?.toString() ?? '—',
-                  style: TextStyle(
-                    color: colors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    leadingIcon,
+                    const SizedBox(width: 12),
+                    Expanded(child: titleBlock),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  statusLabel,
-                  style: TextStyle(
-                    color: isError
-                        ? _Brand.red
-                        : (isReady ? _Brand.green : _Brand.blue),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    if (dataset['rows_count'] != null)
-                      '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
-                    if (dataset['columns_count'] != null)
-                      '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
-                    if (dataset['uploaded_at'] != null)
-                      '${t.connectionsImportedAtLabel} ${dataset['uploaded_at'].toString().split('T').first}',
-                  ].join(' · '),
-                  style: TextStyle(color: colors.muted, fontSize: 12),
-                ),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  actionBar,
+                ],
               ],
-            ),
-          ),
-          if (isReady || needsAttention || isError)
-            TextButton.icon(
-              onPressed: isDeleting ? null : () => onViewCleaning(dataset),
-              icon: const Icon(Icons.table_view_outlined, size: 18),
-              label: Text(t.connectionsCleaning['view']!),
-            ),
-          if (needsAttention)
-            IconButton(
-              tooltip: t.connectionsMappingTitle,
-              onPressed: isDeleting ? null : () => onReviewMapping(dataset),
-              icon: const Icon(Icons.tune),
-            ),
-          if (isReady) ...[
-            IconButton(
-              tooltip: t.connectionsGoDashboard,
-              onPressed: isDeleting ? null : onGoToDashboard,
-              icon: const Icon(Icons.dashboard_outlined),
-            ),
-            IconButton(
-              tooltip: t.connectionsAskAvenqo,
-              onPressed: isDeleting ? null : onAskAvenqo,
-              icon: const Icon(Icons.smart_toy_outlined),
-            ),
-          ],
-          if (id != null) ...[
-            const SizedBox(width: 4),
-            if (isDeleting)
-              const SizedBox(
-                width: 40,
-                height: 40,
-                child: Padding(
-                  padding: EdgeInsets.all(10),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              IconButton(
-                tooltip: t.connectionsRemoveFile,
-                onPressed: () => _confirmDelete(context, id),
-                icon: const Icon(Icons.delete_outline, color: _Brand.red),
-              ),
-          ],
-        ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              leadingIcon,
+              const SizedBox(width: 12),
+              Expanded(child: titleBlock),
+              if (actions.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Flexible(child: actionBar),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -920,11 +999,15 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final dialogWidth = math.min(size.width - 32, 980.0);
+    final dialogHeight = math.min(size.height * 0.88, 820.0);
     return AlertDialog(
-      title: Text(widget.t.connectionsCleaning['view']!),
+      insetPadding: const EdgeInsets.all(16),
+      title: Text(_cleaningText(widget.t, 'view')),
       content: SizedBox(
-        width: 820,
-        height: 560,
+        width: dialogWidth,
+        height: dialogHeight,
         child: FutureBuilder<Map<String, dynamic>>(
           future: _detail,
           builder: (context, snapshot) {
@@ -939,127 +1022,209 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
               return Center(child: Text(message));
             }
             final detail = snapshot.data!;
-            final summary = detail['summary'] as Map<String, dynamic>;
+            final summary = detail['summary'] as Map<String, dynamic>? ?? const {};
             final isReady = detail['status'] == 'ready';
-            final before = (detail['original_preview'] as List<dynamic>)
+            final before = (detail['original_preview'] as List<dynamic>? ?? const [])
                 .cast<Map<String, dynamic>>();
-            final after = (detail['cleaned_preview'] as List<dynamic>)
+            final after = (detail['cleaned_preview'] as List<dynamic>? ?? const [])
                 .cast<Map<String, dynamic>>();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  detail['name'].toString(),
-                  style: TextStyle(
-                    color: colors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${isReady ? widget.t.connectionsReadyTitle : widget.t.connectionsAttentionRequired} · v${detail['version']}',
-                  style: TextStyle(color: colors.muted),
-                ),
-                if (!isReady) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _Brand.blue.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.cleaning_services_outlined,
-                          color: _Brand.blue,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${widget.t.connectionsReadyTitle}: ${widget.t.connectionsCleaning['summary']}. ${widget.t.connectionsMappingSubtitle}',
-                            style: TextStyle(color: colors.ink),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Text(
-                  widget.t.connectionsCleaning['summary']!,
-                  style: TextStyle(
-                    color: colors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
+            final qualityReasons =
+                (detail['quality_reasons'] as List<dynamic>? ?? const [])
+                    .map((item) => item.toString())
+                    .toList();
+            final columnStrategies =
+                (detail['column_strategies'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            final exportFormats =
+                (detail['export_formats'] as List<dynamic>? ?? const [])
+                    .map((item) => item.toString().toUpperCase())
+                    .toList();
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 720;
+                final previewHeight = compact ? 220.0 : 300.0;
+                final mappingsApplied =
+                    (summary['mappings_applied'] as Map<String, dynamic>? ?? const {})
+                        .length;
+                final qualityLabel = _humanizeCode(
+                  detail['cleaning_status']?.toString() ??
+                      _cleaningText(widget.t, 'notAvailable'),
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _CleaningMetric(
-                      icon: Icons.table_rows_outlined,
-                      value:
-                          '${summary['original_row_count']} → ${summary['cleaned_row_count']} ${widget.t.connectionsStatRowsLabel.toLowerCase()}',
+                    Text(
+                      detail['name'].toString(),
+                      style: TextStyle(
+                        color: colors.ink,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    _CleaningMetric(
-                      icon: Icons.view_column_outlined,
-                      value:
-                          '${summary['column_count']} ${widget.t.connectionsStatColumnsLabel.toLowerCase()}',
+                    const SizedBox(height: 4),
+                    Text(
+                      '${isReady ? widget.t.connectionsReadyTitle : widget.t.connectionsAttentionRequired} · v${detail['version']}',
+                      style: TextStyle(color: colors.muted),
                     ),
-                    _CleaningMetric(
-                      icon: Icons.content_copy_outlined,
-                      value: '${summary['duplicate_rows_removed']}',
+                    const SizedBox(height: 12),
+                    _CleaningBanner(
+                      icon: isReady
+                          ? Icons.check_circle_outline
+                          : Icons.rule_folder_outlined,
+                      text: isReady
+                          ? _cleaningText(widget.t, 'readyBanner')
+                          : _cleaningText(widget.t, 'attentionBanner'),
                     ),
-                    _CleaningMetric(
-                      icon: Icons.account_tree_outlined,
-                      value:
-                          '${(summary['mappings_applied'] as Map<String, dynamic>).length}',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        TabBar(
-                          tabs: [
-                            Tab(text: widget.t.connectionsCleaning['before']),
-                            Tab(text: widget.t.connectionsCleaning['after']),
-                          ],
-                        ),
-                        Expanded(
-                          child: TabBarView(
+                    if (qualityReasons.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _CleaningBanner(
+                        icon: Icons.info_outline,
+                        text:
+                            '${_cleaningText(widget.t, 'quality')}: ${qualityReasons.join(' • ')}',
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          _CleaningSectionTitle(
+                            label: _cleaningText(widget.t, 'summary'),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
                             children: [
-                              _PreviewTable(rows: before),
-                              _PreviewTable(rows: after),
+                              _CleaningMetric(
+                                icon: Icons.table_rows_outlined,
+                                label: _cleaningText(widget.t, 'rowsBeforeAfter'),
+                                value:
+                                    '${summary['original_row_count'] ?? 0} → ${summary['cleaned_row_count'] ?? 0}',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.view_column_outlined,
+                                label: _cleaningText(widget.t, 'columns'),
+                                value: '${summary['column_count'] ?? 0}',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.content_copy_outlined,
+                                label: _cleaningText(widget.t, 'duplicatesRemoved'),
+                                value: '${summary['duplicate_rows_removed'] ?? 0}',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.do_not_disturb_alt_outlined,
+                                label: _cleaningText(widget.t, 'missingValues'),
+                                value: '${summary['missing_values_detected'] ?? 0}',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.rule_outlined,
+                                label: _cleaningText(widget.t, 'invalidValues'),
+                                value: '${summary['invalid_values_corrected'] ?? 0}',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.account_tree_outlined,
+                                label: _cleaningText(widget.t, 'mappedColumns'),
+                                value: '$mappingsApplied',
+                              ),
+                              _CleaningMetric(
+                                icon: Icons.verified_outlined,
+                                label: _cleaningText(widget.t, 'quality'),
+                                value: qualityLabel,
+                              ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final format in const ['CSV', 'XLSX', 'PDF', 'DOCX'])
-                      OutlinedButton.icon(
-                        onPressed: _exporting
-                            ? null
-                            : () => _export(format.toLowerCase()),
-                        icon: const Icon(Icons.download_outlined, size: 18),
-                        label: Text(format),
+                          const SizedBox(height: 18),
+                          if (columnStrategies.isNotEmpty) ...[
+                            _CleaningSectionTitle(
+                              label: _cleaningText(widget.t, 'columnStrategies'),
+                            ),
+                            const SizedBox(height: 8),
+                            for (final strategy in columnStrategies)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _ColumnStrategyCard(
+                                  strategy: strategy,
+                                  t: widget.t,
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                          ],
+                          _CleaningSectionTitle(
+                            label: _cleaningText(widget.t, 'preview'),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: previewHeight,
+                            child: DefaultTabController(
+                              length: 2,
+                              child: Column(
+                                children: [
+                                  TabBar(
+                                    tabs: [
+                                      Tab(
+                                        text:
+                                            '${_cleaningText(widget.t, 'before')} (${before.length})',
+                                      ),
+                                      Tab(
+                                        text:
+                                            '${_cleaningText(widget.t, 'after')} (${after.length})',
+                                      ),
+                                    ],
+                                  ),
+                                  Expanded(
+                                    child: TabBarView(
+                                      children: [
+                                        _PreviewTable(
+                                          rows: before,
+                                          emptyLabel: _cleaningText(
+                                            widget.t,
+                                            'previewEmpty',
+                                          ),
+                                        ),
+                                        _PreviewTable(
+                                          rows: after,
+                                          emptyLabel: _cleaningText(
+                                            widget.t,
+                                            'previewEmpty',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          if (exportFormats.isNotEmpty) ...[
+                            _CleaningSectionTitle(
+                              label: _cleaningText(widget.t, 'exports'),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final format in exportFormats)
+                                  OutlinedButton.icon(
+                                    onPressed: _exporting
+                                        ? null
+                                        : () => _export(format.toLowerCase()),
+                                    icon: const Icon(
+                                      Icons.download_outlined,
+                                      size: 18,
+                                    ),
+                                    label: Text(format),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
+                    ),
                   ],
-                ),
-              ],
+                );
+              },
             );
           },
         ),
@@ -1075,24 +1240,186 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
 }
 
 class _CleaningMetric extends StatelessWidget {
-  const _CleaningMetric({required this.icon, required this.value});
+  const _CleaningMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
+  final String label;
   final String value;
 
   @override
-  Widget build(BuildContext context) =>
-      Chip(avatar: Icon(icon, size: 16), label: Text(value));
+  Widget build(BuildContext context) => Chip(
+    avatar: Icon(icon, size: 16),
+    label: Text('$label: $value'),
+  );
 }
 
-class _PreviewTable extends StatelessWidget {
-  const _PreviewTable({required this.rows});
+class _CleaningBanner extends StatelessWidget {
+  const _CleaningBanner({required this.icon, required this.text});
 
-  final List<Map<String, dynamic>> rows;
+  final IconData icon;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) return const SizedBox.shrink();
+    final colors = AvenqoColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _Brand.blue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: _Brand.blue, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: colors.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CleaningSectionTitle extends StatelessWidget {
+  const _CleaningSectionTitle({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Text(
+      label,
+      style: TextStyle(
+        color: colors.ink,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+class _ColumnStrategyCard extends StatelessWidget {
+  const _ColumnStrategyCard({required this.strategy, required this.t});
+
+  final Map<String, dynamic> strategy;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final appliedStrategies =
+        (strategy['applied_strategies'] as List<dynamic>? ?? const [])
+            .map((item) => _cleaningText(t, item.toString()))
+            .toList();
+    final mappedField = strategy['mapped_field']?.toString();
+    final conversions =
+        '${strategy['numeric_conversions'] ?? 0}/${strategy['date_conversions'] ?? 0}/${strategy['boolean_conversions'] ?? 0}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strategy['column_name']?.toString() ?? '—',
+            style: TextStyle(
+              color: colors.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CleaningMetric(
+                icon: Icons.alt_route_outlined,
+                label: _cleaningText(t, 'mappedField'),
+                value: mappedField == null || mappedField.isEmpty
+                    ? _cleaningText(t, 'notMapped')
+                    : mappedField,
+              ),
+              _CleaningMetric(
+                icon: Icons.data_object_outlined,
+                label: _cleaningText(t, 'inferredType'),
+                value: _humanizeCode(
+                  strategy['inferred_type']?.toString() ??
+                      _cleaningText(t, 'notAvailable'),
+                ),
+              ),
+              _CleaningMetric(
+                icon: Icons.auto_fix_high_outlined,
+                label: _cleaningText(t, 'suggestedStrategy'),
+                value: _cleaningText(
+                  t,
+                  strategy['suggested_missing_strategy']?.toString() ??
+                      'notAvailable',
+                ),
+              ),
+              _CleaningMetric(
+                icon: Icons.swap_horiz_outlined,
+                label: _cleaningText(t, 'conversions'),
+                value: conversions,
+              ),
+              _CleaningMetric(
+                icon: Icons.cleaning_services_outlined,
+                label: _cleaningText(t, 'invalidCorrected'),
+                value: '${strategy['invalid_values_corrected'] ?? 0}',
+              ),
+            ],
+          ),
+          if (appliedStrategies.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _cleaningText(t, 'appliedStrategies'),
+              style: TextStyle(
+                color: colors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final label in appliedStrategies)
+                  Chip(label: Text(label)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewTable extends StatelessWidget {
+  const _PreviewTable({required this.rows, required this.emptyLabel});
+
+  final List<Map<String, dynamic>> rows;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return Center(child: Text(emptyLabel));
+    }
     final columns = rows.first.keys.take(8).toList();
     return Scrollbar(
       child: SingleChildScrollView(

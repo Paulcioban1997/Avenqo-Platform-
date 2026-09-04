@@ -83,6 +83,8 @@ class DatasetCleaningDetailResponse(BaseModel):
     summary: dict[str, Any]
     original_preview: list[dict[str, Any]]
     cleaned_preview: list[dict[str, Any]]
+    column_strategies: list[dict[str, Any]]
+    export_formats: list[str]
     preview_offset: int
     preview_limit: int
     preview_total: int

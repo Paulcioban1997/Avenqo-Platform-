@@ -56,6 +56,11 @@ class TrainingService:
         test_size: float = 0.2,
         random_seed: int = 42,
         cross_validation_folds: int = 3,
+        search_max_rows: int | None = None,
+        final_fit_max_rows: int | None = None,
+        permutation_max_rows: int | None = None,
+        explanation_max_rows: int | None = None,
+        max_parallel_jobs: int = 1,
     ) -> SupervisedTrainingResult:
         """Lance le pipeline sklearn partagé de classification."""
 
@@ -74,6 +79,11 @@ class TrainingService:
             test_size,
             random_seed,
             cross_validation_folds,
+            search_max_rows,
+            final_fit_max_rows,
+            permutation_max_rows,
+            explanation_max_rows,
+            max_parallel_jobs,
         )
 
     def train_regressor(
@@ -88,6 +98,11 @@ class TrainingService:
         test_size: float = 0.2,
         random_seed: int = 42,
         cross_validation_folds: int = 3,
+        search_max_rows: int | None = None,
+        final_fit_max_rows: int | None = None,
+        permutation_max_rows: int | None = None,
+        explanation_max_rows: int | None = None,
+        max_parallel_jobs: int = 1,
     ) -> SupervisedTrainingResult:
         """Lance le pipeline sklearn partagé de régression."""
 
@@ -106,6 +121,11 @@ class TrainingService:
             test_size,
             random_seed,
             cross_validation_folds,
+            search_max_rows,
+            final_fit_max_rows,
+            permutation_max_rows,
+            explanation_max_rows,
+            max_parallel_jobs,
         )
 
     def train_clustering(
@@ -116,6 +136,8 @@ class TrainingService:
         run_context: TrainingRunContext,
         estimators: Mapping[str, BaseEstimator],
         parameter_spaces: Mapping[str, Mapping[str, Any]],
+        max_rows: int | None = None,
+        random_seed: int = 42,
     ) -> ClusteringTrainingResult:
         """Lance le pipeline sklearn partagé de regroupement (non supervisé).
 
@@ -136,6 +158,8 @@ class TrainingService:
                 dataset.tenant, dataset.module_code, dataset.task_code, version
             ),
             ExperimentLogger(self._experiments),
+            max_rows,
+            random_seed,
         )
 
     def train_anomaly_detection(
@@ -146,6 +170,8 @@ class TrainingService:
         run_context: TrainingRunContext,
         estimators: Mapping[str, BaseEstimator],
         parameter_spaces: Mapping[str, Mapping[str, Any]],
+        max_rows: int | None = None,
+        random_seed: int = 42,
     ) -> AnomalyTrainingResult:
         """Lance le pipeline sklearn partagé de détection d'anomalies (non supervisé).
 
@@ -165,6 +191,8 @@ class TrainingService:
                 dataset.tenant, dataset.module_code, dataset.task_code, version
             ),
             ExperimentLogger(self._experiments),
+            max_rows,
+            random_seed,
         )
 
     def train_forecast(
@@ -224,6 +252,9 @@ class TrainingService:
         parameter_spaces: Mapping[str, Mapping[str, Any]],
         minimum_interactions: int = 20,
         top_k: int = 5,
+        search_max_rows: int | None = None,
+        final_fit_max_rows: int | None = None,
+        random_seed: int = 42,
     ) -> RecommendationTrainingResult:
         """Lance le pipeline de filtrage collaboratif item-based (Phase 22).
 
@@ -247,6 +278,9 @@ class TrainingService:
             ExperimentLogger(self._experiments),
             minimum_interactions,
             top_k,
+            search_max_rows,
+            final_fit_max_rows,
+            random_seed,
         )
 
     def train_neural_regressor(

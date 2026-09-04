@@ -30,6 +30,8 @@ class DatasetResponse(BaseModel):
     quality_score: float
     status: DatasetStatus
     pipeline_status: str
+    training_status: str | None = None
+    training_retryable: bool = False
     uploaded_at: datetime
     columns: list[FieldProfileResponse]
     distributions: dict[str, dict[str, int]]

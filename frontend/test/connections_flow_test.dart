@@ -99,12 +99,12 @@ void main() {
     },
   );
 
-  testWidgets('Connections lists an existing ready dataset with its metadata', (
+  testWidgets('Connections keeps a ready dataset usable even if AI training must be retried', (
     tester,
   ) async {
     final client = MockClient((request) async {
       return http.Response(
-        '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+        '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"training_failed","training_retryable":true,"rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
         200,
       );
     });
@@ -119,6 +119,9 @@ void main() {
 
     expect(find.text('sales.csv'), findsOneWidget);
     expect(find.textContaining('42'), findsOneWidget);
+    expect(find.text('Données prêtes'), findsOneWidget);
+    expect(find.text('Entraînement IA à relancer'), findsOneWidget);
+    expect(find.text('Voir les données nettoyées'), findsOneWidget);
     // The Add files CTA must remain available even once data already exists.
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
@@ -129,7 +132,7 @@ void main() {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/datasets')) {
         return http.Response(
-          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","rows_count":2,"columns_count":2,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"training_failed","training_retryable":true,"rows_count":2,"columns_count":2,"uploaded_at":"2026-08-20T10:00:00Z"}]',
           200,
         );
       }
@@ -137,7 +140,7 @@ void main() {
         '/datasets/11111111-1111-1111-1111-111111111111/cleaning',
       )) {
         return http.Response(
-          '{"name":"sales.csv","status":"ready","version":1,"summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}]}',
+          '{"dataset_id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","cleaning_status":"warning","quality_reasons":["A few duplicate rows were removed."],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"missing_values_detected":0,"invalid_values_corrected":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}],"column_strategies":[{"column_name":"amount","mapped_field":"revenue","inferred_type":"number","suggested_missing_strategy":"mean","applied_strategies":["normalize_numeric","coerce_invalid_to_empty"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":1}],"export_formats":["csv","xlsx"]}',
           200,
         );
       }
@@ -156,12 +159,16 @@ void main() {
 
     expect(find.text('Résumé du nettoyage'), findsOneWidget);
     expect(find.textContaining('3 → 2'), findsOneWidget);
-    expect(find.text('Avant'), findsOneWidget);
-    expect(find.text('Après'), findsOneWidget);
+    expect(find.textContaining('Avant'), findsOneWidget);
+    expect(find.textContaining('Après'), findsOneWidget);
+    expect(find.text('Stratégies par colonne'), findsOneWidget);
+    expect(find.text('Qualité du nettoyage: A few duplicate rows were removed.'), findsOneWidget);
+    expect(find.text('Moyenne'), findsOneWidget);
     expect(find.text('CSV'), findsOneWidget);
-    expect(find.text('DOCX'), findsOneWidget);
+    expect(find.text('XLSX'), findsOneWidget);
+    expect(find.text('DOCX'), findsNothing);
 
-    await tester.tap(find.text('Après'));
+    await tester.tap(find.textContaining('Après'));
     await tester.pumpAndSettle();
     expect(find.text('12.5'), findsOneWidget);
   });
@@ -191,7 +198,7 @@ void main() {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/datasets')) {
         return http.Response(
-          '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","rows_count":2,"columns_count":2}]',
+          '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","pipeline_status":"attention_required","rows_count":2,"columns_count":2}]',
           200,
         );
       }
@@ -199,7 +206,7 @@ void main() {
         '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
       )) {
         return http.Response(
-          '{"name":"needs-mapping.csv","status":"attention_required","version":1,"summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"mappings_applied":{}},"original_preview":[{"buyer":" C1 ","paid":"12.50"}],"cleaned_preview":[{"buyer":"C1","paid":"12.50"}]}',
+          '{"dataset_id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","cleaning_status":"good","quality_reasons":[],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"missing_values_detected":0,"invalid_values_corrected":0,"mappings_applied":{}},"original_preview":[{"buyer":" C1 ","paid":"12.50"}],"cleaned_preview":[{"buyer":"C1","paid":"12.50"}],"column_strategies":[{"column_name":"paid","mapped_field":null,"inferred_type":"number","suggested_missing_strategy":"median","applied_strategies":["normalize_numeric"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":0}],"export_formats":["csv","xlsx","pdf","docx"]}',
           200,
         );
       }
@@ -216,7 +223,7 @@ void main() {
     await tester.tap(find.text('Voir les données nettoyées'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Attention required · v1'), findsOneWidget);
+    expect(find.text('Action requise · v1'), findsOneWidget);
     expect(
       find.textContaining('confirmation manuelle'),
       findsOneWidget,
@@ -224,7 +231,7 @@ void main() {
     expect(find.text('CSV'), findsOneWidget);
     expect(find.text('DOCX'), findsOneWidget);
 
-    await tester.tap(find.text('Après'));
+    await tester.tap(find.textContaining('Après'));
     await tester.pumpAndSettle();
     expect(find.text('C1'), findsOneWidget);
   });
@@ -296,9 +303,9 @@ void main() {
     var requests = 0;
     final client = MockClient((request) async {
       requests += 1;
-      final pipelineStatus = requests == 1 ? 'training_ai' : 'ready';
+      final trainingStatus = requests == 1 ? 'training_ai' : 'ready';
       return http.Response(
-        '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"$pipelineStatus"}]',
+        '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"$trainingStatus"}]',
         200,
       );
     });

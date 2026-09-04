@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -535,6 +536,12 @@ class CompanyDatasetIngestionService:
                 },
                 "quality_status": quality.status.value,
                 "quality_reasons": list(quality.reasons),
+                "column_strategies": self._build_column_strategies(
+                    cleaning_report,
+                    dataset.profile.schema_json.get("columns", [])
+                    if dataset.profile is not None
+                    else [],
+                ),
                 "cleaning_report": {
                     "original_row_count": cleaning_report.rows_before,
                     "cleaned_row_count": cleaning_report.rows_after,
@@ -545,14 +552,94 @@ class CompanyDatasetIngestionService:
                     "duplicate_rows_detected": cleaning_report.duplicates_removed,
                     "duplicate_rows_removed": cleaning_report.duplicates_removed,
                     "invalid_rows_rejected": 0,
+                    "invalid_values_detected": cleaning_report.invalid_values_detected,
+                    "invalid_values_corrected": cleaning_report.invalid_values_corrected,
                     "numeric_normalizations": cleaning_report.numeric_conversions,
                     "date_normalizations": cleaning_report.date_conversions,
+                    "boolean_normalizations": cleaning_report.boolean_conversions,
                     "outlier_handling": None,
                     "mappings_applied": accepted_mapping,
                     "dataset_version": version_number,
                 },
             },
         )
+
+    @classmethod
+    def _build_column_strategies(
+        cls,
+        cleaning_report,
+        profile_columns: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        profile_by_name = {
+            str(column.get("name")): column for column in profile_columns if column.get("name")
+        }
+        output: list[dict[str, Any]] = []
+        total_rows = max(cleaning_report.rows_before, 1)
+        for report in cleaning_report.column_reports:
+            profile = profile_by_name.get(report.column_name, {})
+            inferred_type = str(profile.get("inferred_type") or report.semantic_type)
+            missing_ratio = report.missing_values_detected / total_rows
+            output.append(
+                {
+                    "column_name": report.column_name,
+                    "mapped_field": report.canonical_field,
+                    "inferred_type": inferred_type,
+                    "semantic_type": report.semantic_type,
+                    "missing_values_detected": report.missing_values_detected,
+                    "missing_values_corrected": report.missing_values_corrected,
+                    "invalid_values_detected": report.invalid_values_detected,
+                    "invalid_values_corrected": report.invalid_values_corrected,
+                    "type_conversions": report.numeric_conversions
+                    + report.date_conversions
+                    + report.boolean_conversions,
+                    "numeric_conversions": report.numeric_conversions,
+                    "date_conversions": report.date_conversions,
+                    "boolean_conversions": report.boolean_conversions,
+                    "applied_strategies": cls._applied_strategies(report),
+                    "suggested_missing_strategy": cls._suggested_missing_strategy(
+                        report.canonical_field,
+                        inferred_type,
+                        missing_ratio,
+                    ),
+                }
+            )
+        return output
+
+    @staticmethod
+    def _applied_strategies(report) -> list[str]:
+        strategies = ["preserve_non_duplicate_rows", "preserve_missing_values"]
+        if report.numeric_conversions:
+            strategies.append("normalize_numeric")
+        if report.date_conversions:
+            strategies.append("normalize_date")
+        if report.boolean_conversions:
+            strategies.append("normalize_boolean")
+        if report.invalid_values_corrected:
+            strategies.append("coerce_invalid_to_empty")
+        return strategies
+
+    @staticmethod
+    def _suggested_missing_strategy(
+        canonical_field: str | None,
+        inferred_type: str,
+        missing_ratio: float,
+    ) -> str:
+        lowered_type = inferred_type.casefold()
+        identifier_like = canonical_field in {
+            "customer_id",
+            "order_id",
+            "product_id",
+            "invoice_id",
+            "employee_id",
+        }
+        time_like = canonical_field in {"order_timestamp", "invoice_date"}
+        if missing_ratio >= 0.95:
+            return "suppression"
+        if identifier_like or time_like or lowered_type == "datetime":
+            return "suppression" if missing_ratio >= 0.5 else "leave_empty"
+        if lowered_type in {"integer", "number", "float", "currency"}:
+            return "mean" if missing_ratio <= 0.05 else "median"
+        return "mode"
 
     def _find_existing_dataset(self, tenant: TenantContext, name: str) -> Dataset | None:
         return self._session.scalar(

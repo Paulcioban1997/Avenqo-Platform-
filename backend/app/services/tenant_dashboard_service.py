@@ -76,8 +76,9 @@ class TenantDashboardService:
                 "total": len(snapshot.datasets),
                 "ready": snapshot.statuses.count("ready"),
                 "analyzing": snapshot.statuses.count("analyzing"),
-                "preparing_data": snapshot.statuses.count("preparing_data"),
-                "training_ai": snapshot.statuses.count("training_ai"),
+                "preparing_data": snapshot.training_statuses.count("preparing_data"),
+                "training_ai": snapshot.training_statuses.count("training_ai"),
+                "training_failed": snapshot.training_statuses.count("training_failed"),
                 "attention_required": snapshot.statuses.count("attention_required"),
                 "failed": snapshot.statuses.count("failed"),
             },
@@ -110,8 +111,10 @@ class TenantDashboardService:
         source = snapshot.source_for(required)
         if source is None:
             processing = snapshot.status == "processing" or any(
-                status in {"analyzing", "preparing_data", "training_ai"}
-                for status in snapshot.statuses
+                status == "analyzing" for status in snapshot.statuses
+            ) or any(
+                status in {"preparing_data", "training_ai"}
+                for status in snapshot.training_statuses
             )
             return DashboardKPI(
                 key,
