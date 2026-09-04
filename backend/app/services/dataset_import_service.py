@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
@@ -18,6 +18,7 @@ from backend.app.models import (
     DatasetStatus,
     DatasetVersion,
     DatasetVersionStatus,
+    TrainingJob,
 )
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.data_import_policy import DataImportPolicy
@@ -63,9 +64,6 @@ class DatasetImportService:
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetImportError("Module Avenqo inconnu")
-        # L'ingestion de données est une capacité CORE Avenqo : jamais
-        # subordonnée à l'activation d'un module optionnel. Seule une limite
-        # de plan (nombre de datasets) s'applique ici.
         self._quota.check_dataset_quota(tenant)
         if not filename.lower().endswith(".csv"):
             raise DatasetImportError("Seuls les fichiers CSV sont acceptés à cette étape")
@@ -182,24 +180,23 @@ class DatasetImportService:
         return dataset
 
     def delete(self, tenant: TenantContext, dataset_id: UUID) -> None:
-        """Supprime un dataset du tenant et son dossier d'artefacts local.
-
-        La suppression est strictement tenant-scoped : un identifiant appartenant
-        à une autre entreprise reste indistinguable d'un dataset inexistant.
-        La suppression passe par l'ORM pour appliquer les cascades configurées
-        (versions, profil, mapping, rapport qualité) même sur les bases historiques
-        dont certaines FK ne possèdent pas encore ``ON DELETE CASCADE``.
-        Le dossier physique du dataset est ensuite retiré en entier afin de ne
-        pas laisser de raw/prepared/training.csv orphelins.
-        """
+        """Supprime un dataset et toutes ses dépendances tenant-scoped."""
 
         dataset = self.get(tenant, dataset_id)
         artifact_roots = self._dataset_artifact_roots(dataset)
 
         try:
-            # IMPORTANT: ne pas utiliser un bulk DELETE SQL ici. Un bulk delete
-            # contourne les cascades ORM et cassait les anciens datasets lorsque
-            # dataset_versions.dataset_id n'avait pas ON DELETE CASCADE en base.
+            # Les anciennes bases sandbox ont bien un FK ON DELETE CASCADE sur
+            # training_jobs.dataset_id, mais l'ORM tentait auparavant de mettre
+            # dataset_id à NULL avant de supprimer le Dataset, ce qui viole le
+            # NOT NULL. On supprime explicitement ces jobs en premier; leurs
+            # dépendances DB (ex. model_registries) suivent leur cascade FK.
+            self._session.execute(
+                delete(TrainingJob).where(
+                    TrainingJob.dataset_id == dataset_id,
+                    TrainingJob.company_id == tenant.company_id,
+                )
+            )
             self._session.delete(dataset)
             self._session.commit()
         except Exception:
@@ -214,13 +211,6 @@ class DatasetImportService:
 
     @staticmethod
     def _dataset_artifact_roots(dataset: Dataset) -> set[Path]:
-        """Retourne uniquement les dossiers ``.../<company>/datasets/<dataset>``.
-
-        On ne supprime jamais un parent générique ``datasets``/``company`` :
-        chaque chemin doit contenir à la fois le company_id et le dataset_id
-        attendus avant d'être accepté comme racine de suppression.
-        """
-
         raw_paths = [dataset.source]
         raw_paths.extend(
             version.artifact_path
