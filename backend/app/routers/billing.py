@@ -61,6 +61,19 @@ def subscription_response(account) -> SubscriptionResponse:
     )
 
 
+def _backfill_stripe_invoices(
+    db: Session,
+    provider: BillingProvider,
+    settings: Settings,
+    company_id: UUID,
+) -> None:
+    try:
+        sync_customer_invoices(db, provider, settings, company_id)
+    except Exception:
+        # L'historique local reste disponible même si Stripe est momentanément indisponible.
+        logger.exception("Stripe invoice backfill failed for tenant %s", company_id)
+
+
 @router.get("/plans", response_model=list[PlanResponse])
 def plans() -> list[PlanResponse]:
     return [PlanResponse(
@@ -157,11 +170,7 @@ def invoices(
 ) -> list[InvoiceResponse]:
     limit = min(max(limit, 1), 200)
     skip = max(skip, 0)
-    try:
-        sync_customer_invoices(db, provider, settings, identity.user.company_id)
-    except Exception:
-        # L'historique local reste disponible même si Stripe est momentanément indisponible.
-        logger.exception("Stripe invoice backfill failed for tenant %s", identity.user.company_id)
+    _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
     items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
     return items[skip : skip + limit]
 
@@ -170,12 +179,17 @@ def invoices(
 def invoice_history(
     identity: CurrentIdentity = Depends(manage_billing),
     service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+    db: Session = Depends(get_db),
+    provider: BillingProvider = Depends(get_billing_provider),
+    settings: Settings = Depends(get_settings),
     offset: int = 0,
     limit: int = 20,
     start: datetime | None = None,
     end: datetime | None = None,
     fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
 ) -> InvoiceHistoryResponse:
+    # Le frontend Avenqo charge cet endpoint, donc le backfill doit être fait ici aussi.
+    _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
     items, total = service.get_company_invoices(
         identity.user.company_id,
         start=start,
