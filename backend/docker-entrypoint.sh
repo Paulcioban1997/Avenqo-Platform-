@@ -1,6 +1,6 @@
 ﻿#!/bin/sh
-# Fixe la propriÃ©tÃ© du volume persistant (montÃ© root:root par dÃ©faut par
-# Railway) avant de passer la main Ã  l'utilisateur applicatif non-root.
+# Fix ownership of the persistent volume (Railway mounts it root:root) before
+# dropping privileges to the unprivileged application user via gosu.
 set -e
 
 if [ -n "$ARTIFACT_ROOT" ] && [ -d "$ARTIFACT_ROOT" ]; then

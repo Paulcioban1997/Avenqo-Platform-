@@ -45,9 +45,9 @@ RUN useradd --create-home --shell /usr/sbin/nologin avenqo \
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Reste root au démarrage : un volume Railway monté sur ARTIFACT_ROOT est
-# créé root:root, ce que l'entrypoint corrige avant de passer la main à
-# l'utilisateur applicatif non-root (avenqo) via gosu.
+# Stays root at startup: a Railway volume mounted at ARTIFACT_ROOT is
+# created root:root, which the entrypoint fixes before handing off to the
+# unprivileged application user (avenqo) via gosu.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 EXPOSE 8000
