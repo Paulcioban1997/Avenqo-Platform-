@@ -123,11 +123,11 @@ class ApiClient {
   /// Les archives ZIP sélectionnées depuis l'écran Connexions sont routées
   /// automatiquement vers `/datasets/archive`, où le backend extrait puis
   /// ingère chaque dataset supporté indépendamment.
-  /// `onProgress` reçoit `(bytesEnvoyés, totalBytes)` (avant/après l'envoi :
-  /// le client `http` (notamment sur le Web) ne remonte pas la progression
-  /// intermédiaire d'un `MultipartRequest`, donc on rapporte un état
-  /// "démarré" puis "terminé" plutôt que de tenter un ré-empaquetage manuel
-  /// du flux, source d'un blocage indéfini observé en production).
+  ///
+  /// Les imports de gros datasets peuvent légitimement prendre plusieurs
+  /// minutes côté serveur (parsing XLSX, profilage, nettoyage). Ils utilisent
+  /// donc un délai dédié, beaucoup plus long que les requêtes API ordinaires,
+  /// afin que le navigateur ne ferme pas la requête pendant le traitement.
   Future<dynamic> postMultipart(
     String path, {
     required Map<String, String> fields,
@@ -137,6 +137,7 @@ class ApiClient {
     void Function(int sent, int total)? onProgress,
     bool retryAfterRefresh = true,
   }) async {
+    const uploadTimeout = Duration(minutes: 10);
     final isDatasetZip =
         path == '/datasets/upload' && fileName.toLowerCase().endsWith('.zip');
     final effectivePath = isDatasetZip ? '/datasets/archive' : path;
@@ -154,12 +155,13 @@ class ApiClient {
     onProgress?.call(0, total);
     late final http.Response response;
     try {
-      final streamed = await _httpClient.send(request).timeout(_requestTimeout);
-      response = await http.Response.fromStream(
-        streamed,
-      ).timeout(_requestTimeout);
+      final streamed = await _httpClient.send(request).timeout(uploadTimeout);
+      response = await http.Response.fromStream(streamed).timeout(uploadTimeout);
     } on TimeoutException {
-      throw const ApiException('Avenqo request timed out', isTimeout: true);
+      throw const ApiException(
+        'Le traitement du fichier prend plus de temps que prévu. Réessayez dans quelques instants.',
+        isTimeout: true,
+      );
     } on Object catch (error) {
       if (error is ApiException) rethrow;
       throw const ApiException('Avenqo request failed');
@@ -323,10 +325,6 @@ class ApiClient {
     throw ApiException(message, statusCode: response.statusCode);
   }
 
-  /// Transforme les erreurs de validation Pydantic (`error.details`, ex.
-  /// `[{"loc": ["body", "password"], "msg": "..."}]`) en message lisible,
-  /// plutôt que le message générique "Request validation failed" qui masque
-  /// le champ réellement en cause à l'utilisateur.
   String? _fieldValidationMessage(dynamic details) {
     if (details is! List || details.isEmpty) return null;
     final lines = <String>[];
