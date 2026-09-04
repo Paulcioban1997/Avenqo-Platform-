@@ -31,6 +31,12 @@ _ADDITIVE_FIELDS = frozenset(
     {"total_amount", "quantity", "unit_price", "inventory_level"}
 )
 
+# A dashboard request must remain quick even when an import contains hundreds
+# of thousands of rows. Full artefacts are still available to the tenant from
+# the dataset APIs and background analytics; they are deliberately not rebuilt
+# synchronously for the dashboard.
+_DASHBOARD_MAX_PREPARED_ROWS = 50_000
+
 
 @dataclass(frozen=True, slots=True)
 class TenantAnalyticsSnapshot:
@@ -43,6 +49,7 @@ class TenantAnalyticsSnapshot:
     active_models: tuple[ModelRegistry, ...]
     capabilities: frozenset[str]
     status: str
+    deferred_dataset_ids: frozenset[object] = frozenset()
 
     @property
     def currency(self) -> str:
@@ -227,6 +234,18 @@ class TenantAnalyticsService:
         self._ingestion = ingestion
 
     def load(self, tenant: TenantContext) -> TenantAnalyticsSnapshot:
+        return self._load(tenant)
+
+    def load_for_dashboard(self, tenant: TenantContext) -> TenantAnalyticsSnapshot:
+        """Load a bounded dashboard snapshot without deserializing huge files."""
+        return self._load(tenant, max_prepared_rows=_DASHBOARD_MAX_PREPARED_ROWS)
+
+    def _load(
+        self,
+        tenant: TenantContext,
+        *,
+        max_prepared_rows: int | None = None,
+    ) -> TenantAnalyticsSnapshot:
         company = self._session.scalar(select(Company).where(Company.id == tenant.company_id))
         datasets = tuple(
             self._session.scalars(
@@ -242,7 +261,9 @@ class TenantAnalyticsService:
             for dataset in datasets
             if (status := _training_status(dataset)) not in {None, "not_applicable"}
         )
-        prepared = self._prepared_ready_datasets(tenant, datasets)
+        prepared, deferred_dataset_ids = self._prepared_ready_datasets(
+            tenant, datasets, max_prepared_rows=max_prepared_rows
+        )
         prepared_ids = {item.dataset_id for item in prepared}
         relationships = tuple(
             self._session.scalars(
@@ -275,7 +296,8 @@ class TenantAnalyticsService:
             relationships=relationships,
             active_models=active_models,
             capabilities=frozenset(),
-            status=self._status(datasets, statuses, prepared),
+            status=self._status(datasets, statuses, prepared, deferred_dataset_ids),
+            deferred_dataset_ids=frozenset(deferred_dataset_ids),
         )
         return replace(
             snapshot,
@@ -283,17 +305,28 @@ class TenantAnalyticsService:
         )
 
     def _prepared_ready_datasets(
-        self, tenant: TenantContext, datasets: tuple[Dataset, ...]
-    ) -> tuple[PreparedCompanyDataset, ...]:
+        self,
+        tenant: TenantContext,
+        datasets: tuple[Dataset, ...],
+        *,
+        max_prepared_rows: int | None = None,
+    ) -> tuple[tuple[PreparedCompanyDataset, ...], set[object]]:
         result: list[PreparedCompanyDataset] = []
+        deferred_dataset_ids: set[object] = set()
         for dataset in datasets:
             if dataset.status != DatasetStatus.READY or dataset.mapping is None:
+                continue
+            if (
+                max_prepared_rows is not None
+                and int(dataset.rows_count or 0) > max_prepared_rows
+            ):
+                deferred_dataset_ids.add(dataset.id)
                 continue
             try:
                 result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
             except Exception:
                 continue
-        return tuple(result)
+        return tuple(result), deferred_dataset_ids
 
     @staticmethod
     def _capabilities(
@@ -319,12 +352,13 @@ class TenantAnalyticsService:
         datasets: tuple[Dataset, ...],
         statuses: tuple[str, ...],
         prepared: tuple[PreparedCompanyDataset, ...],
+        deferred_dataset_ids: set[object],
     ) -> str:
         if not datasets:
             return "no_data"
-        if prepared and any(status != "ready" for status in statuses):
+        if (prepared or deferred_dataset_ids) and any(status != "ready" for status in statuses):
             return "partial_ready"
-        if prepared:
+        if prepared or deferred_dataset_ids:
             return "ready"
         if statuses and all(status == "failed" for status in statuses):
             return "error"

@@ -39,7 +39,7 @@ class TenantDashboardService:
         self._recommendations = recommendations
 
     def build(self, tenant: TenantContext) -> dict[str, Any]:
-        snapshot = self._analytics.load(tenant)
+        snapshot = self._analytics.load_for_dashboard(tenant)
         period = self._period(snapshot.prepared)
         kpis = [
             self._kpi(key, snapshot, snapshot.currency, period)
