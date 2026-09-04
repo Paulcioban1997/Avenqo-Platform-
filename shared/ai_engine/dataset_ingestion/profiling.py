@@ -25,6 +25,10 @@ class ColumnProfile:
     max_value: float | None = None
     mean_value: float | None = None
     median_value: float | None = None
+    std_value: float | None = None
+    p25_value: float | None = None
+    p75_value: float | None = None
+    outlier_count: int | None = None
     min_date: str | None = None
     max_date: str | None = None
     avg_text_length: float | None = None
@@ -66,6 +70,14 @@ class DatasetProfiler:
         max_value = max(numeric_values) if numeric_values else None
         mean_value = round(sum(numeric_values) / len(numeric_values), 4) if numeric_values else None
         median_value = self._median(numeric_values) if numeric_values else None
+        std_value = self._std(numeric_values, mean_value) if len(numeric_values) > 1 else None
+        p25_value = self._quantile(numeric_values, 0.25) if numeric_values else None
+        p75_value = self._quantile(numeric_values, 0.75) if numeric_values else None
+        outlier_count = (
+            self._iqr_outlier_count(numeric_values, p25_value, p75_value)
+            if numeric_values and p25_value is not None and p75_value is not None
+            else None
+        )
 
         date_values = [value for value in present if isinstance(value, (datetime, date))]
         min_date = min(date_values).isoformat() if date_values else None
@@ -90,6 +102,10 @@ class DatasetProfiler:
             max_value=max_value,
             mean_value=mean_value,
             median_value=median_value,
+            std_value=std_value,
+            p25_value=p25_value,
+            p75_value=p75_value,
+            outlier_count=outlier_count,
             min_date=min_date,
             max_date=max_date,
             avg_text_length=avg_text_length,
@@ -102,3 +118,31 @@ class DatasetProfiler:
         if len(ordered) % 2 == 0:
             return round((ordered[mid - 1] + ordered[mid]) / 2, 4)
         return round(ordered[mid], 4)
+
+    @staticmethod
+    def _std(values: list[float], mean_value: float | None) -> float:
+        mean = mean_value if mean_value is not None else sum(values) / len(values)
+        variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+        return round(variance ** 0.5, 4)
+
+    @staticmethod
+    def _quantile(values: list[float], fraction: float) -> float:
+        ordered = sorted(values)
+        if len(ordered) == 1:
+            return round(ordered[0], 4)
+        position = fraction * (len(ordered) - 1)
+        lower = int(position)
+        upper = min(lower + 1, len(ordered) - 1)
+        weight = position - lower
+        return round(ordered[lower] + (ordered[upper] - ordered[lower]) * weight, 4)
+
+    @staticmethod
+    def _iqr_outlier_count(values: list[float], p25: float | None, p75: float | None) -> int:
+        if p25 is None or p75 is None:
+            return 0
+        iqr = p75 - p25
+        if iqr <= 0:
+            return 0
+        lower_bound = p25 - 1.5 * iqr
+        upper_bound = p75 + 1.5 * iqr
+        return sum(1 for value in values if value < lower_bound or value > upper_bound)

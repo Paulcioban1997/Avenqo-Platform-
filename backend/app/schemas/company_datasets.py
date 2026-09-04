@@ -40,6 +40,10 @@ class ColumnProfileResponse(BaseModel):
     max_value: float | None
     mean_value: float | None
     median_value: float | None
+    std_value: float | None
+    p25_value: float | None
+    p75_value: float | None
+    outlier_count: int | None
     min_date: str | None
     max_date: str | None
     avg_text_length: float | None
