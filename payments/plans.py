@@ -1,4 +1,4 @@
-﻿"""Catalogue des offres d'abonnement Avenqo indÃ©pendant de Stripe."""
+﻿"""Catalogue des offres d'abonnement Avenqo indépendant de Stripe."""
 
 from dataclasses import dataclass
 from enum import StrEnum
@@ -7,7 +7,7 @@ from modules.registry import BUSINESS_MODULE_REGISTRY
 
 
 class PlanCode(StrEnum):
-    """Codes stables utilisÃ©s par Avenqo et les futurs adaptateurs de paiement."""
+    """Codes stables utilisés par Avenqo et les futurs adaptateurs de paiement."""
 
     DEMO = "demo"
     PROFESSIONAL = "professional"
@@ -17,7 +17,7 @@ class PlanCode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionPlan:
-    """DÃ©crit une offre sans dÃ©pendre d'un fournisseur de paiement."""
+    """Décrit une offre sans dépendre d'un fournisseur de paiement."""
 
     code: PlanCode
     name: str
@@ -28,7 +28,7 @@ class SubscriptionPlan:
     monthly_ai_credits: int | None = None
 
     def allows_module(self, module_code: str) -> bool:
-        """Indique si le module peut Ãªtre choisi avec cette offre."""
+        """Indique si le module peut être choisi avec cette offre."""
 
         return module_code in self.selectable_modules
 
@@ -104,7 +104,7 @@ AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
 
 
 def get_plan(code: PlanCode | str) -> SubscriptionPlan:
-    """Retourne l'offre correspondant Ã  son code stable."""
+    """Retourne l'offre correspondant à son code stable."""
 
     try:
         return PLANS_BY_CODE[PlanCode(code)]
@@ -117,6 +117,7 @@ def get_ai_credit_pack(code: str) -> AICreditPack:
         return AI_CREDIT_PACKS_BY_CODE[code]
     except KeyError as exc:
         raise ValueError(f"Pack de crédits Avenqo inconnu : {code}") from exc
+
 
 @dataclass(frozen=True, slots=True)
 class DataImportLimits:
@@ -133,7 +134,10 @@ class DataImportLimits:
 
 
 DATA_IMPORT_LIMITS_BY_PLAN: dict[PlanCode, DataImportLimits] = {
-    PlanCode.DEMO: DataImportLimits(max_datasets=5, max_file_mb=10),
+    # 50 MB sur Demo permet de tester de vrais jeux de données métier (par ex.
+    # des classeurs XLSX de plusieurs centaines de milliers de lignes) tout en
+    # restant borné par le plafond technique global DATASET_MAX_UPLOAD_MB.
+    PlanCode.DEMO: DataImportLimits(max_datasets=5, max_file_mb=50),
     PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=50, max_file_mb=100),
     PlanCode.ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
     PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
