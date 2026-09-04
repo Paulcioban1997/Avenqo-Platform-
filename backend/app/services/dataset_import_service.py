@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
@@ -186,8 +186,9 @@ class DatasetImportService:
 
         La suppression est strictement tenant-scoped : un identifiant appartenant
         à une autre entreprise reste indistinguable d'un dataset inexistant.
-        Les FK PostgreSQL utilisent ``ON DELETE CASCADE`` pour les profils,
-        versions, mappings, rapports qualité et artefacts de training liés.
+        La suppression passe par l'ORM pour appliquer les cascades configurées
+        (versions, profil, mapping, rapport qualité) même sur les bases historiques
+        dont certaines FK ne possèdent pas encore ``ON DELETE CASCADE``.
         Le dossier physique du dataset est ensuite retiré en entier afin de ne
         pas laisser de raw/prepared/training.csv orphelins.
         """
@@ -195,13 +196,15 @@ class DatasetImportService:
         dataset = self.get(tenant, dataset_id)
         artifact_roots = self._dataset_artifact_roots(dataset)
 
-        self._session.execute(
-            delete(Dataset).where(
-                Dataset.id == dataset_id,
-                Dataset.company_id == tenant.company_id,
-            )
-        )
-        self._session.commit()
+        try:
+            # IMPORTANT: ne pas utiliser un bulk DELETE SQL ici. Un bulk delete
+            # contourne les cascades ORM et cassait les anciens datasets lorsque
+            # dataset_versions.dataset_id n'avait pas ON DELETE CASCADE en base.
+            self._session.delete(dataset)
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
 
         if self._model_registry is not None:
             invalidate_dataset_versions(self._model_registry, tenant, str(dataset_id))
