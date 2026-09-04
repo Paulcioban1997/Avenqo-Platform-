@@ -81,6 +81,14 @@ class StripeGateway:
             line_items=[{"price": price_id, "quantity": 1}],
             metadata=metadata,
             payment_intent_data={"metadata": metadata},
+            # One-time AI-credit purchases must generate a real Stripe invoice
+            # so Avenqo can expose the hosted invoice and official PDF just like
+            # subscription invoices. Stripe emits invoice.* webhooks for this
+            # invoice, which are already handled by BillingService._sync_invoice.
+            invoice_creation={
+                "enabled": True,
+                "invoice_data": {"metadata": metadata},
+            },
             adaptive_pricing={"enabled": True},
             success_url=success_url,
             cancel_url=cancel_url,
