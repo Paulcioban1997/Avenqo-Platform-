@@ -91,3 +91,79 @@ def test_persisted_relationship_discovery_is_tenant_scoped() -> None:
         left_id,
         right_id,
     }
+
+
+def test_relationship_evidence_resolves_one_identifier_candidate() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    tenant = TenantContext(uuid4())
+    candidate = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="orders.csv", type="csv",
+        source="candidate.csv", status=DatasetStatus.MAPPING_REQUIRED,
+    )
+    peer = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="customers.csv", type="csv",
+        source="peer.csv", status=DatasetStatus.READY,
+    )
+    candidate_rows = [
+        {"account_ref": "C1", "shipment_ref": "S9"},
+        {"account_ref": "C2", "shipment_ref": "S8"},
+        {"account_ref": "C3", "shipment_ref": "S7"},
+    ]
+    prepared = SimpleNamespace(
+        rows=({"customer_key": "C1"}, {"customer_key": "C2"}, {"customer_key": "C3"}),
+        canonical_columns={"customer_key": "customer_id"},
+    )
+    ingestion = SimpleNamespace(
+        _reload_current_version_rows=lambda _dataset: candidate_rows,
+        get_prepared_dataset=lambda _tenant, _dataset_id: prepared,
+    )
+
+    with Session(engine) as session:
+        session.add_all([candidate, peer])
+        session.commit()
+        evidence = DatasetRelationshipService(session).resolve_mapping_conflicts(
+            tenant,
+            candidate,
+            [{"canonical_field": "customer_id", "columns": ["account_ref", "shipment_ref"]}],
+            ingestion,
+        )
+
+    assert len(evidence) == 1
+    assert evidence[0].source_column == "account_ref"
+    assert evidence[0].peer_dataset_id == peer.id
+
+
+def test_relationship_evidence_keeps_tied_candidates_unresolved() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    tenant = TenantContext(uuid4())
+    candidate = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="orders.csv", type="csv",
+        source="candidate.csv", status=DatasetStatus.MAPPING_REQUIRED,
+    )
+    peer = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="customers.csv", type="csv",
+        source="peer.csv", status=DatasetStatus.READY,
+    )
+    values = [{"first_ref": "C1", "second_ref": "C1"}, {"first_ref": "C2", "second_ref": "C2"}]
+    prepared = SimpleNamespace(
+        rows=({"customer_key": "C1"}, {"customer_key": "C2"}),
+        canonical_columns={"customer_key": "customer_id"},
+    )
+    ingestion = SimpleNamespace(
+        _reload_current_version_rows=lambda _dataset: values,
+        get_prepared_dataset=lambda _tenant, _dataset_id: prepared,
+    )
+
+    with Session(engine) as session:
+        session.add_all([candidate, peer])
+        session.commit()
+        evidence = DatasetRelationshipService(session).resolve_mapping_conflicts(
+            tenant,
+            candidate,
+            [{"canonical_field": "customer_id", "columns": ["first_ref", "second_ref"]}],
+            ingestion,
+        )
+
+    assert evidence == ()

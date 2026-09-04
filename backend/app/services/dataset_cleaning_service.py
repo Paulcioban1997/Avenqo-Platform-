@@ -66,8 +66,15 @@ class DatasetCleaningService:
             cleaned_rows = [
                 dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)
             ]
-        except DatasetIngestionError as exc:
-            raise DatasetNotReadyForExport(str(exc)) from exc
+        except DatasetIngestionError:
+            self._ingestion.ensure_cleaning_artifacts(tenant, dataset)
+            metadata = self._metadata(version.artifact_path)
+            try:
+                cleaned_rows = [
+                    dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)
+                ]
+            except DatasetIngestionError as exc:
+                raise DatasetNotReadyForExport(str(exc)) from exc
         cleaning_report = self._report(metadata, len(original_rows), len(cleaned_rows))
         quality = assess_quality(cleaning_report)
         quality_status = quality.status.value

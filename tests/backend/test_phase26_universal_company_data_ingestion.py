@@ -579,6 +579,20 @@ def test_cleaning_detail_exports_and_cross_tenant_access(phase26_environment) ->
         dataset = session.get(Dataset, UUID(dataset_id))
         current_version = next(item for item in dataset.versions if item.is_current)
         assert Path(current_version.artifact_path).read_bytes() == content
+        prepared_path = (
+            Path(current_version.artifact_path).parent.parent / "prepared" / "prepared.json"
+        )
+        metadata_path = (
+            Path(current_version.artifact_path).parent.parent / "metadata" / "metadata.json"
+        )
+        prepared_path.unlink()
+        metadata_path.unlink()
+
+    recovered_detail = client.get(f"/api/v1/datasets/{dataset_id}/cleaning")
+    assert recovered_detail.status_code == 200
+    assert recovered_detail.json()["summary"]["cleaned_row_count"] == 2
+    assert prepared_path.is_file()
+    assert metadata_path.is_file()
 
     tenants["current"]["tenant"] = tenants["company_b"]
     assert client.get(f"/api/v1/datasets/{dataset_id}/cleaning").status_code == 404
@@ -675,6 +689,12 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             "people-export.csv",
             b"buyer_uuid\nC1\nC2\n",
         )
+        related_orders = service.upload(
+            tenant,
+            "retail",
+            "related-orders.csv",
+            b"checkout_id,buyer_uuid,client_ref\nO1,C1,X1\nO2,C2,X2\n",
+        )
         orders = service.upload(
             tenant,
             "retail",
@@ -682,10 +702,21 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             b"checkout_id,buyer_uuid,purchase_date,payment_value\nO1,C1,2026-08-01,10\nO2,C1,2026-08-02,20\nO3,C2,2026-08-03,0\n",
         )
 
-        assert customers.status == orders.status == DatasetStatus.READY
+        assert customers.status == related_orders.status == orders.status == DatasetStatus.READY
+        assert related_orders.mapping.mapping_json["accepted"]["buyer_uuid"] == "customer_id"
+        assert "client_ref" not in related_orders.mapping.mapping_json["accepted"]
+        relationship_evidence = related_orders.mapping.mapping_json[
+            "automatic_resolution"
+        ]["relationship_evidence"]
+        assert relationship_evidence[0]["source_column"] == "buyer_uuid"
+        assert relationship_evidence[0]["peer_dataset_id"] == str(customers.id)
         assert orders.mapping.mapping_json["accepted"]["payment_value"] == "total_amount"
+        assert orders.mapping.mapping_json["automatic_resolution"]["pipeline_finalized"] is True
         relationships = session.scalars(select(DatasetRelationship)).all()
-        assert {item.canonical_field for item in relationships} == {"customer_id"}
+        assert {item.canonical_field for item in relationships} == {
+            "customer_id",
+            "order_id",
+        }
 
         initial_ids = set(session.scalars(select(Dataset.id)).all())
         orders.status = DatasetStatus.MAPPING_REQUIRED
@@ -693,6 +724,7 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
         reconciled = service.reconcile_existing(tenant)
         assert [item.id for item in reconciled] == [orders.id]
         assert reconciled[0].status == DatasetStatus.READY
+        assert service.reconcile_existing(tenant) == ()
         assert set(session.scalars(select(Dataset.id)).all()) == initial_ids
 
         ambiguous = service.upload(

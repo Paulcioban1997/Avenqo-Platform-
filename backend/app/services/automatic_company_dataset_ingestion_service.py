@@ -164,16 +164,27 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
             self._session.scalars(
                 select(Dataset).where(
                     Dataset.company_id == tenant.company_id,
-                    Dataset.status == DatasetStatus.MAPPING_REQUIRED,
+                    Dataset.status.in_(
+                        (DatasetStatus.MAPPING_REQUIRED, DatasetStatus.READY)
+                    ),
                 )
             ).all()
         )
         reconciled: list[Dataset] = []
         for dataset in datasets:
+            if (
+                dataset.status == DatasetStatus.READY
+                and self._has_canonical_training_source(dataset)
+                and self._is_pipeline_finalized(dataset)
+            ):
+                continue
             try:
-                self._refresh_mapping_suggestions(dataset)
                 self.ensure_cleaning_artifacts(tenant, dataset)
-                resolved = self._resolve_mapping_without_blocking(tenant, dataset)
+                if dataset.status == DatasetStatus.MAPPING_REQUIRED:
+                    self._refresh_mapping_suggestions(dataset)
+                    resolved = self._resolve_mapping_without_blocking(tenant, dataset)
+                else:
+                    resolved = dataset
                 if resolved.status == DatasetStatus.READY:
                     resolved = self._finalize_automatic_pipeline(tenant, resolved)
                 reconciled.append(resolved)
@@ -184,6 +195,28 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                     dataset.id,
                 )
         return tuple(reconciled)
+
+    @staticmethod
+    def _has_canonical_training_source(dataset: Dataset) -> bool:
+        current_version = next((item for item in dataset.versions if item.is_current), None)
+        if current_version is None or not current_version.artifact_path:
+            return False
+        expected = (
+            Path(current_version.artifact_path).parent.parent / "prepared" / "training.csv"
+        )
+        try:
+            return expected.is_file() and Path(dataset.source).resolve() == expected.resolve()
+        except (OSError, TypeError):
+            return False
+
+    @staticmethod
+    def _is_pipeline_finalized(dataset: Dataset) -> bool:
+        if dataset.mapping is None:
+            return False
+        automatic = dict(
+            dataset.mapping.mapping_json.get("automatic_resolution") or {}
+        )
+        return bool(automatic.get("pipeline_finalized"))
 
     def _refresh_mapping_suggestions(self, dataset: Dataset) -> None:
         if dataset.mapping is None:
@@ -225,10 +258,25 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         accepted = dict(payload.get("accepted") or {})
         provenance = dict(payload.get("provenance") or {})
         suggestions = list(payload.get("suggestions") or [])
-        used_canonical_fields = set(accepted.values())
         auto_added: list[str] = []
         ignored: list[str] = []
 
+        conflicts = self._mapping_conflicts(accepted)
+        relationship_resolutions = DatasetRelationshipService(
+            self._session
+        ).resolve_mapping_conflicts(tenant, dataset, conflicts, self)
+        resolved_by_field = {
+            item.canonical_field: item for item in relationship_resolutions
+        }
+        for conflict in conflicts:
+            resolution = resolved_by_field.get(str(conflict.get("canonical_field") or ""))
+            if resolution is None:
+                continue
+            for column in conflict.get("columns") or ():
+                if column != resolution.source_column:
+                    accepted.pop(str(column), None)
+                    provenance.pop(str(column), None)
+                    ignored.append(str(column))
         conflicts = self._mapping_conflicts(accepted)
         if conflicts:
             dataset.mapping.mapping_json = {
@@ -246,6 +294,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
             self._session.commit()
             return dataset
 
+        used_canonical_fields = set(accepted.values())
         for suggestion in suggestions:
             original = str(suggestion.get("original_column") or "")
             canonical = suggestion.get("suggested_field")
@@ -300,6 +349,17 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                 "policy": self._AUTO_POLICY_VERSION,
                 "auto_added_columns": sorted(set(auto_added)),
                 "ignored_columns": sorted(set(ignored)),
+                "relationship_evidence": [
+                    {
+                        "canonical_field": item.canonical_field,
+                        "source_column": item.source_column,
+                        "peer_dataset_id": str(item.peer_dataset_id),
+                        "peer_column": item.peer_column,
+                        "overlap_ratio": item.overlap_ratio,
+                        "confidence": item.confidence,
+                    }
+                    for item in relationship_resolutions
+                ],
             },
         }
 
@@ -326,7 +386,18 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
     ) -> Dataset:
         dataset = self._materialize_canonical_training_source(tenant, dataset)
         DatasetRelationshipService(self._session).refresh_for_dataset(tenant, dataset, self)
-        self._dispatch_training_safely(tenant, dataset)
+        if self._dispatch_training_safely(tenant, dataset) and dataset.mapping is not None:
+            payload = dict(dataset.mapping.mapping_json or {})
+            automatic = dict(payload.get("automatic_resolution") or {})
+            dataset.mapping.mapping_json = {
+                **payload,
+                "automatic_resolution": {
+                    **automatic,
+                    "pipeline_finalized": True,
+                },
+            }
+            self._session.add(dataset)
+            self._session.commit()
         return dataset
 
     @classmethod
@@ -418,9 +489,12 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
             canonicalized.append(output)
         return canonicalized
 
-    def _dispatch_training_safely(self, tenant: TenantContext, dataset: Dataset) -> None:
+    def _dispatch_training_safely(self, tenant: TenantContext, dataset: Dataset) -> bool:
+        if dataset.training_jobs:
+            return True
         try:
             self._dispatcher.dispatch(tenant, dataset)
+            return True
         except Exception:
             # The upload is already READY. A scheduler/training outage must be
             # observable in logs but must not send the customer back to a
@@ -430,3 +504,4 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                 tenant.company_id,
                 dataset.id,
             )
+            return False

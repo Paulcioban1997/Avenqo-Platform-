@@ -20,6 +20,16 @@ class RelationshipEvidence:
     confidence: float
 
 
+@dataclass(frozen=True, slots=True)
+class MappingRelationshipEvidence:
+    canonical_field: str
+    source_column: str
+    peer_dataset_id: UUID
+    peer_column: str
+    overlap_ratio: float
+    confidence: float
+
+
 def discover_relationships(
     left_rows: Sequence[Mapping[str, Any]],
     left_mapping: Mapping[str, str],
@@ -62,6 +72,81 @@ def discover_relationships(
 class DatasetRelationshipService:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def resolve_mapping_conflicts(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+        conflicts: Sequence[Mapping[str, Any]],
+        ingestion,
+    ) -> tuple[MappingRelationshipEvidence, ...]:
+        """Resolve identifier conflicts only when tenant data gives one clear winner."""
+
+        candidate_rows = ingestion._reload_current_version_rows(dataset)
+        peers = self._session.scalars(
+            select(Dataset).where(
+                Dataset.company_id == tenant.company_id,
+                Dataset.id != dataset.id,
+                Dataset.status == DatasetStatus.READY,
+            )
+        ).all()
+        resolved: list[MappingRelationshipEvidence] = []
+        for conflict in conflicts:
+            canonical = str(conflict.get("canonical_field") or "")
+            columns = tuple(str(column) for column in conflict.get("columns") or ())
+            if (canonical != "id" and not canonical.endswith("_id")) or len(columns) < 2:
+                continue
+
+            evidence: list[MappingRelationshipEvidence] = []
+            for peer in peers:
+                try:
+                    prepared = ingestion.get_prepared_dataset(tenant, peer.id)
+                except Exception:
+                    continue
+                peer_columns = [
+                    source
+                    for source, field in prepared.canonical_columns.items()
+                    if field == canonical
+                ]
+                for source_column in columns:
+                    source_values = _values(candidate_rows, source_column)
+                    if not source_values:
+                        continue
+                    for peer_column in peer_columns:
+                        peer_values = _values(prepared.rows, peer_column)
+                        if not peer_values:
+                            continue
+                        overlap = len(source_values & peer_values) / min(
+                            len(source_values), len(peer_values)
+                        )
+                        if overlap < 0.5:
+                            continue
+                        uniqueness = max(
+                            len(source_values) / max(_present_count(candidate_rows, source_column), 1),
+                            len(peer_values) / max(_present_count(prepared.rows, peer_column), 1),
+                        )
+                        if uniqueness < 0.8:
+                            continue
+                        evidence.append(
+                            MappingRelationshipEvidence(
+                                canonical_field=canonical,
+                                source_column=source_column,
+                                peer_dataset_id=peer.id,
+                                peer_column=peer_column,
+                                overlap_ratio=round(overlap, 4),
+                                confidence=round(min(1.0, 0.6 * overlap + 0.4 * uniqueness), 4),
+                            )
+                        )
+
+            best_by_column: dict[str, MappingRelationshipEvidence] = {}
+            for item in evidence:
+                current = best_by_column.get(item.source_column)
+                if current is None or item.confidence > current.confidence:
+                    best_by_column[item.source_column] = item
+            ranked = sorted(best_by_column.values(), key=lambda item: item.confidence, reverse=True)
+            if ranked and (len(ranked) == 1 or ranked[0].confidence > ranked[1].confidence):
+                resolved.append(ranked[0])
+        return tuple(resolved)
 
     def refresh_for_dataset(self, tenant: TenantContext, dataset: Dataset, ingestion) -> None:
         self._session.execute(
