@@ -37,7 +37,10 @@ from shared.ai_engine.dataset_ingestion.column_mapper import (
     MappingProvenance,
     SemanticColumnMapper,
 )
-from shared.ai_engine.dataset_ingestion.exceptions import DatasetIngestionError
+from shared.ai_engine.dataset_ingestion.exceptions import (
+    DatasetArtifactMissingError,
+    DatasetIngestionError,
+)
 from shared.ai_engine.dataset_ingestion.loader import CompanyDatasetLoader
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 from shared.ai_engine.dataset_ingestion.profiling import CompanyDatasetProfile, DatasetProfiler
@@ -401,9 +404,14 @@ class CompanyDatasetIngestionService:
         current_version = next((item for item in dataset.versions if item.is_current), None)
         if current_version is None or not current_version.artifact_path:
             raise DatasetIngestionError("No current cleaned dataset version is available.")
-        prepared_path = (
-            Path(current_version.artifact_path).parent.parent / "prepared" / "prepared.json"
-        )
+        version_number = current_version.version_number
+        # Toujours dérivé de (company_id, dataset_id, version), jamais de
+        # `artifact_path` : un dataset créé avant ce pipeline (import legacy)
+        # peut avoir un `artifact_path` situé sous une arborescence de
+        # stockage totalement différente, ce qui rendait l'ancien calcul
+        # `artifact_path.parent.parent` incohérent avec l'endroit où
+        # `_persist_cleaning` écrit réellement le JSON nettoyé.
+        prepared_path = self._storage.prepared_path(tenant.company_id, dataset.id, version_number)
         try:
             payload = json.loads(prepared_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -411,6 +419,20 @@ class CompanyDatasetIngestionService:
         if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
             raise DatasetIngestionError("Cleaned dataset artifact is invalid.")
         return tuple(dict(row) for row in payload)
+
+    @staticmethod
+    def _expected_row_count(dataset: Dataset) -> int:
+        """Nombre de lignes attendu d'après les métadonnées déjà persistées.
+
+        Sert uniquement à détecter qu'un fichier original a disparu du
+        stockage (0 ligne rechargée alors qu'on en attendait) : ne doit
+        jamais être utilisé pour fabriquer des données, seulement pour
+        distinguer un dataset réellement vide d'un artefact perdu.
+        """
+        current_version = next((item for item in dataset.versions if item.is_current), None)
+        if current_version is not None and current_version.row_count:
+            return int(current_version.row_count)
+        return int(dataset.rows_count or 0)
 
     def ensure_cleaning_artifacts(
         self,
@@ -420,6 +442,16 @@ class CompanyDatasetIngestionService:
         if dataset.company_id != tenant.company_id:
             raise DatasetNotFoundError("Dataset introuvable")
         rows = self._reload_current_version_rows(dataset)
+        if not rows and self._expected_row_count(dataset) > 0:
+            # Le fichier original n'est plus lisible sur le stockage alors que
+            # ce dataset avait des lignes lors de son import : ne jamais
+            # persister silencieusement un artefact nettoyé à 0 ligne (cela
+            # masquerait une vraie perte de données comme un succès).
+            raise DatasetArtifactMissingError(
+                "Le fichier original de ce dataset n'est plus disponible sur le "
+                "stockage. Réimportez le fichier pour restaurer les données "
+                "nettoyées."
+            )
         columns = tuple(dict.fromkeys(key for row in rows for key in row)) if rows else ()
         accepted = (
             dict(dataset.mapping.mapping_json.get("accepted") or {})

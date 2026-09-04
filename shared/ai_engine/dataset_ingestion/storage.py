@@ -98,6 +98,14 @@ class LocalDatasetStorage(DatasetStorage):
     def _version_dir(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
         return self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}"
 
+    def prepared_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        """Emplacement canonique du JSON nettoyé, indépendant de l'origine
+        (pipeline actuel ou legacy) du fichier brut original."""
+        return self._version_dir(company_id, dataset_id, version) / "prepared" / "prepared.json"
+
+    def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        return self._version_dir(company_id, dataset_id, version) / "metadata" / "metadata.json"
+
     def _write_bytes(self, directory: Path, safe_name: str, content: bytes) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
         destination = (directory / safe_name).resolve()

@@ -629,6 +629,78 @@ def test_attention_required_exposes_cleaned_detail_and_exports(
         assert response.content
 
 
+def test_legacy_style_artifact_path_still_resolves_cleaned_data(
+    phase26_environment,
+) -> None:
+    """Regression test for the 'unexpected error' bug: datasets whose
+    `artifact_path` does not follow the current pipeline's `{company}/
+    datasets/{dataset}/v{version}/raw/...` layout (e.g. legacy pre-Phase-26
+    imports) must still resolve their cleaned/metadata artifacts, because
+    those are now looked up by (company_id, dataset_id, version) via
+    storage, never by deriving `artifact_path.parent.parent`."""
+    client, session_factory, tenants = phase26_environment
+    content = b"client_ref,sale_date,amount_paid\nC1,2024-01-01,$10.00\nC2,2024-01-02,$20.00\n"
+    dataset_id = _upload(client, "legacy.csv", content).json()["dataset_id"]
+
+    with session_factory() as session:
+        dataset = session.get(Dataset, UUID(dataset_id))
+        current_version = next(item for item in dataset.versions if item.is_current)
+        original_raw = Path(current_version.artifact_path).read_bytes()
+
+        # Simulate a legacy import: move the raw bytes to a completely
+        # unrelated directory layout (mirrors the old `ArtifactService`
+        # storage, not `LocalDatasetStorage`'s version-keyed tree), and drop
+        # the already-generated prepared/metadata artifacts so a fresh
+        # self-repair must run and use the *new* lookup path.
+        legacy_dir = tenants["artifact_root"] / "legacy_storage" / str(dataset.company_id)
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        legacy_raw_path = legacy_dir / f"{dataset_id}.csv"
+        legacy_raw_path.write_bytes(original_raw)
+
+        prepared_path = (
+            Path(current_version.artifact_path).parent.parent / "prepared" / "prepared.json"
+        )
+        metadata_path = (
+            Path(current_version.artifact_path).parent.parent / "metadata" / "metadata.json"
+        )
+        prepared_path.unlink()
+        metadata_path.unlink()
+
+        current_version.artifact_path = str(legacy_raw_path)
+        session.add(current_version)
+        session.commit()
+
+    detail_response = client.get(f"/api/v1/datasets/{dataset_id}/cleaning")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["summary"]["original_row_count"] == 2
+    assert detail["summary"]["cleaned_row_count"] == 2
+    assert detail["cleaned_preview"][0]["client_ref"] == "C1"
+
+
+def test_missing_raw_artifact_reports_clear_error_not_fake_zero_rows(
+    phase26_environment,
+) -> None:
+    """Regression test for the '0 -> 0 rows, empty previews' bug: when the
+    original raw file has disappeared from storage but the dataset had rows
+    at import time, the API must report a clear, actionable error instead of
+    silently persisting/serving a fabricated empty cleaning result."""
+    client, session_factory, _ = phase26_environment
+    content = b"client_ref,sale_date,amount_paid\nC1,2024-01-01,$10.00\nC2,2024-01-02,$20.00\n"
+    dataset_id = _upload(client, "lost.csv", content).json()["dataset_id"]
+
+    with session_factory() as session:
+        dataset = session.get(Dataset, UUID(dataset_id))
+        current_version = next(item for item in dataset.versions if item.is_current)
+        assert current_version.row_count == 2
+        Path(current_version.artifact_path).unlink()
+
+    response = client.get(f"/api/v1/datasets/{dataset_id}/cleaning")
+    assert response.status_code == 422
+    message = response.json()["error"]["message"].casefold()
+    assert "stockage" in message or "storage" in message
+
+
 def test_reconcile_endpoint_reports_promoted_and_ambiguous_datasets(
     phase26_environment,
 ) -> None:

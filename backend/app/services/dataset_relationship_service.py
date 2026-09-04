@@ -18,6 +18,8 @@ class RelationshipEvidence:
     right_column: str
     overlap_ratio: float
     confidence: float
+    left_uniqueness: float
+    right_uniqueness: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +30,29 @@ class MappingRelationshipEvidence:
     peer_column: str
     overlap_ratio: float
     confidence: float
+
+
+_UNIQUE_THRESHOLD = 0.95
+
+
+def _cardinality(left_uniqueness: float, right_uniqueness: float) -> str:
+    """Classify 1:1 / 1:N / N:1 directly from tenant-local uniqueness ratios.
+
+    Never inferred from column names. `many_to_many` is reserved for the
+    (rarer) case where neither side is confidently unique, which is only
+    reachable here because callers already required at least one side to
+    clear a lower bar before evidence is even collected.
+    """
+
+    left_unique = left_uniqueness >= _UNIQUE_THRESHOLD
+    right_unique = right_uniqueness >= _UNIQUE_THRESHOLD
+    if left_unique and right_unique:
+        return "one_to_one"
+    if left_unique and not right_unique:
+        return "one_to_many"
+    if right_unique and not left_unique:
+        return "many_to_one"
+    return "many_to_many"
 
 
 def discover_relationships(
@@ -64,6 +89,8 @@ def discover_relationships(
                 right_column=right_column,
                 overlap_ratio=round(overlap, 4),
                 confidence=round(min(1.0, 0.6 * overlap + 0.4 * max(left_unique, right_unique)), 4),
+                left_uniqueness=round(left_unique, 4),
+                right_uniqueness=round(right_unique, 4),
             )
         )
     return tuple(evidence)
@@ -179,6 +206,14 @@ class DatasetRelationshipService:
                 right_prepared.rows,
                 right_prepared.canonical_columns,
             ):
+                cardinality = _cardinality(item.left_uniqueness, item.right_uniqueness)
+                if cardinality == "many_to_many" and not self._has_junction_evidence(
+                    tenant, left.id, right.id
+                ):
+                    # Neither side is confidently unique and no tenant-local
+                    # junction dataset backs an N:N interpretation: report as
+                    # unclassified rather than fabricate a cardinality claim.
+                    cardinality = "unclassified"
                 self._session.add(
                     DatasetRelationship(
                         company_id=tenant.company_id,
@@ -189,9 +224,60 @@ class DatasetRelationshipService:
                         canonical_field=item.canonical_field,
                         overlap_ratio=item.overlap_ratio,
                         confidence=item.confidence,
+                        cardinality=cardinality,
                     )
                 )
         self._session.commit()
+
+    def _has_junction_evidence(
+        self, tenant: TenantContext, left_dataset_id: UUID, right_dataset_id: UUID
+    ) -> bool:
+        """True when a third tenant dataset already links both ends.
+
+        A junction (association) dataset is one that has its own recorded
+        relationship to `left_dataset_id` AND a separate recorded
+        relationship to `right_dataset_id` (typically via two different
+        canonical `_id` fields, e.g. an order-lines table linking orders and
+        products). This is tenant-local, evidence-based support for N:N,
+        never inferred from column names alone.
+        """
+
+        linked_to_left = {
+            row[0]
+            for row in self._session.execute(
+                select(DatasetRelationship.left_dataset_id).where(
+                    DatasetRelationship.company_id == tenant.company_id,
+                    DatasetRelationship.right_dataset_id == left_dataset_id,
+                )
+            ).all()
+        } | {
+            row[0]
+            for row in self._session.execute(
+                select(DatasetRelationship.right_dataset_id).where(
+                    DatasetRelationship.company_id == tenant.company_id,
+                    DatasetRelationship.left_dataset_id == left_dataset_id,
+                )
+            ).all()
+        }
+        linked_to_right = {
+            row[0]
+            for row in self._session.execute(
+                select(DatasetRelationship.left_dataset_id).where(
+                    DatasetRelationship.company_id == tenant.company_id,
+                    DatasetRelationship.right_dataset_id == right_dataset_id,
+                )
+            ).all()
+        } | {
+            row[0]
+            for row in self._session.execute(
+                select(DatasetRelationship.right_dataset_id).where(
+                    DatasetRelationship.company_id == tenant.company_id,
+                    DatasetRelationship.left_dataset_id == right_dataset_id,
+                )
+            ).all()
+        }
+        junction_candidates = (linked_to_left & linked_to_right) - {left_dataset_id, right_dataset_id}
+        return bool(junction_candidates)
 
 
 def _values(rows: Sequence[Mapping[str, Any]], column: str) -> set[str]:

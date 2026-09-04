@@ -21,13 +21,28 @@ from reportlab.lib import colors
 from backend.app.models import DatasetStatus
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from shared.ai_engine.contracts import TenantContext
-from shared.ai_engine.dataset_ingestion.exceptions import DatasetIngestionError
+from shared.ai_engine.dataset_ingestion.exceptions import (
+    DatasetArtifactMissingError,
+    DatasetIngestionError,
+)
 from shared.ai_engine.dataset_ingestion.cleaning import CleaningReport
 from shared.ai_engine.dataset_ingestion.quality import assess_quality
 
 
 class DatasetNotReadyForExport(ValueError):
     pass
+
+
+class DatasetSourceUnavailable(DatasetNotReadyForExport):
+    """Le fichier original de ce dataset n'est plus lisible sur le stockage.
+
+    Distinct de `DatasetNotReadyForExport` (qui signifie "pas encore prêt")
+    afin que l'appelant (routeur/API) puisse renvoyer une raison structurée
+    et actionnable ("reason": "source_artifact_missing") plutôt qu'un message
+    générique masquant la vraie cause.
+    """
+
+    reason = "source_artifact_missing"
 
 
 class UnsupportedDatasetExport(ValueError):
@@ -55,20 +70,32 @@ class DatasetCleaningService:
             raise DatasetNotReadyForExport("No current dataset version is available.")
 
         original_rows = self._ingestion._reload_current_version_rows(dataset)
+        if not original_rows and self._ingestion._expected_row_count(dataset) > 0:
+            # Le dataset avait des lignes lors de son import mais le fichier
+            # original est introuvable sur le stockage actuel : ne jamais
+            # afficher un faux "0 -> 0" ni une erreur générique.
+            raise DatasetSourceUnavailable(
+                "Le fichier original de ce dataset n'est plus disponible sur le "
+                "stockage. Réimportez le fichier pour restaurer les données "
+                "nettoyées."
+            )
         cleaned_rows: list[dict[str, Any]] = []
         cleaning_report = self._empty_report(len(original_rows))
         mappings: dict[str, str] = {}
         quality_status: str | None = None
         quality_reasons: list[str] = []
 
-        metadata = self._metadata(version.artifact_path)
+        metadata = self._metadata(tenant.company_id, dataset.id, version.version_number)
         try:
             cleaned_rows = [
                 dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)
             ]
         except DatasetIngestionError:
-            self._ingestion.ensure_cleaning_artifacts(tenant, dataset)
-            metadata = self._metadata(version.artifact_path)
+            try:
+                self._ingestion.ensure_cleaning_artifacts(tenant, dataset)
+            except DatasetArtifactMissingError as exc:
+                raise DatasetSourceUnavailable(str(exc)) from exc
+            metadata = self._metadata(tenant.company_id, dataset.id, version.version_number)
             try:
                 cleaned_rows = [
                     dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset_id)
@@ -158,11 +185,8 @@ class DatasetCleaningService:
             invalid_rows=int(persisted.get("invalid_rows_rejected", 0)),
         )
 
-    @staticmethod
-    def _metadata(artifact_path: str | None) -> dict[str, Any]:
-        if not artifact_path:
-            return {}
-        path = Path(artifact_path).parent.parent / "metadata" / "metadata.json"
+    def _metadata(self, company_id: UUID, dataset_id: UUID, version_number: int) -> dict[str, Any]:
+        path = self._ingestion._storage.metadata_path(company_id, dataset_id, version_number)
         if not path.is_file():
             return {}
         try:

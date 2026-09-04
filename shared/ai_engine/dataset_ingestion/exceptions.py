@@ -25,3 +25,10 @@ class DatasetTooLarge(DatasetIngestionError):
 
 class DatasetParseError(DatasetIngestionError):
     """Le contenu n'a pas pu être analysé dans le format déclaré."""
+
+
+class DatasetArtifactMissingError(DatasetIngestionError):
+    """La source persistée d'un dataset attend des lignes mais le fichier
+    original n'existe plus sur le stockage (jamais fabriquer un résultat
+    "0 lignes" silencieux dans ce cas : le client doit être informé et
+    invité à réimporter le fichier)."""

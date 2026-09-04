@@ -39,6 +39,7 @@ from backend.app.services.data_import_policy import DataImportQuotaExceeded
 from backend.app.services.dataset_cleaning_service import (
     DatasetCleaningService,
     DatasetNotReadyForExport,
+    DatasetSourceUnavailable,
     UnsupportedDatasetExport,
 )
 from backend.app.services.dataset_import_service import (
@@ -352,6 +353,8 @@ def get_dataset_cleaning_detail(
         )
     except CompanyDatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetSourceUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except DatasetNotReadyForExport as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -368,6 +371,8 @@ def export_cleaned_dataset(
         content, media_type, filename = service.export(tenant, dataset_id, export_format)
     except CompanyDatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetSourceUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except DatasetNotReadyForExport as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except UnsupportedDatasetExport as exc:

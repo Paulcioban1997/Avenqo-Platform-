@@ -91,6 +91,88 @@ def test_persisted_relationship_discovery_is_tenant_scoped() -> None:
         left_id,
         right_id,
     }
+    # `customers.csv` has a fully unique customer_id; `orders.csv` repeats
+    # "C2" twice, so this is a classic one-to-many relationship, classified
+    # purely from tenant-local uniqueness ratios (no name guess). Which side
+    # ends up persisted as `left_*`/`right_*` is an internal, UUID-sort-order
+    # detail (unrelated to the fixture's "left"/"right" object names), so
+    # assert on whichever direction the "orders" dataset (the non-unique
+    # side) actually landed on.
+    if relationships[0].left_dataset_id == right_id:
+        assert relationships[0].cardinality == "many_to_one"
+    else:
+        assert relationships[0].cardinality == "one_to_many"
+
+
+def test_many_to_many_only_classified_when_junction_dataset_exists() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    tenant = TenantContext(uuid4())
+    students = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="students.csv", type="csv",
+        source="students.csv", rows_count=4, columns_count=1, status=DatasetStatus.READY,
+    )
+    classes = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="classes.csv", type="csv",
+        source="classes.csv", rows_count=4, columns_count=1, status=DatasetStatus.READY,
+    )
+    enrollments = Dataset(
+        id=uuid4(), company_id=tenant.company_id, name="enrollments.csv", type="csv",
+        source="enrollments.csv", rows_count=4, columns_count=2, status=DatasetStatus.READY,
+    )
+
+    with Session(engine) as session:
+        session.add_all([students, classes, enrollments])
+        session.commit()
+        service = DatasetRelationshipService(session)
+
+        # No junction dataset links students and classes yet: N:N must not be
+        # fabricated from ambiguous uniqueness alone.
+        assert service._has_junction_evidence(tenant, students.id, classes.id) is False
+
+        # A junction (association) dataset now links BOTH ends via distinct
+        # canonical fields -- tenant-local evidence that genuinely supports
+        # N:N, never inferred from column names alone.
+        session.add(
+            DatasetRelationship(
+                company_id=tenant.company_id,
+                left_dataset_id=enrollments.id,
+                right_dataset_id=students.id,
+                left_column="student_ref",
+                right_column="cohort_id",
+                canonical_field="student_id",
+                overlap_ratio=1.0,
+                confidence=1.0,
+                cardinality="one_to_many",
+            )
+        )
+        session.add(
+            DatasetRelationship(
+                company_id=tenant.company_id,
+                left_dataset_id=enrollments.id,
+                right_dataset_id=classes.id,
+                left_column="class_ref",
+                right_column="cohort_id",
+                canonical_field="class_id",
+                overlap_ratio=1.0,
+                confidence=1.0,
+                cardinality="one_to_many",
+            )
+        )
+        session.commit()
+
+        assert service._has_junction_evidence(tenant, students.id, classes.id) is True
+        # A relationship to an unrelated third dataset must not count.
+        assert service._has_junction_evidence(tenant, students.id, uuid4()) is False
+
+
+def test_cardinality_classification_from_uniqueness_ratios() -> None:
+    from backend.app.services.dataset_relationship_service import _cardinality
+
+    assert _cardinality(1.0, 1.0) == "one_to_one"
+    assert _cardinality(1.0, 0.5) == "one_to_many"
+    assert _cardinality(0.5, 1.0) == "many_to_one"
+    assert _cardinality(0.5, 0.5) == "many_to_many"
 
 
 def test_relationship_evidence_resolves_one_identifier_candidate() -> None:

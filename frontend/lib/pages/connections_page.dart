@@ -932,7 +932,11 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError || snapshot.data == null) {
-              return Center(child: Text(widget.t.connectionsGenericError));
+              final error = snapshot.error;
+              final message = error is ApiException
+                  ? error.message
+                  : widget.t.connectionsGenericError;
+              return Center(child: Text(message));
             }
             final detail = snapshot.data!;
             final summary = detail['summary'] as Map<String, dynamic>;

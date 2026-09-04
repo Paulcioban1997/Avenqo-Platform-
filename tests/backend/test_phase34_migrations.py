@@ -58,7 +58,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0009_billing_invoice_fiscal_fields"
+    assert current == "0010_dataset_relationship_cardinality"
     assert application_logger.disabled is False
 
 
