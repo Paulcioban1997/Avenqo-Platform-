@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 # Fix ownership of the persistent volume (Railway mounts it root:root) before
 # dropping privileges to the unprivileged application user via gosu.
 set -e
