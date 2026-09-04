@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import csv
+import json
 from dataclasses import dataclass, replace
+from datetime import date, datetime
+from pathlib import Path
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -17,7 +22,11 @@ from backend.app.models import (
 from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
+from shared.ai_engine.dataset_ingestion.profiling import DatasetProfiler
+from shared.ai_engine.dataset_ingestion.quality import assess_quality
+from shared.ai_engine.dataset_ingestion.readiness import assess_capability_readiness
 
 
 BUSINESS_METRIC_FIELDS = {
@@ -31,11 +40,12 @@ _ADDITIVE_FIELDS = frozenset(
     {"total_amount", "quantity", "unit_price", "inventory_level"}
 )
 
-# A dashboard request must remain quick even when an import contains hundreds
-# of thousands of rows. Full artefacts are still available to the tenant from
-# the dataset APIs and background analytics; they are deliberately not rebuilt
-# synchronously for the dashboard.
+# Large imports must never be fully reconstructed inside an API request. For
+# business analytics we materialize a compact, tenant-scoped order rollup and
+# cache it beside the source artifact. This keeps exact revenue/order KPIs while
+# bounding memory for datasets with hundreds of thousands (or millions) of rows.
 _DASHBOARD_MAX_PREPARED_ROWS = 50_000
+_ROLLUP_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,17 +237,19 @@ class TenantAnalyticsSnapshot:
 
 
 class TenantAnalyticsService:
-    """Loads the shared, tenant-scoped analytics inputs produced by Phase 4A."""
+    """Loads shared, tenant-scoped analytics inputs without unbounded API memory."""
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session = session
         self._ingestion = ingestion
 
     def load(self, tenant: TenantContext) -> TenantAnalyticsSnapshot:
-        return self._load(tenant)
+        # All request-time business analytics use the same bounded path. Large
+        # datasets are represented by an exact order-level rollup instead of
+        # reloading/re-cleaning the entire source in the web process.
+        return self._load(tenant, max_prepared_rows=_DASHBOARD_MAX_PREPARED_ROWS)
 
     def load_for_dashboard(self, tenant: TenantContext) -> TenantAnalyticsSnapshot:
-        """Load a bounded dashboard snapshot without deserializing huge files."""
         return self._load(tenant, max_prepared_rows=_DASHBOARD_MAX_PREPARED_ROWS)
 
     def _load(
@@ -320,13 +332,196 @@ class TenantAnalyticsService:
                 max_prepared_rows is not None
                 and int(dataset.rows_count or 0) > max_prepared_rows
             ):
-                deferred_dataset_ids.add(dataset.id)
+                try:
+                    rollup = self._load_or_build_large_retail_rollup(tenant, dataset)
+                except Exception:
+                    rollup = None
+                if rollup is not None:
+                    result.append(rollup)
+                else:
+                    deferred_dataset_ids.add(dataset.id)
                 continue
             try:
                 result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
             except Exception:
                 continue
         return tuple(result), deferred_dataset_ids
+
+    def _load_or_build_large_retail_rollup(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+    ) -> PreparedCompanyDataset | None:
+        """Return an exact order-level KPI rollup for a large retail source.
+
+        The cache contains only tenant business aggregates, never raw rows from
+        another tenant. Revenue is summed from mapped total_amount or from
+        quantity * unit_price. Distinct orders/customers remain exact because
+        one row is retained per real order_id.
+        """
+        if dataset.company_id != tenant.company_id or dataset.mapping is None:
+            return None
+        accepted = dict(dataset.mapping.mapping_json.get("accepted") or {})
+        reverse = {canonical: original for original, canonical in accepted.items()}
+        order_col = reverse.get("order_id")
+        amount_col = reverse.get("total_amount")
+        quantity_col = reverse.get("quantity")
+        price_col = reverse.get("unit_price")
+        if order_col is None or (amount_col is None and (quantity_col is None or price_col is None)):
+            return None
+
+        current_version = max((item.version_number for item in dataset.versions), default=1)
+        raw_path = Path(str(dataset.source))
+        cache_path = raw_path.parent / f"retail-kpi-rollup-v{_ROLLUP_VERSION}.json"
+        cached_rows: list[dict[str, object]] | None = None
+        if cache_path.is_file():
+            try:
+                payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                if (
+                    isinstance(payload, dict)
+                    and payload.get("version") == _ROLLUP_VERSION
+                    and payload.get("dataset_id") == str(dataset.id)
+                    and payload.get("dataset_version") == current_version
+                    and isinstance(payload.get("rows"), list)
+                ):
+                    cached_rows = [dict(row) for row in payload["rows"] if isinstance(row, dict)]
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                cached_rows = None
+
+        if cached_rows is None:
+            if not raw_path.is_file():
+                return None
+            rollup: dict[str, dict[str, object]] = {}
+            customer_col = reverse.get("customer_id")
+            timestamp_col = reverse.get("order_timestamp")
+            for raw in self._iter_source_rows(raw_path):
+                order_value = raw.get(order_col)
+                if order_value is None or not str(order_value).strip():
+                    continue
+                order_id = str(order_value).strip()
+                entry = rollup.setdefault(
+                    order_id,
+                    {
+                        "order_id": order_id,
+                        "customer_id": None,
+                        "order_timestamp": None,
+                        "total_amount": 0.0,
+                    },
+                )
+                amount = self._amount(raw, amount_col, quantity_col, price_col)
+                if amount is not None:
+                    entry["total_amount"] = float(entry["total_amount"] or 0.0) + amount
+                if customer_col and entry["customer_id"] is None:
+                    customer = raw.get(customer_col)
+                    if customer is not None and str(customer).strip():
+                        entry["customer_id"] = str(customer).strip()
+                if timestamp_col and entry["order_timestamp"] is None:
+                    timestamp = self._iso_datetime(raw.get(timestamp_col))
+                    if timestamp is not None:
+                        entry["order_timestamp"] = timestamp
+            cached_rows = list(rollup.values())
+            if not cached_rows:
+                return None
+            try:
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "version": _ROLLUP_VERSION,
+                            "dataset_id": str(dataset.id),
+                            "dataset_version": current_version,
+                            "rows": cached_rows,
+                        },
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    encoding="utf-8",
+                )
+            except OSError:
+                # Cache persistence is an optimization only; computed rows are
+                # still safe to use for this request.
+                pass
+
+        columns = ("order_id", "customer_id", "order_timestamp", "total_amount")
+        cleaner = CompanyDatasetCleaner()
+        canonical = {name: name for name in columns}
+        cleaned_rows, cleaning_report = cleaner.clean(cached_rows, canonical)
+        profile = DatasetProfiler().profile(cleaned_rows, columns)
+        return PreparedCompanyDataset(
+            company_id=tenant.company_id,
+            dataset_id=dataset.id,
+            version=current_version,
+            canonical_columns=canonical,
+            rows=tuple(cleaned_rows),
+            profile=profile,
+            mapping=(),
+            cleaning_report=cleaning_report,
+            quality=assess_quality(cleaning_report),
+            capability_readiness=assess_capability_readiness(set(canonical.values())),
+        )
+
+    @staticmethod
+    def _iter_source_rows(path: Path) -> Iterable[dict[str, object]]:
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                yield from csv.DictReader(handle)
+            return
+        if suffix in {".xlsx", ".xlsm"}:
+            from openpyxl import load_workbook
+
+            workbook = load_workbook(path, read_only=True, data_only=True)
+            try:
+                sheet = workbook.active
+                rows = sheet.iter_rows(values_only=True)
+                headers = next(rows, None)
+                if not headers:
+                    return
+                names = [str(value).strip() if value is not None else "" for value in headers]
+                for values in rows:
+                    yield {
+                        names[index]: value
+                        for index, value in enumerate(values)
+                        if index < len(names) and names[index]
+                    }
+            finally:
+                workbook.close()
+            return
+        # Other formats keep the normal prepared path when small; large
+        # unsupported formats are deferred instead of risking unbounded memory.
+        return
+
+    @staticmethod
+    def _amount(
+        row: dict[str, object],
+        amount_col: str | None,
+        quantity_col: str | None,
+        price_col: str | None,
+    ) -> float | None:
+        try:
+            if amount_col is not None and row.get(amount_col) not in {None, ""}:
+                return float(row[amount_col])
+            if quantity_col is not None and price_col is not None:
+                quantity = row.get(quantity_col)
+                price = row.get(price_col)
+                if quantity not in {None, ""} and price not in {None, ""}:
+                    return float(quantity) * float(price)
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    @staticmethod
+    def _iso_datetime(value: object | None) -> str | None:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return datetime.combine(value, datetime.min.time()).isoformat()
+        if isinstance(value, str) and value.strip():
+            text = value.strip()
+            try:
+                return datetime.fromisoformat(text).isoformat()
+            except ValueError:
+                return text
+        return None
 
     @staticmethod
     def _capabilities(
