@@ -9,9 +9,10 @@ from fastapi.responses import RedirectResponse as HTTPRedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
-from backend.app.dependencies.billing import get_billing_service, get_invoice_fiscal_service
+from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
@@ -36,6 +37,8 @@ from backend.app.services.invoice_fiscal_service import (
     InvoiceFiscalService,
     InvoiceNotFoundError,
 )
+from backend.app.services.stripe_gateway import BillingProvider
+from backend.app.services.stripe_invoice_sync import sync_customer_invoices
 from backend.app.models import BillingAccount
 from payments import PLANS
 
@@ -146,11 +149,19 @@ def portal(
 def invoices(
     identity: CurrentIdentity = Depends(manage_billing),
     service: BillingService = Depends(get_billing_service),
+    db: Session = Depends(get_db),
+    provider: BillingProvider = Depends(get_billing_provider),
+    settings: Settings = Depends(get_settings),
     skip: int = 0,
     limit: int = 50,
 ) -> list[InvoiceResponse]:
     limit = min(max(limit, 1), 200)
     skip = max(skip, 0)
+    try:
+        sync_customer_invoices(db, provider, settings, identity.user.company_id)
+    except Exception:
+        # L'historique local reste disponible même si Stripe est momentanément indisponible.
+        logger.exception("Stripe invoice backfill failed for tenant %s", identity.user.company_id)
     items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
     return items[skip : skip + limit]
 
