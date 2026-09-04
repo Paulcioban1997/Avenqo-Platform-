@@ -120,6 +120,9 @@ class ApiClient {
 
   /// Envoi multipart authentifié (ex. `/datasets/upload`) : `fields` devient
   /// des champs de formulaire, `fileBytes`/`fileName` le fichier joint.
+  /// Les archives ZIP sélectionnées depuis l'écran Connexions sont routées
+  /// automatiquement vers `/datasets/archive`, où le backend extrait puis
+  /// ingère chaque dataset supporté indépendamment.
   /// `onProgress` reçoit `(bytesEnvoyés, totalBytes)` (avant/après l'envoi :
   /// le client `http` (notamment sur le Web) ne remonte pas la progression
   /// intermédiaire d'un `MultipartRequest`, donc on rapporte un état
@@ -134,7 +137,10 @@ class ApiClient {
     void Function(int sent, int total)? onProgress,
     bool retryAfterRefresh = true,
   }) async {
-    final uri = Uri.parse('$_baseUrl$path');
+    final isDatasetZip =
+        path == '/datasets/upload' && fileName.toLowerCase().endsWith('.zip');
+    final effectivePath = isDatasetZip ? '/datasets/archive' : path;
+    final uri = Uri.parse('$_baseUrl$effectivePath');
     final request = http.MultipartRequest('POST', uri)
       ..fields.addAll(fields)
       ..files.add(
