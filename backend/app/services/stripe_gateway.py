@@ -23,6 +23,7 @@ class BillingProvider(Protocol):
         success_url: str,
         cancel_url: str,
     ) -> str: ...
+    def list_customer_invoices(self, customer_id: str, *, limit: int = 100) -> list[dict[str, Any]]: ...
     def change_subscription(self, subscription_id: str, price_id: str) -> None: ...
     def cancel_subscription(self, subscription_id: str) -> None: ...
     def create_portal(self, customer_id: str, return_url: str) -> str: ...
@@ -81,10 +82,6 @@ class StripeGateway:
             line_items=[{"price": price_id, "quantity": 1}],
             metadata=metadata,
             payment_intent_data={"metadata": metadata},
-            # One-time AI-credit purchases must generate a real Stripe invoice
-            # so Avenqo can expose the hosted invoice and official PDF just like
-            # subscription invoices. Stripe emits invoice.* webhooks for this
-            # invoice, which are already handled by BillingService._sync_invoice.
             invoice_creation={
                 "enabled": True,
                 "invoice_data": {"metadata": metadata},
@@ -97,6 +94,23 @@ class StripeGateway:
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
         return checkout.url
+
+    def list_customer_invoices(self, customer_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Retourne les factures Stripe du Customer courant, jamais celles d'un autre tenant."""
+        result = stripe.Invoice.list(
+            customer=customer_id,
+            limit=min(max(limit, 1), 100),
+            api_key=self._api_key,
+        )
+        invoices: list[dict[str, Any]] = []
+        for invoice in result.data:
+            if hasattr(invoice, "to_dict_recursive"):
+                invoices.append(invoice.to_dict_recursive())
+            elif hasattr(invoice, "to_dict"):
+                invoices.append(invoice.to_dict())
+            else:
+                invoices.append(dict(invoice))
+        return invoices
 
     def change_subscription(self, subscription_id: str, price_id: str) -> None:
         subscription = stripe.Subscription.retrieve(subscription_id, api_key=self._api_key)
