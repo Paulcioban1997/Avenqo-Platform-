@@ -103,10 +103,15 @@ class AIUsageService:
         company_id: UUID,
         billing_period: str,
     ) -> TenantAICreditBalance:
+        """Réinitialise uniquement l'allocation mensuelle à chaque renouvellement.
+
+        Les crédits achetés sont un solde prépayé séparé : ils persistent jusqu'à
+        utilisation et ne doivent jamais être effacés par un renouvellement
+        d'abonnement.
+        """
         balance = self._get_or_create_credits(company_id)
         balance.monthly_period = billing_period
         balance.monthly_used = 0
-        balance.purchased_balance = 0
         self._db.flush()
         return balance
 
