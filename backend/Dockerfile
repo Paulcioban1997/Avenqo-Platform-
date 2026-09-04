@@ -19,7 +19,7 @@ WORKDIR /srv
 # Dépendances système minimales. Railway PostgreSQL tourne en 18.x ; le client
 # pg_dump doit être de la même version majeure (un pg_dump 17 refuse un serveur 18).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl gosu \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
     && . /etc/os-release \
@@ -42,7 +42,13 @@ COPY frontend/assets/i18n frontend/assets/i18n
 
 RUN useradd --create-home --shell /usr/sbin/nologin avenqo \
     && chown -R avenqo:avenqo /srv
-USER avenqo
+COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Reste root au démarrage : un volume Railway monté sur ARTIFACT_ROOT est
+# créé root:root, ce que l'entrypoint corrige avant de passer la main à
+# l'utilisateur applicatif non-root (avenqo) via gosu.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 EXPOSE 8000
 
