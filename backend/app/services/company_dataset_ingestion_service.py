@@ -28,6 +28,7 @@ from backend.app.models import (
     Mapping as MappingModel,
 )
 from backend.app.services.data_import_policy import DataImportPolicy
+from backend.app.services import retail_kpi_cache
 from modules.catalog import MODULES_BY_CODE
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELDS
@@ -252,6 +253,8 @@ class CompanyDatasetIngestionService:
             version_record.status = DatasetVersionStatus.READY
         self._session.add(dataset)
         self._session.commit()
+        if dataset.status == DatasetStatus.READY and self._expected_row_count(dataset) > 50_000:
+            retail_kpi_cache.read_or_schedule(tenant, dataset)
         return dataset
 
     def get(self, tenant: TenantContext, dataset_id: UUID) -> Dataset:
@@ -331,7 +334,7 @@ class CompanyDatasetIngestionService:
 
         rows = self._reload_current_version_rows(dataset)
         columns = tuple(dict.fromkeys(key for row in rows for key in row)) if rows else ()
-        version_number = max((v.version_number for v in dataset.versions), default=1)
+        version_number = self._current_version_number(dataset)
 
         try:
             self._finalize_dataset(tenant, dataset, rows, columns, accepted, version_number)
@@ -351,6 +354,8 @@ class CompanyDatasetIngestionService:
 
         self._session.add(dataset)
         self._session.commit()
+        if dataset.status == DatasetStatus.READY and self._expected_row_count(dataset) > 50_000:
+            retail_kpi_cache.read_or_schedule(tenant, dataset)
         return dataset
 
     def get_prepared_dataset(self, tenant: TenantContext, dataset_id: UUID) -> PreparedCompanyDataset:
@@ -381,7 +386,7 @@ class CompanyDatasetIngestionService:
         quality = assess_quality(cleaning_report)
         profile = self._profiler.profile(cleaned_rows, columns)
         readiness = assess_capability_readiness(set(accepted_mapping.values()))
-        version_number = max((v.version_number for v in dataset.versions), default=1)
+        version_number = self._current_version_number(dataset)
 
         return PreparedCompanyDataset(
             company_id=tenant.company_id,
@@ -459,7 +464,7 @@ class CompanyDatasetIngestionService:
             if dataset.mapping is not None
             else {}
         )
-        version_number = max((item.version_number for item in dataset.versions), default=1)
+        version_number = self._current_version_number(dataset)
         self._persist_cleaning(
             tenant, dataset, rows, columns, accepted, version_number
         )
@@ -648,6 +653,13 @@ class CompanyDatasetIngestionService:
                 Dataset.name == name,
             )
         )
+
+    @staticmethod
+    def _current_version_number(dataset: Dataset) -> int:
+        version = retail_kpi_cache.current_version(dataset)
+        if version is None:
+            raise DatasetArtifactMissingError("No unique current dataset version is available.")
+        return version.version_number
 
     def _reload_current_version_rows(self, dataset: Dataset) -> list[dict]:
         current_version = next((v for v in dataset.versions if v.is_current), None)

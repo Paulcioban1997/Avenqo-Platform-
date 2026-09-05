@@ -322,9 +322,9 @@ def test_dashboard_defers_large_tenant_dataset_without_loading_it(tmp_path) -> N
 
         dashboard = service.build(TenantContext(company.id))
 
-    assert dashboard["status"] == "ready"
+    assert dashboard["status"] == "source_unavailable"
     assert dashboard["connections"]["ready"] == 1
-    assert all(not item["available"] for item in dashboard["kpis"])
+    assert all(item["state"] == "SOURCE_UNAVAILABLE" for item in dashboard["kpis"])
 
 
 def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:

@@ -41,6 +41,8 @@ class TenantDashboardService:
     def build(self, tenant: TenantContext) -> dict[str, Any]:
         snapshot = self._analytics.load_for_dashboard(tenant)
         period = self._period(snapshot.prepared)
+        if snapshot.retail_summaries:
+            period = {key: datetime.fromisoformat(value) if value else None for key, value in snapshot.retail_summaries[0]["period"].items()}
         kpis = [
             self._kpi(key, snapshot, snapshot.currency, period)
             for key in BUSINESS_METRIC_FIELDS
@@ -107,6 +109,14 @@ class TenantDashboardService:
         currency: str,
         period: dict[str, datetime | None],
     ) -> DashboardKPI:
+        for summary in snapshot.retail_summaries:
+            if key in summary["current"]:
+                current = summary["current"][key]
+                previous = summary["previous"].get(key)
+                absolute = current - previous if previous is not None else None
+                change = round(absolute / previous * 100, 2) if previous not in {None, 0} else None
+                return DashboardKPI(key, "AVAILABLE", current, previous, absolute, change,
+                                    currency if key in {"revenue", "average_order_value"} else None, True)
         required = BUSINESS_METRIC_FIELDS[key]
         source = snapshot.source_for(required)
         if source is None:
@@ -118,7 +128,7 @@ class TenantDashboardService:
             )
             return DashboardKPI(
                 key,
-                "PROCESSING" if processing else "UNAVAILABLE",
+                "SOURCE_UNAVAILABLE" if "SOURCE_UNAVAILABLE" in snapshot.retail_states else "PROCESSING" if processing or "PROCESSING" in snapshot.retail_states else "UNAVAILABLE",
                 None,
                 None,
                 None,

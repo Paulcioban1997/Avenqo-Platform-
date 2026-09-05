@@ -20,6 +20,7 @@ class DashboardPeriodResponse(BaseModel):
 
 class DashboardKPIResponse(BaseModel):
     key: str
+    state: str = "UNAVAILABLE"
     value: float | int | None
     previous_value: float | int | None = None
     absolute_change: float | int | None = None
