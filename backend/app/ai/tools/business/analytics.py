@@ -14,6 +14,16 @@ from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyD
 TOP_PRODUCTS_METRICS = ("revenue", "quantity", "orders")
 
 
+def with_dataset_rows(prepared: PreparedCompanyDataset, rows) -> PreparedCompanyDataset:
+    return PreparedCompanyDataset(
+        company_id=prepared.company_id, dataset_id=prepared.dataset_id,
+        version=prepared.version, canonical_columns=prepared.canonical_columns,
+        rows=tuple(rows), profile=prepared.profile, mapping=prepared.mapping,
+        cleaning_report=prepared.cleaning_report, quality=prepared.quality,
+        capability_readiness=prepared.capability_readiness,
+    )
+
+
 def _reverse_mapping(canonical_columns: dict[str, str]) -> dict[str, str]:
     return {canonical: original for original, canonical in canonical_columns.items()}
 
@@ -251,11 +261,13 @@ def compute_product_portfolio(
         return []
 
     by_product: dict[str, dict[str, object]] = {}
+    rows_by_product: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row_index, row in enumerate(prepared.rows):
         raw_entity = _value(row, reverse, entity_field)
         if raw_entity is None:
             continue
         product_id = str(raw_entity)
+        rows_by_product[product_id].append(row)
         product = by_product.setdefault(
             product_id,
             {
@@ -305,7 +317,7 @@ def compute_product_portfolio(
     for product in by_product.values():
         product_id = str(product["product_id"])
         sales = compute_sales_summary(
-            prepared,
+            with_dataset_rows(prepared, rows_by_product[product_id]),
             date_from=None,
             date_to=None,
             product=product_id,
@@ -320,7 +332,7 @@ def compute_product_portfolio(
         if average_price is None and has_unit_price:
             prices = [
                 price
-                for row in prepared.rows
+                for row in rows_by_product[product_id]
                 if str(_value(row, reverse, entity_field) or "") == product_id
                 if (price := _as_float(_value(row, reverse, "unit_price"))) is not None
             ]
