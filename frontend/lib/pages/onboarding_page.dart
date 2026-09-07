@@ -117,7 +117,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = AvenqoLocaleScope.translationsOf(context).onboarding;
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final t = translations.onboarding;
     final colors = AvenqoColors.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
@@ -136,7 +137,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ],
             ),
             const SizedBox(height: 8),
-            _StepProgress(colors: colors),
+            _StepProgress(
+              colors: colors,
+              labels: [
+                translations.auth.organisation,
+                translations.company.settingsTitle,
+                translations.company.navConnectionsLabel,
+                translations.dashboardHome.connectionsReadyLabel,
+              ],
+            ),
             const SizedBox(height: 20),
             Text(
               t.title,
@@ -244,7 +253,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 OutlinedButton.icon(
                   onPressed: _submitting ? null : () => _submit(t, destination: '/connections'),
                   icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('Charger mes données'),
+                  label: Text(translations.dashboardHome.connectionsEmptyCta),
                 ),
                 TextButton(
                   onPressed: _submitting ? null : () => _skip(t),
@@ -264,7 +273,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
             ? Row(
                 children: [
                   Expanded(flex: 3, child: Center(child: form)),
-                  Expanded(flex: 2, child: _OnboardingValuePanel()),
+                  Expanded(
+                    flex: 2,
+                    child: _OnboardingValuePanel(translations: translations),
+                  ),
                 ],
               )
             : Center(child: form),
@@ -274,19 +286,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
 }
 
 class _StepProgress extends StatelessWidget {
-  const _StepProgress({required this.colors});
+  const _StepProgress({required this.colors, required this.labels});
 
   final AvenqoColors colors;
+  final List<String> labels;
 
   @override
   Widget build(BuildContext context) {
-    const steps = ['Organisation', 'Configuration', 'Données', 'Prêt'];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < steps.length; i++) ...[
+          for (var i = 0; i < labels.length; i++) ...[
             Container(
               width: 22,
               height: 22,
@@ -302,14 +314,14 @@ class _StepProgress extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              steps[i],
+              labels[i],
               style: TextStyle(
                 color: i <= 1 ? colors.ink : colors.muted,
                 fontWeight: i == 1 ? FontWeight.w700 : FontWeight.w500,
                 fontSize: 12.5,
               ),
             ),
-            if (i != steps.length - 1) ...[
+            if (i != labels.length - 1) ...[
               const SizedBox(width: 8),
               Container(width: 16, height: 1, color: colors.line),
               const SizedBox(width: 8),
@@ -322,20 +334,21 @@ class _StepProgress extends StatelessWidget {
 }
 
 class _OnboardingValuePanel extends StatelessWidget {
-  const _OnboardingValuePanel();
+  const _OnboardingValuePanel({required this.translations});
 
-  static const _items = [
-    ('Conversation IA', Icons.auto_awesome),
-    ('Données isolées par entreprise', Icons.lock_outline),
-    ('Modules optionnels', Icons.extension_outlined),
-    ('Analyses & recommandations', Icons.insights_outlined),
-    ('Quotas IA', Icons.speed_outlined),
-    ('Administration & équipe', Icons.group_outlined),
-    ('Connexions sécurisées', Icons.sync_alt),
-  ];
+  final Translations translations;
 
   @override
   Widget build(BuildContext context) {
+    final items = [
+      (translations.company.navAssistantLabel, Icons.auto_awesome),
+      (translations.common.isolatedData, Icons.lock_outline),
+      (translations.nav.modules, Icons.extension_outlined),
+      (translations.company.navRecommendationsLabel, Icons.insights_outlined),
+      (translations.phase4e.creditsTitle, Icons.speed_outlined),
+      (translations.company.navTeamLabel, Icons.group_outlined),
+      (translations.company.navConnectionsLabel, Icons.sync_alt),
+    ];
     return Container(
       color: _Brand.ink,
       padding: const EdgeInsets.all(40),
@@ -343,12 +356,12 @@ class _OnboardingValuePanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            'Ce que vous activez avec Avenqo',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+          Text(
+            translations.modulesSection.kicker,
+            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 24),
-          for (final (label, icon) in _items)
+          for (final (label, icon) in items)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Row(

@@ -3,9 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from datetime import timedelta
 from typing import Any
+from urllib.parse import quote
 
-from backend.app.ai.tools.business.analytics import compute_sales_summary
+from backend.app.ai.tools.business.analytics import (
+    compute_sales_summary,
+    parse_business_datetime,
+)
 from backend.app.services.prediction_runtime import build_decision_service, resolve_executor
+from backend.app.services.recommendation_severity import RecommendationSeverityPolicy
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService, TenantAnalyticsSnapshot
 from backend.app.services.tenant_products_service import TenantProductsService
 from shared.ai_engine.contracts import TenantContext
@@ -17,16 +22,21 @@ from shared.ai_engine.decision_intelligence.contracts import (
 from shared.ai_engine.prediction.service import PredictionService
 
 
+_MAX_SYNCHRONOUS_RECOMMENDATION_CUSTOMERS = 25
+
+
 class TenantRecommendationsService:
     def __init__(
         self,
         analytics: TenantAnalyticsService,
         products: TenantProductsService,
         predictions: PredictionService | None,
+        severity_policy: RecommendationSeverityPolicy | None = None,
     ) -> None:
         self._analytics = analytics
         self._products = products
         self._predictions = predictions
+        self._severity_policy = severity_policy or RecommendationSeverityPolicy()
 
     def build(self, tenant: TenantContext) -> dict[str, Any]:
         snapshot = self._analytics.load(tenant)
@@ -68,18 +78,26 @@ class TenantRecommendationsService:
                 continue
             seen.add(key)
             metadata = metadata_by_key[key]
+            assessment = metadata.get("severity_assessment")
             recommendations.append(
                 {
                     "id": f"{signal.task_code}:{signal.entity}",
                     "type": signal.task_code,
                     "title": metadata["title"],
                     "explanation": metadata["explanation"],
-                    "priority": decision.priority.value,
+                    "priority": assessment.severity if assessment is not None else decision.priority.value,
+                    "severity_reason": assessment.reason if assessment is not None else "decision_intelligence_policy",
+                    "severity_score": assessment.score if assessment is not None else None,
+                    "severity_factors": {
+                        "absolute_impact": assessment.absolute_impact,
+                        "revenue_share": assessment.revenue_share,
+                    } if assessment is not None else {},
                     "source_capability": signal.capability,
                     "evidence": metadata["evidence"],
                     "affected_entity": signal.entity,
                     "confidence": signal.confidence,
-                    "estimated_impact": None,
+                    "estimated_impact": metadata.get("estimated_impact"),
+                    "affected_product": metadata.get("affected_product"),
                     "suggested_action": metadata["suggested_action"],
                     "action_route": metadata["action_route"],
                     "generated_at": generated_at,
@@ -91,11 +109,10 @@ class TenantRecommendationsService:
             "status": snapshot.status,
             "currency": snapshot.currency,
             "generated_at": generated_at,
-            "recommendations": recommendations,
+            "recommendations": self._rank_and_limit(recommendations),
         }
 
-    @staticmethod
-    def _sales_signal(tenant, snapshot, generated_at, signals, metadata_by_key) -> None:
+    def _sales_signal(self, tenant, snapshot, generated_at, signals, metadata_by_key) -> None:
         source = snapshot.source_for(frozenset({"total_amount"}))
         if source is None:
             return
@@ -105,12 +122,9 @@ class TenantRecommendationsService:
             return
         timestamps = []
         for row in source.rows:
-            value = row.get(date_column)
-            if isinstance(value, str):
-                try:
-                    timestamps.append(datetime.fromisoformat(value))
-                except ValueError:
-                    continue
+            timestamp = parse_business_datetime(row.get(date_column))
+            if timestamp is not None:
+                timestamps.append(timestamp)
         if not timestamps:
             return
         current_end = max(timestamps)
@@ -149,6 +163,11 @@ class TenantRecommendationsService:
             timestamp=generated_at,
         )
         signals.append(signal)
+        assessment = self._severity_policy.assess_revenue_change(
+            current=current_revenue,
+            previous=previous_revenue,
+            tenant_revenue=max(abs(current_revenue), abs(previous_revenue)),
+        )
         metadata_by_key[(task_code, signal.entity)] = {
             "title": task_code,
             "explanation": "revenue_changed_materially",
@@ -158,13 +177,18 @@ class TenantRecommendationsService:
                 "change_percent": change,
                 "period": "last_30_days_vs_previous",
             },
+            "severity_assessment": assessment,
+            "estimated_impact": round(current_revenue - previous_revenue, 2),
             "suggested_action": "review_sales_performance",
-            "action_route": "/sales",
+            "action_route": "/retail/sales",
         }
 
-    @staticmethod
-    def _product_signals(tenant, products, generated_at, signals, metadata_by_key) -> None:
+    def _product_signals(self, tenant, products, generated_at, signals, metadata_by_key) -> None:
         revenue_products = [item for item in products if item["revenue"] is not None]
+        tenant_revenue = max(
+            sum(float(item.get("current_revenue") or 0) for item in revenue_products),
+            sum(float(item.get("previous_revenue") or 0) for item in revenue_products),
+        )
         for product in revenue_products:
             change = product.get("change_percent")
             if change is None or abs(float(change)) < 10:
@@ -185,17 +209,42 @@ class TenantRecommendationsService:
                 timestamp=generated_at,
             )
             signals.append(signal)
+            assessment = self._severity_policy.assess_revenue_change(
+                current=float(product["current_revenue"]),
+                previous=float(product["previous_revenue"]),
+                tenant_revenue=tenant_revenue,
+            )
+            product_id = str(product["product_id"])
+            affected_product = {
+                "id": product_id,
+                "name": product.get("name"),
+                "category": product.get("category"),
+            }
             metadata_by_key[(task_code, signal.entity)] = {
                 "title": task_code,
                 "explanation": "product_revenue_changed",
                 "evidence": {
+                    "product_id": product_id,
+                    "product_name": product.get("name"),
+                    "category": product.get("category"),
                     "current": product["current_revenue"],
                     "comparison": product["previous_revenue"],
+                    "absolute_change": round(
+                        float(product["current_revenue"]) - float(product["previous_revenue"]),
+                        2,
+                    ),
                     "change_percent": change,
-                    "period": "last_30_days_vs_previous",
+                    "revenue_share_percent": round(assessment.revenue_share * 100, 2),
+                    "period": product["comparison_period"],
                 },
+                "severity_assessment": assessment,
+                "estimated_impact": round(
+                    float(product["current_revenue"]) - float(product["previous_revenue"]),
+                    2,
+                ),
+                "affected_product": affected_product,
                 "suggested_action": "review_product_performance",
-                "action_route": f"/products/{signal.entity}",
+                "action_route": f"/retail/products?product_id={quote(product_id, safe='')}",
             }
 
         total_revenue = sum(float(item["revenue"]) for item in revenue_products)
@@ -219,10 +268,46 @@ class TenantRecommendationsService:
                 metadata_by_key[(signal.task_code, signal.entity)] = {
                     "title": "product_concentration",
                     "explanation": "product_revenue_concentrated",
-                    "evidence": {"current": round(share * 100, 2), "period": "all_ready_data"},
+                    "evidence": {
+                        "product_id": str(top["product_id"]),
+                        "product_name": top.get("name"),
+                        "category": top.get("category"),
+                        "current": round(share * 100, 2),
+                        "revenue_share": round(share * 100, 2),
+                        "period": "all_ready_data",
+                    },
+                    "affected_product": {
+                        "id": str(top["product_id"]),
+                        "name": top.get("name"),
+                        "category": top.get("category"),
+                    },
                     "suggested_action": "review_product_concentration",
-                    "action_route": "/products",
+                    "action_route": f"/retail/products?product_id={quote(str(top['product_id']), safe='')}",
                 }
+
+    @staticmethod
+    def _rank_and_limit(recommendations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        priority = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
+        ranked = sorted(
+            recommendations,
+            key=lambda item: (
+                priority.get(item["priority"], 5),
+                -abs(float(item.get("estimated_impact") or 0)),
+                item["id"],
+            ),
+        )
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        per_type: dict[str, int] = {}
+        for item in ranked:
+            if item["id"] in seen or per_type.get(item["type"], 0) >= 5:
+                continue
+            seen.add(item["id"])
+            per_type[item["type"]] = per_type.get(item["type"], 0) + 1
+            result.append(item)
+            if len(result) == 12:
+                break
+        return result
 
     def _model_signal(self, tenant, snapshot, source, generated_at, signals, metadata_by_key) -> None:
         if self._predictions is None:
@@ -241,8 +326,11 @@ class TenantRecommendationsService:
         if model is None or customer_column is None:
             return
         customers = sorted({str(row[customer_column]) for row in source.rows if row.get(customer_column) is not None})
+        if len(customers) > _MAX_SYNCHRONOUS_RECOMMENDATION_CUSTOMERS:
+            return
         opportunity_count = 0
         confidence_values: list[float] = []
+        executor = resolve_executor(model.model_type)
         for customer_id in customers:
             try:
                 outcome = self._predictions.predict(
@@ -250,7 +338,7 @@ class TenantRecommendationsService:
                     model.module_code,
                     "recommendation",
                     {"customer_id": customer_id, "top_k": 5},
-                    resolve_executor(model.model_type),
+                    executor,
                 )
             except Exception:
                 continue
@@ -279,6 +367,6 @@ class TenantRecommendationsService:
             "explanation": "cross_sell_available",
             "evidence": {"current": opportunity_count, "period": "current_ready_dataset"},
             "suggested_action": "review_cross_sell_opportunities",
-            "action_route": "/customers",
+            "action_route": "/retail/customers",
             "source_model_version": model.version,
         }

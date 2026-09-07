@@ -153,8 +153,16 @@ class _SalesContent extends StatelessWidget {
         onPressed: readOnly ? null : () => context.go('/connections'),
       );
     }
-    final summary = data['summary'] as Map<String, dynamic>;
-    final trend = data['trend'] as Map<String, dynamic>;
+    final summary = data['summary'] as Map<String, dynamic>?;
+    final trend = data['trend'] as Map<String, dynamic>? ?? const {};
+    if (summary == null) {
+      return _StatePanel(
+        icon: Icons.query_stats,
+        message: t.analyticsUnavailable,
+        action: readOnly ? null : t.businessConnectButton,
+        onPressed: readOnly ? null : () => context.go('/connections'),
+      );
+    }
     final points = (trend['points'] as List<dynamic>)
         .cast<Map<String, dynamic>>();
     final currency = data['currency']?.toString() ?? 'USD';
@@ -310,83 +318,185 @@ class _Metric extends StatelessWidget {
   }
 }
 
-class _TrendPanel extends StatelessWidget {
+class _TrendPanel extends StatefulWidget {
   const _TrendPanel({required this.points, required this.currency});
   final List<Map<String, dynamic>> points;
   final String currency;
 
   @override
+  State<_TrendPanel> createState() => _TrendPanelState();
+}
+
+class _TrendPanelState extends State<_TrendPanel> {
+  int? _selectedIndex;
+
+  @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final t = AvenqoLocaleScope.translationsOf(context).company;
     final locale = Localizations.localeOf(context).toLanguageTag();
     String money(dynamic value) =>
-        formatMoney(value as num, locale: locale, currencyCode: currency);
-    final maxValue = points.fold<double>(
+      formatMoney(value as num, locale: locale, currencyCode: widget.currency);
+    final maxValue = widget.points.fold<double>(
       0,
       (value, point) => (point['revenue'] as num).abs().toDouble() > value
           ? (point['revenue'] as num).abs().toDouble()
           : value,
     );
+    final selected = _selectedIndex != null &&
+            _selectedIndex! < widget.points.length
+        ? widget.points[_selectedIndex!]
+        : null;
     return Container(
-      height: 250,
+      height: 300,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border.all(color: colors.line),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: points.isEmpty
+      child: widget.points.isEmpty
           ? Center(
-              child: Text('—', style: TextStyle(color: colors.muted)),
+              child: Text(
+                t.connectionsCleaning['previewEmpty'] ??
+                  'No preview is available yet.',
+                style: TextStyle(color: colors.muted),
+              ),
             )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final point in points)
-                  Expanded(
-                    child: Tooltip(
-                      message: '${point['period']}: ${money(point['revenue'])}',
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: FractionallySizedBox(
-                                  heightFactor: maxValue == 0
-                                      ? 0.02
-                                      : (point['revenue'] as num).abs() / maxValue,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: (point['revenue'] as num) < 0
-                                          ? Theme.of(context).colorScheme.error
-                                          : const Color(0xFF087CF0),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${point['period']}',
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: colors.muted,
-                              ),
-                            ),
-                          ],
+                SizedBox(
+                  height: 38,
+                  child: selected == null
+                      ? Text(
+                              t.connectionsCleaning['summary'] ?? 'Select a period',
+                          style: TextStyle(color: colors.muted),
+                        )
+                      : Text(
+                          '${selected['period']} · ${money(selected['revenue'])}',
+                          style: TextStyle(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: (widget.points.length * 64.0).clamp(320.0, 5200.0),
+                      child: GestureDetector(
+                        onTapUp: (details) {
+                          final index = (details.localPosition.dx / 64.0)
+                              .floor()
+                              .clamp(0, widget.points.length - 1);
+                          setState(() => _selectedIndex = index);
+                        },
+                        child: CustomPaint(
+                          painter: _TrendPainter(
+                            points: widget.points,
+                            maxValue: maxValue,
+                            selectedIndex: _selectedIndex,
+                            lineColor: const Color(0xFF087CF0),
+                            gridColor: colors.line,
+                            labelColor: colors.muted,
+                            pointFillColor: colors.surface,
+                          ),
                         ),
                       ),
                     ),
                   ),
+                ),
               ],
             ),
     );
   }
+}
+
+class _TrendPainter extends CustomPainter {
+  const _TrendPainter({
+    required this.points,
+    required this.maxValue,
+    required this.selectedIndex,
+    required this.lineColor,
+    required this.gridColor,
+    required this.labelColor,
+    required this.pointFillColor,
+  });
+
+  final List<Map<String, dynamic>> points;
+  final double maxValue;
+  final int? selectedIndex;
+  final Color lineColor;
+  final Color gridColor;
+  final Color labelColor;
+  final Color pointFillColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final chartHeight = size.height - 28;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    for (final fraction in [0.0, 0.5, 1.0]) {
+      final y = chartHeight * (1 - fraction);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+    final path = Path();
+    for (var index = 0; index < points.length; index++) {
+      final revenue = (points[index]['revenue'] as num).toDouble();
+      final x = index * 64.0 + 32;
+      final y = chartHeight -
+          (maxValue == 0 ? 0 : revenue / maxValue * (chartHeight - 12));
+      if (index == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+      if (index % (points.length > 12 ? 3 : 1) == 0) {
+        final text = TextPainter(
+          text: TextSpan(
+            text: points[index]['period'].toString(),
+            style: TextStyle(fontSize: 10, color: labelColor),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: 58);
+        text.paint(canvas, Offset(x - text.width / 2, chartHeight + 8));
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = lineColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round,
+    );
+    for (var index = 0; index < points.length; index++) {
+      final revenue = (points[index]['revenue'] as num).toDouble();
+      final x = index * 64.0 + 32;
+      final y = chartHeight -
+          (maxValue == 0 ? 0 : revenue / maxValue * (chartHeight - 12));
+      canvas.drawCircle(
+        Offset(x, y),
+        selectedIndex == index ? 7 : 4,
+        Paint()..color = selectedIndex == index ? lineColor : pointFillColor,
+      );
+      canvas.drawCircle(
+        Offset(x, y),
+        selectedIndex == index ? 7 : 4,
+        Paint()
+          ..color = lineColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrendPainter oldDelegate) =>
+      oldDelegate.points != points || oldDelegate.selectedIndex != selectedIndex;
 }
 
 class _PeriodFact extends StatelessWidget {

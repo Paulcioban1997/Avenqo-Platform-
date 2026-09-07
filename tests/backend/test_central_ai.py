@@ -1,4 +1,6 @@
 from pathlib import Path
+from contextlib import contextmanager
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,12 +15,12 @@ from backend.app.ai.chat.exceptions import AIServiceUnavailableError, Conversati
 from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
-from backend.app.ai.llm.schemas import LLMGeneration
+from backend.app.ai.llm.schemas import LLMGeneration, LLMProviderAttempt, LLMUsage
 from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.ai.usage.service import AIUsageService
 from backend.app.assistants.registry import build_default_assistant_registry
 from backend.app.config.settings import Settings
-from backend.app.models import Base, BillingAccount, Company, User, UserRole
+from backend.app.models import Base, BillingAccount, Company, TenantAIProviderAttempt, User, UserRole
 from backend.app.schemas.central_ai import CentralAIRequest
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
@@ -67,6 +69,52 @@ class StubProvider(LLMProvider):
 
     async def stream(self, *, system_instruction: str, prompt: str):
         yield "Retail answer"
+
+
+class MeteredStubProvider(StubProvider):
+    def __init__(self, *, classification: str) -> None:
+        super().__init__(classification=classification)
+        self.avenqo_request_id = ""
+
+    @contextmanager
+    def routing(self, context):
+        previous = self.avenqo_request_id
+        self.avenqo_request_id = context.avenqo_request_id
+        try:
+            yield
+        finally:
+            self.avenqo_request_id = previous
+
+    async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
+        generation = await super().generate(
+            system_instruction=system_instruction,
+            prompt=prompt,
+        )
+        usage = LLMUsage(
+            provider=self.name,
+            model="stub-model",
+            input_tokens=4,
+            output_tokens=2,
+            avenqo_request_id=self.avenqo_request_id,
+        )
+        attempt = LLMProviderAttempt(
+            provider=self.name,
+            model="stub-model",
+            operation="generate",
+            attempt_number=1,
+            success=True,
+            latency_ms=1,
+            usage=usage,
+            provider_cost_usd=Decimal("0.00030"),
+        )
+        return LLMGeneration(
+            content=generation.content,
+            provider=self.name,
+            model="stub-model",
+            token_usage=usage.as_token_usage(),
+            attempts=(attempt,),
+            usage=usage,
+        )
 
 
 def make_company(session, slug: str = "tenant-a", plan: str = "demo"):
@@ -181,6 +229,37 @@ async def test_coming_soon_never_executes_and_unknown_intent_uses_general_fallba
     assert '"plan_code":"demo"' in provider.last_prompt
     assert '"active_modules":["retail"]' in provider.last_prompt
     assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 1
+
+
+async def test_free_form_classification_cost_is_reserved_and_metered(db_session) -> None:
+    company, user = make_company(db_session, "metered-classification")
+    provider = MeteredStubProvider(classification="general")
+    central, conversations, usage, tenant = make_service(
+        db_session,
+        company,
+        provider,
+        limit=3,
+    )
+    conversation = conversations.create(company.id, user.id, "Metered")
+
+    result = await execute(
+        central,
+        tenant,
+        user,
+        conversation,
+        "Draft a birthday poem",
+    )
+
+    assert result.status == "success"
+    assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 2
+    current_usage = usage.get_usage(company.id, "demo")
+    assert current_usage.ai_requests_count == 1
+    assert current_usage.llm_tokens_count == 12
+    request_ids = {
+        row.avenqo_request_id
+        for row in db_session.query(TenantAIProviderAttempt).all()
+    }
+    assert request_ids == {"request-id", "request-id:classification"}
 
 
 async def test_non_entitled_retail_request_never_calls_provider_or_consumes_credit(db_session) -> None:

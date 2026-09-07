@@ -108,6 +108,8 @@ class CompanyDatasetCleaner:
                         row_invalid = True
                         invalid_values_detected += 1
                         stats["invalid_values_detected"] += 1
+                        # Keep the source value when parsing is uncertain. A
+                        # failed interpretation must never erase business data.
                         converted = value
                     cleaned_row[column_name] = converted
                 elif any(t in expected_types for t in (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER)):

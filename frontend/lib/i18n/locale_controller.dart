@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -13,11 +14,16 @@ import 'package:avenqo/i18n/translations.dart';
 /// se reconstruisent via [AvenqoLocaleScope] (InheritedNotifier), jamais par
 /// prop-drilling manuel à travers toute la page.
 class LocaleController extends ChangeNotifier {
-  LocaleController({String initialCode = defaultLocaleCode, LocalePreferenceStore? store})
+  LocaleController({
+    String initialCode = defaultLocaleCode,
+    LocalePreferenceStore? store,
+    this._platformLocale,
+  })
       : _code = initialCode,
         _store = store ?? const SecureLocalePreferenceStore();
 
   final LocalePreferenceStore _store;
+  final Locale? _platformLocale;
   String _code;
   List<LocaleInfo> _availableLocales = const [];
   Translations? _translations;
@@ -42,35 +48,60 @@ class LocaleController extends ChangeNotifier {
   /// jamais bloquer ou planter le démarrage de l'app.
   Future<String> _resolveInitialLocale() async {
     final persisted = await _readPersistedLocale();
-    final resolved = _aliasLocale(persisted);
-    if (resolved != null && _availableLocales.any((locale) => locale.code == resolved)) {
-      return resolved;
+    final persistedMatch = _matchAvailableLocale(persisted);
+    if (persistedMatch != null) {
+      return persistedMatch;
     }
-    final browserLocale = PlatformDispatcher.instance.locale;
-    // Cas particulier : ar-EG est exposé comme variante régionale distincte
-    // de l'arabe standard dans notre catalogue.
-    final regionalCode = '${browserLocale.languageCode}-${browserLocale.countryCode ?? ''}';
-    if (_availableLocales.any((locale) => locale.code == regionalCode)) {
-      return regionalCode;
-    }
-    final browserCode = browserLocale.languageCode;
-    if (_availableLocales.any((locale) => locale.code == browserCode)) {
-      return browserCode;
-    }
-    return defaultLocaleCode;
+    final browserLocale = _platformLocale ?? PlatformDispatcher.instance.locale;
+    return _matchAvailableLocale(browserLocale.toLanguageTag()) ??
+        defaultLocaleCode;
   }
 
-  /// Compatibilité ascendante : les préférences existantes stockées comme `fr`
-  /// (locale legacy) migrent vers `fr-CA` — `fr` n'est plus une option visible
-  /// du sélecteur mais reste parfaitement supporté.
-  String? _aliasLocale(String? code) {
-    if (code == null) return null;
-    if (code == 'fr') {
-      return _availableLocales.any((l) => l.code == 'fr-CA')
-          ? 'fr-CA'
-          : code;
+  String? _matchAvailableLocale(String? rawCode) {
+    if (rawCode == null || rawCode.trim().isEmpty) {
+      return null;
     }
-    return code;
+    final normalized = rawCode.trim().replaceAll('_', '-');
+    final lower = normalized.toLowerCase();
+    final alias = switch (lower) {
+      'fr' => 'fr-CA',
+      'en' => 'en-US',
+      'es' => 'es-LatAm',
+      'pt' => 'pt-PT',
+      'es-419' || 'es-latam' => 'es-LatAm',
+      _ => normalized,
+    };
+    for (final locale in _availableLocales) {
+      if (locale.code.toLowerCase() == alias.toLowerCase()) {
+        return locale.code;
+      }
+    }
+
+    final parts = normalized.split('-');
+    final language = parts.first.toLowerCase();
+    final region = parts.length > 1 ? parts.last.toUpperCase() : null;
+    if (language == 'es' && region != null && _latinAmericanSpanishRegions.contains(region)) {
+      final latAm = _availableLocale('es-LatAm');
+      if (latAm != null) {
+        return latAm;
+      }
+    }
+    return _availableLocale(language) ?? switch (language) {
+      'fr' => _availableLocale('fr-CA'),
+      'en' => _availableLocale('en-US'),
+      'es' => _availableLocale('es-LatAm'),
+      'pt' => _availableLocale('pt-PT'),
+      _ => null,
+    };
+  }
+
+  String? _availableLocale(String code) {
+    for (final locale in _availableLocales) {
+      if (locale.code.toLowerCase() == code.toLowerCase()) {
+        return locale.code;
+      }
+    }
+    return null;
   }
 
   Future<String?> _readPersistedLocale() async {
@@ -107,12 +138,13 @@ class LocaleController extends ChangeNotifier {
   }
 
   Future<void> setLocale(String code) async {
+    final resolvedCode = _matchAvailableLocale(code) ?? defaultLocaleCode;
     _loading = true;
     notifyListeners();
     try {
-      _translations = await _load(code);
-      _code = code;
-      await _persistLocale(code);
+      _translations = await _load(resolvedCode);
+      _code = resolvedCode;
+      await _persistLocale(resolvedCode);
     } finally {
       _loading = false;
       notifyListeners();
@@ -149,3 +181,26 @@ class LocaleController extends ChangeNotifier {
     return null;
   }
 }
+
+const _latinAmericanSpanishRegions = <String>{
+  '419',
+  'AR',
+  'BO',
+  'CL',
+  'CO',
+  'CR',
+  'CU',
+  'DO',
+  'EC',
+  'GT',
+  'HN',
+  'MX',
+  'NI',
+  'PA',
+  'PE',
+  'PR',
+  'PY',
+  'SV',
+  'UY',
+  'VE',
+};

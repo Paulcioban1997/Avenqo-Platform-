@@ -33,10 +33,16 @@ def test_portfolio_scans_only_product_rows(monkeypatch, entity):
         return original(prepared, **kwargs)
 
     monkeypatch.setattr(analytics, "compute_sales_summary", counted)
-    monkeypatch.setattr(products, "compute_sales_summary", counted)
+    original_periods = products.compute_product_period_revenue
+    def counted_periods(prepared, **kwargs):
+        nonlocal scanned
+        scanned += len(prepared.rows)
+        assert prepared.company_id == source.company_id
+        return original_periods(prepared, **kwargs)
+    monkeypatch.setattr(products, "compute_product_period_revenue", counted_periods)
     result = products.TenantProductsService.portfolio(source)
     assert len(result) == 300
-    assert scanned == 3 * len(rows)
+    assert scanned == len(rows)
     for item in result:
         assert item["revenue"] == 30
         assert item["orders"] == 2

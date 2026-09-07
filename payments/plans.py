@@ -94,13 +94,21 @@ class AICreditPack:
 AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
     AICreditPack("demo_extra", PlanCode.DEMO, credits=6_500, price_usd=10),
     AICreditPack(
-        "professional_extra",
+        "professional_6500",
+        PlanCode.PROFESSIONAL,
+        credits=6_500,
+        price_usd=10,
+    ),
+    AICreditPack(
+        "professional_25000",
         PlanCode.PROFESSIONAL,
         credits=25_000,
         price_usd=25,
     ),
 )
 AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
+# Preserve delayed Checkout sessions created before the Phase 2 code rename.
+AI_CREDIT_PACKS_BY_CODE["professional_extra"] = AI_CREDIT_PACKS_BY_CODE["professional_25000"]
 
 
 def get_plan(code: PlanCode | str) -> SubscriptionPlan:

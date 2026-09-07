@@ -10,6 +10,7 @@ import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/pages/billing_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -524,11 +525,20 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.byType(AvenqoDataTable), findsOneWidget);
     expect(find.text('Acme Canada'), findsOneWidget);
     expect(find.text('12,500'), findsOneWidget);
     expect(find.text('Active'), findsOneWidget);
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(-1200, 0));
+    final tableScroll = find.ancestor(
+      of: find.byIcon(Icons.receipt_long_outlined),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal,
+      ),
+    );
+    expect(tableScroll, findsOneWidget);
+    await tester.drag(tableScroll, const Offset(-1200, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.receipt_long_outlined));
     await tester.pumpAndSettle();
@@ -557,7 +567,7 @@ void main() {
     ), dark: true));
     await tester.pumpAndSettle();
 
-    expect(find.byType(DataTable), findsNothing);
+    expect(find.byType(AvenqoDataTable), findsNothing);
     expect(find.text('Enterprise North'), findsOneWidget);
     expect(find.text('Contractual / custom'), findsNWidgets(3));
     expect(find.text('Trialing'), findsOneWidget);

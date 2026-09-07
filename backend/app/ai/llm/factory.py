@@ -7,7 +7,9 @@ from backend.app.ai.llm.exceptions import UnsupportedLLMProviderError
 from backend.app.ai.llm.gateway import AvenqoAIGateway
 from backend.app.ai.llm.gemini_provider import GeminiProvider
 from backend.app.ai.llm.health import get_provider_health_registry
+from backend.app.ai.llm.model_registry import LLMRateCard
 from backend.app.ai.llm.openai_provider import OpenAIProvider
+from backend.app.ai.llm.router import SmartModelRouter
 from backend.app.config.settings import Settings
 
 logger = logging.getLogger("avenqo.ai.factory")
@@ -55,7 +57,18 @@ class LLMProviderFactory:
         configuration du primaire doit rester visible, pas masquée).
         """
 
-        order = [settings.ai_primary_provider, settings.ai_fallback_provider_1, settings.ai_fallback_provider_2]
+        configured_order = [
+            settings.ai_primary_provider,
+            settings.ai_fallback_provider_1,
+            settings.ai_fallback_provider_2,
+        ]
+        # Explicit fallback order remains authoritative. Any other provider
+        # with a configured key is appended so all available capabilities are
+        # active without requiring operators to maintain a second list.
+        order = configured_order + [
+            code for code in LLMProviderFactory._BUILDERS
+            if code not in configured_order
+        ]
         seen: set[str] = set()
         providers: list[LLMProvider] = []
         for index, code in enumerate(order):
@@ -81,6 +94,20 @@ class LLMProviderFactory:
                 str(bool(LLMProviderFactory._credential_for(settings, code))).lower(),
                 LLMProviderFactory._model_for(settings, code),
             )
+            model_id = LLMProviderFactory._model_for(settings, code)
+            spec = LLMRateCard.from_models(
+                {code: model_id},
+                settings.ai_model_rate_card,
+            ).spec_for(code, model_id)
+            logger.info(
+                "ai_model_registry provider=%s model=%s capabilities=%s context_window=%d cost_class=%s latency_class=%s",
+                spec.provider,
+                spec.model_id,
+                ",".join(sorted(capability.value for capability in spec.capabilities)),
+                spec.context_window,
+                spec.estimated_cost_class,
+                spec.latency_class,
+            )
             providers.append(LLMProviderFactory._BUILDERS[code](settings))
 
         if not providers and settings.ai_primary_provider.lower() in LLMProviderFactory._BUILDERS:
@@ -93,12 +120,24 @@ class LLMProviderFactory:
                 LLMProviderFactory._model_for(settings, primary),
             )
 
+        models = {
+            provider.name: LLMProviderFactory._model_for(settings, provider.name)
+            for provider in providers
+        }
+        rate_card = LLMRateCard.from_models(models, settings.ai_model_rate_card)
+        health_registry = get_provider_health_registry()
+        router = SmartModelRouter(
+            {provider.name: rate_card.spec_for(provider.name, models[provider.name]) for provider in providers},
+            health_registry,
+        )
         breaker = get_circuit_breaker()
         breaker.configure(settings.ai_gateway_circuit_failure_threshold, settings.ai_gateway_circuit_cooldown_seconds)
         return AvenqoAIGateway(
             providers,
             circuit_breaker=breaker,
-            health_registry=get_provider_health_registry(),
+            health_registry=health_registry,
+            router=router,
+            rate_card=rate_card,
             max_retries_per_provider=settings.ai_gateway_max_retries,
             base_delay_seconds=settings.ai_gateway_base_delay_seconds,
             max_delay_seconds=settings.ai_gateway_max_delay_seconds,

@@ -3,7 +3,10 @@ library;
 
 import 'package:avenqo/core/country_catalog.dart';
 import 'package:avenqo/core/money_formatter.dart';
+import 'package:avenqo/i18n/locale_info.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 
 void main() {
   group('country_catalog', () {
@@ -71,6 +74,47 @@ void main() {
       final result = formatMoney(1250.0, locale: 'en-US', currencyCode: 'USD');
       expect(result, contains('1'));
       expect(result, contains('250'));
+    });
+
+    test('custom Latin-American Spanish code uses the CLDR regional locale', () {
+      expect(intlLocaleCode('es-LatAm'), 'es_419');
+      final result = formatMoney(
+        1250.0,
+        locale: 'es-LatAm',
+        currencyCode: 'MXN',
+      );
+      expect(result, isNotEmpty);
+    });
+
+    test('requested regional locales format dates and numbers with CLDR data', () async {
+      const localeCodes = [
+        'fr-CA',
+        'fr-FR',
+        'en-US',
+        'en-GB',
+        'es-ES',
+        'es-LatAm',
+        'pt-PT',
+        'pt-BR',
+      ];
+      final dates = <String, String>{};
+      final numbers = <String, String>{};
+
+      for (final code in localeCodes) {
+        final intlCode = intlLocaleCode(code);
+        await initializeDateFormatting(intlCode);
+        dates[code] = DateFormat.yMMMd(intlCode).format(DateTime(2026, 1, 5));
+        numbers[code] = NumberFormat.decimalPattern(
+          intlCode,
+        ).format(12345.67);
+        expect(dates[code], isNotEmpty, reason: '$code date');
+        expect(numbers[code], isNotEmpty, reason: '$code number');
+      }
+
+      expect(dates['en-US'], isNot(dates['en-GB']));
+      expect(numbers['es-ES'], isNot(numbers['es-LatAm']));
+      expect(numbers['es-ES'], contains(',67'));
+      expect(numbers['es-LatAm'], contains('.67'));
     });
 
     test('ja-JP + JPY formats with yen symbol', () {

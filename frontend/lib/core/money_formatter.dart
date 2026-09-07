@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'package:avenqo/i18n/locale_info.dart';
+
 /// Formatter monétaire global unique Avenqo.
 ///
 /// - `locale`  : locale de l'utilisateur (formatage : séparateurs, position symbole).
@@ -15,11 +17,8 @@ String formatMoney(
   required String currencyCode,
   int decimalDigits = 2,
 }) {
-  final effectiveLocale = locale.contains('-')
-      ? locale.replaceFirst('-', '_')
-      : locale;
   final formatter = NumberFormat.currency(
-    locale: effectiveLocale,
+    locale: intlLocaleCode(locale),
     name: currencyCode,
     decimalDigits: decimalDigits,
   );

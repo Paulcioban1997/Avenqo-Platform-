@@ -429,6 +429,29 @@ def test_sales_real_period_trend_currency_and_tenant_isolation(business_environm
     assert "C1" not in str(result_b)
 
 
+def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [
+            {"date": "07/20/2026", "sale": "O1", "client": "C1", "amount": 100},
+            {"date": "08/20/2026", "sale": "O2", "client": "C2", "amount": 200},
+        ],
+    )
+    sales, _customers, _predictions = _services(session, prepared)
+
+    result = sales.build(TenantContext(company.id), period_key="last_30_days")
+
+    assert result["period"]["date_filter_available"] is True
+    assert result["summary"]["revenue"] == 200
+    assert result["summary"]["previous_revenue"] == 100
+    assert result["summary"]["revenue_change_percent"] == 100
+    assert result["trend"]["points"] == [
+        {"period": "2026-08-20", "revenue": 200.0, "orders": 1, "change_percent": None}
+    ]
+
+
 def test_sales_never_invents_change_and_only_uses_active_validated_forecast(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=False)
@@ -492,6 +515,8 @@ def test_customers_real_summary_pagination_search_and_tenant_lookup(business_env
         "average_customer_value": 75.0,
     }
     assert first["pagination"] == {"page": 1, "page_size": 2, "total": 3, "pages": 2}
+    assert all(item["segment_status"] == "available" for item in first["items"])
+    assert all(item["risk_status"] == "available" for item in first["items"])
     searched = customers.build(TenantContext(company_a.id), search="c1")
     assert [item["customer_id"] for item in searched["items"]] == ["C1"]
     with pytest.raises(CustomerNotFound):
@@ -516,6 +541,26 @@ def test_customer_lookup_is_exact_beyond_partial_search_page(business_environmen
     assert customers.get_customer(TenantContext(company.id), "C1")["customer_id"] == "C1"
 
 
+def test_customer_intelligence_is_honest_when_inputs_are_unavailable(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [{"client": "C1"}],
+        columns={"client": "customer_id"},
+    )
+    _sales, customers, _ = _services(session, prepared)
+
+    item = customers.build(TenantContext(company.id))["items"][0]
+
+    assert item["segment"] is None
+    assert item["segment_status"] == "not_calculated"
+    assert item["segment_reason"] == "insufficient_rfm_data"
+    assert item["risk"] is None
+    assert item["risk_status"] == "not_calculated"
+    assert item["risk_reason"] == "insufficient_activity_data"
+
+
 def test_customers_only_surface_real_active_segment_and_churn_outputs(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
     _model(session, company, dataset, "segmentation", "clustering")
@@ -528,7 +573,12 @@ def test_customers_only_surface_real_active_segment_and_churn_outputs(business_e
         {"label": "new", "count": 2},
         {"label": "loyal", "count": 1},
     ]
-    assert {item["customer_id"]: item["risk"] for item in result["items"]}["C2"] == "churn_prediction"
+    c2 = {item["customer_id"]: item for item in result["items"]}["C2"]
+    assert c2["risk"] == "high"
+    assert c2["risk_score"] == 1.0
+    assert c2["risk_reason"] == "churn_model_positive"
+    assert c2["risk_source"] == "model"
+    assert c2["risk_model_version"] == "1"
     assert all(call[0].company_id == company.id for call in predictions.calls)
     assert all("churned" not in call[3] for call in predictions.calls if call[2] == "churn")
 
@@ -700,6 +750,36 @@ def test_products_reconcile_with_sales_and_expose_supported_metrics(business_env
     assert result["trend"]["points"]
 
 
+def test_product_portfolio_scans_rows_a_fixed_number_of_times(business_environment):
+    _session, company, _company_b, dataset, _prepared_by_id = business_environment
+
+    class CountingRows(tuple):
+        iterations = 0
+
+        def __iter__(self):
+            self.iterations += 1
+            return super().__iter__()
+
+    source = _product_prepared(company, dataset)
+    source.rows = CountingRows(
+        {
+            "date": "2026-08-28",
+            "sale": f"O{index}",
+            "client": f"C{index}",
+            "product": f"P{index}",
+            "name": f"Product {index}",
+            "quantity": 1,
+            "amount": 10,
+        }
+        for index in range(100)
+    )
+
+    products = TenantProductsService.portfolio(source)
+
+    assert len(products) == 100
+    assert source.rows.iterations == 2
+
+
 def test_products_search_sort_filter_detail_and_tenant_isolation(business_environment):
     session, company_a, company_b, dataset_a, prepared = business_environment
     prepared[dataset_a.id] = _product_prepared(company_a, dataset_a)
@@ -756,7 +836,6 @@ def test_recommendations_are_evidence_backed_ranked_deduplicated_and_have_no_fak
     assert items
     assert len({item["id"] for item in items}) == len(items)
     assert all(item["evidence"] for item in items)
-    assert all(item["estimated_impact"] is None for item in items)
     assert all(item["lifecycle"] == "active" for item in items)
     priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     assert [priority_order[item["priority"]] for item in items] == sorted(
@@ -764,6 +843,25 @@ def test_recommendations_are_evidence_backed_ranked_deduplicated_and_have_no_fak
     )
     assert "product_decline:P1" in {item["id"] for item in items}
     assert "product_concentration:P1" in {item["id"] for item in items}
+    assert all(
+        item["action_route"] in {"/retail/sales", "/retail/customers"}
+        or item["action_route"].startswith("/retail/products?product_id=")
+        for item in items
+    )
+    assert next(
+        item for item in items if item["id"] == "product_decline:P1"
+    )["action_route"] == "/retail/products?product_id=P1"
+    decline = next(item for item in items if item["id"] == "product_decline:P1")
+    assert decline["affected_product"] == {
+        "id": "P1",
+        "name": "Coffee",
+        "category": "Drinks",
+    }
+    assert decline["evidence"]["current"] == 50
+    assert decline["evidence"]["comparison"] == 200
+    assert decline["estimated_impact"] == -150
+    assert decline["priority"] == "high"
+    assert decline["severity_reason"] == "material_revenue_change"
 
 
 def test_recommendations_only_consume_active_validated_same_dataset_model(business_environment):
@@ -781,6 +879,33 @@ def test_recommendations_only_consume_active_validated_same_dataset_model(busine
     assert model_item["source_model_version"] == "1"
     assert model_item["estimated_impact"] is None
     assert all(call[0].company_id == company.id for call in predictions.calls)
+
+
+def test_recommendations_skip_unbounded_request_time_model_inference(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    source = _product_prepared(company, dataset)
+    source.rows = tuple(
+        {
+            "date": "2026-08-28",
+            "sale": f"O{index}",
+            "client": f"C{index}",
+            "product": f"P{index % 2}",
+            "name": f"Product {index % 2}",
+            "quantity": 1,
+            "amount": 10,
+        }
+        for index in range(26)
+    )
+    prepared[dataset.id] = source
+    _model(session, company, dataset, "recommendation", "recommendation", active=True)
+    _products, recommendations, predictions = _phase4d_services(session, prepared)
+
+    result = recommendations.build(TenantContext(company.id))
+
+    assert "cross_sell_opportunity" not in {
+        item["type"] for item in result["recommendations"]
+    }
+    assert predictions.calls == []
 
 
 def test_product_and_recommendation_outputs_invalidate_after_dataset_deletion(business_environment):

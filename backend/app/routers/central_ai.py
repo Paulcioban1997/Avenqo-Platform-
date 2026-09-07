@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError, ConversationNotFoundError
+from backend.app.ai.usage.exceptions import AIRequestConflictError
 from backend.app.ai.central.service import CentralAIService
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
 from backend.app.core.permissions import permissions_for
@@ -56,4 +57,6 @@ async def message(
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
     except AIServiceUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AIRequestConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return CentralAIResponse(**asdict(result), conversation_id=conversation_id)

@@ -26,7 +26,12 @@ def get_ai_usage_service(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AIUsageService:
-    return AIUsageService(db, AIQuotaPolicy(settings))
+    return AIUsageService(
+        db,
+        AIQuotaPolicy(settings),
+        settings.avenqo_provider_cost_per_credit_usd,
+        settings.ai_credit_reservation_ttl_minutes,
+    )
 
 
 def get_business_tool_registry(

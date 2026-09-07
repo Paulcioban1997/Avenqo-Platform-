@@ -107,20 +107,54 @@ def test_total_amount_takes_precedence_and_counts_are_distinct(tmp_path):
     assert cache.build(spec)["current"] == {"revenue": 0.4, "orders": 2, "customers": 2, "average_order_value": 0.2}
 
 
+def test_cache_compares_non_iso_csv_dates(tmp_path):
+    path = tmp_path / "dated-sales.csv"
+    path.write_text(
+        "order,customer,amount,date\n"
+        "old,C1,100,07/20/2026\n"
+        "new,C2,200,08/20/2026\n",
+        encoding="utf-8",
+    )
+    stat = path.stat()
+    spec = {
+        "artifact": str(path),
+        "size": stat.st_size,
+        "mtime": stat.st_mtime_ns,
+        "mapping": {
+            "order": "order_id",
+            "customer": "customer_id",
+            "amount": "total_amount",
+            "date": "order_timestamp",
+        },
+    }
+
+    payload = cache.build(spec)
+
+    assert payload["current"]["revenue"] == 200
+    assert payload["previous"]["revenue"] == 100
+
+
 def test_worker_failure_is_explicit_and_does_not_leave_processing_forever(large, monkeypatch):
     _, dataset, tenant = large
     spec = cache.descriptor(tenant, dataset)
     key = str(cache.cache_path(spec))
+    submitted = []
     def fail(_):
         raise OSError("Unreadable artifact")
     monkeypatch.setattr(cache, "build", fail)
+    monkeypatch.setattr(cache._pool, "submit", lambda *args: submitted.append(args))
     cache._pending.add(key)
     try:
         cache._run(spec, key)
         assert key not in cache._pending
         assert cache.read_or_schedule(tenant, dataset) == ("SOURCE_UNAVAILABLE", None)
+        failed_at = cache._failed[key]
+        monkeypatch.setattr(cache.time, "monotonic", lambda: failed_at + 61)
+        assert cache.read_or_schedule(tenant, dataset) == ("PROCESSING", None)
+        assert len(submitted) == 1
     finally:
-        cache._failed.discard(key)
+        cache._failed.pop(key, None)
+        cache._pending.discard(key)
 
 
 def test_xlsx_streaming_preserves_dates_and_multiple_customers_per_order(tmp_path):

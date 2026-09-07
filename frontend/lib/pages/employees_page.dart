@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 
 class EmployeesPage extends StatefulWidget {
   const EmployeesPage({super.key, required this.api});
@@ -53,7 +54,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
               )
             else
               Card(
-                child: DataTable(
+                child: AvenqoDataTable(
+                  semanticLabel: t.employeesTitle,
+                  minWidth: 720,
                   columns: [
                     DataColumn(label: Text(t.employeesColumnName)),
                     DataColumn(label: Text(t.employeesColumnEmail)),

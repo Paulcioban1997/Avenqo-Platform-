@@ -120,7 +120,7 @@ void main() {
     expect(find.text('sales.csv'), findsOneWidget);
     expect(find.textContaining('42'), findsOneWidget);
     expect(find.text('Données prêtes'), findsOneWidget);
-    expect(find.text('Entraînement IA à relancer'), findsOneWidget);
+    expect(find.text('Le traitement avancé doit être relancé'), findsOneWidget);
     expect(find.text('Voir les données nettoyées'), findsOneWidget);
     // The Add files CTA must remain available even once data already exists.
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
@@ -161,7 +161,7 @@ void main() {
     expect(find.textContaining('3 → 2'), findsOneWidget);
     expect(find.textContaining('Avant'), findsOneWidget);
     expect(find.textContaining('Après'), findsOneWidget);
-    expect(find.text('Stratégies par colonne'), findsOneWidget);
+    expect(find.text('Détails par colonne'), findsOneWidget);
     expect(find.text('Qualité du nettoyage: A few duplicate rows were removed.'), findsOneWidget);
     expect(find.text('Moyenne'), findsOneWidget);
     expect(find.text('CSV'), findsOneWidget);

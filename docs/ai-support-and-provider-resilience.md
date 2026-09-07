@@ -10,9 +10,10 @@ l'architecture IA d'Avenqo (Phases 28-31.1) sans jamais la reconstruire :
    "comment utiliser Avenqo" (import CSV, connexions, plans, erreurs
    courantes) en s'appuyant sur la documentation produit — jamais sur les
    données métier d'un tenant.
-2. **Resilient AI Gateway** (`AvenqoAIGateway`) — une couche de résilience
-   multi-fournisseur (OpenAI/Anthropic/Gemini) avec retry, circuit breaker
-   et fallback, utilisée par le Business Assistant **et** le Support AI.
+2. **Smart AI Gateway** (`AvenqoAIGateway`) — une couche de routage et de
+  résilience multi-fournisseur (OpenAI/Anthropic/Gemini) avec scoring,
+  retry, circuit breaker et fallback séquentiel, utilisée par le Business
+  Assistant **et** le Support AI.
 
 ```mermaid
 flowchart LR
@@ -87,15 +88,19 @@ en langage clair, jamais un détail technique.
   referme après un cooldown (half-open probe).
 - `health.py` — `ProviderHealthRegistry`, snapshot interne
   (healthy/degraded/unavailable/rate_limited/unknown) — jamais exposé au
-  frontend, réservé à un futur tableau d'administration/logs.
+  frontend, avec latence moyenne observée pour le scoring.
+- `model_registry.py` — capacités, fenêtre de contexte, classes coût/latence
+  et rate card décimale centralisée par fournisseur/modèle.
+- `router.py` — filtre les modèles incompatibles et les classe selon tâche,
+  complexité, contexte, capacités, santé, latence, coût, plan et crédits.
 - `gateway.py` — `AvenqoAIGateway`, implémente **exactement** l'interface
-  `LLMProvider` (Phase 28) : `ChatService`/`ToolOrchestrator`/tous les
-  outils prédictifs continuent de fonctionner sans modification.
+  `LLMProvider` (Phase 28) et n'appelle jamais plusieurs fournisseurs en
+  parallèle.
 
 ### Comportement de fallback
 
-1. Le fournisseur primaire est tenté (`AI_PRIMARY_PROVIDER`, défaut
-   `openai`).
+1. Un seul modèle primaire compatible est choisi par le routeur. L'ordre
+  configuré sert de départage stable et de fallback.
 2. En cas d'échec **éligible au fallback** (timeout, réseau, 5xx, rate
    limit, surcharge, inconnu) : retry avec backoff exponentiel + jitter
    borné sur le même fournisseur (`AI_GATEWAY_MAX_RETRIES`), puis passage
@@ -128,16 +133,22 @@ fournisseurs). Limitation documentée ci-dessous.
 | `AI_GATEWAY_MAX_DELAY_SECONDS` | `4.0` | Plafond du backoff |
 | `AI_GATEWAY_CIRCUIT_FAILURE_THRESHOLD` | `3` | Échecs avant ouverture du circuit |
 | `AI_GATEWAY_CIRCUIT_COOLDOWN_SECONDS` | `30.0` | Délai avant sonde half-open |
+| `AVENQO_PROVIDER_COST_PER_CREDIT_USD` | `0.00030` | Coût fournisseur correspondant à un crédit Avenqo |
+| `AI_CREDIT_RESERVATION_TTL_MINUTES` | `1440` | Délai avant restitution atomique d'une réservation abandonnée |
+| `AI_MODEL_RATE_CARD` | `{}` | Surcharges JSON des tarifs/activation par provider ou modèle |
 | `AI_SUPPORT_KNOWLEDGE_ROOT` | `platform_knowledge` | Dossier de la base de connaissances Support |
 
 ### Quota et sécurité
 
-Le quota (`AIUsageService.ensure_quota_available`, Phase 31) reste vérifié
-**avant** tout appel au Gateway, dans `ChatService`/`SupportChatService` —
-inchangé, jamais déplacé dans le Gateway lui-même. Aucun nom de fournisseur,
-clé API ni détail technique n'est jamais exposé au frontend ou au LLM ;
-`AIMessage.provider`/`AISupportMessage.provider` restent des colonnes
-internes (observabilité), jamais affichées à l'utilisateur.
+Le quota est réservé atomiquement **avant** tout appel au Gateway. Une seule
+exécution peut réclamer un couple tenant/request ID; les doublons sont rejetés
+avant le fournisseur. Après succès, chaque tentative est inscrite
+dans `tenant_ai_provider_attempts` avec ses tokens, sa latence, son coût réel
+et le snapshot des tarifs appliqués. La somme des coûts est convertie par
+`ceil(coût / AVENQO_PROVIDER_COST_PER_CREDIT_USD)` puis débitée des crédits
+inclus avant les crédits achetés. Le reliquat réservé est restitué au règlement;
+une réservation abandonnée est libérée après le TTL configuré. Aucun nom de
+fournisseur, clé API ni détail technique n'est exposé au frontend.
 
 ## Limitations connues
 
@@ -149,6 +160,6 @@ internes (observabilité), jamais affichées à l'utilisateur.
 - La recherche documentaire du Support AI est un scoring par mots-clés
   (pas d'embeddings/vecteurs) — suffisant pour le corpus initial, à
   réévaluer si `platform_knowledge/` grossit significativement.
-- Les logs structurés du Gateway n'incluent pas de `request_id` (l'interface
-  `LLMProvider` ne le transporte pas) — amélioration possible future sans
-  rupture de compatibilité.
+- Les tarifs par défaut sont des paramètres techniques et doivent être
+  contrôlés lors d'un changement tarifaire fournisseur; le journal conserve
+  toujours le snapshot effectivement appliqué aux usages historiques.

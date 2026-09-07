@@ -4,6 +4,7 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/file_picker/app_file_picker.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -159,7 +160,7 @@ class _BillingPageState extends State<BillingPage> {
         final planCode = subscription?['plan_code']?.toString() ?? 'demo';
         final billingStatus =
             subscription?['status']?.toString().toLowerCase() ?? 'inactive';
-        final localeCode = AvenqoLocaleScope.of(context).code;
+        final localeCode = intlLocaleCode(AvenqoLocaleScope.of(context).code);
         final currentPeriodEnd = DateTime.tryParse(
           subscription?['current_period_end']?.toString() ?? '',
         );
@@ -388,8 +389,9 @@ class _InvoiceHistoryState extends State<_InvoiceHistory> {
   }
 }
 
-String _formatCredits(Object? value) =>
-    value == null ? '—' : NumberFormat.decimalPattern().format(value);
+String _formatCredits(Object? value, String localeCode) => value == null
+  ? '—'
+  : NumberFormat.decimalPattern(localeCode).format(value);
 
 class _CreditWallet extends StatelessWidget {
   const _CreditWallet({required this.balance, required this.strings});
@@ -400,6 +402,7 @@ class _CreditWallet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final localeCode = intlLocaleCode(AvenqoLocaleScope.of(context).code);
     final included = balance['monthly_included'] as int?;
     final used = balance['monthly_used'] as int? ?? 0;
     final progress = included == null || included <= 0
@@ -407,7 +410,7 @@ class _CreditWallet extends StatelessWidget {
         : (used / included).clamp(0.0, 1.0);
     final allowance = included == null
         ? strings.customAllowance
-        : _formatCredits(included);
+      : _formatCredits(included, localeCode);
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -456,9 +459,9 @@ class _CreditWallet extends StatelessWidget {
             runSpacing: 12,
             children: [
               _CreditMetric(label: strings.monthlyAllowance, value: allowance),
-              _CreditMetric(label: strings.monthlyRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['monthly_remaining'])),
-              _CreditMetric(label: strings.purchasedRemaining, value: _formatCredits(balance['purchased_remaining'])),
-              _CreditMetric(label: strings.totalRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['total_remaining']), emphasized: true),
+              _CreditMetric(label: strings.monthlyRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['monthly_remaining'], localeCode)),
+              _CreditMetric(label: strings.purchasedRemaining, value: _formatCredits(balance['purchased_remaining'], localeCode)),
+              _CreditMetric(label: strings.totalRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['total_remaining'], localeCode), emphasized: true),
             ],
           ),
           if (progress != null) ...[
@@ -471,8 +474,8 @@ class _CreditWallet extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               strings.monthlyProgress
-                  .replaceFirst('{used}', _formatCredits(used))
-                  .replaceFirst('{included}', _formatCredits(included)),
+                  .replaceFirst('{used}', _formatCredits(used, localeCode))
+                  .replaceFirst('{included}', _formatCredits(included, localeCode)),
               style: TextStyle(color: colors.muted, fontSize: 12),
             ),
           ],
@@ -526,6 +529,7 @@ class _CreditPacks extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final localeCode = intlLocaleCode(AvenqoLocaleScope.of(context).code);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -551,7 +555,7 @@ class _CreditPacks extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${_formatCredits(pack['credits'])} ${strings.creditsUnit}', style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w800)),
+                        Text('${_formatCredits(pack['credits'], localeCode)} ${strings.creditsUnit}', style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w800)),
                         const SizedBox(height: 4),
                         Text(strings.priceUsd.replaceFirst('{price}', '${pack['price_usd'] ?? '—'}'), style: TextStyle(color: colors.muted)),
                         const SizedBox(height: 14),

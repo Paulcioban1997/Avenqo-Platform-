@@ -29,7 +29,12 @@ def get_support_ai_usage_service(
 ) -> AIUsageService:
     # Réutilise EXACTEMENT le même service/quota que le Business Copilot
     # (Phase 31) : pas de second système de comptage.
-    return AIUsageService(db, AIQuotaPolicy(settings))
+    return AIUsageService(
+        db,
+        AIQuotaPolicy(settings),
+        settings.avenqo_provider_cost_per_credit_usd,
+        settings.ai_credit_reservation_ttl_minutes,
+    )
 
 
 def get_support_tool_registry(

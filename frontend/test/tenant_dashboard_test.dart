@@ -185,4 +185,60 @@ void main() {
     expect(calls, 2);
     expect(find.text('Connect data'), findsOneWidget);
   });
+
+  testWidgets('keeps API timeouts retryable without exposing internals', (tester) async {
+    await tester.pumpWidget(
+      await _wrap(
+        DashboardPage(
+          auth: _auth(),
+          loader: (_) async => throw const ApiException(
+            'Avenqo request timed out',
+            isTimeout: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.textContaining('timed out'), findsNothing);
+  });
+
+  testWidgets('distinguishes authentication errors from retryable failures', (tester) async {
+    await tester.pumpWidget(
+      await _wrap(
+        DashboardPage(
+          auth: _auth(),
+          loader: (_) async => throw const ApiException(
+            'Unauthorized',
+            statusCode: 401,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Back to login'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    expect(find.textContaining('Unauthorized'), findsNothing);
+  });
+
+  testWidgets('distinguishes subscription errors from retryable failures', (tester) async {
+    await tester.pumpWidget(
+      await _wrap(
+        DashboardPage(
+          auth: _auth(),
+          loader: (_) async => throw const ApiException(
+            'Payment required',
+            statusCode: 402,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Manage subscription'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    expect(find.textContaining('Payment required'), findsNothing);
+  });
 }

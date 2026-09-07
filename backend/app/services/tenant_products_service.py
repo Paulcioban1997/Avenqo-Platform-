@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime, timedelta
 from math import ceil
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import (
+    compute_product_period_revenue,
     compute_product_portfolio,
-    compute_sales_summary,
     compute_sales_trend,
-    with_dataset_rows,
 )
 from backend.app.services.tenant_analytics_service import (
     TenantAnalyticsService,
@@ -168,31 +166,26 @@ class TenantProductsService:
         current_start = latest - timedelta(days=29) if latest is not None else None
         previous_end = current_start - timedelta(microseconds=1) if current_start is not None else None
         previous_start = previous_end - timedelta(days=29) if previous_end is not None else None
-        reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
-        entity_column = reverse.get("product_id", reverse.get("product_name"))
-        # Partition once: rescanning all rows for every product times out on retail catalogs.
-        rows_by_product = defaultdict(list)
-        for row in source.rows:
-            if row.get(entity_column) is not None:
-                rows_by_product[str(row[entity_column])].append(row)
+        revenue_by_product = compute_product_period_revenue(
+            source,
+            current_from=current_start,
+            current_to=latest,
+            previous_from=previous_start,
+            previous_to=previous_end,
+        )
         for product in products:
             product_id = str(product["product_id"])
-            product_source = with_dataset_rows(source, rows_by_product[product_id])
-            current = compute_sales_summary(
-                product_source,
-                date_from=current_start,
-                date_to=latest,
-                product=product_id,
+            revenue = revenue_by_product.get(
+                product_id,
+                {"current": 0.0, "previous": 0.0},
             )
-            previous = compute_sales_summary(
-                product_source,
-                date_from=previous_start,
-                date_to=previous_end,
-                product=product_id,
-            ) if previous_start is not None else None
             has_revenue = product["revenue"] is not None
-            current_revenue = float(current["revenue"]) if has_revenue else None
-            previous_revenue = float(previous["revenue"]) if has_revenue and previous else None
+            current_revenue = float(revenue["current"]) if has_revenue else None
+            previous_revenue = (
+                float(revenue["previous"])
+                if has_revenue and previous_start is not None
+                else None
+            )
             change = (
                 round(((current_revenue - previous_revenue) / previous_revenue) * 100, 2)
                 if current_revenue is not None and previous_revenue not in {None, 0}
@@ -201,6 +194,12 @@ class TenantProductsService:
             product["current_revenue"] = current_revenue
             product["previous_revenue"] = previous_revenue
             product["change_percent"] = change
+            product["comparison_period"] = {
+                "start": current_start,
+                "end": latest,
+                "comparison_start": previous_start,
+                "comparison_end": previous_end,
+            }
             product["performance"] = (
                 "strong" if change is not None and change >= 10
                 else "weak" if change is not None and change <= -10

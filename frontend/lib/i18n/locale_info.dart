@@ -29,3 +29,10 @@ class LocaleInfo {
 }
 
 const String defaultLocaleCode = 'fr-CA';
+
+String intlLocaleCode(String code) {
+  if (code.toLowerCase() == 'es-latam') {
+    return 'es_419';
+  }
+  return code.replaceAll('-', '_');
+}

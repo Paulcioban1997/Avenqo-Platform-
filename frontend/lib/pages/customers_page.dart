@@ -8,6 +8,7 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 
 typedef CustomersLoader =
     Future<Map<String, dynamic>> Function(int page, String search);
@@ -160,6 +161,14 @@ class _CustomersContent extends StatelessWidget {
     String date(dynamic timestamp) => timestamp == null
         ? '—'
         : DateFormat.yMd(locale).format(DateTime.parse(timestamp.toString()));
+    String segment(Map<String, dynamic> item) =>
+      item['segment_status'] == 'available' && item['segment'] != null
+      ? t.customerSegmentName(item['segment'].toString())
+      : t.customersNotCalculated;
+    String risk(Map<String, dynamic> item) =>
+      item['risk_status'] == 'available' && item['risk'] != null
+      ? t.customerRiskName(item['risk'].toString())
+      : t.customersNotCalculated;
     final metrics = [
       (t.customersTotal, '${summary['total_customers']}'),
       (t.customersActive, summary['active_customers']?.toString() ?? '—'),
@@ -189,44 +198,47 @@ class _CustomersContent extends StatelessWidget {
               for (final segment in data['segments'] as List)
                 Chip(
                   label: Text(
-                    '${t.customersSegment}: ${segment['label']} (${segment['count']})',
+                    '${t.customersSegment}: ${t.customerSegmentName(segment['label'].toString())} (${segment['count']})',
                   ),
                 ),
               for (final risk in data['risks'] as List)
                 Chip(
                   label: Text(
-                    '${t.customersRisk}: ${risk['label']} (${risk['count']})',
+                    '${t.customersRisk}: ${t.customerRiskName(risk['label'].toString())} (${risk['count']})',
                   ),
                 ),
             ],
           ),
         ],
         const SizedBox(height: 20),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text(t.navCustomersLabel)),
-              DataColumn(label: Text(t.customersOrders)),
-              DataColumn(label: Text(t.customersValue)),
-              DataColumn(label: Text(t.customersLastPurchase)),
-              DataColumn(label: Text(t.customersSegment)),
-              DataColumn(label: Text(t.customersRisk)),
-            ],
-            rows: [
-              for (final item in items)
-                DataRow(
-                  cells: [
-                    DataCell(Text('${item['customer_id']}')),
-                    DataCell(Text('${item['orders']}')),
-                    DataCell(Text(value(item['total_value']))),
-                    DataCell(Text(date(item['last_purchase']))),
-                    DataCell(Text(item['segment']?.toString() ?? '—')),
-                    DataCell(Text(item['risk']?.toString() ?? '—')),
-                  ],
-                ),
-            ],
-          ),
+        AvenqoDataTable(
+          semanticLabel: t.navCustomersLabel,
+          columns: [
+            DataColumn(label: Text(t.navCustomersLabel)),
+            DataColumn(label: Text(t.customersOrders)),
+            DataColumn(label: Text(t.customersValue)),
+            DataColumn(label: Text(t.customersLastPurchase)),
+            DataColumn(label: Text(t.customersSegment)),
+            DataColumn(label: Text(t.customersRisk)),
+          ],
+          rows: [
+            for (final item in items)
+              DataRow(
+                cells: [
+                  DataCell(Text('${item['customer_id']}')),
+                  DataCell(Text('${item['orders']}')),
+                  DataCell(Text(value(item['total_value']))),
+                  DataCell(Text(date(item['last_purchase']))),
+                  DataCell(_CustomerIntelligenceBadge(label: segment(item))),
+                  DataCell(
+                    _CustomerIntelligenceBadge(
+                      label: risk(item),
+                      risk: item['risk']?.toString(),
+                    ),
+                  ),
+                ],
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
@@ -250,6 +262,43 @@ class _CustomersContent extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _CustomerIntelligenceBadge extends StatelessWidget {
+  const _CustomerIntelligenceBadge({required this.label, this.risk});
+
+  final String label;
+  final String? risk;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final accent = switch (risk) {
+      'critical' => const Color(0xFFB42318),
+      'high' => const Color(0xFFD1414B),
+      'medium' => const Color(0xFFC97912),
+      'low' => const Color(0xFF1B7F4B),
+      _ => const Color(0xFF087CF0),
+    };
+    return Semantics(
+      label: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.12),
+          border: Border.all(color: accent.withValues(alpha: 0.32)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: risk == null ? colors.ink : accent,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
