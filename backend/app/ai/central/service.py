@@ -91,7 +91,17 @@ class CentralAIService:
                 )
                 self._log_result(tenant.company_id, None, result, started_at, "free_form_classification")
                 return result
-            agent = await self._router.select_free_form(query, self._chat.classify_intent)
+
+            async def classify(system_instruction: str, prompt: str) -> str:
+                return await self._chat.classify_intent(
+                    system_instruction,
+                    prompt,
+                    tenant_id=tenant.company_id,
+                    plan_code=context.plan_code,
+                    request_id=f"{request_id}:classification",
+                )
+
+            agent = await self._router.select_free_form(query, classify)
         if agent is not None and not agent.status.is_executable:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")

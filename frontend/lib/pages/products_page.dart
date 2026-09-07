@@ -9,6 +9,7 @@ import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 
 typedef ProductsLoader =
     Future<Map<String, dynamic>> Function(
@@ -26,12 +27,14 @@ class ProductsPage extends StatefulWidget {
     required this.api,
     this.loader,
     this.detailLoader,
+    this.initialProductId,
     this.readOnly = false,
   });
 
   final ApiClient api;
   final ProductsLoader? loader;
   final ProductDetailLoader? detailLoader;
+  final String? initialProductId;
   final bool readOnly;
 
   @override
@@ -46,6 +49,18 @@ class _ProductsPageState extends State<ProductsPage> {
   String? _performance;
   String _sortBy = 'revenue';
   late Future<Map<String, dynamic>> _future = _load();
+  bool _openedInitialProduct = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final productId = widget.initialProductId;
+    if (_openedInitialProduct || productId == null || productId.isEmpty) return;
+    _openedInitialProduct = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showDetail(productId);
+    });
+  }
 
   Future<Map<String, dynamic>> _load() {
     if (widget.loader case final loader?) {
@@ -327,9 +342,9 @@ class _ProductsContent extends StatelessWidget {
                       ),
                   ],
                 )
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
+                  : AvenqoDataTable(
+                    semanticLabel: company.navProductsLabel,
+                    minWidth: 1040,
                     columns: [
                       DataColumn(label: Text(strings.productLabel)),
                       DataColumn(label: Text(strings.categoryLabel)),
@@ -365,7 +380,6 @@ class _ProductsContent extends StatelessWidget {
                         ),
                     ],
                   ),
-                ),
         ),
         const SizedBox(height: 12),
         Row(

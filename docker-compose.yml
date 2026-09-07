@@ -18,14 +18,14 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /srv/backend
     ports:
       - "8000:8000"
     environment:
       ENVIRONMENT: development
       DATABASE_URL: sqlite:////srv/var/avenqo-dev.db
       AUTH_JWT_SECRET: dev-only-secret-change-me-please-32chars
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080,http://127.0.0.1:8080
       ALLOWED_HOSTS: "*"
       RATE_LIMIT_ENABLED: "true"
     volumes:

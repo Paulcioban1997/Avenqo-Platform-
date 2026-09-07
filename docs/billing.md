@@ -42,22 +42,32 @@ Les variables sont listÃ©es dans `backend/.env.example`:
 - `STRIPE_PRICE_PROFESSIONAL`
 - `STRIPE_PRICE_CREDIT_DEMO`
 - `STRIPE_PRICE_CREDIT_PROFESSIONAL`
+- `STRIPE_PRICE_CREDIT_PROFESSIONAL_6500`
+- `STRIPE_PRICE_CREDIT_PROFESSIONAL_25000`
 
 Enterprise n'a pas de Price ID fixe et ne peut pas ouvrir de Checkout self-service.
 
 Les Prices de crédits sont des paiements uniques configurés dans Stripe:
 
 - Demo: 6 500 crédits supplémentaires pour 10 USD.
+- Professional: 6 500 crédits supplémentaires pour 10 USD.
 - Professional: 25 000 crédits supplémentaires pour 25 USD.
 
-Les crédits achetés s'accumulent pendant la période de facturation. Après le paiement réussi de la facture de renouvellement (`invoice.paid` avec `billing_reason=subscription_cycle`), Avenqo remet l'usage mensuel et le solde acheté à zéro, puis démarre la nouvelle allocation incluse.
+Les crédits achetés s'accumulent et persistent jusqu'à consommation. Après le paiement réussi de la facture de renouvellement (`invoice.paid` avec `billing_reason=subscription_cycle`), Avenqo remet uniquement l'usage mensuel à zéro et renouvelle l'allocation incluse. Les crédits achetés ne sont jamais supprimés par un renouvellement normal.
+
+Chaque Checkout de crédits possède un achat local durable avant la redirection
+vers Stripe. Le rapprochement est idempotent par événement, Checkout Session
+et PaymentIntent. Les paiements asynchrones ne créditent le portefeuille
+qu'après confirmation. Un remboursement retire uniquement les crédits encore
+disponibles du lot concerné; toute partie déjà consommée ou réservée crée un
+écart marqué pour revue au lieu de rendre le solde négatif.
 
 ## Réglages Stripe Dashboard requis
 
 - Activer Adaptive Pricing / les devises localisées pour les Prices Demo, Professional et leurs deux packs de crédits utilisés par Checkout. Stripe reste la source autoritaire du montant et de la devise facturés.
 - Dans les réglages d'emails clients, activer l'envoi des factures finalisées et des reçus de paiement réussi.
 - Dans la configuration du Customer Portal, autoriser l'annulation d'abonnement en fin de période de facturation.
-- Abonner l'endpoint webhook aux événements `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated` et `customer.subscription.deleted`.
+- Abonner l'endpoint webhook aux événements `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `charge.refunded`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated` et `customer.subscription.deleted`.
 
 Stripe crée automatiquement les factures récurrentes des abonnements. Avenqo en conserve un snapshot tenant-scoped (montants, devise, offre, période, état et liens Stripe) après réception du webhook signé.
 
@@ -67,7 +77,14 @@ Les tests automatisÃ©s utilisent un fournisseur en mÃ©moire et ne rÃ©alise
 
 ```powershell
 pytest tests/backend/test_billing.py -q
+python -m scripts.simulate_ai_credit_economics
 ```
+
+Le simulateur utilise le routeur intelligent, la rate card active et l'arrondi
+par requête de production. Avec le coût de référence de 0,00030 USD/crédit, le
+coût fournisseur maximal est de 1,95 USD pour le pack 6 500 (marge brute
+fournisseur 80,5 %) et de 7,50 USD pour le pack 25 000 (70 %). Ces marges
+n'incluent pas les frais Stripe, taxes, change, infrastructure ni support.
 
 La validation externe finale doit Ãªtre exÃ©cutÃ©e avec un compte Stripe en Test Mode et Stripe CLI:
 

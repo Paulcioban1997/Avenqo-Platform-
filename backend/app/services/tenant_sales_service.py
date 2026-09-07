@@ -5,7 +5,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from backend.app.ai.tools.business.analytics import compute_sales_summary, compute_sales_trend
+from backend.app.ai.tools.business.analytics import (
+    compute_sales_summary,
+    compute_sales_trend,
+    parse_business_datetime,
+)
 from backend.app.models import ModelRegistry
 from backend.app.services.portfolio_decision_service import (
     PortfolioAnalysisUnavailable,
@@ -143,12 +147,9 @@ class TenantSalesService:
         timestamps = []
         if date_column is not None:
             for row in source.rows:
-                value = row.get(date_column)
-                if isinstance(value, str):
-                    try:
-                        timestamps.append(datetime.fromisoformat(value))
-                    except ValueError:
-                        continue
+                timestamp = parse_business_datetime(row.get(date_column))
+                if timestamp is not None:
+                    timestamps.append(timestamp)
         if not timestamps:
             return {
                 "start": None,

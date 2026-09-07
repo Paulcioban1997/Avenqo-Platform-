@@ -27,7 +27,7 @@ from backend.app.ai.chat.orchestrator import MAX_TOOL_ITERATIONS, OrchestrationR
 from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError, ToolCallingUnsupportedError
-from backend.app.ai.llm.schemas import LLMGeneration, LLMMessage, LLMToolResponse
+from backend.app.ai.llm.schemas import LLMGeneration, LLMMessage, LLMProviderAttempt, LLMToolResponse, LLMUsage
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.business import customer_tools, sales_tools
 from backend.app.ai.tools.business.analytics import compute_business_overview
@@ -653,6 +653,59 @@ async def test_orchestrator_executes_a_tool_call_and_returns_final_answer(tenant
     assert len(result.tool_call_results) == 1
     assert result.tool_call_results[0].result.success is True
     assert result.status_events == ("Analyzing your business data...",)
+
+
+async def test_orchestrator_aggregates_usage_from_every_model_turn(tenant_with_ready_dataset) -> None:
+    session, _, _, _, _, ingestion, context = tenant_with_ready_dataset
+    registry = ToolRegistry()
+    registry.register(GetBusinessOverviewTool(session=session, ingestion=ingestion))
+    call = ToolCall(id="call-1", name="get_business_overview", arguments={})
+
+    def response_attempt(number: int, input_tokens: int, output_tokens: int) -> LLMProviderAttempt:
+        usage = LLMUsage(
+            provider="openai",
+            model="gpt-4o-mini",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            avenqo_request_id="request-1",
+        )
+        return LLMProviderAttempt(
+            provider="openai",
+            model="gpt-4o-mini",
+            operation="generate_with_tools",
+            attempt_number=number,
+            success=True,
+            latency_ms=10,
+            usage=usage,
+        )
+
+    provider = FakeLLMProvider(tool_responses=[
+        LLMToolResponse(
+            content=None,
+            tool_calls=(call,),
+            provider="openai",
+            model="gpt-4o-mini",
+            attempts=(response_attempt(1, 100, 20),),
+        ),
+        LLMToolResponse(
+            content="Your revenue is strong.",
+            tool_calls=(),
+            provider="openai",
+            model="gpt-4o-mini",
+            attempts=(response_attempt(1, 150, 30),),
+        ),
+    ])
+
+    result = await ToolOrchestrator(provider, ToolExecutor(registry)).run(
+        system_instruction="sys",
+        user_query="How is my business doing?",
+        context=context,
+        available_tools=tuple(registry.list_tools()),
+    )
+
+    assert result.token_usage["input_tokens"] == 250
+    assert result.token_usage["output_tokens"] == 50
+    assert [attempt.attempt_number for attempt in result.attempts] == [1, 2]
 
 
 async def test_orchestrator_stops_at_max_iterations_without_infinite_loop() -> None:

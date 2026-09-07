@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.config.settings import get_settings
@@ -14,8 +14,16 @@ from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.dependencies.billing import get_billing_provider
-from backend.app.models import Base, Company
-from backend.app.services.stripe_gateway import StripeGateway
+from backend.app.models import (
+    AICreditPurchase,
+    Base,
+    BillingAccount,
+    Company,
+    TenantAICreditBalance,
+    TenantAICreditLedgerEntry,
+)
+from backend.app.ai.usage.service import AIUsageService
+from backend.app.services.stripe_gateway import CreditCheckoutSession, StripeGateway
 from backend.app.services.account_notifications import AccountNotificationService
 from backend.app.services.invoice_fiscal_service import InvoiceFiscalService
 from backend.main import create_application
@@ -91,7 +99,7 @@ class FakeStripeProvider:
         metadata: dict[str, str],
         success_url: str,
         cancel_url: str,
-    ) -> str:
+    ) -> CreditCheckoutSession:
         self.credit_checkouts.append({
             "customer_id": customer_id,
             "price_id": price_id,
@@ -100,7 +108,10 @@ class FakeStripeProvider:
             "cancel_url": cancel_url,
             "mode": "payment",
         })
-        return "https://checkout.stripe.test/credits"
+        return CreditCheckoutSession(
+            id=f"cs_created_{len(self.credit_checkouts)}",
+            url="https://checkout.stripe.test/credits",
+        )
 
     def cancel_subscription(self, subscription_id: str) -> None:
         self.cancelled_subscriptions.append(subscription_id)
@@ -125,6 +136,8 @@ def billing_environment(
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_professional")
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_DEMO", "price_credit_demo")
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL", "price_credit_professional")
+    monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL_6500", "price_credit_professional_6500")
+    monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL_25000", "price_credit_professional_25000")
     monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_enterprise")
     monkeypatch.setenv(
         "AI_QUOTA_LIMITS",
@@ -196,7 +209,7 @@ def subscription_event(
         "id": event_id,
         "type": "customer.subscription.updated",
         "data": {"object": {
-            "id": "sub_acme",
+            "id": f"sub_{company_id}",
             "customer": f"cus_{company_id}",
             "status": "active",
             "cancel_at_period_end": False,
@@ -323,7 +336,7 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert canceled["cancel_at_period_end"] is True
     assert canceled["status"] == "canceling_at_period_end"
     assert canceled["current_period_end"] is not None
-    assert provider.cancelled_subscriptions == ["sub_acme"]
+    assert provider.cancelled_subscriptions == [f"sub_{login['company']['id']}"]
 
 
 def credit_checkout_event(
@@ -333,17 +346,22 @@ def credit_checkout_event(
     customer_id: str | None = None,
     payment_status: str = "paid",
     amount_total: int = 1_000,
+    event_type: str = "checkout.session.completed",
+    checkout_session_id: str | None = None,
+    payment_intent_id: str | None = None,
+    currency: str = "usd",
     metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": event_id,
-        "type": "checkout.session.completed",
+        "type": event_type,
         "data": {"object": {
-            "id": f"cs_{event_id}",
+            "id": checkout_session_id or f"cs_{event_id}",
             "customer": customer_id or f"cus_{company_id}",
+            "payment_intent": payment_intent_id or f"pi_{event_id}",
             "payment_status": payment_status,
             "amount_total": amount_total,
-            "currency": "usd",
+            "currency": currency,
             "metadata": metadata or {
                 "avenqo_kind": "ai_credit_pack",
                 "avenqo_company_id": company_id,
@@ -397,12 +415,17 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
         headers=headers,
     )
     assert checkout.status_code == 200
-    assert provider.credit_checkouts == [{
+    assert len(provider.credit_checkouts) == 1
+    credit_checkout = provider.credit_checkouts[0]
+    purchase_id = credit_checkout["metadata"]["avenqo_credit_purchase_id"]
+    assert UUID(purchase_id)
+    assert credit_checkout == {
         "customer_id": f"cus_{company_id}",
         "price_id": "price_credit_demo",
         "metadata": {
             "avenqo_kind": "ai_credit_pack",
             "avenqo_company_id": company_id,
+            "avenqo_credit_purchase_id": purchase_id,
             "avenqo_credit_pack": "demo_extra",
             "avenqo_plan_code": "demo",
             "avenqo_credits": "6500",
@@ -410,17 +433,13 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
         "success_url": "http://localhost:8080/billing?credits=success",
         "cancel_url": "http://localhost:8080/billing?credits=cancelled",
         "mode": "payment",
-    }]
+    }
 
     event = credit_checkout_event(
         company_id,
-        metadata={
-            "avenqo_kind": "ai_credit_pack",
-            "avenqo_company_id": company_id,
-            "avenqo_credit_pack": "demo_extra",
-            "avenqo_plan_code": "demo",
-            "avenqo_credits": "6500",
-        },
+        checkout_session_id="cs_created_1",
+        payment_intent_id="pi_demo_purchase",
+        metadata=credit_checkout["metadata"],
     )
     provider.events.extend([event, event])
     first = client.post(
@@ -577,7 +596,8 @@ def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_env
         content=b"{}",
         headers={"Stripe-Signature": "valid_signature"},
     )
-    assert unpaid.status_code == 400
+    assert unpaid.status_code == 200
+    assert unpaid.json() == {"processed": True}
 
     provider.events.append(credit_checkout_event(
         company_a,
@@ -635,7 +655,7 @@ def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_env
     assert balance_b["purchased_remaining"] == 0
 
 
-def test_professional_packs_accumulate_then_expire_at_subscription_renewal(
+def test_professional_packs_accumulate_then_survive_subscription_renewal(
     billing_environment,
 ) -> None:
     client, provider, notifier = billing_environment
@@ -655,7 +675,8 @@ def test_professional_packs_accumulate_then_expire_at_subscription_renewal(
     ).status_code == 200
 
     assert client.get("/api/v1/billing/credit-packs", headers=headers).json() == [
-        {"code": "professional_extra", "credits": 25000, "price_usd": 25}
+        {"code": "professional_6500", "credits": 6500, "price_usd": 10},
+        {"code": "professional_25000", "credits": 25000, "price_usd": 25},
     ]
     assert client.post(
         "/api/v1/billing/credit-packs/checkout",
@@ -700,8 +721,272 @@ def test_professional_packs_accumulate_then_expire_at_subscription_renewal(
     renewed = client.get("/api/v1/billing/ai-credits", headers=headers).json()
     assert renewed["monthly_included"] == 25000
     assert renewed["monthly_used"] == 0
-    assert renewed["purchased_remaining"] == 0
-    assert renewed["total_remaining"] == 25000
+    assert renewed["purchased_remaining"] == 50000
+    assert renewed["total_remaining"] == 75000
+
+
+def test_professional_pack_purchases_are_idempotent_by_session_and_payment(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="durable-packs@acme.ca")
+    headers = auth_headers(login)
+    company_id = login["company"]["id"]
+    provider.events.append(subscription_event(company_id, event_id="evt_durable_sub"))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+
+    expected_packs = (
+        ("professional_6500", "price_credit_professional_6500", 6_500, 1_000),
+        ("professional_25000", "price_credit_professional_25000", 25_000, 2_500),
+    )
+    for index, (pack_code, price_id, credits, amount) in enumerate(expected_packs, start=1):
+        checkout = client.post(
+            "/api/v1/billing/credit-packs/checkout",
+            json={"pack_code": pack_code},
+            headers=headers,
+        )
+        assert checkout.status_code == 200
+        created = provider.credit_checkouts[-1]
+        assert created["price_id"] == price_id
+        assert created["metadata"]["avenqo_credits"] == str(credits)
+        session_id = f"cs_created_{index}"
+        payment_intent_id = f"pi_durable_{index}"
+        provider.events.append(credit_checkout_event(
+            company_id,
+            event_id=f"evt_durable_paid_{index}",
+            checkout_session_id=session_id,
+            payment_intent_id=payment_intent_id,
+            amount_total=amount,
+            metadata=created["metadata"],
+        ))
+        assert client.post(
+            "/api/v1/billing/webhook",
+            content=b"{}",
+            headers={"Stripe-Signature": "valid_signature"},
+        ).json() == {"processed": True}
+
+        provider.events.append(credit_checkout_event(
+            company_id,
+            event_id=f"evt_duplicate_session_{index}",
+            checkout_session_id=session_id,
+            payment_intent_id=payment_intent_id,
+            amount_total=amount,
+            metadata=created["metadata"],
+        ))
+        provider.events.append(credit_checkout_event(
+            company_id,
+            event_id=f"evt_duplicate_payment_{index}",
+            checkout_session_id=f"cs_replayed_{index}",
+            payment_intent_id=payment_intent_id,
+            amount_total=amount,
+            metadata=created["metadata"],
+        ))
+        for _ in range(2):
+            assert client.post(
+                "/api/v1/billing/webhook",
+                content=b"{}",
+                headers={"Stripe-Signature": "valid_signature"},
+            ).json() == {"processed": True}
+
+    balance = client.get("/api/v1/billing/ai-credits", headers=headers).json()
+    assert balance["purchased_remaining"] == 31_500
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        purchases = list(session.scalars(
+            select(AICreditPurchase).where(
+                AICreditPurchase.company_id == UUID(company_id)
+            )
+        ))
+        assert len(purchases) == 2
+        assert {purchase.pack_code for purchase in purchases} == {
+            "professional_6500",
+            "professional_25000",
+        }
+        assert all(purchase.status == "paid" for purchase in purchases)
+        assert session.query(TenantAICreditLedgerEntry).filter_by(
+            transaction_type="purchase_grant"
+        ).count() == 2
+    engine.dispose()
+
+
+def test_delayed_async_payment_uses_purchase_snapshot_after_subscription_change(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="async-pack@acme.ca")
+    headers = auth_headers(login)
+    company_id = login["company"]["id"]
+    provider.events.append(subscription_event(company_id, event_id="evt_async_sub"))
+    client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    assert client.post(
+        "/api/v1/billing/credit-packs/checkout",
+        json={"pack_code": "professional_6500"},
+        headers=headers,
+    ).status_code == 200
+    created = provider.credit_checkouts[-1]
+
+    pending = credit_checkout_event(
+        company_id,
+        event_id="evt_async_pending",
+        payment_status="unpaid",
+        checkout_session_id="cs_created_1",
+        payment_intent_id="pi_async",
+        metadata=created["metadata"],
+    )
+    failed = credit_checkout_event(
+        company_id,
+        event_id="evt_async_failed",
+        event_type="checkout.session.async_payment_failed",
+        payment_status="unpaid",
+        checkout_session_id="cs_created_1",
+        payment_intent_id="pi_async",
+        metadata=created["metadata"],
+    )
+    provider.events.extend([pending, failed])
+    for _ in range(2):
+        assert client.post(
+            "/api/v1/billing/webhook",
+            content=b"{}",
+            headers={"Stripe-Signature": "valid_signature"},
+        ).status_code == 200
+    assert client.get("/api/v1/billing/ai-credits", headers=headers).json()[
+        "purchased_remaining"
+    ] == 0
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        account = session.scalar(select(BillingAccount).where(
+            BillingAccount.company_id == UUID(company_id)
+        ))
+        assert account is not None
+        account.status = "canceled"
+        session.commit()
+    engine.dispose()
+
+    provider.events.append(credit_checkout_event(
+        company_id,
+        event_id="evt_async_succeeded",
+        event_type="checkout.session.async_payment_succeeded",
+        payment_status="unpaid",
+        checkout_session_id="cs_created_1",
+        payment_intent_id="pi_async",
+        metadata=created["metadata"],
+    ))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    assert client.get("/api/v1/billing/ai-credits", headers=headers).json()[
+        "purchased_remaining"
+    ] == 6_500
+
+
+def test_refund_reverses_only_unconsumed_purchase_credits_and_flags_shortfall(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, provider, notifier = billing_environment
+    login = create_owner(client, notifier, email="refund-pack@acme.ca")
+    headers = auth_headers(login)
+    company_id = login["company"]["id"]
+    provider.events.append(subscription_event(company_id, event_id="evt_refund_sub"))
+    client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    client.post(
+        "/api/v1/billing/credit-packs/checkout",
+        json={"pack_code": "professional_6500"},
+        headers=headers,
+    )
+    created = provider.credit_checkouts[-1]
+    provider.events.append(credit_checkout_event(
+        company_id,
+        event_id="evt_refund_paid",
+        checkout_session_id="cs_created_1",
+        payment_intent_id="pi_refund",
+        metadata=created["metadata"],
+    ))
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        usage = AIUsageService(session, AIQuotaPolicy(get_settings()))
+        balance = session.get(TenantAICreditBalance, UUID(company_id))
+        assert balance is not None
+        balance.monthly_used = 25_000
+        session.commit()
+        usage.record_usage(UUID(company_id), "professional")
+        session.commit()
+    engine.dispose()
+
+    refund = {
+        "id": "evt_full_refund",
+        "type": "charge.refunded",
+        "data": {"object": {
+            "id": "ch_refund",
+            "customer": f"cus_{company_id}",
+            "payment_intent": "pi_refund",
+            "amount": 1_000,
+            "amount_refunded": 1_000,
+            "currency": "usd",
+            "metadata": created["metadata"],
+        }},
+    }
+    provider.events.append(refund)
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    assert client.get("/api/v1/billing/ai-credits", headers=headers).json()[
+        "purchased_remaining"
+    ] == 0
+
+    provider.events.append({
+        **refund,
+        "id": "evt_same_cumulative_refund",
+    })
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    assert client.get("/api/v1/billing/ai-credits", headers=headers).json()[
+        "purchased_remaining"
+    ] == 0
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        purchase = session.scalar(select(AICreditPurchase).where(
+            AICreditPurchase.stripe_payment_intent_id == "pi_refund"
+        ))
+        assert purchase is not None
+        assert purchase.credits_reversed == 6_499
+        assert purchase.refund_shortfall_credits == 1
+        assert purchase.review_required is True
+        assert purchase.status == "refund_review"
+        assert session.query(TenantAICreditLedgerEntry).filter_by(
+            transaction_type="purchase_refund"
+        ).count() == 1
+    engine.dispose()
 
 
 def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -709,7 +994,7 @@ def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.Monkey
 
     def create_session(**kwargs: Any) -> SimpleNamespace:
         captured.update(kwargs)
-        return SimpleNamespace(url="https://checkout.stripe.test/inline")
+        return SimpleNamespace(id="cs_inline", url="https://checkout.stripe.test/inline")
 
     monkeypatch.setattr(
         "backend.app.services.stripe_gateway.stripe.checkout.Session.create",
@@ -723,7 +1008,7 @@ def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.Monkey
         "avenqo_credits": "25000",
     }
 
-    url = StripeGateway("sk_test").create_credit_checkout(
+    checkout = StripeGateway("sk_test").create_credit_checkout(
         "cus_company_1",
         "price_credit_professional",
         metadata,
@@ -731,7 +1016,10 @@ def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.Monkey
         "https://app.test/cancel",
     )
 
-    assert url == "https://checkout.stripe.test/inline"
+    assert checkout == CreditCheckoutSession(
+        id="cs_inline",
+        url="https://checkout.stripe.test/inline",
+    )
     assert captured["mode"] == "payment"
     assert captured["adaptive_pricing"] == {"enabled": True}
     assert captured["line_items"] == [

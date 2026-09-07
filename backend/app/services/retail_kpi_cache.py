@@ -13,6 +13,7 @@ import csv
 import hashlib
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -20,10 +21,13 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
 
+from backend.app.ai.tools.business.analytics import parse_business_datetime
+
 _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="retail-kpi")
 _lock = Lock()
 _pending: set[str] = set()
-_failed: set[str] = set()
+_failed: dict[str, float] = {}
+_FAILURE_RETRY_SECONDS = 60.0
 _log = logging.getLogger(__name__)
 
 
@@ -46,7 +50,7 @@ def descriptor(tenant, dataset):
     except OSError:
         return None
     return {
-        "format": 2, "company": str(tenant.company_id), "dataset": str(dataset.id),
+        "format": 3, "company": str(tenant.company_id), "dataset": str(dataset.id),
         "version": version.version_number, "version_id": version.id,
         "artifact": str(path.resolve()), "checksum": version.checksum,
         "size": stat.st_size, "mtime": stat.st_mtime_ns,
@@ -76,8 +80,11 @@ def read_or_schedule(tenant, dataset):
         pass
     key = str(path)
     with _lock:
-        if key in _failed:
-            return "SOURCE_UNAVAILABLE", None
+        failed_at = _failed.get(key)
+        if failed_at is not None:
+            if time.monotonic() - failed_at < _FAILURE_RETRY_SECONDS:
+                return "SOURCE_UNAVAILABLE", None
+            _failed.pop(key, None)
         if key not in _pending and len(_pending) < 16:
             _pending.add(key)
             try:
@@ -94,7 +101,7 @@ def _run(spec, key):
     except Exception:
         _log.exception("Retail KPI preparation failed for dataset %s", spec["dataset"])
         with _lock:
-            _failed.add(key)
+            _failed[key] = time.monotonic()
     finally:
         with _lock:
             _pending.discard(key)
@@ -123,11 +130,10 @@ def rows(path):
 
 
 def timestamp(value):
-    try:
-        parsed = datetime.fromisoformat(str(value))
-        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
-    except (ValueError, TypeError):
+    parsed = parse_business_datetime(value)
+    if parsed is None:
         return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
 def build(spec):

@@ -195,6 +195,33 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     assert all(item["state"] == "UNAVAILABLE" for item in dashboard_b["kpis"])
 
 
+def test_dashboard_compares_non_iso_csv_dates_and_restores_recommendations(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-csv-dates.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Superstore", "CAD")
+        dataset = _dataset(session, company, "superstore.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": "07/20/2026", "sale": "S1", "client": "C1", "amount": 100},
+                {"date": "08/20/2026", "sale": "S2", "client": "C2", "amount": 200},
+            ],
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+
+        dashboard = service.build(TenantContext(company.id))
+
+    revenue = next(item for item in dashboard["kpis"] if item["key"] == "revenue")
+    assert revenue["value"] == 200
+    assert revenue["previous_value"] == 100
+    assert revenue["change_percent"] == 100
+    assert dashboard["priorities"][0]["type"] == "revenue_growth"
+    assert dashboard["priorities"][0]["evidence"]["change_percent"] == 100
+
+
 def test_dashboard_endpoint_is_tenant_derived_and_subscription_gated(tmp_path) -> None:
     engine = create_engine(
         f"sqlite:///{tmp_path / 'dashboard-api.db'}",

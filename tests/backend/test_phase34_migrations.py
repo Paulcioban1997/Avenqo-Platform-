@@ -53,12 +53,16 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
         "ai_conversations",
         "company_onboarding",
         "tenant_ai_credit_balances",
+        "tenant_ai_provider_attempts",
+        "tenant_ai_credit_reservations",
+        "tenant_ai_credit_ledger",
+        "ai_credit_purchases",
     ):
         assert expected in tables
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0010_dataset_relationship_cardinality"
+    assert current == "0012_ai_credit_economics"
     assert application_logger.disabled is False
 
 
@@ -106,7 +110,11 @@ def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:
     # une vraie base pré-Alembic ne l'aurait jamais eue. On l'exclut du
     # `create_all()` pour simuler fidèlement ce scénario et laisser la
     # migration 0003 la créer normalement via `upgrade(config, "head")`.
-    post_baseline_tables = {"company_onboarding", "tenant_ai_credit_balances"}
+    post_baseline_tables = {
+        "company_onboarding",
+        "tenant_ai_credit_balances",
+        "tenant_ai_provider_attempts",
+    }
     tables_before_onboarding = [
         table for table in Base.metadata.sorted_tables if table.name not in post_baseline_tables
     ]

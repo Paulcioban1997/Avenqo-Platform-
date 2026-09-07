@@ -16,7 +16,7 @@ from backend.app.ai.chat.exceptions import AIServiceUnavailableError, Conversati
 from backend.app.core.rate_limit import rate_limit
 from backend.app.ai.support.chat_service import SupportChatService
 from backend.app.ai.support.conversation_service import SupportConversationService
-from backend.app.ai.usage.exceptions import AIQuotaExceededError
+from backend.app.ai.usage.exceptions import AIQuotaExceededError, AIRequestConflictError
 from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.ai_support import get_support_chat_service, get_support_conversation_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
@@ -86,6 +86,8 @@ async def message(
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
     except AIQuotaExceededError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except AIRequestConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except AIServiceUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return SupportChatMessageResponse(id=item.id, role=item.role.value, content=item.content, created_at=item.created_at, sources=[SupportSourceResponse(type=source.source_type, identifier=source.identifier, name=source.name, metadata=source.metadata) for source in sources])
@@ -131,7 +133,7 @@ async def stream(
                     yield f"event: done\ndata: {json.dumps(event.payload)}\n\n"
                 elif event.kind == "error":
                     yield f"event: error\ndata: {json.dumps(event.payload)}\n\n"
-        except (ConversationNotFoundError, AIServiceUnavailableError, AIQuotaExceededError) as exc:
+        except (ConversationNotFoundError, AIServiceUnavailableError, AIQuotaExceededError, AIRequestConflictError) as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
     return StreamingResponse(events(), media_type="text/event-stream")
 

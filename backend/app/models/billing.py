@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, CheckConstraint, JSON, BigInteger, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,52 @@ class BillingInvoice(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AICreditPurchase(TimestampMixin, Base):
+    """Achat de crédits créé côté serveur et rapproché avec Stripe."""
+
+    __tablename__ = "ai_credit_purchases"
+    __table_args__ = (
+        CheckConstraint("credits_granted >= 0", name="ck_ai_credit_purchase_granted_nonnegative"),
+        CheckConstraint("credits_remaining >= 0", name="ck_ai_credit_purchase_remaining_nonnegative"),
+        CheckConstraint("credits_reserved >= 0", name="ck_ai_credit_purchase_reserved_nonnegative"),
+        CheckConstraint("credits_reserved <= credits_remaining", name="ck_ai_credit_purchase_reserved_available"),
+        CheckConstraint("price_usd_cents >= 0", name="ck_ai_credit_purchase_price_nonnegative"),
+        CheckConstraint("refunded_amount >= 0", name="ck_ai_credit_purchase_refund_nonnegative"),
+        CheckConstraint("credits_reversed >= 0", name="ck_ai_credit_purchase_reversed_nonnegative"),
+        CheckConstraint("refund_shortfall_credits >= 0", name="ck_ai_credit_purchase_shortfall_nonnegative"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
+    )
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
+    )
+    stripe_customer_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    pack_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    credits_granted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_remaining: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    price_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_paid: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="creating")
+    refunded_amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    credits_reversed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    refund_shortfall_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    company: Mapped["Company"] = relationship()
 
 
 class StripeWebhookEvent(Base):

@@ -4,6 +4,8 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 import 'package:avenqo/features/ai_support/ai_support_api.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/pages/assistant_page.dart'
     show ChatComposer, ChatHeader, ChatErrorState, ConversationSidebar, MessageError, MessageSources, StreamingMessage, UserMessage;
 import 'package:flutter/material.dart';
@@ -43,19 +45,23 @@ class _SupportPageState extends State<SupportPage> {
   bool _nearBottom = true;
   String? _error;
   String? _statusMessage;
-
-  static const suggestions = <String>[
-    'How do I import a CSV file?',
-    "What's included in my plan?",
-    'How do I connect a data source?',
-    'What does this error message mean?',
-  ];
+  late Translations _translations;
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_trackScrollPosition);
-    _loadConversations();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _translations = AvenqoLocaleScope.translationsOf(context);
+    if (!_initialized) {
+      _initialized = true;
+      _loadConversations();
+    }
   }
 
   @override
@@ -76,7 +82,7 @@ class _SupportPageState extends State<SupportPage> {
       if (mounted) setState(() => _conversations = conversations);
     } on ApiException {
       if (mounted) {
-        setState(() => _error = "Avenqo Support couldn't load your conversations. Please try again.");
+        setState(() => _error = _translations.company.connectionsGenericError);
       }
     } finally {
       if (mounted) setState(() => _loadingConversations = false);
@@ -104,7 +110,7 @@ class _SupportPageState extends State<SupportPage> {
           _conversations = _conversations.where((item) => item.id != conversation.id).toList();
           _selected = null;
         }
-        _error = "Avenqo Support couldn't open this conversation. Please try again.";
+        _error = _translations.company.connectionsGenericError;
       });
     } finally {
       if (mounted) setState(() => _loadingMessages = false);
@@ -155,8 +161,8 @@ class _SupportPageState extends State<SupportPage> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = error.statusCode == 401
-          ? 'Your session has expired. Please sign in again.'
-          : "Avenqo Support couldn't start this conversation. Please try again.");
+          ? _translations.auth.genericError
+          : _translations.assistant.requestUnavailable);
     }
   }
 
@@ -188,7 +194,9 @@ class _SupportPageState extends State<SupportPage> {
   void _completeStreamWithError() {
     if (!mounted || _messages.isEmpty) return;
     setState(() {
-      final last = _messages.last.copyWith(error: "Avenqo Support couldn't complete this request. Please try again.");
+      final last = _messages.last.copyWith(
+        error: _translations.assistant.requestUnavailable,
+      );
       _messages = [..._messages.take(_messages.length - 1), last];
       _generating = false;
       _statusMessage = null;
@@ -224,7 +232,9 @@ class _SupportPageState extends State<SupportPage> {
         }
       });
     } on ApiException {
-      if (mounted) setState(() => _error = "Avenqo Support couldn't delete this conversation. Please try again.");
+      if (mounted) {
+        setState(() => _error = _translations.company.connectionsGenericError);
+      }
     }
   }
 
@@ -247,6 +257,7 @@ class _SupportPageState extends State<SupportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context);
     final compact = MediaQuery.sizeOf(context).width < 900;
     final sidebar = ConversationSidebar(
       conversations: _conversations,
@@ -266,7 +277,7 @@ class _SupportPageState extends State<SupportPage> {
         if (!compact) SizedBox(width: 276, child: sidebar),
         if (!compact) const VerticalDivider(width: 1),
         Expanded(child: Column(children: [
-          ChatHeader(title: _selected?.title ?? 'Avenqo Support', compact: compact, onOpenConversations: () => _scaffoldKey.currentState?.openEndDrawer()),
+          ChatHeader(title: _selected?.title ?? t.company.navSupportLabel, compact: compact, onOpenConversations: () => _scaffoldKey.currentState?.openEndDrawer()),
           if (_error != null) ChatErrorState(message: _error!, onRetry: _loadConversations),
           Expanded(
             child: _loadingMessages
@@ -281,7 +292,7 @@ class _SupportPageState extends State<SupportPage> {
                   ),
           ),
           if (!_nearBottom && _messages.isNotEmpty)
-            Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.only(right: 24), child: FilledButton.tonalIcon(onPressed: () => _scrollToBottom(force: true), icon: const Icon(Icons.arrow_downward), label: const Text('Newest')))),
+            Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.only(right: 24), child: FilledButton.tonalIcon(onPressed: () => _scrollToBottom(force: true), icon: const Icon(Icons.arrow_downward), label: Text(t.assistant.newest)))),
           if (_statusMessage != null)
             Padding(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4), child: Align(alignment: Alignment.centerLeft, child: Text(_statusMessage!, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)))),
           ChatComposer(controller: _composer, generating: _generating, onSend: _send, onStop: _stopGenerating),
@@ -323,12 +334,16 @@ class _SupportEmptyState extends StatelessWidget {
   final ValueChanged<String?> onSuggestion;
 
   @override
-  Widget build(BuildContext context) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
-    Container(width: 52, height: 52, decoration: BoxDecoration(color: _Brand.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.help_outline, color: _Brand.blue)),
-    const SizedBox(height: 18), Text('Ask Avenqo Support', style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
-    const SizedBox(height: 10), const Text("Ask how to use Avenqo — imports, connections, plans, or an error message you saw. This assistant never accesses your business data.", textAlign: TextAlign.center),
-    const SizedBox(height: 22), Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [for (final item in _SupportPageState.suggestions) ActionChip(avatar: const Icon(Icons.arrow_outward, size: 16), label: Text(item), onPressed: () => onSuggestion(item))]),
-  ]))));
+  Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context);
+    final suggestions = t.faq.items.take(4).map((item) => item.question);
+    return Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 52, height: 52, decoration: BoxDecoration(color: _Brand.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.help_outline, color: _Brand.blue)),
+      const SizedBox(height: 18), Text(t.company.navSupportLabel, style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
+      const SizedBox(height: 10), Text(t.company.navSupportDescription, textAlign: TextAlign.center),
+      const SizedBox(height: 22), Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [for (final item in suggestions) ActionChip(avatar: const Icon(Icons.arrow_outward, size: 16), label: Text(item), onPressed: () => onSuggestion(item))]),
+    ]))));
+  }
 }
 
 class _SupportAssistantMessage extends StatelessWidget {
@@ -339,8 +354,9 @@ class _SupportAssistantMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final supportTitle = AvenqoLocaleScope.translationsOf(context).company.navSupportLabel;
     return Align(alignment: Alignment.centerLeft, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Container(margin: const EdgeInsets.only(bottom: 18), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: colors.surface, border: Border.all(color: colors.line), borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [const Icon(Icons.help_outline, size: 18, color: _Brand.blue), const SizedBox(width: 8), Text('Avenqo Support', style: TextStyle(fontWeight: FontWeight.w700, color: colors.ink))]), const SizedBox(height: 10),
+      Row(children: [const Icon(Icons.help_outline, size: 18, color: _Brand.blue), const SizedBox(width: 8), Text(supportTitle, style: TextStyle(fontWeight: FontWeight.w700, color: colors.ink))]), const SizedBox(height: 10),
       if (message.content.isNotEmpty) MarkdownBody(data: message.content, selectable: true),
       if (message.error != null) MessageError(message: message.error!, onRetry: onRetry),
       if (message.sources.isNotEmpty) MessageSources(sources: message.sources),

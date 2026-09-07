@@ -1,11 +1,12 @@
 // Dedicated release-gate test (AVENQO localization directive Part A1).
 //
-// Protects the 42-locale i18n catalog against silent regressions: it fails
+// Protects the visible i18n catalog against silent regressions: it fails
 // the normal `flutter test` suite if a future developer adds a key to
 // en.json but forgets another locale, removes a locale from _locales.json,
 // or breaks `Translations.fromJson` parsing for any locale file.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Locale;
 
 import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/core/token_store.dart';
@@ -15,32 +16,36 @@ import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _LocaleStore implements LocalePreferenceStore {
-  const _LocaleStore(this.code);
+  _LocaleStore(this.code);
 
-  final String code;
+  String? code;
+  final writes = <String>[];
 
   @override
   Future<String?> read() async => code;
 
   @override
-  Future<void> write(String code) async {}
+  Future<void> write(String code) async {
+    this.code = code;
+    writes.add(code);
+  }
 }
 
 const List<String> kExpectedLocaleCodes = [
-  'fr-CA', 'fr-FR', 'en', 'es', 'pt', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
+  'fr-CA', 'fr-FR', 'en-US', 'en-GB', 'es-ES', 'es-LatAm',
+  'pt-PT', 'pt-BR', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
   'el', 'sv', 'tr', 'cs', 'ka', 'hy', 'ar', 'ar-EG', 'he', 'fa', 'sw', 'am',
   'af', 'ha', 'zh', 'ja', 'ko', 'hi', 'bn', 'ur', 'ta', 'pa', 'ne', 'vi',
   'th', 'id', 'ms', 'tl', 'my', 'km', 'mn',
 ];
 
-/// Locale legacy conservée sur disque comme alias backward-compatible pour les
-/// utilisateurs existants ayant `fr` persisté (migrée vers fr-CA à la lecture
-/// via LocaleController) — jamais exposée comme option visible du sélecteur.
-const List<String> kLegacyAliasLocaleCodes = ['fr'];
+/// Catalogues génériques conservés sur disque pour les préférences historiques,
+/// mais migrés vers une variante régionale et jamais affichés dans le sélecteur.
+const List<String> kLegacyAliasLocaleCodes = ['fr', 'en', 'es', 'pt'];
 
 /// Set of top-level sections that must never silently fall back to English
 /// via `Translations.fromJson`'s `json['x'] != null ? ... : Fallback()`
-/// pattern — every one of the 42 locales must genuinely define them.
+/// pattern — every visible locale must genuinely define them.
 const List<String> kFallbackProneSections = [
   'assistant', 'auth', 'dashboardHome', 'admin', 'onboarding', 'company', 'agents', 'phase4e',
 ];
@@ -80,13 +85,27 @@ void main() {
   final registeredCodes =
       localesCatalog.map((e) => (e as Map<String, dynamic>)['code'] as String).toList();
 
-  test('exactly the 43 expected locales are registered in _locales.json', () {
+  test('only regional variants are registered in _locales.json', () {
     expect(defaultLocaleCode, 'fr-CA');
     expect(registeredCodes.toSet(), equals(kExpectedLocaleCodes.toSet()));
-    expect(registeredCodes.length, 43);
-    // Le legacy `fr` ne doit JAMAIS apparaître comme option visible.
-    expect(registeredCodes, isNot(contains('fr')));
-    expect(registeredCodes, containsAll(['fr-CA', 'fr-FR']));
+    expect(registeredCodes.length, 46);
+    expect(
+      registeredCodes,
+      isNot(contains(anyOf('fr', 'en', 'es', 'pt'))),
+    );
+    expect(
+      registeredCodes,
+      containsAll([
+        'fr-CA',
+        'fr-FR',
+        'en-US',
+        'en-GB',
+        'es-ES',
+        'es-LatAm',
+        'pt-PT',
+        'pt-BR',
+      ]),
+    );
   });
 
   test('no stale/unsupported locale file is accidentally exposed', () {
@@ -108,7 +127,7 @@ void main() {
     expect(enLeaves, isNotEmpty);
   });
 
-  test('all 44 catalogs contain required invoice UI and email keys', () {
+  test('all 50 catalogs contain required invoice UI and email keys', () {
     for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
       final json = _readLocaleJson(code);
       final billing = (json['phase4e'] as Map<String, dynamic>)['billing'] as Map<String, dynamic>;
@@ -174,7 +193,7 @@ void main() {
     }
   });
 
-  test('all 44 Agent catalogs are complete and free of HTTP error-page contamination', () {
+  test('all 50 Agent catalogs are complete and free of HTTP error-page contamination', () {
     final requiredKeys = <String>{
       'navLabel',
       'title',
@@ -215,7 +234,7 @@ void main() {
     }
   });
 
-  test('all 44 Billing and AI credit catalogs are localized and preserve placeholders', () {
+  test('all 50 Billing and AI credit catalogs are localized and preserve placeholders', () {
     final english = _readLocaleJson('en')['phase4e'] as Map<String, dynamic>;
     final englishLeaves = <String, String>{};
 
@@ -245,7 +264,9 @@ void main() {
           equals(_placeholders(entry.value)),
           reason: '$code phase4e.${entry.key} changed placeholders',
         );
-        if (code != 'en' && entry.key != 'priceUsd' && entry.value.length > 8) {
+        if (!code.startsWith('en') &&
+          entry.key != 'priceUsd' &&
+          entry.value.length > 8) {
           expect(
             value,
             isNot(entry.value),
@@ -256,7 +277,7 @@ void main() {
     }
   });
 
-  test('all 44 catalogs localize the company labels rendered by the Billing page', () {
+  test('all 50 catalogs localize the company labels rendered by the Billing page', () {
     const keys = [
       'billingTitle',
       'billingPortalButton',
@@ -275,7 +296,8 @@ void main() {
       for (final key in keys) {
         final value = company[key]?.toString().trim() ?? '';
         expect(value, isNotEmpty, reason: '$code company.$key is empty');
-        if (code != 'en' && (key == 'billingTitle' || english[key].toString().length > 8)) {
+        if (!code.startsWith('en') &&
+          (key == 'billingTitle' || english[key].toString().length > 8)) {
           expect(
             value,
             isNot(english[key]),
@@ -329,5 +351,87 @@ void main() {
       expect(company.billingInvoiceFallback, expectedCompany['billingInvoiceFallback']);
       expect(company.connectionsRetry, expectedCompany['connectionsRetry']);
     }
+  });
+
+  test('a regional locale preference persists and restores per user', () async {
+    final store = _LocaleStore('en-GB');
+    final first = LocaleController(store: store);
+    await first.initialize();
+
+    expect(first.code, 'en-GB');
+    await first.setLocale('pt-BR');
+    expect(store.writes.last, 'pt-BR');
+
+    final restored = LocaleController(store: store);
+    await restored.initialize();
+    expect(restored.code, 'pt-BR');
+  });
+
+  test('legacy generic locale preferences migrate to regional options', () async {
+    const aliases = {
+      'fr': 'fr-CA',
+      'en': 'en-US',
+      'es': 'es-LatAm',
+      'pt': 'pt-PT',
+    };
+
+    for (final entry in aliases.entries) {
+      final store = _LocaleStore(entry.key);
+      final controller = LocaleController(store: store);
+      await controller.initialize();
+
+      expect(controller.code, entry.value, reason: entry.key);
+      expect(store.writes.last, entry.value, reason: entry.key);
+    }
+  });
+
+  test('browser detection preserves exact supported regional locales', () async {
+    final cases = <Locale, String>{
+      const Locale('fr', 'FR'): 'fr-FR',
+      const Locale('en', 'US'): 'en-US',
+      const Locale('en', 'GB'): 'en-GB',
+      const Locale('es', 'ES'): 'es-ES',
+      const Locale('pt', 'PT'): 'pt-PT',
+      const Locale('pt', 'BR'): 'pt-BR',
+    };
+
+    for (final entry in cases.entries) {
+      final controller = LocaleController(
+        store: _LocaleStore(null),
+        platformLocale: entry.key,
+      );
+      await controller.initialize();
+      expect(controller.code, entry.value, reason: entry.key.toLanguageTag());
+    }
+  });
+
+  test('es-419 and Latin-American browser regions resolve to es-LatAm', () async {
+    for (final locale in const [
+      Locale.fromSubtags(languageCode: 'es', countryCode: '419'),
+      Locale('es', 'MX'),
+    ]) {
+      final controller = LocaleController(
+        store: _LocaleStore(null),
+        platformLocale: locale,
+      );
+      await controller.initialize();
+      expect(controller.code, 'es-LatAm', reason: locale.toLanguageTag());
+    }
+  });
+
+  test('unsupported preferences and browser locales fall back safely', () async {
+    final supportedBrowser = LocaleController(
+      store: _LocaleStore('xx-YY'),
+      platformLocale: const Locale('en', 'GB'),
+    );
+    await supportedBrowser.initialize();
+    expect(supportedBrowser.code, 'en-GB');
+
+    final unknownBrowser = LocaleController(
+      store: _LocaleStore(null),
+      platformLocale: const Locale('zz', 'ZZ'),
+    );
+    await unknownBrowser.initialize();
+    expect(unknownBrowser.code, defaultLocaleCode);
   });
 }

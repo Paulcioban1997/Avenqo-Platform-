@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, List
 
@@ -117,6 +118,14 @@ class Settings(BaseSettings):
         default=None,
         alias="STRIPE_PRICE_CREDIT_PROFESSIONAL",
     )
+    stripe_price_credit_professional_6500: str | None = Field(
+        default=None,
+        alias="STRIPE_PRICE_CREDIT_PROFESSIONAL_6500",
+    )
+    stripe_price_credit_professional_25000: str | None = Field(
+        default=None,
+        alias="STRIPE_PRICE_CREDIT_PROFESSIONAL_25000",
+    )
     stripe_price_enterprise: str | None = Field(default=None, alias="STRIPE_PRICE_ENTERPRISE")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
@@ -142,6 +151,21 @@ class Settings(BaseSettings):
     ai_gateway_max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0, alias="AI_GATEWAY_MAX_DELAY_SECONDS")
     ai_gateway_circuit_failure_threshold: int = Field(default=3, ge=1, le=20, alias="AI_GATEWAY_CIRCUIT_FAILURE_THRESHOLD")
     ai_gateway_circuit_cooldown_seconds: float = Field(default=30.0, ge=1.0, le=600.0, alias="AI_GATEWAY_CIRCUIT_COOLDOWN_SECONDS")
+    avenqo_provider_cost_per_credit_usd: Decimal = Field(
+        default=Decimal("0.00030"),
+        gt=0,
+        alias="AVENQO_PROVIDER_COST_PER_CREDIT_USD",
+    )
+    ai_credit_reservation_ttl_minutes: int = Field(
+        default=1440,
+        ge=1,
+        le=10080,
+        alias="AI_CREDIT_RESERVATION_TTL_MINUTES",
+    )
+    ai_model_rate_card: dict[str, dict[str, object]] = Field(
+        default_factory=dict,
+        alias="AI_MODEL_RATE_CARD",
+    )
     # Avenqo Platform Support AI (Phase 32) : dossier de la base de connaissances
     # produit (jamais les données métier d'un tenant — voir backend/app/ai/support/).
     ai_support_knowledge_root: str = Field(default="platform_knowledge", alias="AI_SUPPORT_KNOWLEDGE_ROOT")
@@ -192,6 +216,7 @@ class Settings(BaseSettings):
         "stripe_secret_key", "stripe_webhook_secret",
         "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
         "stripe_price_credit_demo", "stripe_price_credit_professional",
+        "stripe_price_credit_professional_6500", "stripe_price_credit_professional_25000",
         mode="before",
     )
     @classmethod
@@ -331,11 +356,24 @@ class Settings(BaseSettings):
         }
         return prices.get(price_id)
 
-    def stripe_credit_price_id(self, plan_code: str) -> str | None:
+    def stripe_credit_price_id(self, pack_code: str) -> str | None:
         return {
             "demo": self.stripe_price_credit_demo,
-            "professional": self.stripe_price_credit_professional,
-        }.get(plan_code)
+            "demo_extra": self.stripe_price_credit_demo,
+            "professional": (
+                self.stripe_price_credit_professional_25000
+                or self.stripe_price_credit_professional
+            ),
+            "professional_extra": (
+                self.stripe_price_credit_professional_25000
+                or self.stripe_price_credit_professional
+            ),
+            "professional_6500": self.stripe_price_credit_professional_6500,
+            "professional_25000": (
+                self.stripe_price_credit_professional_25000
+                or self.stripe_price_credit_professional
+            ),
+        }.get(pack_code)
 
 
 @lru_cache(maxsize=1)

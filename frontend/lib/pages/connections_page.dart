@@ -8,6 +8,7 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/file_picker/app_file_picker.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 import 'package:avenqo/i18n/translations.dart';
 
 // Ré-export pour compatibilité : les tests et consommateurs existants
@@ -1042,7 +1043,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
             return LayoutBuilder(
               builder: (context, constraints) {
                 final compact = constraints.maxWidth < 720;
-                final previewHeight = compact ? 220.0 : 300.0;
+                final previewHeight = compact ? 180.0 : 220.0;
                 final mappingsApplied =
                     (summary['mappings_applied'] as Map<String, dynamic>? ?? const {})
                         .length;
@@ -1085,8 +1086,57 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                     ],
                     const SizedBox(height: 16),
                     Expanded(
-                      child: ListView(
-                        children: [
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                          _CleaningSectionTitle(
+                            label: _cleaningText(widget.t, 'preview'),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: previewHeight,
+                            child: DefaultTabController(
+                              length: 2,
+                              child: Column(
+                                children: [
+                                  TabBar(
+                                    tabs: [
+                                      Tab(
+                                        text:
+                                            '${_cleaningText(widget.t, 'before')} (${before.length})',
+                                      ),
+                                      Tab(
+                                        text:
+                                            '${_cleaningText(widget.t, 'after')} (${after.length})',
+                                      ),
+                                    ],
+                                  ),
+                                  Expanded(
+                                    child: TabBarView(
+                                      children: [
+                                        _PreviewTable(
+                                          rows: before,
+                                          emptyLabel: _cleaningText(
+                                            widget.t,
+                                            'previewEmpty',
+                                          ),
+                                        ),
+                                        _PreviewTable(
+                                          rows: after,
+                                          emptyLabel: _cleaningText(
+                                            widget.t,
+                                            'previewEmpty',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
                           _CleaningSectionTitle(
                             label: _cleaningText(widget.t, 'summary'),
                           ),
@@ -1149,53 +1199,6 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                               ),
                             const SizedBox(height: 8),
                           ],
-                          _CleaningSectionTitle(
-                            label: _cleaningText(widget.t, 'preview'),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: previewHeight,
-                            child: DefaultTabController(
-                              length: 2,
-                              child: Column(
-                                children: [
-                                  TabBar(
-                                    tabs: [
-                                      Tab(
-                                        text:
-                                            '${_cleaningText(widget.t, 'before')} (${before.length})',
-                                      ),
-                                      Tab(
-                                        text:
-                                            '${_cleaningText(widget.t, 'after')} (${after.length})',
-                                      ),
-                                    ],
-                                  ),
-                                  Expanded(
-                                    child: TabBarView(
-                                      children: [
-                                        _PreviewTable(
-                                          rows: before,
-                                          emptyLabel: _cleaningText(
-                                            widget.t,
-                                            'previewEmpty',
-                                          ),
-                                        ),
-                                        _PreviewTable(
-                                          rows: after,
-                                          emptyLabel: _cleaningText(
-                                            widget.t,
-                                            'previewEmpty',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
                           if (exportFormats.isNotEmpty) ...[
                             _CleaningSectionTitle(
                               label: _cleaningText(widget.t, 'exports'),
@@ -1219,7 +1222,8 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                               ],
                             ),
                           ],
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -1322,27 +1326,45 @@ class _ColumnStrategyCard extends StatelessWidget {
             .map((item) => _cleaningText(t, item.toString()))
             .toList();
     final mappedField = strategy['mapped_field']?.toString();
-    final conversions =
-        '${strategy['numeric_conversions'] ?? 0}/${strategy['date_conversions'] ?? 0}/${strategy['boolean_conversions'] ?? 0}';
+    final conversionCount = (strategy['numeric_conversions'] as num? ?? 0) +
+        (strategy['date_conversions'] as num? ?? 0) +
+        (strategy['boolean_conversions'] as num? ?? 0);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border.all(color: colors.line),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
+          title: Text(
             strategy['column_name']?.toString() ?? '—',
-            style: TextStyle(
-              color: colors.ink,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 10),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _humanizeCode(
+                  strategy['inferred_type']?.toString() ??
+                      _cleaningText(t, 'notAvailable'),
+                ),
+                style: TextStyle(color: colors.muted),
+              ),
+              Text(
+                _cleaningText(
+                  t,
+                  strategy['suggested_missing_strategy']?.toString() ??
+                      'notAvailable',
+                ),
+                style: TextStyle(color: colors.muted),
+              ),
+            ],
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          children: [
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1374,7 +1396,7 @@ class _ColumnStrategyCard extends StatelessWidget {
               _CleaningMetric(
                 icon: Icons.swap_horiz_outlined,
                 label: _cleaningText(t, 'conversions'),
-                value: conversions,
+                value: '$conversionCount',
               ),
               _CleaningMetric(
                 icon: Icons.cleaning_services_outlined,
@@ -1403,7 +1425,8 @@ class _ColumnStrategyCard extends StatelessWidget {
               ],
             ),
           ],
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1421,11 +1444,12 @@ class _PreviewTable extends StatelessWidget {
       return Center(child: Text(emptyLabel));
     }
     final columns = rows.first.keys.take(8).toList();
-    return Scrollbar(
-      child: SingleChildScrollView(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
+    return LayoutBuilder(
+      builder: (context, constraints) => AvenqoDataTable(
+          semanticLabel: emptyLabel,
+          minWidth: columns.length * 180,
+          maxHeight: constraints.maxHeight,
+          fixedLeftColumns: 1,
             columns: [
               for (final column in columns) DataColumn(label: Text(column)),
             ],
@@ -1446,8 +1470,6 @@ class _PreviewTable extends StatelessWidget {
                   ],
                 ),
             ],
-          ),
-        ),
       ),
     );
   }

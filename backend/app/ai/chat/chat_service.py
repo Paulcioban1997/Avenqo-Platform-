@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError
@@ -11,10 +11,15 @@ from backend.app.ai.chat.source_service import RetrievedSource
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.failure_classification import FailureCategory, classify_exception
+from backend.app.ai.llm.router import LLMRoutingContext, LLMTaskComplexity, LLMTaskType, routing_context_for_chat
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
-from backend.app.ai.usage.exceptions import AIQuotaExceededError
+from backend.app.ai.usage.exceptions import (
+    AI_REQUEST_ALREADY_PROCESSED,
+    AIQuotaExceededError,
+    AIRequestConflictError,
+)
 from backend.app.ai.usage.service import AIUsageService, tokens_from_usage
 from backend.app.models import AIMessageRole
 from shared.ai_engine.contracts import TenantContext
@@ -90,16 +95,81 @@ class ChatService:
     def provider_name(self) -> str:
         return self._provider.name
 
-    async def classify_intent(self, system_instruction: str, prompt: str) -> str:
-        """Classify untrusted text without tenant retrieval, tools, or credit consumption."""
+    async def classify_intent(
+        self,
+        system_instruction: str,
+        prompt: str,
+        *,
+        tenant_id: UUID | None = None,
+        plan_code: str | None = None,
+        request_id: str = "",
+    ) -> str:
+        """Classify untrusted text without tenant retrieval or tools."""
 
-        try:
-            generation = await self._provider.generate(
-                system_instruction=system_instruction,
-                prompt=prompt,
+        avenqo_request_id = request_id or str(uuid4())
+        routing_context = LLMRoutingContext(
+            task_type=LLMTaskType.CLASSIFICATION,
+            complexity=LLMTaskComplexity.SIMPLE,
+            context_tokens=max((len(prompt) + 3) // 4, 1),
+            requires_structured_output=True,
+            plan_code=plan_code,
+            avenqo_request_id=avenqo_request_id,
+        )
+        reservation_active = False
+        if self._usage_service is not None and tenant_id is not None:
+            estimated_credits = self._usage_service.estimate_credits(
+                self._provider.estimate_cost_usd(routing_context)
             )
+            claim = self._usage_service.claim_credit_reservation(
+                tenant_id,
+                plan_code,
+                avenqo_request_id,
+                estimated_credits,
+            )
+            if not claim.acquired:
+                raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
+            reservation_active = True
+        try:
+            with self._provider.routing(routing_context):
+                generation = await self._provider.generate(
+                    system_instruction=system_instruction,
+                    prompt=prompt,
+                )
         except LLMProviderError as exc:
+            if self._usage_service is not None and tenant_id is not None and reservation_active:
+                failed_attempts = tuple(getattr(exc, "attempts", ()))
+                if failed_attempts:
+                    self._usage_service.settle_reservation(
+                        tenant_id,
+                        plan_code,
+                        avenqo_request_id,
+                        attempts=failed_attempts,
+                        count_request=False,
+                    )
+                else:
+                    self._usage_service.release_reservation(
+                        tenant_id,
+                        avenqo_request_id,
+                        reason="classification_failure_without_cost",
+                    )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
+        except BaseException:
+            if self._usage_service is not None and tenant_id is not None and reservation_active:
+                self._usage_service.release_reservation(
+                    tenant_id,
+                    avenqo_request_id,
+                    reason="classification_aborted",
+                )
+            raise
+        if self._usage_service is not None and tenant_id is not None:
+            self._usage_service.settle_reservation(
+                tenant_id,
+                plan_code,
+                avenqo_request_id,
+                tokens=tokens_from_usage(generation.token_usage),
+                attempts=generation.attempts,
+                count_request=False,
+            )
         return generation.content
 
     def validate_conversation(self, tenant_id: UUID, user_id: UUID, conversation_id: UUID) -> None:
@@ -150,9 +220,13 @@ class ChatService:
     ):
         if self._usage_service is not None:
             self._usage_service.ensure_quota_available(tenant_id, plan_code)
+            balance = self._usage_service.get_credit_balance(tenant_id, plan_code)
+            remaining = balance["total_remaining"]
+            remaining_credits = remaining if isinstance(remaining, int) else None
+        else:
+            remaining_credits = None
 
         self._conversations.get(tenant_id, user_id, conversation_id)
-        self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.USER, query)
         sources = self._retrieval.retrieve_context(tenant_id, query) if retrieve_tenant_data else []
         history = "\n".join(f"{message.role.value}: {message.content}" for message in self._conversations.messages(tenant_id, conversation_id))
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
@@ -170,10 +244,38 @@ class ChatService:
             tenant=TenantContext(company_id=tenant_id),
             user_id=user_id,
             permissions=permissions,
-            request_id=request_id,
+            request_id=request_id or str(uuid4()),
             conversation_id=conversation_id,
         )
+        routing_context = routing_context_for_chat(
+            query=query,
+            prompt=prompt,
+            has_tools=bool(available_tools),
+            plan_code=plan_code,
+            remaining_credits=remaining_credits,
+            avenqo_request_id=tool_context.request_id,
+        )
+        reservation_active = False
+        if self._usage_service is not None:
+            estimated_credits = self._usage_service.estimate_credits(
+                self._provider.estimate_cost_usd(routing_context)
+            )
+            claim = self._usage_service.claim_credit_reservation(
+                tenant_id,
+                plan_code,
+                tool_context.request_id,
+                estimated_credits,
+            )
+            if not claim.acquired:
+                raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
+            reservation_active = True
         try:
+            self._conversations.add_message(
+                tenant_id,
+                conversation_id,
+                AIMessageRole.USER,
+                query,
+            )
             system_instruction = _localized_system_instruction(
                 SYSTEM_INSTRUCTION,
                 user_language=user_language,
@@ -181,20 +283,39 @@ class ChatService:
                 company_currency=company_currency,
                 company_timezone=company_timezone,
             )
-            if self._orchestrator is not None:
-                result = await self._orchestrator.run(
-                    system_instruction=system_instruction,
-                    user_query=prompt,
-                    context=tool_context,
-                    available_tools=available_tools,
-                )
-                content, provider_name, model_name, token_usage = result.content, result.provider, result.model, result.token_usage
-                self.last_tool_call_results = result.tool_call_results
-            else:
-                generation = await self._provider.generate(system_instruction=system_instruction, prompt=prompt)
-                content, provider_name, model_name, token_usage = generation.content, generation.provider, generation.model, generation.token_usage
-                self.last_tool_call_results = ()
+            with self._provider.routing(routing_context):
+                if self._orchestrator is not None:
+                    result = await self._orchestrator.run(
+                        system_instruction=system_instruction,
+                        user_query=prompt,
+                        context=tool_context,
+                        available_tools=available_tools,
+                    )
+                    content, provider_name, model_name, token_usage = result.content, result.provider, result.model, result.token_usage
+                    attempts = result.attempts
+                    self.last_tool_call_results = result.tool_call_results
+                else:
+                    generation = await self._provider.generate(system_instruction=system_instruction, prompt=prompt)
+                    content, provider_name, model_name, token_usage = generation.content, generation.provider, generation.model, generation.token_usage
+                    attempts = generation.attempts
+                    self.last_tool_call_results = ()
         except LLMProviderError as exc:
+            if self._usage_service is not None and reservation_active:
+                failed_attempts = tuple(getattr(exc, "attempts", ()))
+                if failed_attempts:
+                    self._usage_service.settle_reservation(
+                        tenant_id,
+                        plan_code,
+                        tool_context.request_id,
+                        attempts=failed_attempts,
+                        count_request=False,
+                    )
+                else:
+                    self._usage_service.release_reservation(
+                        tenant_id,
+                        tool_context.request_id,
+                        reason="provider_failure_without_cost",
+                    )
             category = classify_exception(exc.__cause__ or exc)
             logger.exception(
                 "ai_chat_provider_error tenant_id=%s user_id=%s provider=%s category=%s",
@@ -204,13 +325,23 @@ class ChatService:
                 category.value,
             )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
+        except BaseException:
+            if self._usage_service is not None and reservation_active:
+                self._usage_service.release_reservation(
+                    tenant_id,
+                    tool_context.request_id,
+                    reason="request_aborted",
+                )
+            raise
 
         if self._usage_service is not None:
-            self._usage_service.record_usage(
+            self._usage_service.settle_reservation(
                 tenant_id,
                 plan_code,
+                tool_context.request_id,
                 tokens=tokens_from_usage(token_usage),
                 tool_calls=len(self.last_tool_call_results),
+                attempts=attempts,
             )
 
         sources = sources + _tool_sources(self.last_tool_call_results)
@@ -249,9 +380,13 @@ class ChatService:
             except AIQuotaExceededError as exc:
                 yield ChatStreamEvent("error", {"detail": str(exc)})
                 return
+            balance = self._usage_service.get_credit_balance(tenant_id, plan_code)
+            remaining = balance["total_remaining"]
+            remaining_credits = remaining if isinstance(remaining, int) else None
+        else:
+            remaining_credits = None
 
         self._conversations.get(tenant_id, user_id, conversation_id)
-        self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.USER, query)
         sources = self._retrieval.retrieve_context(tenant_id, query)
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
         prompt = f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
@@ -266,6 +401,9 @@ class ChatService:
         )
         content = ""
         provider_name = self._provider.name
+        model_name = ""
+        token_usage: dict[str, object] = {}
+        attempts = ()
         tool_call_results: tuple[ToolCallResult, ...] = ()
         cancelled = False
         system_instruction = _localized_system_instruction(
@@ -276,50 +414,117 @@ class ChatService:
             company_timezone=company_timezone,
         )
 
-        try:
-            if self._orchestrator is None or not available_tools:
-                chunks: list[str] = []
-                async for chunk in self._provider.stream(system_instruction=system_instruction, prompt=prompt):
-                    if is_cancelled is not None and await is_cancelled():
-                        cancelled = True
-                        break
-                    chunks.append(chunk)
-                    yield ChatStreamEvent("delta", {"chunk": chunk})
-                content = "".join(chunks)
-            else:
-                tool_context = ToolExecutionContext(
-                    tenant=TenantContext(company_id=tenant_id),
-                    user_id=user_id,
-                    permissions=permissions,
-                    request_id=request_id,
-                    conversation_id=conversation_id,
+        avenqo_request_id = request_id or str(uuid4())
+        routing_context = routing_context_for_chat(
+            query=query,
+            prompt=prompt,
+            has_tools=bool(available_tools),
+            plan_code=plan_code,
+            remaining_credits=remaining_credits,
+            avenqo_request_id=avenqo_request_id,
+        )
+        reservation_active = False
+        if self._usage_service is not None:
+            try:
+                estimated_credits = self._usage_service.estimate_credits(
+                    self._provider.estimate_cost_usd(routing_context)
                 )
-                async for event in self._orchestrator.run_streaming(
-                    system_instruction=system_instruction,
-                    user_query=prompt,
-                    context=tool_context,
-                    available_tools=available_tools,
-                    is_cancelled=is_cancelled,
-                ):
-                    if event.kind == "status":
-                        yield ChatStreamEvent("status", {"message": event.status})
-                        continue
-                    result = event.result
-                    if result is None:
-                        continue
-                    if result.cancelled:
-                        cancelled = True
-                        break
-                    content = result.content
-                    provider_name = result.provider or self._provider.name
-                    tool_call_results = result.tool_call_results
-                    for start in range(0, len(content), _STREAM_CHUNK_SIZE):
-                        if is_cancelled is not None and await is_cancelled():
+                claim = self._usage_service.claim_credit_reservation(
+                    tenant_id,
+                    plan_code,
+                    avenqo_request_id,
+                    estimated_credits,
+                )
+                if not claim.acquired:
+                    yield ChatStreamEvent(
+                        "error",
+                        {"detail": AI_REQUEST_ALREADY_PROCESSED},
+                    )
+                    return
+                reservation_active = True
+            except AIQuotaExceededError as exc:
+                yield ChatStreamEvent("error", {"detail": str(exc)})
+                return
+        try:
+            self._conversations.add_message(
+                tenant_id,
+                conversation_id,
+                AIMessageRole.USER,
+                query,
+            )
+            with self._provider.routing(routing_context):
+                if self._orchestrator is None or not available_tools:
+                    chunks: list[str] = []
+                    async for event in self._provider.stream_events(system_instruction=system_instruction, prompt=prompt):
+                        if event.usage is not None:
+                            provider_name = event.usage.provider
+                            model_name = event.usage.model
+                            token_usage = event.usage.as_token_usage()
+                        if event.attempts:
+                            attempts = event.attempts
+                        if not event.content:
+                            continue
+                        if not cancelled and is_cancelled is not None and await is_cancelled():
+                            cancelled = True
+                        if cancelled:
+                            continue
+                        chunks.append(event.content)
+                        yield ChatStreamEvent("delta", {"chunk": event.content})
+                    content = "".join(chunks)
+                else:
+                    tool_context = ToolExecutionContext(
+                        tenant=TenantContext(company_id=tenant_id),
+                        user_id=user_id,
+                        permissions=permissions,
+                        request_id=avenqo_request_id,
+                        conversation_id=conversation_id,
+                    )
+                    async for event in self._orchestrator.run_streaming(
+                        system_instruction=system_instruction,
+                        user_query=prompt,
+                        context=tool_context,
+                        available_tools=available_tools,
+                        is_cancelled=is_cancelled,
+                    ):
+                        if event.kind == "status":
+                            yield ChatStreamEvent("status", {"message": event.status})
+                            continue
+                        result = event.result
+                        if result is None:
+                            continue
+                        if result.cancelled:
                             cancelled = True
                             break
-                        piece = content[start:start + _STREAM_CHUNK_SIZE]
-                        yield ChatStreamEvent("delta", {"chunk": piece})
+                        content = result.content
+                        provider_name = result.provider or self._provider.name
+                        model_name = result.model
+                        token_usage = result.token_usage
+                        attempts = result.attempts
+                        tool_call_results = result.tool_call_results
+                        for start in range(0, len(content), _STREAM_CHUNK_SIZE):
+                            if is_cancelled is not None and await is_cancelled():
+                                cancelled = True
+                                break
+                            piece = content[start:start + _STREAM_CHUNK_SIZE]
+                            yield ChatStreamEvent("delta", {"chunk": piece})
         except LLMProviderError as exc:
+            if self._usage_service is not None and reservation_active:
+                failed_attempts = tuple(getattr(exc, "attempts", ()))
+                if failed_attempts:
+                    self._usage_service.settle_reservation(
+                        tenant_id,
+                        plan_code,
+                        avenqo_request_id,
+                        attempts=failed_attempts,
+                        count_request=False,
+                    )
+                else:
+                    self._usage_service.release_reservation(
+                        tenant_id,
+                        avenqo_request_id,
+                        reason="provider_failure_without_cost",
+                    )
+                reservation_active = False
             category = classify_exception(exc.__cause__ or exc)
             logger.exception(
                 "ai_chat_stream_provider_error tenant_id=%s user_id=%s provider=%s category=%s",
@@ -330,20 +535,47 @@ class ChatService:
             )
             yield ChatStreamEvent("error", {"detail": self._client_error_message(exc)})
             return
+        except BaseException:
+            if self._usage_service is not None and reservation_active:
+                self._usage_service.release_reservation(
+                    tenant_id,
+                    avenqo_request_id,
+                    reason="stream_aborted",
+                )
+            raise
+
+        if self._usage_service is not None:
+            if cancelled and not attempts:
+                self._usage_service.release_reservation(
+                    tenant_id,
+                    avenqo_request_id,
+                    reason="cancelled_without_metered_cost",
+                )
+            else:
+                self._usage_service.settle_reservation(
+                    tenant_id,
+                    plan_code,
+                    avenqo_request_id,
+                    tokens=tokens_from_usage(token_usage),
+                    tool_calls=len(tool_call_results),
+                    attempts=attempts,
+                    count_request=not cancelled,
+                )
 
         if cancelled or not content:
             # Ne jamais persister une réponse incomplète après annulation client.
             return
 
-        if self._usage_service is not None:
-            self._usage_service.record_usage(
-                tenant_id,
-                plan_code,
-                tool_calls=len(tool_call_results),
-            )
-
         all_sources = sources + _tool_sources(tool_call_results)
-        message = self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.ASSISTANT, content, provider_name)
+        message = self._conversations.add_message(
+            tenant_id,
+            conversation_id,
+            AIMessageRole.ASSISTANT,
+            content,
+            provider_name,
+            model_name,
+            token_usage,
+        )
         self._conversations.add_sources(tenant_id, message.id, all_sources)
         self.last_stream_sources = all_sources
         self.last_tool_call_results = tool_call_results

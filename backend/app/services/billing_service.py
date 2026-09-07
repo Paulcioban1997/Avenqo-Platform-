@@ -1,15 +1,24 @@
 """Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_CEILING
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.ai.usage.service import AIUsageService
-from backend.app.models import BillingAccount, BillingInvoice, Company, StripeWebhookEvent, User, UserRole
+from backend.app.models import (
+    AICreditPurchase,
+    BillingAccount,
+    BillingInvoice,
+    Company,
+    StripeWebhookEvent,
+    User,
+    UserRole,
+)
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.stripe_gateway import BillingProvider
 from payments import PlanCode, get_plan
@@ -159,20 +168,42 @@ class BillingService:
             raise BillingOperationError("Pack de crédits indisponible pour cette offre")
         if not account.stripe_customer_id:
             raise BillingOperationError("Client Stripe introuvable pour cet abonnement")
+        purchase = AICreditPurchase(
+            id=uuid4(),
+            company_id=company.id,
+            stripe_customer_id=account.stripe_customer_id,
+            pack_code=pack.code,
+            plan_code=account.plan_code,
+            price_usd_cents=pack.price_usd * 100,
+            status="creating",
+        )
+        self._session.add(purchase)
+        self._session.commit()
         metadata = {
             "avenqo_kind": "ai_credit_pack",
             "avenqo_company_id": str(company.id),
+            "avenqo_credit_purchase_id": str(purchase.id),
             "avenqo_credit_pack": pack.code,
             "avenqo_plan_code": account.plan_code,
             "avenqo_credits": str(pack.credits),
         }
-        return self._provider.create_credit_checkout(
-            account.stripe_customer_id,
-            self._required_credit_price(account.plan_code),
-            metadata,
-            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=success",
-            f"{self._settings.frontend_url.rstrip('/')}/billing?credits=cancelled",
-        )
+        try:
+            checkout = self._provider.create_credit_checkout(
+                account.stripe_customer_id,
+                self._required_credit_price(pack.code),
+                metadata,
+                f"{self._settings.frontend_url.rstrip('/')}/billing?credits=success",
+                f"{self._settings.frontend_url.rstrip('/')}/billing?credits=cancelled",
+            )
+        except Exception:
+            purchase.status = "checkout_failed"
+            self._session.commit()
+            raise
+        purchase.stripe_checkout_session_id = checkout.id
+        if purchase.status == "creating":
+            purchase.status = "pending"
+        self._session.commit()
+        return checkout.url
 
     def process_webhook(self, payload: bytes, signature: str) -> bool:
         if not self._settings.stripe_webhook_secret:
@@ -196,8 +227,18 @@ class BillingService:
             self._sync_subscription(data)
         elif event_type.startswith("invoice."):
             self._sync_invoice(data)
-        elif event_type == "checkout.session.completed":
-            self._fulfill_credit_checkout(data)
+        elif event_type in {
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        }:
+            self._fulfill_credit_checkout(
+                data,
+                payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
+            )
+        elif event_type == "checkout.session.async_payment_failed":
+            self._mark_credit_checkout_failed(data)
+        elif event_type == "charge.refunded":
+            self._refund_credit_purchase(data)
         self._session.add(StripeWebhookEvent(
             stripe_event_id=event_id,
             event_type=event_type,
@@ -206,12 +247,46 @@ class BillingService:
         self._session.commit()
         return True
 
-    def _fulfill_credit_checkout(self, checkout: dict[str, Any]) -> None:
+    def _fulfill_credit_checkout(
+        self,
+        checkout: dict[str, Any],
+        *,
+        payment_confirmed: bool = False,
+    ) -> None:
+        resolved = self._resolve_credit_purchase(checkout)
+        if resolved is None:
+            return
+        purchase, pack = resolved
+        if not payment_confirmed and checkout.get("payment_status") != "paid":
+            if purchase.status in {"creating", "pending"}:
+                purchase.status = "pending_payment"
+            return
+        if purchase.credits_granted > 0 or purchase.status == "refunded":
+            return
+        credits_to_grant = max(pack.credits - purchase.credits_reversed, 0)
+        if credits_to_grant:
+            self._usage_service.add_purchased_credits(
+                purchase.company_id,
+                credits_to_grant,
+                idempotency_key=f"credit-purchase:{purchase.id}",
+                reference_id=str(purchase.id),
+                details={
+                    "pack_code": purchase.pack_code,
+                    "stripe_checkout_session_id": purchase.stripe_checkout_session_id,
+                    "stripe_payment_intent_id": purchase.stripe_payment_intent_id,
+                },
+            )
+            purchase.credits_granted = credits_to_grant
+            purchase.credits_remaining = credits_to_grant
+        purchase.status = "partially_refunded" if purchase.refunded_amount else "paid"
+
+    def _resolve_credit_purchase(
+        self,
+        checkout: dict[str, Any],
+    ) -> tuple[AICreditPurchase, AICreditPack] | None:
         metadata = checkout.get("metadata") or {}
         if metadata.get("avenqo_kind") != "ai_credit_pack":
-            return
-        if checkout.get("payment_status") != "paid":
-            raise BillingOperationError("Le paiement du pack de crédits n'est pas confirmé")
+            return None
         try:
             company_id = UUID(str(metadata["avenqo_company_id"]))
             pack_code = str(metadata["avenqo_credit_pack"])
@@ -220,20 +295,159 @@ class BillingService:
         account = self._session.scalar(
             select(BillingAccount).where(BillingAccount.company_id == company_id)
         )
-        if account is None or account.status not in {"active", "trialing"}:
-            raise BillingOperationError("Abonnement Avenqo inactif pour ce pack de crédits")
+        if account is None:
+            raise BillingOperationError("Compte de facturation introuvable pour ce pack de crédits")
         if str(checkout.get("customer") or "") != account.stripe_customer_id:
             raise BillingOperationError("Client Stripe incompatible avec le tenant")
         pack = self._credit_pack(pack_code)
         if metadata.get("avenqo_credits") != str(pack.credits):
             raise BillingOperationError("Quantité du pack de crédits invalide")
-        if metadata.get("avenqo_plan_code") != account.plan_code:
-            raise BillingOperationError("Offre du pack de crédits incompatible")
-        if pack.plan_code.value != account.plan_code:
-            raise BillingOperationError("Pack de crédits incompatible avec l'abonnement")
-        if not checkout.get("currency") or not isinstance(checkout.get("amount_total"), int):
+        checkout_session_id = str(checkout.get("id") or "")
+        payment_intent_id = str(checkout.get("payment_intent") or "")
+        if not checkout_session_id:
+            raise BillingOperationError("Session Checkout Stripe absente")
+        if not payment_intent_id:
+            raise BillingOperationError("PaymentIntent Stripe absent")
+        amount_total = checkout.get("amount_total")
+        currency = str(checkout.get("currency") or "").lower()
+        if not currency or not isinstance(amount_total, int) or amount_total < 0:
             raise BillingOperationError("Résultat de paiement Stripe incomplet")
-        self._usage_service.add_purchased_credits(company_id, pack.credits)
+
+        purchase_id = metadata.get("avenqo_credit_purchase_id")
+        purchase = None
+        if purchase_id:
+            try:
+                purchase = self._session.get(AICreditPurchase, UUID(str(purchase_id)))
+            except ValueError as exc:
+                raise BillingOperationError("Référence d'achat de crédits invalide") from exc
+            if purchase is None:
+                raise BillingOperationError("Achat de crédits introuvable")
+        by_session = self._session.scalar(select(AICreditPurchase).where(
+            AICreditPurchase.stripe_checkout_session_id == checkout_session_id
+        ))
+        by_payment = self._session.scalar(select(AICreditPurchase).where(
+            AICreditPurchase.stripe_payment_intent_id == payment_intent_id
+        ))
+        matched = {item.id for item in (purchase, by_session, by_payment) if item is not None}
+        if len(matched) > 1:
+            raise BillingOperationError("Références Stripe associées à des achats différents")
+        purchase = purchase or by_session or by_payment
+        if purchase is None:
+            if account.status not in {"active", "trialing"}:
+                raise BillingOperationError("Abonnement Avenqo inactif pour ce pack de crédits")
+            if metadata.get("avenqo_plan_code") != account.plan_code:
+                raise BillingOperationError("Offre du pack de crédits incompatible")
+            if pack.plan_code.value != account.plan_code:
+                raise BillingOperationError("Pack de crédits incompatible avec l'abonnement")
+            purchase = AICreditPurchase(
+                company_id=company_id,
+                stripe_customer_id=account.stripe_customer_id,
+                stripe_checkout_session_id=checkout_session_id,
+                stripe_payment_intent_id=payment_intent_id,
+                pack_code=pack.code,
+                plan_code=pack.plan_code.value,
+                price_usd_cents=pack.price_usd * 100,
+                status="pending",
+            )
+            self._session.add(purchase)
+            self._session.flush()
+
+        if purchase.company_id != company_id or purchase.stripe_customer_id != account.stripe_customer_id:
+            raise BillingOperationError("Achat de crédits incompatible avec le tenant")
+        if purchase.pack_code != pack.code or purchase.plan_code != str(metadata.get("avenqo_plan_code")):
+            raise BillingOperationError("Métadonnées incompatibles avec l'achat de crédits")
+        if purchase.stripe_checkout_session_id not in {None, checkout_session_id} and by_payment is None:
+            raise BillingOperationError("Session Checkout incompatible avec l'achat de crédits")
+        if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
+            raise BillingOperationError("PaymentIntent incompatible avec l'achat de crédits")
+        purchase.stripe_checkout_session_id = purchase.stripe_checkout_session_id or checkout_session_id
+        purchase.stripe_payment_intent_id = purchase.stripe_payment_intent_id or payment_intent_id
+        purchase.amount_paid = amount_total
+        purchase.currency = currency
+        return purchase, pack
+
+    def _mark_credit_checkout_failed(self, checkout: dict[str, Any]) -> None:
+        resolved = self._resolve_credit_purchase(checkout)
+        if resolved is None:
+            return
+        purchase, _ = resolved
+        if purchase.credits_granted == 0 and purchase.status != "refunded":
+            purchase.status = "failed"
+
+    def _refund_credit_purchase(self, charge: dict[str, Any]) -> None:
+        payment_intent_id = str(charge.get("payment_intent") or "")
+        metadata = charge.get("metadata") or {}
+        purchase = self._session.scalar(select(AICreditPurchase).where(
+            AICreditPurchase.stripe_payment_intent_id == payment_intent_id
+        )) if payment_intent_id else None
+        if purchase is None and metadata.get("avenqo_credit_purchase_id"):
+            try:
+                purchase = self._session.get(
+                    AICreditPurchase,
+                    UUID(str(metadata["avenqo_credit_purchase_id"])),
+                )
+            except ValueError as exc:
+                raise BillingOperationError("Référence de remboursement invalide") from exc
+        if purchase is None:
+            raise BillingOperationError("Achat de crédits introuvable pour le remboursement")
+        if payment_intent_id:
+            if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
+                raise BillingOperationError("PaymentIntent incompatible avec le remboursement")
+            purchase.stripe_payment_intent_id = payment_intent_id
+        charge_customer = str(charge.get("customer") or "")
+        if charge_customer and charge_customer != purchase.stripe_customer_id:
+            raise BillingOperationError("Client Stripe incompatible avec le remboursement")
+
+        amount_paid = purchase.amount_paid or int(charge.get("amount") or 0)
+        refunded_amount = int(charge.get("amount_refunded") or 0)
+        if amount_paid <= 0 or refunded_amount < 0 or refunded_amount > amount_paid:
+            raise BillingOperationError("Montant de remboursement Stripe invalide")
+        currency = str(charge.get("currency") or purchase.currency or "").lower()
+        if not currency or (purchase.currency and purchase.currency != currency):
+            raise BillingOperationError("Devise de remboursement Stripe incompatible")
+        purchase.amount_paid = amount_paid
+        purchase.currency = currency
+
+        pack = self._credit_pack(purchase.pack_code)
+        target_reversal = int(
+            (Decimal(pack.credits) * Decimal(refunded_amount) / Decimal(amount_paid)).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+        )
+        handled_reversal = purchase.credits_reversed + purchase.refund_shortfall_credits
+        incremental_reversal = max(target_reversal - handled_reversal, 0)
+        if incremental_reversal and purchase.credits_granted == 0:
+            purchase.credits_reversed += incremental_reversal
+            self._usage_service.record_credit_event(
+                purchase.company_id,
+                idempotency_key=f"credit-refund:{purchase.id}:{refunded_amount}",
+                transaction_type="purchase_refund_withheld",
+                reference_id=str(purchase.id),
+                details={"credits": incremental_reversal, "amount_refunded": refunded_amount},
+            )
+        elif incremental_reversal:
+            reversible = min(
+                incremental_reversal,
+                max(purchase.credits_remaining - purchase.credits_reserved, 0),
+            )
+            reversed_credits = self._usage_service.reverse_purchased_credits(
+                purchase.company_id,
+                reversible,
+                idempotency_key=f"credit-refund:{purchase.id}:{refunded_amount}",
+                reference_id=str(purchase.id),
+                details={"credits_requested": incremental_reversal, "amount_refunded": refunded_amount},
+            )
+            purchase.credits_remaining -= reversed_credits
+            purchase.credits_reversed += reversed_credits
+            purchase.refund_shortfall_credits += incremental_reversal - reversed_credits
+        purchase.refunded_amount = max(purchase.refunded_amount, refunded_amount)
+        purchase.review_required = purchase.refund_shortfall_credits > 0
+        if purchase.review_required:
+            purchase.status = "refund_review"
+        elif purchase.refunded_amount == amount_paid:
+            purchase.status = "refunded"
+        else:
+            purchase.status = "partially_refunded"
 
     @staticmethod
     def _credit_pack(code: str) -> AICreditPack:
@@ -395,10 +609,10 @@ class BillingService:
             raise BillingConfigurationError(f"Prix Stripe non configuré pour {plan_code.value}")
         return price_id
 
-    def _required_credit_price(self, plan_code: str) -> str:
-        price_id = self._settings.stripe_credit_price_id(plan_code)
+    def _required_credit_price(self, pack_code: str) -> str:
+        price_id = self._settings.stripe_credit_price_id(pack_code)
         if not price_id:
             raise BillingConfigurationError(
-                f"Prix Stripe du pack de crédits non configuré pour {plan_code}"
+                f"Prix Stripe du pack de crédits non configuré pour {pack_code}"
             )
         return price_id

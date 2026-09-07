@@ -39,7 +39,12 @@ def get_admin_service(
 ) -> AdminService:
     return AdminService(
         db,
-        AIUsageService(db, AIQuotaPolicy(settings)),
+        AIUsageService(
+            db,
+            AIQuotaPolicy(settings),
+            settings.avenqo_provider_cost_per_credit_usd,
+            settings.ai_credit_reservation_ttl_minutes,
+        ),
         get_provider_health_registry(),
         audit_log,
     )

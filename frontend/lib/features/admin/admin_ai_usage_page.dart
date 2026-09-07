@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/features/admin/admin_theme.dart';
+import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 import 'package:avenqo/i18n/translations.dart';
 
 typedef AdminCreditLoader = Future<List<Map<String, dynamic>>> Function(ApiClient api);
@@ -91,9 +93,11 @@ class AdminAiUsagePage extends StatelessWidget {
   }
 }
 
-String _credits(Object? value, Phase4eStrings strings) => value == null
+String _credits(BuildContext context, Object? value, Phase4eStrings strings) => value == null
     ? strings.customAllowance
-    : NumberFormat.decimalPattern().format(value);
+  : NumberFormat.decimalPattern(
+    intlLocaleCode(AvenqoLocaleScope.of(context).code),
+    ).format(value);
 
 AdminStatusTone _subscriptionTone(String status) {
   if (status == 'active' || status == 'trialing') return AdminStatusTone.positive;
@@ -112,9 +116,9 @@ class _AdminCreditsTable extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     return AdminCard(
       padding: EdgeInsets.zero,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
+      child: AvenqoDataTable(
+          semanticLabel: strings.aiUsage,
+          minWidth: 1280,
           headingTextStyle: TextStyle(color: colors.muted, fontWeight: FontWeight.w700),
           dataTextStyle: TextStyle(color: colors.ink),
           columns: [
@@ -129,7 +133,6 @@ class _AdminCreditsTable extends StatelessWidget {
             DataColumn(label: Text(strings.billingValue('viewInvoice'))),
           ],
           rows: [for (final company in companies) _row(context, company, strings)],
-        ),
       ),
     );
   }
@@ -141,11 +144,11 @@ DataRow _row(BuildContext context, Map<String, dynamic> company, Phase4eStrings 
     DataCell(Text(company['name']?.toString() ?? '—', style: const TextStyle(fontWeight: FontWeight.w700))),
     DataCell(Text(strings.planName(company['plan_code']?.toString() ?? ''))),
     DataCell(AdminStatusBadge(label: strings.subscriptionStatus(status), tone: _subscriptionTone(status))),
-    DataCell(Text(_credits(company['monthly_credits'], strings))),
-    DataCell(Text(_credits(company['monthly_credits_remaining'], strings))),
-    DataCell(Text(_credits(company['purchased_credits_remaining'], strings))),
-    DataCell(Text(_credits(company['total_credits_remaining'], strings))),
-    DataCell(Text(_credits(company['ai_requests_current_period'], strings))),
+    DataCell(Text(_credits(context, company['monthly_credits'], strings))),
+    DataCell(Text(_credits(context, company['monthly_credits_remaining'], strings))),
+    DataCell(Text(_credits(context, company['purchased_credits_remaining'], strings))),
+    DataCell(Text(_credits(context, company['total_credits_remaining'], strings))),
+    DataCell(Text(_credits(context, company['ai_requests_current_period'], strings))),
     DataCell(IconButton(
       tooltip: strings.billingValue('viewInvoice'),
       onPressed: () {
@@ -208,11 +211,11 @@ class _AdminCompanyCreditCard extends StatelessWidget {
             spacing: 20,
             runSpacing: 12,
             children: [
-              _AdminValue(label: strings.monthlyAllowance, value: _credits(company['monthly_credits'], strings)),
-              _AdminValue(label: strings.monthlyRemaining, value: _credits(company['monthly_credits_remaining'], strings)),
-              _AdminValue(label: strings.purchasedRemaining, value: _credits(company['purchased_credits_remaining'], strings)),
-              _AdminValue(label: strings.totalRemaining, value: _credits(company['total_credits_remaining'], strings)),
-              _AdminValue(label: strings.aiUsage, value: _credits(company['ai_requests_current_period'], strings)),
+              _AdminValue(label: strings.monthlyAllowance, value: _credits(context, company['monthly_credits'], strings)),
+              _AdminValue(label: strings.monthlyRemaining, value: _credits(context, company['monthly_credits_remaining'], strings)),
+              _AdminValue(label: strings.purchasedRemaining, value: _credits(context, company['purchased_credits_remaining'], strings)),
+              _AdminValue(label: strings.totalRemaining, value: _credits(context, company['total_credits_remaining'], strings)),
+              _AdminValue(label: strings.aiUsage, value: _credits(context, company['ai_requests_current_period'], strings)),
             ],
           ),
         ],

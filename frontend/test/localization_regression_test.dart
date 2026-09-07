@@ -5,6 +5,7 @@ import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/pages/home_page.dart';
+import 'package:avenqo/widgets/language_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -104,6 +105,34 @@ void main() {
 
     expect(find.textContaining('Your whole business.'), findsOneWidget);
     expect(find.textContaining('Toute votre entreprise.'), findsNothing);
+  });
+
+  testWidgets('language selector exposes regional options without generic duplicates', (
+    tester,
+  ) async {
+    final locale = await _readyController();
+    await tester.pumpWidget(
+      _wrap(
+        locale,
+        const Scaffold(body: Center(child: LanguageSelector())),
+      ),
+    );
+    await tester.tap(find.byType(LanguageSelector));
+    await tester.pumpAndSettle();
+
+    for (final label in const [
+      'Español (Latinoamérica)',
+      'Español (España)',
+      'Português (Brasil)',
+      'Português (Portugal)',
+      'English (United States)',
+      'English (United Kingdom)',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    expect(find.text('Español'), findsNothing);
+    expect(find.text('Português'), findsNothing);
+    expect(find.text('English'), findsNothing);
   });
 
   testWidgets(

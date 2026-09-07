@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
+import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
@@ -68,10 +69,22 @@ typedef DashboardDataLoader =
     Future<DashboardData> Function(AuthController auth);
 
 Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
-  final payload =
-      await auth.api.get('/dashboard').timeout(const Duration(seconds: 10))
-          as Map<String, dynamic>;
+  final payload = await auth.api.get('/dashboard') as Map<String, dynamic>;
   return DashboardData.fromJson(payload);
+}
+
+enum _DashboardFailureKind { retryable, auth, subscription }
+
+_DashboardFailureKind _dashboardFailureKind(Object? error) {
+  if (error is ApiException) {
+    if (error.statusCode == 401 || error.statusCode == 403) {
+      return _DashboardFailureKind.auth;
+    }
+    if (error.statusCode == 402) {
+      return _DashboardFailureKind.subscription;
+    }
+  }
+  return _DashboardFailureKind.retryable;
 }
 
 class DashboardPage extends StatefulWidget {
@@ -105,6 +118,8 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final t = AvenqoLocaleScope.translationsOf(context).dashboardHome;
+    final assistantT = AvenqoLocaleScope.translationsOf(context).assistant;
+    final authT = AvenqoLocaleScope.translationsOf(context).auth;
     final companyT = AvenqoLocaleScope.translationsOf(context).company;
     final colors = AvenqoColors.of(context);
     final company = widget.auth.company ?? const <String, dynamic>{};
@@ -120,6 +135,9 @@ class _DashboardPageState extends State<DashboardPage> {
         future: _future,
         builder: (context, snapshot) {
           final loading = snapshot.connectionState != ConnectionState.done;
+          final failure = snapshot.hasError
+              ? _dashboardFailureKind(snapshot.error)
+              : null;
           final data =
               snapshot.data ??
               const DashboardData(
@@ -222,10 +240,26 @@ class _DashboardPageState extends State<DashboardPage> {
                 )
               else if (snapshot.hasError)
                 _DashboardMessage(
-                  icon: Icons.error_outline,
-                  message: companyT.connectionsGenericError,
-                  actionLabel: companyT.connectionsRetry,
-                  onAction: _retry,
+                  icon: failure == _DashboardFailureKind.auth
+                    ? Icons.lock_outline
+                    : failure == _DashboardFailureKind.subscription
+                    ? Icons.workspace_premium_outlined
+                    : Icons.cloud_off_outlined,
+                  message: failure == _DashboardFailureKind.auth
+                    ? authT.loginSubtitle
+                    : failure == _DashboardFailureKind.subscription
+                      ? assistantT.retailNotEntitled
+                    : companyT.connectionsGenericError,
+                  actionLabel: failure == _DashboardFailureKind.auth
+                    ? authT.backToLogin
+                    : failure == _DashboardFailureKind.subscription
+                    ? companyT.settingsManageSubscription
+                    : companyT.connectionsRetry,
+                  onAction: failure == _DashboardFailureKind.auth
+                    ? () => context.go('/login')
+                    : failure == _DashboardFailureKind.subscription
+                    ? () => context.go('/billing')
+                    : _retry,
                 )
               else if (data.status == 'no_data' && !widget.readOnly)
                 _EmptyDataBanner(
@@ -241,6 +275,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 _DashboardMessage(
                   icon: Icons.sync,
                   message: companyT.connectionsAnalyzing,
+                )
+              else if (data.status == 'error' ||
+                  data.status == 'source_unavailable')
+                _DashboardMessage(
+                  icon: Icons.cloud_off_outlined,
+                  message: companyT.connectionsGenericError,
+                  actionLabel: companyT.connectionsRetry,
+                  onAction: _retry,
                 )
               else ...[
                 Text(
@@ -305,12 +347,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  border: Border.all(color: colors.line),
+              Material(
+                color: colors.surface,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: colors.line),
                   borderRadius: BorderRadius.circular(12),
                 ),
+                clipBehavior: Clip.antiAlias,
                 child: Padding(
                   padding: const EdgeInsets.all(22),
                   child: data.priorities.isEmpty
@@ -332,7 +375,11 @@ class _DashboardPageState extends State<DashboardPage> {
                       : Column(
                           children: [
                             for (final priority in data.priorities)
-                              _PriorityRow(priority: priority, strings: t),
+                              _PriorityRow(
+                                priority: priority,
+                                strings: t,
+                                readOnly: widget.readOnly,
+                              ),
                           ],
                         ),
                 ),
@@ -552,10 +599,15 @@ class _DashboardMessage extends StatelessWidget {
 }
 
 class _PriorityRow extends StatelessWidget {
-  const _PriorityRow({required this.priority, required this.strings});
+  const _PriorityRow({
+    required this.priority,
+    required this.strings,
+    required this.readOnly,
+  });
 
   final Map<String, dynamic> priority;
   final DashboardHomeStrings strings;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -564,6 +616,9 @@ class _PriorityRow extends StatelessWidget {
     final type =
         priority['type']?.toString() ?? priority['title']?.toString() ?? '';
     final declining = type == 'revenue_decline' || type == 'product_decline';
+    final evidence = priority['evidence'] as Map<String, dynamic>? ?? const {};
+    final changePercent = evidence['change_percent'] as num?;
+    final route = priority['action_route']?.toString();
     final title = switch (type) {
       'revenue_decline' => strings.revenueDeclineTitle,
       'revenue_growth' => strings.revenueGrowthTitle,
@@ -584,6 +639,7 @@ class _PriorityRow extends StatelessWidget {
     };
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      onTap: !readOnly && route != null ? () => context.go(route) : null,
       leading: Icon(
         declining ? Icons.trending_down : Icons.trending_up,
         color: declining ? const Color(0xFFD1414B) : const Color(0xFF1B9E5A),
@@ -592,7 +648,27 @@ class _PriorityRow extends StatelessWidget {
         title,
         style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
       ),
-      subtitle: Text(explanation, style: TextStyle(color: colors.muted)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(explanation, style: TextStyle(color: colors.muted)),
+          if (changePercent != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(1)}%',
+              style: TextStyle(
+                color: declining
+                    ? const Color(0xFFD1414B)
+                    : const Color(0xFF1B9E5A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+      trailing: !readOnly && route != null
+          ? const Icon(Icons.arrow_forward, size: 18)
+          : null,
     );
   }
 }
@@ -865,22 +941,26 @@ class _Metric extends StatelessWidget {
             currencyCode: data.currency,
           );
     final changePercent = kpi['change_percent'] as num?;
-    return _Metric(
-      label: label,
-      value: rendered,
-      change: changePercent == null
-          ? null
-          : '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(1)}%',
-    );
+    return _Metric(label: label, value: rendered, change: changePercent);
   }
 
   final String label;
   final String value;
-  final String? change;
+  final num? change;
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final changeColor = switch (change) {
+      final value? when value > 0 => const Color(0xFF1B9E5A),
+      final value? when value < 0 => const Color(0xFFD1414B),
+      _ => colors.muted,
+    };
+    final changeIcon = switch (change) {
+      final value? when value > 0 => Icons.trending_up,
+      final value? when value < 0 => Icons.trending_down,
+      _ => Icons.trending_flat,
+    };
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
@@ -904,10 +984,20 @@ class _Metric extends StatelessWidget {
               ),
             ),
             if (change != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                change!,
-                style: const TextStyle(color: Color(0xFF1B9E5A), fontSize: 12),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(changeIcon, color: changeColor, size: 16),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${change! >= 0 ? '+' : ''}${change!.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      color: changeColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ],
           ],

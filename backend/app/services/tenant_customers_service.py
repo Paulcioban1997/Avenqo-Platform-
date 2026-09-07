@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import compute_customer_portfolio
@@ -14,6 +15,7 @@ from shared.ai_engine.prediction.service import PredictionService
 
 _CUSTOMER_FIELDS = frozenset({"customer_id"})
 _SORT_FIELDS = frozenset({"customer_id", "orders", "total_value", "last_purchase"})
+_log = logging.getLogger(__name__)
 
 
 class InvalidCustomerQuery(ValueError):
@@ -68,6 +70,7 @@ class TenantCustomersService:
 
         customers = compute_customer_portfolio(source)
         self._add_activity_status(customers)
+        self._add_rule_based_intelligence(source, customers)
         self._add_model_outputs(tenant, source, snapshot.active_models, customers)
         summary = self._summary(customers, "total_amount" in source.canonical_columns.values())
         segments = self._counts(customers, "segment")
@@ -142,6 +145,7 @@ class TenantCustomersService:
             ),
             None,
         )
+        evaluated_at = datetime.now(timezone.utc)
         for customer in customers:
             row = dict(customer["latest_row"])
             if segment_model is not None:
@@ -154,9 +158,21 @@ class TenantCustomersService:
                         resolve_executor(segment_model.model_type),
                     )
                     if outcome.get("result") is not None:
-                        customer["segment"] = str(outcome["result"])
+                        customer["segment"] = self._machine_label(outcome["result"])
+                        customer["segment_status"] = "available"
+                        customer["segment_reason"] = "segmentation_model_prediction"
+                        customer["segment_source"] = "model"
+                        customer["segment_model_version"] = segment_model.version
+                        customer["segment_confidence"] = self._confidence(outcome)
+                        customer["segment_evaluated_at"] = evaluated_at
                 except Exception:
-                    pass
+                    _log.exception(
+                        "Customer segment prediction unavailable tenant=%s customer=%s "
+                        "model_version=%s category=segmentation_prediction_failed",
+                        tenant.company_id,
+                        customer["customer_id"],
+                        segment_model.version,
+                    )
             if churn_model is not None:
                 if churn_column is not None:
                     row.pop(churn_column, None)
@@ -168,13 +184,126 @@ class TenantCustomersService:
                         row,
                         resolve_executor(churn_model.model_type),
                     )
-                    customer["risk"] = (
-                        "churn_prediction"
-                        if outcome.get("result") in {1, 1.0, True, "1"}
-                        else "not_predicted_at_risk"
+                    risk_score = self._risk_score(outcome.get("result"))
+                    confidence = self._confidence(outcome)
+                    customer["risk"] = self._risk_level(risk_score, confidence)
+                    customer["risk_status"] = "available"
+                    customer["risk_score"] = risk_score
+                    customer["risk_reason"] = (
+                        "churn_model_positive" if risk_score >= 0.5 else "churn_model_negative"
                     )
+                    customer["risk_source"] = "model"
+                    customer["risk_model_version"] = churn_model.version
+                    customer["risk_evaluated_at"] = evaluated_at
                 except Exception:
-                    pass
+                    _log.exception(
+                        "Customer risk prediction unavailable tenant=%s customer=%s "
+                        "model_version=%s category=churn_prediction_failed",
+                        tenant.company_id,
+                        customer["customer_id"],
+                        churn_model.version,
+                    )
+
+    @staticmethod
+    def _add_rule_based_intelligence(source, customers: list[dict[str, object]]) -> None:
+        evaluated_at = datetime.now(timezone.utc)
+        fields = set(source.canonical_columns.values())
+        dated = [item for item in customers if item["last_purchase"] is not None]
+        latest = max((item["last_purchase"] for item in dated), default=None)
+        has_rfm = latest is not None and "total_amount" in fields
+        values = sorted(float(item["total_value"]) for item in customers)
+        high_value = values[int((len(values) - 1) * 0.75)] if values else 0.0
+
+        for customer in customers:
+            customer.update(
+                {
+                    "segment": None,
+                    "segment_status": "not_calculated",
+                    "segment_reason": "insufficient_rfm_data",
+                    "segment_source": None,
+                    "segment_model_version": None,
+                    "segment_confidence": None,
+                    "segment_evaluated_at": None,
+                    "risk": None,
+                    "risk_status": "not_calculated",
+                    "risk_score": None,
+                    "risk_reason": "insufficient_activity_data",
+                    "risk_source": None,
+                    "risk_model_version": None,
+                    "risk_evaluated_at": None,
+                }
+            )
+            last_purchase = customer["last_purchase"]
+            if latest is None or last_purchase is None:
+                continue
+            recency_days = max(0, (latest - last_purchase).days)
+            risk_score = min(1.0, recency_days / 120)
+            customer.update(
+                {
+                    "risk": "low" if recency_days <= 30 else "medium" if recency_days <= 90 else "high",
+                    "risk_status": "available",
+                    "risk_score": round(risk_score, 4),
+                    "risk_reason": "recent_activity" if recency_days <= 30 else "inactive_31_90_days" if recency_days <= 90 else "inactive_over_90_days",
+                    "risk_source": "activity_recency",
+                    "risk_evaluated_at": evaluated_at,
+                }
+            )
+            if not has_rfm:
+                continue
+            orders = int(customer["orders"])
+            total_value = float(customer["total_value"])
+            first_purchase = customer["first_purchase"]
+            if recency_days > 90:
+                segment, reason = "dormant", "rfm_dormant"
+            elif orders >= 3 and total_value >= high_value:
+                segment, reason = "vip", "rfm_vip"
+            elif total_value >= high_value:
+                segment, reason = "high_value", "rfm_high_value"
+            elif orders >= 2:
+                segment, reason = "loyal", "rfm_loyal"
+            elif first_purchase == last_purchase and recency_days <= 30:
+                segment, reason = "new", "rfm_new"
+            else:
+                segment, reason = "regular", "rfm_regular"
+            customer.update(
+                {
+                    "segment": segment,
+                    "segment_status": "available",
+                    "segment_reason": reason,
+                    "segment_source": "rfm_rules",
+                    "segment_evaluated_at": evaluated_at,
+                }
+            )
+
+    @staticmethod
+    def _machine_label(value: object) -> str:
+        return "_".join(str(value).strip().casefold().split())
+
+    @staticmethod
+    def _confidence(outcome: dict[str, object]) -> float | None:
+        value = outcome.get("confidence")
+        if not isinstance(value, (int, float)):
+            return None
+        return round(max(0.0, min(1.0, float(value))), 4)
+
+    @staticmethod
+    def _risk_score(value: object) -> float:
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _risk_level(score: float, confidence: float | None) -> str:
+        if score >= 0.9 and confidence is not None and confidence >= 0.8:
+            return "critical"
+        if score >= 0.6:
+            return "high"
+        if score >= 0.3:
+            return "medium"
+        return "low"
 
     @staticmethod
     def _add_activity_status(customers: list[dict[str, object]]) -> None:
@@ -228,5 +357,17 @@ class TenantCustomersService:
             "last_purchase": customer["last_purchase"],
             "status": customer.get("status"),
             "segment": customer.get("segment"),
+            "segment_status": customer["segment_status"],
+            "segment_reason": customer["segment_reason"],
+            "segment_source": customer["segment_source"],
+            "segment_model_version": customer["segment_model_version"],
+            "segment_confidence": customer["segment_confidence"],
+            "segment_evaluated_at": customer["segment_evaluated_at"],
             "risk": customer.get("risk"),
+            "risk_status": customer["risk_status"],
+            "risk_score": customer["risk_score"],
+            "risk_reason": customer["risk_reason"],
+            "risk_source": customer["risk_source"],
+            "risk_model_version": customer["risk_model_version"],
+            "risk_evaluated_at": customer["risk_evaluated_at"],
         }

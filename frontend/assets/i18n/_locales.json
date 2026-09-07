@@ -16,27 +16,51 @@
     "direction": "ltr"
   },
   {
-    "code": "en",
+    "code": "en-US",
     "region": "americas",
     "flag": "🇺🇸",
-    "nativeName": "English",
-    "englishName": "English",
+    "nativeName": "English (United States)",
+    "englishName": "English (United States)",
     "direction": "ltr"
   },
   {
-    "code": "es",
+    "code": "en-GB",
+    "region": "europe",
+    "flag": "🇬🇧",
+    "nativeName": "English (United Kingdom)",
+    "englishName": "English (United Kingdom)",
+    "direction": "ltr"
+  },
+  {
+    "code": "es-ES",
     "region": "europe",
     "flag": "🇪🇸",
-    "nativeName": "Español",
-    "englishName": "Spanish",
+    "nativeName": "Español (España)",
+    "englishName": "Spanish (Spain)",
     "direction": "ltr"
   },
   {
-    "code": "pt",
+    "code": "es-LatAm",
+    "region": "americas",
+    "flag": "🌎",
+    "nativeName": "Español (Latinoamérica)",
+    "englishName": "Spanish (Latin America)",
+    "direction": "ltr"
+  },
+  {
+    "code": "pt-PT",
     "region": "europe",
     "flag": "🇵🇹",
-    "nativeName": "Português",
-    "englishName": "Portuguese",
+    "nativeName": "Português (Portugal)",
+    "englishName": "Portuguese (Portugal)",
+    "direction": "ltr"
+  },
+  {
+    "code": "pt-BR",
+    "region": "americas",
+    "flag": "🇧🇷",
+    "nativeName": "Português (Brasil)",
+    "englishName": "Portuguese (Brazil)",
     "direction": "ltr"
   },
   {

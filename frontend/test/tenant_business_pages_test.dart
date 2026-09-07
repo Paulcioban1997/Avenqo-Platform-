@@ -6,6 +6,7 @@ import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/pages/customers_page.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 import 'package:avenqo/pages/products_page.dart';
 import 'package:avenqo/pages/recommendations_page.dart';
 import 'package:avenqo/pages/sales_page.dart';
@@ -40,7 +41,11 @@ ApiClient _api() => ApiClient(
   baseUrl: 'https://avenqo.test/api/v1',
 );
 
-Future<Widget> _wrap(Widget child, {bool dark = false, String localeCode = 'en'}) async {
+Future<Widget> _wrap(
+  Widget child, {
+  bool dark = false,
+  String localeCode = 'en',
+}) async {
   final locale = LocaleController(store: _LocaleStore(localeCode));
   await locale.initialize();
   return AvenqoLocaleScope(
@@ -93,6 +98,7 @@ Map<String, dynamic> _sales({String status = 'ready', bool available = true}) =>
 Map<String, dynamic> _customers({
   String status = 'ready',
   bool available = true,
+  bool intelligence = true,
   int page = 1,
 }) => {
   'status': status,
@@ -109,14 +115,14 @@ Map<String, dynamic> _customers({
           'average_customer_value': 75.0,
         }
       : null,
-  'segments': available
+  'segments': available && intelligence
       ? [
           {'label': 'loyal', 'count': 1},
         ]
       : [],
-  'risks': available
+  'risks': available && intelligence
       ? [
-          {'label': 'churn_prediction', 'count': 1},
+          {'label': 'high', 'count': 1},
         ]
       : [],
   'items': available
@@ -126,8 +132,10 @@ Map<String, dynamic> _customers({
             'orders': 2,
             'total_value': 125.0,
             'last_purchase': '2026-08-28T00:00:00',
-            'segment': 'loyal',
-            'risk': 'churn_prediction',
+            'segment': intelligence ? 'loyal' : null,
+            'segment_status': intelligence ? 'available' : 'not_calculated',
+            'risk': intelligence ? 'high' : null,
+            'risk_status': intelligence ? 'available' : 'not_calculated',
           },
         ]
       : [],
@@ -157,7 +165,13 @@ Map<String, dynamic> _products({
       : null,
   'categories': available
       ? [
-          {'category': 'Drinks', 'product_count': 2, 'revenue': 400.0, 'units': 8.0, 'revenue_share': 100.0},
+          {
+            'category': 'Drinks',
+            'product_count': 2,
+            'revenue': 400.0,
+            'units': 8.0,
+            'revenue_share': 100.0,
+          },
         ]
       : [],
   'trend': {'granularity': 'day', 'points': []},
@@ -178,7 +192,10 @@ Map<String, dynamic> _products({
   'pagination': {'page': page, 'page_size': 1, 'total': 2, 'pages': 2},
 };
 
-Map<String, dynamic> _recommendations({String status = 'ready', bool empty = false}) => {
+Map<String, dynamic> _recommendations({
+  String status = 'ready',
+  bool empty = false,
+}) => {
   'status': status,
   'currency': 'CAD',
   'generated_at': '2026-08-28T00:00:00Z',
@@ -191,6 +208,12 @@ Map<String, dynamic> _recommendations({String status = 'ready', bool empty = fal
             'title': 'product_decline',
             'explanation': 'product_revenue_changed',
             'priority': 'high',
+            'severity_reason': 'material_revenue_change',
+            'severity_score': 0.7,
+            'severity_factors': {
+              'absolute_impact': 150.0,
+              'revenue_share': 0.75,
+            },
             'source_capability': 'products',
             'evidence': {
               'product_id': 'P1',
@@ -198,12 +221,23 @@ Map<String, dynamic> _recommendations({String status = 'ready', bool empty = fal
               'current': 50.0,
               'comparison': 200.0,
               'change_percent': -75.0,
+              'period': {
+                'start': '2026-08-01T00:00:00Z',
+                'end': '2026-08-30T00:00:00Z',
+                'comparison_start': '2026-07-02T00:00:00Z',
+                'comparison_end': '2026-07-31T00:00:00Z',
+              },
             },
             'affected_entity': 'P1',
+            'affected_product': {
+              'id': 'P1',
+              'name': 'Coffee',
+              'category': 'Drinks',
+            },
             'confidence': 1.0,
-            'estimated_impact': null,
+            'estimated_impact': -150.0,
             'suggested_action': 'review_product_performance',
-            'action_route': '/products',
+            'action_route': '/retail/products?product_id=P1',
             'generated_at': '2026-08-28T00:00:00Z',
             'source_model_version': null,
             'lifecycle': 'active',
@@ -312,9 +346,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Total customers'), findsOneWidget);
     expect(find.text('C1'), findsOneWidget);
-    expect(find.textContaining('Segment: loyal'), findsOneWidget);
-    expect(find.textContaining('Risk: churn_prediction'), findsOneWidget);
+    expect(find.textContaining('Segment: Loyal'), findsOneWidget);
+    expect(find.textContaining('Risk: High'), findsOneWidget);
+    expect(find.text('Loyal'), findsOneWidget);
+    expect(find.text('High'), findsOneWidget);
   });
+
+  testWidgets(
+    'Customers shows an honest state when intelligence is unavailable',
+    (tester) async {
+      await tester.pumpWidget(
+        await _wrap(
+          CustomersPage(
+            api: _api(),
+            loader: (_, _) async => _customers(intelligence: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not calculated'), findsNWidgets(2));
+    },
+  );
 
   testWidgets('Customers sends search and pagination to loader', (
     tester,
@@ -341,7 +394,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, [(1, ''), (1, 'C2'), (2, 'C2')]);
     expect(
-      find.descendant(of: find.byType(DataTable), matching: find.text('C2')),
+      find.descendant(
+        of: find.byType(AvenqoDataTable),
+        matching: find.text('C2'),
+      ),
       findsOneWidget,
     );
   });
@@ -412,30 +468,41 @@ void main() {
 
     expect(find.widgetWithText(TextField, 'C1'), findsNothing);
     expect(
-      find.descendant(of: find.byType(DataTable), matching: find.text('C2')),
+      find.descendant(
+        of: find.byType(AvenqoDataTable),
+        matching: find.text('C2'),
+      ),
       findsOneWidget,
     );
   });
 
-  testWidgets('Products loads supported KPIs and partial data in French dark mode', (tester) async {
-    final completer = Completer<Map<String, dynamic>>();
-    await tester.pumpWidget(
-      await _wrap(
-        ProductsPage(api: _api(), loader: (_, _, _, _, _) => completer.future),
-        dark: true,
-        localeCode: 'fr',
-      ),
-    );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    completer.complete(_products(status: 'partial_ready'));
-    await tester.pumpAndSettle();
-    expect(find.text('Produits au total'), findsOneWidget);
-    expect(find.textContaining('encore en traitement'), findsOneWidget);
-    expect(find.text('Coffee'), findsOneWidget);
-    expect(find.textContaining('400'), findsOneWidget);
-  });
+  testWidgets(
+    'Products loads supported KPIs and partial data in French dark mode',
+    (tester) async {
+      final completer = Completer<Map<String, dynamic>>();
+      await tester.pumpWidget(
+        await _wrap(
+          ProductsPage(
+            api: _api(),
+            loader: (_, _, _, _, _) => completer.future,
+          ),
+          dark: true,
+          localeCode: 'fr',
+        ),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      completer.complete(_products(status: 'partial_ready'));
+      await tester.pumpAndSettle();
+      expect(find.text('Produits au total'), findsOneWidget);
+      expect(find.textContaining('encore en traitement'), findsOneWidget);
+      expect(find.text('Coffee'), findsOneWidget);
+      expect(find.textContaining('400'), findsOneWidget);
+    },
+  );
 
-  testWidgets('Products sends search, filter, sort and pagination to loader', (tester) async {
+  testWidgets('Products sends search, filter, sort and pagination to loader', (
+    tester,
+  ) async {
     final calls = <(int, String, String?, String?, String)>[];
     await tester.pumpWidget(
       await _wrap(
@@ -466,67 +533,148 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls.last, (2, 'Tea', null, 'weak', 'revenue'));
     expect(
-      find.descendant(of: find.byType(DataTable), matching: find.text('Tea')),
+      find.descendant(
+        of: find.byType(AvenqoDataTable),
+        matching: find.text('Tea'),
+      ),
       findsOneWidget,
     );
   });
 
-  testWidgets('Products opens tenant detail and handles unavailable and retry states', (tester) async {
-    var calls = 0;
-    await tester.pumpWidget(
-      await _wrap(
-        ProductsPage(
-          api: _api(),
-          loader: (_, _, _, _, _) async {
-            calls += 1;
-            if (calls == 1) throw StateError('private');
-            return _products();
-          },
-          detailLoader: (id) async => {..._products()['items'][0], 'currency': 'CAD'},
+  testWidgets(
+    'Products opens tenant detail and handles unavailable and retry states',
+    (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(
+        await _wrap(
+          ProductsPage(
+            api: _api(),
+            loader: (_, _, _, _, _) async {
+              calls += 1;
+              if (calls == 1) throw StateError('private');
+              return _products();
+            },
+            detailLoader: (id) async => {
+              ..._products()['items'][0],
+              'currency': 'CAD',
+            },
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.textContaining('private'), findsNothing);
-    await tester.tap(find.text('Retry'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Coffee'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Coffee'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('private'), findsNothing);
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Coffee'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Coffee'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
 
-    await tester.pumpWidget(
-      await _wrap(ProductsPage(key: const ValueKey('none'), api: _api(), loader: (_, _, _, _, _) async => _products(available: false))),
-    );
-    await tester.pumpAndSettle();
-    expect(find.textContaining('unavailable'), findsOneWidget);
-  });
-
-  testWidgets('Recommendations localizes priority, evidence and routed action', (tester) async {
-    String? route;
-    await tester.pumpWidget(
-      await _wrap(
-        RecommendationsPage(
-          api: _api(),
-          loader: () async => _recommendations(status: 'partial_ready'),
-          onNavigate: (value) => route = value,
+      await tester.pumpWidget(
+        await _wrap(
+          ProductsPage(
+            key: const ValueKey('none'),
+            api: _api(),
+            loader: (_, _, _, _, _) async => _products(available: false),
+          ),
         ),
-        dark: true,
-        localeCode: 'fr',
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Les revenus de ce produit diminuent'), findsOneWidget);
-    expect(find.textContaining('Coffee : 50.0 contre 200.0'), findsOneWidget);
-    expect(find.textContaining('Priorité: high'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_forward));
-    expect(route, '/products');
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('unavailable'), findsOneWidget);
+    },
+  );
 
-  testWidgets('Recommendations shows processing, empty and retry states', (tester) async {
+  testWidgets(
+    'Recommendations localizes priority, evidence and routed action',
+    (tester) async {
+      String? route;
+      await tester.pumpWidget(
+        await _wrap(
+          RecommendationsPage(
+            api: _api(),
+            loader: () async => _recommendations(status: 'partial_ready'),
+            onNavigate: (value) => route = value,
+          ),
+          dark: true,
+          localeCode: 'fr',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Les revenus de ce produit diminuent'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Coffee'), findsWidgets);
+      expect(find.textContaining('Drinks'), findsOneWidget);
+      expect(find.textContaining('Élevée'), findsOneWidget);
+      expect(find.textContaining('impact financier important'), findsOneWidget);
+      await tester.ensureVisible(find.byIcon(Icons.arrow_forward));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.arrow_forward));
+      expect(route, '/retail/products?product_id=P1');
+    },
+  );
+
+  testWidgets(
+    'Recommendations enriches legacy product identity from affected entity',
+    (tester) async {
+      final data = _recommendations();
+      final recommendation =
+          (data['recommendations'] as List<dynamic>).single
+              as Map<String, dynamic>;
+      recommendation.remove('affected_product');
+      recommendation['action_route'] = '/products/P1';
+      final evidence = recommendation['evidence'] as Map<String, dynamic>;
+      evidence.remove('product_id');
+      evidence.remove('product_name');
+      final productDetail = Completer<Map<String, dynamic>>();
+      String? loadedProductId;
+      String? route;
+
+      await tester.pumpWidget(
+        await _wrap(
+          RecommendationsPage(
+            api: _api(),
+            loader: () async => data,
+            productLoader: (productId) {
+              loadedProductId = productId;
+              return productDetail.future;
+            },
+            onNavigate: (value) => route = value,
+          ),
+          localeCode: 'fr',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(loadedProductId, 'P1');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('P1'), findsNWidgets(2));
+      expect(find.textContaining('Coffee'), findsNothing);
+
+      productDetail.complete({
+        'product_id': 'P1',
+        'name': 'Coffee',
+        'category': 'Drinks',
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Coffee'), findsNWidgets(2));
+      expect(find.textContaining('P1'), findsOneWidget);
+      expect(find.textContaining('Drinks'), findsOneWidget);
+      await tester.ensureVisible(find.byIcon(Icons.arrow_forward));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.arrow_forward));
+      expect(route, '/retail/products?product_id=P1');
+    },
+  );
+
+  testWidgets('Recommendations shows processing, empty and retry states', (
+    tester,
+  ) async {
     var calls = 0;
     await tester.pumpWidget(
       await _wrap(
@@ -546,7 +694,13 @@ void main() {
     expect(find.textContaining('Analyzing'), findsOneWidget);
 
     await tester.pumpWidget(
-      await _wrap(RecommendationsPage(key: const ValueKey('empty'), api: _api(), loader: () async => _recommendations(empty: true))),
+      await _wrap(
+        RecommendationsPage(
+          key: const ValueKey('empty'),
+          api: _api(),
+          loader: () async => _recommendations(empty: true),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('No evidence-backed'), findsOneWidget);

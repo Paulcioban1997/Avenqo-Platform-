@@ -34,13 +34,22 @@ def _as_float(value: object | None) -> float | None:
         return None
 
 
-def _as_datetime(value: object | None) -> datetime | None:
-    if value is None or not isinstance(value, str) or not value:
+def parse_business_datetime(value: object | None) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if value is None or not isinstance(value, str) or not value.strip():
         return None
+    normalized = value.strip().replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(value)
+        return datetime.fromisoformat(normalized)
     except ValueError:
-        return None
+        pass
+    for pattern in ("%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(normalized, pattern)
+        except ValueError:
+            continue
+    return None
 
 
 def filter_rows_by_date(
@@ -53,7 +62,7 @@ def filter_rows_by_date(
         return rows
     filtered = []
     for row in rows:
-        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is None:
             continue
         if date_from is not None and timestamp < date_from:
@@ -81,7 +90,7 @@ def compute_business_overview(prepared: PreparedCompanyDataset) -> dict[str, obj
         customer_id = _value(row, reverse, "customer_id")
         if customer_id is not None:
             customer_ids.add(customer_id)
-        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is not None:
             timestamps.append(timestamp)
 
@@ -153,7 +162,7 @@ def compute_sales_trend(
     row_count_by_period: dict[str, int] = defaultdict(int)
 
     for row in rows:
-        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is None:
             continue
         if granularity == "day":
@@ -249,6 +258,8 @@ def compute_product_portfolio(
     entity_field = "product_id" if "product_id" in reverse else "product_name"
     if entity_field not in reverse:
         return []
+    has_revenue = "total_amount" in reverse
+    has_unit_price = "unit_price" in reverse
 
     by_product: dict[str, dict[str, object]] = {}
     for row_index, row in enumerate(prepared.rows):
@@ -263,7 +274,12 @@ def compute_product_portfolio(
                 "name": None,
                 "category": None,
                 "quantity": 0.0 if "quantity" in reverse else None,
+                "revenue": 0.0 if has_revenue else None,
+                "order_ids": set(),
+                "row_count": 0,
                 "customer_ids": set(),
+                "unit_price_total": 0.0,
+                "unit_price_count": 0,
                 "last_activity": None,
                 "latest_row_index": -1,
                 "stock_level": None,
@@ -278,12 +294,25 @@ def compute_product_portfolio(
         quantity = _as_float(_value(row, reverse, "quantity"))
         if quantity is not None and product["quantity"] is not None:
             product["quantity"] = float(product["quantity"]) + quantity
+        amount = _as_float(_value(row, reverse, "total_amount"))
+        if amount is not None and product["revenue"] is not None:
+            product["revenue"] = float(product["revenue"]) + amount
+        order_id = _value(row, reverse, "order_id")
+        if order_id is not None:
+            order_ids = product["order_ids"]
+            assert isinstance(order_ids, set)
+            order_ids.add(order_id)
+        product["row_count"] = int(product["row_count"]) + 1
         customer_id = _value(row, reverse, "customer_id")
         if customer_id is not None:
             customer_ids = product["customer_ids"]
             assert isinstance(customer_ids, set)
             customer_ids.add(customer_id)
-        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        unit_price = _as_float(_value(row, reverse, "unit_price"))
+        if unit_price is not None:
+            product["unit_price_total"] = float(product["unit_price_total"]) + unit_price
+            product["unit_price_count"] = int(product["unit_price_count"]) + 1
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         last_activity = product["last_activity"]
         if timestamp is not None and (
             last_activity is None or timestamp >= last_activity
@@ -299,39 +328,29 @@ def compute_product_portfolio(
             if stock is not None:
                 product["stock_level"] = stock
 
-    has_revenue = "total_amount" in reverse
-    has_unit_price = "unit_price" in reverse
     result: list[dict[str, object]] = []
     for product in by_product.values():
-        product_id = str(product["product_id"])
-        sales = compute_sales_summary(
-            prepared,
-            date_from=None,
-            date_to=None,
-            product=product_id,
-        )
         quantity = product["quantity"]
-        revenue = float(sales["revenue"]) if has_revenue else None
+        revenue = round(float(product["revenue"]), 2) if has_revenue else None
         average_price = (
             round(revenue / float(quantity), 2)
             if revenue is not None and quantity not in {None, 0, 0.0}
             else None
         )
-        if average_price is None and has_unit_price:
-            prices = [
-                price
-                for row in prepared.rows
-                if str(_value(row, reverse, entity_field) or "") == product_id
-                if (price := _as_float(_value(row, reverse, "unit_price"))) is not None
-            ]
-            average_price = round(sum(prices) / len(prices), 2) if prices else None
+        unit_price_count = int(product.pop("unit_price_count"))
+        unit_price_total = float(product.pop("unit_price_total"))
+        if average_price is None and has_unit_price and unit_price_count:
+            average_price = round(unit_price_total / unit_price_count, 2)
+        order_ids = product.pop("order_ids")
+        row_count = int(product.pop("row_count"))
         customer_ids = product.pop("customer_ids")
         product.pop("latest_row_index")
+        assert isinstance(order_ids, set)
         assert isinstance(customer_ids, set)
         product.update(
             {
                 "revenue": revenue,
-                "orders": int(sales["orders"]),
+                "orders": len(order_ids) if order_ids else row_count,
                 "average_price": average_price,
                 "customer_reach": len(customer_ids) if "customer_id" in reverse else None,
             }
@@ -340,6 +359,49 @@ def compute_product_portfolio(
             product["quantity"] = round(float(quantity), 2)
         result.append(product)
     return result
+
+
+def compute_product_period_revenue(
+    prepared: PreparedCompanyDataset,
+    *,
+    current_from: datetime | None,
+    current_to: datetime | None,
+    previous_from: datetime | None,
+    previous_to: datetime | None,
+) -> dict[str, dict[str, float]]:
+    """Aggregate current and previous revenue for every product in one pass."""
+
+    reverse = _reverse_mapping(prepared.canonical_columns)
+    entity_field = "product_id" if "product_id" in reverse else "product_name"
+    if entity_field not in reverse:
+        return {}
+    totals: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"current": 0.0, "previous": 0.0}
+    )
+    for row in prepared.rows:
+        raw_entity = _value(row, reverse, entity_field)
+        amount = _as_float(_value(row, reverse, "total_amount"))
+        if raw_entity is None or amount is None:
+            continue
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
+        if current_from is None or current_to is None:
+            totals[str(raw_entity)]["current"] += amount
+        elif timestamp is not None and current_from <= timestamp <= current_to:
+            totals[str(raw_entity)]["current"] += amount
+        elif (
+            timestamp is not None
+            and previous_from is not None
+            and previous_to is not None
+            and previous_from <= timestamp <= previous_to
+        ):
+            totals[str(raw_entity)]["previous"] += amount
+    return {
+        product_id: {
+            "current": round(values["current"], 2),
+            "previous": round(values["previous"], 2),
+        }
+        for product_id, values in totals.items()
+    }
 
 
 def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, object]:
@@ -392,7 +454,7 @@ def compute_customer_portfolio(
         customer["total_value"] = float(customer["total_value"]) + (
             _as_float(_value(row, reverse, "total_amount")) or 0.0
         )
-        timestamp = _as_datetime(_value(row, reverse, "order_timestamp"))
+        timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is not None:
             first = customer["first_purchase"]
             last = customer["last_purchase"]

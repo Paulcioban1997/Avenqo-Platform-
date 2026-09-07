@@ -68,11 +68,15 @@ class RecommendationResponse(BaseModel):
     title: str
     explanation: str
     priority: str
+    severity_reason: str
+    severity_score: float | None
+    severity_factors: dict[str, float]
     source_capability: str
     evidence: dict[str, Any]
     affected_entity: str | None
     confidence: float | None
     estimated_impact: float | None
+    affected_product: dict[str, Any] | None
     suggested_action: str
     action_route: str | None
     generated_at: datetime

@@ -83,7 +83,19 @@ class CustomerListItemResponse(BaseModel):
     last_purchase: datetime | None
     status: str | None
     segment: str | None
+    segment_status: str
+    segment_reason: str
+    segment_source: str | None
+    segment_model_version: str | None
+    segment_confidence: float | None
+    segment_evaluated_at: datetime | None
     risk: str | None
+    risk_status: str
+    risk_score: float | None
+    risk_reason: str
+    risk_source: str | None
+    risk_model_version: str | None
+    risk_evaluated_at: datetime | None
 
 
 class PaginationResponse(BaseModel):

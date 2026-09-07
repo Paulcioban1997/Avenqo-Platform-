@@ -4,7 +4,10 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.app.ai.tools.business.analytics import compute_business_overview
+from backend.app.ai.tools.business.analytics import (
+    compute_business_overview,
+    parse_business_datetime,
+)
 from backend.app.services.tenant_analytics_service import (
     BUSINESS_METRIC_FIELDS,
     TenantAnalyticsSnapshot,
@@ -167,12 +170,9 @@ class TenantDashboardService:
             if date_column is None:
                 continue
             for row in dataset.rows:
-                value = row.get(date_column)
-                if isinstance(value, str):
-                    try:
-                        timestamps.append(datetime.fromisoformat(value))
-                    except ValueError:
-                        pass
+                timestamp = parse_business_datetime(row.get(date_column))
+                if timestamp is not None:
+                    timestamps.append(timestamp)
         if not timestamps:
             return {"start": None, "end": None, "comparison_start": None, "comparison_end": None}
         end = max(timestamps)
@@ -196,12 +196,8 @@ class TenantDashboardService:
             return prepared.rows, ()
 
         def between(row: dict[str, object], start: datetime, end: datetime) -> bool:
-            value = row.get(date_column)
-            if not isinstance(value, str):
-                return False
-            try:
-                timestamp = datetime.fromisoformat(value)
-            except ValueError:
+            timestamp = parse_business_datetime(row.get(date_column))
+            if timestamp is None:
                 return False
             return start <= timestamp <= end
 

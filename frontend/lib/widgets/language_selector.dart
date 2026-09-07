@@ -12,13 +12,13 @@ class LanguageSelector extends StatelessWidget {
 
   final Color? foregroundColor;
 
-  static const Map<String, String> _regionLabels = {
-    'americas': 'Amériques',
-    'europe': 'Europe',
-    'middle-east': 'Moyen-Orient',
-    'africa': 'Afrique',
-    'asia': 'Asie-Pacifique',
-  };
+  static const _regionOrder = [
+    'americas',
+    'europe',
+    'middle-east',
+    'africa',
+    'asia',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +29,10 @@ class LanguageSelector extends StatelessWidget {
       builder: (context, _) {
         final current = controller.currentLocaleInfo;
         return PopupMenuButton<String>(
-          tooltip: 'Changer de langue',
+          tooltip: AvenqoLocaleScope.translationsOf(context)
+              .company
+              .settingsLanguageLabel,
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
           onSelected: controller.setLocale,
           itemBuilder: (context) => _buildMenuItems(controller),
           child: Padding(
@@ -68,29 +71,30 @@ class LanguageSelector extends StatelessWidget {
       byRegion.putIfAbsent(locale.region, () => []).add(locale);
     }
     final entries = <PopupMenuEntry<String>>[];
-    for (final region in _regionLabels.keys) {
+    for (final region in _regionOrder) {
       final locales = byRegion[region];
       if (locales == null || locales.isEmpty) {
         continue;
       }
-      entries.add(
-        PopupMenuItem<String>(
-          enabled: false,
-          child: Text(
-            _regionLabels[region]!,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-          ),
-        ),
-      );
+      if (entries.isNotEmpty) {
+        entries.add(const PopupMenuDivider());
+      }
       for (final locale in locales) {
         entries.add(
           PopupMenuItem<String>(
             value: locale.code,
+            height: 56,
             child: Row(
               children: [
                 Text(locale.flag),
                 const SizedBox(width: 8),
-                Text(locale.nativeName),
+                Expanded(
+                  child: Text(
+                    locale.nativeName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),

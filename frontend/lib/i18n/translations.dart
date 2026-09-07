@@ -387,6 +387,24 @@ class Phase4dStrings {
     required this.changeEvidence,
     required this.concentrationEvidence,
     required this.customerEvidence,
+    required this.skuLabel,
+    required this.currentPeriodLabel,
+    required this.previousPeriodLabel,
+    required this.changeLabel,
+    required this.businessImpactLabel,
+    required this.periodLabel,
+    required this.severityReasonLabel,
+    required this.severityInformational,
+    required this.severityLow,
+    required this.severityMedium,
+    required this.severityHigh,
+    required this.severityCritical,
+    required this.reasonMaterialAbsoluteAndShare,
+    required this.reasonMaterialRevenueChange,
+    required this.reasonMeaningfulChange,
+    required this.reasonLimitedImpact,
+    required this.reasonMinorImpact,
+    required this.reasonDecisionPolicy,
   });
 
   factory Phase4dStrings.fromJson(Map<String, dynamic> json) {
@@ -429,6 +447,24 @@ class Phase4dStrings {
       changeEvidence: value('changeEvidence', fallback.changeEvidence),
       concentrationEvidence: value('concentrationEvidence', fallback.concentrationEvidence),
       customerEvidence: value('customerEvidence', fallback.customerEvidence),
+      skuLabel: value('skuLabel', fallback.skuLabel),
+      currentPeriodLabel: value('currentPeriodLabel', fallback.currentPeriodLabel),
+      previousPeriodLabel: value('previousPeriodLabel', fallback.previousPeriodLabel),
+      changeLabel: value('changeLabel', fallback.changeLabel),
+      businessImpactLabel: value('businessImpactLabel', fallback.businessImpactLabel),
+      periodLabel: value('periodLabel', fallback.periodLabel),
+      severityReasonLabel: value('severityReasonLabel', fallback.severityReasonLabel),
+      severityInformational: value('severityInformational', fallback.severityInformational),
+      severityLow: value('severityLow', fallback.severityLow),
+      severityMedium: value('severityMedium', fallback.severityMedium),
+      severityHigh: value('severityHigh', fallback.severityHigh),
+      severityCritical: value('severityCritical', fallback.severityCritical),
+      reasonMaterialAbsoluteAndShare: value('reasonMaterialAbsoluteAndShare', fallback.reasonMaterialAbsoluteAndShare),
+      reasonMaterialRevenueChange: value('reasonMaterialRevenueChange', fallback.reasonMaterialRevenueChange),
+      reasonMeaningfulChange: value('reasonMeaningfulChange', fallback.reasonMeaningfulChange),
+      reasonLimitedImpact: value('reasonLimitedImpact', fallback.reasonLimitedImpact),
+      reasonMinorImpact: value('reasonMinorImpact', fallback.reasonMinorImpact),
+      reasonDecisionPolicy: value('reasonDecisionPolicy', fallback.reasonDecisionPolicy),
     );
   }
 
@@ -469,6 +505,24 @@ class Phase4dStrings {
         changeEvidence: '{entity}: {current} vs {comparison} ({change}%)',
         concentrationEvidence: '{entity}: {current}% of product revenue',
         customerEvidence: '{current} customers with recommendations',
+        skuLabel: 'SKU / product ID',
+        currentPeriodLabel: 'Current period revenue',
+        previousPeriodLabel: 'Previous comparable period',
+        changeLabel: 'Change',
+        businessImpactLabel: 'Business impact',
+        periodLabel: 'Period compared',
+        severityReasonLabel: 'Why this severity',
+        severityInformational: 'Information',
+        severityLow: 'Low',
+        severityMedium: 'Medium',
+        severityHigh: 'High',
+        severityCritical: 'Critical',
+        reasonMaterialAbsoluteAndShare: 'The absolute impact and share of tenant revenue are both material.',
+        reasonMaterialRevenueChange: 'The revenue change has a material financial impact.',
+        reasonMeaningfulChange: 'The relative change or share of tenant revenue is meaningful.',
+        reasonLimitedImpact: 'The observed change has limited business impact.',
+        reasonMinorImpact: 'The observed change has minor business impact.',
+        reasonDecisionPolicy: 'Severity follows the deterministic business decision policy.',
       );
 
   final String productsTotal;
@@ -507,6 +561,41 @@ class Phase4dStrings {
   final String changeEvidence;
   final String concentrationEvidence;
   final String customerEvidence;
+  final String skuLabel;
+  final String currentPeriodLabel;
+  final String previousPeriodLabel;
+  final String changeLabel;
+  final String businessImpactLabel;
+  final String periodLabel;
+  final String severityReasonLabel;
+  final String severityInformational;
+  final String severityLow;
+  final String severityMedium;
+  final String severityHigh;
+  final String severityCritical;
+  final String reasonMaterialAbsoluteAndShare;
+  final String reasonMaterialRevenueChange;
+  final String reasonMeaningfulChange;
+  final String reasonLimitedImpact;
+  final String reasonMinorImpact;
+  final String reasonDecisionPolicy;
+
+  String severityName(String value) => switch (value) {
+        'critical' => severityCritical,
+        'high' => severityHigh,
+        'medium' => severityMedium,
+        'low' => severityLow,
+        _ => severityInformational,
+      };
+
+  String severityReason(String value) => switch (value) {
+        'material_absolute_and_tenant_share' => reasonMaterialAbsoluteAndShare,
+        'material_revenue_change' => reasonMaterialRevenueChange,
+        'meaningful_relative_or_tenant_share' => reasonMeaningfulChange,
+        'limited_business_impact' => reasonLimitedImpact,
+        'minor_business_impact' => reasonMinorImpact,
+        _ => reasonDecisionPolicy,
+      };
 }
 
 class OnboardingStrings {
@@ -2010,6 +2099,17 @@ class CompanyStrings {
     required this.customersLastPurchase,
     required this.customersSegment,
     required this.customersRisk,
+    required this.customersNotCalculated,
+    required this.customerSegmentVip,
+    required this.customerSegmentHighValue,
+    required this.customerSegmentLoyal,
+    required this.customerSegmentRegular,
+    required this.customerSegmentNew,
+    required this.customerSegmentDormant,
+    required this.customerRiskLow,
+    required this.customerRiskMedium,
+    required this.customerRiskHigh,
+    required this.customerRiskCritical,
     required this.previousPage,
     required this.nextPage,
     required this.businessProductsTitle,
@@ -2200,6 +2300,17 @@ class CompanyStrings {
       customersLastPurchase: s('customersLastPurchase'),
       customersSegment: s('customersSegment'),
       customersRisk: s('customersRisk'),
+      customersNotCalculated: s('customersNotCalculated'),
+      customerSegmentVip: s('customerSegmentVip'),
+      customerSegmentHighValue: s('customerSegmentHighValue'),
+      customerSegmentLoyal: s('customerSegmentLoyal'),
+      customerSegmentRegular: s('customerSegmentRegular'),
+      customerSegmentNew: s('customerSegmentNew'),
+      customerSegmentDormant: s('customerSegmentDormant'),
+      customerRiskLow: s('customerRiskLow'),
+      customerRiskMedium: s('customerRiskMedium'),
+      customerRiskHigh: s('customerRiskHigh'),
+      customerRiskCritical: s('customerRiskCritical'),
       previousPage: s('previousPage'),
       nextPage: s('nextPage'),
       businessProductsTitle: s('businessProductsTitle'),
@@ -2334,7 +2445,7 @@ class CompanyStrings {
           'inferredType': 'Detected type',
           'suggestedStrategy': 'Suggested missing-data strategy',
           'appliedStrategies': 'Applied actions',
-          'conversions': 'Conversions N/D/B',
+          'conversions': 'Conversions',
           'invalidCorrected': 'Invalid values corrected',
           'preview': 'Before and after preview',
           'previewEmpty': 'No preview is available yet.',
@@ -2385,6 +2496,17 @@ class CompanyStrings {
         customersLastPurchase: 'Last purchase',
         customersSegment: 'Segment',
         customersRisk: 'Risk',
+        customersNotCalculated: 'Not calculated',
+        customerSegmentVip: 'VIP',
+        customerSegmentHighValue: 'High value',
+        customerSegmentLoyal: 'Loyal',
+        customerSegmentRegular: 'Regular',
+        customerSegmentNew: 'New',
+        customerSegmentDormant: 'Dormant',
+        customerRiskLow: 'Low',
+        customerRiskMedium: 'Medium',
+        customerRiskHigh: 'High',
+        customerRiskCritical: 'Critical',
         previousPage: 'Previous',
         nextPage: 'Next',
         businessProductsTitle: 'Manage your catalog',
@@ -2529,6 +2651,17 @@ class CompanyStrings {
         'customersLastPurchase' => customersLastPurchase,
         'customersSegment' => customersSegment,
         'customersRisk' => customersRisk,
+        'customersNotCalculated' => customersNotCalculated,
+        'customerSegmentVip' => customerSegmentVip,
+        'customerSegmentHighValue' => customerSegmentHighValue,
+        'customerSegmentLoyal' => customerSegmentLoyal,
+        'customerSegmentRegular' => customerSegmentRegular,
+        'customerSegmentNew' => customerSegmentNew,
+        'customerSegmentDormant' => customerSegmentDormant,
+        'customerRiskLow' => customerRiskLow,
+        'customerRiskMedium' => customerRiskMedium,
+        'customerRiskHigh' => customerRiskHigh,
+        'customerRiskCritical' => customerRiskCritical,
         'previousPage' => previousPage,
         'nextPage' => nextPage,
         'businessProductsTitle' => businessProductsTitle,
@@ -2674,6 +2807,35 @@ class CompanyStrings {
   final String customersLastPurchase;
   final String customersSegment;
   final String customersRisk;
+  final String customersNotCalculated;
+  final String customerSegmentVip;
+  final String customerSegmentHighValue;
+  final String customerSegmentLoyal;
+  final String customerSegmentRegular;
+  final String customerSegmentNew;
+  final String customerSegmentDormant;
+  final String customerRiskLow;
+  final String customerRiskMedium;
+  final String customerRiskHigh;
+  final String customerRiskCritical;
+
+  String customerSegmentName(String value) => switch (value) {
+        'vip' => customerSegmentVip,
+        'high_value' => customerSegmentHighValue,
+        'loyal' => customerSegmentLoyal,
+        'regular' => customerSegmentRegular,
+        'new' => customerSegmentNew,
+        'dormant' => customerSegmentDormant,
+        _ => customersNotCalculated,
+      };
+
+  String customerRiskName(String value) => switch (value) {
+        'critical' => customerRiskCritical,
+        'high' => customerRiskHigh,
+        'medium' => customerRiskMedium,
+        'low' => customerRiskLow,
+        _ => customersNotCalculated,
+      };
   final String previousPage;
   final String nextPage;
   final String businessProductsTitle;

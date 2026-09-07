@@ -1,8 +1,15 @@
 ﻿"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
 
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import stripe
+
+
+@dataclass(frozen=True, slots=True)
+class CreditCheckoutSession:
+    id: str
+    url: str
 
 
 class BillingProvider(Protocol):
@@ -22,7 +29,7 @@ class BillingProvider(Protocol):
         metadata: dict[str, str],
         success_url: str,
         cancel_url: str,
-    ) -> str: ...
+    ) -> CreditCheckoutSession: ...
     def list_customer_invoices(self, customer_id: str, *, limit: int = 100) -> list[dict[str, Any]]: ...
     def change_subscription(self, subscription_id: str, price_id: str) -> None: ...
     def cancel_subscription(self, subscription_id: str) -> None: ...
@@ -75,7 +82,7 @@ class StripeGateway:
         metadata: dict[str, str],
         success_url: str,
         cancel_url: str,
-    ) -> str:
+    ) -> CreditCheckoutSession:
         checkout = stripe.checkout.Session.create(
             mode="payment",
             customer=customer_id,
@@ -93,7 +100,7 @@ class StripeGateway:
         )
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
-        return checkout.url
+        return CreditCheckoutSession(id=str(checkout.id), url=str(checkout.url))
 
     def list_customer_invoices(self, customer_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         """Retourne les factures Stripe du Customer courant, jamais celles d'un autre tenant."""

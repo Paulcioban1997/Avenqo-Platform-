@@ -101,10 +101,10 @@ class CompanyDatasetCleaner:
                     if not ok:
                         row_invalid = True
                         invalid_values_detected += 1
-                        invalid_values_corrected += 1
                         stats["invalid_values_detected"] += 1
-                        stats["invalid_values_corrected"] += 1
-                        converted = None
+                        # Keep the source value when parsing is uncertain. A
+                        # failed interpretation must never erase business data.
+                        converted = value
                     cleaned_row[column_name] = converted
                 elif any(t in expected_types for t in (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER)):
                     converted, ok = self._convert_numeric(value)
@@ -218,11 +218,18 @@ class CompanyDatasetCleaner:
         if isinstance(value, datetime):
             return value.isoformat(), True
         if isinstance(value, str):
+            normalized = value.strip().replace("Z", "+00:00")
             try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(normalized)
                 return parsed.isoformat(), True
             except ValueError:
-                return value, False
+                pass
+            for pattern in ("%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(normalized, pattern).isoformat(), True
+                except ValueError:
+                    continue
+            return value, False
         return value, False
 
     @staticmethod

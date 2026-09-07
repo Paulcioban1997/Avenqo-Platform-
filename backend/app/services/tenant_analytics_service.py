@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select
@@ -35,6 +36,7 @@ _ADDITIVE_FIELDS = frozenset(
 # Large imports must never be fully reconstructed inside an API request. For
 # business analytics we read fixed-size summaries prepared by a background worker.
 _DASHBOARD_MAX_PREPARED_ROWS = 50_000
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +343,12 @@ class TenantAnalyticsService:
             try:
                 result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
             except Exception:
+                _log.exception(
+                    "Tenant analytics dataset unavailable endpoint=/api/v1/dashboard "
+                    "status=degraded tenant=%s dataset=%s category=prepared_dataset_unavailable",
+                    tenant.company_id,
+                    dataset.id,
+                )
                 continue
         return tuple(result), deferred_dataset_ids, summaries, retail_states
 

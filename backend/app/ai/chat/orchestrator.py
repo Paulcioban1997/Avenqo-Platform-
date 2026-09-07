@@ -15,11 +15,11 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError, ToolCallingUnsupportedError
-from backend.app.ai.llm.schemas import LLMMessage
+from backend.app.ai.llm.schemas import LLMMessage, LLMProviderAttempt
 from backend.app.ai.tools.base import AITool
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import ToolError
@@ -42,6 +42,7 @@ class OrchestrationResult:
     provider: str = ""
     model: str = ""
     token_usage: dict[str, object] = field(default_factory=dict)
+    attempts: tuple[LLMProviderAttempt, ...] = ()
     status_events: tuple[str, ...] = ()
     cancelled: bool = False
 
@@ -57,6 +58,21 @@ class OrchestrationEvent:
 
 async def _never_cancelled() -> bool:
     return False
+
+
+def _collect_response_usage(
+    totals: dict[str, int],
+    attempts: list[LLMProviderAttempt],
+    response,
+) -> None:
+    if response.attempts:
+        for attempt in response.attempts:
+            attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
+            for key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens"):
+                totals[key] += int(getattr(attempt.usage, key, 0) or 0)
+        return
+    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens"):
+        totals[key] += int(response.token_usage.get(key, 0) or 0)
 
 
 class ToolOrchestrator:
@@ -121,6 +137,7 @@ class ToolOrchestrator:
                     provider=generation.provider,
                     model=generation.model,
                     token_usage=generation.token_usage,
+                    attempts=generation.attempts,
                 ),
             )
             return
@@ -136,6 +153,13 @@ class ToolOrchestrator:
         tool_call_results: list[ToolCallResult] = []
         status_events: list[str] = []
         tools_called = 0
+        attempts: list[LLMProviderAttempt] = []
+        usage_totals = {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+        }
 
         for _iteration in range(self._max_iterations):
             if await check_cancelled():
@@ -143,6 +167,7 @@ class ToolOrchestrator:
                     kind="final",
                     result=OrchestrationResult(
                         content="", tool_call_results=tuple(tool_call_results),
+                        token_usage=dict(usage_totals), attempts=tuple(attempts),
                         status_events=tuple(status_events), cancelled=True,
                     ),
                 )
@@ -152,8 +177,22 @@ class ToolOrchestrator:
                 response = await self._provider.generate_with_tools(
                     system_instruction=system_instruction, messages=messages, tools=definitions
                 )
-            except (ToolCallingUnsupportedError, LLMProviderError):
-                generation = await self._provider.generate(system_instruction=system_instruction, prompt=user_query)
+            except (ToolCallingUnsupportedError, LLMProviderError) as exc:
+                prior_attempts = getattr(exc, "attempts", ())
+                for attempt in prior_attempts:
+                    attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
+                try:
+                    generation = await self._provider.generate(
+                        system_instruction=system_instruction,
+                        prompt=user_query,
+                    )
+                except LLMProviderError as fallback_exc:
+                    combined = list(attempts)
+                    for attempt in fallback_exc.attempts:
+                        combined.append(replace(attempt, attempt_number=len(combined) + 1))
+                    fallback_exc.attempts = tuple(combined)
+                    raise
+                _collect_response_usage(usage_totals, attempts, generation)
                 yield OrchestrationEvent(
                     kind="final",
                     result=OrchestrationResult(
@@ -161,11 +200,14 @@ class ToolOrchestrator:
                         tool_call_results=tuple(tool_call_results),
                         provider=generation.provider,
                         model=generation.model,
-                        token_usage=generation.token_usage,
+                        token_usage=dict(usage_totals),
+                        attempts=tuple(attempts),
                         status_events=tuple(status_events),
                     ),
                 )
                 return
+
+            _collect_response_usage(usage_totals, attempts, response)
 
             if not response.tool_calls:
                 yield OrchestrationEvent(
@@ -175,7 +217,8 @@ class ToolOrchestrator:
                         tool_call_results=tuple(tool_call_results),
                         provider=response.provider,
                         model=response.model,
-                        token_usage=response.token_usage,
+                        token_usage=dict(usage_totals),
+                        attempts=tuple(attempts),
                         status_events=tuple(status_events),
                     ),
                 )
@@ -198,6 +241,7 @@ class ToolOrchestrator:
                         kind="final",
                         result=OrchestrationResult(
                             content="", tool_call_results=tuple(tool_call_results),
+                            token_usage=dict(usage_totals), attempts=tuple(attempts),
                             status_events=tuple(status_events), cancelled=True,
                         ),
                     )
@@ -227,6 +271,8 @@ class ToolOrchestrator:
             result=OrchestrationResult(
                 content="I could not complete this request within the allowed number of steps.",
                 tool_call_results=tuple(tool_call_results),
+                token_usage=dict(usage_totals),
+                attempts=tuple(attempts),
                 status_events=tuple(status_events),
             ),
         )

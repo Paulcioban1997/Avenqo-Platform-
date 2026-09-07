@@ -63,6 +63,25 @@ The billing layer supports Stripe Checkout, plan changes, end-of-period cancella
 Avenqo utilise une seule application Material dans `frontend/`. Les routes et
 widgets sont partagés entre Web, Android, iOS, Windows, macOS et Linux.
 
+Sous Windows, démarrer toute la pile locale avec une seule commande depuis la
+racine du dépôt :
+
+```powershell
+.\scripts\start_local.ps1
+```
+
+Le script attend que l'API soit saine avant de lancer Flutter et limite la
+surveillance Uvicorn à `backend/`, afin que les écritures SQLite ne redémarrent
+pas le serveur pendant une connexion.
+
+Pour tester l'interface locale avec les comptes et données réels du sandbox :
+
+```powershell
+.\scripts\start_local.ps1 -ApiTarget sandbox
+```
+
+Pour lancer uniquement Flutter :
+
 ```powershell
 cd frontend
 flutter pub get
@@ -83,7 +102,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload
+python -m uvicorn backend.main:app --reload --reload-dir backend --host 127.0.0.1 --port 8000
 ```
 
 ## Running tests

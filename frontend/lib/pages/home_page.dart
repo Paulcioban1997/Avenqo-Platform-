@@ -840,12 +840,13 @@ class _TrustStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).hero;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: _Brand.line)),
       ),
-      child: const Center(
+      child: Center(
         child: Wrap(
           alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -853,36 +854,36 @@ class _TrustStrip extends StatelessWidget {
           runSpacing: 8,
           children: [
             Text(
-              'Une seule plateforme pour',
-              style: TextStyle(color: _Brand.muted, fontSize: 13),
+              t.trustLabel,
+              style: const TextStyle(color: _Brand.muted, fontSize: 13),
             ),
             Text(
-              'Vendre',
-              style: TextStyle(
+              t.trustSell,
+              style: const TextStyle(
                 color: Color(0xFF252A32),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
             Text(
-              'Comprendre',
-              style: TextStyle(
+              t.trustUnderstand,
+              style: const TextStyle(
                 color: Color(0xFF252A32),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
             Text(
-              'Automatiser',
-              style: TextStyle(
+              t.trustAutomate,
+              style: const TextStyle(
                 color: Color(0xFF252A32),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
             Text(
-              'Décider',
-              style: TextStyle(
+              t.trustDecide,
+              style: const TextStyle(
                 color: Color(0xFF252A32),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -900,39 +901,37 @@ class _FeaturesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).features;
     return _Section(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(
-            kicker: 'Une intelligence utile',
-            title: 'De la question à l\u2019action, sans complexité.',
-            subtitle:
-                'Avenqo transforme votre activité en décisions claires, au même endroit.',
+          _SectionHeading(
+            kicker: t.kicker,
+            title: t.title,
+            subtitle: t.subtitle,
           ),
           const SizedBox(height: 40),
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 900;
               final assistant = _FeatureCard(
-                label: 'Assistant Avenqo',
-                title: 'Parlez à votre entreprise.',
-                text:
-                    'Posez une question comme vous le feriez à un collègue. Avenqo rassemble le contexte et répond directement.',
-                child: _ChatDemoCard(),
+                label: t.assistantLabel,
+                title: t.assistantTitle,
+                text: t.assistantText,
+                child: _ChatDemoCard(strings: t),
               );
               final smallCards = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _FeatureCard(
-                    label: 'Priorité élevée',
-                    title: 'Des actions, pas des écrans.',
-                    text:
-                        'Chaque recommandation indique quoi faire, pourquoi et quel résultat attendre.',
-                    child: const _ActionLineCard(),
+                    label: t.actionsPriority,
+                    title: t.actionsTitle,
+                    text: t.actionsText,
+                    child: _ActionLineCard(label: t.actionsLine),
                   ),
                   const SizedBox(height: 24),
-                  const _SecurityCard(),
+                  _SecurityCard(strings: t),
                 ],
               );
               if (!wide) {
@@ -1014,7 +1013,9 @@ class _FeatureCard extends StatelessWidget {
 }
 
 class _ChatDemoCard extends StatelessWidget {
-  const _ChatDemoCard();
+  const _ChatDemoCard({required this.strings});
+
+  final FeaturesStrings strings;
 
   @override
   Widget build(BuildContext context) {
@@ -1029,7 +1030,7 @@ class _ChatDemoCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Pourquoi mes ventes baissent ce mois-ci ?',
+            strings.demoQuestion,
             style: TextStyle(
               color: colors.ink,
               fontWeight: FontWeight.w700,
@@ -1038,7 +1039,7 @@ class _ChatDemoCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'La baisse provient principalement du segment Maison, en recul de 14 %. Je recommande une relance ciblée sur 126 clients.',
+            strings.demoAnswer,
             style: TextStyle(color: colors.muted, fontSize: 13, height: 1.55),
           ),
           const SizedBox(height: 14),
@@ -1053,7 +1054,7 @@ class _ChatDemoCard extends StatelessWidget {
                   foregroundColor: colors.surface,
                   textStyle: const TextStyle(fontSize: 12),
                 ),
-                child: const Text('Préparer la campagne'),
+                child: Text(strings.demoAction1),
               ),
               OutlinedButton(
                 onPressed: () => context.go('/pricing'),
@@ -1061,7 +1062,7 @@ class _ChatDemoCard extends StatelessWidget {
                   foregroundColor: colors.ink,
                   textStyle: const TextStyle(fontSize: 12),
                 ),
-                child: const Text('Voir l\u2019analyse'),
+                child: Text(strings.demoAction2),
               ),
             ],
           ),
@@ -1072,7 +1073,9 @@ class _ChatDemoCard extends StatelessWidget {
 }
 
 class _ActionLineCard extends StatelessWidget {
-  const _ActionLineCard();
+  const _ActionLineCard({required this.label});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -1088,7 +1091,7 @@ class _ActionLineCard extends StatelessWidget {
           Icon(Icons.bolt, color: _Brand.blue, size: 18),
           SizedBox(width: 10),
           Text(
-            'Relancer 42 comptes',
+            label,
             style: TextStyle(
               color: colors.ink,
               fontSize: 13,
@@ -1102,7 +1105,9 @@ class _ActionLineCard extends StatelessWidget {
 }
 
 class _SecurityCard extends StatelessWidget {
-  const _SecurityCard();
+  const _SecurityCard({required this.strings});
+
+  final FeaturesStrings strings;
 
   @override
   Widget build(BuildContext context) {
@@ -1117,7 +1122,7 @@ class _SecurityCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Votre entreprise reste la vôtre.',
+            strings.securityTitle,
             style: TextStyle(
               color: colors.ink,
               fontSize: 18,
@@ -1126,13 +1131,13 @@ class _SecurityCard extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            'Espaces isolés, accès maîtrisés et architecture conçue pour évoluer.',
+            strings.securityText,
             style: TextStyle(color: colors.muted, fontSize: 13, height: 1.55),
           ),
           SizedBox(height: 14),
-          _SecurityItem('Accès par rôle'),
-          _SecurityItem('Traçabilité'),
-          _SecurityItem('Hébergement évolutif'),
+          _SecurityItem(strings.securityItem1),
+          _SecurityItem(strings.securityItem2),
+          _SecurityItem(strings.securityItem3),
         ],
       ),
     );
@@ -1307,39 +1312,17 @@ class _ModuleCard extends StatelessWidget {
 class _StepsSection extends StatelessWidget {
   const _StepsSection();
 
-  static const _steps = [
-    (
-      '01',
-      'Créez votre espace',
-      'Configurez votre entreprise en quelques minutes.',
-    ),
-    (
-      '02',
-      'Choisissez vos modules',
-      'Activez uniquement les solutions dont vous avez besoin.',
-    ),
-    (
-      '03',
-      'Connectez vos outils',
-      'Reliez vos ventes, votre CRM ou vos documents.',
-    ),
-    (
-      '04',
-      'Laissez Avenqo agir',
-      'Recevez des réponses et des actions prêtes à exécuter.',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).steps;
     return _Section(
       color: _Brand.ink,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(
-            kicker: 'Simple dès le départ',
-            title: 'Opérationnel en quatre étapes.',
+          _SectionHeading(
+            kicker: t.kicker,
+            title: t.title,
             dark: true,
           ),
           const SizedBox(height: 40),
@@ -1354,13 +1337,13 @@ class _StepsSection extends StatelessWidget {
                 spacing: 24,
                 runSpacing: 24,
                 children: [
-                  for (final step in _steps)
+                  for (final step in t.items)
                     SizedBox(
                       width: cardWidth,
                       child: _StepCard(
-                        number: step.$1,
-                        title: step.$2,
-                        text: step.$3,
+                        number: step.number,
+                        title: step.title,
+                        text: step.text,
                       ),
                     ),
                 ],
@@ -1371,26 +1354,26 @@ class _StepsSection extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Text(
-                'Prêt à démarrer ?',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                t.ctaLabel,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(width: 10),
               InkWell(
                 onTap: () => context.go('/register'),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Créer mon espace',
-                      style: TextStyle(
+                      t.ctaButton,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    SizedBox(width: 4),
-                    Icon(Icons.arrow_forward, size: 14, color: Colors.white),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward, size: 14, color: Colors.white),
                   ],
                 ),
               ),
@@ -1459,31 +1442,15 @@ class _StepCard extends StatelessWidget {
 class _UsecasesSection extends StatelessWidget {
   const _UsecasesSection();
 
-  static const _items = [
-    (
-      'Direction',
-      'Suivez les priorités et les résultats en temps réel.',
-      Icons.apartment_outlined,
-    ),
-    (
-      'Finance',
-      'Anticipez les écarts et accélérez le suivi.',
-      Icons.attach_money,
-    ),
-    (
-      'Commerce',
-      'Identifiez les clients et produits à fort potentiel.',
-      Icons.shopping_bag_outlined,
-    ),
-    (
-      'Opérations',
-      'Automatisez les tâches qui ralentissent vos équipes.',
-      Icons.account_tree_outlined,
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).usecases;
+    final items = [
+      (t.direction, Icons.apartment_outlined),
+      (t.finance, Icons.attach_money),
+      (t.commerce, Icons.shopping_bag_outlined),
+      (t.operations, Icons.account_tree_outlined),
+    ];
     return _Section(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -1491,18 +1458,21 @@ class _UsecasesSection extends StatelessWidget {
           final copy = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SectionHeading(
-                kicker: 'Pour toute l\u2019entreprise',
-                title: 'Une vision commune. Des équipes plus rapides.',
-                subtitle:
-                    'Direction, ventes, finance et opérations partagent enfin la même lecture de l\u2019activité.',
+              _SectionHeading(
+                kicker: t.kicker,
+                title: t.title,
+                subtitle: t.subtitle,
               ),
               const SizedBox(height: 24),
-              for (final item in _items)
-                _UsecaseRow(title: item.$1, text: item.$2, icon: item.$3),
+              for (final item in items)
+                _UsecaseRow(
+                  title: item.$1.title,
+                  text: item.$1.text,
+                  icon: item.$2,
+                ),
             ],
           );
-          const card = _UsecaseBrandCard();
+          final card = _UsecaseBrandCard(strings: t);
           if (!wide) {
             return Column(children: [copy, const SizedBox(height: 32), card]);
           }
@@ -1511,7 +1481,7 @@ class _UsecasesSection extends StatelessWidget {
             children: [
               Expanded(flex: 6, child: copy),
               const SizedBox(width: 40),
-              const Expanded(flex: 5, child: card),
+              Expanded(flex: 5, child: card),
             ],
           );
         },
@@ -1568,7 +1538,9 @@ class _UsecaseRow extends StatelessWidget {
 }
 
 class _UsecaseBrandCard extends StatelessWidget {
-  const _UsecaseBrandCard();
+  const _UsecaseBrandCard({required this.strings});
+
+  final UsecasesStrings strings;
 
   @override
   Widget build(BuildContext context) {
@@ -1597,9 +1569,9 @@ class _UsecaseBrandCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            'PLATEFORME IA TOUT-EN-UN',
-            style: TextStyle(
+          Text(
+            strings.kicker.toUpperCase(),
+            style: const TextStyle(
               color: Colors.white54,
               fontSize: 10,
               letterSpacing: 1.2,
@@ -1609,11 +1581,11 @@ class _UsecaseBrandCard extends StatelessWidget {
           Wrap(
             spacing: 16,
             runSpacing: 16,
-            children: const [
-              _BrandFeatureChip('Intelligence artificielle'),
-              _BrandFeatureChip('Automatisation intelligente'),
-              _BrandFeatureChip('Analytique avancée'),
-              _BrandFeatureChip('Sécurisée et évolutive'),
+            children: [
+              _BrandFeatureChip(strings.direction.title),
+              _BrandFeatureChip(strings.finance.title),
+              _BrandFeatureChip(strings.commerce.title),
+              _BrandFeatureChip(strings.operations.title),
             ],
           ),
           const SizedBox(height: 24),
@@ -1627,9 +1599,9 @@ class _UsecaseBrandCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const Text(
-            'Une plateforme. Toutes vos solutions IA.',
-            style: TextStyle(color: Colors.white54, fontSize: 11),
+          Text(
+            strings.title,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
           ),
         ],
       ),
@@ -1661,40 +1633,18 @@ class _BrandFeatureChip extends StatelessWidget {
 class _WhySection extends StatelessWidget {
   const _WhySection();
 
-  static const _items = [
-    (
-      '01',
-      'Modulaire par nature',
-      'Commencez par une priorité et étendez la plateforme sans recommencer.',
-    ),
-    (
-      '02',
-      'Une expérience unifiée',
-      'Une connexion, une interface et un assistant commun à tous vos modules.',
-    ),
-    (
-      '03',
-      'Accompagnement humain',
-      'PMC Solutions AI vous accompagne de la connexion à l\u2019adoption.',
-    ),
-    (
-      '04',
-      'Prêt pour l\u2019entreprise',
-      'Gestion des accès, espaces isolés et infrastructure évolutive.',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).why;
     final colors = AvenqoColors.of(context);
     return _Section(
       color: colors.canvas,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(
-            kicker: 'Pourquoi Avenqo',
-            title: 'Conçu pour grandir avec vous.',
+          _SectionHeading(
+            kicker: t.kicker,
+            title: t.title,
           ),
           const SizedBox(height: 32),
           LayoutBuilder(
@@ -1708,7 +1658,7 @@ class _WhySection extends StatelessWidget {
                 spacing: 20,
                 runSpacing: 20,
                 children: [
-                  for (final item in _items)
+                  for (final item in t.items)
                     SizedBox(
                       width: cardWidth,
                       child: Column(
@@ -1716,7 +1666,7 @@ class _WhySection extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            item.$1,
+                            item.number,
                             style: const TextStyle(
                               color: _Brand.blue,
                               fontSize: 11,
@@ -1725,7 +1675,7 @@ class _WhySection extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            item.$2,
+                            item.title,
                             style: TextStyle(
                               color: colors.ink,
                               fontSize: 15,
@@ -1734,7 +1684,7 @@ class _WhySection extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            item.$3,
+                            item.text,
                             style: TextStyle(
                               color: colors.muted,
                               fontSize: 13,
@@ -2008,31 +1958,9 @@ class _PricingCard extends StatelessWidget {
 class _FaqSection extends StatelessWidget {
   const _FaqSection();
 
-  static const _items = [
-    (
-      'Avenqo remplace-t-il mes outils actuels ?',
-      'Avenqo se connecte à votre environnement et rassemble décisions, recommandations et automatisations dans une expérience unique.',
-    ),
-    (
-      'Puis-je commencer avec un seul module ?',
-      'Oui. Commencez par votre priorité, puis ajoutez des capacités au rythme de votre entreprise.',
-    ),
-    (
-      'Mes informations sont-elles isolées ?',
-      'Oui. Chaque entreprise dispose de son propre espace, de ses accès et de ses informations strictement séparées.',
-    ),
-    (
-      'Avenqo convient-il aux PME ?',
-      'Oui. Les offres accompagnent aussi bien une équipe en croissance qu\u2019une organisation multisite.',
-    ),
-    (
-      'Combien de temps faut-il pour démarrer ?',
-      'La création de l\u2019espace est immédiate. Le délai de connexion dépend ensuite des outils choisis.',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final t = AvenqoLocaleScope.translationsOf(context).faq;
     return _Section(
       color: AvenqoColors.of(context).canvas,
       child: LayoutBuilder(
@@ -2042,11 +1970,10 @@ class _FaqSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const _SectionHeading(
-                kicker: 'Questions fréquentes',
-                title: 'Tout ce qu\u2019il faut savoir.',
-                subtitle:
-                    'Une autre question ? Notre équipe vous répond directement.',
+              _SectionHeading(
+                kicker: t.kicker,
+                title: t.title,
+                subtitle: t.subtitle,
               ),
               const SizedBox(height: 16),
               InkWell(
@@ -2076,8 +2003,8 @@ class _FaqSection extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final item in _items)
-                  _FaqTile(question: item.$1, answer: item.$2),
+                for (final item in t.items)
+                  _FaqTile(question: item.question, answer: item.answer),
               ],
             ),
           );
@@ -2241,11 +2168,11 @@ class _Footer extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 760;
-              final brand = const Column(
+              final brand = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
+                  const Row(
                     children: [
                       AvenqoBrandIcon(size: 20),
                       SizedBox(width: 8),
@@ -2259,10 +2186,10 @@ class _Footer extends StatelessWidget {
                       ),
                     ],
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Text(
-                    'Une plateforme.\nToutes vos solutions IA.',
-                    style: TextStyle(
+                    t.footer.tagline,
+                    style: const TextStyle(
                       color: Colors.white54,
                       fontSize: 13,
                       height: 1.5,
@@ -2306,9 +2233,9 @@ class _Footer extends StatelessWidget {
           const SizedBox(height: 40),
           const Divider(color: Color(0xFF2A2E38)),
           const SizedBox(height: 16),
-          const Text(
-            '© 2026 Avenqo. Une plateforme de PMC Solutions AI.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
+          Text(
+            t.footer.copyright,
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
         ],
       ),

@@ -12,6 +12,7 @@ automatique), et intégration bout-en-bout dans `ChatService.send()`/`stream()`
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,19 +25,24 @@ from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.retrieval_service import RetrievalService
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
-from backend.app.ai.llm.schemas import LLMGeneration
+from backend.app.ai.llm.schemas import LLMGeneration, LLMStreamChunk
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError
-from backend.app.ai.usage.exceptions import AIQuotaExceededError
+from backend.app.ai.usage.exceptions import (
+    AI_REQUEST_ALREADY_PROCESSED,
+    AIQuotaExceededError,
+    AIRequestConflictError,
+)
 from backend.app.ai.usage.policy import (
     MAX_CONVERSATION_HISTORY,
     MONTHLY_AI_REQUESTS,
     MONTHLY_LLM_TOKENS,
     AIQuotaPolicy,
 )
-from backend.app.ai.usage.service import AIUsageService, tokens_from_usage
+from backend.app.ai.usage.service import AIUsageService, credits_from_provider_cost, tokens_from_usage
 from backend.app.config.settings import Settings
 from backend.app.models import Base, Company, User, UserRole
-from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIUsage
+from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIProviderAttempt, TenantAIUsage
+from backend.app.ai.llm.schemas import LLMProviderAttempt, LLMUsage
 
 pytestmark = pytest.mark.asyncio
 
@@ -98,6 +104,30 @@ class FailingLLMProvider(StubLLMProvider):
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         self.generate_calls += 1
         raise LLMProviderError("provider failed")
+
+
+class MeteredStreamingProvider(StubLLMProvider):
+    async def stream_events(self, *, system_instruction: str, prompt: str):
+        usage = LLMUsage(
+            provider=self.name,
+            model="fake-model",
+            input_tokens=10,
+            output_tokens=5,
+            provider_request_id="provider-stream",
+            avenqo_request_id="avenqo-stream",
+        )
+        attempt = LLMProviderAttempt(
+            provider=self.name,
+            model="fake-model",
+            operation="stream",
+            attempt_number=1,
+            success=True,
+            latency_ms=10,
+            usage=usage,
+            provider_cost_usd=Decimal("0.00031"),
+        )
+        yield LLMStreamChunk(content=self._content)
+        yield LLMStreamChunk(usage=usage, attempts=(attempt,))
 
 
 def _settings(limits: dict[str, dict[str, int]] | None = None) -> Settings:
@@ -194,7 +224,7 @@ def test_usage_service_tracks_tenant_quota_isolation(db_session) -> None:
     assert usage_b.ai_requests_count == 1
 
 
-def test_demo_credits_consume_included_before_purchased_and_expire_at_renewal(
+def test_demo_credits_consume_included_before_purchased_and_survive_renewal(
     db_session,
 ) -> None:
     company = _company(db_session, slug="credits")
@@ -216,8 +246,8 @@ def test_demo_credits_consume_included_before_purchased_and_expire_at_renewal(
     reset = service.get_credit_balance(company.id, "demo")
     assert reset["monthly_used"] == 0
     assert reset["monthly_remaining"] == 6_500
-    assert reset["purchased_remaining"] == 0
-    assert reset["total_remaining"] == 6_500
+    assert reset["purchased_remaining"] == 6_499
+    assert reset["total_remaining"] == 12_999
 
 
 def test_purchased_credits_are_strictly_tenant_scoped(db_session) -> None:
@@ -235,6 +265,38 @@ def test_purchased_credits_are_strictly_tenant_scoped(db_session) -> None:
         service.ensure_quota_available(company_a.id, "demo")
     with pytest.raises(AIQuotaExceededError):
         service.ensure_quota_available(company_b.id, "demo")
+
+
+def test_renewal_resets_only_included_credits_for_one_tenant(db_session) -> None:
+    company_a = _company(db_session, slug="renewal-a")
+    company_b = _company(db_session, slug="renewal-b")
+    service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 100}})),
+    )
+    service.add_purchased_credits(company_a.id, 6499)
+    service.add_purchased_credits(company_b.id, 321)
+    service.record_usage(company_a.id, "demo")
+    service.reset_credits_for_renewal(company_a.id, "2025-02")
+
+    balance_a = service.get_credit_balance(company_a.id, "demo")
+    balance_b = service.get_credit_balance(company_b.id, "demo")
+    assert balance_a["monthly_used"] == 0
+    assert balance_a["purchased_remaining"] == 6499
+    assert balance_b["purchased_remaining"] == 321
+
+
+def test_purchased_credits_never_become_negative(db_session) -> None:
+    company = _company(db_session, slug="credits-floor")
+    service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 0}})),
+    )
+    service.add_purchased_credits(company.id, 1)
+    service.record_usage(company.id, "demo")
+    with pytest.raises(AIQuotaExceededError):
+        service.record_usage(company.id, "demo")
+    assert service.get_credit_balance(company.id, "demo")["purchased_remaining"] == 0
 
 
 def test_usage_rows_are_scoped_by_company_and_billing_period(db_session) -> None:
@@ -291,6 +353,79 @@ def test_tokens_from_usage_sums_input_and_output_regardless_of_provider_shape() 
     assert tokens_from_usage({"input_tokens": 3}) == 3
 
 
+def test_provider_cost_is_converted_to_credits_with_decimal_ceiling() -> None:
+    assert credits_from_provider_cost(Decimal("0"), Decimal("0.00030")) == 0
+    assert credits_from_provider_cost(Decimal("0.00030"), Decimal("0.00030")) == 1
+    assert credits_from_provider_cost(Decimal("0.000300000001"), Decimal("0.00030")) == 2
+
+
+def test_provider_attempt_ledger_is_tenant_scoped_and_idempotent(db_session) -> None:
+    company_a = _company(db_session, slug="metering-a")
+    company_b = _company(db_session, slug="metering-b")
+    service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 1}})),
+        Decimal("0.00030"),
+    )
+    service.add_purchased_credits(company_a.id, 5)
+    attempts = (
+        LLMProviderAttempt(
+            provider="openai",
+            model="gpt-4o-mini",
+            operation="generate",
+            attempt_number=1,
+            success=False,
+            failure_category="timeout",
+            latency_ms=50,
+            usage=LLMUsage(
+                provider="openai",
+                model="gpt-4o-mini",
+                input_tokens=1_000,
+                output_tokens=100,
+                provider_request_id="provider-a",
+                avenqo_request_id="avenqo-a",
+            ),
+            provider_cost_usd=Decimal("0.00031"),
+            input_cost_per_million_usd=Decimal("0.15"),
+            output_cost_per_million_usd=Decimal("0.60"),
+        ),
+        LLMProviderAttempt(
+            provider="gemini",
+            model="gemini-flash-latest",
+            operation="generate",
+            attempt_number=2,
+            success=True,
+            latency_ms=25,
+            usage=LLMUsage(
+                provider="gemini",
+                model="gemini-flash-latest",
+                input_tokens=1_000,
+                output_tokens=100,
+                provider_request_id="provider-b",
+                avenqo_request_id="avenqo-a",
+            ),
+            provider_cost_usd=Decimal("0.00020"),
+            input_cost_per_million_usd=Decimal("0.10"),
+            output_cost_per_million_usd=Decimal("0.40"),
+        ),
+    )
+
+    service.record_usage(company_a.id, "demo", tokens=2_200, attempts=attempts)
+    service.record_usage(company_a.id, "demo", tokens=2_200, attempts=attempts)
+
+    balance = service.get_credit_balance(company_a.id, "demo")
+    assert balance["monthly_used"] == 1
+    assert balance["purchased_remaining"] == 4
+    rows = db_session.query(TenantAIProviderAttempt).order_by(TenantAIProviderAttempt.attempt_number).all()
+    assert len(rows) == 2
+    assert [row.provider for row in rows] == ["openai", "gemini"]
+    assert [row.avenqo_credits for row in rows] == [0, 2]
+    assert rows[0].provider_request_id == "provider-a"
+    assert rows[0].input_cost_per_million_usd == Decimal("0.15000000")
+    assert db_session.query(TenantAIProviderAttempt).filter_by(company_id=company_b.id).count() == 0
+    assert service.get_usage(company_a.id, "demo").ai_requests_count == 1
+
+
 def test_usage_aggregates_across_different_provider_shaped_calls(db_session) -> None:
     company = _company(db_session)
     service = AIUsageService(db_session, AIQuotaPolicy(_settings()))
@@ -330,6 +465,48 @@ async def test_chat_service_send_blocks_before_llm_call_when_quota_exceeded(db_s
     assert provider.generate_calls == 1
 
 
+async def test_chat_service_duplicate_request_id_never_reexecutes_provider(db_session) -> None:
+    company = _company(db_session, slug="duplicate-request")
+    user = _user(db_session, company)
+    conversations = ConversationService(db_session)
+    provider = StubLLMProvider()
+    usage_service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 2}})),
+    )
+    service = ChatService(
+        conversations,
+        RetrievalService(db_session),
+        provider,
+        usage_service=usage_service,
+    )
+    conversation = conversations.create(company.id, user.id, "Chat")
+
+    await service.send(
+        company.id,
+        user.id,
+        conversation.id,
+        "hi",
+        plan_code="demo",
+        request_id="stable-request-id",
+    )
+
+    with pytest.raises(
+        AIRequestConflictError,
+        match=f"^{AI_REQUEST_ALREADY_PROCESSED}$",
+    ):
+        await service.send(
+            company.id,
+            user.id,
+            conversation.id,
+            "hi again",
+            plan_code="demo",
+            request_id="stable-request-id",
+        )
+
+    assert provider.generate_calls == 1
+
+
 async def test_chat_service_records_usage_after_successful_send(db_session) -> None:
     company = _company(db_session)
     user = _user(db_session, company)
@@ -345,6 +522,42 @@ async def test_chat_service_records_usage_after_successful_send(db_session) -> N
     usage = usage_service.get_usage(company.id, "demo")
     assert usage.ai_requests_count == 1
     assert usage.llm_tokens_count == 15  # 10 input + 5 output (StubLLMProvider)
+
+
+async def test_chat_service_stream_records_real_tokens_cost_and_attempt(db_session) -> None:
+    company = _company(db_session, slug="metered-stream")
+    user = _user(db_session, company)
+    conversations = ConversationService(db_session)
+    usage_service = AIUsageService(
+        db_session,
+        AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 10}})),
+        Decimal("0.00030"),
+    )
+    service = ChatService(
+        conversations,
+        RetrievalService(db_session),
+        MeteredStreamingProvider(),
+        usage_service=usage_service,
+    )
+    conversation = conversations.create(company.id, user.id, "Chat")
+
+    events = [
+        event async for event in service.stream(
+            company.id,
+            user.id,
+            conversation.id,
+            "hi",
+            plan_code="demo",
+            request_id="avenqo-stream",
+        )
+    ]
+
+    assert [event.kind for event in events] == ["delta", "sources", "done"]
+    assert usage_service.get_usage(company.id, "demo").llm_tokens_count == 15
+    assert usage_service.get_credit_balance(company.id, "demo")["monthly_used"] == 2
+    ledger = db_session.query(TenantAIProviderAttempt).one()
+    assert ledger.provider_request_id == "provider-stream"
+    assert ledger.avenqo_credits == 2
 
 
 async def test_chat_service_does_not_consume_purchased_credit_on_provider_failure(db_session) -> None:

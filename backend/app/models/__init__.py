@@ -2,7 +2,13 @@ from backend.app.models.account_token import AccountToken
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
-from backend.app.models.ai_usage import TenantAICreditBalance, TenantAIUsage
+from backend.app.models.ai_usage import (
+    TenantAICreditBalance,
+    TenantAICreditLedgerEntry,
+    TenantAICreditReservation,
+    TenantAIProviderAttempt,
+    TenantAIUsage,
+)
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.auth_session import AuthSession
 from backend.app.models.base import (
@@ -17,7 +23,7 @@ from backend.app.models.base import (
     TimestampMixin,
     UserRole,
 )
-from backend.app.models.billing import BillingAccount, BillingInvoice, StripeWebhookEvent
+from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, StripeWebhookEvent
 from backend.app.models.company import Company
 from backend.app.models.company_module import CompanyModule
 from backend.app.models.company_onboarding import CompanyOnboarding
@@ -42,6 +48,7 @@ __all__ = [
     "AIMessage",
     "AIMessageRole",
     "AIMessageSource",
+    "AICreditPurchase",
     "AISupportConversation",
     "AISupportMessage",
     "AISupportMessageSource",
@@ -72,6 +79,9 @@ __all__ = [
     "TimestampMixin",
     "StripeWebhookEvent",
     "TenantAICreditBalance",
+    "TenantAICreditLedgerEntry",
+    "TenantAICreditReservation",
+    "TenantAIProviderAttempt",
     "TenantAIUsage",
     "TrainingJob",
     "User",

@@ -82,7 +82,7 @@ void main() {
     expect(sentBody, {
       'content': 'How are products performing?',
       'page_context': '/retail/products',
-      'locale': 'en',
+      'locale': 'en-US',
     });
 
     await tester.tap(find.byIcon(Icons.close));
