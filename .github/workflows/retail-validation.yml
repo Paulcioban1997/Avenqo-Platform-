@@ -1,0 +1,29 @@
+name: Retail targeted validation
+on:
+  push:
+    branches: [codex/retail-staging-fix]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt
+      - run: python -m pytest tests/backend/test_sales_date_regressions.py tests/backend/test_product_portfolio_scaling.py tests/backend/test_tenant_business_pages.py -q
+        env:
+          ENVIRONMENT: test
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+        working-directory: frontend
+      - run: flutter test test/tenant_dashboard_test.dart test/tenant_business_pages_test.dart
+        working-directory: frontend
