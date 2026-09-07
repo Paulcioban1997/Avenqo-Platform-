@@ -187,6 +187,20 @@ def compute_sales_trend(
         }
         for period, revenue in sorted(revenue_by_period.items())
     ]
+    for index, point in enumerate(points):
+        point["change_percent"] = None
+        if index == 0:
+            continue
+        previous = points[index - 1]
+        if granularity == "month":
+            current_date = datetime.strptime(point["period"], "%Y-%m")
+            previous_date = datetime.strptime(previous["period"], "%Y-%m")
+            consecutive = (current_date.year * 12 + current_date.month) - (previous_date.year * 12 + previous_date.month) == 1
+        else:
+            gap = (datetime.fromisoformat(point["period"]) - datetime.fromisoformat(previous["period"])).days
+            consecutive = gap == (7 if granularity == "week" else 1)
+        if consecutive and previous["revenue"] != 0:
+            point["change_percent"] = round((point["revenue"] - previous["revenue"]) / abs(previous["revenue"]) * 100, 2)
     return {"granularity": granularity, "points": points}
 
 

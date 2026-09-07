@@ -227,7 +227,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('175'), findsOneWidget);
     expect(find.text('+25.0%'), findsOneWidget);
-    expect(find.text('Revenue trend'), findsOneWidget);
+    expect(find.text('Revenue trend'), findsNWidgets(2));
     expect(find.text('Validated sales forecast'), findsOneWidget);
   });
 
@@ -249,7 +249,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Last 90 days').last);
     await tester.pumpAndSettle();
-    expect(periods, ['last_30_days', 'last_90_days']);
+    expect(periods, ['year_to_date', 'last_90_days']);
   });
 
   testWidgets('Sales shows processing and unavailable states', (tester) async {
@@ -297,7 +297,7 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(calls, 2);
-    expect(find.text('Revenue trend'), findsOneWidget);
+    expect(find.text('Revenue trend'), findsNWidgets(2));
   });
 
   testWidgets('Customers renders summary, table, segment and risk', (

@@ -70,6 +70,30 @@ const _empty = DashboardData(
 
 
 void main() {
+  testWidgets('failed request does not claim data is disconnected', (tester) async {
+    await tester.pumpWidget(await _wrap(DashboardPage(
+      auth: _auth(),
+      loader: (_) async => throw TimeoutException('slow response'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('No data connected'), findsNothing);
+    expect(find.text('Your priorities will appear here once your data is connected.'), findsNothing);
+    expect(find.text('Retry'), findsWidgets);
+  });
+
+  testWidgets('negative revenue change uses error color', (tester) async {
+    const data = DashboardData(
+      status: 'ready', planCode: 'demo', currency: 'CAD',
+      kpis: [{'key': 'revenue', 'value': 80, 'available': true, 'change_percent': -20}],
+      priorities: [], connections: {'total': 1, 'ready': 1}, recentActivity: [],
+    );
+    await tester.pumpWidget(await _wrap(DashboardPage(auth: _auth(), loader: (_) async => data)));
+    await tester.pumpAndSettle();
+    final text = tester.widget<Text>(find.text('-20.0%'));
+    final context = tester.element(find.text('-20.0%'));
+    expect(text.style!.color, Theme.of(context).colorScheme.error);
+  });
+
   testWidgets('shows loading then premium no-data state', (tester) async {
     final completer = Completer<DashboardData>();
     await tester.pumpWidget(

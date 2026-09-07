@@ -25,7 +25,7 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> {
-  String _period = 'last_30_days';
+  String _period = 'year_to_date';
   late Future<Map<String, dynamic>> _future = _load();
 
   Future<Map<String, dynamic>> _load() {
@@ -192,6 +192,44 @@ class _SalesContent extends StatelessWidget {
         Text(t.salesTrendTitle, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         _TrendPanel(points: points, currency: currency),
+        if (points.isNotEmpty)
+          ExpansionTile(
+            title: Text(t.salesTrendTitle),
+            leading: const Icon(Icons.table_chart_outlined),
+            children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: [
+                    DataColumn(label: Text(t.salesTrendTitle)),
+                    DataColumn(label: Text(revenueLabel), numeric: true),
+                    DataColumn(label: Text(ordersLabel), numeric: true),
+                    const DataColumn(label: Text('%'), numeric: true),
+                  ],
+                  rows: [
+                    for (final point in points)
+                      DataRow(cells: [
+                        DataCell(Text('${point['period']}')),
+                        DataCell(Text(money(point['revenue']))),
+                        DataCell(Text('${point['orders'] ?? '—'}')),
+                        DataCell(Text(
+                          point['change_percent'] is num
+                              ? '${(point['change_percent'] as num) > 0 ? '+' : ''}${(point['change_percent'] as num).toStringAsFixed(1)}%'
+                              : '—',
+                          style: TextStyle(color: point['change_percent'] is num
+                              ? (point['change_percent'] as num) < 0
+                                  ? Theme.of(context).colorScheme.error
+                                  : (point['change_percent'] as num) > 0
+                                      ? const Color(0xFF1B9E5A)
+                                      : AvenqoColors.of(context).muted
+                              : AvenqoColors.of(context).muted),
+                        )),
+                      ]),
+                  ],
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 20),
         Wrap(
           spacing: 16,
@@ -262,7 +300,9 @@ class _Metric extends StatelessWidget {
           if (change is num)
             Text(
               '${change >= 0 ? '+' : ''}${(change as num).toStringAsFixed(1)}%',
-              style: TextStyle(color: colors.muted),
+              style: TextStyle(color: change < 0
+                  ? Theme.of(context).colorScheme.error
+                  : change > 0 ? const Color(0xFF1B9E5A) : colors.muted),
             ),
         ],
       ),
@@ -283,8 +323,8 @@ class _TrendPanel extends StatelessWidget {
         formatMoney(value as num, locale: locale, currencyCode: currency);
     final maxValue = points.fold<double>(
       0,
-      (value, point) => (point['revenue'] as num).toDouble() > value
-          ? (point['revenue'] as num).toDouble()
+      (value, point) => (point['revenue'] as num).abs().toDouble() > value
+          ? (point['revenue'] as num).abs().toDouble()
           : value,
     );
     return Container(
@@ -317,10 +357,12 @@ class _TrendPanel extends StatelessWidget {
                                 child: FractionallySizedBox(
                                   heightFactor: maxValue == 0
                                       ? 0.02
-                                      : (point['revenue'] as num) / maxValue,
+                                      : (point['revenue'] as num).abs() / maxValue,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF087CF0),
+                                      color: (point['revenue'] as num) < 0
+                                          ? Theme.of(context).colorScheme.error
+                                          : const Color(0xFF087CF0),
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),

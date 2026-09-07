@@ -69,7 +69,7 @@ typedef DashboardDataLoader =
 
 Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
   final payload =
-      await auth.api.get('/dashboard').timeout(const Duration(seconds: 10))
+      await auth.api.get('/dashboard')
           as Map<String, dynamic>;
   return DashboardData.fromJson(payload);
 }
@@ -313,7 +313,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(22),
-                  child: data.priorities.isEmpty
+                  child: snapshot.hasError
+                      ? Text(companyT.connectionsGenericError)
+                      : data.priorities.isEmpty
                       ? Row(
                           children: [
                             const Icon(
@@ -349,7 +351,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 12),
               if (!loading && data.connections.isNotEmpty)
                 _ConnectionsSummary(data: data.connections, strings: companyT)
-              else if (!loading)
+              else if (!loading && !snapshot.hasError)
                 _EmptyDataBanner(
                   title: t.connectionsEmpty,
                   cta: t.connectionsEmptyCta,
@@ -907,7 +909,14 @@ class _Metric extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 change!,
-                style: const TextStyle(color: Color(0xFF1B9E5A), fontSize: 12),
+                style: TextStyle(
+                  color: change!.startsWith('-')
+                      ? Theme.of(context).colorScheme.error
+                      : change == '+0.0%'
+                          ? colors.muted
+                          : const Color(0xFF1B9E5A),
+                  fontSize: 12,
+                ),
               ),
             ],
           ],

@@ -11,11 +11,11 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELD_SEMANTIC_TYPE
 from shared.ai_engine.dataset_ingestion.type_inference import SemanticType
+from shared.ai_engine.dataset_ingestion.date_parsing import infer_date_order, parse_date
 
 _CURRENCY_SYMBOLS = re.compile(r"[$€£,\s]")
 _BOOLEAN_TRUE = {"true", "yes", "y", "1"}
@@ -35,6 +35,7 @@ class CleaningReport:
     invalid_values_detected: int = 0
     invalid_values_corrected: int = 0
     column_reports: tuple["ColumnCleaningReport", ...] = ()
+    column_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,11 @@ class CompanyDatasetCleaner:
         trimmed = [self._trim_row(row) for row in rows]
 
         deduplicated, duplicates_removed = self._drop_exact_duplicates(trimmed)
+        date_orders = {
+            column: infer_date_order(row.get(column) for row in deduplicated)
+            for column, field in mapping.items()
+            if SemanticType.DATETIME in CANONICAL_FIELD_SEMANTIC_TYPE.get(field, ())
+        }
 
         numeric_conversions = 0
         date_conversions = 0
@@ -94,17 +100,15 @@ class CompanyDatasetCleaner:
                 expected_types = CANONICAL_FIELD_SEMANTIC_TYPE.get(canonical_field, ())
 
                 if SemanticType.DATETIME in expected_types:
-                    converted, ok = self._convert_date(value)
+                    converted, ok = parse_date(value, date_orders.get(column_name))
                     if ok and converted != value:
                         date_conversions += 1
                         stats["date_conversions"] += 1
                     if not ok:
                         row_invalid = True
                         invalid_values_detected += 1
-                        invalid_values_corrected += 1
                         stats["invalid_values_detected"] += 1
-                        stats["invalid_values_corrected"] += 1
-                        converted = None
+                        converted = value
                     cleaned_row[column_name] = converted
                 elif any(t in expected_types for t in (SemanticType.CURRENCY, SemanticType.FLOAT, SemanticType.INTEGER)):
                     converted, ok = self._convert_numeric(value)
@@ -114,10 +118,8 @@ class CompanyDatasetCleaner:
                     if not ok:
                         row_invalid = True
                         invalid_values_detected += 1
-                        invalid_values_corrected += 1
                         stats["invalid_values_detected"] += 1
-                        stats["invalid_values_corrected"] += 1
-                        converted = None
+                        converted = value
                     cleaned_row[column_name] = converted
                 elif SemanticType.BOOLEAN in expected_types:
                     converted, changed = self._convert_boolean(value)
@@ -125,9 +127,6 @@ class CompanyDatasetCleaner:
                         boolean_conversions += 1
                         stats["boolean_conversions"] += 1
                     cleaned_row[column_name] = converted
-
-                if original_value is not None and cleaned_row[column_name] is None:
-                    null_cells_detected += 1
 
             for column_name, value in list(cleaned_row.items()):
                 if value is None:
@@ -167,6 +166,7 @@ class CompanyDatasetCleaner:
             invalid_values_detected=invalid_values_detected,
             invalid_values_corrected=invalid_values_corrected,
             column_reports=column_reports,
+            column_count=len(column_stats),
         )
 
     @staticmethod
@@ -215,15 +215,7 @@ class CompanyDatasetCleaner:
     def _convert_date(value: Any) -> tuple[Any, bool]:
         if value is None:
             return None, True
-        if isinstance(value, datetime):
-            return value.isoformat(), True
-        if isinstance(value, str):
-            try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                return parsed.isoformat(), True
-            except ValueError:
-                return value, False
-        return value, False
+        return parse_date(value)
 
     @staticmethod
     def _convert_boolean(value: Any) -> tuple[Any, bool]:
