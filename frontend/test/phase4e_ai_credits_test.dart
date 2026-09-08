@@ -4,6 +4,7 @@ import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/features/admin/admin_ai_usage_page.dart';
+import 'package:avenqo/features/ai_chat/central_ai_controller.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
@@ -369,6 +370,113 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('25,000 credits'), findsOneWidget);
+  });
+
+  testWidgets('Billing loads on open and manually refreshes its canonical balance', (
+    tester,
+  ) async {
+    var fullLoads = 0;
+    var balanceLoads = 0;
+    final api = _api(MockClient((_) async => http.Response('{}', 200)));
+
+    await tester.pumpWidget(await _wrap(BillingPage(
+      api: api,
+      loader: (_) async {
+        fullLoads += 1;
+        return _startingBillingData('demo');
+      },
+      balanceLoader: (_) async {
+        balanceLoads += 1;
+        return {
+          'billing_period': '2026-09',
+          'monthly_allocation': 6500,
+          'monthly_used': 1,
+          'monthly_remaining': 6499,
+          'purchased_total_available': 0,
+          'total_available': 6499,
+        };
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    expect(fullLoads, 1);
+    _expectCreditMetric(tester, 'Monthly remaining', '6,500');
+    await tester.tap(find.byKey(const ValueKey('billing-credit-refresh')));
+    await tester.pumpAndSettle();
+
+    expect(balanceLoads, 1);
+    _expectCreditMetric(tester, 'Monthly remaining', '6,499');
+    _expectCreditMetric(tester, 'Total remaining', '6,499');
+  });
+
+  testWidgets('Billing retries the full load after an initial failure', (
+    tester,
+  ) async {
+    var fullLoads = 0;
+    final api = _api(MockClient((_) async => http.Response('{}', 200)));
+
+    await tester.pumpWidget(await _wrap(BillingPage(
+      api: api,
+      loader: (_) async {
+        fullLoads += 1;
+        if (fullLoads == 1) throw ApiException('temporarily unavailable');
+        return _startingBillingData('demo');
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('temporarily unavailable'), findsNothing);
+    expect(find.byTooltip('Retry'), findsOneWidget);
+    await tester.tap(find.byTooltip('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(fullLoads, 2);
+    _expectCreditMetric(tester, 'Monthly remaining', '6,500');
+  });
+
+  testWidgets('Billing refreshes after ten seconds and Central AI completion', (
+    tester,
+  ) async {
+    var balanceLoads = 0;
+    final api = _api(MockClient((_) async => http.Response('{}', 200)));
+    final controller = CentralAIController(api);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(await _wrap(CentralAIControllerScope(
+      controller: controller,
+      child: BillingPage(
+        api: api,
+        loader: (_) async => _startingBillingData('demo'),
+        balanceLoader: (_) async {
+          balanceLoads += 1;
+          final used = balanceLoads;
+          return {
+            'billing_period': '2026-09',
+            'monthly_allocation': 6500,
+            'monthly_used': used,
+            'monthly_remaining': 6500 - used,
+            'purchased_total_available': 0,
+            'total_available': 6500 - used,
+          };
+        },
+      ),
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+    expect(balanceLoads, 1);
+    _expectCreditMetric(tester, 'Monthly remaining', '6,499');
+
+    controller.generating = true;
+    controller.notifyListeners();
+    await tester.pump();
+    controller.generating = false;
+    controller.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(balanceLoads, 2);
+    _expectCreditMetric(tester, 'Monthly remaining', '6,498');
   });
 
   testWidgets('client sees credit balance and opens tenant-derived Stripe checkout', (tester) async {

@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/file_picker/app_file_picker.dart';
+import 'package:avenqo/features/ai_chat/central_ai_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/locale_info.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 typedef BillingDataLoader = Future<BillingData> Function(ApiClient api);
+typedef BillingBalanceLoader = Future<Map<String, dynamic>> Function(ApiClient api);
 typedef ExternalUrlLauncher = Future<bool> Function(Uri uri);
 
 Future<bool> _launchExternal(Uri uri) =>
@@ -46,17 +50,23 @@ Future<BillingData> _loadBillingData(ApiClient api) async {
   );
 }
 
+Future<Map<String, dynamic>> _loadBillingBalance(ApiClient api) async =>
+    await api.get('/billing/ai-credits') as Map<String, dynamic>;
+
 class BillingPage extends StatefulWidget {
   const BillingPage({
     super.key,
     required this.api,
     BillingDataLoader? loader,
+        BillingBalanceLoader? balanceLoader,
     ExternalUrlLauncher? launcher,
   })  : loader = loader ?? _loadBillingData,
+        balanceLoader = balanceLoader ?? _loadBillingBalance,
         launcher = launcher ?? _launchExternal;
 
   final ApiClient api;
   final BillingDataLoader loader;
+      final BillingBalanceLoader balanceLoader;
   final ExternalUrlLauncher launcher;
 
   @override
@@ -64,7 +74,79 @@ class BillingPage extends StatefulWidget {
 }
 
 class _BillingPageState extends State<BillingPage> {
-  late Future<BillingData> _future = widget.loader(widget.api);
+  static const _balanceRefreshInterval = Duration(seconds: 10);
+
+  late Future<BillingData> _future;
+  Map<String, dynamic>? _balance;
+  CentralAIController? _centralAI;
+  bool _observedAIGenerating = false;
+  Timer? _balanceRefreshTimer;
+  bool _refreshingBalance = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadAll();
+    _balanceRefreshTimer = Timer.periodic(
+      _balanceRefreshInterval,
+      (_) => unawaited(_refreshBalance()),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final centralAI = CentralAIControllerScope.maybeOf(context);
+    if (identical(centralAI, _centralAI)) return;
+    _centralAI?.removeListener(_onCentralAIChanged);
+    _centralAI = centralAI;
+    _observedAIGenerating = centralAI?.generating ?? false;
+    centralAI?.addListener(_onCentralAIChanged);
+  }
+
+  @override
+  void dispose() {
+    _balanceRefreshTimer?.cancel();
+    _centralAI?.removeListener(_onCentralAIChanged);
+    super.dispose();
+  }
+
+  Future<BillingData> _loadAll() {
+    final future = widget.loader(widget.api);
+    unawaited(future.then<void>(
+      (data) {
+        if (mounted && identical(_future, future)) {
+          setState(() => _balance = data.balance);
+        }
+      },
+      onError: (_) {},
+    ));
+    return future;
+  }
+
+  void _onCentralAIChanged() {
+    final generating = _centralAI?.generating ?? false;
+    final completed = _observedAIGenerating && !generating;
+    _observedAIGenerating = generating;
+    if (completed) unawaited(_refreshBalance());
+  }
+
+  Future<void> _refreshBalance({bool showError = false}) async {
+    if (_balance == null || _refreshingBalance) return;
+    setState(() => _refreshingBalance = true);
+    try {
+      final balance = await widget.balanceLoader(widget.api);
+      if (mounted) setState(() => _balance = balance);
+    } on ApiException catch (error) {
+      if (showError && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _refreshingBalance = false);
+    }
+  }
 
   Future<void> _openPortal(BuildContext context) async {
     try {
@@ -144,7 +226,8 @@ class _BillingPageState extends State<BillingPage> {
   }
 
   void _retry() => setState(() {
-        _future = widget.loader(widget.api);
+      _balance = null;
+      _future = _loadAll();
       });
 
   @override
@@ -271,12 +354,15 @@ class _BillingPageState extends State<BillingPage> {
               ],
               const SizedBox(height: 20),
               _CreditWallet(
-                balance: data!.balance,
+                balance: _balance ?? data!.balance,
                 strings: creditsT,
+                refreshing: _refreshingBalance,
+                refreshTooltip: t.employeesRefreshTooltip,
+                onRefresh: () => _refreshBalance(showError: true),
               ),
               const SizedBox(height: 24),
               _CreditPacks(
-                packs: data.packs,
+                packs: data!.packs,
                 enabled: const {'active', 'trialing'}.contains(billingStatus),
                 strings: creditsT,
                 onPurchase: (code) => _buyCredits(context, code),
@@ -394,16 +480,25 @@ String _formatCredits(Object? value, String localeCode) => value == null
   : NumberFormat.decimalPattern(localeCode).format(value);
 
 class _CreditWallet extends StatelessWidget {
-  const _CreditWallet({required this.balance, required this.strings});
+  const _CreditWallet({
+    required this.balance,
+    required this.strings,
+    required this.refreshing,
+    required this.refreshTooltip,
+    required this.onRefresh,
+  });
 
   final Map<String, dynamic> balance;
   final Phase4eStrings strings;
+  final bool refreshing;
+  final String refreshTooltip;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final localeCode = intlLocaleCode(AvenqoLocaleScope.of(context).code);
-    final included = balance['monthly_included'] as int?;
+    final included = (balance['monthly_allocation'] ?? balance['monthly_included']) as int?;
     final used = balance['monthly_used'] as int? ?? 0;
     final progress = included == null || included <= 0
         ? null
@@ -438,6 +533,17 @@ class _CreditWallet extends StatelessWidget {
                       ],
                     ),
                   ),
+                  IconButton(
+                    key: const ValueKey('billing-credit-refresh'),
+                    onPressed: refreshing ? null : onRefresh,
+                    tooltip: refreshTooltip,
+                    icon: refreshing
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh),
+                  ),
                 ],
               );
               final period = Text(
@@ -460,8 +566,8 @@ class _CreditWallet extends StatelessWidget {
             children: [
               _CreditMetric(label: strings.monthlyAllowance, value: allowance),
               _CreditMetric(label: strings.monthlyRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['monthly_remaining'], localeCode)),
-              _CreditMetric(label: strings.purchasedRemaining, value: _formatCredits(balance['purchased_remaining'], localeCode)),
-              _CreditMetric(label: strings.totalRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['total_remaining'], localeCode), emphasized: true),
+              _CreditMetric(label: strings.purchasedRemaining, value: _formatCredits(balance['purchased_total_available'] ?? balance['purchased_remaining'], localeCode)),
+              _CreditMetric(label: strings.totalRemaining, value: included == null ? strings.customAllowance : _formatCredits(balance['total_available'] ?? balance['total_remaining'], localeCode), emphasized: true),
             ],
           ),
           if (progress != null) ...[

@@ -1,11 +1,10 @@
 """Politique de quotas d'usage IA Avenqo, par plan d'abonnement.
 
-Les limites sont entièrement configurables (variable d'environnement
-`AI_QUOTA_LIMITS`, JSON) et NE contiennent aucune valeur commerciale
-"inventée" par défaut : tant qu'une limite n'est pas explicitement
-configurée pour un plan/métrique donné, elle est considérée comme
-"non plafonnée" (`None`). Cela permet d'activer les quotas progressivement,
-métrique par métrique et plan par plan, sans bloquer les tenants existants.
+Les dérogations sont configurables avec la variable d'environnement
+`AI_QUOTA_LIMITS` (JSON) et ne contiennent aucune valeur commerciale codée
+en dur. Une valeur absente reste `None`; `AIUsageService` peut alors appliquer
+l'allocation mensuelle du catalogue pour `monthly_ai_requests`. Les autres
+métriques restent non plafonnées tant qu'elles ne sont pas configurées.
 
 Métriques reconnues :
 - ``monthly_ai_requests``: nombre de messages/requêtes IA par mois.

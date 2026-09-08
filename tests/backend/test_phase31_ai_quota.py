@@ -162,10 +162,11 @@ def test_policy_resolves_configured_limit_per_plan() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_usage_service_allows_unlimited_usage_when_no_limit_configured(db_session) -> None:
+def test_usage_service_tracks_usage_below_catalog_allowance_without_override(db_session) -> None:
     company = _company(db_session)
     service = AIUsageService(db_session, AIQuotaPolicy(_settings()))
 
+    assert service.limit_for(company.id, "demo", MONTHLY_AI_REQUESTS) == 6_500
     for _ in range(50):
         service.ensure_quota_available(company.id, "demo")
         service.record_usage(company.id, "demo", tokens=100, tool_calls=2)

@@ -22,6 +22,7 @@ from backend.app.models import (
     TenantAICreditLedgerEntry,
     TenantAICreditReservation,
     TenantAIProviderAttempt,
+    TenantAIUsage,
 )
 
 
@@ -101,8 +102,8 @@ def test_reserve_settle_releases_unused_and_records_fallback_cost(credit_db) -> 
         assert reservation.reserved_included == 3
         assert reservation.reserved_purchased == 1
         assert balance["monthly_used"] == 0
-        assert balance["monthly_remaining"] == 0
-        assert balance["purchased_remaining"] == 1
+        assert balance["monthly_remaining"] == 3
+        assert balance["purchased_remaining"] == 2
 
         attempts = (
             _attempt("request-a", "0.00031", success=False),
@@ -125,7 +126,12 @@ def test_reserve_settle_releases_unused_and_records_fallback_cost(credit_db) -> 
         assert balance["monthly_used"] == 2
         assert balance["monthly_remaining"] == 1
         assert balance["purchased_remaining"] == 2
-        assert session.query(TenantAIProviderAttempt).count() == 2
+        provider_attempts = session.query(TenantAIProviderAttempt).order_by(
+            TenantAIProviderAttempt.attempt_number
+        ).all()
+        assert len(provider_attempts) == 2
+        assert sum(attempt.provider_cost_usd for attempt in provider_attempts) == Decimal("0.00051")
+        assert [attempt.avenqo_credits for attempt in provider_attempts] == [0, 2]
         assert session.query(TenantAICreditLedgerEntry).filter_by(
             transaction_type="ai_settlement"
         ).count() == 1
@@ -138,6 +144,130 @@ def test_reserve_settle_releases_unused_and_records_fallback_cost(credit_db) -> 
         )
         assert service.get_credit_balance(company.id, "professional") == balance
         assert session.query(TenantAIProviderAttempt).count() == 2
+
+
+def test_plan_allocation_is_metered_without_quota_environment_override(credit_db) -> None:
+    with credit_db() as session:
+        company = _company(session, "catalog-allocation")
+        company.subscription_plan = "demo"
+        service = AIUsageService(session, AIQuotaPolicy(_settings(0)))
+
+        reservation = service.reserve_credits(company.id, "demo", "first-request", 1)
+        settled = service.settle_reservation(
+            company.id,
+            "demo",
+            "first-request",
+            attempts=(_attempt("first-request", "0.00030"),),
+        )
+        balance = service.get_credit_balance(company.id, "demo")
+
+        assert reservation.reserved_included == 1
+        assert settled.settled_included == 1
+        assert balance["monthly_included"] == 6_500
+        assert balance["monthly_used"] == 1
+        assert balance["monthly_remaining"] == 6_499
+
+
+def test_multiple_settlements_reconcile_to_monthly_usage_and_cap(credit_db) -> None:
+    with credit_db() as session:
+        company = _company(session, "multiple-settlements")
+        service = AIUsageService(session, AIQuotaPolicy(_settings(3)))
+
+        service.reserve_credits(company.id, "professional", "request-one", 1)
+        service.settle_reservation(
+            company.id,
+            "professional",
+            "request-one",
+            attempts=(_attempt("request-one", "0.00030"),),
+        )
+        service.reserve_credits(company.id, "professional", "request-two", 2)
+        service.settle_reservation(
+            company.id,
+            "professional",
+            "request-two",
+            attempts=(_attempt("request-two", "0.00060"),),
+        )
+
+        balance = service.get_credit_balance(company.id, "professional")
+        settlements = session.query(TenantAICreditLedgerEntry).filter_by(
+            company_id=company.id,
+            transaction_type="ai_settlement",
+        ).order_by(TenantAICreditLedgerEntry.created_at).all()
+        assert balance["monthly_used"] == 3
+        assert balance["monthly_remaining"] == 0
+        assert len(settlements) == 2
+        assert -sum(entry.included_delta for entry in settlements) == 3
+        assert settlements[-1].monthly_used_after == 3
+        with pytest.raises(AIQuotaExceededError, match=f"^{INSUFFICIENT_AI_CREDITS}$"):
+            service.reserve_credits(company.id, "professional", "over-cap", 1)
+
+
+def test_zero_cost_failure_releases_without_recording_usage(credit_db) -> None:
+    with credit_db() as session:
+        company = _company(session, "zero-cost-failure")
+        service = AIUsageService(session, AIQuotaPolicy(_settings(1)))
+        service.reserve_credits(company.id, "professional", "failed-request", 1)
+
+        released = service.settle_reservation(
+            company.id,
+            "professional",
+            "failed-request",
+            attempts=(_attempt("failed-request", "0", success=False),),
+            count_request=False,
+        )
+
+        balance = service.get_credit_balance(company.id, "professional")
+        settlement = session.query(TenantAICreditLedgerEntry).filter_by(
+            company_id=company.id,
+            transaction_type="ai_settlement",
+        ).one()
+        attempt = session.query(TenantAIProviderAttempt).filter_by(
+            company_id=company.id,
+        ).one()
+        assert released.status == "released"
+        assert released.actual_credits == 0
+        assert balance["monthly_used"] == 0
+        assert balance["monthly_remaining"] == 1
+        assert settlement.included_delta == settlement.purchased_delta == 0
+        assert settlement.included_reserved_after == 0
+        assert attempt.provider_cost_usd == Decimal("0")
+        assert attempt.avenqo_credits == 0
+        assert session.query(TenantAIUsage).filter_by(company_id=company.id).count() == 0
+
+
+def test_included_exhaustion_debits_purchased_credits_for_only_one_tenant(credit_db) -> None:
+    with credit_db() as session:
+        company_a = _company(session, "settlement-tenant-a")
+        company_b = _company(session, "settlement-tenant-b")
+        service = AIUsageService(session, AIQuotaPolicy(_settings(1)))
+        service.add_purchased_credits(company_a.id, 2)
+
+        for request_id in ("included-request", "purchased-request"):
+            service.reserve_credits(company_a.id, "professional", request_id, 1)
+            service.settle_reservation(
+                company_a.id,
+                "professional",
+                request_id,
+                attempts=(_attempt(request_id, "0.00030"),),
+            )
+
+        balance_a = service.get_credit_balance(company_a.id, "professional")
+        balance_b = service.get_credit_balance(company_b.id, "professional")
+        ledger_a = session.query(TenantAICreditLedgerEntry).filter_by(
+            company_id=company_a.id,
+        ).all()
+        assert balance_a["monthly_used"] == 1
+        assert balance_a["monthly_remaining"] == 0
+        assert balance_a["purchased_remaining"] == 1
+        assert balance_a["total_remaining"] == 1
+        assert sum(entry.purchased_delta for entry in ledger_a) == 1
+        assert -sum(entry.included_delta for entry in ledger_a) == 1
+        assert balance_b["monthly_used"] == 0
+        assert balance_b["monthly_remaining"] == 1
+        assert balance_b["purchased_remaining"] == 0
+        assert session.query(TenantAIProviderAttempt).filter_by(
+            company_id=company_b.id,
+        ).count() == 0
 
 
 def test_release_and_actual_over_estimate_never_make_balances_negative(credit_db) -> None:
@@ -245,8 +375,8 @@ def test_reservations_are_idempotent_and_tenant_scoped(credit_db) -> None:
         assert first.id == duplicate.id
         assert first.id != other_tenant.id
         assert session.query(TenantAICreditReservation).count() == 2
-        assert service.get_credit_balance(company_a.id, "professional")["total_remaining"] == 0
-        assert service.get_credit_balance(company_b.id, "professional")["total_remaining"] == 0
+        assert service.get_credit_balance(company_a.id, "professional")["total_remaining"] == 1
+        assert service.get_credit_balance(company_b.id, "professional")["total_remaining"] == 1
 
 
 def test_reservation_claim_has_one_execution_owner_and_exact_insufficient_code(credit_db) -> None:

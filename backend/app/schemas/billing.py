@@ -37,10 +37,15 @@ class CreditPackCheckoutRequest(BaseModel):
 
 class AICreditBalanceResponse(BaseModel):
     billing_period: str
+    billing_period_start: datetime
+    billing_period_end: datetime
+    monthly_allocation: int | None
     monthly_included: int | None
     monthly_used: int
     monthly_remaining: int | None
+    purchased_total_available: int
     purchased_remaining: int
+    total_available: int | None
     total_remaining: int | None
 
 

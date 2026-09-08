@@ -148,15 +148,21 @@ class BillingService:
         )
         plan_code = account.plan_code if account is not None else fallback_plan_code
         balance = self._usage_service.get_credit_balance(company_id, plan_code)
-        included = get_plan(plan_code).monthly_ai_credits
-        if included is None:
-            return balance
-        monthly_remaining = max(included - int(balance["monthly_used"]), 0)
+        period_start = datetime.strptime(
+            str(balance["billing_period"]),
+            "%Y-%m",
+        ).replace(tzinfo=timezone.utc)
+        period_end = period_start.replace(
+            year=period_start.year + (period_start.month == 12),
+            month=1 if period_start.month == 12 else period_start.month + 1,
+        )
         return {
             **balance,
-            "monthly_included": included,
-            "monthly_remaining": monthly_remaining,
-            "total_remaining": monthly_remaining + int(balance["purchased_remaining"]),
+            "billing_period_start": period_start,
+            "billing_period_end": period_end,
+            "monthly_allocation": balance["monthly_included"],
+            "purchased_total_available": balance["purchased_remaining"],
+            "total_available": balance["total_remaining"],
         }
 
     def create_credit_checkout(self, company: Company, pack_code: str) -> str:

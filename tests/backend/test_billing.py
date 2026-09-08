@@ -497,14 +497,16 @@ def test_active_demo_account_controls_wallet_when_company_plan_is_stale(
 
     assert subscription.json()["plan_code"] == "demo"
     assert subscription.json()["status"] == "active"
-    assert balance.json() == {
-        "billing_period": balance.json()["billing_period"],
-        "monthly_included": 6500,
-        "monthly_used": 0,
-        "monthly_remaining": 6500,
-        "purchased_remaining": 0,
-        "total_remaining": 6500,
-    }
+    payload = balance.json()
+    assert payload["monthly_allocation"] == payload["monthly_included"] == 6500
+    assert payload["monthly_used"] == 0
+    assert payload["monthly_remaining"] == 6500
+    assert payload["purchased_total_available"] == payload["purchased_remaining"] == 0
+    assert payload["total_available"] == payload["total_remaining"] == 6500
+    assert payload["billing_period_start"] == f'{payload["billing_period"]}-01T00:00:00Z'
+    year, month = map(int, payload["billing_period"].split("-"))
+    next_period = f"{year + (month == 12):04d}-{1 if month == 12 else month + 1:02d}"
+    assert payload["billing_period_end"] == f"{next_period}-01T00:00:00Z"
 
 
 def test_active_plan_wallet_uses_catalog_allowance_without_quota_environment(
@@ -524,14 +526,11 @@ def test_active_plan_wallet_uses_catalog_allowance_without_quota_environment(
     get_settings.cache_clear()
 
     demo = client.get("/api/v1/billing/ai-credits", headers=headers).json()
-    assert demo == {
-        "billing_period": demo["billing_period"],
-        "monthly_included": 6500,
-        "monthly_used": 0,
-        "monthly_remaining": 6500,
-        "purchased_remaining": 0,
-        "total_remaining": 6500,
-    }
+    assert demo["monthly_allocation"] == demo["monthly_included"] == 6500
+    assert demo["monthly_used"] == 0
+    assert demo["monthly_remaining"] == 6500
+    assert demo["purchased_total_available"] == demo["purchased_remaining"] == 0
+    assert demo["total_available"] == demo["total_remaining"] == 6500
 
     provider.events.append(
         subscription_event(
@@ -550,6 +549,37 @@ def test_active_plan_wallet_uses_catalog_allowance_without_quota_environment(
     assert professional["monthly_remaining"] == 25000
     assert professional["purchased_remaining"] == 0
     assert professional["total_remaining"] == 25000
+
+
+def test_credit_api_excludes_active_reservations_from_displayed_usage(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, _, notifier = billing_environment
+    login = create_owner(client, notifier, email="reserved-wallet@acme.ca")
+    headers = auth_headers(login)
+    company_id = UUID(login["company"]["id"])
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        usage = AIUsageService(session, AIQuotaPolicy(get_settings()))
+        usage.add_purchased_credits(company_id, 2)
+        session.commit()
+        reservation = usage.reserve_credits(
+            company_id,
+            "demo",
+            "in-flight-request",
+            6_501,
+        )
+        assert reservation.reserved_included == 6_500
+        assert reservation.reserved_purchased == 1
+    engine.dispose()
+
+    balance = client.get("/api/v1/billing/ai-credits", headers=headers).json()
+    assert balance["monthly_used"] == 0
+    assert balance["monthly_remaining"] == 6_500
+    assert balance["purchased_total_available"] == 2
+    assert balance["total_available"] == 6_502
 
 
 def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_environment) -> None:

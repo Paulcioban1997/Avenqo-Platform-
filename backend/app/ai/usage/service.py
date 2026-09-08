@@ -36,6 +36,7 @@ from backend.app.models.ai_usage import (
 )
 from backend.app.models.billing import AICreditPurchase
 from backend.app.models.enterprise_override import EnterpriseOverride
+from payments.plans import get_plan
 
 _DEFAULT_PLAN = "demo"
 _DEFAULT_PROVIDER_COST_PER_CREDIT_USD = Decimal("0.00030")
@@ -141,12 +142,9 @@ class AIUsageService:
         monthly_remaining = (
             None
             if included is None
-            else max(included - credits.monthly_used - credits.included_reserved, 0)
+            else max(included - credits.monthly_used, 0)
         )
-        purchased_remaining = max(
-            credits.purchased_balance - credits.purchased_reserved,
-            0,
-        )
+        purchased_remaining = credits.purchased_balance
         total = None if monthly_remaining is None else monthly_remaining + purchased_remaining
         return {
             "billing_period": credits.monthly_period,
@@ -815,7 +813,7 @@ class AIUsageService:
 
     def limit_for(self, company_id: UUID, plan_code: str | None, metric: str) -> int | None:
         """Résout la limite effective : dérogation Enterprise (Phase 33) en priorité,
-        sinon la politique de plan par défaut (`AIQuotaPolicy`)."""
+        sinon la configuration, puis l'allocation du catalogue de plans."""
 
         override = self._db.scalar(
             select(EnterpriseOverride).where(EnterpriseOverride.company_id == company_id)
@@ -823,7 +821,13 @@ class AIUsageService:
         if override is not None and metric in (override.quota_overrides or {}):
             value = override.quota_overrides[metric]
             return None if value is None else int(value)
-        return self._policy.limit_for(plan_code, metric)
+        configured = self._policy.limit_for(plan_code, metric)
+        if configured is not None or metric != MONTHLY_AI_REQUESTS or plan_code is None:
+            return configured
+        try:
+            return get_plan(plan_code).monthly_ai_credits
+        except ValueError:
+            return None
 
     def record_usage(
         self,

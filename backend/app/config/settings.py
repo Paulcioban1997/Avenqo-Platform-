@@ -130,10 +130,10 @@ class Settings(BaseSettings):
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
-    # Quotas d'usage IA configurables par plan Avenqo (demo/professional/enterprise/
-    # custom_enterprise). Format : {"<plan_code>": {"<metric>": <int>}}. Aucune valeur
-    # commerciale n'est définie par défaut ({} = aucune limite tant que non configurée) :
-    # voir backend/app/ai/usage/policy.py pour les noms de métriques reconnus.
+    # Dérogations de quotas IA configurables par plan Avenqo (demo/professional/
+    # enterprise/custom_enterprise). L'allocation de crédits mensuelle vient du
+    # catalogue commercial; ces valeurs permettent de la remplacer, ainsi que
+    # les limites techniques des autres métriques.
     ai_quota_limits: dict[str, dict[str, int]] = Field(default_factory=dict, alias="AI_QUOTA_LIMITS")
     # Politique de fraîcheur des modèles/prédictions (Phase 31.1) : défaut TECHNIQUE
     # configurable (pas un engagement commercial) — voir backend/app/services/prediction_freshness.py.
