@@ -198,6 +198,7 @@ async def shopify_callback(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Shopify webhook registration failed",
             ) from exc
+        service.mark_setup_complete(tenant, connection.id)
         sync.reserve(tenant, connection.id)
         background_tasks.add_task(runner.run_reserved, tenant, connection.id)
     except (CommerceAuthorizationError, CommerceConnectionError) as exc:

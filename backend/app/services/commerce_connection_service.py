@@ -186,8 +186,6 @@ class CommerceConnectionService:
             self._db.commit()
             raise CommerceAuthorizationError("Shopify connection test failed")
 
-        connection.status = CommerceConnectionStatus.CONNECTED.value
-        self._db.commit()
         self._audit.record(
             actor_user_id=oauth_state.actor_user_id,
             action="connector.connection_authorized",
@@ -196,6 +194,17 @@ class CommerceConnectionService:
             company_id=connection.company_id,
             metadata={"provider": "shopify", "status": connection.status},
         )
+        return connection
+
+    def mark_setup_complete(
+        self, tenant: TenantContext, connection_id: UUID
+    ) -> CommerceConnection:
+        connection = self.get_connection(tenant, connection_id)
+        if connection.status != CommerceConnectionStatus.CONNECTING.value:
+            raise CommerceConnectionError("Commerce connection setup is not in progress")
+        connection.status = CommerceConnectionStatus.CONNECTED.value
+        connection.error_category = None
+        self._db.commit()
         return connection
 
     def list_connections(self, tenant: TenantContext) -> tuple[CommerceConnection, ...]:

@@ -7,14 +7,16 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
+from backend.app.core.request_context import get_request_id
 from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
 from shared.ai_engine.connectors.commerce import (
     CommerceConnector,
@@ -23,10 +25,20 @@ from shared.ai_engine.connectors.commerce import (
 )
 
 _SHOP_DOMAIN = re.compile(r"^[a-z0-9][a-z0-9-]*\.myshopify\.com$")
+logger = logging.getLogger(__name__)
 
 
 class ShopifyConnectorError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        graphql_errors: Sequence[Mapping[str, Any]] = (),
+    ) -> None:
+        super().__init__(message)
+        self.http_status = http_status
+        self.graphql_errors = tuple(dict(error) for error in graphql_errors)
 
 
 class ShopifyAuthenticationError(ShopifyConnectorError):
@@ -432,13 +444,13 @@ class ShopifyConnector(CommerceConnector):
         return await self._collect_all(context)
 
     async def register_webhooks(self, context: ConnectorSyncContext) -> None:
-        listing_query = (
-            "query AvenqoWebhooks($first: Int!, $after: String, "
-            "$topics: [WebhookSubscriptionTopic!], $uri: String) { "
-            "webhookSubscriptions(first: $first, after: $after, topics: $topics, "
-            "uri: $uri) { nodes { topic uri } "
-            "pageInfo { hasNextPage endCursor } } }"
-        )
+        self._validate_webhook_uri()
+        try:
+            existing_topics = await self._existing_webhook_topics(context)
+        except ShopifyConnectorError as exc:
+            self._log_webhook_failure(topic="LIST", error=exc)
+            raise ShopifyConnectorError("Shopify webhook registration failed") from exc
+
         mutation = """
           mutation AvenqoWebhook($topic: WebhookSubscriptionTopic!, $subscription: WebhookSubscriptionInput!) {
             webhookSubscriptionCreate(topic: $topic, webhookSubscription: $subscription) {
@@ -447,6 +459,66 @@ class ShopifyConnector(CommerceConnector):
             }
           }
         """
+        for topic in self._WEBHOOK_TOPICS:
+            if topic in existing_topics:
+                continue
+            try:
+                data = await self._graphql(
+                    context,
+                    mutation,
+                    {
+                        "topic": topic,
+                        "subscription": {"uri": self._webhook_uri, "format": "JSON"},
+                    },
+                )
+            except ShopifyConnectorError as exc:
+                self._log_webhook_failure(topic=topic, error=exc)
+                raise ShopifyConnectorError("Shopify webhook registration failed") from exc
+
+            result = data.get("webhookSubscriptionCreate") or {}
+            user_errors = self._safe_user_errors(result.get("userErrors"))
+            if user_errors:
+                # Another concurrent callback may have created the same subscription
+                # after the initial listing. Re-list before treating it as a failure.
+                try:
+                    current_topics = await self._existing_webhook_topics(context)
+                except ShopifyConnectorError as exc:
+                    self._log_webhook_failure(
+                        topic=topic,
+                        error=exc,
+                        user_errors=user_errors,
+                    )
+                    raise ShopifyConnectorError("Shopify webhook registration failed") from exc
+                if topic in current_topics:
+                    existing_topics.add(topic)
+                    continue
+                self._log_webhook_failure(
+                    topic=topic,
+                    error=ShopifyConnectorError(
+                        user_errors[0]["message"],
+                        http_status=200,
+                    ),
+                    user_errors=user_errors,
+                )
+                raise ShopifyConnectorError("Shopify webhook registration failed")
+            if not result.get("webhookSubscription"):
+                error = ShopifyConnectorError(
+                    "Shopify returned a null webhook subscription",
+                    http_status=200,
+                )
+                self._log_webhook_failure(topic=topic, error=error)
+                raise ShopifyConnectorError("Shopify webhook registration failed") from error
+            existing_topics.add(topic)
+
+    async def _existing_webhook_topics(
+        self, context: ConnectorSyncContext
+    ) -> set[str]:
+        listing_query = (
+            "query AvenqoWebhooks($first: Int!, $after: String, $uri: String) { "
+            "webhookSubscriptions(first: $first, after: $after, "
+            "uri: $uri) { nodes { topic uri } "
+            "pageInfo { hasNextPage endCursor } } }"
+        )
         existing_topics: set[str] = set()
         cursor = None
         seen_cursors: set[str] = set()
@@ -457,7 +529,6 @@ class ShopifyConnector(CommerceConnector):
                 {
                     "first": 250,
                     "after": cursor,
-                    "topics": list(self._WEBHOOK_TOPICS),
                     "uri": self._webhook_uri,
                 },
             )
@@ -475,21 +546,70 @@ class ShopifyConnector(CommerceConnector):
                 )
             seen_cursors.add(next_cursor)
             cursor = next_cursor
+        return existing_topics
 
-        for topic in self._WEBHOOK_TOPICS:
-            if topic in existing_topics:
+    def _validate_webhook_uri(self) -> None:
+        parsed = urlsplit(self._webhook_uri)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or bool(parsed.fragment)
+        ):
+            error = ShopifyConnectorError("Shopify webhook URI must be a public HTTPS URL")
+            self._log_webhook_failure(topic="CONFIGURATION", error=error)
+            raise error
+
+    @staticmethod
+    def _safe_user_errors(value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        return [
+            {
+                "field": list(error.get("field") or []),
+                "message": str(error.get("message") or "Unknown Shopify user error")[:500],
+            }
+            for error in value
+            if isinstance(error, Mapping)
+        ]
+
+    @staticmethod
+    def _safe_graphql_errors(value: Any) -> tuple[dict[str, Any], ...]:
+        if not isinstance(value, list):
+            return ()
+        safe_errors: list[dict[str, Any]] = []
+        for error in value:
+            if not isinstance(error, Mapping):
                 continue
-            data = await self._graphql(
-                context,
-                mutation,
-                {
-                    "topic": topic,
-                    "subscription": {"uri": self._webhook_uri, "format": "JSON"},
-                },
-            )
-            errors = (data.get("webhookSubscriptionCreate") or {}).get("userErrors") or []
-            if errors:
-                raise ShopifyConnectorError("Shopify webhook registration failed")
+            safe_error: dict[str, Any] = {
+                "message": str(error.get("message") or "Unknown Shopify GraphQL error")[:500]
+            }
+            if isinstance(error.get("path"), list):
+                safe_error["path"] = list(error["path"])
+            extensions = error.get("extensions")
+            if isinstance(extensions, Mapping) and extensions.get("code"):
+                safe_error["code"] = str(extensions["code"])[:100]
+            safe_errors.append(safe_error)
+        return tuple(safe_errors)
+
+    def _log_webhook_failure(
+        self,
+        *,
+        topic: str,
+        error: ShopifyConnectorError,
+        user_errors: Sequence[Mapping[str, Any]] = (),
+    ) -> None:
+        logger.error(
+            "Shopify webhook registration failed topic=%s http_status=%s "
+            "shopify_error=%s graphql_errors=%s user_errors=%s request_id=%s",
+            topic,
+            error.http_status if error.http_status is not None else "unknown",
+            str(error)[:500],
+            json.dumps(list(error.graphql_errors), ensure_ascii=True),
+            json.dumps(list(user_errors), ensure_ascii=True),
+            get_request_id() or "-",
+        )
 
     async def handle_webhook(
         self,
@@ -623,22 +743,30 @@ class ShopifyConnector(CommerceConnector):
                 },
             )
             if response.status_code == 401:
-                raise ShopifyAuthenticationError("Shopify reauthorization is required")
+                raise ShopifyAuthenticationError(
+                    "Shopify reauthorization is required",
+                    http_status=response.status_code,
+                )
             if response.status_code >= 400:
-                raise ShopifyConnectorError("Shopify Admin API request failed")
+                raise ShopifyConnectorError(
+                    "Shopify Admin API request failed",
+                    http_status=response.status_code,
+                )
             payload = self._json_object(response)
-            errors = payload.get("errors") or []
+            errors = self._safe_graphql_errors(payload.get("errors"))
             retryable = any(
-                (error.get("extensions") or {}).get("code")
-                in {"THROTTLED", "INTERNAL_SERVER_ERROR"}
+                error.get("code") in {"THROTTLED", "INTERNAL_SERVER_ERROR"}
                 for error in errors
-                if isinstance(error, dict)
             )
             if retryable and attempt < self._max_retries:
                 await self._sleep(self._delay(attempt))
                 continue
             if errors:
-                raise ShopifyConnectorError("Shopify Admin API returned an error")
+                raise ShopifyConnectorError(
+                    errors[0]["message"],
+                    http_status=response.status_code,
+                    graphql_errors=errors,
+                )
             data = payload.get("data")
             if not isinstance(data, dict):
                 raise ShopifyConnectorError("Shopify Admin API returned invalid data")

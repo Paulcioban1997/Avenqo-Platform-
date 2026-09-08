@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from dataclasses import replace
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -12,6 +13,7 @@ import pytest
 from backend.app.connectors.shopify import (
     ShopifyAuthenticationError,
     ShopifyConnector,
+    ShopifyConnectorError,
 )
 from shared.ai_engine.connectors.commerce import ConnectorSyncContext
 
@@ -390,7 +392,6 @@ async def test_shopify_webhook_registration_creates_only_missing_topics() -> Non
             assert variables == {
                 "first": 250,
                 "after": None,
-                "topics": list(ShopifyConnector._WEBHOOK_TOPICS),
                 "uri": webhook_uri,
             }
             data = {
@@ -429,6 +430,297 @@ async def test_shopify_webhook_registration_creates_only_missing_topics() -> Non
     await connector.register_webhooks(context)
 
     assert calls == 2
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_reports_user_errors_safely(caplog) -> None:
+    access_token = "shpat_must_not_leak"
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls in {1, 3}:
+            return httpx.Response(
+                200,
+                json={"data": {"webhookSubscriptions": {"nodes": [], "pageInfo": {"hasNextPage": False}}}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "webhookSubscriptionCreate": {
+                        "webhookSubscription": None,
+                        "userErrors": [
+                            {
+                                "field": ["webhookSubscription"],
+                                "message": "Protected customer data approval required",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE",)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token=access_token,
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(
+        ShopifyConnectorError, match="webhook registration failed"
+    ):
+        await connector.register_webhooks(context)
+
+    assert "topic=ORDERS_CREATE" in caplog.text
+    assert "Protected customer data approval required" in caplog.text
+    assert "http_status=200" in caplog.text
+    assert access_token not in caplog.text
+    assert "client-secret" not in caplog.text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_reports_top_level_graphql_errors(caplog) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(
+                200,
+                json={"data": {"webhookSubscriptions": {"nodes": [], "pageInfo": {"hasNextPage": False}}}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "errors": [
+                    {
+                        "message": "Variable $topic received an invalid value",
+                        "extensions": {"code": "variableMismatch"},
+                    }
+                ]
+            },
+        )
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("INVALID_TOPIC",)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(ShopifyConnectorError):
+        await connector.register_webhooks(context)
+
+    assert "topic=INVALID_TOPIC" in caplog.text
+    assert "Variable $topic received an invalid value" in caplog.text
+    assert "variableMismatch" in caplog.text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_rejects_null_subscription(caplog) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            data = {
+                "webhookSubscriptions": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False},
+                }
+            }
+        else:
+            data = {
+                "webhookSubscriptionCreate": {
+                    "webhookSubscription": None,
+                    "userErrors": [],
+                }
+            }
+        return httpx.Response(200, json={"data": data})
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE",)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(ShopifyConnectorError):
+        await connector.register_webhooks(context)
+
+    assert "null webhook subscription" in caplog.text
+    assert "topic=ORDERS_CREATE" in caplog.text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_is_idempotent_for_existing_duplicate() -> None:
+    calls = 0
+    webhook_uri = "https://api.avenqo.test/api/v1/connectors/shopify/webhook"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "webhookSubscriptions": {
+                        "nodes": [{"topic": "ORDERS_CREATE", "uri": webhook_uri}],
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                }
+            },
+        )
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE",)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    await connector.register_webhooks(context)
+    await connector.register_webhooks(context)
+
+    assert calls == 2
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_recovers_from_duplicate_race() -> None:
+    calls = 0
+    webhook_uri = "https://api.avenqo.test/api/v1/connectors/shopify/webhook"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            data = {"webhookSubscriptions": {"nodes": [], "pageInfo": {"hasNextPage": False}}}
+        elif calls == 2:
+            data = {
+                "webhookSubscriptionCreate": {
+                    "webhookSubscription": None,
+                    "userErrors": [{"field": ["topic"], "message": "Address for this topic has already been taken"}],
+                }
+            }
+        else:
+            data = {
+                "webhookSubscriptions": {
+                    "nodes": [{"topic": "ORDERS_CREATE", "uri": webhook_uri}],
+                    "pageInfo": {"hasNextPage": False},
+                }
+            }
+        return httpx.Response(200, json={"data": data})
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE",)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    await connector.register_webhooks(context)
+
+    assert calls == 3
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_webhook_registration_rejects_invalid_callback_uri(caplog) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500)
+
+    connector, client = _connector(handler)
+    connector._webhook_uri = "http://localhost/webhook"
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(
+        ShopifyConnectorError, match="public HTTPS URL"
+    ):
+        await connector.register_webhooks(context)
+
+    assert calls == 0
+    assert "topic=CONFIGURATION" in caplog.text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_partial_webhook_failure_retries_without_duplicates() -> None:
+    created: set[str] = set()
+    fail_second = True
+    webhook_uri = "https://api.avenqo.test/api/v1/connectors/shopify/webhook"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_second
+        payload = json.loads(request.content)
+        variables = payload["variables"]
+        if "webhookSubscriptions" in payload["query"]:
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "webhookSubscriptions": {
+                            "nodes": [{"topic": topic, "uri": webhook_uri} for topic in created],
+                            "pageInfo": {"hasNextPage": False},
+                        }
+                    }
+                },
+            )
+        topic = variables["topic"]
+        if topic == "PRODUCTS_CREATE" and fail_second:
+            fail_second = False
+            return httpx.Response(
+                200,
+                json={"data": {"webhookSubscriptionCreate": {"webhookSubscription": None, "userErrors": [{"field": ["topic"], "message": "temporary policy failure"}]}}},
+            )
+        created.add(topic)
+        return httpx.Response(
+            200,
+            json={"data": {"webhookSubscriptionCreate": {"webhookSubscription": {"id": topic}, "userErrors": []}}},
+        )
+
+    connector, client = _connector(handler)
+    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE", "PRODUCTS_CREATE")
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+    )
+
+    with pytest.raises(ShopifyConnectorError):
+        await connector.register_webhooks(context)
+    await connector.register_webhooks(context)
+
+    assert created == {"ORDERS_CREATE", "PRODUCTS_CREATE"}
     await client.aclose()
 
 

@@ -64,6 +64,7 @@ class _CallbackConnections:
     def __init__(self, company_id):
         self.connection = SimpleNamespace(id=uuid4(), company_id=company_id)
         self.failed = []
+        self.completed = []
 
     async def complete_shopify_oauth(self, callback_parameters):
         return self.connection
@@ -74,6 +75,9 @@ class _CallbackConnections:
     def mark_setup_failed(self, tenant, connection_id, *, error_category):
         self.failed.append((tenant.company_id, connection_id, error_category))
 
+    def mark_setup_complete(self, tenant, connection_id):
+        self.completed.append((tenant.company_id, connection_id))
+
 
 class _FailingWebhookRegistry:
     def get(self, provider):
@@ -82,6 +86,15 @@ class _FailingWebhookRegistry:
 
     async def register_webhooks(self, context):
         raise ShopifyConnectorError("registration unavailable")
+
+
+class _SuccessfulWebhookRegistry:
+    def get(self, provider):
+        assert provider == "shopify"
+        return self
+
+    async def register_webhooks(self, context):
+        return None
 
 
 def test_connector_catalog_and_manual_sync_routes() -> None:
@@ -157,5 +170,33 @@ def test_shopify_callback_marks_setup_failed_when_webhooks_cannot_register() -> 
             "webhook_registration_failed",
         )
     ]
+    assert connections.completed == []
     assert sync.reserved == []
     assert runner.runs == []
+
+
+def test_shopify_callback_completes_setup_after_webhook_registration() -> None:
+    company_id = uuid4()
+    connections = _CallbackConnections(company_id)
+    sync = _Sync()
+    runner = _Runner()
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_commerce_connection_service] = lambda: connections
+    app.dependency_overrides[get_commerce_sync_service] = lambda: sync
+    app.dependency_overrides[get_commerce_sync_runner] = lambda: runner
+    app.dependency_overrides[get_commerce_connector_registry] = (
+        lambda: _SuccessfulWebhookRegistry()
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/connectors/shopify/callback?state=valid",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert connections.completed == [(company_id, connections.connection.id)]
+    assert connections.failed == []
+    assert sync.reserved == [(company_id, connections.connection.id)]
+    assert runner.runs == [(company_id, connections.connection.id)]

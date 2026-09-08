@@ -105,9 +105,11 @@ async def test_oauth_state_creates_encrypted_tenant_connection(connection_enviro
     )
 
     assert connection.company_id == company.id
-    assert connection.status == CommerceConnectionStatus.CONNECTED.value
+    assert connection.status == CommerceConnectionStatus.CONNECTING.value
     assert "shpat_secret" not in (connection.encrypted_credentials or "")
     assert len(service.list_connections(tenant)) == 1
+    completed = service.mark_setup_complete(tenant, connection.id)
+    assert completed.status == CommerceConnectionStatus.CONNECTED.value
     with pytest.raises(CommerceAuthorizationError, match="invalid or expired"):
         await service.complete_shopify_oauth(
             {"state": start.state, "shop": "alpha-store.myshopify.com"}
