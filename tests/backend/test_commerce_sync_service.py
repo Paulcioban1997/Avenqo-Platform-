@@ -407,6 +407,28 @@ async def test_materialization_permission_failure_is_truthful_and_retryable(tmp_
         assert ingestion.attempts == 2
 
 
+def test_legacy_failed_snapshot_is_marked_for_materialization() -> None:
+    connection = CommerceConnection(
+        company_id=uuid4(),
+        provider="shopify",
+        external_account_id="legacy.myshopify.com",
+        encrypted_credentials="unused-by-test",
+        status=CommerceConnectionStatus.ERROR.value,
+        current_entity="retail_snapshot",
+        sync_cursor={"orders": {"completed": True}},
+    )
+    service = CommerceSyncService(
+        SimpleNamespace(commit=lambda: None),
+        None,
+        None,
+        None,
+    )
+
+    run = service._begin_or_resume(connection)
+
+    assert run.state["_snapshot_pending"] is True
+
+
 @pytest.mark.asyncio
 async def test_sync_resumes_cursor_and_skips_unchanged_replay(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'commerce-resume.db'}")
