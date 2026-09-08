@@ -453,11 +453,10 @@ class CommerceSyncService:
 
     def _begin_or_resume(self, connection: CommerceConnection) -> _SyncRun:
         state = dict(connection.sync_cursor or {})
-        if (
+        legacy_snapshot_pending = (
             connection.status == CommerceConnectionStatus.ERROR.value
             and connection.current_entity == "retail_snapshot"
-        ):
-            state["_snapshot_pending"] = True
+        )
         active = state.get("_run")
         if isinstance(active, dict):
             started_at = self._parse_datetime(active.get("started_at")) or self._now()
@@ -476,6 +475,8 @@ class CommerceSyncService:
                 }
             }
             connection.records_processed = 0
+        if legacy_snapshot_pending:
+            state["_snapshot_pending"] = True
         connection.status = CommerceConnectionStatus.SYNCING.value
         connection.sync_started_at = started_at
         connection.current_entity = None
