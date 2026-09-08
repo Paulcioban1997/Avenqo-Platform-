@@ -7,9 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/file_picker/app_file_picker.dart';
+import 'package:avenqo/features/connectors/connector_hub.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/widgets/avenqo_data_table.dart';
 import 'package:avenqo/i18n/translations.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Ré-export pour compatibilité : les tests et consommateurs existants
 // importent `PickedFile` depuis cette page.
@@ -27,6 +29,9 @@ const _defaultModuleCode = 'retail';
 enum _ViewState { loading, idle, selecting, uploading, summary, error }
 
 typedef FilePickerFn = Future<List<PickedFile>> Function();
+typedef ConnectorUrlLauncher = Future<bool> Function(Uri uri);
+
+Future<bool> _openConnectorUrl(Uri uri) => launchUrl(uri);
 
 /// Centre de gestion des données Avenqo (remplace le placeholder générique).
 /// Réutilise exclusivement les endpoints existants (`/datasets`,
@@ -37,10 +42,12 @@ class ConnectionsPage extends StatefulWidget {
     required this.api,
     this.pickFiles = pickDataFiles,
     this.pollInterval = const Duration(seconds: 3),
+    this.openConnectorUrl = _openConnectorUrl,
   });
   final ApiClient api;
   final FilePickerFn pickFiles;
   final Duration pollInterval;
+  final ConnectorUrlLauncher openConnectorUrl;
 
   @override
   State<ConnectionsPage> createState() => _ConnectionsPageState();
@@ -49,6 +56,11 @@ class ConnectionsPage extends StatefulWidget {
 class _ConnectionsPageState extends State<ConnectionsPage> {
   _ViewState _state = _ViewState.loading;
   List<Map<String, dynamic>> _datasets = [];
+  List<Map<String, dynamic>> _connectorCatalog = [];
+  List<Map<String, dynamic>> _commerceConnections = [];
+  bool _connectorCatalogUnavailable = false;
+  bool _authorizingShopify = false;
+  final Set<String> _busyConnectionIds = <String>{};
   String? _errorMessage;
   String? _duplicateNotice;
   final List<_PendingFile> _pending = [];
@@ -65,6 +77,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
   Future<void> _loadDatasets() async {
     setState(() => _state = _ViewState.loading);
+    final connectorFuture = _fetchConnectorData();
     try {
       try {
         await widget.api.post('/datasets/reconcile');
@@ -72,8 +85,12 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         // Listing remains available if reconciliation is temporarily unavailable.
       }
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
+      final connectorData = await connectorFuture;
       setState(() {
         _datasets = datasets.cast<Map<String, dynamic>>();
+        _connectorCatalog = connectorData.catalog;
+        _commerceConnections = connectorData.connections;
+        _connectorCatalogUnavailable = connectorData.unavailable;
         _state = _ViewState.idle;
       });
       _syncPolling();
@@ -96,6 +113,48 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
+  Future<_ConnectorData> _fetchConnectorData() async {
+    final responses = await Future.wait<dynamic>([
+      _safeConnectorGet('/connectors'),
+      _safeConnectorGet('/connectors/connections'),
+    ]);
+    final catalog = _mapsFrom(responses[0])
+        .where(
+          (item) =>
+              item['provider'] != null && item['implementation_status'] != null,
+        )
+        .toList(growable: false);
+    final connections = _mapsFrom(responses[1])
+        .where(
+          (item) => item['id'] != null && item['external_account_id'] != null,
+        )
+        .toList(growable: false);
+    return _ConnectorData(
+      catalog: catalog,
+      connections: connections,
+      unavailable: responses.any((response) => response == null),
+    );
+  }
+
+  Future<dynamic> _safeConnectorGet(String path) async {
+    try {
+      return await widget.api.get(path);
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _refreshConnectorData() async {
+    final connectorData = await _fetchConnectorData();
+    if (!mounted) return;
+    setState(() {
+      _connectorCatalog = connectorData.catalog;
+      _commerceConnections = connectorData.connections;
+      _connectorCatalogUnavailable = connectorData.unavailable;
+    });
+    _syncPolling();
+  }
+
   /// Rafraîchit la liste des jeux de données sans changer l'écran affiché
   /// (utilisé après un import pour ne pas écraser le résumé de succès).
   Future<void> _refreshDatasetsInBackground() async {
@@ -105,6 +164,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
       if (mounted) {
         setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+        if (_commerceConnections.any(_connectionIsBusy)) {
+          await _refreshConnectorData();
+        }
         _syncPolling();
       }
     } on ApiException {
@@ -121,7 +183,8 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       return pipelineStatus == 'analyzing' ||
           trainingStatus == 'preparing_data' ||
           trainingStatus == 'training_ai';
-    });
+    }) ||
+        _commerceConnections.any(_connectionIsBusy);
     if (!shouldPoll) {
       _pollTimer?.cancel();
       _pollTimer = null;
@@ -131,6 +194,152 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       widget.pollInterval,
       (_) => _refreshDatasetsInBackground(),
     );
+  }
+
+  bool _connectionIsBusy(Map<String, dynamic> connection) {
+    final status = connection['status']?.toString().toUpperCase();
+    return status == 'SYNCING' ||
+        status == 'PROCESSING' ||
+        status == 'CONNECTING';
+  }
+
+  String _connectorText(String key) {
+    final t = AvenqoLocaleScope.translationsOf(context).company;
+    return t.connectorHub[key] ??
+        CompanyStrings.fallback().connectorHub[key] ??
+        key;
+  }
+
+  Future<void> _connectShopify() async {
+    var shopValue = '';
+    final shop = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_connectorText('shopDomainTitle')),
+        content: TextFormField(
+          key: const ValueKey('shopify-domain'),
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            hintText: _connectorText('shopDomainHint'),
+          ),
+          onChanged: (value) => shopValue = value.trim(),
+          onFieldSubmitted: (value) =>
+              Navigator.of(dialogContext).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_connectorText('cancel')),
+          ),
+          FilledButton.icon(
+            key: const ValueKey('authorize-shopify'),
+            onPressed: () => Navigator.of(dialogContext).pop(shopValue),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: Text(_connectorText('authorize')),
+          ),
+        ],
+      ),
+    );
+    if (shop == null || shop.isEmpty || !mounted) return;
+    setState(() => _authorizingShopify = true);
+    try {
+      final response =
+          await widget.api.post(
+                '/connectors/shopify/authorize',
+                body: {'shop_domain': shop},
+              )
+              as Map<String, dynamic>;
+      final authorizationUrl = Uri.tryParse(
+        response['authorization_url']?.toString() ?? '',
+      );
+      if (authorizationUrl == null ||
+          !authorizationUrl.hasScheme ||
+          !await widget.openConnectorUrl(authorizationUrl)) {
+        throw ApiException(_connectorText('launchFailed'));
+      }
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } on Object {
+      _showConnectorError(_connectorText('launchFailed'));
+    } finally {
+      if (mounted) setState(() => _authorizingShopify = false);
+    }
+  }
+
+  Future<void> _syncConnection(Map<String, dynamic> connection) async {
+    final id = connection['id']?.toString();
+    if (id == null || _busyConnectionIds.contains(id)) return;
+    setState(() => _busyConnectionIds.add(id));
+    try {
+      await widget.api.post('/connectors/connections/$id/sync');
+      if (!mounted) return;
+      setState(() {
+        final index = _commerceConnections.indexWhere(
+          (item) => item['id']?.toString() == id,
+        );
+        if (index >= 0) {
+          _commerceConnections[index] = {
+            ..._commerceConnections[index],
+            'status': 'SYNCING',
+          };
+        }
+      });
+      _syncPolling();
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } finally {
+      if (mounted) setState(() => _busyConnectionIds.remove(id));
+    }
+  }
+
+  Future<void> _disconnectConnection(Map<String, dynamic> connection) async {
+    final id = connection['id']?.toString();
+    if (id == null || _busyConnectionIds.contains(id)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_connectorText('disconnect')),
+        content: Text(_connectorText('disconnectConfirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_connectorText('cancel')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _Brand.red),
+            icon: const Icon(Icons.link_off, size: 18),
+            label: Text(_connectorText('disconnect')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyConnectionIds.add(id));
+    try {
+      final response =
+          await widget.api.post('/connectors/connections/$id/disconnect')
+              as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        final index = _commerceConnections.indexWhere(
+          (item) => item['id']?.toString() == id,
+        );
+        if (index >= 0) _commerceConnections[index] = response;
+      });
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } finally {
+      if (mounted) setState(() => _busyConnectionIds.remove(id));
+    }
+  }
+
+  void _showConnectorError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -301,13 +510,22 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         padding: const EdgeInsets.all(24),
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
+            constraints: const BoxConstraints(maxWidth: 1120),
             child: switch (_state) {
               _ViewState.loading => _CenteredSpinner(
                 label: t.connectionsLoading,
               ),
               _ViewState.idle => _ConnectedDataView(
                 datasets: _datasets,
+                connectorCatalog: _connectorCatalog,
+                commerceConnections: _commerceConnections,
+                busyConnectionIds: _busyConnectionIds,
+                authorizingShopify: _authorizingShopify,
+                connectorCatalogUnavailable: _connectorCatalogUnavailable,
+                onConnectShopify: _connectShopify,
+                onSyncConnection: _syncConnection,
+                onDisconnectConnection: _disconnectConnection,
+                onRefreshConnectors: _refreshConnectorData,
                 deletingDatasetIds: _deletingDatasetIds,
                 onAddFiles: _addFiles,
                 onDeleteDataset: _deleteDataset,
@@ -416,11 +634,40 @@ class _UploadItem {
   String? error;
 }
 
+class _ConnectorData {
+  const _ConnectorData({
+    required this.catalog,
+    required this.connections,
+    required this.unavailable,
+  });
+
+  final List<Map<String, dynamic>> catalog;
+  final List<Map<String, dynamic>> connections;
+  final bool unavailable;
+}
+
+List<Map<String, dynamic>> _mapsFrom(dynamic value) {
+  if (value is! List) return [];
+  return value
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList(growable: false);
+}
+
 /// Panneau principal : import + dropdown de TOUS les datasets du tenant,
 /// quel que soit leur statut. Chaque ligne reste supprimable indépendamment.
 class _ConnectedDataView extends StatelessWidget {
   const _ConnectedDataView({
     required this.datasets,
+    required this.connectorCatalog,
+    required this.commerceConnections,
+    required this.busyConnectionIds,
+    required this.authorizingShopify,
+    required this.connectorCatalogUnavailable,
+    required this.onConnectShopify,
+    required this.onSyncConnection,
+    required this.onDisconnectConnection,
+    required this.onRefreshConnectors,
     required this.deletingDatasetIds,
     required this.onAddFiles,
     required this.onDeleteDataset,
@@ -432,6 +679,16 @@ class _ConnectedDataView extends StatelessWidget {
   });
 
   final List<Map<String, dynamic>> datasets;
+  final List<Map<String, dynamic>> connectorCatalog;
+  final List<Map<String, dynamic>> commerceConnections;
+  final Set<String> busyConnectionIds;
+  final bool authorizingShopify;
+  final bool connectorCatalogUnavailable;
+  final VoidCallback onConnectShopify;
+  final Future<void> Function(Map<String, dynamic> connection) onSyncConnection;
+  final Future<void> Function(Map<String, dynamic> connection)
+  onDisconnectConnection;
+  final VoidCallback onRefreshConnectors;
   final Set<String> deletingDatasetIds;
   final VoidCallback onAddFiles;
   final Future<void> Function(String datasetId) onDeleteDataset;
@@ -557,6 +814,19 @@ class _ConnectedDataView extends StatelessWidget {
             ),
           ),
         ],
+        const SizedBox(height: 32),
+        ConnectorHub(
+          catalog: connectorCatalog,
+          connections: commerceConnections,
+          busyConnectionIds: busyConnectionIds,
+          authorizingShopify: authorizingShopify,
+          catalogUnavailable: connectorCatalogUnavailable,
+          onConnectShopify: onConnectShopify,
+          onSync: onSyncConnection,
+          onDisconnect: onDisconnectConnection,
+          onRefresh: onRefreshConnectors,
+          t: t,
+        ),
       ],
     );
   }

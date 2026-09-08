@@ -143,6 +143,50 @@ void main() {
     }
   });
 
+  test('all 50 catalogs fully localize the Connector Hub', () {
+    final englishHub =
+        (_readLocaleJson('en')['company'] as Map<String, dynamic>)['connectorHub']
+            as Map<String, dynamic>;
+    const visiblyLocalizedKeys = {
+      'title',
+      'subtitle',
+      'comingSoon',
+      'connectedStores',
+      'disconnectConfirm',
+      'catalogUnavailable',
+      'fileImportSubtitle',
+    };
+
+    for (final code in [...kExpectedLocaleCodes, ...kLegacyAliasLocaleCodes]) {
+      final company = _readLocaleJson(code)['company'] as Map<String, dynamic>;
+      final hub = company['connectorHub'] as Map<String, dynamic>?;
+      expect(hub, isNotNull, reason: '$code company.connectorHub is missing');
+      expect(
+        hub!.keys.toSet(),
+        equals(englishHub.keys.toSet()),
+        reason: '$code company.connectorHub key parity',
+      );
+      for (final entry in hub.entries) {
+        final value = entry.value.toString().trim();
+        expect(value, isNotEmpty, reason: '$code connectorHub.${entry.key} is empty');
+        expect(
+          _errorPageContamination.hasMatch(value),
+          isFalse,
+          reason: '$code connectorHub.${entry.key} contains HTTP/error-page content',
+        );
+      }
+      if (!code.startsWith('en')) {
+        for (final key in visiblyLocalizedKeys) {
+          expect(
+            hub[key],
+            isNot(englishHub[key]),
+            reason: '$code connectorHub.$key is still English',
+          );
+        }
+      }
+    }
+  });
+
   for (final code in kExpectedLocaleCodes) {
     test('$code.json has 100% key parity with en.json (no missing/extra keys)', () {
       final json = _readLocaleJson(code);

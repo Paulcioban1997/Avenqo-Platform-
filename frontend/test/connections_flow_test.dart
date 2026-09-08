@@ -122,7 +122,7 @@ void main() {
     expect(find.text('Données prêtes'), findsOneWidget);
     expect(find.text('Le traitement avancé doit être relancé'), findsOneWidget);
     expect(find.text('Voir les données nettoyées'), findsOneWidget);
-    // The Add files CTA must remain available even once data already exists.
+      // The Add files CTA must remain available even once data already exists.
     expect(find.text('Ajouter des fichiers'), findsOneWidget);
   });
 
@@ -300,13 +300,20 @@ void main() {
   testWidgets('Connections polls until automatic training is ready', (
     tester,
   ) async {
-    var requests = 0;
+    var datasetRequests = 0;
     final client = MockClient((request) async {
-      requests += 1;
-      final trainingStatus = requests == 1 ? 'training_ai' : 'ready';
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        datasetRequests += 1;
+      final trainingStatus = datasetRequests == 1 ? 'training_ai' : 'ready';
       return http.Response(
         '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"$trainingStatus"}]',
         200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.contains('/connectors')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200
       );
     });
     await tester.pumpWidget(
@@ -321,7 +328,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 60));
     await tester.pump();
 
-    expect(requests, 2);
+    expect(datasetRequests, 2);
     await tester.tap(find.text('Données connectées'));
     await tester.pump();
     expect(find.byIcon(Icons.check_circle), findsOneWidget);

@@ -9,6 +9,7 @@ from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
 from backend.app.routers.central_ai import router as central_ai_router
+from backend.app.routers.commerce import router as commerce_router
 from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.dataset_archives import router as dataset_archives_router
 from backend.app.routers.datasets import router as datasets_router
@@ -47,6 +48,7 @@ api_router.include_router(
 )
 api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
+api_router.include_router(commerce_router, prefix="/api/v1")
 api_router.include_router(
 	dashboard_router,
 	prefix="/api/v1",

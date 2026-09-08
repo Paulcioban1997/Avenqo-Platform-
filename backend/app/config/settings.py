@@ -127,6 +127,28 @@ class Settings(BaseSettings):
         alias="STRIPE_PRICE_CREDIT_PROFESSIONAL_25000",
     )
     stripe_price_enterprise: str | None = Field(default=None, alias="STRIPE_PRICE_ENTERPRISE")
+    connector_encryption_keys: Annotated[List[str], NoDecode] = Field(
+        default_factory=list,
+        alias="CONNECTOR_ENCRYPTION_KEYS",
+    )
+    shopify_client_id: str | None = Field(default=None, alias="SHOPIFY_CLIENT_ID")
+    shopify_client_secret: str | None = Field(default=None, alias="SHOPIFY_CLIENT_SECRET")
+    shopify_redirect_uri: str | None = Field(default=None, alias="SHOPIFY_REDIRECT_URI")
+    shopify_webhook_uri: str = Field(
+        default="http://localhost:8000/api/v1/connectors/shopify/webhook",
+        alias="SHOPIFY_WEBHOOK_URI",
+    )
+    shopify_api_version: str = Field(default="2026-07", alias="SHOPIFY_API_VERSION")
+    shopify_scopes: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "read_orders",
+            "read_customers",
+            "read_products",
+            "read_inventory",
+            "read_locations",
+        ],
+        alias="SHOPIFY_SCOPES",
+    )
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
@@ -211,12 +233,23 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
+    @field_validator("connector_encryption_keys", "shopify_scopes", mode="before")
+    @classmethod
+    def parse_string_list(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                return value
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
+
     @field_validator(
         "email_api_key", "smtp_host", "smtp_username", "smtp_password",
         "stripe_secret_key", "stripe_webhook_secret",
         "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
         "stripe_price_credit_demo", "stripe_price_credit_professional",
         "stripe_price_credit_professional_6500", "stripe_price_credit_professional_25000",
+        "shopify_client_id", "shopify_client_secret", "shopify_redirect_uri",
         mode="before",
     )
     @classmethod
@@ -317,6 +350,15 @@ class Settings(BaseSettings):
             and self.stripe_webhook_secret
             and self.stripe_price_demo
             and self.stripe_price_professional
+        )
+
+    @property
+    def shopify_connector_configured(self) -> bool:
+        return bool(
+            self.connector_encryption_keys
+            and self.shopify_client_id
+            and self.shopify_client_secret
+            and self.shopify_redirect_uri
         )
 
     @property

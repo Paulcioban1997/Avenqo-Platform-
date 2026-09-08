@@ -231,6 +231,40 @@ def test_upload_csv_creates_ready_dataset(phase26_environment) -> None:
     assert body["columns"] == 8
 
 
+def test_generated_dataset_deletion_is_idempotent_and_tenant_scoped(
+    phase26_environment,
+) -> None:
+    client, session_factory, tenants = phase26_environment
+    response = _upload(client, "generated-retail.csv", COMPANY_A_CSV)
+    assert response.status_code == 201
+    dataset_id = UUID(response.json()["dataset_id"])
+    tenant = tenants["company_a"]
+    dataset_directory = (
+        tenants["artifact_root"]
+        / "company_datasets"
+        / str(tenant.company_id)
+        / "datasets"
+        / str(dataset_id)
+    )
+    assert dataset_directory.exists()
+
+    with session_factory() as session:
+        service = CompanyDatasetIngestionService(
+            session=session,
+            storage=LocalDatasetStorage(
+                tenants["artifact_root"] / "company_datasets"
+            ),
+            quota=DataImportPolicy(session),
+            max_upload_bytes=5 * 1024 * 1024,
+        )
+        service.delete_if_exists(tenant, dataset_id)
+        service.delete_if_exists(tenant, dataset_id)
+
+    with session_factory() as session:
+        assert session.get(Dataset, dataset_id) is None
+    assert not dataset_directory.exists()
+
+
 def test_same_tenant_imports_multiple_ready_datasets_with_different_schemas(
     phase26_environment,
 ) -> None:

@@ -130,6 +130,13 @@ class TrainingDispatcher:
     def attach_scheduler(self, scheduler: JobScheduler) -> None:
         self._scheduler = scheduler
 
+    def invalidate_dataset_models(
+        self,
+        tenant: TenantContext,
+        dataset_id: UUID,
+    ) -> None:
+        invalidate_dataset_versions(self._registry, tenant, str(dataset_id))
+
     def dispatch(self, tenant: TenantContext, dataset: Dataset) -> list[AIJob]:
         """Résout les tâches réellement exécutables puis planifie leur entraînement.
 

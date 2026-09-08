@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
@@ -26,6 +26,7 @@ from backend.app.models import (
     DatasetVersion,
     DatasetVersionStatus,
     Mapping as MappingModel,
+    TrainingJob,
 )
 from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services import retail_kpi_cache
@@ -267,6 +268,29 @@ class CompanyDatasetIngestionService:
         if dataset is None:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
+
+    def delete_if_exists(self, tenant: TenantContext, dataset_id: UUID) -> None:
+        dataset = self._session.scalar(
+            select(Dataset).where(
+                Dataset.id == dataset_id,
+                Dataset.company_id == tenant.company_id,
+            )
+        )
+        if dataset is None:
+            return
+        try:
+            self._session.execute(
+                delete(TrainingJob).where(
+                    TrainingJob.dataset_id == dataset_id,
+                    TrainingJob.company_id == tenant.company_id,
+                )
+            )
+            self._session.delete(dataset)
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
+        self._storage.delete_dataset(tenant.company_id, dataset_id)
 
     def reconcile_existing(self, tenant: TenantContext) -> tuple[Dataset, ...]:
         return ()

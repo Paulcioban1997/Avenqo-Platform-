@@ -57,12 +57,21 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
         "tenant_ai_credit_reservations",
         "tenant_ai_credit_ledger",
         "ai_credit_purchases",
+        "commerce_connections",
+        "commerce_oauth_states",
+        "normalized_commerce_records",
+        "commerce_webhook_receipts",
     ):
         assert expected in tables
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0012_ai_credit_economics"
+    assert current == "0014_commerce_webhook_tombstones"
+    receipt_columns = {
+        column["name"]
+        for column in inspector.get_columns("commerce_webhook_receipts")
+    }
+    assert "source_record_id" in receipt_columns
     assert application_logger.disabled is False
 
 

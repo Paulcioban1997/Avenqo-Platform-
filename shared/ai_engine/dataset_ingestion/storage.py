@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -105,6 +106,12 @@ class LocalDatasetStorage(DatasetStorage):
 
     def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
         return self._version_dir(company_id, dataset_id, version) / "metadata" / "metadata.json"
+
+    def delete_dataset(self, company_id: UUID, dataset_id: UUID) -> None:
+        directory = (self._root / str(company_id) / "datasets" / str(dataset_id)).resolve()
+        if self._root not in directory.parents:
+            raise ValueError("Chemin de dataset invalide (traversée de répertoire détectée)")
+        shutil.rmtree(directory, ignore_errors=True)
 
     def _write_bytes(self, directory: Path, safe_name: str, content: bytes) -> Path:
         directory.mkdir(parents=True, exist_ok=True)

@@ -27,6 +27,13 @@ from backend.app.models.billing import AICreditPurchase, BillingAccount, Billing
 from backend.app.models.company import Company
 from backend.app.models.company_module import CompanyModule
 from backend.app.models.company_onboarding import CompanyOnboarding
+from backend.app.models.commerce_connection import (
+    CommerceConnection,
+    CommerceConnectionStatus,
+    CommerceOAuthState,
+    CommerceWebhookReceipt,
+    NormalizedCommerceRecord,
+)
 from backend.app.models.data_quality_report import DataQualityReport
 from backend.app.models.dataset import Dataset
 from backend.app.models.dataset_profile import DatasetProfile
@@ -62,6 +69,10 @@ __all__ = [
     "CompanyModuleStatus",
     "CompanyOnboarding",
     "CompanyStatus",
+    "CommerceConnection",
+    "CommerceConnectionStatus",
+    "CommerceOAuthState",
+    "CommerceWebhookReceipt",
     "DataQualityReport",
     "Dataset",
     "DatasetProfile",
@@ -74,6 +85,7 @@ __all__ = [
     "Mapping",
     "ModelRegistry",
     "Module",
+    "NormalizedCommerceRecord",
     "OnboardingStatus",
     "Prediction",
     "TimestampMixin",

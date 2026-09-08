@@ -99,6 +99,10 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
 
         return dataset
 
+    def delete_if_exists(self, tenant: TenantContext, dataset_id: UUID) -> None:
+        super().delete_if_exists(tenant, dataset_id)
+        self._dispatcher.invalidate_dataset_models(tenant, dataset_id)
+
     def _hold_mapping_conflicts(self, dataset: Dataset) -> Dataset:
         if dataset.mapping is None:
             return dataset
