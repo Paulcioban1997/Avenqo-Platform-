@@ -47,7 +47,11 @@ def load_latest_prepared_dataset(
 
     snapshot = TenantAnalyticsService(session, ingestion).load(tenant)
     source = snapshot.source_for(required_fields)
-    if source is None and (dataset := latest_ready_dataset(session, tenant)) is not None:
+    if (
+        source is None
+        and not snapshot.active_source_selected
+        and (dataset := latest_ready_dataset(session, tenant)) is not None
+    ):
         fallback = ingestion.get_prepared_dataset(tenant, dataset.id)
         if required_fields <= set(fallback.canonical_columns.values()):
             source = fallback

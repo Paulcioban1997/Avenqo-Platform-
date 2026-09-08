@@ -44,6 +44,7 @@ from backend.app.models.mapping import Mapping
 from backend.app.models.model_registry import ModelRegistry
 from backend.app.models.module import Module
 from backend.app.models.prediction import Prediction
+from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
 
@@ -88,6 +89,7 @@ __all__ = [
     "NormalizedCommerceRecord",
     "OnboardingStatus",
     "Prediction",
+    "RetailActiveSource",
     "TimestampMixin",
     "StripeWebhookEvent",
     "TenantAICreditBalance",

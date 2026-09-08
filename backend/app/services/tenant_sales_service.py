@@ -50,6 +50,12 @@ class TenantSalesService:
         self._validate_period(period_key, date_from, date_to)
         snapshot = self._analytics.load(tenant)
         source = snapshot.source_for(_SALES_FIELDS)
+        if (
+            source is not None
+            and snapshot.active_source_provider == "shopify"
+            and not self._has_shopify_orders(source)
+        ):
+            source = None
         base = {
             "status": snapshot.status,
             "available": source is not None,
@@ -113,6 +119,21 @@ class TenantSalesService:
             "weakest_period": weakest,
             "forecast": self._forecast(tenant, snapshot.active_models),
         }
+
+    @staticmethod
+    def _has_shopify_orders(source) -> bool:
+        order_column = next(
+            (
+                original
+                for original, canonical in source.canonical_columns.items()
+                if canonical == "order_id"
+            ),
+            None,
+        )
+        return bool(
+            order_column
+            and any(str(row.get(order_column) or "").strip() for row in source.rows)
+        )
 
     def _forecast(
         self,

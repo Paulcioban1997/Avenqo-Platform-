@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:avenqo/agents/retail_source_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -145,7 +146,7 @@ class _CustomersContent extends StatelessWidget {
     }
     if (data['available'] != true) {
       return _CustomerState(
-        message: t.analyticsUnavailable,
+        message: activeShopifyEmptyMessage(context, RetailEmptyKind.customers) ?? t.analyticsUnavailable,
         action: readOnly ? null : t.businessConnectButton,
         onPressed: readOnly ? null : () => context.go('/connections'),
       );

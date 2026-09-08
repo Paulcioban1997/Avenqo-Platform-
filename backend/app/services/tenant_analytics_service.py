@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.models import (
     Company,
+    CommerceConnection,
     Dataset,
     DatasetRelationship,
     DatasetStatus,
@@ -18,6 +19,7 @@ from backend.app.models import (
 from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services import retail_kpi_cache
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.retail_source_service import RetailSourceService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -53,6 +55,9 @@ class TenantAnalyticsSnapshot:
     deferred_dataset_ids: frozenset[object] = frozenset()
     retail_summaries: tuple[dict, ...] = ()
     retail_states: tuple[str, ...] = ()
+    active_source_selected: bool = False
+    active_source_dataset_id: object | None = None
+    active_source_provider: str | None = None
 
     @property
     def currency(self) -> str:
@@ -260,6 +265,17 @@ class TenantAnalyticsService:
                 .order_by(Dataset.uploaded_at.desc())
             ).all()
         )
+        active_source = RetailSourceService(self._session).active_selection(tenant)
+        active_source_provider = None
+        if active_source is not None and active_source.connection_id is not None:
+            connection = self._session.get(CommerceConnection, active_source.connection_id)
+            active_source_provider = connection.provider if connection is not None else None
+        if active_source is not None:
+            datasets = tuple(
+                dataset
+                for dataset in datasets
+                if dataset.id == active_source.dataset_id
+            )
         statuses = tuple(_pipeline_status(dataset) for dataset in datasets)
         training_statuses = tuple(
             status
@@ -311,6 +327,11 @@ class TenantAnalyticsService:
             deferred_dataset_ids=frozenset(deferred_dataset_ids),
             retail_summaries=tuple(summaries),
             retail_states=tuple(retail_states),
+            active_source_selected=active_source is not None,
+            active_source_dataset_id=(
+                active_source.dataset_id if active_source is not None else None
+            ),
+            active_source_provider=active_source_provider,
         )
         return replace(
             snapshot,

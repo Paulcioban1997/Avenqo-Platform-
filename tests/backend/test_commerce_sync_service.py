@@ -210,6 +210,65 @@ def test_snapshot_uses_discounted_shopify_refund_amount_and_processed_time() -> 
     assert rows[0]["refund_amount"] == "32"
 
 
+def test_snapshot_keeps_shopify_products_customers_and_inventory_without_orders() -> None:
+    service = CommerceSyncService(None, None, None, None)
+    connection = SimpleNamespace(
+        id=uuid4(),
+        provider="shopify",
+        external_account_id="avenqo-retail-test.myshopify.com",
+    )
+    records = [
+        SimpleNamespace(
+            entity_type="customers",
+            normalized_data={
+                "customer_id": "gid://shopify/Customer/1",
+                "email": "customer@example.com",
+                "country": "CA",
+                "updated_at": "2026-09-08T17:00:00Z",
+            },
+        ),
+        SimpleNamespace(
+            entity_type="products",
+            normalized_data={
+                "product_id": "gid://shopify/Product/1",
+                "product_name": "Coffee",
+                "product_category": "Drinks",
+                "updated_at": "2026-09-08T17:00:00Z",
+                "variants": [
+                    {
+                        "variant_id": "gid://shopify/ProductVariant/1",
+                        "sku": "COFFEE-1",
+                        "unit_price": "12.00",
+                        "inventory_item_id": "gid://shopify/InventoryItem/1",
+                    }
+                ],
+            },
+        ),
+        SimpleNamespace(
+            entity_type="inventory",
+            normalized_data={
+                "inventory_item_id": "gid://shopify/InventoryItem/1",
+                "sku": "COFFEE-1",
+                "inventory_level": 9,
+            },
+        ),
+    ]
+
+    rows = service._snapshot_rows(connection, records)
+
+    assert len(rows) == 2
+    customer = next(row for row in rows if row.get("customer_id"))
+    product = next(row for row in rows if row.get("product_id"))
+    assert customer["customer_email"] == "customer@example.com"
+    assert customer.get("order_id") is None
+    assert customer.get("total_amount") is None
+    assert product["product_id"] == "COFFEE-1"
+    assert product["product_name"] == "Coffee"
+    assert product["inventory_level"] == 9
+    assert product.get("order_id") is None
+    assert product.get("total_amount") is None
+
+
 @pytest.mark.asyncio
 async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'commerce-sync.db'}")

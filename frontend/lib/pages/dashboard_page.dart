@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:avenqo/agents/retail_source_controller.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
@@ -149,6 +150,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 connections: {},
                 recentActivity: [],
               );
+          final shopifyEmpty = activeShopifyEmptyMessage(context, RetailEmptyKind.overview);
           return ListView(
             padding: EdgeInsets.all(wide ? 32 : 20),
             children: [
@@ -262,10 +264,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     : _retry,
                 )
               else if (data.status == 'no_data' && !widget.readOnly)
-                _EmptyDataBanner(
-                  title: t.connectDataTitle,
-                  cta: t.connectDataCta,
-                )
+                shopifyEmpty != null
+                    ? _DashboardMessage(icon: Icons.shopping_bag_outlined, message: shopifyEmpty, actionLabel: companyT.connectorHub['sync'], onAction: () => context.go('/connections'))
+                    : _EmptyDataBanner(title: t.connectDataTitle, cta: t.connectDataCta)
               else if (data.status == 'no_data')
                 _DashboardMessage(
                   icon: Icons.query_stats,

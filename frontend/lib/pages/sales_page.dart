@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:avenqo/agents/retail_source_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
+import 'package:avenqo/widgets/avenqo_data_table.dart';
 
 typedef SalesLoader = Future<Map<String, dynamic>> Function(String period);
 
@@ -148,7 +150,7 @@ class _SalesContent extends StatelessWidget {
     if (data['available'] != true) {
       return _StatePanel(
         icon: Icons.query_stats,
-        message: t.analyticsUnavailable,
+        message: activeShopifyEmptyMessage(context, RetailEmptyKind.sales) ?? t.analyticsUnavailable,
         action: readOnly ? null : t.businessConnectButton,
         onPressed: readOnly ? null : () => context.go('/connections'),
       );
@@ -205,9 +207,10 @@ class _SalesContent extends StatelessWidget {
             title: Text(t.salesTrendTitle),
             leading: const Icon(Icons.table_chart_outlined),
             children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
+              AvenqoDataTable(
+                semanticLabel: t.salesTrendTitle,
+                minWidth: 760,
+                maxHeight: 360,
                   columns: [
                     DataColumn(label: Text(t.salesTrendTitle)),
                     DataColumn(label: Text(revenueLabel), numeric: true),
@@ -234,7 +237,6 @@ class _SalesContent extends StatelessWidget {
                         )),
                       ]),
                   ],
-                ),
               ),
             ],
           ),

@@ -648,6 +648,8 @@ class CommerceSyncService:
                     priced_refunds.add(key)
 
         rows: list[dict[str, Any]] = []
+        referenced_customers: set[str] = set()
+        referenced_products: set[str] = set()
         for order in data_by_entity.get("orders", []):
             lines = [
                 item
@@ -658,6 +660,8 @@ class CommerceSyncService:
                 continue
             allocations = self._allocate_total(order.get("total_amount"), lines)
             customer = customers.get(str(order.get("customer_id") or ""), {})
+            if order.get("customer_id"):
+                referenced_customers.add(str(order["customer_id"]))
             for index, line in enumerate(lines):
                 variant = variants.get(str(line.get("variant_id") or "")) or variants.get(
                     str(line.get("sku") or "")
@@ -671,6 +675,19 @@ class CommerceSyncService:
                     str(line.get("shopify_line_item_gid") or ""),
                 )
                 refunded = refunded_quantities.get(refund_key, 0)
+                product_id = (
+                    line.get("sku")
+                    or line.get("variant_id")
+                    or line.get("product_id")
+                    or line.get("shopify_line_item_gid")
+                    or ""
+                )
+                identity_keys = (line.get("variant_id"), line.get("sku"))
+                if not any(identity_keys):
+                    identity_keys = (line.get("product_id"),)
+                for key in identity_keys:
+                    if key:
+                        referenced_products.add(str(key))
                 refund_amount = (
                     refunded_amounts[refund_key]
                     if refund_key in priced_refunds
@@ -687,11 +704,7 @@ class CommerceSyncService:
                         "order_id": order.get("order_id") or "",
                         "order_timestamp": order.get("order_timestamp") or "",
                         "customer_id": order.get("customer_id") or "",
-                        "product_id": line.get("sku")
-                        or line.get("variant_id")
-                        or line.get("product_id")
-                        or line.get("shopify_line_item_gid")
-                        or "",
+                        "product_id": product_id,
                         "product_name": line.get("product_name")
                         or variant.get("product_name")
                         or "",
@@ -716,6 +729,58 @@ class CommerceSyncService:
                         or customer.get("country")
                         or "",
                         "source_updated_at": order.get("updated_at") or "",
+                    }
+                )
+
+        for customer_id, customer in customers.items():
+            if customer_id in referenced_customers:
+                continue
+            rows.append(
+                {
+                    "source_provider": connection.provider,
+                    "source_connection_id": str(connection.id),
+                    "source_store": connection.external_account_id,
+                    "customer_id": customer_id,
+                    "customer_email": customer.get("email") or "",
+                    "customer_country": customer.get("country") or "",
+                    "source_updated_at": customer.get("updated_at") or "",
+                }
+            )
+
+        for product in data_by_entity.get("products", []):
+            product_variants = [
+                variant
+                for variant in product.get("variants") or ()
+                if isinstance(variant, dict)
+            ] or [{}]
+            for variant in product_variants:
+                identity_values = (variant.get("variant_id"), variant.get("sku"))
+                if not any(identity_values):
+                    identity_values = (product.get("product_id"),)
+                identifiers = {str(value) for value in identity_values if value}
+                if identifiers & referenced_products:
+                    continue
+                stock = inventory.get(
+                    str(variant.get("inventory_item_id") or "")
+                ) or inventory.get(str(variant.get("sku") or "")) or {}
+                rows.append(
+                    {
+                        "source_provider": connection.provider,
+                        "source_connection_id": str(connection.id),
+                        "source_store": connection.external_account_id,
+                        "product_id": variant.get("sku")
+                        or variant.get("variant_id")
+                        or product.get("product_id")
+                        or "",
+                        "product_name": product.get("product_name") or "",
+                        "product_category": product.get("product_category") or "",
+                        "unit_price": variant.get("unit_price") or "",
+                        "inventory_level": stock.get("inventory_level")
+                        if stock
+                        else variant.get("inventory_level", ""),
+                        "source_updated_at": variant.get("updated_at")
+                        or product.get("updated_at")
+                        or "",
                     }
                 )
         return rows

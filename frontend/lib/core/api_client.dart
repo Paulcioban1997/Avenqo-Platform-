@@ -84,6 +84,10 @@ class ApiClient {
     return _request('PATCH', path, body: body, authenticated: true);
   }
 
+  Future<dynamic> put(String path, {required Map<String, dynamic> body}) {
+    return _request('PUT', path, body: body, authenticated: true);
+  }
+
   Future<dynamic> delete(String path) {
     return _request('DELETE', path, authenticated: true);
   }

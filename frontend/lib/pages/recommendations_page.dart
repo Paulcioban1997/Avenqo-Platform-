@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:avenqo/agents/retail_source_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -177,7 +178,7 @@ class _RecommendationsContent extends StatelessWidget {
           const SizedBox(height: 16),
         ],
         if (items.isEmpty)
-          _RecommendationState(message: strings.recommendationsEmpty)
+          _RecommendationState(message: activeShopifyEmptyMessage(context, RetailEmptyKind.overview) ?? strings.recommendationsEmpty)
         else
           LayoutBuilder(
             builder: (context, constraints) {

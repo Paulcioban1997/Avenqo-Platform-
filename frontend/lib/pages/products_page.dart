@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:avenqo/app/avenqo_colors.dart';
+import 'package:avenqo/agents/retail_source_controller.dart';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/money_formatter.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
@@ -222,7 +223,7 @@ class _ProductsContent extends StatelessWidget {
     }
     if (data['available'] != true) {
       return _ProductState(
-        message: company.analyticsUnavailable,
+        message: activeShopifyEmptyMessage(context, RetailEmptyKind.products) ?? company.analyticsUnavailable,
         action: readOnly ? null : company.businessConnectButton,
         onPressed: readOnly ? null : () => context.go('/connections'),
       );
