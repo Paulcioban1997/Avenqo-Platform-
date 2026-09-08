@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -7,6 +9,7 @@ from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.schemas.health import HealthResponse
 from backend.app.schemas.readiness import ReadinessResponse
+from backend.app.services.artifact_storage_health import artifact_storage_health
 
 router = APIRouter()
 
@@ -36,9 +39,15 @@ def ready(
         database_status = "ok"
     except Exception:
         database_status = "unavailable"
+    storage_status = artifact_storage_health.check(Path(settings.artifact_root))
     return ReadinessResponse(
-        status="ready" if database_status == "ok" else "degraded",
+        status=(
+            "ready"
+            if database_status == "ok" and storage_status.status == "ok"
+            else "degraded"
+        ),
         database=database_status,
+        artifact_storage=storage_status.status,
         ai_providers=dict(health_registry.snapshot()),
         stripe_configured=bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
     )

@@ -19,7 +19,7 @@ from backend.app.dependencies.commerce import (
     get_commerce_sync_service,
 )
 from backend.app.dependencies.subscription import require_active_subscription
-from backend.app.models import CommerceConnection
+from backend.app.models import CommerceConnection, CommerceConnectionStatus
 from backend.app.schemas.commerce import (
     CommerceConnectionResponse,
     CommerceSyncAcceptedResponse,
@@ -40,6 +40,7 @@ from backend.app.services.commerce_sync_service import (
     CommerceSyncDataError,
     CommerceSyncService,
 )
+from backend.app.services.artifact_storage_health import artifact_storage_health
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.exceptions import ConnectorNotRegisteredError
@@ -71,12 +72,29 @@ def _connection_response(connection: CommerceConnection) -> CommerceConnectionRe
         parsed_dataset_id = UUID(str(dataset_id)) if dataset_id else None
     except (TypeError, ValueError):
         parsed_dataset_id = None
+    connection_status = (
+        "DISCONNECTED"
+        if connection.status == CommerceConnectionStatus.DISCONNECTED.value
+        else "CONNECTED"
+        if getattr(connection, "encrypted_credentials", None)
+        else "CONNECTING"
+    )
+    sync_status = connection.status
+    storage_status = artifact_storage_health.status
+    if (
+        sync_status == CommerceConnectionStatus.READY.value
+        and storage_status is not None
+        and storage_status.status != "ok"
+    ):
+        sync_status = "DEGRADED"
     return CommerceConnectionResponse(
         id=connection.id,
         provider=connection.provider,
         external_account_id=connection.external_account_id,
         display_name=connection.display_name,
         status=connection.status,
+        connection_status=connection_status,
+        sync_status=sync_status,
         capabilities=list(connection.capabilities or []),
         records_processed=connection.records_processed,
         current_entity=connection.current_entity,

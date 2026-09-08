@@ -162,6 +162,18 @@ class _RecordingIngestion:
         self.deletions.append((tenant.company_id, dataset_id))
 
 
+class _PermissionFailureOnceIngestion(_RecordingIngestion):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts = 0
+
+    def upload(self, tenant, module_code, filename, content):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise PermissionError("artifact root is not writable")
+        return super().upload(tenant, module_code, filename, content)
+
+
 def test_snapshot_uses_discounted_shopify_refund_amount_and_processed_time() -> None:
     service = CommerceSyncService(None, None, None, None)
     order = _PagedShopifyConnector._order("2026-01-02T00:00:00Z", 1)
@@ -332,6 +344,67 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
         assert "_run" not in connection.sync_cursor
         assert connector.updated_since[-1] is not None
         assert connection.last_successful_sync <= datetime.now(timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_materialization_permission_failure_is_truthful_and_retryable(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'commerce-permission.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = Company(
+            name="Storage Retry",
+            slug="storage-retry",
+            email="storage@example.com",
+            country="Canada",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+        )
+        session.add(company)
+        session.flush()
+        connection = CommerceConnection(
+            company_id=company.id,
+            provider="shopify",
+            external_account_id="storage.myshopify.com",
+            encrypted_credentials="unused-by-test",
+            status=CommerceConnectionStatus.CONNECTED.value,
+            capabilities=["orders"],
+            dataset_ids={"retail": str(uuid4())},
+        )
+        session.add(connection)
+        session.commit()
+        connector = _PagedShopifyConnector()
+        registry = CommerceConnectorRegistry()
+        registry.register(connector)
+        ingestion = _PermissionFailureOnceIngestion()
+        service = CommerceSyncService(
+            session,
+            registry,
+            _ConnectionLifecycle(connection),
+            ingestion,
+        )
+        tenant = TenantContext(company_id=company.id)
+
+        with pytest.raises(Exception, match="Commerce synchronization failed"):
+            await service.synchronize(tenant, connection.id)
+
+        assert connection.status == CommerceConnectionStatus.ERROR.value
+        assert connection.error_category == "storage_unavailable"
+        assert connection.last_successful_sync is None
+        previous_dataset_id = connection.dataset_ids["retail"]
+        assert previous_dataset_id != str(ingestion.dataset_id)
+        assert session.scalar(select(NormalizedCommerceRecord)) is not None
+
+        result = await service.synchronize(tenant, connection.id)
+
+        assert result.dataset_id == ingestion.dataset_id
+        assert connection.status == CommerceConnectionStatus.READY.value
+        assert connection.error_category is None
+        assert connection.last_successful_sync is not None
+        assert connection.dataset_ids["retail"] == str(ingestion.dataset_id)
+        assert connection.dataset_ids["retail"] != previous_dataset_id
+        assert ingestion.attempts == 2
 
 
 @pytest.mark.asyncio

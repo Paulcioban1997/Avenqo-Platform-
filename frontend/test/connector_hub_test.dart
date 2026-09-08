@@ -48,6 +48,8 @@ Map<String, dynamic> _connection({String status = 'READY'}) => {
   'external_account_id': 'shop.myshopify.com',
   'display_name': 'Shop',
   'status': status,
+  'connection_status': status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED',
+  'sync_status': status,
   'capabilities': <String>[],
   'records_processed': 42,
 };
@@ -174,6 +176,31 @@ void main() {
 
     expect(syncCalled, isTrue);
     expect(find.text('Synchronisation'), findsOneWidget);
+  });
+
+  testWidgets('failed synchronization remains connected and offers retry', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/connectors/connections')) {
+        return http.Response(jsonEncode([_connection(status: 'ERROR')]), 200);
+      }
+      if (request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(_catalog()), 200);
+      }
+      if (request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(await _app(client));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connexion: Connecté'), findsOneWidget);
+    expect(find.text('Synchronisation échouée'), findsOneWidget);
+    expect(find.byTooltip('Synchroniser maintenant'), findsOneWidget);
   });
 
   testWidgets('a connected Shopify store can be disconnected', (tester) async {

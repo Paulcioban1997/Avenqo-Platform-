@@ -28,6 +28,7 @@ class _Connections:
             external_account_id="alpha.myshopify.com",
             display_name="Alpha",
             status="READY",
+            encrypted_credentials="encrypted",
             capabilities=["orders"],
             records_processed=12,
             current_entity=None,
@@ -135,6 +136,8 @@ def test_connector_catalog_and_manual_sync_routes() -> None:
     assert len(catalog.json()) == 30
     assert sum(item["implementation_status"] == "AVAILABLE" for item in catalog.json()) == 1
     assert listed.json()[0]["external_account_id"] == "alpha.myshopify.com"
+    assert listed.json()[0]["connection_status"] == "CONNECTED"
+    assert listed.json()[0]["sync_status"] == "READY"
     assert started.status_code == 202
     assert started.json()["status"] == "SYNCING"
     assert sync.reserved == [(company_id, connections.connection.id)]

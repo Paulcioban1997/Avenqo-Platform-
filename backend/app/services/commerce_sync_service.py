@@ -226,11 +226,16 @@ class CommerceSyncService:
             changed += self._apply_pending_tombstones(tenant, connection)
             connection.status = CommerceConnectionStatus.PROCESSING.value
             connection.current_entity = "retail_snapshot"
+            existing_dataset_id = self._dataset_id(connection)
+            snapshot_pending = bool(run.state.get("_snapshot_pending"))
+            should_materialize = changed > 0 or existing_dataset_id is None or snapshot_pending
+            if should_materialize:
+                run.state["_snapshot_pending"] = True
+                connection.sync_cursor = dict(run.state)
             self._db.commit()
 
             dataset = None
-            existing_dataset_id = self._dataset_id(connection)
-            if changed > 0 or existing_dataset_id is None:
+            if should_materialize:
                 dataset = self._materialize_retail_snapshot(tenant, connection)
                 if dataset is not None:
                     connection.dataset_ids = {
@@ -1085,6 +1090,8 @@ class CommerceSyncService:
 
     @staticmethod
     def _error_category(exc: Exception) -> str:
+        if isinstance(exc, PermissionError):
+            return "storage_unavailable"
         if isinstance(exc, ShopifyAuthenticationError):
             return "reauthorization_required"
         if isinstance(exc, ShopifyTemporaryError):

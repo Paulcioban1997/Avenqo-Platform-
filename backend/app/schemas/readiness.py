@@ -10,5 +10,6 @@ class ReadinessResponse(BaseModel):
 
     status: str
     database: str
+    artifact_storage: str
     ai_providers: dict[str, str]
     stripe_configured: bool

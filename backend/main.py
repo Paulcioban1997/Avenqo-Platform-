@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +13,7 @@ from backend.app.core.logging import configure_logging
 from backend.app.database import create_database_tables
 from backend.app.middlewares.request_id import RequestIDMiddleware
 from backend.app.middlewares.security_headers import SecurityHeadersMiddleware
+from backend.app.services.artifact_storage_health import artifact_storage_health
 
 
 FIRST_PARTY_WEB_ORIGINS = {
@@ -18,6 +21,7 @@ FIRST_PARTY_WEB_ORIGINS = {
     "https://www.avenqo.ca",
     "https://app.avenqo.ca",
 }
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -25,6 +29,9 @@ async def lifespan(app: FastAPI):
     """Prépare les ressources persistantes de l'application."""
 
     settings = get_settings()
+    storage_status = artifact_storage_health.check(Path(settings.artifact_root))
+    if storage_status.status != "ok":
+        logger.error("Application starting with degraded artifact storage")
     is_production = settings.environment.lower() in {"production", "prod"}
     if not is_production:
         # Dev/test uniquement : filet de sécurité pratique. En production, le

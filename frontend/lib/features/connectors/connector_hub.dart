@@ -311,9 +311,16 @@ class _ConnectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final status = connection['status']?.toString().toUpperCase() ?? 'ERROR';
+    final status = (connection['sync_status'] ?? connection['status'])
+        ?.toString()
+        .toUpperCase() ??
+      'ERROR';
+    final connectionStatus = connection['connection_status']
+        ?.toString()
+        .toUpperCase() ??
+      (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
     final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
-    final statusColor = status == 'ERROR'
+    final statusColor = status == 'ERROR' || status == 'DEGRADED'
         ? const Color(0xFFD1414B)
         : status == 'DISCONNECTED'
         ? colors.muted
@@ -324,7 +331,12 @@ class _ConnectionRow extends StatelessWidget {
     final metadata = lastSync == null
         ? text('neverSynced')
         : '${text('lastSync')} ${lastSync.split('T').first}';
-    final statusLabel = text(switch (status) {
+    final french = text('sync') == 'Synchroniser maintenant';
+    final statusLabel = status == 'ERROR'
+      ? (french ? 'Synchronisation échouée' : 'Synchronization failed')
+      : status == 'DEGRADED'
+      ? (french ? 'Stockage indisponible' : 'Storage unavailable')
+      : text(switch (status) {
       'SYNCING' => 'syncing',
       'PROCESSING' => 'processing',
       'READY' => 'ready',
@@ -333,6 +345,9 @@ class _ConnectionRow extends StatelessWidget {
       'CONNECTING' => 'connecting',
       _ => 'error',
     });
+    final connectionLabel = connectionStatus == 'DISCONNECTED'
+        ? text('disconnected')
+        : text('connected');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -370,7 +385,20 @@ class _ConnectionRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Flexible(
-                child: _StatusBadge(label: statusLabel, color: statusColor),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    _StatusBadge(
+                      label: '${french ? 'Connexion' : 'Connection'}: $connectionLabel',
+                      color: connectionStatus == 'DISCONNECTED'
+                          ? colors.muted
+                          : const Color(0xFF1B9E5A),
+                    ),
+                    _StatusBadge(label: statusLabel, color: statusColor),
+                  ],
+                ),
               ),
             ],
           );

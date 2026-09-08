@@ -35,6 +35,8 @@ class CommerceConnectionResponse(BaseModel):
     external_account_id: str
     display_name: str | None
     status: str
+    connection_status: str
+    sync_status: str
     capabilities: list[str]
     records_processed: int
     current_entity: str | None

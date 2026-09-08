@@ -282,6 +282,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
           _commerceConnections[index] = {
             ..._commerceConnections[index],
             'status': 'SYNCING',
+            'sync_status': 'SYNCING',
           };
         }
       });

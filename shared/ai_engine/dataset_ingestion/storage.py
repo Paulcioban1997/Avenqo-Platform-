@@ -10,6 +10,7 @@ d'extension `DatasetStorage` sont prévus pour une Phase future.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from abc import ABC, abstractmethod
@@ -111,10 +112,12 @@ class LocalDatasetStorage(DatasetStorage):
         directory = (self._root / str(company_id) / "datasets" / str(dataset_id)).resolve()
         if self._root not in directory.parents:
             raise ValueError("Chemin de dataset invalide (traversée de répertoire détectée)")
-        shutil.rmtree(directory, ignore_errors=True)
+        if directory.exists():
+            shutil.rmtree(directory)
 
     def _write_bytes(self, directory: Path, safe_name: str, content: bytes) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(directory.stat().st_mode | 0o2770)
         destination = (directory / safe_name).resolve()
         if self._root not in destination.parents:
             raise ValueError("Chemin de dataset invalide (traversée de répertoire détectée)")
@@ -125,6 +128,7 @@ class LocalDatasetStorage(DatasetStorage):
                 temporary.flush()
                 temporary_path = Path(temporary.name)
             temporary_path.replace(destination)
+            os.chmod(destination, 0o660)
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
