@@ -298,6 +298,7 @@ async def connect_woocommerce_manual(
 @router.post(
     "/woocommerce/callback",
     response_model=CommerceConnectionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     include_in_schema=False,
 )
 async def woocommerce_callback(
@@ -305,9 +306,7 @@ async def woocommerce_callback(
     payload: WooCommerceCallbackPayload,
     background_tasks: BackgroundTasks,
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
-    sync: CommerceSyncService = Depends(get_commerce_sync_service),
     runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
-    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> CommerceConnectionResponse:
     try:
         connection = await service.complete_woocommerce_authorization(
@@ -319,13 +318,10 @@ async def woocommerce_callback(
                 "key_permissions": payload.key_permissions,
             },
         )
-        connection = await _finish_woocommerce_setup(
-            connection,
-            background_tasks=background_tasks,
-            service=service,
-            sync=sync,
-            runner=runner,
-            registry=registry,
+        background_tasks.add_task(
+            runner.initialize_woocommerce,
+            TenantContext(company_id=connection.company_id),
+            connection.id,
         )
     except (CommerceAuthorizationError, CommerceConnectionError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

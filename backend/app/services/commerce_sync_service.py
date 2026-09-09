@@ -64,6 +64,27 @@ class _ConnectionLifecycle(Protocol):
         self, tenant: TenantContext, connection_id: UUID
     ) -> ConnectorSyncContext: ...
 
+    def mark_setup_complete(
+        self, tenant: TenantContext, connection_id: UUID
+    ) -> CommerceConnection: ...
+
+    def mark_setup_degraded(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        error_category: str,
+    ) -> CommerceConnection: ...
+
+    def mark_woocommerce_setup_failed(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        error_category: str,
+        reauth_required: bool = False,
+    ) -> CommerceConnection: ...
+
 
 class _DatasetIngestion(Protocol):
     def upload(
@@ -174,6 +195,53 @@ class CommerceSyncService:
         self._registry = registry
         self._connections = connections
         self._ingestion = ingestion
+
+    async def initialize_woocommerce(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+    ) -> CommerceSyncResult:
+        connection = self._connections.get_connection(tenant, connection_id)
+        if connection.provider != "woocommerce":
+            raise CommerceSyncDataError("Connection is not a WooCommerce connection")
+        context = await self._connections.sync_context(tenant, connection_id)
+        connector = self._registry.get("woocommerce")
+        try:
+            if not await connector.test_connection(context):
+                raise WooCommerceAuthenticationError(
+                    "WooCommerce connection validation failed"
+                )
+        except WooCommerceAuthenticationError as exc:
+            self._connections.mark_woocommerce_setup_failed(
+                tenant,
+                connection_id,
+                error_category="authorization_failed",
+                reauth_required=True,
+            )
+            raise CommerceSyncError("WooCommerce credential validation failed") from exc
+        except WooCommerceConnectorError as exc:
+            self._connections.mark_woocommerce_setup_failed(
+                tenant,
+                connection_id,
+                error_category=(
+                    "insufficient_permissions"
+                    if isinstance(exc, WooCommercePermissionError)
+                    else "connection_validation_failed"
+                ),
+            )
+            raise CommerceSyncError("WooCommerce credential validation failed") from exc
+        try:
+            await connector.register_webhooks(context)
+        except Exception as exc:
+            self._connections.mark_setup_degraded(
+                tenant,
+                connection_id,
+                error_category="webhook_registration_failed",
+            )
+            raise CommerceSyncError("WooCommerce webhook initialization failed") from exc
+        self._connections.mark_setup_complete(tenant, connection_id)
+        self.reserve(tenant, connection_id)
+        return await self.synchronize(tenant, connection_id, reserved=True)
 
     async def synchronize(
         self,

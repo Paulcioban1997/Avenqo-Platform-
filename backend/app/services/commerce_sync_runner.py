@@ -52,6 +52,22 @@ class CommerceSyncRunner:
                     connection_id,
                 )
 
+    async def initialize_woocommerce(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+    ) -> None:
+        with self._session_factory() as session:
+            service = self._service_factory(session)
+            try:
+                await service.initialize_woocommerce(tenant, connection_id)
+            except Exception:
+                logger.exception(
+                    "WooCommerce initialization failed company=%s connection=%s",
+                    tenant.company_id,
+                    connection_id,
+                )
+
     async def run_webhook(self, receipt_id: UUID) -> None:
         with self._session_factory() as session:
             receipt = session.get(CommerceWebhookReceipt, receipt_id)

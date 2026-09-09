@@ -56,6 +56,7 @@ class CommerceAuthorizationStart:
 
 class CommerceConnectionService:
     _STATE_TTL = timedelta(minutes=10)
+    _WOOCOMMERCE_STATE_TTL = timedelta(minutes=30)
     _REFRESH_MARGIN = timedelta(minutes=2)
 
     def __init__(
@@ -119,7 +120,7 @@ class CommerceConnectionService:
         normalized_store = connector.normalize_store_url(store_url)
         self._assert_store_tenant(tenant, "woocommerce", normalized_store)
         raw_state = secrets.token_urlsafe(48)
-        expires_at = self._now() + self._STATE_TTL
+        expires_at = self._now() + self._WOOCOMMERCE_STATE_TTL
         oauth_state = CommerceOAuthState(
             company_id=tenant.company_id,
             actor_user_id=actor_user_id,
@@ -173,19 +174,20 @@ class CommerceConnectionService:
         raw_state: str,
         callback_payload: Mapping[str, str],
     ) -> CommerceConnection:
-        oauth_state = self._consume_woocommerce_state(raw_state, callback_payload)
+        oauth_state = self._validate_woocommerce_state(raw_state, callback_payload)
         connector = self._woocommerce()
         try:
             returned = await connector.handle_oauth_callback(
                 tenant_id=oauth_state.company_id,
                 callback_parameters=callback_payload,
             )
-            return await self._authorize_woocommerce_credentials(
+            return self._persist_woocommerce_credentials(
                 TenantContext(company_id=oauth_state.company_id),
                 actor_user_id=oauth_state.actor_user_id,
                 store_url=oauth_state.external_account_id,
                 consumer_key=str(returned["consumer_key"]),
                 consumer_secret=str(returned["consumer_secret"]),
+                oauth_state=oauth_state,
             )
         except WooCommerceConnectorError as exc:
             self._mark_woocommerce_authorization_failed(
@@ -380,6 +382,28 @@ class CommerceConnectionService:
         self._db.commit()
         return connection
 
+    def mark_woocommerce_setup_failed(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        error_category: str,
+        reauth_required: bool = False,
+    ) -> CommerceConnection:
+        connection = self.get_connection(tenant, connection_id)
+        if connection.provider != "woocommerce":
+            raise CommerceConnectionError("Connection is not a WooCommerce connection")
+        connection.status = (
+            CommerceConnectionStatus.REAUTH_REQUIRED.value
+            if reauth_required
+            else CommerceConnectionStatus.FAILED.value
+        )
+        connection.error_category = error_category
+        connection.current_entity = None
+        connection.sync_started_at = None
+        self._db.commit()
+        return connection
+
     async def sync_context(
         self, tenant: TenantContext, connection_id: UUID
     ) -> ConnectorSyncContext:
@@ -518,8 +542,45 @@ class CommerceConnectionService:
             raise WooCommerceAuthenticationError(
                 "WooCommerce connection validation failed"
             )
+        return self._persist_woocommerce_credentials(
+            tenant,
+            actor_user_id=actor_user_id,
+            store_url=store_url,
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            connection_id=connection_id,
+        )
+
+    def _persist_woocommerce_credentials(
+        self,
+        tenant: TenantContext,
+        *,
+        actor_user_id: UUID,
+        store_url: str,
+        consumer_key: str,
+        consumer_secret: str,
+        connection_id: UUID | None = None,
+        oauth_state: CommerceOAuthState | None = None,
+    ) -> CommerceConnection:
+        connector = self._woocommerce()
+        self._assert_store_tenant(tenant, "woocommerce", store_url)
+        credentials = {
+            "consumer_key": consumer_key,
+            "consumer_secret": consumer_secret,
+            "webhook_secret": secrets.token_urlsafe(48),
+        }
+        existing = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == "woocommerce",
+                CommerceConnection.external_account_id == store_url,
+                CommerceConnection.company_id == tenant.company_id,
+            )
+        )
+        resolved_connection_id = (
+            existing.id if existing is not None else connection_id or uuid4()
+        )
         connection = existing or CommerceConnection(
-            id=connection_id,
+            id=resolved_connection_id,
             company_id=tenant.company_id,
             provider="woocommerce",
             external_account_id=store_url,
@@ -537,6 +598,9 @@ class CommerceConnectionService:
         connection.disconnected_at = None
         connection.access_token_expires_at = None
         connection.refresh_token_expires_at = None
+        if oauth_state is not None:
+            oauth_state.consumed_at = self._now()
+            self._db.add(oauth_state)
         self._db.commit()
         self._audit.record(
             actor_user_id=actor_user_id,
@@ -548,7 +612,7 @@ class CommerceConnectionService:
         )
         return connection
 
-    def _consume_woocommerce_state(
+    def _validate_woocommerce_state(
         self,
         raw_state: str,
         callback_payload: Mapping[str, str],
@@ -558,7 +622,7 @@ class CommerceConnectionService:
                 CommerceOAuthState.provider == "woocommerce",
                 CommerceOAuthState.state_hash == hash_token(raw_state),
                 CommerceOAuthState.consumed_at.is_(None),
-            )
+            ).with_for_update()
         )
         now = self._now()
         returned_state = str(callback_payload.get("user_id") or "")
@@ -569,8 +633,6 @@ class CommerceConnectionService:
             or self._as_utc(oauth_state.expires_at) <= now
         ):
             raise CommerceAuthorizationError("Authorization state is invalid or expired")
-        oauth_state.consumed_at = now
-        self._db.commit()
         return oauth_state
 
     def _assert_store_tenant(

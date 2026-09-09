@@ -95,9 +95,13 @@ class _Sync:
 class _Runner:
     def __init__(self):
         self.runs = []
+        self.woocommerce_initializations = []
 
     async def run_reserved(self, tenant, connection_id):
         self.runs.append((tenant.company_id, connection_id))
+
+    async def initialize_woocommerce(self, tenant, connection_id):
+        self.woocommerce_initializations.append((tenant.company_id, connection_id))
 
 
 class _CallbackConnections:
@@ -138,6 +142,14 @@ class _WooConnections:
             sync_started_at=None,
             dataset_ids={},
         )
+
+    async def complete_woocommerce_authorization(self, *, raw_state, callback_payload):
+        assert raw_state == "valid-state"
+        self.received_credentials = (
+            callback_payload["consumer_key"],
+            callback_payload["consumer_secret"],
+        )
+        return self.connection
 
     async def connect_woocommerce_manual(
         self,
@@ -379,3 +391,51 @@ def test_woocommerce_manual_route_masks_secrets_and_reserves_sync() -> None:
     assert response.json()["status"] == "READY"
     assert sync.reserved == [(company_id, connections.connection.id)]
     assert runner.runs == [(company_id, connections.connection.id)]
+
+
+def test_woocommerce_json_callback_returns_accepted_and_schedules_initialization() -> None:
+    company_id = uuid4()
+    connections = _WooConnections(company_id)
+    runner = _Runner()
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_commerce_connection_service] = lambda: connections
+    app.dependency_overrides[get_commerce_sync_runner] = lambda: runner
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/connectors/woocommerce/callback?state=valid-state",
+            headers={"Content-Type": "application/json"},
+            json={
+                "key_id": 42,
+                "user_id": "valid-state",
+                "consumer_key": "ck_callback_secret",
+                "consumer_secret": "cs_callback_secret",
+                "key_permissions": "read_write",
+            },
+        )
+
+    assert response.status_code == 202
+    assert connections.received_credentials == (
+        "ck_callback_secret",
+        "cs_callback_secret",
+    )
+    assert "ck_callback_secret" not in response.text
+    assert "cs_callback_secret" not in response.text
+    assert runner.woocommerce_initializations == [
+        (company_id, connections.connection.id)
+    ]
+
+
+def test_woocommerce_callback_rejects_malformed_json() -> None:
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/connectors/woocommerce/callback?state=valid-state",
+            headers={"Content-Type": "application/json"},
+            content=b"{not-json",
+        )
+
+    assert response.status_code == 422

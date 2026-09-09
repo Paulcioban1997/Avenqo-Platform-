@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
@@ -232,7 +232,67 @@ async def test_woocommerce_callback_encrypts_credentials_and_consumes_state(
     assert decrypted["consumer_key"] == "ck_returned_secret"
     assert decrypted["consumer_secret"] == "cs_returned_secret"
     assert decrypted["webhook_secret"]
-    assert connector.contexts[0].credentials["consumer_key"] == "ck_returned_secret"
+    assert connector.contexts == []
+    with pytest.raises(CommerceAuthorizationError, match="invalid or expired"):
+        await service.complete_woocommerce_authorization(
+            raw_state=started.state,
+            callback_payload={
+                "user_id": started.state,
+                "consumer_key": "ck_returned_secret",
+                "consumer_secret": "cs_returned_secret",
+                "key_permissions": "read_write",
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_woocommerce_authorization_uses_thirty_minute_state_and_invalid_payload_does_not_consume_it(
+    woocommerce_environment,
+) -> None:
+    _, service, _, _, (company, user), _ = woocommerce_environment
+    started_at = datetime.now(timezone.utc)
+    started = service.begin_woocommerce_authorization(
+        TenantContext(company_id=company.id),
+        actor_user_id=user.id,
+        store_url="https://merchant.example",
+    )
+
+    assert timedelta(minutes=29, seconds=55) <= started.expires_at - started_at
+    with pytest.raises(CommerceAuthorizationError):
+        await service.complete_woocommerce_authorization(
+            raw_state=started.state,
+            callback_payload={
+                "user_id": started.state,
+                "consumer_key": "ck_returned_secret",
+                "consumer_secret": "invalid_secret",
+                "key_permissions": "read_write",
+            },
+        )
+
+    connection = await service.complete_woocommerce_authorization(
+        raw_state=started.state,
+        callback_payload={
+            "user_id": started.state,
+            "consumer_key": "ck_returned_secret",
+            "consumer_secret": "cs_returned_secret",
+            "key_permissions": "read_write",
+        },
+    )
+    assert connection.status == CommerceConnectionStatus.CONNECTING.value
+
+
+@pytest.mark.asyncio
+async def test_woocommerce_callback_rejects_expired_state(
+    woocommerce_environment,
+) -> None:
+    _, service, _, _, (company, user), _ = woocommerce_environment
+    started = service.begin_woocommerce_authorization(
+        TenantContext(company_id=company.id),
+        actor_user_id=user.id,
+        store_url="https://expired.example",
+    )
+    service._now = lambda: started.expires_at + timedelta(seconds=1)
+
     with pytest.raises(CommerceAuthorizationError, match="invalid or expired"):
         await service.complete_woocommerce_authorization(
             raw_state=started.state,

@@ -12,6 +12,7 @@ from backend.app.models import (
     Company,
 )
 from backend.app.services.commerce_sync_runner import CommerceSyncRunner
+from backend.app.services.commerce_sync_service import CommerceSyncError, CommerceSyncService
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -40,6 +41,37 @@ class _ArrivingWebhookService:
                 )
             )
             self._session.commit()
+
+
+class _WooSetupConnections:
+    def __init__(self, connection) -> None:
+        self.connection = connection
+        self.degraded = None
+
+    def get_connection(self, tenant, connection_id):
+        return self.connection
+
+    async def sync_context(self, tenant, connection_id):
+        return object()
+
+    def mark_setup_degraded(self, tenant, connection_id, *, error_category):
+        self.connection.status = CommerceConnectionStatus.DEGRADED.value
+        self.connection.error_category = error_category
+        self.degraded = error_category
+
+
+class _FailingWooConnector:
+    async def test_connection(self, context):
+        return True
+
+    async def register_webhooks(self, context):
+        raise RuntimeError("webhooks unavailable")
+
+
+class _WooRegistry:
+    def get(self, provider):
+        assert provider == "woocommerce"
+        return _FailingWooConnector()
 
 
 @pytest.mark.asyncio
@@ -97,3 +129,26 @@ async def test_runner_drains_webhooks_arriving_during_multiple_rounds(tmp_path) 
         assert len(receipts) == 3
         assert all(receipt.status == "PROCESSED" for receipt in receipts)
         assert all(receipt.processed_at is not None for receipt in receipts)
+
+
+@pytest.mark.asyncio
+async def test_woocommerce_webhook_initialization_failure_is_degraded() -> None:
+    connection = CommerceConnection(
+        id=uuid4(),
+        company_id=uuid4(),
+        provider="woocommerce",
+        external_account_id="https://shop.example.com",
+        encrypted_credentials="encrypted",
+        status=CommerceConnectionStatus.CONNECTING.value,
+    )
+    connections = _WooSetupConnections(connection)
+    service = CommerceSyncService(None, _WooRegistry(), connections, None)
+
+    with pytest.raises(CommerceSyncError, match="webhook initialization failed"):
+        await service.initialize_woocommerce(
+            TenantContext(company_id=connection.company_id),
+            connection.id,
+        )
+
+    assert connection.status == CommerceConnectionStatus.DEGRADED.value
+    assert connections.degraded == "webhook_registration_failed"
