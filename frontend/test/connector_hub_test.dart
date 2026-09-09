@@ -199,10 +199,12 @@ void main() {
     expect(find.text('WooCommerce'), findsOneWidget);
     expect(find.text('Etsy'), findsOneWidget);
     expect(find.text('VTEX'), findsOneWidget);
-    expect(find.text('BOUTIQUES EN LIGNE'), findsOneWidget);
-    expect(find.text('PLACES DE MARCHÉ'), findsOneWidget);
+    expect(find.text('Amazon Seller Central / SP-API'), findsOneWidget);
+    expect(find.text('TikTok Shop'), findsOneWidget);
+    expect(find.text('BOUTIQUES EN LIGNE'), findsNothing);
+    expect(find.text('PLACES DE MARCHÉ'), findsNothing);
     expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(12));
+    expect(find.text('Bientôt disponible'), findsNWidgets(28));
     for (final provider in const [
       'shopify',
       'woocommerce',
@@ -285,13 +287,13 @@ void main() {
 
     expect(find.byKey(const ValueKey('select-etsy')), findsOneWidget);
     expect(find.byKey(const ValueKey('brand-icon-etsy')), findsOneWidget);
-    expect(find.text('PLACES DE MARCHÉ'), findsOneWidget);
+    expect(find.text('PLACES DE MARCHÉ'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('select-etsy')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('provider-etsy')), findsOneWidget);
     expect(find.text('Etsy'), findsOneWidget);
-    expect(find.text('Places de marché'), findsOneWidget);
+    expect(find.text('Places de marché'), findsNothing);
     expect(find.text('Bientôt disponible'), findsNWidgets(2));
     final disabled = tester.widget<FilledButton>(
       find.byKey(const ValueKey('connect-etsy')),
@@ -370,6 +372,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      'WooCommerce',
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
 
@@ -443,6 +450,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
       await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('ecommerce-provider-search')),
+        'WooCommerce',
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
       await tester.pumpAndSettle();
 
@@ -482,7 +494,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
     await tester.pumpAndSettle();
     expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(12));
+    expect(find.text('Bientôt disponible'), findsNWidgets(28));
+    await tester.enterText(
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      'WooCommerce',
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
     expect(find.text('Bientôt disponible'), findsNWidgets(2));
@@ -806,6 +823,11 @@ void main() {
         );
         expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
         await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('ecommerce-provider-search')),
+          'WooCommerce',
+        );
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
         await tester.pumpAndSettle();

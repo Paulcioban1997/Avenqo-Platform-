@@ -47,13 +47,13 @@ class _ConnectorHubState extends State<ConnectorHub> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final ecommerceProviders = widget.catalog
-        .where((provider) => provider['category'] == 'ecommerce')
+    final commerceProviders = widget.catalog
+        .where(
+          (provider) =>
+              provider['category'] == 'ecommerce' ||
+              provider['category'] == 'marketplace',
+        )
         .toList(growable: false);
-    final marketplaceProviders = widget.catalog
-        .where((provider) => provider['provider'] == 'etsy')
-        .toList(growable: false);
-    final supportedProviders = [...ecommerceProviders, ...marketplaceProviders];
     final normalizedQuery = _providerQuery.trim().toLowerCase();
     bool matchesQuery(Map<String, dynamic> provider) =>
         normalizedQuery.isEmpty ||
@@ -61,13 +61,10 @@ class _ConnectorHubState extends State<ConnectorHub> {
               normalizedQuery,
             ) ==
             true;
-    final visibleEcommerceProviders = ecommerceProviders
+    final visibleProviders = commerceProviders
         .where(matchesQuery)
         .toList(growable: false);
-    final visibleMarketplaceProviders = marketplaceProviders
-        .where(matchesQuery)
-        .toList(growable: false);
-    final selectedProvider = supportedProviders
+    final selectedProvider = commerceProviders
         .cast<Map<String, dynamic>?>()
         .firstWhere(
           (provider) => provider?['provider'] == _selectedProviderId,
@@ -229,13 +226,7 @@ class _ConnectorHubState extends State<ConnectorHub> {
                     ),
                   ),
                 ),
-                if (visibleEcommerceProviders.isNotEmpty)
-                  _ProviderGroupLabel(label: _text('ecommerce')),
-                for (final provider in visibleEcommerceProviders)
-                  providerMenuItem(provider),
-                if (visibleMarketplaceProviders.isNotEmpty)
-                  _ProviderGroupLabel(label: _text('marketplace')),
-                for (final provider in visibleMarketplaceProviders)
+                for (final provider in visibleProviders)
                   providerMenuItem(provider),
               ],
               builder: (context, controller, child) => FilledButton.icon(
@@ -372,19 +363,6 @@ class _ProviderCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            text(
-              provider['category'] == 'marketplace'
-                  ? 'marketplace'
-                  : 'ecommerce',
-            ),
-            style: TextStyle(
-              color: colors.muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
           ),
           const SizedBox(height: 10),
           Text(
@@ -651,28 +629,6 @@ class _StatusBadge extends StatelessWidget {
       style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
     ),
   );
-}
-
-class _ProviderGroupLabel extends StatelessWidget {
-  const _ProviderGroupLabel({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(
-        label.toUpperCase(),
-        style: TextStyle(
-          color: colors.muted,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
 }
 
 class _ConnectorNotice extends StatelessWidget {
