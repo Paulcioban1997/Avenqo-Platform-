@@ -120,7 +120,7 @@ def connector_catalog(
             provider=item.provider,
             display_name=item.display_name,
             category=item.category.value,
-            implementation_status=item.implementation_status.value,
+            customer_status=item.customer_status.value,
             auth_method=item.auth_method.value,
             capabilities=sorted(capability.value for capability in item.capabilities),
             description_key=item.description_key,

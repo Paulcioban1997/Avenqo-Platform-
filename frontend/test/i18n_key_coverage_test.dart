@@ -150,6 +150,9 @@ void main() {
     const visiblyLocalizedKeys = {
       'title',
       'subtitle',
+      'addOnlineStore',
+      'providerSearchHint',
+      'available',
       'comingSoon',
       'connectedStores',
       'disconnectConfirm',
@@ -165,6 +168,11 @@ void main() {
         hub!.keys.toSet(),
         equals(englishHub.keys.toSet()),
         reason: '$code company.connectorHub key parity',
+      );
+      expect(
+        hub.containsKey('beta'),
+        isFalse,
+        reason: '$code must not expose internal connector lifecycle labels',
       );
       for (final entry in hub.entries) {
         final value = entry.value.toString().trim();

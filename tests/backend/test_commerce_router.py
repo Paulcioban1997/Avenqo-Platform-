@@ -276,7 +276,13 @@ def test_connector_catalog_and_manual_sync_routes() -> None:
 
     assert catalog.status_code == 200
     assert len(catalog.json()) == 30
-    assert sum(item["implementation_status"] == "AVAILABLE" for item in catalog.json()) == 1
+    assert all("implementation_status" not in item for item in catalog.json())
+    customer_statuses = {
+        item["provider"]: item["customer_status"] for item in catalog.json()
+    }
+    assert customer_statuses["shopify"] == "AVAILABLE"
+    assert customer_statuses["woocommerce"] == "COMING_SOON"
+    assert set(customer_statuses.values()) == {"AVAILABLE", "COMING_SOON"}
     assert listed.json()[0]["external_account_id"] == "alpha.myshopify.com"
     assert listed.json()[0]["connection_status"] == "CONNECTED"
     assert listed.json()[0]["sync_status"] == "READY"

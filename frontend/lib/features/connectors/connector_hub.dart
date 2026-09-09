@@ -194,10 +194,32 @@ class _ConnectorHubState extends State<ConnectorHub> {
                     },
                     child: SizedBox(
                       width: 250,
-                      child: Text(
-                        provider['display_name']?.toString() ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              provider['display_name']?.toString() ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _text(
+                              provider['customer_status'] == 'AVAILABLE'
+                                  ? 'available'
+                                  : 'comingSoon',
+                            ),
+                            style: TextStyle(
+                              color:
+                                  provider['customer_status'] == 'AVAILABLE'
+                                  ? const Color(0xFF1B9E5A)
+                                  : colors.muted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -265,23 +287,38 @@ class _ProviderCard extends StatelessWidget {
   final VoidCallback onConnect;
   final String Function(String key) text;
 
+  String _capabilityLabel(Object capability) => text(
+    const {
+          'orders': 'capabilityOrders',
+          'customers': 'capabilityCustomers',
+          'products': 'capabilityProducts',
+          'inventory': 'capabilityInventory',
+          'refunds': 'capabilityRefunds',
+          'payments': 'capabilityPayments',
+          'discounts': 'capabilityDiscounts',
+          'variants': 'capabilityVariants',
+          'locations': 'capabilityLocations',
+          'fulfillments': 'capabilityFulfillments',
+          'abandoned_carts': 'capabilityAbandonedCarts',
+          'catalog': 'capabilityCatalog',
+          'webhooks': 'capabilityWebhooks',
+          'incremental_sync': 'capabilityIncrementalSync',
+        }[capability.toString()] ??
+        'capabilities',
+  );
+
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final providerId = provider['provider']?.toString() ?? '';
-    final status =
-        provider['implementation_status']?.toString() ?? 'COMING_SOON';
-    final available = status == 'AVAILABLE';
+    final customerStatus =
+      provider['customer_status']?.toString() ?? 'COMING_SOON';
+    final available = customerStatus == 'AVAILABLE';
     final configured = provider['configured'] == true;
-    final canConnect =
-        configured &&
-        ((providerId == 'shopify' && available) ||
-            (providerId == 'woocommerce' && status == 'BETA'));
+    final canConnect = configured && available;
     final actionable = canConnect;
     final accent = actionable
         ? const Color(0xFF1B9E5A)
-        : status == 'CONFIGURATION_REQUIRED'
-        ? const Color(0xFFC77A12)
         : colors.muted;
     final capabilities =
         (provider['capabilities'] as List<dynamic>? ?? const []).cast<Object>();
@@ -317,13 +354,7 @@ class _ProviderCard extends StatelessWidget {
               Flexible(
                 flex: 2,
                 child: _StatusBadge(
-                  label: text(switch (status) {
-                    'AVAILABLE' => 'available',
-                    'BETA' => 'beta',
-                    'CONFIGURATION_REQUIRED' => 'configurationRequired',
-                    'UNAVAILABLE' => 'unavailableStatus',
-                    _ => 'comingSoon',
-                  }),
+                  label: text(available ? 'available' : 'comingSoon'),
                   color: accent,
                 ),
               ),
@@ -362,7 +393,7 @@ class _ProviderCard extends StatelessWidget {
                   Chip(
                     visualDensity: VisualDensity.compact,
                     label: Text(
-                      capability.toString().replaceAll('_', ' '),
+                      _capabilityLabel(capability),
                       style: const TextStyle(fontSize: 10),
                     ),
                   ),
@@ -447,11 +478,10 @@ class _ConnectionRow extends StatelessWidget {
     final metadata = lastSync == null
         ? text('neverSynced')
         : '${text('lastSync')} ${lastSync.split('T').first}';
-    final french = text('sync') == 'Synchroniser maintenant';
     final statusLabel = status == 'ERROR' || status == 'FAILED'
-        ? (french ? 'Synchronisation échouée' : 'Synchronization failed')
+      ? text('syncFailed')
         : status == 'DEGRADED'
-        ? (french ? 'Stockage indisponible' : 'Storage unavailable')
+      ? text('storageUnavailable')
         : text(switch (status) {
             'SYNCING' => 'syncing',
             'PROCESSING' => 'processing',
@@ -487,7 +517,7 @@ class _ConnectionRow extends StatelessWidget {
                       connection['display_name']?.toString() ??
                           connection['external_account_id']?.toString() ??
                           connection['provider']?.toString() ??
-                          'Commerce',
+                              text('ecommerce'),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: colors.ink,
@@ -510,8 +540,7 @@ class _ConnectionRow extends StatelessWidget {
                   alignment: WrapAlignment.end,
                   children: [
                     _StatusBadge(
-                      label:
-                          '${french ? 'Connexion' : 'Connection'}: $connectionLabel',
+                      label: '${text('connection')}: $connectionLabel',
                       color: connectionStatus == 'DISCONNECTED'
                           ? colors.muted
                           : const Color(0xFF1B9E5A),

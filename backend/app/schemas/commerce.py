@@ -10,7 +10,7 @@ class ConnectorCatalogResponse(BaseModel):
     provider: str
     display_name: str
     category: str
-    implementation_status: str
+    customer_status: str
     auth_method: str
     capabilities: list[str]
     description_key: str

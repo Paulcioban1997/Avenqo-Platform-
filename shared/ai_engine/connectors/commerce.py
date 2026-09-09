@@ -28,6 +28,11 @@ class ConnectorImplementationStatus(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class ConnectorCustomerStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    COMING_SOON = "COMING_SOON"
+
+
 class ConnectorAuthMethod(StrEnum):
     OAUTH2 = "oauth2"
     OAUTH2_PKCE = "oauth2_pkce"
@@ -87,6 +92,12 @@ class ConnectorDefinition:
     @property
     def enabled(self) -> bool:
         return self.implementation_status == ConnectorImplementationStatus.AVAILABLE
+
+    @property
+    def customer_status(self) -> ConnectorCustomerStatus:
+        if self.implementation_status == ConnectorImplementationStatus.AVAILABLE:
+            return ConnectorCustomerStatus.AVAILABLE
+        return ConnectorCustomerStatus.COMING_SOON
 
 
 @dataclass(frozen=True, slots=True)

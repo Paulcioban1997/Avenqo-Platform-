@@ -86,6 +86,7 @@ List<Map<String, dynamic>> _catalog() => [
         >= 1 && <= 5 => 'CONFIGURATION_REQUIRED',
         _ => 'COMING_SOON',
       },
+      'customer_status': index == 0 ? 'AVAILABLE' : 'COMING_SOON',
       'configured': index == 0 || index == 29,
       'priority': index <= 5 ? 'P0' : 'P2',
       'auth_method': index == 5 ? 'OAUTH2' : 'PARTNER_AUTHORIZATION',
@@ -110,10 +111,13 @@ Map<String, dynamic> _connection({String status = 'READY'}) => {
 Future<Widget> _app(
   http.Client client, {
   ConnectorUrlLauncher? openConnectorUrl,
+  LocaleController? localeController,
 }) async {
-  final locale = LocaleController(store: _LocaleStore());
-  await locale.initialize();
-  await locale.setLocale('fr');
+  final locale = localeController ?? LocaleController(store: _LocaleStore());
+  if (localeController == null) {
+    await locale.initialize();
+    await locale.setLocale('fr');
+  }
   final api = ApiClient(
     tokenStore: _TokenStore(),
     httpClient: client,
@@ -193,6 +197,8 @@ void main() {
     expect(find.text('Shopify'), findsOneWidget);
     expect(find.text('WooCommerce'), findsOneWidget);
     expect(find.text('VTEX'), findsOneWidget);
+    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('Bientôt disponible'), findsNWidgets(11));
     for (final provider in const [
       'shopify',
       'woocommerce',
@@ -241,11 +247,11 @@ void main() {
     expect(launched?.host, 'shop.myshopify.com');
   });
 
-  testWidgets('configured WooCommerce beta opens standard authorization', (
+  testWidgets('unfinished WooCommerce is coming soon and cannot connect', (
     tester,
   ) async {
     _useDesktopViewport(tester);
-    Uri? launched;
+    var authorizationRequested = false;
     final client = MockClient((request) async {
       if (request.method == 'GET' && request.url.path.endsWith('/connectors')) {
         return http.Response(jsonEncode(_catalog()), 200);
@@ -257,22 +263,14 @@ void main() {
       }
       if (request.method == 'POST' &&
           request.url.path.endsWith('/connectors/woocommerce/authorize')) {
-        final payload = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(payload['store_url'], 'https://shop.example.com');
-        return http.Response(
-          '{"authorization_url":"https://shop.example.com/wc-auth/v1/authorize"}',
-          200,
-        );
+        authorizationRequested = true;
       }
       return http.Response('{}', 200);
     });
     await tester.pumpWidget(
       await _app(
         client,
-        openConnectorUrl: (uri) async {
-          launched = uri;
-          return true;
-        },
+        openConnectorUrl: (uri) async => true,
       ),
     );
     await tester.pumpAndSettle();
@@ -289,17 +287,13 @@ void main() {
 
     final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
     expect(connectWoo, findsOneWidget);
-    expect(find.text('Beta'), findsOneWidget);
+    expect(find.text('Beta'), findsNothing);
+    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNull);
     await tester.tap(connectWoo);
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('woocommerce-store-url')),
-      'https://shop.example.com',
-    );
-    await tester.tap(find.byKey(const ValueKey('authorize-woocommerce')));
-    await tester.pumpAndSettle();
-
-    expect(launched?.path, '/wc-auth/v1/authorize');
+    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsNothing);
+    expect(authorizationRequested, isFalse);
   });
 
   testWidgets('coming-soon provider has a disabled CTA and selection cancels', (
@@ -330,7 +324,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('BigCommerce'), findsOneWidget);
-    expect(find.text('orders'), findsOneWidget);
+    expect(find.text('Commandes'), findsOneWidget);
     expect(find.text('Bientôt disponible'), findsNWidgets(2));
     final disabled = tester.widget<FilledButton>(
       find.byKey(const ValueKey('connect-bigcommerce')),
@@ -339,6 +333,85 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('cancel-provider-selection')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('provider-bigcommerce')), findsNothing);
+  });
+
+  testWidgets('provider becomes actionable only when customer status is available', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final catalog = _catalog();
+    catalog.last['customer_status'] = 'AVAILABLE';
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(catalog), 200);
+      }
+      if (request.url.path.endsWith('/connectors/connections') ||
+          request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(await _app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
+    await tester.pumpAndSettle();
+
+    final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
+    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNotNull);
+    expect(find.text('Disponible'), findsOneWidget);
+    await tester.tap(connectWoo);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsOneWidget);
+  });
+
+  testWidgets('global locale switching immediately updates connector status', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final locale = LocaleController(store: _LocaleStore());
+    await locale.initialize();
+    await locale.setLocale('fr-CA');
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(_catalog()), 200);
+      }
+      if (request.url.path.endsWith('/connectors/connections') ||
+          request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(
+      await _app(client, localeController: locale),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Connecter une boutique en ligne'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
+    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('Bientôt disponible'), findsNWidgets(11));
+    await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
+    await tester.pumpAndSettle();
+    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+
+    await locale.setLocale('en-US');
+    await tester.pumpAndSettle();
+    expect(find.text('Connect an online store'), findsOneWidget);
+    expect(find.text('Coming soon'), findsNWidgets(2));
+  });
+
+  test('Connector Hub source exposes no internal Beta status or hardcoded copy', () {
+    final source = File(
+      'lib/features/connectors/connector_hub.dart',
+    ).readAsStringSync();
+    expect(source, isNot(contains("'BETA'")));
+    expect(source, isNot(contains("text('beta')")));
+    expect(source, isNot(contains('Synchronization failed')));
+    expect(source, isNot(contains('Storage unavailable')));
   });
 
   testWidgets('a connected Shopify store can start a sync', (tester) async {
@@ -398,7 +471,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Connexion: Connecté'), findsOneWidget);
-    expect(find.text('Synchronisation échouée'), findsOneWidget);
+    expect(find.text('La synchronisation a échoué'), findsOneWidget);
     expect(find.byTooltip('Synchroniser maintenant'), findsOneWidget);
   });
 
@@ -498,6 +571,29 @@ void main() {
         'providerSearchHint',
         'providerDescription',
         'connectToAvenqo',
+        'connectedStores',
+        'available',
+        'comingSoon',
+        'connect',
+        'connectAnother',
+        'cancel',
+        'close',
+        'search',
+        'connection',
+        'connected',
+        'ready',
+        'reauthorizationRequired',
+        'syncing',
+        'lastSync',
+        'disconnect',
+        'reconnect',
+        'syncFailed',
+        'storageUnavailable',
+        'capabilities',
+        'capabilityOrders',
+        'capabilityCustomers',
+        'capabilityProducts',
+        'capabilityInventory',
       ]) {
         expect(
           connectorCopy[key]?.toString().trim(),
@@ -505,6 +601,11 @@ void main() {
           reason: '$locale must explicitly localize $key',
         );
       }
+      expect(
+        connectorCopy.containsKey('beta'),
+        isFalse,
+        reason: '$locale must not expose an internal beta label',
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -535,6 +636,35 @@ void main() {
         reason: 'Connector Hub overflow or layout error in $locale',
       );
     }
+  });
+
+  test('fr-CA and en-US expose approved customer-facing connector copy', () {
+    Map<String, dynamic> hub(String locale) {
+      final json =
+          jsonDecode(File('assets/i18n/$locale.json').readAsStringSync())
+              as Map<String, dynamic>;
+      return (json['company'] as Map<String, dynamic>)['connectorHub']
+          as Map<String, dynamic>;
+    }
+
+    final french = hub('fr-CA');
+    expect(french['addOnlineStore'], 'Connecter une boutique en ligne');
+    expect(french['providerSearchHint'], 'Rechercher une plateforme...');
+    expect(french['available'], 'Disponible');
+    expect(french['comingSoon'], 'Bientôt disponible');
+    expect(french['connectToAvenqo'], 'Connecter à Avenqo');
+    expect(french['connectedStores'], 'Boutiques connectées');
+    expect(french['connected'], 'Connecté');
+    expect(french['ready'], 'Prêt');
+    expect(french['reauthorizationRequired'], 'Nouvelle autorisation requise');
+
+    final english = hub('en-US');
+    expect(english['addOnlineStore'], 'Connect an online store');
+    expect(english['providerSearchHint'], 'Search for a platform...');
+    expect(english['available'], 'Available');
+    expect(english['comingSoon'], 'Coming soon');
+    expect(english['connectToAvenqo'], 'Connect to Avenqo');
+    expect(english['connectedStores'], 'Connected stores');
   });
 
   testWidgets('fr-CA connector actions fit light and dark responsive layouts', (
