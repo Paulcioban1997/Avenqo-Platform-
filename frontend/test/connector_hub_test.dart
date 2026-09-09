@@ -41,6 +41,16 @@ List<Map<String, dynamic>> _catalog() => [
         3 => 'etsy',
         4 => 'tiktok-shop',
         5 => 'square',
+        6 => 'bigcommerce',
+        7 => 'adobe-commerce',
+        8 => 'wix-ecommerce',
+        9 => 'squarespace-commerce',
+        10 => 'prestashop',
+        11 => 'ecwid',
+        12 => 'shopware',
+        13 => 'salesforce-commerce-cloud',
+        14 => 'commercetools',
+        15 => 'vtex',
         29 => 'woocommerce',
         _ => 'provider-$index',
       },
@@ -51,12 +61,23 @@ List<Map<String, dynamic>> _catalog() => [
         3 => 'Etsy',
         4 => 'TikTok Shop',
         5 => 'Square',
+        6 => 'BigCommerce',
+        7 => 'Adobe Commerce / Magento',
+        8 => 'Wix eCommerce',
+        9 => 'Squarespace Commerce',
+        10 => 'PrestaShop',
+        11 => 'Ecwid',
+        12 => 'Shopware',
+        13 => 'Salesforce Commerce Cloud',
+        14 => 'commercetools',
+        15 => 'VTEX',
         29 => 'WooCommerce',
         _ => 'Provider $index',
       },
       'category': switch (index) {
         >= 1 && <= 4 => 'marketplace',
         5 => 'pos',
+        >= 16 && <= 28 => 'marketplace',
         _ => 'ecommerce',
       },
       'implementation_status': switch (index) {
@@ -156,10 +177,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Centre de connecteurs Retail'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('add-ecommerce-connector')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('provider-shopify')), findsNothing);
+    expect(find.byKey(const ValueKey('provider-woocommerce')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      findsOneWidget,
+    );
     expect(find.text('Shopify'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(23));
-    expect(find.text('Beta'), findsOneWidget);
-    expect(find.text('Configuration required'), findsNWidgets(5));
+    expect(find.text('WooCommerce'), findsOneWidget);
+    expect(find.text('VTEX'), findsOneWidget);
+    for (final provider in const [
+      'shopify',
+      'woocommerce',
+      'bigcommerce',
+      'adobe-commerce',
+      'wix-ecommerce',
+      'squarespace-commerce',
+      'prestashop',
+      'ecwid',
+      'shopware',
+      'salesforce-commerce-cloud',
+      'commercetools',
+      'vtex',
+    ]) {
+      expect(find.byKey(ValueKey('brand-icon-$provider')), findsOneWidget);
+    }
+    for (final asset in const [
+      'assets/brands/magento.svg',
+      'assets/brands/ecwid.svg',
+      'assets/brands/salesforce.svg',
+      'assets/brands/commercetools.svg',
+    ]) {
+      expect(File(asset).existsSync(), isTrue, reason: '$asset must exist');
+    }
+    await tester.tap(find.byKey(const ValueKey('select-shopify')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('provider-shopify')), findsOneWidget);
+    expect(find.text('Disponible'), findsOneWidget);
 
     final connectShopify = find.byKey(const ValueKey('connect-shopify'));
     await tester.ensureVisible(connectShopify);
@@ -211,14 +276,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const ValueKey('connector-search')),
+      find.byKey(const ValueKey('ecommerce-provider-search')),
       'WooCommerce',
     );
+    await tester.pumpAndSettle();
+    expect(find.text('Shopify'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
 
     final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
     expect(connectWoo, findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
     await tester.tap(connectWoo);
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -231,7 +302,7 @@ void main() {
     expect(launched?.path, '/wc-auth/v1/authorize');
   });
 
-  testWidgets('search and metadata filters never enable planned providers', (
+  testWidgets('coming-soon provider has a disabled CTA and selection cancels', (
     tester,
   ) async {
     _useDesktopViewport(tester);
@@ -248,32 +319,26 @@ void main() {
 
     await tester.pumpWidget(await _app(client));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const ValueKey('connector-search')),
-      'Amazon',
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      'BigCommerce',
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('select-bigcommerce')));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Amazon Seller Central / SP-API'), findsOneWidget);
+    expect(find.text('BigCommerce'), findsOneWidget);
     expect(find.text('orders'), findsOneWidget);
-    expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
-
-    await tester.enterText(find.byKey(const ValueKey('connector-search')), '');
-    await tester.tap(find.byKey(const ValueKey('connector-category-filter')));
+    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    final disabled = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('connect-bigcommerce')),
+    );
+    expect(disabled.onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('cancel-provider-selection')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('POS').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Square'), findsOneWidget);
-    expect(find.text('Shopify'), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('connector-status-filter')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Configuration required').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Square'), findsOneWidget);
-    expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
+    expect(find.byKey(const ValueKey('provider-bigcommerce')), findsNothing);
   });
 
   testWidgets('a connected Shopify store can start a sync', (tester) async {
@@ -424,6 +489,22 @@ void main() {
       final strings = CompanyStrings.fromJson(
         json['company'] as Map<String, dynamic>,
       );
+      final connectorCopy =
+          (json['company'] as Map<String, dynamic>)['connectorHub']
+              as Map<String, dynamic>;
+      for (final key in const [
+        'commerceSources',
+        'addOnlineStore',
+        'providerSearchHint',
+        'providerDescription',
+        'connectToAvenqo',
+      ]) {
+        expect(
+          connectorCopy[key]?.toString().trim(),
+          isNotEmpty,
+          reason: '$locale must explicitly localize $key',
+        );
+      }
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -459,9 +540,9 @@ void main() {
   testWidgets('fr-CA connector actions fit light and dark responsive layouts', (
     tester,
   ) async {
-    final json = jsonDecode(
-      File('assets/i18n/fr-CA.json').readAsStringSync(),
-    ) as Map<String, dynamic>;
+    final json =
+        jsonDecode(File('assets/i18n/fr-CA.json').readAsStringSync())
+            as Map<String, dynamic>;
     final strings = CompanyStrings.fromJson(
       json['company'] as Map<String, dynamic>,
     );
@@ -496,12 +577,27 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.byKey(const ValueKey('connect-shopify')), findsOneWidget);
         expect(
-          find.byKey(const ValueKey('connect-woocommerce')),
+          find.byKey(const ValueKey('add-ecommerce-connector')),
           findsOneWidget,
         );
-        expect(find.text('Beta'), findsOneWidget);
+        expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('provider-woocommerce')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('cancel-provider-selection')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('provider-woocommerce')),
+          findsNothing,
+        );
         expect(
           tester.takeException(),
           isNull,

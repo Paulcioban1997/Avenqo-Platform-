@@ -1,6 +1,8 @@
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:simple_icons/simple_icons.dart';
 
 class ConnectorHub extends StatefulWidget {
   const ConnectorHub({
@@ -33,9 +35,9 @@ class ConnectorHub extends StatefulWidget {
 }
 
 class _ConnectorHubState extends State<ConnectorHub> {
-  String _query = '';
-  String _category = 'all';
-  String _status = 'all';
+  final MenuController _providerMenu = MenuController();
+  String _providerQuery = '';
+  String? _selectedProviderId;
 
   String _text(String key) =>
       widget.t.connectorHub[key] ??
@@ -45,16 +47,12 @@ class _ConnectorHubState extends State<ConnectorHub> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final normalizedQuery = _query.trim().toLowerCase();
-    final providers = widget.catalog
+    final ecommerceProviders = widget.catalog
+        .where((provider) => provider['category'] == 'ecommerce')
+        .toList(growable: false);
+    final normalizedQuery = _providerQuery.trim().toLowerCase();
+    final visibleProviders = ecommerceProviders
         .where((provider) {
-          if (_category != 'all' && provider['category'] != _category) {
-            return false;
-          }
-          if (_status != 'all' &&
-              provider['implementation_status'] != _status) {
-            return false;
-          }
           if (normalizedQuery.isEmpty) return true;
           return provider['display_name']?.toString().toLowerCase().contains(
                 normalizedQuery,
@@ -62,6 +60,12 @@ class _ConnectorHubState extends State<ConnectorHub> {
               true;
         })
         .toList(growable: false);
+    final selectedProvider = ecommerceProviders
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (provider) => provider?['provider'] == _selectedProviderId,
+          orElse: () => null,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -138,152 +142,118 @@ class _ConnectorHubState extends State<ConnectorHub> {
             onRetry: widget.onRefresh,
           )
         else ...[
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              SizedBox(
-                width: 320,
-                child: TextField(
-                  key: const ValueKey('connector-search'),
-                  onChanged: (value) => setState(() => _query = value),
-                  decoration: InputDecoration(
-                    hintText: _text('searchHint'),
-                    prefixIcon: const Icon(Icons.search),
-                    isDense: true,
+          Text(
+            _text('commerceSources'),
+            style: TextStyle(
+              color: colors.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: MenuAnchor(
+              controller: _providerMenu,
+              onClose: () {
+                if (_providerQuery.isNotEmpty) {
+                  setState(() => _providerQuery = '');
+                }
+              },
+              menuChildren: [
+                SizedBox(
+                  width: 320,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                    child: TextField(
+                      key: const ValueKey('ecommerce-provider-search'),
+                      autofocus: true,
+                      onChanged: (value) =>
+                          setState(() => _providerQuery = value),
+                      decoration: InputDecoration(
+                        hintText: _text('providerSearchHint'),
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                ),
+                for (final provider in visibleProviders)
+                  MenuItemButton(
+                    key: ValueKey('select-${provider['provider']}'),
+                    leadingIcon: _BrandMark(
+                      provider: provider['provider']?.toString() ?? '',
+                      size: 24,
+                    ),
+                    onPressed: () {
+                      _providerMenu.close();
+                      setState(() {
+                        _providerQuery = '';
+                        _selectedProviderId = provider['provider']?.toString();
+                      });
+                    },
+                    child: SizedBox(
+                      width: 250,
+                      child: Text(
+                        provider['display_name']?.toString() ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+              ],
+              builder: (context, controller, child) => FilledButton.icon(
+                key: const ValueKey('add-ecommerce-connector'),
+                onPressed: () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+                icon: const Icon(Icons.add),
+                label: Text(_text('addOnlineStore')),
+              ),
+            ),
+          ),
+          if (selectedProvider != null) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _ProviderCard(
+                    key: ValueKey('focused-${selectedProvider['provider']}'),
+                    provider: selectedProvider,
+                    hasConnection: widget.connections.any(
+                      (connection) =>
+                          connection['provider'] ==
+                              selectedProvider['provider'] &&
+                          connection['status'] != 'DISCONNECTED',
+                    ),
+                    authorizing:
+                        widget.authorizingProvider ==
+                        selectedProvider['provider'],
+                    onCancel: () => setState(() => _selectedProviderId = null),
+                    onConnect: () => widget.onConnect(
+                      selectedProvider['provider']?.toString() ?? '',
+                    ),
+                    text: _text,
                   ),
                 ),
               ),
-              _ConnectorFilter(
-                key: const ValueKey('connector-category-filter'),
-                label: _text('categoryFilter'),
-                value: _category,
-                options: const [
-                  'all',
-                  'ecommerce',
-                  'marketplace',
-                  'pos',
-                  'payments',
-                  'catalog',
-                  'fulfillment',
-                ],
-                text: _text,
-                onChanged: (value) => setState(() => _category = value),
-              ),
-              _ConnectorFilter(
-                key: const ValueKey('connector-status-filter'),
-                label: _text('statusFilter'),
-                value: _status,
-                options: const [
-                  'all',
-                  'AVAILABLE',
-                  'BETA',
-                  'CONFIGURATION_REQUIRED',
-                  'COMING_SOON',
-                  'UNAVAILABLE',
-                ],
-                text: _text,
-                onChanged: (value) => setState(() => _status = value),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 900
-                  ? 3
-                  : constraints.maxWidth >= 560
-                  ? 2
-                  : 1;
-              final width =
-                  (constraints.maxWidth - ((columns - 1) * 12)) / columns;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final provider in providers)
-                    SizedBox(
-                      width: width,
-                      child: _ProviderCard(
-                        provider: provider,
-                        hasConnection: widget.connections.any(
-                          (connection) =>
-                              connection['provider'] == provider['provider'] &&
-                              connection['status'] != 'DISCONNECTED',
-                        ),
-                        authorizing:
-                            widget.authorizingProvider == provider['provider'],
-                        onConnect: () => widget.onConnect(
-                          provider['provider']?.toString() ?? '',
-                        ),
-                        text: _text,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
+            ),
+          ],
         ],
       ],
     );
   }
 }
 
-class _ConnectorFilter extends StatelessWidget {
-  const _ConnectorFilter({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.text,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String value;
-  final List<String> options;
-  final String Function(String key) text;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 210,
-    child: DropdownButtonFormField<String>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: label, isDense: true),
-      items: [
-        for (final option in options)
-          DropdownMenuItem(
-            value: option,
-            child: Text(
-              _label(option),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-      ],
-      onChanged: (next) {
-        if (next != null) onChanged(next);
-      },
-    ),
-  );
-
-  String _label(String value) => text(switch (value) {
-    'AVAILABLE' => 'available',
-    'BETA' => 'beta',
-    'CONFIGURATION_REQUIRED' => 'configurationRequired',
-    'COMING_SOON' => 'comingSoon',
-    'UNAVAILABLE' => 'unavailableStatus',
-    _ => value,
-  });
-}
-
 class _ProviderCard extends StatelessWidget {
   const _ProviderCard({
+    super.key,
     required this.provider,
     required this.hasConnection,
     required this.authorizing,
+    required this.onCancel,
     required this.onConnect,
     required this.text,
   });
@@ -291,6 +261,7 @@ class _ProviderCard extends StatelessWidget {
   final Map<String, dynamic> provider;
   final bool hasConnection;
   final bool authorizing;
+  final VoidCallback onCancel;
   final VoidCallback onConnect;
   final String Function(String key) text;
 
@@ -302,11 +273,11 @@ class _ProviderCard extends StatelessWidget {
         provider['implementation_status']?.toString() ?? 'COMING_SOON';
     final available = status == 'AVAILABLE';
     final configured = provider['configured'] == true;
-    final category = provider['category']?.toString() ?? '';
-    final canConnect = configured &&
-      ((providerId == 'shopify' && available) ||
-        (providerId == 'woocommerce' && status == 'BETA'));
-    final actionable = available || canConnect;
+    final canConnect =
+        configured &&
+        ((providerId == 'shopify' && available) ||
+            (providerId == 'woocommerce' && status == 'BETA'));
+    final actionable = canConnect;
     final accent = actionable
         ? const Color(0xFF1B9E5A)
         : status == 'CONFIGURATION_REQUIRED'
@@ -316,8 +287,7 @@ class _ProviderCard extends StatelessWidget {
         (provider['capabilities'] as List<dynamic>? ?? const []).cast<Object>();
     return Container(
       key: ValueKey('provider-$providerId'),
-      constraints: const BoxConstraints(minHeight: 210),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border.all(
@@ -330,19 +300,7 @@ class _ProviderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _providerIcon(providerId, category),
-                  color: accent,
-                  size: 21,
-                ),
-              ),
+              _BrandMark(provider: providerId, size: 42),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -373,16 +331,34 @@ class _ProviderCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            '${text(category)} · ${provider['priority'] ?? 'P2'} · ${provider['auth_method'] ?? ''}',
-            style: TextStyle(color: colors.muted, fontSize: 12),
+            text('ecommerce'),
+            style: TextStyle(
+              color: colors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            text('providerDescription'),
+            style: TextStyle(color: colors.muted, height: 1.45),
           ),
           if (capabilities.isNotEmpty) ...[
             const SizedBox(height: 10),
+            Text(
+              text('capabilities'),
+              style: TextStyle(
+                color: colors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 5,
               runSpacing: 5,
               children: [
-                for (final capability in capabilities.take(4))
+                for (final capability in capabilities.take(5))
                   Chip(
                     visualDensity: VisualDensity.compact,
                     label: Text(
@@ -393,11 +369,18 @@ class _ProviderCard extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 14),
-          if (available || providerId == 'woocommerce')
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: FilledButton.icon(
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                key: const ValueKey('cancel-provider-selection'),
+                onPressed: onCancel,
+                child: Text(text('cancel')),
+              ),
+              FilledButton.icon(
                 key: ValueKey('connect-$providerId'),
                 onPressed: canConnect && !authorizing ? onConnect : null,
                 icon: authorizing
@@ -408,14 +391,15 @@ class _ProviderCard extends StatelessWidget {
                       )
                     : const Icon(Icons.add_link, size: 18),
                 label: Text(
-                  configured
+                  canConnect
                       ? text(
-                          hasConnection ? 'connectAnother' : 'connect',
+                          hasConnection ? 'connectAnother' : 'connectToAvenqo',
                         )
-                      : text('unavailable'),
+                      : text('comingSoon'),
                 ),
               ),
-            ),
+            ],
+          ),
         ],
       ),
     );
@@ -451,12 +435,8 @@ class _ConnectionRow extends StatelessWidget {
         connection['connection_status']?.toString().toUpperCase() ??
         (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
     final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
-    final statusColor = {
-      'ERROR',
-      'DEGRADED',
-      'FAILED',
-      'REAUTH_REQUIRED',
-    }.contains(status)
+    final statusColor =
+        {'ERROR', 'DEGRADED', 'FAILED', 'REAUTH_REQUIRED'}.contains(status)
         ? const Color(0xFFD1414B)
         : status == 'DISCONNECTED'
         ? colors.muted
@@ -506,7 +486,8 @@ class _ConnectionRow extends StatelessWidget {
                     Text(
                       connection['display_name']?.toString() ??
                           connection['external_account_id']?.toString() ??
-                          connection['provider']?.toString() ?? 'Commerce',
+                          connection['provider']?.toString() ??
+                          'Commerce',
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: colors.ink,
@@ -652,14 +633,105 @@ class _ConnectorNotice extends StatelessWidget {
 String textDirectionAwareRefresh(BuildContext context) =>
     MaterialLocalizations.of(context).refreshIndicatorSemanticLabel;
 
-IconData _providerIcon(String provider, String category) {
-  if (provider == 'shopify') return Icons.shopping_bag_outlined;
-  return switch (category) {
-    'marketplace' => Icons.store_mall_directory_outlined,
-    'payments' => Icons.payments_outlined,
-    'marketing' => Icons.campaign_outlined,
-    'fulfillment' => Icons.local_shipping_outlined,
-    'analytics' => Icons.query_stats_outlined,
-    _ => Icons.storefront_outlined,
-  };
+class _BrandMark extends StatelessWidget {
+  const _BrandMark({required this.provider, required this.size});
+
+  final String provider;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final brand = _providerBrand(provider);
+    return Container(
+      key: ValueKey('brand-icon-$provider'),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: brand.color.withValues(alpha: 0.1),
+        border: Border.all(color: brand.color.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: brand.asset == null
+          ? Icon(
+              brand.icon ?? Icons.storefront_outlined,
+              color: brand.icon == null ? colors.muted : brand.color,
+              size: size * 0.52,
+            )
+          : Padding(
+              padding: EdgeInsets.all(size * 0.2),
+              child: SvgPicture.asset(brand.asset!, fit: BoxFit.contain),
+            ),
+    );
+  }
 }
+
+({IconData? icon, String? asset, Color color}) _providerBrand(
+  String provider,
+) => switch (provider) {
+  'shopify' => (
+    icon: SimpleIcons.shopify,
+    asset: null,
+    color: const Color(0xFF7AB55C),
+  ),
+  'woocommerce' => (
+    icon: SimpleIcons.woocommerce,
+    asset: null,
+    color: const Color(0xFF96588A),
+  ),
+  'bigcommerce' => (
+    icon: SimpleIcons.bigcommerce,
+    asset: null,
+    color: const Color(0xFF121118),
+  ),
+  'adobe-commerce' => (
+    icon: null,
+    asset: 'assets/brands/magento.svg',
+    color: const Color(0xFFEE672F),
+  ),
+  'wix-ecommerce' => (
+    icon: SimpleIcons.wix,
+    asset: null,
+    color: const Color(0xFF0C0C0C),
+  ),
+  'squarespace-commerce' => (
+    icon: SimpleIcons.squarespace,
+    asset: null,
+    color: const Color(0xFF222222),
+  ),
+  'prestashop' => (
+    icon: SimpleIcons.prestashop,
+    asset: null,
+    color: const Color(0xFF24B9D7),
+  ),
+  'ecwid' => (
+    icon: null,
+    asset: 'assets/brands/ecwid.svg',
+    color: const Color(0xFF446CE4),
+  ),
+  'shopware' => (
+    icon: SimpleIcons.shopware,
+    asset: null,
+    color: const Color(0xFF189EFF),
+  ),
+  'salesforce-commerce-cloud' => (
+    icon: null,
+    asset: 'assets/brands/salesforce.svg',
+    color: const Color(0xFF00A1E0),
+  ),
+  'commercetools' => (
+    icon: null,
+    asset: 'assets/brands/commercetools.svg',
+    color: const Color(0xFF6359FF),
+  ),
+  'vtex' => (
+    icon: SimpleIcons.vtex,
+    asset: null,
+    color: const Color(0xFFF71963),
+  ),
+  _ => (
+    icon: Icons.storefront_outlined,
+    asset: null,
+    color: const Color(0xFF64748B),
+  ),
+};
