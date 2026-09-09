@@ -455,4 +455,59 @@ void main() {
       );
     }
   });
+
+  testWidgets('fr-CA connector actions fit light and dark responsive layouts', (
+    tester,
+  ) async {
+    final json = jsonDecode(
+      File('assets/i18n/fr-CA.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    final strings = CompanyStrings.fromJson(
+      json['company'] as Map<String, dynamic>,
+    );
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
+
+    for (final brightness in Brightness.values) {
+      for (final size in const [Size(390, 844), Size(1280, 900)]) {
+        tester.view.physicalSize = size;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(brightness: brightness),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: ConnectorHub(
+                  catalog: _catalog(),
+                  connections: const [],
+                  busyConnectionIds: const <String>{},
+                  authorizingProvider: null,
+                  catalogUnavailable: false,
+                  onConnect: (_) {},
+                  onSync: (_) async {},
+                  onDisconnect: (_) async {},
+                  onRefresh: () {},
+                  t: strings,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byKey(const ValueKey('connect-shopify')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('connect-woocommerce')),
+          findsOneWidget,
+        );
+        expect(find.text('Beta'), findsOneWidget);
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '$brightness at ${size.width} px',
+        );
+      }
+    }
+  });
 }
