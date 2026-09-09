@@ -51,7 +51,7 @@ Avenqo appends the connection UUID when registering each webhook. Signatures are
 ## WOOCOMMERCE_ENVIRONMENT_VARIABLES
 
 ```dotenv
-CONNECTOR_SECRET_ENCRYPTION_KEY=<fernet-key>
+CONNECTOR_ENCRYPTION_KEYS=<fernet-key>
 WOOCOMMERCE_CALLBACK_URI=https://<staging-api-host>/api/v1/connectors/woocommerce/callback
 WOOCOMMERCE_WEBHOOK_URI=https://<staging-api-host>/api/v1/connectors/woocommerce/webhook
 WOOCOMMERCE_APP_NAME=Avenqo
