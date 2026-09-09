@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -15,8 +17,45 @@ from backend.app.dependencies.commerce import (
 )
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.routers.commerce import router
+from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
+from shared.ai_engine.connectors.commerce import ConnectorImplementationStatus
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.exceptions import ConnectorNotRegisteredError
+
+
+EXPECTED_COMMERCE_PROVIDERS = {
+    "shopify",
+    "woocommerce",
+    "bigcommerce",
+    "adobe-commerce",
+    "wix-ecommerce",
+    "squarespace-commerce",
+    "prestashop",
+    "ecwid",
+    "shopware",
+    "salesforce-commerce-cloud",
+    "commercetools",
+    "vtex",
+    "amazon-seller-central",
+    "ebay",
+    "etsy",
+    "walmart-marketplace",
+    "tiktok-shop",
+    "meta-commerce",
+    "mercado-libre",
+    "mirakl",
+    "shopee",
+    "lazada",
+    "square",
+    "lightspeed-retail",
+    "clover",
+    "shopify-pos",
+    "stripe-commerce",
+    "paypal",
+    "google-merchant-center",
+    "shipstation",
+}
 
 
 class _Connections:
@@ -96,6 +135,43 @@ class _SuccessfulWebhookRegistry:
 
     async def register_webhooks(self, context):
         return None
+
+
+def test_connector_catalog_contract_is_exact_and_truthful() -> None:
+    definitions = {item.provider: item for item in COMMERCE_CONNECTOR_CATALOG}
+
+    assert set(definitions) == EXPECTED_COMMERCE_PROVIDERS
+    assert len(definitions) == 30
+    assert {
+        provider
+        for provider, definition in definitions.items()
+        if definition.implementation_status == ConnectorImplementationStatus.AVAILABLE
+    } == {"shopify"}
+    assert {
+        provider
+        for provider, definition in definitions.items()
+        if definition.implementation_status
+        == ConnectorImplementationStatus.CONFIGURATION_REQUIRED
+    } == {"amazon-seller-central", "ebay", "etsy", "tiktok-shop", "square"}
+    assert all(item.documentation_url for item in definitions.values())
+    assert all(item.auth_method for item in definitions.values())
+    assert all(item.capabilities for item in definitions.values())
+    assert all(item.priority in {"P0", "P1", "P2"} for item in definitions.values())
+    for definition in definitions.values():
+        documentation = Path(definition.documentation_url.lstrip("/"))
+        contents = documentation.read_text(encoding="utf-8")
+        assert definition.display_name in contents
+        assert "Readiness:" in contents
+        assert "Environment:" in contents
+        assert "Acceptance:" in contents
+
+
+def test_catalog_metadata_does_not_register_unimplemented_adapters() -> None:
+    registry = CommerceConnectorRegistry()
+
+    assert registry.definition("woocommerce").display_name == "WooCommerce"
+    with pytest.raises(ConnectorNotRegisteredError, match="is not available"):
+        registry.get("woocommerce")
 
 
 def test_connector_catalog_and_manual_sync_routes() -> None:

@@ -34,11 +34,40 @@ class _LocaleStore implements LocalePreferenceStore {
 List<Map<String, dynamic>> _catalog() => [
   for (var index = 0; index < 30; index++)
     {
-      'provider': index == 0 ? 'shopify' : 'provider-$index',
-      'display_name': index == 0 ? 'Shopify' : 'Provider $index',
-      'category': 'ecommerce',
-      'implementation_status': index == 0 ? 'AVAILABLE' : 'COMING_SOON',
+      'provider': switch (index) {
+        0 => 'shopify',
+        1 => 'amazon-seller-central',
+        2 => 'ebay',
+        3 => 'etsy',
+        4 => 'tiktok-shop',
+        5 => 'square',
+        _ => 'provider-$index',
+      },
+      'display_name': switch (index) {
+        0 => 'Shopify',
+        1 => 'Amazon Seller Central / SP-API',
+        2 => 'eBay',
+        3 => 'Etsy',
+        4 => 'TikTok Shop',
+        5 => 'Square',
+        _ => 'Provider $index',
+      },
+      'category': switch (index) {
+        >= 1 && <= 4 => 'marketplace',
+        5 => 'pos',
+        _ => 'ecommerce',
+      },
+      'implementation_status': switch (index) {
+        0 => 'AVAILABLE',
+        >= 1 && <= 5 => 'CONFIGURATION_REQUIRED',
+        _ => 'COMING_SOON',
+      },
       'configured': index == 0,
+      'priority': index <= 5 ? 'P0' : 'P2',
+      'auth_method': index == 5 ? 'OAUTH2' : 'PARTNER_AUTHORIZATION',
+      'capabilities': index == 5
+          ? ['orders', 'locations', 'payments']
+          : ['orders', 'products', 'inventory'],
     },
 ];
 
@@ -87,7 +116,7 @@ void _useDesktopViewport(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('Connector Hub exposes Shopify and 29 coming-soon providers', (
+  testWidgets('Connector Hub exposes truthful provider readiness', (
     tester,
   ) async {
     _useDesktopViewport(tester);
@@ -125,7 +154,8 @@ void main() {
 
     expect(find.text('Centre de connecteurs Retail'), findsOneWidget);
     expect(find.text('Shopify'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(29));
+    expect(find.text('Bientôt disponible'), findsNWidgets(24));
+    expect(find.text('Configuration required'), findsNWidgets(5));
 
     final connectShopify = find.byKey(const ValueKey('connect-shopify'));
     await tester.ensureVisible(connectShopify);
@@ -140,6 +170,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(launched?.host, 'shop.myshopify.com');
+  });
+
+  testWidgets('search and metadata filters never enable planned providers', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(_catalog()), 200);
+      }
+      if (request.url.path.endsWith('/connectors/connections') ||
+          request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(await _app(client));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('connector-search')),
+      'Amazon',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Amazon Seller Central / SP-API'), findsOneWidget);
+    expect(find.text('orders'), findsOneWidget);
+    expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('connector-search')), '');
+    await tester.tap(find.byKey(const ValueKey('connector-category-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('POS').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Square'), findsOneWidget);
+    expect(find.text('Shopify'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('connector-status-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Configuration required').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Square'), findsOneWidget);
+    expect(find.byKey(const ValueKey('connect-shopify')), findsNothing);
   });
 
   testWidgets('a connected Shopify store can start a sync', (tester) async {

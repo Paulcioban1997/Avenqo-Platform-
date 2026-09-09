@@ -18,6 +18,18 @@ class ConnectorCatalogResponse(BaseModel):
     supported_regions: list[str]
     configuration_requirements: list[str]
     configured: bool
+    documentation_url: str
+    supports_oauth: bool
+    supports_webhooks: bool
+    supports_incremental_sync: bool
+    external_registration_required: bool
+    callback_urls_required: bool
+    webhook_urls_required: bool
+    scopes_required: list[str]
+    review_required: bool
+    sandbox_available: bool
+    markets_supported: list[str]
+    priority: str
 
 
 class ShopifyAuthorizationRequest(BaseModel):

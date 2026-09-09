@@ -12,7 +12,9 @@ from uuid import UUID
 class ConnectorCategory(StrEnum):
     ECOMMERCE = "ecommerce"
     MARKETPLACE = "marketplace"
+    POS = "pos"
     PAYMENTS = "payments"
+    CATALOG = "catalog"
     MARKETING = "marketing"
     FULFILLMENT = "fulfillment"
     ANALYTICS = "analytics"
@@ -20,12 +22,21 @@ class ConnectorCategory(StrEnum):
 
 class ConnectorImplementationStatus(StrEnum):
     AVAILABLE = "AVAILABLE"
+    BETA = "BETA"
+    CONFIGURATION_REQUIRED = "CONFIGURATION_REQUIRED"
     COMING_SOON = "COMING_SOON"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 class ConnectorAuthMethod(StrEnum):
     OAUTH2 = "oauth2"
+    OAUTH2_PKCE = "oauth2_pkce"
+    OAUTH1 = "oauth1"
     API_KEY = "api_key"
+    CLIENT_CREDENTIALS = "client_credentials"
+    STORE_URL_PLUS_KEYS = "store_url_plus_keys"
+    PARTNER_AUTHORIZATION = "partner_authorization"
+    CUSTOM = "custom"
 
 
 class ConnectorCapability(StrEnum):
@@ -36,6 +47,13 @@ class ConnectorCapability(StrEnum):
     REFUNDS = "refunds"
     PAYMENTS = "payments"
     DISCOUNTS = "discounts"
+    VARIANTS = "variants"
+    LOCATIONS = "locations"
+    FULFILLMENTS = "fulfillments"
+    ABANDONED_CARTS = "abandoned_carts"
+    CATALOG = "catalog"
+    WEBHOOKS = "webhooks"
+    INCREMENTAL_SYNC = "incremental_sync"
 
 
 class ConnectorCapabilityError(NotImplementedError):
@@ -54,6 +72,17 @@ class ConnectorDefinition:
     icon_key: str = "extension"
     supported_regions: tuple[str, ...] = ("global",)
     configuration_requirements: tuple[str, ...] = ()
+    documentation_url: str = ""
+    supports_oauth: bool = False
+    supports_webhooks: bool = False
+    supports_incremental_sync: bool = False
+    external_registration_required: bool = True
+    callback_urls_required: bool = False
+    webhook_urls_required: bool = False
+    scopes_required: tuple[str, ...] = ()
+    review_required: bool = False
+    sandbox_available: bool = False
+    priority: str = "P2"
 
     @property
     def enabled(self) -> bool:

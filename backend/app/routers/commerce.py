@@ -124,6 +124,18 @@ def connector_catalog(
             icon_key=item.icon_key,
             supported_regions=list(item.supported_regions),
             configuration_requirements=list(item.configuration_requirements),
+            documentation_url=item.documentation_url,
+            supports_oauth=item.supports_oauth,
+            supports_webhooks=item.supports_webhooks,
+            supports_incremental_sync=item.supports_incremental_sync,
+            external_registration_required=item.external_registration_required,
+            callback_urls_required=item.callback_urls_required,
+            webhook_urls_required=item.webhook_urls_required,
+            scopes_required=list(item.scopes_required),
+            review_required=item.review_required,
+            sandbox_available=item.sandbox_available,
+            markets_supported=list(item.supported_regions),
+            priority=item.priority,
             configured=(
                 settings.shopify_connector_configured
                 if item.provider == "shopify"

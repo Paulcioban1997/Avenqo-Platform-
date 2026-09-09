@@ -34,6 +34,8 @@ class ConnectorHub extends StatefulWidget {
 
 class _ConnectorHubState extends State<ConnectorHub> {
   String _query = '';
+  String _category = 'all';
+  String _status = 'all';
 
   String _text(String key) =>
       widget.t.connectorHub[key] ??
@@ -46,6 +48,13 @@ class _ConnectorHubState extends State<ConnectorHub> {
     final normalizedQuery = _query.trim().toLowerCase();
     final providers = widget.catalog
         .where((provider) {
+          if (_category != 'all' && provider['category'] != _category) {
+            return false;
+          }
+          if (_status != 'all' &&
+              provider['implementation_status'] != _status) {
+            return false;
+          }
           if (normalizedQuery.isEmpty) return true;
           return provider['display_name']?.toString().toLowerCase().contains(
                 normalizedQuery,
@@ -135,17 +144,54 @@ class _ConnectorHubState extends State<ConnectorHub> {
             onRetry: widget.onRefresh,
           )
         else ...[
-          SizedBox(
-            width: 360,
-            child: TextField(
-              key: const ValueKey('connector-search'),
-              onChanged: (value) => setState(() => _query = value),
-              decoration: InputDecoration(
-                hintText: _text('searchHint'),
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              SizedBox(
+                width: 320,
+                child: TextField(
+                  key: const ValueKey('connector-search'),
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: _text('searchHint'),
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                  ),
+                ),
               ),
-            ),
+              _ConnectorFilter(
+                key: const ValueKey('connector-category-filter'),
+                label: _text('categoryFilter'),
+                value: _category,
+                options: const [
+                  'all',
+                  'ecommerce',
+                  'marketplace',
+                  'pos',
+                  'payments',
+                  'catalog',
+                  'fulfillment',
+                ],
+                text: _text,
+                onChanged: (value) => setState(() => _category = value),
+              ),
+              _ConnectorFilter(
+                key: const ValueKey('connector-status-filter'),
+                label: _text('statusFilter'),
+                value: _status,
+                options: const [
+                  'all',
+                  'AVAILABLE',
+                  'BETA',
+                  'CONFIGURATION_REQUIRED',
+                  'COMING_SOON',
+                  'UNAVAILABLE',
+                ],
+                text: _text,
+                onChanged: (value) => setState(() => _status = value),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           LayoutBuilder(
@@ -182,6 +228,56 @@ class _ConnectorHubState extends State<ConnectorHub> {
   }
 }
 
+class _ConnectorFilter extends StatelessWidget {
+  const _ConnectorFilter({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.text,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final List<String> options;
+  final String Function(String key) text;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 210,
+    child: DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: InputDecoration(labelText: label, isDense: true),
+      items: [
+        for (final option in options)
+          DropdownMenuItem(
+            value: option,
+            child: Text(
+              _label(option),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    ),
+  );
+
+  String _label(String value) => text(switch (value) {
+    'AVAILABLE' => 'available',
+    'BETA' => 'beta',
+    'CONFIGURATION_REQUIRED' => 'configurationRequired',
+    'COMING_SOON' => 'comingSoon',
+    'UNAVAILABLE' => 'unavailableStatus',
+    _ => value,
+  });
+}
+
 class _ProviderCard extends StatelessWidget {
   const _ProviderCard({
     required this.provider,
@@ -201,14 +297,22 @@ class _ProviderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final providerId = provider['provider']?.toString() ?? '';
-    final available = provider['implementation_status'] == 'AVAILABLE';
+    final status =
+        provider['implementation_status']?.toString() ?? 'COMING_SOON';
+    final available = status == 'AVAILABLE';
     final configured = provider['configured'] == true;
     final category = provider['category']?.toString() ?? '';
     final canConnect = providerId == 'shopify' && available && configured;
-    final accent = available ? const Color(0xFF1B9E5A) : colors.muted;
+    final accent = available
+        ? const Color(0xFF1B9E5A)
+        : status == 'CONFIGURATION_REQUIRED'
+        ? const Color(0xFFC77A12)
+        : colors.muted;
+    final capabilities =
+        (provider['capabilities'] as List<dynamic>? ?? const []).cast<Object>();
     return Container(
       key: ValueKey('provider-$providerId'),
-      constraints: const BoxConstraints(minHeight: 148),
+      constraints: const BoxConstraints(minHeight: 210),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surface,
@@ -251,7 +355,13 @@ class _ProviderCard extends StatelessWidget {
               Flexible(
                 flex: 2,
                 child: _StatusBadge(
-                  label: text(available ? 'available' : 'comingSoon'),
+                  label: text(switch (status) {
+                    'AVAILABLE' => 'available',
+                    'BETA' => 'beta',
+                    'CONFIGURATION_REQUIRED' => 'configurationRequired',
+                    'UNAVAILABLE' => 'unavailableStatus',
+                    _ => 'comingSoon',
+                  }),
                   color: accent,
                 ),
               ),
@@ -259,9 +369,26 @@ class _ProviderCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            text(category),
+            '${text(category)} · ${provider['priority'] ?? 'P2'} · ${provider['auth_method'] ?? ''}',
             style: TextStyle(color: colors.muted, fontSize: 12),
           ),
+          if (capabilities.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              children: [
+                for (final capability in capabilities.take(4))
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(
+                      capability.toString().replaceAll('_', ' '),
+                      style: const TextStyle(fontSize: 10),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           if (available)
             Align(
@@ -311,14 +438,14 @@ class _ConnectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final status = (connection['sync_status'] ?? connection['status'])
-        ?.toString()
-        .toUpperCase() ??
-      'ERROR';
-    final connectionStatus = connection['connection_status']
-        ?.toString()
-        .toUpperCase() ??
-      (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
+    final status =
+        (connection['sync_status'] ?? connection['status'])
+            ?.toString()
+            .toUpperCase() ??
+        'ERROR';
+    final connectionStatus =
+        connection['connection_status']?.toString().toUpperCase() ??
+        (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
     final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
     final statusColor = status == 'ERROR' || status == 'DEGRADED'
         ? const Color(0xFFD1414B)
@@ -333,18 +460,18 @@ class _ConnectionRow extends StatelessWidget {
         : '${text('lastSync')} ${lastSync.split('T').first}';
     final french = text('sync') == 'Synchroniser maintenant';
     final statusLabel = status == 'ERROR'
-      ? (french ? 'Synchronisation échouée' : 'Synchronization failed')
-      : status == 'DEGRADED'
-      ? (french ? 'Stockage indisponible' : 'Storage unavailable')
-      : text(switch (status) {
-      'SYNCING' => 'syncing',
-      'PROCESSING' => 'processing',
-      'READY' => 'ready',
-      'CONNECTED' => 'connected',
-      'DISCONNECTED' => 'disconnected',
-      'CONNECTING' => 'connecting',
-      _ => 'error',
-    });
+        ? (french ? 'Synchronisation échouée' : 'Synchronization failed')
+        : status == 'DEGRADED'
+        ? (french ? 'Stockage indisponible' : 'Storage unavailable')
+        : text(switch (status) {
+            'SYNCING' => 'syncing',
+            'PROCESSING' => 'processing',
+            'READY' => 'ready',
+            'CONNECTED' => 'connected',
+            'DISCONNECTED' => 'disconnected',
+            'CONNECTING' => 'connecting',
+            _ => 'error',
+          });
     final connectionLabel = connectionStatus == 'DISCONNECTED'
         ? text('disconnected')
         : text('connected');
@@ -391,7 +518,8 @@ class _ConnectionRow extends StatelessWidget {
                   alignment: WrapAlignment.end,
                   children: [
                     _StatusBadge(
-                      label: '${french ? 'Connexion' : 'Connection'}: $connectionLabel',
+                      label:
+                          '${french ? 'Connexion' : 'Connection'}: $connectionLabel',
                       color: connectionStatus == 'DISCONNECTED'
                           ? colors.muted
                           : const Color(0xFF1B9E5A),
