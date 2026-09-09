@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
 from uuid import UUID
@@ -103,6 +103,7 @@ class ConnectorSyncContext:
     external_account_id: str
     cursor: str | None = None
     updated_since: str | None = None
+    credentials: Mapping[str, Any] = field(default_factory=dict)
 
 
 class CommerceConnector(ABC):
@@ -167,6 +168,7 @@ class CommerceConnector(ABC):
         tenant_id: UUID,
         headers: Mapping[str, str],
         body: bytes,
+        credentials: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         raise NotImplementedError
 

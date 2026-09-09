@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class ConnectorCatalogResponse(BaseModel):
@@ -39,6 +39,23 @@ class ShopifyAuthorizationRequest(BaseModel):
 class ShopifyAuthorizationResponse(BaseModel):
     authorization_url: str
     expires_at: datetime
+
+
+class WooCommerceAuthorizationRequest(BaseModel):
+    store_url: str = Field(min_length=1, max_length=2048)
+
+
+class WooCommerceManualConnectionRequest(WooCommerceAuthorizationRequest):
+    consumer_key: SecretStr
+    consumer_secret: SecretStr
+
+
+class WooCommerceCallbackPayload(BaseModel):
+    key_id: int | None = None
+    user_id: str = Field(min_length=1, max_length=255)
+    consumer_key: SecretStr
+    consumer_secret: SecretStr
+    key_permissions: str = Field(min_length=1, max_length=32)
 
 
 class CommerceConnectionResponse(BaseModel):

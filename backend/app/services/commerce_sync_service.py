@@ -21,6 +21,13 @@ from backend.app.connectors.shopify import (
     ShopifyConnectorError,
     ShopifyTemporaryError,
 )
+from backend.app.connectors.woocommerce import (
+    WooCommerceAuthenticationError,
+    WooCommerceConnectorError,
+    WooCommercePermissionError,
+    WooCommerceRateLimitError,
+    WooCommerceTemporaryError,
+)
 from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
@@ -116,6 +123,11 @@ class CommerceSyncService:
         "customers/delete": ("customers", "Customer"),
         "inventory_items/delete": ("inventory", "InventoryItem"),
     }
+    _WOOCOMMERCE_DELETION_RESOURCES = {
+        "order.deleted": "orders",
+        "product.deleted": "products",
+        "customer.deleted": "customers",
+    }
     _ENTITY_SPECS = (
         ("orders", ConnectorCapability.ORDERS, "sync_orders"),
         ("customers", ConnectorCapability.CUSTOMERS, "sync_customers"),
@@ -127,6 +139,8 @@ class CommerceSyncService:
         "source_provider",
         "source_connection_id",
         "source_store",
+        "source_order_id",
+        "source_line_item_id",
         "shopify_order_gid",
         "shopify_line_item_gid",
         "order_id",
@@ -387,6 +401,131 @@ class CommerceSyncService:
             should_process=True,
         )
 
+    async def accept_woocommerce_webhook(
+        self,
+        *,
+        connection_id: UUID,
+        headers: Mapping[str, str],
+        body: bytes,
+    ) -> CommerceWebhookAcceptance:
+        normalized_headers = {
+            str(key).lower(): str(value) for key, value in headers.items()
+        }
+        delivery_id = self._required_header(
+            normalized_headers,
+            "x-wc-webhook-delivery-id",
+            provider="WooCommerce",
+        )
+        topic = self._required_header(
+            normalized_headers,
+            "x-wc-webhook-topic",
+            provider="WooCommerce",
+        )
+        if len(delivery_id) > 255 or len(topic) > 120:
+            raise CommerceSyncDataError("WooCommerce webhook metadata is invalid")
+        connection = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.id == connection_id,
+                CommerceConnection.provider == "woocommerce",
+                CommerceConnection.status
+                != CommerceConnectionStatus.DISCONNECTED.value,
+            )
+        )
+        if connection is None:
+            return CommerceWebhookAcceptance(
+                receipt_id=None,
+                connection_id=None,
+                tenant_id=None,
+                topic=topic,
+                duplicate=False,
+                should_process=False,
+            )
+        tenant = TenantContext(company_id=connection.company_id)
+        context = await self._connections.sync_context(tenant, connection.id)
+        connector = self._registry.get("woocommerce")
+        payload = await connector.handle_webhook(
+            tenant_id=tenant.company_id,
+            headers=normalized_headers,
+            body=body,
+            credentials=context.credentials,
+        )
+        payload_hash = hashlib.sha256(body).hexdigest()
+        source_record_id = self._woocommerce_deleted_record_id(topic, payload)
+        existing = self._db.scalar(
+            select(CommerceWebhookReceipt).where(
+                CommerceWebhookReceipt.provider == "woocommerce",
+                CommerceWebhookReceipt.webhook_id == delivery_id,
+            )
+        )
+        if existing is not None:
+            if existing.payload_hash != payload_hash:
+                raise CommerceSyncDataError(
+                    "WooCommerce webhook identifier was reused"
+                )
+            return CommerceWebhookAcceptance(
+                receipt_id=existing.id,
+                connection_id=existing.connection_id,
+                tenant_id=existing.company_id,
+                topic=existing.topic,
+                duplicate=True,
+                should_process=existing.status == "ERROR",
+            )
+        receipt = CommerceWebhookReceipt(
+            company_id=connection.company_id,
+            connection_id=connection.id,
+            provider="woocommerce",
+            webhook_id=delivery_id,
+            topic=topic,
+            payload_hash=payload_hash,
+            source_record_id=source_record_id,
+        )
+        self._db.add(receipt)
+        try:
+            self._db.commit()
+        except IntegrityError:
+            self._db.rollback()
+            existing = self._db.scalar(
+                select(CommerceWebhookReceipt).where(
+                    CommerceWebhookReceipt.provider == "woocommerce",
+                    CommerceWebhookReceipt.webhook_id == delivery_id,
+                )
+            )
+            if existing is None or existing.payload_hash != payload_hash:
+                raise CommerceSyncDataError(
+                    "WooCommerce webhook could not be recorded"
+                )
+            return CommerceWebhookAcceptance(
+                receipt_id=existing.id,
+                connection_id=existing.connection_id,
+                tenant_id=existing.company_id,
+                topic=existing.topic,
+                duplicate=True,
+                should_process=existing.status == "ERROR",
+            )
+        return CommerceWebhookAcceptance(
+            receipt_id=receipt.id,
+            connection_id=connection.id,
+            tenant_id=connection.company_id,
+            topic=topic,
+            duplicate=False,
+            should_process=True,
+        )
+
+    @classmethod
+    def _woocommerce_deleted_record_id(
+        cls,
+        topic: str,
+        payload: Mapping[str, Any],
+    ) -> str | None:
+        if topic.strip().lower() not in cls._WOOCOMMERCE_DELETION_RESOURCES:
+            return None
+        value = str(payload.get("id") or "").strip()
+        if not value or len(value) > 255:
+            raise CommerceSyncDataError(
+                "WooCommerce deletion webhook resource is invalid"
+            )
+        return value
+
     @classmethod
     def _shopify_deleted_record_id(
         cls,
@@ -419,16 +558,20 @@ class CommerceSyncService:
                 CommerceWebhookReceipt.source_record_id.is_not(None),
             )
         ).all()
-        targets = {
-            (resource[0], str(receipt.source_record_id))
-            for receipt in receipts
-            if (
-                resource := self._SHOPIFY_DELETION_RESOURCES.get(
+        targets: set[tuple[str, str]] = set()
+        for receipt in receipts:
+            if receipt.provider == "shopify":
+                resource = self._SHOPIFY_DELETION_RESOURCES.get(
                     receipt.topic.strip().lower()
                 )
-            )
-            is not None
-        }
+                if resource is not None:
+                    targets.add((resource[0], str(receipt.source_record_id)))
+            elif receipt.provider == "woocommerce":
+                entity_type = self._WOOCOMMERCE_DELETION_RESOURCES.get(
+                    receipt.topic.strip().lower()
+                )
+                if entity_type is not None:
+                    targets.add((entity_type, str(receipt.source_record_id)))
         if not targets:
             return 0
         records = self._db.scalars(
@@ -502,7 +645,7 @@ class CommerceSyncService:
                     f"Provider returned {entity_type} data without an id"
                 )
             normalized_by_id[source_record_id] = (
-                self._normalize_shopify(entity_type, raw_record),
+                self._normalize_provider(connection.provider, entity_type, raw_record),
                 self._source_updated_at(raw_record),
             )
         if not normalized_by_id:
@@ -572,7 +715,7 @@ class CommerceSyncService:
         return self._ingestion.upload(
             tenant,
             "retail",
-            f"shopify-{connection.id}-retail.csv",
+            f"{connection.provider}-{connection.id}-retail.csv",
             content,
         )
 
@@ -643,11 +786,20 @@ class CommerceSyncService:
         refunded_amounts: dict[tuple[str, str], Decimal] = {}
         priced_refunds: set[tuple[str, str]] = set()
         for refund in data_by_entity.get("refunds", []):
-            order_id = str(refund.get("shopify_order_gid") or "")
+            order_id = str(
+                refund.get("source_order_id")
+                or refund.get("shopify_order_gid")
+                or ""
+            )
             for line in refund.get("line_items") or ():
-                if not isinstance(line, dict) or not line.get("shopify_line_item_gid"):
+                if not isinstance(line, dict):
                     continue
-                key = (order_id, str(line["shopify_line_item_gid"]))
+                line_id = line.get("source_line_item_id") or line.get(
+                    "shopify_line_item_gid"
+                )
+                if not line_id:
+                    continue
+                key = (order_id, str(line_id))
                 refunded_quantities[key] = refunded_quantities.get(key, 0) + self._integer(
                     line.get("quantity")
                 )
@@ -682,8 +834,16 @@ class CommerceSyncService:
                 ) or {}
                 quantity = self._integer(line.get("quantity"))
                 refund_key = (
-                    str(order.get("shopify_order_gid") or ""),
-                    str(line.get("shopify_line_item_gid") or ""),
+                    str(
+                        order.get("source_order_id")
+                        or order.get("shopify_order_gid")
+                        or ""
+                    ),
+                    str(
+                        line.get("source_line_item_id")
+                        or line.get("shopify_line_item_gid")
+                        or ""
+                    ),
                 )
                 refunded = refunded_quantities.get(refund_key, 0)
                 product_id = (
@@ -710,6 +870,8 @@ class CommerceSyncService:
                         "source_provider": connection.provider,
                         "source_connection_id": str(connection.id),
                         "source_store": connection.external_account_id,
+                        "source_order_id": order.get("source_order_id") or "",
+                        "source_line_item_id": line.get("source_line_item_id") or "",
                         "shopify_order_gid": order.get("shopify_order_gid") or "",
                         "shopify_line_item_gid": line.get("shopify_line_item_gid") or "",
                         "order_id": order.get("order_id") or "",
@@ -785,7 +947,9 @@ class CommerceSyncService:
                         or "",
                         "product_name": product.get("product_name") or "",
                         "product_category": product.get("product_category") or "",
-                        "unit_price": variant.get("unit_price") or "",
+                        "unit_price": variant.get("unit_price")
+                        or product.get("unit_price")
+                        or "",
                         "inventory_level": stock.get("inventory_level")
                         if stock
                         else variant.get("inventory_level", ""),
@@ -795,6 +959,18 @@ class CommerceSyncService:
                     }
                 )
         return rows
+
+    def _normalize_provider(
+        self,
+        provider: str,
+        entity_type: str,
+        record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if provider == "shopify":
+            return self._normalize_shopify(entity_type, record)
+        if provider == "woocommerce":
+            return self._normalize_woocommerce(entity_type, record)
+        raise CommerceSyncDataError(f"Unsupported commerce provider '{provider}'")
 
     def _normalize_shopify(
         self,
@@ -812,6 +988,199 @@ class CommerceSyncService:
         if normalizer is None:
             raise CommerceSyncDataError(f"Unsupported Shopify entity '{entity_type}'")
         return normalizer(record)
+
+    def _normalize_woocommerce(
+        self,
+        entity_type: str,
+        record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalizers = {
+            "orders": self._normalize_woocommerce_order,
+            "customers": self._normalize_woocommerce_customer,
+            "products": self._normalize_woocommerce_product,
+            "inventory": self._normalize_woocommerce_inventory,
+            "refunds": self._normalize_woocommerce_refund,
+        }
+        normalizer = normalizers.get(entity_type)
+        if normalizer is None:
+            raise CommerceSyncDataError(
+                f"Unsupported WooCommerce entity '{entity_type}'"
+            )
+        return normalizer(record)
+
+    def _normalize_woocommerce_order(
+        self, record: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        billing = self._mapping(record.get("billing"))
+        shipping = self._mapping(record.get("shipping"))
+        lines: list[dict[str, Any]] = []
+        for raw_line in record.get("line_items") or ():
+            if not isinstance(raw_line, Mapping):
+                continue
+            subtotal = self._decimal(raw_line.get("subtotal"))
+            total = self._decimal(raw_line.get("total"))
+            lines.append(
+                {
+                    "source_line_item_id": self._text(raw_line.get("id")),
+                    "product_id": self._text(raw_line.get("product_id")),
+                    "variant_id": self._text(raw_line.get("variation_id")),
+                    "sku": self._text(raw_line.get("sku")),
+                    "product_name": self._text(raw_line.get("name")),
+                    "product_category": "",
+                    "quantity": self._integer(raw_line.get("quantity")),
+                    "unit_price": self._decimal_text(
+                        self._decimal(raw_line.get("price"))
+                    ),
+                    "line_total": self._decimal_text(total),
+                    "discount_amount": self._decimal_text(max(subtotal - total, Decimal("0"))),
+                    "inventory_level": "",
+                }
+            )
+        customer_id = self._integer(record.get("customer_id"))
+        return {
+            "source_order_id": self._text(record.get("id")),
+            "order_id": self._text(record.get("number") or record.get("id")),
+            "order_timestamp": self._text(
+                record.get("date_created_gmt") or record.get("date_created")
+            ),
+            "updated_at": self._text(
+                record.get("date_modified_gmt") or record.get("date_modified")
+            ),
+            "customer_id": str(customer_id) if customer_id > 0 else "",
+            "customer_email": self._text(billing.get("email")),
+            "customer_country": self._text(
+                shipping.get("country") or billing.get("country")
+            ),
+            "currency": self._text(record.get("currency")),
+            "subtotal_amount": self._decimal_text(
+                self._decimal(record.get("total"))
+                - self._decimal(record.get("total_tax"))
+            ),
+            "total_amount": self._decimal_text(self._decimal(record.get("total"))),
+            "tax_amount": self._decimal_text(
+                self._decimal(record.get("total_tax"))
+            ),
+            "discount_amount": self._decimal_text(
+                self._decimal(record.get("discount_total"))
+            ),
+            "fulfillment_status": self._text(record.get("status")),
+            "sales_channel": self._text(record.get("created_via") or "woocommerce"),
+            "line_items": lines,
+        }
+
+    def _normalize_woocommerce_customer(
+        self, record: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        billing = self._mapping(record.get("billing"))
+        return {
+            "customer_id": self._text(record.get("id")),
+            "email": self._text(record.get("email") or billing.get("email")),
+            "first_name": self._text(record.get("first_name")),
+            "last_name": self._text(record.get("last_name")),
+            "country": self._text(billing.get("country")),
+            "orders_count": self._integer(record.get("orders_count")),
+            "lifetime_value": self._decimal_text(
+                self._decimal(record.get("total_spent"))
+            ),
+            "created_at": self._text(
+                record.get("date_created_gmt") or record.get("date_created")
+            ),
+            "updated_at": self._text(
+                record.get("date_modified_gmt") or record.get("date_modified")
+            ),
+        }
+
+    def _normalize_woocommerce_product(
+        self, record: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        categories = [
+            self._text(item.get("name"))
+            for item in record.get("categories") or ()
+            if isinstance(item, Mapping) and item.get("name")
+        ]
+        variations = []
+        for variation in record.get("avenqo_variations") or ():
+            if not isinstance(variation, Mapping):
+                continue
+            variations.append(
+                {
+                    "variant_id": self._text(variation.get("id")),
+                    "sku": self._text(variation.get("sku")),
+                    "variant_name": self._woocommerce_attributes(variation),
+                    "unit_price": self._decimal_text(
+                        self._decimal(variation.get("price"))
+                    ),
+                    "inventory_level": variation.get("stock_quantity", ""),
+                    "inventory_item_id": self._text(variation.get("id")),
+                    "updated_at": self._text(
+                        variation.get("date_modified_gmt")
+                        or variation.get("date_modified")
+                    ),
+                }
+            )
+        return {
+            "product_id": self._text(record.get("id")),
+            "product_name": self._text(record.get("name")),
+            "product_category": ", ".join(categories),
+            "vendor": "",
+            "unit_price": self._decimal_text(self._decimal(record.get("price"))),
+            "created_at": self._text(
+                record.get("date_created_gmt") or record.get("date_created")
+            ),
+            "updated_at": self._text(
+                record.get("date_modified_gmt") or record.get("date_modified")
+            ),
+            "variants": variations,
+        }
+
+    def _normalize_woocommerce_inventory(
+        self, record: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        return {
+            "inventory_item_id": self._text(record.get("inventory_item_id")),
+            "product_id": self._text(record.get("product_id")),
+            "sku": self._text(record.get("sku")),
+            "inventory_level": self._integer(record.get("stock_quantity")),
+            "updated_at": self._text(record.get("updated_at")),
+            "locations": [],
+        }
+
+    def _normalize_woocommerce_refund(
+        self, record: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        return {
+            "refund_id": self._text(record.get("id")),
+            "source_order_id": self._text(record.get("avenqo_order_id")),
+            "refund_timestamp": self._text(
+                record.get("date_created_gmt") or record.get("date_created")
+            ),
+            "updated_at": self._text(
+                record.get("date_created_gmt") or record.get("date_created")
+            ),
+            "refund_amount": self._decimal_text(
+                abs(self._decimal(record.get("amount")))
+            ),
+            "currency": "",
+            "line_items": [
+                {
+                    "source_line_item_id": self._text(item.get("id")),
+                    "quantity": abs(self._integer(item.get("quantity"))),
+                    "refund_amount": self._decimal_text(
+                        abs(self._decimal(item.get("refund_total")))
+                    ),
+                }
+                for item in record.get("line_items") or ()
+                if isinstance(item, Mapping)
+            ],
+        }
+
+    @classmethod
+    def _woocommerce_attributes(cls, record: Mapping[str, Any]) -> str:
+        return " / ".join(
+            cls._text(item.get("option"))
+            for item in record.get("attributes") or ()
+            if isinstance(item, Mapping) and item.get("option")
+        )
 
     def _normalize_order(self, record: Mapping[str, Any]) -> dict[str, Any]:
         customer = self._mapping(record.get("customer"))
@@ -1032,6 +1401,11 @@ class CommerceSyncService:
             record.get("updatedAt")
             or record.get("processedAt")
             or record.get("createdAt")
+            or record.get("date_modified_gmt")
+            or record.get("date_modified")
+            or record.get("date_created_gmt")
+            or record.get("date_created")
+            or record.get("updated_at")
         )
 
     @staticmethod
@@ -1067,10 +1441,15 @@ class CommerceSyncService:
             return None
 
     @staticmethod
-    def _required_header(headers: Mapping[str, str], name: str) -> str:
+    def _required_header(
+        headers: Mapping[str, str],
+        name: str,
+        *,
+        provider: str = "Shopify",
+    ) -> str:
         value = headers.get(name, "").strip()
         if not value:
-            raise CommerceSyncDataError(f"Missing Shopify webhook header '{name}'")
+            raise CommerceSyncDataError(f"Missing {provider} webhook header '{name}'")
         return value
 
     @classmethod
@@ -1100,9 +1479,19 @@ class CommerceSyncService:
             return "storage_unavailable"
         if isinstance(exc, ShopifyAuthenticationError):
             return "reauthorization_required"
+        if isinstance(exc, WooCommerceAuthenticationError):
+            return "reauthorization_required"
+        if isinstance(exc, WooCommercePermissionError):
+            return "insufficient_permissions"
+        if isinstance(exc, WooCommerceRateLimitError):
+            return "rate_limited"
         if isinstance(exc, ShopifyTemporaryError):
             return "provider_temporarily_unavailable"
+        if isinstance(exc, WooCommerceTemporaryError):
+            return "provider_temporarily_unavailable"
         if isinstance(exc, ShopifyConnectorError):
+            return "provider_error"
+        if isinstance(exc, WooCommerceConnectorError):
             return "provider_error"
         if isinstance(exc, CommerceSyncDataError):
             return "provider_data_invalid"

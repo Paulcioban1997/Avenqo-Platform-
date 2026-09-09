@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.config.settings import get_settings
 from backend.app.connectors.shopify import ShopifyConnector
+from backend.app.connectors.woocommerce import WooCommerceConnector
 from backend.app.database import get_db
 from backend.app.database.session import get_session_factory
 from backend.app.dependencies.datasets import get_company_dataset_ingestion_service
@@ -41,6 +42,22 @@ def get_commerce_connector_registry() -> CommerceConnectorRegistry:
                 api_version=settings.shopify_api_version,
                 scopes=settings.shopify_scopes,
                 webhook_uri=settings.shopify_webhook_uri,
+            )
+        )
+    if settings.woocommerce_connector_configured:
+        registry.register(
+            WooCommerceConnector(
+                callback_uri=settings.woocommerce_callback_uri or "",
+                return_uri=(
+                    f"{settings.frontend_url.rstrip('/')}/connections"
+                    "?connector=woocommerce&status=authorizing"
+                ),
+                webhook_uri=settings.woocommerce_webhook_uri or "",
+                app_name=settings.woocommerce_app_name,
+                allow_insecure_localhost=(
+                    settings.woocommerce_allow_insecure_localhost
+                    and settings.environment.lower() in {"development", "dev", "test"}
+                ),
             )
         )
     return registry

@@ -7,12 +7,19 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
-from uuid import UUID
+from urllib.parse import urlsplit
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.connectors.shopify import ShopifyConnector, ShopifyConnectorError
+from backend.app.connectors.woocommerce import (
+    WooCommerceAuthenticationError,
+    WooCommerceConnector,
+    WooCommerceConnectorError,
+    WooCommercePermissionError,
+)
 from backend.app.core.security import hash_token
 from backend.app.models import (
     CommerceConnection,
@@ -100,6 +107,120 @@ class CommerceConnectionService:
             state=raw_state,
             expires_at=expires_at,
         )
+
+    def begin_woocommerce_authorization(
+        self,
+        tenant: TenantContext,
+        *,
+        actor_user_id: UUID,
+        store_url: str,
+    ) -> CommerceAuthorizationStart:
+        connector = self._woocommerce()
+        normalized_store = connector.normalize_store_url(store_url)
+        self._assert_store_tenant(tenant, "woocommerce", normalized_store)
+        raw_state = secrets.token_urlsafe(48)
+        expires_at = self._now() + self._STATE_TTL
+        oauth_state = CommerceOAuthState(
+            company_id=tenant.company_id,
+            actor_user_id=actor_user_id,
+            provider="woocommerce",
+            external_account_id=normalized_store,
+            state_hash=hash_token(raw_state),
+            expires_at=expires_at,
+        )
+        connection = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == "woocommerce",
+                CommerceConnection.external_account_id == normalized_store,
+                CommerceConnection.company_id == tenant.company_id,
+            )
+        )
+        if connection is None:
+            connection = CommerceConnection(
+                company_id=tenant.company_id,
+                provider="woocommerce",
+                external_account_id=normalized_store,
+                display_name=self._store_display_name(normalized_store),
+                status=CommerceConnectionStatus.AUTHORIZING.value,
+            )
+            self._db.add(connection)
+        else:
+            connection.status = CommerceConnectionStatus.AUTHORIZING.value
+            connection.error_category = None
+            connection.disconnected_at = None
+        self._db.add(oauth_state)
+        self._db.commit()
+        self._audit.record(
+            actor_user_id=actor_user_id,
+            action="connector.connection_created",
+            target_type="CommerceOAuthState",
+            target_id=str(oauth_state.id),
+            company_id=tenant.company_id,
+            metadata={"provider": "woocommerce"},
+        )
+        return CommerceAuthorizationStart(
+            authorization_url=connector.authenticate(
+                tenant_id=tenant.company_id,
+                configuration={"store_url": normalized_store, "state": raw_state},
+            ),
+            state=raw_state,
+            expires_at=expires_at,
+        )
+
+    async def complete_woocommerce_authorization(
+        self,
+        *,
+        raw_state: str,
+        callback_payload: Mapping[str, str],
+    ) -> CommerceConnection:
+        oauth_state = self._consume_woocommerce_state(raw_state, callback_payload)
+        connector = self._woocommerce()
+        try:
+            returned = await connector.handle_oauth_callback(
+                tenant_id=oauth_state.company_id,
+                callback_parameters=callback_payload,
+            )
+            return await self._authorize_woocommerce_credentials(
+                TenantContext(company_id=oauth_state.company_id),
+                actor_user_id=oauth_state.actor_user_id,
+                store_url=oauth_state.external_account_id,
+                consumer_key=str(returned["consumer_key"]),
+                consumer_secret=str(returned["consumer_secret"]),
+            )
+        except WooCommerceConnectorError as exc:
+            self._mark_woocommerce_authorization_failed(
+                oauth_state.company_id,
+                oauth_state.external_account_id,
+                exc,
+            )
+            raise CommerceAuthorizationError(self._woocommerce_auth_message(exc)) from exc
+
+    async def connect_woocommerce_manual(
+        self,
+        tenant: TenantContext,
+        *,
+        actor_user_id: UUID,
+        store_url: str,
+        consumer_key: str,
+        consumer_secret: str,
+    ) -> CommerceConnection:
+        connector = self._woocommerce()
+        normalized_store = connector.normalize_store_url(store_url)
+        if not consumer_key.strip().startswith("ck_") or not consumer_secret.strip().startswith(
+            "cs_"
+        ):
+            raise CommerceAuthorizationError("Invalid WooCommerce credentials")
+        self._assert_store_tenant(tenant, "woocommerce", normalized_store)
+        try:
+            return await self._authorize_woocommerce_credentials(
+                tenant,
+                actor_user_id=actor_user_id,
+                store_url=normalized_store,
+                consumer_key=consumer_key.strip(),
+                consumer_secret=consumer_secret.strip(),
+            )
+        except WooCommerceConnectorError as exc:
+            raise CommerceAuthorizationError(self._woocommerce_auth_message(exc)) from exc
 
     async def complete_shopify_oauth(
         self,
@@ -244,6 +365,21 @@ class CommerceConnectionService:
         self._db.commit()
         return connection
 
+    def mark_setup_degraded(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        error_category: str,
+    ) -> CommerceConnection:
+        connection = self.get_connection(tenant, connection_id)
+        connection.status = CommerceConnectionStatus.DEGRADED.value
+        connection.error_category = error_category
+        connection.current_entity = None
+        connection.sync_started_at = None
+        self._db.commit()
+        return connection
+
     async def sync_context(
         self, tenant: TenantContext, connection_id: UUID
     ) -> ConnectorSyncContext:
@@ -254,8 +390,18 @@ class CommerceConnectionService:
         ):
             raise CommerceConnectionError("Commerce connection is disconnected")
         credentials = self._cipher.decrypt(connection.encrypted_credentials)
+        if connection.provider == "woocommerce":
+            if not credentials.get("consumer_key") or not credentials.get(
+                "consumer_secret"
+            ):
+                raise CommerceAuthorizationError(
+                    "WooCommerce reauthorization is required"
+                )
+            return self._context(connection, credentials)
         access_token = str(credentials.get("access_token") or "")
         refresh_token = str(credentials.get("refresh_token") or "")
+        if connection.provider != "shopify":
+            raise CommerceConnectionError("Commerce connector is not configured")
         if not access_token:
             raise CommerceConnectionError("Commerce connection credentials are missing")
         if (
@@ -300,8 +446,10 @@ class CommerceConnectionService:
         if connection.encrypted_credentials:
             credentials = self._cipher.decrypt(connection.encrypted_credentials)
             try:
-                await self._shopify().disconnect(self._context(connection, credentials))
-            except ShopifyConnectorError:
+                await self._registry.get(connection.provider).disconnect(
+                    self._context(connection, credentials)
+                )
+            except (ShopifyConnectorError, WooCommerceConnectorError):
                 logger.warning(
                     "Provider disconnect failed company=%s provider=%s connection=%s",
                     connection.company_id,
@@ -329,6 +477,159 @@ class CommerceConnectionService:
             raise CommerceConnectionError("Shopify connector is not configured")
         return connector
 
+    def _woocommerce(self) -> WooCommerceConnector:
+        connector = self._registry.get("woocommerce")
+        if not isinstance(connector, WooCommerceConnector):
+            raise CommerceConnectionError("WooCommerce connector is not configured")
+        return connector
+
+    async def _authorize_woocommerce_credentials(
+        self,
+        tenant: TenantContext,
+        *,
+        actor_user_id: UUID,
+        store_url: str,
+        consumer_key: str,
+        consumer_secret: str,
+    ) -> CommerceConnection:
+        connector = self._woocommerce()
+        self._assert_store_tenant(tenant, "woocommerce", store_url)
+        credentials = {
+            "consumer_key": consumer_key,
+            "consumer_secret": consumer_secret,
+            "webhook_secret": secrets.token_urlsafe(48),
+        }
+        existing = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == "woocommerce",
+                CommerceConnection.external_account_id == store_url,
+                CommerceConnection.company_id == tenant.company_id,
+            )
+        )
+        connection_id = existing.id if existing is not None else uuid4()
+        context = ConnectorSyncContext(
+            tenant_id=tenant.company_id,
+            connection_id=connection_id,
+            access_token="",
+            external_account_id=store_url,
+            credentials=credentials,
+        )
+        if not await connector.test_connection(context):
+            raise WooCommerceAuthenticationError(
+                "WooCommerce connection validation failed"
+            )
+        connection = existing or CommerceConnection(
+            id=connection_id,
+            company_id=tenant.company_id,
+            provider="woocommerce",
+            external_account_id=store_url,
+        )
+        if existing is None:
+            self._db.add(connection)
+        connection.display_name = self._store_display_name(store_url)
+        connection.encrypted_credentials = self._cipher.encrypt(credentials)
+        connection.granted_scopes = ["read_write"]
+        connection.capabilities = sorted(
+            capability.value for capability in connector.definition.capabilities
+        )
+        connection.status = CommerceConnectionStatus.CONNECTING.value
+        connection.error_category = None
+        connection.disconnected_at = None
+        connection.access_token_expires_at = None
+        connection.refresh_token_expires_at = None
+        self._db.commit()
+        self._audit.record(
+            actor_user_id=actor_user_id,
+            action="connector.connection_authorized",
+            target_type="CommerceConnection",
+            target_id=str(connection.id),
+            company_id=tenant.company_id,
+            metadata={"provider": "woocommerce", "status": connection.status},
+        )
+        return connection
+
+    def _consume_woocommerce_state(
+        self,
+        raw_state: str,
+        callback_payload: Mapping[str, str],
+    ) -> CommerceOAuthState:
+        oauth_state = self._db.scalar(
+            select(CommerceOAuthState).where(
+                CommerceOAuthState.provider == "woocommerce",
+                CommerceOAuthState.state_hash == hash_token(raw_state),
+                CommerceOAuthState.consumed_at.is_(None),
+            )
+        )
+        now = self._now()
+        returned_state = str(callback_payload.get("user_id") or "")
+        if (
+            oauth_state is None
+            or not raw_state
+            or not secrets.compare_digest(returned_state, raw_state)
+            or self._as_utc(oauth_state.expires_at) <= now
+        ):
+            raise CommerceAuthorizationError("Authorization state is invalid or expired")
+        oauth_state.consumed_at = now
+        self._db.commit()
+        return oauth_state
+
+    def _assert_store_tenant(
+        self,
+        tenant: TenantContext,
+        provider: str,
+        external_account_id: str,
+    ) -> None:
+        connection = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == provider,
+                CommerceConnection.external_account_id == external_account_id,
+            )
+        )
+        if connection is not None and connection.company_id != tenant.company_id:
+            raise CommerceAuthorizationError(
+                "This WooCommerce store already belongs to another tenant"
+            )
+
+    def _mark_woocommerce_authorization_failed(
+        self,
+        company_id: UUID,
+        store_url: str,
+        error: WooCommerceConnectorError,
+    ) -> None:
+        connection = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == "woocommerce",
+                CommerceConnection.external_account_id == store_url,
+                CommerceConnection.company_id == company_id,
+            )
+        )
+        if connection is None:
+            return
+        connection.status = (
+            CommerceConnectionStatus.REAUTH_REQUIRED.value
+            if isinstance(error, WooCommerceAuthenticationError)
+            else CommerceConnectionStatus.FAILED.value
+        )
+        connection.error_category = (
+            "insufficient_permissions"
+            if isinstance(error, WooCommercePermissionError)
+            else "authorization_failed"
+        )
+        self._db.commit()
+
+    @staticmethod
+    def _woocommerce_auth_message(error: WooCommerceConnectorError) -> str:
+        if isinstance(error, WooCommercePermissionError):
+            return "WooCommerce permissions are insufficient"
+        if isinstance(error, WooCommerceAuthenticationError):
+            return "WooCommerce authentication was rejected"
+        return "WooCommerce connection validation failed"
+
+    @staticmethod
+    def _store_display_name(store_url: str) -> str:
+        parsed = urlsplit(store_url)
+        return f"{parsed.hostname or ''}{parsed.path.rstrip('/')}"
+
     @staticmethod
     def _context(
         connection: CommerceConnection,
@@ -339,6 +640,7 @@ class CommerceConnectionService:
             connection_id=connection.id,
             access_token=str(credentials.get("access_token") or ""),
             external_account_id=connection.external_account_id,
+            credentials=dict(credentials),
         )
 
     @staticmethod

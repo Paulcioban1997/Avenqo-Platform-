@@ -59,7 +59,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   List<Map<String, dynamic>> _connectorCatalog = [];
   List<Map<String, dynamic>> _commerceConnections = [];
   bool _connectorCatalogUnavailable = false;
-  bool _authorizingShopify = false;
+  String? _authorizingProvider;
   final Set<String> _busyConnectionIds = <String>{};
   String? _errorMessage;
   String? _duplicateNotice;
@@ -242,7 +242,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       ),
     );
     if (shop == null || shop.isEmpty || !mounted) return;
-    setState(() => _authorizingShopify = true);
+    setState(() => _authorizingProvider = 'shopify');
     try {
       final response =
           await widget.api.post(
@@ -263,7 +263,146 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     } on Object {
       _showConnectorError(_connectorText('launchFailed'));
     } finally {
-      if (mounted) setState(() => _authorizingShopify = false);
+      if (mounted) setState(() => _authorizingProvider = null);
+    }
+  }
+
+  void _connectProvider(String provider) {
+    if (provider == 'shopify') {
+      _connectShopify();
+    } else if (provider == 'woocommerce') {
+      _connectWooCommerce();
+    }
+  }
+
+  Future<void> _connectWooCommerce() async {
+    var storeUrl = '';
+    var consumerKey = '';
+    var consumerSecret = '';
+    var manual = false;
+    final request = await showDialog<_WooCommerceConnectionRequest>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_connectorText('wooTitle')),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    key: const ValueKey('woocommerce-store-url'),
+                    autofocus: true,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: _connectorText('wooStoreUrl'),
+                      hintText: _connectorText('wooStoreUrlHint'),
+                    ),
+                    onChanged: (value) => storeUrl = value.trim(),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_connectorText('wooManualMode')),
+                    subtitle: Text(_connectorText('wooManualDescription')),
+                    value: manual,
+                    onChanged: (value) =>
+                        setDialogState(() => manual = value),
+                  ),
+                  if (manual) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const ValueKey('woocommerce-consumer-key'),
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _connectorText('wooConsumerKey'),
+                      ),
+                      onChanged: (value) => consumerKey = value.trim(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const ValueKey('woocommerce-consumer-secret'),
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _connectorText('wooConsumerSecret'),
+                      ),
+                      onChanged: (value) => consumerSecret = value.trim(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_connectorText('cancel')),
+            ),
+            FilledButton.icon(
+              key: const ValueKey('authorize-woocommerce'),
+              onPressed: () => Navigator.of(dialogContext).pop(
+                _WooCommerceConnectionRequest(
+                  storeUrl: storeUrl,
+                  consumerKey: manual ? consumerKey : null,
+                  consumerSecret: manual ? consumerSecret : null,
+                ),
+              ),
+              icon: Icon(manual ? Icons.key : Icons.open_in_new, size: 18),
+              label: Text(
+                _connectorText(manual ? 'wooConnectManual' : 'wooAuthorize'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (request == null || request.storeUrl.isEmpty || !mounted) return;
+    if (request.isManual &&
+        ((request.consumerKey?.isEmpty ?? true) ||
+            (request.consumerSecret?.isEmpty ?? true))) {
+      _showConnectorError(_connectorText('wooCredentialsRequired'));
+      return;
+    }
+    setState(() => _authorizingProvider = 'woocommerce');
+    try {
+      if (request.isManual) {
+        await widget.api.post(
+          '/connectors/woocommerce/manual',
+          body: {
+            'store_url': request.storeUrl,
+            'consumer_key': request.consumerKey,
+            'consumer_secret': request.consumerSecret,
+          },
+        );
+        await _refreshConnectorData();
+      } else {
+        final response =
+            await widget.api.post(
+                  '/connectors/woocommerce/authorize',
+                  body: {'store_url': request.storeUrl},
+                )
+                as Map<String, dynamic>;
+        final authorizationUrl = Uri.tryParse(
+          response['authorization_url']?.toString() ?? '',
+        );
+        if (authorizationUrl == null ||
+            !authorizationUrl.hasScheme ||
+            !await widget.openConnectorUrl(authorizationUrl)) {
+          throw ApiException(_connectorText('wooLaunchFailed'));
+        }
+      }
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } on Object {
+      _showConnectorError(_connectorText('wooLaunchFailed'));
+    } finally {
+      if (mounted) setState(() => _authorizingProvider = null);
     }
   }
 
@@ -521,9 +660,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 connectorCatalog: _connectorCatalog,
                 commerceConnections: _commerceConnections,
                 busyConnectionIds: _busyConnectionIds,
-                authorizingShopify: _authorizingShopify,
+                authorizingProvider: _authorizingProvider,
                 connectorCatalogUnavailable: _connectorCatalogUnavailable,
-                onConnectShopify: _connectShopify,
+                onConnect: _connectProvider,
                 onSyncConnection: _syncConnection,
                 onDisconnectConnection: _disconnectConnection,
                 onRefreshConnectors: _refreshConnectorData,
@@ -647,6 +786,20 @@ class _ConnectorData {
   final bool unavailable;
 }
 
+class _WooCommerceConnectionRequest {
+  const _WooCommerceConnectionRequest({
+    required this.storeUrl,
+    this.consumerKey,
+    this.consumerSecret,
+  });
+
+  final String storeUrl;
+  final String? consumerKey;
+  final String? consumerSecret;
+
+  bool get isManual => consumerKey != null || consumerSecret != null;
+}
+
 List<Map<String, dynamic>> _mapsFrom(dynamic value) {
   if (value is! List) return [];
   return value
@@ -663,9 +816,9 @@ class _ConnectedDataView extends StatelessWidget {
     required this.connectorCatalog,
     required this.commerceConnections,
     required this.busyConnectionIds,
-    required this.authorizingShopify,
+    required this.authorizingProvider,
     required this.connectorCatalogUnavailable,
-    required this.onConnectShopify,
+    required this.onConnect,
     required this.onSyncConnection,
     required this.onDisconnectConnection,
     required this.onRefreshConnectors,
@@ -683,9 +836,9 @@ class _ConnectedDataView extends StatelessWidget {
   final List<Map<String, dynamic>> connectorCatalog;
   final List<Map<String, dynamic>> commerceConnections;
   final Set<String> busyConnectionIds;
-  final bool authorizingShopify;
+  final String? authorizingProvider;
   final bool connectorCatalogUnavailable;
-  final VoidCallback onConnectShopify;
+  final ValueChanged<String> onConnect;
   final Future<void> Function(Map<String, dynamic> connection) onSyncConnection;
   final Future<void> Function(Map<String, dynamic> connection)
   onDisconnectConnection;
@@ -820,9 +973,9 @@ class _ConnectedDataView extends StatelessWidget {
           catalog: connectorCatalog,
           connections: commerceConnections,
           busyConnectionIds: busyConnectionIds,
-          authorizingShopify: authorizingShopify,
+          authorizingProvider: authorizingProvider,
           catalogUnavailable: connectorCatalogUnavailable,
-          onConnectShopify: onConnectShopify,
+          onConnect: onConnect,
           onSync: onSyncConnection,
           onDisconnect: onDisconnectConnection,
           onRefresh: onRefreshConnectors,

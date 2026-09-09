@@ -149,6 +149,19 @@ class Settings(BaseSettings):
         ],
         alias="SHOPIFY_SCOPES",
     )
+    woocommerce_callback_uri: str | None = Field(
+        default=None,
+        alias="WOOCOMMERCE_CALLBACK_URI",
+    )
+    woocommerce_webhook_uri: str | None = Field(
+        default=None,
+        alias="WOOCOMMERCE_WEBHOOK_URI",
+    )
+    woocommerce_app_name: str = Field(default="Avenqo", alias="WOOCOMMERCE_APP_NAME")
+    woocommerce_allow_insecure_localhost: bool = Field(
+        default=False,
+        alias="WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST",
+    )
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
@@ -250,6 +263,7 @@ class Settings(BaseSettings):
         "stripe_price_credit_demo", "stripe_price_credit_professional",
         "stripe_price_credit_professional_6500", "stripe_price_credit_professional_25000",
         "shopify_client_id", "shopify_client_secret", "shopify_redirect_uri",
+        "woocommerce_callback_uri", "woocommerce_webhook_uri",
         mode="before",
     )
     @classmethod
@@ -359,6 +373,14 @@ class Settings(BaseSettings):
             and self.shopify_client_id
             and self.shopify_client_secret
             and self.shopify_redirect_uri
+        )
+
+    @property
+    def woocommerce_connector_configured(self) -> bool:
+        return bool(
+            self.connector_encryption_keys
+            and self.woocommerce_callback_uri
+            and self.woocommerce_webhook_uri
         )
 
     @property

@@ -41,6 +41,7 @@ List<Map<String, dynamic>> _catalog() => [
         3 => 'etsy',
         4 => 'tiktok-shop',
         5 => 'square',
+        29 => 'woocommerce',
         _ => 'provider-$index',
       },
       'display_name': switch (index) {
@@ -50,6 +51,7 @@ List<Map<String, dynamic>> _catalog() => [
         3 => 'Etsy',
         4 => 'TikTok Shop',
         5 => 'Square',
+        29 => 'WooCommerce',
         _ => 'Provider $index',
       },
       'category': switch (index) {
@@ -59,10 +61,11 @@ List<Map<String, dynamic>> _catalog() => [
       },
       'implementation_status': switch (index) {
         0 => 'AVAILABLE',
+        29 => 'BETA',
         >= 1 && <= 5 => 'CONFIGURATION_REQUIRED',
         _ => 'COMING_SOON',
       },
-      'configured': index == 0,
+      'configured': index == 0 || index == 29,
       'priority': index <= 5 ? 'P0' : 'P2',
       'auth_method': index == 5 ? 'OAUTH2' : 'PARTNER_AUTHORIZATION',
       'capabilities': index == 5
@@ -154,7 +157,8 @@ void main() {
 
     expect(find.text('Centre de connecteurs Retail'), findsOneWidget);
     expect(find.text('Shopify'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(24));
+    expect(find.text('Bientôt disponible'), findsNWidgets(23));
+    expect(find.text('Beta'), findsOneWidget);
     expect(find.text('Configuration required'), findsNWidgets(5));
 
     final connectShopify = find.byKey(const ValueKey('connect-shopify'));
@@ -170,6 +174,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(launched?.host, 'shop.myshopify.com');
+  });
+
+  testWidgets('configured WooCommerce beta opens standard authorization', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    Uri? launched;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(_catalog()), 200);
+      }
+      if (request.method == 'GET' &&
+          (request.url.path.endsWith('/connectors/connections') ||
+              request.url.path.endsWith('/datasets'))) {
+        return http.Response('[]', 200);
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/connectors/woocommerce/authorize')) {
+        final payload = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(payload['store_url'], 'https://shop.example.com');
+        return http.Response(
+          '{"authorization_url":"https://shop.example.com/wc-auth/v1/authorize"}',
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    });
+    await tester.pumpWidget(
+      await _app(
+        client,
+        openConnectorUrl: (uri) async {
+          launched = uri;
+          return true;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('connector-search')),
+      'WooCommerce',
+    );
+    await tester.pumpAndSettle();
+
+    final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
+    expect(connectWoo, findsOneWidget);
+    await tester.tap(connectWoo);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('woocommerce-store-url')),
+      'https://shop.example.com',
+    );
+    await tester.tap(find.byKey(const ValueKey('authorize-woocommerce')));
+    await tester.pumpAndSettle();
+
+    expect(launched?.path, '/wc-auth/v1/authorize');
   });
 
   testWidgets('search and metadata filters never enable planned providers', (
@@ -310,7 +369,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(disconnect);
     await tester.pumpAndSettle();
-    expect(find.text('Déconnecter cette boutique Shopify ?'), findsOneWidget);
+    expect(find.text('Déconnecter cette boutique ?'), findsOneWidget);
     await tester.tap(find.widgetWithIcon(FilledButton, Icons.link_off));
     await tester.pumpAndSettle();
 
@@ -375,9 +434,9 @@ void main() {
                 catalog: _catalog().take(2).toList(growable: false),
                 connections: [_connection()],
                 busyConnectionIds: const <String>{},
-                authorizingShopify: false,
+                authorizingProvider: null,
                 catalogUnavailable: false,
-                onConnectShopify: () {},
+                onConnect: (_) {},
                 onSync: (_) async {},
                 onDisconnect: (_) async {},
                 onRefresh: () {},

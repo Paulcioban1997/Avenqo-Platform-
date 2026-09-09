@@ -8,9 +8,9 @@ class ConnectorHub extends StatefulWidget {
     required this.catalog,
     required this.connections,
     required this.busyConnectionIds,
-    required this.authorizingShopify,
+    required this.authorizingProvider,
     required this.catalogUnavailable,
-    required this.onConnectShopify,
+    required this.onConnect,
     required this.onSync,
     required this.onDisconnect,
     required this.onRefresh,
@@ -20,9 +20,9 @@ class ConnectorHub extends StatefulWidget {
   final List<Map<String, dynamic>> catalog;
   final List<Map<String, dynamic>> connections;
   final Set<String> busyConnectionIds;
-  final bool authorizingShopify;
+  final String? authorizingProvider;
   final bool catalogUnavailable;
-  final VoidCallback onConnectShopify;
+  final ValueChanged<String> onConnect;
   final Future<void> Function(Map<String, dynamic> connection) onSync;
   final Future<void> Function(Map<String, dynamic> connection) onDisconnect;
   final VoidCallback onRefresh;
@@ -62,12 +62,6 @@ class _ConnectorHubState extends State<ConnectorHub> {
               true;
         })
         .toList(growable: false);
-    final hasShopifyConnection = widget.connections.any(
-      (connection) =>
-          connection['provider'] == 'shopify' &&
-          connection['status'] != 'DISCONNECTED',
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -212,9 +206,16 @@ class _ConnectorHubState extends State<ConnectorHub> {
                       width: width,
                       child: _ProviderCard(
                         provider: provider,
-                        hasShopifyConnection: hasShopifyConnection,
-                        authorizing: widget.authorizingShopify,
-                        onConnectShopify: widget.onConnectShopify,
+                        hasConnection: widget.connections.any(
+                          (connection) =>
+                              connection['provider'] == provider['provider'] &&
+                              connection['status'] != 'DISCONNECTED',
+                        ),
+                        authorizing:
+                            widget.authorizingProvider == provider['provider'],
+                        onConnect: () => widget.onConnect(
+                          provider['provider']?.toString() ?? '',
+                        ),
                         text: _text,
                       ),
                     ),
@@ -281,16 +282,16 @@ class _ConnectorFilter extends StatelessWidget {
 class _ProviderCard extends StatelessWidget {
   const _ProviderCard({
     required this.provider,
-    required this.hasShopifyConnection,
+    required this.hasConnection,
     required this.authorizing,
-    required this.onConnectShopify,
+    required this.onConnect,
     required this.text,
   });
 
   final Map<String, dynamic> provider;
-  final bool hasShopifyConnection;
+  final bool hasConnection;
   final bool authorizing;
-  final VoidCallback onConnectShopify;
+  final VoidCallback onConnect;
   final String Function(String key) text;
 
   @override
@@ -302,8 +303,11 @@ class _ProviderCard extends StatelessWidget {
     final available = status == 'AVAILABLE';
     final configured = provider['configured'] == true;
     final category = provider['category']?.toString() ?? '';
-    final canConnect = providerId == 'shopify' && available && configured;
-    final accent = available
+    final canConnect = configured &&
+      ((providerId == 'shopify' && available) ||
+        (providerId == 'woocommerce' && status == 'BETA'));
+    final actionable = available || canConnect;
+    final accent = actionable
         ? const Color(0xFF1B9E5A)
         : status == 'CONFIGURATION_REQUIRED'
         ? const Color(0xFFC77A12)
@@ -317,7 +321,7 @@ class _ProviderCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border.all(
-          color: available ? accent.withValues(alpha: 0.5) : colors.line,
+          color: actionable ? accent.withValues(alpha: 0.5) : colors.line,
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -390,12 +394,12 @@ class _ProviderCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-          if (available)
+          if (available || providerId == 'woocommerce')
             Align(
               alignment: AlignmentDirectional.centerEnd,
               child: FilledButton.icon(
-                key: const ValueKey('connect-shopify'),
-                onPressed: canConnect && !authorizing ? onConnectShopify : null,
+                key: ValueKey('connect-$providerId'),
+                onPressed: canConnect && !authorizing ? onConnect : null,
                 icon: authorizing
                     ? const SizedBox(
                         width: 16,
@@ -406,7 +410,7 @@ class _ProviderCard extends StatelessWidget {
                 label: Text(
                   configured
                       ? text(
-                          hasShopifyConnection ? 'connectAnother' : 'connect',
+                          hasConnection ? 'connectAnother' : 'connect',
                         )
                       : text('unavailable'),
                 ),
@@ -447,7 +451,12 @@ class _ConnectionRow extends StatelessWidget {
         connection['connection_status']?.toString().toUpperCase() ??
         (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
     final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
-    final statusColor = status == 'ERROR' || status == 'DEGRADED'
+    final statusColor = {
+      'ERROR',
+      'DEGRADED',
+      'FAILED',
+      'REAUTH_REQUIRED',
+    }.contains(status)
         ? const Color(0xFFD1414B)
         : status == 'DISCONNECTED'
         ? colors.muted
@@ -459,7 +468,7 @@ class _ConnectionRow extends StatelessWidget {
         ? text('neverSynced')
         : '${text('lastSync')} ${lastSync.split('T').first}';
     final french = text('sync') == 'Synchroniser maintenant';
-    final statusLabel = status == 'ERROR'
+    final statusLabel = status == 'ERROR' || status == 'FAILED'
         ? (french ? 'Synchronisation échouée' : 'Synchronization failed')
         : status == 'DEGRADED'
         ? (french ? 'Stockage indisponible' : 'Storage unavailable')
@@ -470,6 +479,8 @@ class _ConnectionRow extends StatelessWidget {
             'CONNECTED' => 'connected',
             'DISCONNECTED' => 'disconnected',
             'CONNECTING' => 'connecting',
+            'AUTHORIZING' => 'authorizing',
+            'REAUTH_REQUIRED' => 'reauthorizationRequired',
             _ => 'error',
           });
     final connectionLabel = connectionStatus == 'DISCONNECTED'
@@ -495,7 +506,7 @@ class _ConnectionRow extends StatelessWidget {
                     Text(
                       connection['display_name']?.toString() ??
                           connection['external_account_id']?.toString() ??
-                          'Shopify',
+                          connection['provider']?.toString() ?? 'Commerce',
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: colors.ink,

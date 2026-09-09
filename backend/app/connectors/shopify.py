@@ -617,6 +617,7 @@ class ShopifyConnector(CommerceConnector):
         tenant_id,
         headers: Mapping[str, str],
         body: bytes,
+        credentials: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         supplied = headers.get("x-shopify-hmac-sha256", "")
         expected = base64.b64encode(

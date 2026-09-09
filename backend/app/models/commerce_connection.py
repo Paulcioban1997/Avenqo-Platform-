@@ -14,12 +14,16 @@ from backend.app.models.base import Base, TimestampMixin
 
 
 class CommerceConnectionStatus(str, Enum):
+    AUTHORIZING = "AUTHORIZING"
     CONNECTING = "CONNECTING"
     CONNECTED = "CONNECTED"
     SYNCING = "SYNCING"
     PROCESSING = "PROCESSING"
     READY = "READY"
     ERROR = "ERROR"
+    DEGRADED = "DEGRADED"
+    FAILED = "FAILED"
+    REAUTH_REQUIRED = "REAUTH_REQUIRED"
     DISCONNECTED = "DISCONNECTED"
 
 

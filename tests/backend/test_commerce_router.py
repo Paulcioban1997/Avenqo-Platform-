@@ -119,6 +119,60 @@ class _CallbackConnections:
         self.completed.append((tenant.company_id, connection_id))
 
 
+class _WooConnections:
+    def __init__(self, company_id):
+        self.received_credentials = None
+        self.connection = SimpleNamespace(
+            id=uuid4(),
+            company_id=company_id,
+            provider="woocommerce",
+            external_account_id="https://shop.example.com",
+            display_name="shop.example.com",
+            status="CONNECTING",
+            encrypted_credentials="ciphertext-not-for-response",
+            capabilities=["orders", "products"],
+            records_processed=0,
+            current_entity=None,
+            error_category=None,
+            last_successful_sync=None,
+            sync_started_at=None,
+            dataset_ids={},
+        )
+
+    async def connect_woocommerce_manual(
+        self,
+        tenant,
+        *,
+        actor_user_id,
+        store_url,
+        consumer_key,
+        consumer_secret,
+    ):
+        self.received_credentials = (consumer_key, consumer_secret)
+        return self.connection
+
+    async def sync_context(self, tenant, connection_id):
+        return SimpleNamespace(connection_id=connection_id)
+
+    def mark_setup_complete(self, tenant, connection_id):
+        self.connection.status = "READY"
+        return self.connection
+
+    def mark_setup_degraded(self, tenant, connection_id, *, error_category):
+        self.connection.status = "DEGRADED"
+        self.connection.error_category = error_category
+        return self.connection
+
+
+class _WooRegistry:
+    def get(self, provider):
+        assert provider == "woocommerce"
+        return self
+
+    async def register_webhooks(self, context):
+        return None
+
+
 class _FailingWebhookRegistry:
     def get(self, provider):
         assert provider == "shopify"
@@ -277,5 +331,51 @@ def test_shopify_callback_completes_setup_after_webhook_registration() -> None:
     assert response.status_code == 303
     assert connections.completed == [(company_id, connections.connection.id)]
     assert connections.failed == []
+    assert sync.reserved == [(company_id, connections.connection.id)]
+    assert runner.runs == [(company_id, connections.connection.id)]
+
+
+def test_woocommerce_manual_route_masks_secrets_and_reserves_sync() -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), company_id=company_id, role=SimpleNamespace())
+    identity = SimpleNamespace(user=user)
+    connections = _WooConnections(company_id)
+    sync = _Sync()
+    runner = _Runner()
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_current_identity] = lambda: identity
+    app.dependency_overrides[require_active_subscription] = lambda: TenantContext(
+        company_id=company_id
+    )
+    app.dependency_overrides[get_commerce_connection_service] = lambda: connections
+    app.dependency_overrides[get_commerce_sync_service] = lambda: sync
+    app.dependency_overrides[get_commerce_sync_runner] = lambda: runner
+    app.dependency_overrides[get_commerce_connector_registry] = lambda: _WooRegistry()
+
+    from backend.app.routers import commerce as commerce_router
+
+    app.dependency_overrides[commerce_router.manage_connectors] = lambda: identity
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/connectors/woocommerce/manual",
+            json={
+                "store_url": "https://shop.example.com",
+                "consumer_key": "ck_route_secret",
+                "consumer_secret": "cs_route_secret",
+            },
+        )
+
+    assert response.status_code == 202
+    assert connections.received_credentials == (
+        "ck_route_secret",
+        "cs_route_secret",
+    )
+    response_text = response.text
+    assert "ck_route_secret" not in response_text
+    assert "cs_route_secret" not in response_text
+    assert "ciphertext-not-for-response" not in response_text
+    assert response.json()["provider"] == "woocommerce"
+    assert response.json()["status"] == "READY"
     assert sync.reserved == [(company_id, connections.connection.id)]
     assert runner.runs == [(company_id, connections.connection.id)]

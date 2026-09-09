@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import io
+from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -21,6 +22,10 @@ from backend.app.models import (
 )
 from backend.app.services.commerce_sync_service import CommerceSyncService
 from backend.app.connectors.shopify import ShopifyConnector
+from backend.app.connectors.woocommerce import (
+    WooCommerceAuthenticationError,
+    WooCommerceConnector,
+)
 from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
 from shared.ai_engine.connectors.commerce import ConnectorPage, ConnectorSyncContext
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
@@ -147,6 +152,19 @@ class _ConnectionLifecycle:
         )
 
 
+class _WooConnectionLifecycle(_ConnectionLifecycle):
+    async def sync_context(self, tenant, connection_id):
+        context = await super().sync_context(tenant, connection_id)
+        return replace(
+            context,
+            credentials={
+                "consumer_key": "ck_test",
+                "consumer_secret": "cs_test",
+                "webhook_secret": "woo-webhook-secret",
+            },
+        )
+
+
 class _RecordingIngestion:
     def __init__(self) -> None:
         self.uploads: list[tuple[str, bytes]] = []
@@ -223,6 +241,97 @@ def test_snapshot_uses_discounted_shopify_refund_amount_and_processed_time() -> 
 
 
 def test_snapshot_keeps_shopify_products_customers_and_inventory_without_orders() -> None:
+
+
+    def test_snapshot_normalizes_woocommerce_orders_variations_inventory_and_refunds() -> None:
+        service = CommerceSyncService(None, None, None, None)
+        order = service._normalize_woocommerce_order(
+            {
+                "id": 100,
+                "number": "100",
+                "date_created_gmt": "2026-09-01T10:00:00",
+                "date_modified_gmt": "2026-09-02T10:00:00",
+                "customer_id": 12,
+                "billing": {"email": "buyer@example.com", "country": "CA"},
+                "shipping": {"country": "CA"},
+                "currency": "CAD",
+                "total": "25.00",
+                "total_tax": "2.00",
+                "discount_total": "1.00",
+                "status": "completed",
+                "created_via": "checkout",
+                "line_items": [
+                    {
+                        "id": 101,
+                        "product_id": 10,
+                        "variation_id": 11,
+                        "sku": "SKU-11",
+                        "name": "Coffee",
+                        "quantity": 2,
+                        "price": "12.00",
+                        "subtotal": "24.00",
+                        "total": "23.00",
+                    }
+                ],
+            }
+        )
+        product = service._normalize_woocommerce_product(
+            {
+                "id": 10,
+                "name": "Coffee",
+                "categories": [{"name": "Drinks"}],
+                "avenqo_variations": [
+                    {
+                        "id": 11,
+                        "sku": "SKU-11",
+                        "price": "12.00",
+                        "stock_quantity": 7,
+                        "attributes": [{"option": "Dark"}],
+                    }
+                ],
+            }
+        )
+        inventory = service._normalize_woocommerce_inventory(
+            {
+                "inventory_item_id": "11",
+                "product_id": "10",
+                "sku": "SKU-11",
+                "stock_quantity": 7,
+            }
+        )
+        refund = service._normalize_woocommerce_refund(
+            {
+                "id": "100:200",
+                "avenqo_order_id": "100",
+                "amount": "12.00",
+                "line_items": [
+                    {"id": 101, "quantity": -1, "refund_total": "-12.00"}
+                ],
+            }
+        )
+        connection = SimpleNamespace(
+            id=uuid4(),
+            provider="woocommerce",
+            external_account_id="https://merchant.example",
+        )
+
+        rows = service._snapshot_rows(
+            connection,
+            [
+                SimpleNamespace(entity_type="orders", normalized_data=order),
+                SimpleNamespace(entity_type="products", normalized_data=product),
+                SimpleNamespace(entity_type="inventory", normalized_data=inventory),
+                SimpleNamespace(entity_type="refunds", normalized_data=refund),
+            ],
+        )
+
+        assert rows[0]["source_provider"] == "woocommerce"
+        assert rows[0]["source_order_id"] == "100"
+        assert rows[0]["source_line_item_id"] == "101"
+        assert rows[0]["shopify_order_gid"] == ""
+        assert rows[0]["product_name"] == "Coffee"
+        assert rows[0]["inventory_level"] == 7
+        assert rows[0]["refund_amount"] == "12"
     service = CommerceSyncService(None, None, None, None)
     connection = SimpleNamespace(
         id=uuid4(),
@@ -571,6 +680,92 @@ async def test_shopify_webhook_is_verified_and_deduplicated(tmp_path) -> None:
             receipts_by_id["delivery-2"].source_record_id
             == "gid://shopify/Order/456"
         )
+
+
+@pytest.mark.asyncio
+async def test_woocommerce_webhook_is_verified_tenant_scoped_and_deduplicated(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'woocommerce-webhook.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = Company(
+            name="Woo Webhook",
+            slug="woo-webhook",
+            email="woo-webhook@example.com",
+            country="Canada",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+        )
+        session.add(company)
+        session.flush()
+        connection = CommerceConnection(
+            company_id=company.id,
+            provider="woocommerce",
+            external_account_id="https://merchant.example",
+            encrypted_credentials="encrypted",
+            status=CommerceConnectionStatus.READY.value,
+            capabilities=["orders"],
+        )
+        session.add(connection)
+        session.commit()
+        registry = CommerceConnectorRegistry()
+        registry.register(
+            WooCommerceConnector(
+                callback_uri="https://api.test/callback",
+                return_uri="https://app.test/connections",
+                webhook_uri="https://api.test/webhook",
+            )
+        )
+        service = CommerceSyncService(
+            session,
+            registry,
+            _WooConnectionLifecycle(connection),
+            _RecordingIngestion(),
+        )
+        body = b'{"id": 456}'
+        signature = base64.b64encode(
+            hmac.new(b"woo-webhook-secret", body, hashlib.sha256).digest()
+        ).decode("ascii")
+        headers = {
+            "X-WC-Webhook-Signature": signature,
+            "X-WC-Webhook-Delivery-ID": "woo-delivery-1",
+            "X-WC-Webhook-Topic": "order.deleted",
+        }
+
+        accepted = await service.accept_woocommerce_webhook(
+            connection_id=connection.id,
+            headers=headers,
+            body=body,
+        )
+        duplicate = await service.accept_woocommerce_webhook(
+            connection_id=connection.id,
+            headers=headers,
+            body=body,
+        )
+
+        receipt = session.scalar(
+            select(CommerceWebhookReceipt).where(
+                CommerceWebhookReceipt.webhook_id == "woo-delivery-1"
+            )
+        )
+        assert accepted.tenant_id == company.id
+        assert accepted.should_process is True
+        assert duplicate.duplicate is True
+        assert duplicate.should_process is False
+        assert receipt is not None
+        assert receipt.company_id == company.id
+        assert receipt.connection_id == connection.id
+        assert receipt.source_record_id == "456"
+
+        with pytest.raises(WooCommerceAuthenticationError, match="signature"):
+            await service.accept_woocommerce_webhook(
+                connection_id=connection.id,
+                headers={**headers, "X-WC-Webhook-Signature": "invalid"},
+                body=body,
+            )
 
 
 @pytest.mark.asyncio
