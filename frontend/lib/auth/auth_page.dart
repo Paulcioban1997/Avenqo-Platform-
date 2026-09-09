@@ -4,6 +4,7 @@ import 'package:avenqo/agents/agent_registry.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/auth/auth_controller.dart';
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/country_catalog.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/i18n/translations.dart';
 import 'package:avenqo/widgets/language_selector.dart';
@@ -58,6 +59,7 @@ class _AuthPageState extends State<AuthPage> {
   int _signupStep = 0;
   String _signupIndustry = 'Retail';
   String _signupPlan = 'demo';
+  String _billingCurrency = 'CAD';
   final _signupModules = <String>{};
   String? _message;
   bool _isError = false;
@@ -166,6 +168,7 @@ class _AuthPageState extends State<AuthPage> {
         'email': _email.text,
         'password': _password.text,
         'country': _country.text,
+        'currency_code': _billingCurrency,
         'region': _region.text,
         'company_size': _companySize.text,
         'preferred_language': Localizations.localeOf(context).languageCode,
@@ -467,7 +470,31 @@ class _AuthPageState extends State<AuthPage> {
           ),
           const SizedBox(height: 14),
           _field(_companySize, onboarding.teamSizeLabel, t: t),
-          _field(_country, 'Country', t: t),
+          _field(
+            _country,
+            'Country',
+            t: t,
+            onChanged: (value) => setState(
+              () => _billingCurrency = currencyForCountry(value),
+            ),
+          ),
+          DropdownButtonFormField<String>(
+            key: ValueKey('billing-currency-selector-$_billingCurrency'),
+            initialValue: _billingCurrency,
+            decoration: const InputDecoration(labelText: 'Billing currency'),
+            items: ({for (final country in countryCatalog) country.currencyCode}.toList()..sort())
+                .map(
+                  (currency) => DropdownMenuItem(
+                    value: currency,
+                    child: Text(currency),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _billingCurrency = value);
+            },
+          ),
+          const SizedBox(height: 14),
           _field(_region, 'Region', t: t),
           _field(_companyEmail, t.billingEmail, t: t, email: true),
         ],
@@ -646,11 +673,13 @@ class _AuthPageState extends State<AuthPage> {
     bool email = false,
     bool password = false,
     bool optional = false,
+    ValueChanged<String>? onChanged,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextFormField(
         controller: controller,
+        onChanged: onChanged,
         obscureText: password && _obscurePassword,
         keyboardType: email ? TextInputType.emailAddress : TextInputType.text,
         decoration: InputDecoration(

@@ -768,6 +768,51 @@ class _BrandMark extends StatelessWidget {
     asset: null,
     color: const Color(0xFFF1641E),
   ),
+  'amazon-seller-central' => (
+    icon: null,
+    asset: 'assets/brands/amazon.svg',
+    color: const Color(0xFFFF9900),
+  ),
+  'ebay' => (
+    icon: SimpleIcons.ebay,
+    asset: null,
+    color: const Color(0xFFE53238),
+  ),
+  'walmart-marketplace' => (
+    icon: null,
+    asset: 'assets/brands/walmart.svg',
+    color: const Color(0xFF0071CE),
+  ),
+  'tiktok-shop' => (
+    icon: SimpleIcons.tiktok,
+    asset: null,
+    color: const Color(0xFF111111),
+  ),
+  'meta-commerce' => (
+    icon: SimpleIcons.meta,
+    asset: null,
+    color: const Color(0xFF0866FF),
+  ),
+  'mercado-libre' => (
+    icon: null,
+    asset: 'assets/brands/mercado-libre.svg',
+    color: const Color(0xFF2D3277),
+  ),
+  'mirakl' => (
+    icon: null,
+    asset: 'assets/brands/mirakl.svg',
+    color: const Color(0xFF6C3EFF),
+  ),
+  'shopee' => (
+    icon: SimpleIcons.shopee,
+    asset: null,
+    color: const Color(0xFFEE4D2D),
+  ),
+  'lazada' => (
+    icon: null,
+    asset: 'assets/brands/lazada.svg',
+    color: const Color(0xFFF02B78),
+  ),
   _ => (
     icon: Icons.storefront_outlined,
     asset: null,

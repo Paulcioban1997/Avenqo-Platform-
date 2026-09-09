@@ -64,7 +64,7 @@ class BillingService:
         plan = get_plan(plan_code)
         if plan.requires_sales_contact:
             raise BillingOperationError(f"{plan.name} nécessite un contact commercial")
-        price_id = self._required_price(plan.code)
+        price_id = self._required_price(plan.code, company.currency_code)
         account = self.get_account(company.id)
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
             raise BillingOperationError("Un abonnement existe déjà; utilisez le changement d'offre")
@@ -92,7 +92,7 @@ class BillingService:
             raise BillingOperationError("Aucun abonnement Stripe actif")
         self._provider.change_subscription(
             account.stripe_subscription_id,
-            self._required_price(plan.code),
+            self._required_price(plan.code, account.company.currency_code),
         )
         return account
 
@@ -609,10 +609,12 @@ class BillingService:
             raise BillingOperationError("Métadonnée avenqo_company_id absente")
         return UUID(str(raw_company_id))
 
-    def _required_price(self, plan_code: PlanCode) -> str:
-        price_id = self._settings.stripe_price_id(plan_code.value)
+    def _required_price(self, plan_code: PlanCode, currency_code: str) -> str:
+        price_id = self._settings.stripe_price_id(plan_code.value, currency_code)
         if not price_id:
-            raise BillingConfigurationError(f"Prix Stripe non configuré pour {plan_code.value}")
+            raise BillingConfigurationError(
+                f"Prix Stripe non configuré pour {plan_code.value} en {currency_code}"
+            )
         return price_id
 
     def _required_credit_price(self, pack_code: str) -> str:

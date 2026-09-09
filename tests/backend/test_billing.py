@@ -134,6 +134,11 @@ def billing_environment(
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_avenqo")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_professional")
+    monkeypatch.setenv(
+        "STRIPE_PRICES_BY_CURRENCY",
+            '{"CAD":{"demo":"price_demo_cad","professional":"price_professional_cad"},'
+            '"EUR":{"demo":"price_demo_eur","professional":"price_professional_eur"}}',
+    )
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_DEMO", "price_credit_demo")
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL", "price_credit_professional")
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL_6500", "price_credit_professional_6500")
@@ -171,6 +176,7 @@ def create_owner(
     notifier: RecordingNotifier,
     email: str = "owner@acme.ca",
     company_name: str = "Acme Retail",
+    country: str = "Canada",
 ) -> dict[str, Any]:
     payload = {
         "company_name": company_name,
@@ -179,7 +185,7 @@ def create_owner(
         "last_name": "Martin",
         "email": email,
         "password": "Avenqo2026!",
-        "country": "Canada",
+        "country": country,
         "timezone": "America/Toronto",
         "industry": "E-commerce",
     }
@@ -198,6 +204,30 @@ def create_owner(
 
 def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
+
+
+def test_country_currency_selects_demo_price_and_webhook_plan(
+    billing_environment,
+) -> None:
+    client, _, notifier = billing_environment
+    login = create_owner(
+        client,
+        notifier,
+        email="owner@acme.fr",
+        company_name="Acme France",
+        country="France",
+    )
+
+    assert login["company"]["currency_code"] == "EUR"
+    checkout = client.post(
+        "/api/v1/billing/checkout",
+        json={"plan_code": "demo"},
+        headers=auth_headers(login),
+    )
+
+    assert checkout.status_code == 200
+    assert checkout.json()["url"].endswith("price_demo_eur")
+    assert get_settings().stripe_plan_code("price_demo_eur") == "demo"
 
 
 def subscription_event(
@@ -293,7 +323,7 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
         headers=headers,
     )
     assert checkout.status_code == 200
-    assert checkout.json()["url"].endswith("price_professional")
+    assert checkout.json()["url"].endswith("price_professional_cad")
 
     # Les offres nécessitant un contact commercial ne peuvent jamais contourner
     # cette règle en appelant directement l'API Checkout.
@@ -331,7 +361,7 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
         headers=headers,
     )
     assert changed.status_code == 200
-    assert provider.changed_prices == ["price_demo"]
+    assert provider.changed_prices == ["price_demo_cad"]
     canceled = client.post("/api/v1/billing/cancel", headers=headers).json()
     assert canceled["cancel_at_period_end"] is True
     assert canceled["status"] == "canceling_at_period_end"

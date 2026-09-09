@@ -402,6 +402,33 @@ void main() {
       _expectOfficialAuthBrand(size: 42);
     });
 
+    testWidgets('registration derives the billing currency from country', (
+      WidgetTester tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        initialRoute: '/register',
+        auth: unauthenticatedAuth,
+      );
+
+      expect(
+        tester.widget<DropdownButtonFormField<String>>(
+          find.byKey(const ValueKey('billing-currency-selector-CAD')),
+        ).initialValue,
+        'CAD',
+      );
+
+      await tester.enterText(find.byType(TextFormField).at(3), 'France');
+      await tester.pump();
+
+      expect(
+        tester.widget<DropdownButtonFormField<String>>(
+          find.byKey(const ValueKey('billing-currency-selector-EUR')),
+        ).initialValue,
+        'EUR',
+      );
+    });
+
     testWidgets('registration shows all modules and caps Demo at two', (
       WidgetTester tester,
     ) async {

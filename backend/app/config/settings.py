@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
     stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
+    stripe_prices_by_currency: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        alias="STRIPE_PRICES_BY_CURRENCY",
+    )
     stripe_price_credit_demo: str | None = Field(default=None, alias="STRIPE_PRICE_CREDIT_DEMO")
     stripe_price_credit_professional: str | None = Field(
         default=None,
@@ -407,17 +411,28 @@ class Settings(BaseSettings):
     def app_title(self) -> str:
         return self.app_name
 
-    def stripe_price_id(self, plan_code: str) -> str | None:
+    def stripe_price_id(self, plan_code: str, currency_code: str | None = None) -> str | None:
+        currency = (currency_code or "USD").strip().upper()
+        normalized_plan = plan_code.strip().lower()
+        localized = (
+            self.stripe_prices_by_currency.get(currency, {})
+            or self.stripe_prices_by_currency.get(currency.lower(), {})
+        ).get(normalized_plan)
+        if localized:
+            return localized
         return {
             "demo": self.stripe_price_demo,
             "professional": self.stripe_price_professional,
-        }.get(plan_code)
+        }.get(normalized_plan)
 
     def stripe_plan_code(self, price_id: str) -> str | None:
         prices = {
             self.stripe_price_demo: "demo",
             self.stripe_price_professional: "professional",
         }
+        for plans in self.stripe_prices_by_currency.values():
+            for plan_code, configured_price_id in plans.items():
+                prices[configured_price_id] = plan_code
         return prices.get(price_id)
 
     def stripe_credit_price_id(self, pack_code: str) -> str | None:

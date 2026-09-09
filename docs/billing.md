@@ -40,12 +40,27 @@ Les variables sont listÃ©es dans `backend/.env.example`:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_DEMO`
 - `STRIPE_PRICE_PROFESSIONAL`
+- `STRIPE_PRICES_BY_CURRENCY`
 - `STRIPE_PRICE_CREDIT_DEMO`
 - `STRIPE_PRICE_CREDIT_PROFESSIONAL`
 - `STRIPE_PRICE_CREDIT_PROFESSIONAL_6500`
 - `STRIPE_PRICE_CREDIT_PROFESSIONAL_25000`
 
 Enterprise n'a pas de Price ID fixe et ne peut pas ouvrir de Checkout self-service.
+
+`STRIPE_PRICES_BY_CURRENCY` associe chaque devise aux Prices récurrents Demo et
+Professional. La devise vient de `Company.currency_code`: elle est proposée à
+partir du pays de facturation pendant l'inscription, puis enregistrée sur la
+compagnie. Elle n'est jamais déduite de la langue. Exemple Railway:
+
+```json
+{"CAD":{"demo":"price_demo_cad","professional":"price_pro_cad"},"EUR":{"demo":"price_demo_eur","professional":"price_pro_eur"},"USD":{"demo":"price_demo_usd","professional":"price_pro_usd"}}
+```
+
+Une paire absente utilise temporairement `STRIPE_PRICE_DEMO` ou
+`STRIPE_PRICE_PROFESSIONAL`, ce qui permet une migration progressive des
+abonnements existants. Chaque Price ajouté au JSON est aussi reconnu par les
+webhooks pour retrouver le plan Avenqo correspondant.
 
 Les Prices de crédits sont des paiements uniques configurés dans Stripe:
 

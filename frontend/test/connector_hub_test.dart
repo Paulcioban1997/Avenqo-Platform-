@@ -51,6 +51,12 @@ List<Map<String, dynamic>> _catalog() => [
         13 => 'salesforce-commerce-cloud',
         14 => 'commercetools',
         15 => 'vtex',
+        16 => 'walmart-marketplace',
+        17 => 'meta-commerce',
+        18 => 'mercado-libre',
+        19 => 'mirakl',
+        20 => 'shopee',
+        21 => 'lazada',
         29 => 'woocommerce',
         _ => 'provider-$index',
       },
@@ -71,6 +77,12 @@ List<Map<String, dynamic>> _catalog() => [
         13 => 'Salesforce Commerce Cloud',
         14 => 'commercetools',
         15 => 'VTEX',
+        16 => 'Walmart Marketplace',
+        17 => 'Meta Commerce',
+        18 => 'Mercado Libre',
+        19 => 'Mirakl',
+        20 => 'Shopee',
+        21 => 'Lazada',
         29 => 'WooCommerce',
         _ => 'Provider $index',
       },
@@ -219,6 +231,15 @@ void main() {
       'commercetools',
       'vtex',
       'etsy',
+      'amazon-seller-central',
+      'ebay',
+      'walmart-marketplace',
+      'tiktok-shop',
+      'meta-commerce',
+      'mercado-libre',
+      'mirakl',
+      'shopee',
+      'lazada',
     ]) {
       expect(find.byKey(ValueKey('brand-icon-$provider')), findsOneWidget);
     }
@@ -227,6 +248,11 @@ void main() {
       'assets/brands/ecwid.svg',
       'assets/brands/salesforce.svg',
       'assets/brands/commercetools.svg',
+      'assets/brands/amazon.svg',
+      'assets/brands/walmart.svg',
+      'assets/brands/mercado-libre.svg',
+      'assets/brands/mirakl.svg',
+      'assets/brands/lazada.svg',
     ]) {
       expect(File(asset).existsSync(), isTrue, reason: '$asset must exist');
     }
