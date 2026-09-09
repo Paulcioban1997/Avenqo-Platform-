@@ -29,6 +29,7 @@ class AuditLogService:
         target_id: str | None = None,
         company_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
+        commit: bool = True,
     ) -> AuditLogEntry:
         entry = AuditLogEntry(
             actor_user_id=actor_user_id,
@@ -39,7 +40,8 @@ class AuditLogService:
             safe_metadata=metadata or {},
         )
         self._db.add(entry)
-        self._db.commit()
+        if commit:
+            self._db.commit()
         return entry
 
     def recent(self, limit: int = 100) -> list[AuditLogEntry]:

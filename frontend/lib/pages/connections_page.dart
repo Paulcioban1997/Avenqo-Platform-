@@ -66,6 +66,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   final List<_PendingFile> _pending = [];
   List<_UploadItem> _uploadItems = [];
   final Set<String> _deletingDatasetIds = <String>{};
+  final Set<String> _selectedDatasetIds = <String>{};
   Timer? _pollTimer;
   bool _refreshing = false;
 
@@ -120,8 +121,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     ]);
     final catalog = _mapsFrom(responses[0])
         .where(
-          (item) =>
-              item['provider'] != null && item['customer_status'] != null,
+          (item) => item['provider'] != null && item['customer_status'] != null,
         )
         .toList(growable: false);
     final connections = _mapsFrom(responses[1])
@@ -177,13 +177,14 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   }
 
   void _syncPolling() {
-    final shouldPoll = _datasets.any((dataset) {
-      final pipelineStatus = dataset['pipeline_status']?.toString();
-      final trainingStatus = dataset['training_status']?.toString();
-      return pipelineStatus == 'analyzing' ||
-          trainingStatus == 'preparing_data' ||
-          trainingStatus == 'training_ai';
-    }) ||
+    final shouldPoll =
+        _datasets.any((dataset) {
+          final pipelineStatus = dataset['pipeline_status']?.toString();
+          final trainingStatus = dataset['training_status']?.toString();
+          return pipelineStatus == 'analyzing' ||
+              trainingStatus == 'preparing_data' ||
+              trainingStatus == 'training_ai';
+        }) ||
         _commerceConnections.any(_connectionIsBusy);
     if (!shouldPoll) {
       _pollTimer?.cancel();
@@ -308,8 +309,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                     title: Text(_connectorText('wooManualMode')),
                     subtitle: Text(_connectorText('wooManualDescription')),
                     value: manual,
-                    onChanged: (value) =>
-                        setDialogState(() => manual = value),
+                    onChanged: (value) => setDialogState(() => manual = value),
                   ),
                   if (manual) ...[
                     const SizedBox(height: 8),
@@ -578,33 +578,45 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     await _refreshDatasetsInBackground();
   }
 
-  Future<void> _deleteDataset(String datasetId) async {
-    if (_deletingDatasetIds.contains(datasetId)) return;
-    setState(() => _deletingDatasetIds.add(datasetId));
+  Future<void> _deleteDatasets(List<String> datasetIds) async {
+    if (datasetIds.isEmpty || datasetIds.any(_deletingDatasetIds.contains)) {
+      return;
+    }
+    setState(() => _deletingDatasetIds.addAll(datasetIds));
     try {
-      await widget.api.delete('/datasets/$datasetId');
+      await widget.api.post(
+        '/datasets/delete-selection',
+        body: {'dataset_ids': datasetIds},
+      );
+      final datasets = await widget.api.get('/datasets') as List<dynamic>;
+      final connectorData = await _fetchConnectorData();
       if (!mounted) return;
       setState(() {
-        _datasets.removeWhere(
-          (dataset) => dataset['id']?.toString() == datasetId,
-        );
-        _deletingDatasetIds.remove(datasetId);
+        _datasets = datasets.cast<Map<String, dynamic>>();
+        _commerceConnections = connectorData.connections;
+        _connectorCatalog = connectorData.catalog;
+        _connectorCatalogUnavailable = connectorData.unavailable;
+        _deletingDatasetIds.removeAll(datasetIds);
+        _selectedDatasetIds.removeAll(datasetIds);
       });
-    } on ApiException catch (exc) {
-      if (!mounted) return;
-      setState(() => _deletingDatasetIds.remove(datasetId));
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(exc.message)));
-    } on Object {
-      if (!mounted) return;
-      setState(() => _deletingDatasetIds.remove(datasetId));
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
           content: Text(
             AvenqoLocaleScope.translationsOf(
               context,
-            ).company.connectionsGenericError,
+            ).company.connectionsDeleteSuccess,
+          ),
+        ),
+      );
+    } on Object {
+      if (!mounted) return;
+      setState(() => _deletingDatasetIds.removeAll(datasetIds));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            AvenqoLocaleScope.translationsOf(
+              context,
+            ).company.connectionsDeleteFailure,
           ),
         ),
       );
@@ -667,8 +679,16 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 onDisconnectConnection: _disconnectConnection,
                 onRefreshConnectors: _refreshConnectorData,
                 deletingDatasetIds: _deletingDatasetIds,
+                selectedDatasetIds: _selectedDatasetIds,
+                onSelectionChanged: (datasetId, selected) => setState(() {
+                  if (selected) {
+                    _selectedDatasetIds.add(datasetId);
+                  } else {
+                    _selectedDatasetIds.remove(datasetId);
+                  }
+                }),
                 onAddFiles: _addFiles,
-                onDeleteDataset: _deleteDataset,
+                onDeleteDatasets: _deleteDatasets,
                 onViewCleaning: _showCleaningDetails,
                 onReviewMapping: _showMappingDetails,
                 onGoToDashboard: () => context.go('/dashboard'),
@@ -746,12 +766,13 @@ String _humanizeCode(String value) {
   return normalized[0].toUpperCase() + normalized.substring(1);
 }
 
-String? _trainingStatusLabel(CompanyStrings t, String? status) => switch (status) {
-  'preparing_data' => t.connectionsPreparingData,
-  'training_ai' => t.connectionsTrainingAi,
-  'training_failed' => _cleaningText(t, 'trainingFailed'),
-  _ => null,
-};
+String? _trainingStatusLabel(CompanyStrings t, String? status) =>
+    switch (status) {
+      'preparing_data' => t.connectionsPreparingData,
+      'training_ai' => t.connectionsTrainingAi,
+      'training_failed' => _cleaningText(t, 'trainingFailed'),
+      _ => null,
+    };
 
 Color _trainingStatusColor(String? status) => switch (status) {
   'training_failed' => _Brand.red,
@@ -823,8 +844,10 @@ class _ConnectedDataView extends StatelessWidget {
     required this.onDisconnectConnection,
     required this.onRefreshConnectors,
     required this.deletingDatasetIds,
+    required this.selectedDatasetIds,
+    required this.onSelectionChanged,
     required this.onAddFiles,
-    required this.onDeleteDataset,
+    required this.onDeleteDatasets,
     required this.onViewCleaning,
     required this.onReviewMapping,
     required this.onGoToDashboard,
@@ -844,13 +867,62 @@ class _ConnectedDataView extends StatelessWidget {
   onDisconnectConnection;
   final VoidCallback onRefreshConnectors;
   final Set<String> deletingDatasetIds;
+  final Set<String> selectedDatasetIds;
+  final void Function(String datasetId, bool selected) onSelectionChanged;
   final VoidCallback onAddFiles;
-  final Future<void> Function(String datasetId) onDeleteDataset;
+  final Future<void> Function(List<String> datasetIds) onDeleteDatasets;
   final void Function(Map<String, dynamic> dataset) onViewCleaning;
   final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    List<Map<String, dynamic>> selected,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.connectionsDeleteTitle),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t.connectionsDeleteWarning),
+              const SizedBox(height: 16),
+              for (final dataset in selected.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• ${dataset['name'] ?? '—'}'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(t.connectionsDeleteCancel),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _Brand.red),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: Text(t.connectionsDeletePermanently),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await onDeleteDatasets(
+      selected
+          .map((dataset) => dataset['id']?.toString())
+          .whereType<String>()
+          .toList(growable: false),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -950,14 +1022,63 @@ class _ConnectedDataView extends StatelessWidget {
               ),
               children: [
                 Divider(height: 1, color: colors.line),
+                if (selectedDatasetIds.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            t.connectionsSelectedCount.replaceFirst(
+                              '{n}',
+                              '${selectedDatasetIds.length}',
+                            ),
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed: deletingDatasetIds.isNotEmpty
+                              ? null
+                              : () => _confirmDelete(
+                                  context,
+                                  datasets
+                                      .where(
+                                        (dataset) =>
+                                            selectedDatasetIds.contains(
+                                              dataset['id']?.toString(),
+                                            ),
+                                      )
+                                      .toList(growable: false),
+                                ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _Brand.red,
+                          ),
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(t.connectionsDeleteSelected),
+                        ),
+                      ],
+                    ),
+                  ),
                 for (var i = 0; i < datasets.length; i++)
                   _DatasetRow(
                     dataset: datasets[i],
+                    sourceConnection: commerceConnections
+                        .cast<Map<String, dynamic>?>()
+                        .firstWhere(
+                          (connection) =>
+                              connection?['dataset_id']?.toString() ==
+                              datasets[i]['id']?.toString(),
+                          orElse: () => null,
+                        ),
                     isLast: i == datasets.length - 1,
                     isDeleting: deletingDatasetIds.contains(
                       datasets[i]['id']?.toString(),
                     ),
-                    onDeleteDataset: onDeleteDataset,
+                    isSelected: selectedDatasetIds.contains(
+                      datasets[i]['id']?.toString(),
+                    ),
+                    onSelectionChanged: onSelectionChanged,
+                    onDeleteDataset: (dataset) =>
+                        _confirmDelete(context, [dataset]),
                     onViewCleaning: onViewCleaning,
                     onReviewMapping: onReviewMapping,
                     onGoToDashboard: onGoToDashboard,
@@ -989,8 +1110,11 @@ class _ConnectedDataView extends StatelessWidget {
 class _DatasetRow extends StatelessWidget {
   const _DatasetRow({
     required this.dataset,
+    required this.sourceConnection,
     required this.isLast,
     required this.isDeleting,
+    required this.isSelected,
+    required this.onSelectionChanged,
     required this.onDeleteDataset,
     required this.onViewCleaning,
     required this.onReviewMapping,
@@ -1000,48 +1124,17 @@ class _DatasetRow extends StatelessWidget {
   });
 
   final Map<String, dynamic> dataset;
+  final Map<String, dynamic>? sourceConnection;
   final bool isLast;
   final bool isDeleting;
-  final Future<void> Function(String datasetId) onDeleteDataset;
+  final bool isSelected;
+  final void Function(String datasetId, bool selected) onSelectionChanged;
+  final Future<void> Function(Map<String, dynamic> dataset) onDeleteDataset;
   final void Function(Map<String, dynamic> dataset) onViewCleaning;
   final void Function(Map<String, dynamic> dataset) onReviewMapping;
   final VoidCallback onGoToDashboard;
   final VoidCallback onAskAvenqo;
   final CompanyStrings t;
-
-  Future<void> _confirmDelete(BuildContext context, String id) async {
-    final name = dataset['name']?.toString() ?? '—';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(t.connectionsRemoveFile),
-        content: Row(
-          children: [
-            const Icon(Icons.delete_outline, color: _Brand.red),
-            const SizedBox(width: 12),
-            Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(
-              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
-            ),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: _Brand.red),
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: Text(t.connectionsRemoveFile),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await onDeleteDataset(id);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1063,13 +1156,23 @@ class _DatasetRow extends StatelessWidget {
       'failed' || 'invalid' || 'rejected' => t.connectionsProcessingError,
       _ => t.connectionsAnalyzing,
     };
+    final sourceName = sourceConnection?['display_name']?.toString();
+    final sourceDate =
+        sourceConnection?['last_successful_sync'] ?? dataset['uploaded_at'];
     final metadata = [
+      sourceConnection == null
+          ? t.connectionsUploadedSource
+          : [
+              t.connectionsSynchronizedSource,
+              sourceConnection?['provider']?.toString().toUpperCase(),
+              if (sourceName != null && sourceName.isNotEmpty) sourceName,
+            ].whereType<String>().join(' · '),
       if (dataset['rows_count'] != null)
         '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
       if (dataset['columns_count'] != null)
         '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
-      if (dataset['uploaded_at'] != null)
-        '${t.connectionsImportedAtLabel} ${dataset['uploaded_at'].toString().split('T').first}',
+      if (sourceDate != null)
+        '${t.connectionsImportedAtLabel} ${sourceDate.toString().split('T').first}',
     ].join(' · ');
     final actions = <Widget>[
       if (isReady || needsAttention || isError)
@@ -1107,8 +1210,8 @@ class _DatasetRow extends StatelessWidget {
                 ),
               )
             : IconButton(
-                tooltip: t.connectionsRemoveFile,
-                onPressed: () => _confirmDelete(context, id),
+                tooltip: t.connectionsDeleteData,
+                onPressed: () => onDeleteDataset(dataset),
                 icon: const Icon(Icons.delete_outline, color: _Brand.red),
               ),
     ];
@@ -1188,6 +1291,12 @@ class _DatasetRow extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: isDeleting || id == null
+                          ? null
+                          : (value) => onSelectionChanged(id, value ?? false),
+                    ),
                     leadingIcon,
                     const SizedBox(width: 12),
                     Expanded(child: titleBlock),
@@ -1204,6 +1313,12 @@ class _DatasetRow extends StatelessWidget {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Checkbox(
+                value: isSelected,
+                onChanged: isDeleting || id == null
+                    ? null
+                    : (value) => onSelectionChanged(id, value ?? false),
+              ),
               leadingIcon,
               const SizedBox(width: 12),
               Expanded(child: titleBlock),
@@ -1247,12 +1362,15 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
 
   void _initialize(Map<String, dynamic> profile) {
     if (_initialized) return;
-    final accepted = (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
-    final conflicts = (profile['required_confirmation'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
+    final accepted =
+        (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+    final conflicts =
+        (profile['required_confirmation'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
     final conflictingColumns = {
       for (final conflict in conflicts)
-        for (final column in (conflict['columns'] as List<dynamic>? ?? const []))
+        for (final column
+            in (conflict['columns'] as List<dynamic>? ?? const []))
           column.toString(),
     };
     for (final suggestion
@@ -1277,10 +1395,12 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
         for (final entry in _selected.entries)
           if (entry.value != null) entry.key: entry.value!,
       };
-      final response = await widget.api.post(
-        '/datasets/${widget.datasetId}/mapping',
-        body: {'mapping': mapping},
-      ) as Map<String, dynamic>;
+      final response =
+          await widget.api.post(
+                '/datasets/${widget.datasetId}/mapping',
+                body: {'mapping': mapping},
+              )
+              as Map<String, dynamic>;
       if (!mounted) return;
       if (response['status'] == 'ready') {
         Navigator.of(context).pop(true);
@@ -1327,7 +1447,8 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                     ),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String?>(
-                      initialValue: _selected[item['original_column'].toString()],
+                      initialValue:
+                          _selected[item['original_column'].toString()],
                       isExpanded: true,
                       items: [
                         DropdownMenuItem<String?>(
@@ -1338,7 +1459,8 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                           if (item['suggested_field'] != null)
                             item['suggested_field'].toString(),
                           for (final value
-                              in (item['alternatives'] as List<dynamic>? ?? const []))
+                              in (item['alternatives'] as List<dynamic>? ??
+                                  const []))
                             value.toString(),
                         })
                           DropdownMenuItem<String?>(
@@ -1348,7 +1470,9 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                       ],
                       onChanged: _submitting
                           ? null
-                          : (value) => _selected[item['original_column'].toString()] = value,
+                          : (value) =>
+                                _selected[item['original_column'].toString()] =
+                                    value,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1367,7 +1491,9 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
           child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
         ),
         FilledButton(
@@ -1447,12 +1573,15 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
               return Center(child: Text(message));
             }
             final detail = snapshot.data!;
-            final summary = detail['summary'] as Map<String, dynamic>? ?? const {};
+            final summary =
+                detail['summary'] as Map<String, dynamic>? ?? const {};
             final isReady = detail['status'] == 'ready';
-            final before = (detail['original_preview'] as List<dynamic>? ?? const [])
-                .cast<Map<String, dynamic>>();
-            final after = (detail['cleaned_preview'] as List<dynamic>? ?? const [])
-                .cast<Map<String, dynamic>>();
+            final before =
+                (detail['original_preview'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            final after =
+                (detail['cleaned_preview'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
             final qualityReasons =
                 (detail['quality_reasons'] as List<dynamic>? ?? const [])
                     .map((item) => item.toString())
@@ -1469,7 +1598,8 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                 final compact = constraints.maxWidth < 720;
                 final previewHeight = compact ? 180.0 : 220.0;
                 final mappingsApplied =
-                    (summary['mappings_applied'] as Map<String, dynamic>? ?? const {})
+                    (summary['mappings_applied'] as Map<String, dynamic>? ??
+                            const {})
                         .length;
                 final qualityLabel = _humanizeCode(
                   detail['cleaning_status']?.toString() ??
@@ -1514,138 +1644,159 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                          _CleaningSectionTitle(
-                            label: _cleaningText(widget.t, 'preview'),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: previewHeight,
-                            child: DefaultTabController(
-                              length: 2,
-                              child: Column(
-                                children: [
-                                  TabBar(
-                                    tabs: [
-                                      Tab(
-                                        text:
-                                            '${_cleaningText(widget.t, 'before')} (${before.length})',
-                                      ),
-                                      Tab(
-                                        text:
-                                            '${_cleaningText(widget.t, 'after')} (${after.length})',
-                                      ),
-                                    ],
-                                  ),
-                                  Expanded(
-                                    child: TabBarView(
-                                      children: [
-                                        _PreviewTable(
-                                          rows: before,
-                                          emptyLabel: _cleaningText(
-                                            widget.t,
-                                            'previewEmpty',
-                                          ),
+                            _CleaningSectionTitle(
+                              label: _cleaningText(widget.t, 'preview'),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: previewHeight,
+                              child: DefaultTabController(
+                                length: 2,
+                                child: Column(
+                                  children: [
+                                    TabBar(
+                                      tabs: [
+                                        Tab(
+                                          text:
+                                              '${_cleaningText(widget.t, 'before')} (${before.length})',
                                         ),
-                                        _PreviewTable(
-                                          rows: after,
-                                          emptyLabel: _cleaningText(
-                                            widget.t,
-                                            'previewEmpty',
-                                          ),
+                                        Tab(
+                                          text:
+                                              '${_cleaningText(widget.t, 'after')} (${after.length})',
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          _CleaningSectionTitle(
-                            label: _cleaningText(widget.t, 'summary'),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              _CleaningMetric(
-                                icon: Icons.table_rows_outlined,
-                                label: _cleaningText(widget.t, 'rowsBeforeAfter'),
-                                value:
-                                    '${summary['original_row_count'] ?? 0} → ${summary['cleaned_row_count'] ?? 0}',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.view_column_outlined,
-                                label: _cleaningText(widget.t, 'columns'),
-                                value: '${summary['column_count'] ?? 0}',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.content_copy_outlined,
-                                label: _cleaningText(widget.t, 'duplicatesRemoved'),
-                                value: '${summary['duplicate_rows_removed'] ?? 0}',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.do_not_disturb_alt_outlined,
-                                label: _cleaningText(widget.t, 'missingValues'),
-                                value: '${summary['missing_values_detected'] ?? 0}',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.rule_outlined,
-                                label: _cleaningText(widget.t, 'invalidValues'),
-                                value: '${summary['invalid_values_corrected'] ?? 0}',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.account_tree_outlined,
-                                label: _cleaningText(widget.t, 'mappedColumns'),
-                                value: '$mappingsApplied',
-                              ),
-                              _CleaningMetric(
-                                icon: Icons.verified_outlined,
-                                label: _cleaningText(widget.t, 'quality'),
-                                value: qualityLabel,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          if (columnStrategies.isNotEmpty) ...[
-                            _CleaningSectionTitle(
-                              label: _cleaningText(widget.t, 'columnStrategies'),
-                            ),
-                            const SizedBox(height: 8),
-                            for (final strategy in columnStrategies)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _ColumnStrategyCard(
-                                  strategy: strategy,
-                                  t: widget.t,
+                                    Expanded(
+                                      child: TabBarView(
+                                        children: [
+                                          _PreviewTable(
+                                            rows: before,
+                                            emptyLabel: _cleaningText(
+                                              widget.t,
+                                              'previewEmpty',
+                                            ),
+                                          ),
+                                          _PreviewTable(
+                                            rows: after,
+                                            emptyLabel: _cleaningText(
+                                              widget.t,
+                                              'previewEmpty',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            const SizedBox(height: 8),
-                          ],
-                          if (exportFormats.isNotEmpty) ...[
+                            ),
+                            const SizedBox(height: 18),
                             _CleaningSectionTitle(
-                              label: _cleaningText(widget.t, 'exports'),
+                              label: _cleaningText(widget.t, 'summary'),
                             ),
                             const SizedBox(height: 8),
                             Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
+                              spacing: 10,
+                              runSpacing: 10,
                               children: [
-                                for (final format in exportFormats)
-                                  OutlinedButton.icon(
-                                    onPressed: _exporting
-                                        ? null
-                                        : () => _export(format.toLowerCase()),
-                                    icon: const Icon(
-                                      Icons.download_outlined,
-                                      size: 18,
-                                    ),
-                                    label: Text(format),
+                                _CleaningMetric(
+                                  icon: Icons.table_rows_outlined,
+                                  label: _cleaningText(
+                                    widget.t,
+                                    'rowsBeforeAfter',
                                   ),
+                                  value:
+                                      '${summary['original_row_count'] ?? 0} → ${summary['cleaned_row_count'] ?? 0}',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.view_column_outlined,
+                                  label: _cleaningText(widget.t, 'columns'),
+                                  value: '${summary['column_count'] ?? 0}',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.content_copy_outlined,
+                                  label: _cleaningText(
+                                    widget.t,
+                                    'duplicatesRemoved',
+                                  ),
+                                  value:
+                                      '${summary['duplicate_rows_removed'] ?? 0}',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.do_not_disturb_alt_outlined,
+                                  label: _cleaningText(
+                                    widget.t,
+                                    'missingValues',
+                                  ),
+                                  value:
+                                      '${summary['missing_values_detected'] ?? 0}',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.rule_outlined,
+                                  label: _cleaningText(
+                                    widget.t,
+                                    'invalidValues',
+                                  ),
+                                  value:
+                                      '${summary['invalid_values_corrected'] ?? 0}',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.account_tree_outlined,
+                                  label: _cleaningText(
+                                    widget.t,
+                                    'mappedColumns',
+                                  ),
+                                  value: '$mappingsApplied',
+                                ),
+                                _CleaningMetric(
+                                  icon: Icons.verified_outlined,
+                                  label: _cleaningText(widget.t, 'quality'),
+                                  value: qualityLabel,
+                                ),
                               ],
                             ),
-                          ],
+                            const SizedBox(height: 18),
+                            if (columnStrategies.isNotEmpty) ...[
+                              _CleaningSectionTitle(
+                                label: _cleaningText(
+                                  widget.t,
+                                  'columnStrategies',
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final strategy in columnStrategies)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _ColumnStrategyCard(
+                                    strategy: strategy,
+                                    t: widget.t,
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
+                            ],
+                            if (exportFormats.isNotEmpty) ...[
+                              _CleaningSectionTitle(
+                                label: _cleaningText(widget.t, 'exports'),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final format in exportFormats)
+                                    OutlinedButton.icon(
+                                      onPressed: _exporting
+                                          ? null
+                                          : () => _export(format.toLowerCase()),
+                                      icon: const Icon(
+                                        Icons.download_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text(format),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1679,10 +1830,8 @@ class _CleaningMetric extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Chip(
-    avatar: Icon(icon, size: 16),
-    label: Text('$label: $value'),
-  );
+  Widget build(BuildContext context) =>
+      Chip(avatar: Icon(icon, size: 16), label: Text('$label: $value'));
 }
 
 class _CleaningBanner extends StatelessWidget {
@@ -1707,10 +1856,7 @@ class _CleaningBanner extends StatelessWidget {
           Icon(icon, color: _Brand.blue, size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: colors.ink),
-            ),
+            child: Text(text, style: TextStyle(color: colors.ink)),
           ),
         ],
       ),
@@ -1728,10 +1874,7 @@ class _CleaningSectionTitle extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     return Text(
       label,
-      style: TextStyle(
-        color: colors.ink,
-        fontWeight: FontWeight.w700,
-      ),
+      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
     );
   }
 }
@@ -1750,7 +1893,8 @@ class _ColumnStrategyCard extends StatelessWidget {
             .map((item) => _cleaningText(t, item.toString()))
             .toList();
     final mappedField = strategy['mapped_field']?.toString();
-    final conversionCount = (strategy['numeric_conversions'] as num? ?? 0) +
+    final conversionCount =
+        (strategy['numeric_conversions'] as num? ?? 0) +
         (strategy['date_conversions'] as num? ?? 0) +
         (strategy['boolean_conversions'] as num? ?? 0);
     return Container(
@@ -1789,66 +1933,66 @@ class _ColumnStrategyCard extends StatelessWidget {
           ),
           childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
           children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _CleaningMetric(
-                icon: Icons.alt_route_outlined,
-                label: _cleaningText(t, 'mappedField'),
-                value: mappedField == null || mappedField.isEmpty
-                    ? _cleaningText(t, 'notMapped')
-                    : mappedField,
-              ),
-              _CleaningMetric(
-                icon: Icons.data_object_outlined,
-                label: _cleaningText(t, 'inferredType'),
-                value: _humanizeCode(
-                  strategy['inferred_type']?.toString() ??
-                      _cleaningText(t, 'notAvailable'),
-                ),
-              ),
-              _CleaningMetric(
-                icon: Icons.auto_fix_high_outlined,
-                label: _cleaningText(t, 'suggestedStrategy'),
-                value: _cleaningText(
-                  t,
-                  strategy['suggested_missing_strategy']?.toString() ??
-                      'notAvailable',
-                ),
-              ),
-              _CleaningMetric(
-                icon: Icons.swap_horiz_outlined,
-                label: _cleaningText(t, 'conversions'),
-                value: '$conversionCount',
-              ),
-              _CleaningMetric(
-                icon: Icons.cleaning_services_outlined,
-                label: _cleaningText(t, 'invalidCorrected'),
-                value: '${strategy['invalid_values_corrected'] ?? 0}',
-              ),
-            ],
-          ),
-          if (appliedStrategies.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              _cleaningText(t, 'appliedStrategies'),
-              style: TextStyle(
-                color: colors.muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final label in appliedStrategies)
-                  Chip(label: Text(label)),
+                _CleaningMetric(
+                  icon: Icons.alt_route_outlined,
+                  label: _cleaningText(t, 'mappedField'),
+                  value: mappedField == null || mappedField.isEmpty
+                      ? _cleaningText(t, 'notMapped')
+                      : mappedField,
+                ),
+                _CleaningMetric(
+                  icon: Icons.data_object_outlined,
+                  label: _cleaningText(t, 'inferredType'),
+                  value: _humanizeCode(
+                    strategy['inferred_type']?.toString() ??
+                        _cleaningText(t, 'notAvailable'),
+                  ),
+                ),
+                _CleaningMetric(
+                  icon: Icons.auto_fix_high_outlined,
+                  label: _cleaningText(t, 'suggestedStrategy'),
+                  value: _cleaningText(
+                    t,
+                    strategy['suggested_missing_strategy']?.toString() ??
+                        'notAvailable',
+                  ),
+                ),
+                _CleaningMetric(
+                  icon: Icons.swap_horiz_outlined,
+                  label: _cleaningText(t, 'conversions'),
+                  value: '$conversionCount',
+                ),
+                _CleaningMetric(
+                  icon: Icons.cleaning_services_outlined,
+                  label: _cleaningText(t, 'invalidCorrected'),
+                  value: '${strategy['invalid_values_corrected'] ?? 0}',
+                ),
               ],
             ),
-          ],
+            if (appliedStrategies.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                _cleaningText(t, 'appliedStrategies'),
+                style: TextStyle(
+                  color: colors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final label in appliedStrategies)
+                    Chip(label: Text(label)),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1870,30 +2014,30 @@ class _PreviewTable extends StatelessWidget {
     final columns = rows.first.keys.take(8).toList();
     return LayoutBuilder(
       builder: (context, constraints) => AvenqoDataTable(
-          semanticLabel: emptyLabel,
-          minWidth: columns.length * 180,
-          maxHeight: constraints.maxHeight,
-          fixedLeftColumns: 1,
-            columns: [
-              for (final column in columns) DataColumn(label: Text(column)),
-            ],
-            rows: [
-              for (final row in rows.take(20))
-                DataRow(
-                  cells: [
-                    for (final column in columns)
-                      DataCell(
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 180),
-                          child: Text(
-                            row[column]?.toString() ?? '',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+        semanticLabel: emptyLabel,
+        minWidth: columns.length * 180,
+        maxHeight: constraints.maxHeight,
+        fixedLeftColumns: 1,
+        columns: [
+          for (final column in columns) DataColumn(label: Text(column)),
+        ],
+        rows: [
+          for (final row in rows.take(20))
+            DataRow(
+              cells: [
+                for (final column in columns)
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        row[column]?.toString() ?? '',
+                        overflow: TextOverflow.ellipsis,
                       ),
-                  ],
-                ),
-            ],
+                    ),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }

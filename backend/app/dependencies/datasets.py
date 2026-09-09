@@ -11,6 +11,7 @@ from backend.app.dependencies.training import get_training_dispatcher
 from backend.app.dependencies.ai_engine import get_ai_model_registry
 from backend.app.repositories import SQLAlchemyModuleEntitlements
 from backend.app.services.artifact_service import ArtifactService
+from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.automatic_company_dataset_ingestion_service import (
     AutomaticCompanyDatasetIngestionService,
 )
@@ -41,6 +42,7 @@ def get_dataset_import_service(
         quota=quota,
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
         model_registry=model_registry,
+        audit_log=AuditLogService(db),
     )
 
 

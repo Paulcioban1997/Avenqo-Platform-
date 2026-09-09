@@ -99,32 +99,36 @@ void main() {
     },
   );
 
-  testWidgets('Connections keeps a ready dataset usable even if AI training must be retried', (
-    tester,
-  ) async {
-    final client = MockClient((request) async {
-      return http.Response(
-        '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"training_failed","training_retryable":true,"rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
-        200,
+  testWidgets(
+    'Connections keeps a ready dataset usable even if AI training must be retried',
+    (tester) async {
+      final client = MockClient((request) async {
+        return http.Response(
+          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"training_failed","training_retryable":true,"rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+          200,
+        );
+      });
+      await tester.pumpWidget(
+        await _wrapWithLocale(ConnectionsPage(api: _api(client))),
       );
-    });
-    await tester.pumpWidget(
-      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    expect(find.text('Données connectées'), findsOneWidget);
-    await tester.tap(find.text('Données connectées'));
-    await tester.pumpAndSettle();
+      expect(find.text('Données connectées'), findsOneWidget);
+      await tester.tap(find.text('Données connectées'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('sales.csv'), findsOneWidget);
-    expect(find.textContaining('42'), findsOneWidget);
-    expect(find.text('Données prêtes'), findsOneWidget);
-    expect(find.text('Le traitement avancé doit être relancé'), findsOneWidget);
-    expect(find.text('Voir les données nettoyées'), findsOneWidget);
+      expect(find.text('sales.csv'), findsOneWidget);
+      expect(find.textContaining('42'), findsOneWidget);
+      expect(find.text('Données prêtes'), findsOneWidget);
+      expect(
+        find.text('Le traitement avancé doit être relancé'),
+        findsOneWidget,
+      );
+      expect(find.text('Voir les données nettoyées'), findsOneWidget);
       // The Add files CTA must remain available even once data already exists.
-    expect(find.text('Ajouter des fichiers'), findsOneWidget);
-  });
+      expect(find.text('Ajouter des fichiers'), findsOneWidget);
+    },
+  );
 
   testWidgets('A ready dataset exposes its cleaning summary and previews', (
     tester,
@@ -162,7 +166,10 @@ void main() {
     expect(find.textContaining('Avant'), findsOneWidget);
     expect(find.textContaining('Après'), findsOneWidget);
     expect(find.text('Détails par colonne'), findsOneWidget);
-    expect(find.text('Qualité du nettoyage: A few duplicate rows were removed.'), findsOneWidget);
+    expect(
+      find.text('Qualité du nettoyage: A few duplicate rows were removed.'),
+      findsOneWidget,
+    );
     expect(find.text('Moyenne'), findsOneWidget);
     expect(find.text('CSV'), findsOneWidget);
     expect(find.text('XLSX'), findsOneWidget);
@@ -224,10 +231,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Action requise · v1'), findsOneWidget);
-    expect(
-      find.textContaining('confirmation manuelle'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('confirmation manuelle'), findsOneWidget);
     expect(find.text('CSV'), findsOneWidget);
     expect(find.text('DOCX'), findsOneWidget);
 
@@ -304,17 +308,16 @@ void main() {
     final client = MockClient((request) async {
       if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
         datasetRequests += 1;
-      final trainingStatus = datasetRequests == 1 ? 'training_ai' : 'ready';
-      return http.Response(
-        '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"$trainingStatus"}]',
-        200,
+        final trainingStatus = datasetRequests == 1 ? 'training_ai' : 'ready';
+        return http.Response(
+          '[{"id":"22222222-2222-2222-2222-222222222222","name":"sales.csv","status":"ready","pipeline_status":"ready","training_status":"$trainingStatus"}]',
+          200,
         );
       }
       if (request.method == 'GET' && request.url.path.contains('/connectors')) {
         return http.Response('[]', 200);
       }
-      return http.Response('{}', 200
-      );
+      return http.Response('{}', 200);
     });
     await tester.pumpWidget(
       await _wrapWithLocale(
@@ -340,19 +343,27 @@ void main() {
     tester,
   ) async {
     var deleteCalled = false;
+    var deleted = false;
     final client = MockClient((request) async {
       if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
         return http.Response(
-          '[{"id":"33333333-3333-3333-3333-333333333333","name":"obsolete.csv","status":"ready","rows_count":8,"columns_count":2,"uploaded_at":"2026-08-27T00:00:00Z"}]',
+          deleted
+              ? '[]'
+              : '[{"id":"33333333-3333-3333-3333-333333333333","name":"obsolete.csv","status":"ready","rows_count":8,"columns_count":2,"uploaded_at":"2026-08-27T00:00:00Z"}]',
           200,
         );
       }
-      if (request.method == 'DELETE' &&
-          request.url.path.endsWith(
-            '/datasets/33333333-3333-3333-3333-333333333333',
-          )) {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/datasets/delete-selection')) {
         deleteCalled = true;
-        return http.Response('', 204);
+        deleted = true;
+        expect(jsonDecode(request.body), {
+          'dataset_ids': ['33333333-3333-3333-3333-333333333333'],
+        });
+        return http.Response(
+          '{"deleted_ids":["33333333-3333-3333-3333-333333333333"],"deleted_count":1}',
+          200,
+        );
       }
       return http.Response('{}', 404);
     });
@@ -374,6 +385,92 @@ void main() {
 
     expect(deleteCalled, isTrue);
     expect(find.text('obsolete.csv'), findsNothing);
+  });
+
+  testWidgets('A failed deletion keeps the selected dataset visible', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"44444444-4444-4444-4444-444444444444","name":"keep.csv","status":"ready","rows_count":8,"columns_count":2,"uploaded_at":"2026-08-27T00:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/datasets/delete-selection')) {
+        return http.Response('{"detail":"failed"}', 500);
+      }
+      return http.Response('[]', 200);
+    });
+
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.delete_outline));
+    await tester.pumpAndSettle();
+
+    expect(find.text('keep.csv'), findsOneWidget);
+    expect(find.byType(SnackBar), findsOneWidget);
+  });
+
+  testWidgets('Selected datasets are deleted in one confirmed request', (
+    tester,
+  ) async {
+    var deleted = false;
+    final requestedIds = <dynamic>[];
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          deleted
+              ? '[]'
+              : '[{"id":"55555555-5555-5555-5555-555555555555","name":"sales.csv","status":"ready"},{"id":"66666666-6666-6666-6666-666666666666","name":"customers.csv","status":"ready"}]',
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/datasets/delete-selection')) {
+        requestedIds.addAll(
+          (jsonDecode(request.body) as Map<String, dynamic>)['dataset_ids']
+              as List<dynamic>,
+        );
+        deleted = true;
+        return http.Response(
+          '{"deleted_ids":["55555555-5555-5555-5555-555555555555","66666666-6666-6666-6666-666666666666"],"deleted_count":2}',
+          200,
+        );
+      }
+      return http.Response('[]', 200);
+    });
+
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(Checkbox).at(0));
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(Checkbox).at(1));
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 sélectionné(s)'), findsOneWidget);
+    await tester.tap(find.text('Supprimer la sélection'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('Supprimer définitivement'));
+    await tester.pumpAndSettle();
+
+    expect(requestedIds, hasLength(2));
+    expect(find.text('sales.csv'), findsNothing);
+    expect(find.text('customers.csv'), findsNothing);
   });
 
   testWidgets('Connections shows a safe error state and allows retry', (

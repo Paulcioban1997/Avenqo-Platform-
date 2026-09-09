@@ -803,7 +803,18 @@
     "themeToggleSwitchToLight": "Passer en mode clair",
     "connectionsPreparingData": "Préparation des données…",
     "connectionsTrainingAi": "Entraînement de l’IA…",
-    "connectionsAttentionRequired": "Action requise"
+    "connectionsAttentionRequired": "Action requise",
+    "connectionsDeleteData": "Supprimer les donn?es",
+    "connectionsDeleteSelected": "Supprimer la s?lection",
+    "connectionsDeletePermanently": "Supprimer d?finitivement",
+    "connectionsDeleteCancel": "Annuler",
+    "connectionsDeleteTitle": "Supprimer les donn?es ?",
+    "connectionsDeleteWarning": "Cette action supprime d?finitivement les donn?es s?lectionn?es, les donn?es nettoy?es, les mod?les, les pr?visions et le contexte IA. Les boutiques connect?es restent connect?es.",
+    "connectionsDeleteSuccess": "Donn?es supprim?es avec succ?s.",
+    "connectionsDeleteFailure": "La suppression des donn?es a ?chou?.",
+    "connectionsUploadedSource": "Fichier import?",
+    "connectionsSynchronizedSource": "Donn?es synchronis?es",
+    "connectionsSelectedCount": "{n} s?lectionn?(s)."
   },
   "agents": {
     "navLabel": "Agents",

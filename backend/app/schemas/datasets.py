@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.models import DatasetStatus
 
@@ -35,3 +35,12 @@ class DatasetResponse(BaseModel):
     uploaded_at: datetime
     columns: list[FieldProfileResponse]
     distributions: dict[str, dict[str, int]]
+
+
+class DatasetDeleteSelectionRequest(BaseModel):
+    dataset_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class DatasetDeleteSelectionResponse(BaseModel):
+    deleted_ids: list[UUID]
+    deleted_count: int

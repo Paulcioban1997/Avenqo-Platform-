@@ -29,7 +29,11 @@ from backend.app.schemas.company_datasets import (
     MappingOverrideRequest,
     MappingOverrideResponse,
 )
-from backend.app.schemas.datasets import DatasetResponse
+from backend.app.schemas.datasets import (
+    DatasetDeleteSelectionRequest,
+    DatasetDeleteSelectionResponse,
+    DatasetResponse,
+)
 from backend.app.services.capability_execution_gate import CapabilityExecutionGate
 from backend.app.services.company_dataset_ingestion_service import (
     CompanyDatasetIngestionService,
@@ -44,6 +48,7 @@ from backend.app.services.dataset_cleaning_service import (
     UnsupportedDatasetExport,
 )
 from backend.app.services.dataset_import_service import (
+    DatasetAccessDeniedError,
     DatasetImportError,
     DatasetImportService,
     DatasetNotFoundError,
@@ -480,16 +485,46 @@ def list_datasets(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
 
+@router.post("/delete-selection", response_model=DatasetDeleteSelectionResponse)
+def delete_dataset_selection(
+    request: DatasetDeleteSelectionRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: DatasetImportService = Depends(get_dataset_import_service),
+) -> DatasetDeleteSelectionResponse:
+    try:
+        deleted_ids = service.delete_many(
+            tenant,
+            request.dataset_ids,
+            actor_user_id=identity.user.id,
+        )
+    except DatasetAccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return DatasetDeleteSelectionResponse(
+        deleted_ids=list(deleted_ids),
+        deleted_count=len(deleted_ids),
+    )
+
+
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_dataset(
     dataset_id: UUID,
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     service: DatasetImportService = Depends(get_dataset_import_service),
 ) -> Response:
     """Supprime un fichier/dataset du tenant courant et ses artefacts locaux."""
 
     try:
-        service.delete(tenant, dataset_id)
+        service.delete(
+            tenant,
+            dataset_id,
+            actor_user_id=identity.user.id,
+        )
+    except DatasetAccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

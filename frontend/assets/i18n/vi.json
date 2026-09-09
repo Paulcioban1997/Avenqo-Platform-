@@ -803,7 +803,18 @@
     "customerRiskLow": "Low",
     "customerRiskMedium": "Medium",
     "customerRiskHigh": "High",
-    "customerRiskCritical": "Critical"
+    "customerRiskCritical": "Critical",
+    "connectionsDeleteData": "Delete data",
+    "connectionsDeleteSelected": "Delete selected",
+    "connectionsDeletePermanently": "Delete permanently",
+    "connectionsDeleteCancel": "Cancel",
+    "connectionsDeleteTitle": "Delete data?",
+    "connectionsDeleteWarning": "This permanently deletes the selected source data, cleaned data, models, forecasts, and AI context. Connected stores remain connected.",
+    "connectionsDeleteSuccess": "Data deleted successfully.",
+    "connectionsDeleteFailure": "Data deletion failed.",
+    "connectionsUploadedSource": "Uploaded file",
+    "connectionsSynchronizedSource": "Synchronized data",
+    "connectionsSelectedCount": "{n} selected."
   },
   "agents": {
     "navLabel": "Đại lý",

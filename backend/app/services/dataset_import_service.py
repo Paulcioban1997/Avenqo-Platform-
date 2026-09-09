@@ -1,6 +1,7 @@
 ﻿"""Importe et profile les datasets sans entraîner de modèle."""
 
 from collections import Counter
+from collections.abc import Sequence
 import csv
 from datetime import datetime
 from io import StringIO
@@ -12,15 +13,19 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
+    CommerceConnection,
     DataQualityReport,
     Dataset,
     DatasetProfile,
     DatasetStatus,
     DatasetVersion,
     DatasetVersionStatus,
+    NormalizedCommerceRecord,
+    RetailActiveSource,
     TrainingJob,
 )
 from backend.app.services.artifact_service import ArtifactService
+from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.data_import_policy import DataImportPolicy
 from modules.catalog import MODULES_BY_CODE
 from shared.ai_engine.contracts import TenantContext
@@ -38,6 +43,10 @@ class DatasetNotFoundError(ValueError):
     """Masque aussi les datasets appartenant à un autre tenant."""
 
 
+class DatasetAccessDeniedError(ValueError):
+    """Signale une tentative de suppression d'un dataset d'un autre tenant."""
+
+
 class DatasetImportService:
     """Valide, stocke, profile et persiste un CSV pour un tenant."""
 
@@ -48,12 +57,14 @@ class DatasetImportService:
         quota: DataImportPolicy,
         max_upload_bytes: int,
         model_registry: ModelRegistry | None = None,
+        audit_log: AuditLogService | None = None,
     ) -> None:
         self._session = session
         self._artifacts = artifacts
         self._quota = quota
         self._max_upload_bytes = max_upload_bytes
         self._model_registry = model_registry
+        self._audit_log = audit_log
 
     def import_csv(
         self,
@@ -179,11 +190,92 @@ class DatasetImportService:
             raise DatasetNotFoundError("Dataset introuvable")
         return dataset
 
-    def delete(self, tenant: TenantContext, dataset_id: UUID) -> None:
-        """Supprime un dataset et toutes ses dépendances tenant-scoped."""
+    def delete(
+        self,
+        tenant: TenantContext,
+        dataset_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> None:
+        self.delete_many(
+            tenant,
+            [dataset_id],
+            actor_user_id=actor_user_id,
+        )
 
-        dataset = self.get(tenant, dataset_id)
-        artifact_roots = self._dataset_artifact_roots(dataset)
+    def delete_many(
+        self,
+        tenant: TenantContext,
+        dataset_ids: Sequence[UUID],
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> Sequence[UUID]:
+        """Supprime atomiquement des datasets et leurs données dérivées tenant-scoped."""
+
+        unique_ids = list(dict.fromkeys(dataset_ids))
+        if not unique_ids:
+            return []
+        datasets = list(
+            self._session.scalars(
+                select(Dataset).where(
+                    Dataset.id.in_(unique_ids),
+                    Dataset.company_id == tenant.company_id,
+                ).with_for_update()
+            )
+        )
+        found_ids = {dataset.id for dataset in datasets}
+        if found_ids != set(unique_ids):
+            existing_ids = set(
+                self._session.scalars(
+                    select(Dataset.id).where(Dataset.id.in_(unique_ids))
+                )
+            )
+            if existing_ids - found_ids:
+                raise DatasetAccessDeniedError("Accès interdit à ce dataset")
+            raise DatasetNotFoundError("Dataset introuvable")
+
+        artifact_roots = {
+            root
+            for dataset in datasets
+            for root in self._dataset_artifact_roots(dataset)
+        }
+        linked_connections = []
+        connector_metadata: dict[UUID, list[dict[str, str]]] = {
+            dataset_id: [] for dataset_id in unique_ids
+        }
+        for connection in self._session.scalars(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id
+            ).with_for_update()
+        ):
+            references = dict(connection.dataset_ids or {})
+            matching_keys = {
+                key
+                for key, value in references.items()
+                if self._reference_matches(value, found_ids)
+            }
+            if not matching_keys:
+                continue
+            connection.dataset_ids = {
+                key: value
+                for key, value in references.items()
+                if key not in matching_keys
+            }
+            connection.sync_cursor = {}
+            connection.records_processed = 0
+            connection.current_entity = None
+            linked_connections.append(connection)
+            for dataset_id in found_ids:
+                if any(
+                    self._reference_matches(value, {dataset_id})
+                    for value in references.values()
+                ):
+                    connector_metadata[dataset_id].append(
+                        {
+                            "connection_id": str(connection.id),
+                            "provider": connection.provider,
+                        }
+                    )
 
         try:
             # Les anciennes bases sandbox ont bien un FK ON DELETE CASCADE sur
@@ -193,21 +285,66 @@ class DatasetImportService:
             # dépendances DB (ex. model_registries) suivent leur cascade FK.
             self._session.execute(
                 delete(TrainingJob).where(
-                    TrainingJob.dataset_id == dataset_id,
+                    TrainingJob.dataset_id.in_(unique_ids),
                     TrainingJob.company_id == tenant.company_id,
                 )
             )
-            self._session.delete(dataset)
+            for connection in linked_connections:
+                self._session.execute(
+                    delete(NormalizedCommerceRecord).where(
+                        NormalizedCommerceRecord.company_id == tenant.company_id,
+                        NormalizedCommerceRecord.connection_id == connection.id,
+                    )
+                )
+                self._session.execute(
+                    delete(RetailActiveSource).where(
+                        RetailActiveSource.company_id == tenant.company_id,
+                        RetailActiveSource.connection_id == connection.id,
+                    )
+                )
+            self._session.execute(
+                delete(RetailActiveSource).where(
+                    RetailActiveSource.company_id == tenant.company_id,
+                    RetailActiveSource.dataset_id.in_(unique_ids),
+                )
+            )
+            for dataset in datasets:
+                self._session.delete(dataset)
+            if actor_user_id is not None and self._audit_log is not None:
+                for dataset_id in unique_ids:
+                    connectors = connector_metadata[dataset_id]
+                    self._audit_log.record(
+                        actor_user_id=actor_user_id,
+                        action="dataset_deleted",
+                        target_type="dataset",
+                        target_id=str(dataset_id),
+                        company_id=tenant.company_id,
+                        metadata={
+                            "result": "success",
+                            "source_type": "synchronized" if connectors else "uploaded",
+                            "connectors": connectors,
+                        },
+                        commit=False,
+                    )
             self._session.commit()
         except Exception:
             self._session.rollback()
             raise
 
         if self._model_registry is not None:
-            invalidate_dataset_versions(self._model_registry, tenant, str(dataset_id))
+            for dataset_id in unique_ids:
+                invalidate_dataset_versions(self._model_registry, tenant, str(dataset_id))
 
         for root in artifact_roots:
             shutil.rmtree(root, ignore_errors=True)
+        return unique_ids
+
+    @staticmethod
+    def _reference_matches(value: object, dataset_ids: set[UUID]) -> bool:
+        try:
+            return UUID(str(value)) in dataset_ids
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def _dataset_artifact_roots(dataset: Dataset) -> set[Path]:
