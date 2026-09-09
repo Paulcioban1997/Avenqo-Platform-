@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "တွန်းလှည်းတွေ စွန့်တယ်။",
       "capabilityCatalog": "ကက်တလောက်",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "ထပ်တူထပ်မျှ"
+      "capabilityIncrementalSync": "ထပ်တူထပ်မျှ",
+      "testConnector": "ချိတ်ဆက်ကိရိယာကို စမ်းသပ်ရန်"
     },
     "businessDefaultTitle": "သင့်ဒေတာကို ချိတ်ဆက်ပါ",
     "businessDefaultDescription": "စတင်ရန် သင့်ဒေတာရင်းမြစ်ကို ချိတ်ဆက်ပါ",

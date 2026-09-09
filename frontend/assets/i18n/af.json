@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Verlate karretjies",
       "capabilityCatalog": "Katalogus",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Inkrementele sinchronisasie"
+      "capabilityIncrementalSync": "Inkrementele sinchronisasie",
+      "testConnector": "Toets die koppelaar"
     },
     "businessDefaultTitle": "Jou ruimte is gereed",
     "businessDefaultDescription": "Verbind jou gereedskap om bygewerkte inligting hier te sien.",

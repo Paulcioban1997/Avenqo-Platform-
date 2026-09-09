@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Брошенные тележки",
       "capabilityCatalog": "Каталог",
       "capabilityWebhooks": "Вебхуки",
-      "capabilityIncrementalSync": "Дополнительная синхронизация"
+      "capabilityIncrementalSync": "Дополнительная синхронизация",
+      "testConnector": "Протестировать коннектор"
     },
     "businessDefaultTitle": "Ваше пространство готово",
     "businessDefaultDescription": "Подключите инструменты, чтобы видеть здесь актуальную информацию.",

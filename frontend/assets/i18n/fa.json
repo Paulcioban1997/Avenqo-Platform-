@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "گاری های رها شده",
       "capabilityCatalog": "کاتالوگ",
       "capabilityWebhooks": "وب هوک ها",
-      "capabilityIncrementalSync": "همگام سازی افزایشی"
+      "capabilityIncrementalSync": "همگام سازی افزایشی",
+      "testConnector": "آزمایش اتصال‌دهنده"
     },
     "businessDefaultTitle": "فضای شما آماده است",
     "businessDefaultDescription": "ابزارهای خود را متصل کنید تا اطلاعات به‌روز را اینجا ببینید.",

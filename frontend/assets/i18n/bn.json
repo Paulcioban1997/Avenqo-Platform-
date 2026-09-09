@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "পরিত্যক্ত গাড়ি",
       "capabilityCatalog": "ক্যাটালগ",
       "capabilityWebhooks": "ওয়েবহুক",
-      "capabilityIncrementalSync": "ক্রমবর্ধমান সিঙ্ক"
+      "capabilityIncrementalSync": "ক্রমবর্ধমান সিঙ্ক",
+      "testConnector": "সংযোগকারী পরীক্ষা করুন"
     },
     "businessDefaultTitle": "আপনার ডেটা সংযুক্ত করুন",
     "businessDefaultDescription": "শুরু করতে আপনার ডেটা উৎস সংযুক্ত করুন",

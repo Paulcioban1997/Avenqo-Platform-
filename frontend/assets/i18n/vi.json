@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Xe đẩy bị bỏ rơi",
       "capabilityCatalog": "Danh mục",
       "capabilityWebhooks": "Webhook",
-      "capabilityIncrementalSync": "Đồng bộ hóa gia tăng"
+      "capabilityIncrementalSync": "Đồng bộ hóa gia tăng",
+      "testConnector": "Kiểm tra trình kết nối"
     },
     "businessDefaultTitle": "Kết nối dữ liệu của bạn",
     "businessDefaultDescription": "Kết nối nguồn dữ liệu của bạn để bắt đầu",

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "عربات مهجورة",
       "capabilityCatalog": "كتالوج",
       "capabilityWebhooks": "خطافات الويب",
-      "capabilityIncrementalSync": "مزامنة تزايدية"
+      "capabilityIncrementalSync": "مزامنة تزايدية",
+      "testConnector": "اختبار الموصل"
     },
     "businessDefaultTitle": "مساحتك جاهزة",
     "businessDefaultDescription": "اربط أدواتك عشان تشوف معلومات محدثة هنا.",

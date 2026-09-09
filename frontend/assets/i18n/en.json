@@ -661,7 +661,8 @@
       "capabilityAbandonedCarts": "Abandoned carts",
       "capabilityCatalog": "Catalog",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Incremental sync"
+      "capabilityIncrementalSync": "Incremental sync",
+      "testConnector": "Test connector"
     },
     "businessDefaultTitle": "Your space is ready",
     "businessDefaultDescription": "Connect your tools to see up-to-date information here.",

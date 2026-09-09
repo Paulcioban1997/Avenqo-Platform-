@@ -121,7 +121,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     final catalog = _mapsFrom(responses[0])
         .where(
           (item) =>
-              item['provider'] != null && item['implementation_status'] != null,
+              item['provider'] != null && item['customer_status'] != null,
         )
         .toList(growable: false);
     final connections = _mapsFrom(responses[1])

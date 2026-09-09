@@ -316,7 +316,9 @@ class _ProviderCard extends StatelessWidget {
     final available = customerStatus == 'AVAILABLE';
     final configured = provider['configured'] == true;
     final canConnect = configured && available;
-    final actionable = canConnect;
+    final canTest =
+      !available && provider['internal_test_available'] == true;
+    final actionable = canConnect || canTest;
     final accent = actionable
         ? const Color(0xFF1B9E5A)
         : colors.muted;
@@ -411,24 +413,34 @@ class _ProviderCard extends StatelessWidget {
                 onPressed: onCancel,
                 child: Text(text('cancel')),
               ),
-              FilledButton.icon(
-                key: ValueKey('connect-$providerId'),
-                onPressed: canConnect && !authorizing ? onConnect : null,
-                icon: authorizing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.add_link, size: 18),
-                label: Text(
-                  canConnect
-                      ? text(
-                          hasConnection ? 'connectAnother' : 'connectToAvenqo',
+              if (canTest)
+                OutlinedButton.icon(
+                  key: ValueKey('test-$providerId'),
+                  onPressed: authorizing ? null : onConnect,
+                  icon: const Icon(Icons.science_outlined, size: 18),
+                  label: Text(text('testConnector')),
+                )
+              else
+                FilledButton.icon(
+                  key: ValueKey('connect-$providerId'),
+                  onPressed: canConnect && !authorizing ? onConnect : null,
+                  icon: authorizing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : text('comingSoon'),
+                      : const Icon(Icons.add_link, size: 18),
+                  label: Text(
+                    canConnect
+                        ? text(
+                            hasConnection
+                                ? 'connectAnother'
+                                : 'connectToAvenqo',
+                          )
+                        : text('comingSoon'),
+                  ),
                 ),
-              ),
             ],
           ),
         ],

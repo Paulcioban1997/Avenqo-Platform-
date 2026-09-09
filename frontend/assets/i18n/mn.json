@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Хаягдсан тэрэгнүүд",
       "capabilityCatalog": "Каталог",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Өсөн нэмэгдэж буй синк"
+      "capabilityIncrementalSync": "Өсөн нэмэгдэж буй синк",
+      "testConnector": "Холбогчийг турших"
     },
     "businessDefaultTitle": "Өгөгдлөө холбох",
     "businessDefaultDescription": "Эхлэхийн тулд өгөгдлийн эх сурвалжаа холбоно уу",

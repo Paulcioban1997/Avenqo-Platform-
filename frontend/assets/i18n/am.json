@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "የተተዉ ጋሪዎች",
       "capabilityCatalog": "ካታሎግ",
       "capabilityWebhooks": "የድር መንጠቆዎች",
-      "capabilityIncrementalSync": "ጭማሪ ማመሳሰል"
+      "capabilityIncrementalSync": "ጭማሪ ማመሳሰል",
+      "testConnector": "አገናኙን ይሞክሩ"
     },
     "businessDefaultTitle": "የእርስዎ ቦታ ዝግጁ ነው",
     "businessDefaultDescription": "የቅርብ ጊዜውን መረጃ እዚህ ለማየት መሳሪያዎችዎን ያገናኙ።",

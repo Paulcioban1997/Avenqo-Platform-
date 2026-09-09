@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Katunan da aka watsar",
       "capabilityCatalog": "Katalogi",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Ƙara daidaitawa"
+      "capabilityIncrementalSync": "Ƙara daidaitawa",
+      "testConnector": "Gwada mai haɗawa"
     },
     "businessDefaultTitle": "Wurin aikinka a shirye yake",
     "businessDefaultDescription": "Haɗa kayan aikinka don ganin bayanan yau da kullum a nan.",

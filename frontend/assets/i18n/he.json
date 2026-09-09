@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "עגלות נטושות",
       "capabilityCatalog": "קָטָלוֹג",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "סנכרון מצטבר"
+      "capabilityIncrementalSync": "סנכרון מצטבר",
+      "testConnector": "בדיקת המחבר"
     },
     "businessDefaultTitle": "המרחב שלכם מוכן",
     "businessDefaultDescription": "חברו את הכלים שלכם כדי לראות כאן מידע מעודכן.",

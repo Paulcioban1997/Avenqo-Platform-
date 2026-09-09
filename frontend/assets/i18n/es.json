@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "carros abandonados",
       "capabilityCatalog": "Catalogar",
       "capabilityWebhooks": "Ganchos web",
-      "capabilityIncrementalSync": "Sincronización incremental"
+      "capabilityIncrementalSync": "Sincronización incremental",
+      "testConnector": "Probar conector"
     },
     "businessDefaultTitle": "Tu espacio está listo",
     "businessDefaultDescription": "Conecta tus herramientas para ver información actualizada aquí.",

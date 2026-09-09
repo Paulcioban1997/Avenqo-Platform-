@@ -2495,6 +2495,7 @@ class CompanyStrings {
       'providerSearchHint': 'Search for a platform...',
       'providerDescription': 'Connect this store to Avenqo to synchronize products, customers, orders, inventory, and commerce data.',
       'connectToAvenqo': 'Connect to Avenqo',
+      'testConnector': 'Test connector',
       'shopDomainTitle': 'Connect Shopify',
       'shopDomainHint': 'your-store.myshopify.com',
       'authorize': 'Continue to Shopify',

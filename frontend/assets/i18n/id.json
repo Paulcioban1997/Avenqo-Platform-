@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Gerobak yang ditinggalkan",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Webhook",
-      "capabilityIncrementalSync": "Sinkronisasi tambahan"
+      "capabilityIncrementalSync": "Sinkronisasi tambahan",
+      "testConnector": "Uji konektor"
     },
     "businessDefaultTitle": "Hubungkan data Anda",
     "businessDefaultDescription": "Hubungkan sumber data Anda untuk memulai",

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Լքված սայլեր",
       "capabilityCatalog": "Կատալոգ",
       "capabilityWebhooks": "Վեբկեռիկներ",
-      "capabilityIncrementalSync": "Աճող համաժամեցում"
+      "capabilityIncrementalSync": "Աճող համաժամեցում",
+      "testConnector": "Փորձարկել միակցիչը"
     },
     "businessDefaultTitle": "Ձեր տարածքը պատրաստ է",
     "businessDefaultDescription": "Միացրեք ձեր գործիքները՝ այստեղ արդի տեղեկություններ տեսնելու համար։",

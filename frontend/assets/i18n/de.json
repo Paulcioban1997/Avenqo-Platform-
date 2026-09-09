@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Verlassene Karren",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Inkrementelle Synchronisierung"
+      "capabilityIncrementalSync": "Inkrementelle Synchronisierung",
+      "testConnector": "Konnektor testen"
     },
     "businessDefaultTitle": "Ihr Bereich ist bereit",
     "businessDefaultDescription": "Verbinden Sie Ihre Tools, um hier aktuelle Informationen zu sehen.",

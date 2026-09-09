@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Mga inabandunang kariton",
       "capabilityCatalog": "Catalog",
       "capabilityWebhooks": "Mga Webhook",
-      "capabilityIncrementalSync": "Incremental na pag-sync"
+      "capabilityIncrementalSync": "Incremental na pag-sync",
+      "testConnector": "Subukan ang connector"
     },
     "businessDefaultTitle": "Ikonekta ang iyong datos",
     "businessDefaultDescription": "Ikonekta ang iyong pinagmulan ng datos para magsimula",

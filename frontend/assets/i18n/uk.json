@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Покинуті візки",
       "capabilityCatalog": "Каталог",
       "capabilityWebhooks": "Веб-хуки",
-      "capabilityIncrementalSync": "Поступова синхронізація"
+      "capabilityIncrementalSync": "Поступова синхронізація",
+      "testConnector": "Протестувати конектор"
     },
     "businessDefaultTitle": "Ваш простір готовий",
     "businessDefaultDescription": "Підключіть інструменти, щоб бачити тут актуальну інформацію.",

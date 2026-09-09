@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Terk edilmiş arabalar",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Web kancaları",
-      "capabilityIncrementalSync": "Artımlı senkronizasyon"
+      "capabilityIncrementalSync": "Artımlı senkronizasyon",
+      "testConnector": "Bağlayıcıyı test et"
     },
     "businessDefaultTitle": "Alanınız hazır",
     "businessDefaultDescription": "Güncel bilgileri burada görmek için araçlarınızı bağlayın.",

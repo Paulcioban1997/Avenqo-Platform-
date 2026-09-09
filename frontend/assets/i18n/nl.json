@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Verlaten karren",
       "capabilityCatalog": "Catalogus",
       "capabilityWebhooks": "Webhaken",
-      "capabilityIncrementalSync": "Incrementele synchronisatie"
+      "capabilityIncrementalSync": "Incrementele synchronisatie",
+      "testConnector": "Connector testen"
     },
     "businessDefaultTitle": "Je werkruimte is klaar",
     "businessDefaultDescription": "Verbind je tools om hier actuele informatie te zien.",

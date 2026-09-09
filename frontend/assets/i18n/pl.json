@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Opuszczone wózki",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Haki internetowe",
-      "capabilityIncrementalSync": "Synchronizacja przyrostowa"
+      "capabilityIncrementalSync": "Synchronizacja przyrostowa",
+      "testConnector": "Przetestuj konektor"
     },
     "businessDefaultTitle": "Twoja przestrzeń jest gotowa",
     "businessDefaultDescription": "Połącz swoje narzędzia, aby zobaczyć tutaj aktualne informacje.",

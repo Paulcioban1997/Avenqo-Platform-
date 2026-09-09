@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "버려진 카트",
       "capabilityCatalog": "목록",
       "capabilityWebhooks": "웹훅",
-      "capabilityIncrementalSync": "증분 동기화"
+      "capabilityIncrementalSync": "증분 동기화",
+      "testConnector": "커넥터 테스트"
     },
     "businessDefaultTitle": "데이터 연결",
     "businessDefaultDescription": "시작하려면 데이터 소스를 연결하세요",

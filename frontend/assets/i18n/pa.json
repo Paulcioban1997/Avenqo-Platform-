@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "ਛੱਡੀਆਂ ਗੱਡੀਆਂ",
       "capabilityCatalog": "ਕੈਟਾਲਾਗ",
       "capabilityWebhooks": "ਵੈਬਹੁੱਕ",
-      "capabilityIncrementalSync": "ਵਾਧਾ ਸਮਕਾਲੀਕਰਨ"
+      "capabilityIncrementalSync": "ਵਾਧਾ ਸਮਕਾਲੀਕਰਨ",
+      "testConnector": "ਕਨੈਕਟਰ ਦੀ ਜਾਂਚ ਕਰੋ"
     },
     "businessDefaultTitle": "ਆਪਣਾ ਡਾਟਾ ਕਨੈਕਟ ਕਰੋ",
     "businessDefaultDescription": "ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਆਪਣਾ ਡਾਟਾ ਸਰੋਤ ਕਨੈਕਟ ਕਰੋ",

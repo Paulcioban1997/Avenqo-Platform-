@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Opuštěné vozíky",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Webhooky",
-      "capabilityIncrementalSync": "Přírůstková synchronizace"
+      "capabilityIncrementalSync": "Přírůstková synchronizace",
+      "testConnector": "Otestovat konektor"
     },
     "businessDefaultTitle": "Váš prostor je připraven",
     "businessDefaultDescription": "Připojte své nástroje, abyste zde viděli aktuální informace.",

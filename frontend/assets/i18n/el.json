@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Εγκαταλελειμμένα καρότσια",
       "capabilityCatalog": "Κατάλογος",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Αυξητικός συγχρονισμός"
+      "capabilityIncrementalSync": "Αυξητικός συγχρονισμός",
+      "testConnector": "Δοκιμή σύνδεσης"
     },
     "businessDefaultTitle": "Ο χώρος σας είναι έτοιμος",
     "businessDefaultDescription": "Συνδέστε τα εργαλεία σας για να δείτε ενημερωμένες πληροφορίες εδώ.",

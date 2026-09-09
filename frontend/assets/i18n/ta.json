@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "கைவிடப்பட்ட வண்டிகள்",
       "capabilityCatalog": "பட்டியல்",
       "capabilityWebhooks": "வெப்ஹூக்ஸ்",
-      "capabilityIncrementalSync": "அதிகரிக்கும் ஒத்திசைவு"
+      "capabilityIncrementalSync": "அதிகரிக்கும் ஒத்திசைவு",
+      "testConnector": "இணைப்பியைச் சோதிக்கவும்"
     },
     "businessDefaultTitle": "உங்கள் தரவை இணைக்கவும்",
     "businessDefaultDescription": "தொடங்க உங்கள் தரவு மூலத்தை இணைக்கவும்",

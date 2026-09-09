@@ -44,6 +44,7 @@ from backend.app.services.commerce_sync_service import (
     CommerceSyncService,
 )
 from backend.app.services.artifact_storage_health import artifact_storage_health
+from shared.ai_engine.connectors.commerce import ConnectorCustomerStatus
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.exceptions import ConnectorNotRegisteredError
@@ -108,9 +109,41 @@ def _connection_response(connection: CommerceConnection) -> CommerceConnectionRe
     )
 
 
+def _internal_connector_test_allowed(
+    identity: CurrentIdentity,
+    registry: CommerceConnectorRegistry,
+    provider: str,
+) -> bool:
+    settings = get_settings()
+    return (
+        settings.environment.lower() in {"sandbox", "staging"}
+        and bool(getattr(identity.user, "is_platform_admin", False))
+        and registry.definition(provider).customer_status
+        == ConnectorCustomerStatus.COMING_SOON
+        and registry.is_registered(provider)
+    )
+
+
+def _require_connector_launch_access(
+    identity: CurrentIdentity,
+    registry: CommerceConnectorRegistry,
+    provider: str,
+) -> None:
+    if (
+        registry.definition(provider).customer_status
+        == ConnectorCustomerStatus.AVAILABLE
+        or _internal_connector_test_allowed(identity, registry, provider)
+    ):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Connector is not available",
+    )
+
+
 @router.get("", response_model=list[ConnectorCatalogResponse])
 def connector_catalog(
-    _: CurrentIdentity = Depends(require_connector_read),
+    identity: CurrentIdentity = Depends(require_connector_read),
     __: TenantContext = Depends(require_active_subscription),
     registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> list[ConnectorCatalogResponse]:
@@ -145,6 +178,11 @@ def connector_catalog(
                 else settings.woocommerce_connector_configured
                 if item.provider == "woocommerce"
                 else False
+            ),
+            internal_test_available=_internal_connector_test_allowed(
+                identity,
+                registry,
+                item.provider,
             ),
         )
         for item in registry.catalog()
@@ -190,7 +228,9 @@ def authorize_shopify(
     identity: CurrentIdentity = Depends(manage_connectors),
     _: TenantContext = Depends(require_active_subscription),
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> ShopifyAuthorizationResponse:
+    _require_connector_launch_access(identity, registry, "shopify")
     try:
         result = service.begin_shopify_oauth(
             _tenant(identity),
@@ -217,7 +257,9 @@ def authorize_woocommerce(
     identity: CurrentIdentity = Depends(manage_connectors),
     _: TenantContext = Depends(require_active_subscription),
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> ShopifyAuthorizationResponse:
+    _require_connector_launch_access(identity, registry, "woocommerce")
     try:
         result = service.begin_woocommerce_authorization(
             _tenant(identity),
@@ -272,6 +314,7 @@ async def connect_woocommerce_manual(
     runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
     registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> CommerceConnectionResponse:
+    _require_connector_launch_access(identity, registry, "woocommerce")
     try:
         connection = await service.connect_woocommerce_manual(
             _tenant(identity),

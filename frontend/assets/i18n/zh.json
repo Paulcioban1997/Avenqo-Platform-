@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "废弃的手推车",
       "capabilityCatalog": "目录",
       "capabilityWebhooks": "网络钩子",
-      "capabilityIncrementalSync": "增量同步"
+      "capabilityIncrementalSync": "增量同步",
+      "testConnector": "测试连接器"
     },
     "businessDefaultTitle": "连接您的数据",
     "businessDefaultDescription": "连接您的数据源以开始使用",

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "รถเข็นที่ถูกทิ้งร้าง",
       "capabilityCatalog": "แคตตาล็อก",
       "capabilityWebhooks": "เว็บฮุค",
-      "capabilityIncrementalSync": "การซิงค์แบบเพิ่มหน่วย"
+      "capabilityIncrementalSync": "การซิงค์แบบเพิ่มหน่วย",
+      "testConnector": "ทดสอบตัวเชื่อมต่อ"
     },
     "businessDefaultTitle": "เชื่อมต่อข้อมูลของคุณ",
     "businessDefaultDescription": "เชื่อมต่อแหล่งข้อมูลของคุณเพื่อเริ่มต้น",

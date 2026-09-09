@@ -47,6 +47,9 @@ class CommerceConnectorRegistry:
     def catalog(self) -> tuple[ConnectorDefinition, ...]:
         return tuple(self._definitions.values())
 
+    def is_registered(self, provider: str) -> bool:
+        return provider in self._connectors
+
     def definition(self, provider: str) -> ConnectorDefinition:
         try:
             return self._definitions[provider]

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "放棄されたカート",
       "capabilityCatalog": "カタログ",
       "capabilityWebhooks": "Webhook",
-      "capabilityIncrementalSync": "増分同期"
+      "capabilityIncrementalSync": "増分同期",
+      "testConnector": "コネクタをテスト"
     },
     "businessDefaultTitle": "データを接続する",
     "businessDefaultDescription": "開始するにはデータソースを接続してください",

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Mikokoteni iliyoachwa",
       "capabilityCatalog": "Katalogi",
       "capabilityWebhooks": "Viboko vya mtandao",
-      "capabilityIncrementalSync": "Usawazishaji unaoongezeka"
+      "capabilityIncrementalSync": "Usawazishaji unaoongezeka",
+      "testConnector": "Jaribu kiunganishi"
     },
     "businessDefaultTitle": "Nafasi yako iko tayari",
     "businessDefaultDescription": "Unganisha zana zako ili kuona taarifa zilizosasishwa hapa.",

@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.config.settings import get_settings
 from backend.app.connectors.shopify import ShopifyConnectorError
 from backend.app.dependencies.auth import get_current_identity
 from backend.app.dependencies.commerce import (
@@ -163,6 +164,18 @@ class _WooConnections:
         self.received_credentials = (consumer_key, consumer_secret)
         return self.connection
 
+    def begin_woocommerce_authorization(
+        self,
+        tenant,
+        *,
+        actor_user_id,
+        store_url,
+    ):
+        return SimpleNamespace(
+            authorization_url=f"{store_url}/wc-auth/v1/authorize",
+            expires_at=datetime.now(timezone.utc),
+        )
+
     async def sync_context(self, tenant, connection_id):
         return SimpleNamespace(connection_id=connection_id)
 
@@ -177,6 +190,17 @@ class _WooConnections:
 
 
 class _WooRegistry:
+    def catalog(self):
+        return COMMERCE_CONNECTOR_CATALOG
+
+    def definition(self, provider):
+        return next(
+            item for item in COMMERCE_CONNECTOR_CATALOG if item.provider == provider
+        )
+
+    def is_registered(self, provider):
+        return provider == "woocommerce"
+
     def get(self, provider):
         assert provider == "woocommerce"
         return self
@@ -283,6 +307,7 @@ def test_connector_catalog_and_manual_sync_routes() -> None:
     assert customer_statuses["shopify"] == "AVAILABLE"
     assert customer_statuses["woocommerce"] == "COMING_SOON"
     assert set(customer_statuses.values()) == {"AVAILABLE", "COMING_SOON"}
+    assert not any(item["internal_test_available"] for item in catalog.json())
     assert listed.json()[0]["external_account_id"] == "alpha.myshopify.com"
     assert listed.json()[0]["connection_status"] == "CONNECTED"
     assert listed.json()[0]["sync_status"] == "READY"
@@ -353,9 +378,16 @@ def test_shopify_callback_completes_setup_after_webhook_registration() -> None:
     assert runner.runs == [(company_id, connections.connection.id)]
 
 
-def test_woocommerce_manual_route_masks_secrets_and_reserves_sync() -> None:
+def test_woocommerce_manual_route_masks_secrets_and_reserves_sync(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "sandbox")
+    get_settings.cache_clear()
     company_id = uuid4()
-    user = SimpleNamespace(id=uuid4(), company_id=company_id, role=SimpleNamespace())
+    user = SimpleNamespace(
+        id=uuid4(),
+        company_id=company_id,
+        role=SimpleNamespace(),
+        is_platform_admin=True,
+    )
     identity = SimpleNamespace(user=user)
     connections = _WooConnections(company_id)
     sync = _Sync()
@@ -397,6 +429,97 @@ def test_woocommerce_manual_route_masks_secrets_and_reserves_sync() -> None:
     assert response.json()["status"] == "READY"
     assert sync.reserved == [(company_id, connections.connection.id)]
     assert runner.runs == [(company_id, connections.connection.id)]
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("is_platform_admin", "environment", "expected_status"),
+    [(False, "sandbox", 403), (True, "production", 403), (True, "sandbox", 200)],
+)
+def test_woocommerce_authorization_requires_server_side_internal_test_access(
+    monkeypatch,
+    is_platform_admin,
+    environment,
+    expected_status,
+) -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(
+        id=uuid4(),
+        company_id=company_id,
+        role=SimpleNamespace(),
+        is_platform_admin=is_platform_admin,
+    )
+    identity = SimpleNamespace(user=user)
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_current_identity] = lambda: identity
+    app.dependency_overrides[require_active_subscription] = lambda: TenantContext(
+        company_id=company_id
+    )
+    app.dependency_overrides[get_commerce_connection_service] = lambda: _WooConnections(
+        company_id
+    )
+    app.dependency_overrides[get_commerce_connector_registry] = lambda: _WooRegistry()
+
+    from backend.app.routers import commerce as commerce_router
+
+    monkeypatch.setattr(
+        commerce_router,
+        "get_settings",
+        lambda: SimpleNamespace(environment=environment),
+    )
+    app.dependency_overrides[commerce_router.manage_connectors] = lambda: identity
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/connectors/woocommerce/authorize",
+            json={"store_url": "https://shop.example.com"},
+        )
+
+    assert response.status_code == expected_status
+    if expected_status == 200:
+        assert response.json()["authorization_url"].endswith(
+            "/wc-auth/v1/authorize"
+        )
+
+
+def test_platform_admin_catalog_exposes_internal_test_permission_in_sandbox(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "sandbox")
+    get_settings.cache_clear()
+    company_id = uuid4()
+    identity = SimpleNamespace(
+        user=SimpleNamespace(
+            id=uuid4(),
+            company_id=company_id,
+            role=SimpleNamespace(),
+            is_platform_admin=True,
+        )
+    )
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_current_identity] = lambda: identity
+    app.dependency_overrides[require_active_subscription] = lambda: TenantContext(
+        company_id=company_id
+    )
+    app.dependency_overrides[get_commerce_connector_registry] = lambda: _WooRegistry()
+
+    from backend.app.routers import commerce as commerce_router
+
+    app.dependency_overrides[commerce_router.require_connector_read] = lambda: identity
+    with TestClient(app) as client:
+        response = client.get("/api/v1/connectors")
+
+    assert response.status_code == 200
+    permissions = {
+        item["provider"]: item["internal_test_available"]
+        for item in response.json()
+    }
+    assert permissions["woocommerce"] is True
+    assert sum(permissions.values()) == 1
+    woo = next(item for item in response.json() if item["provider"] == "woocommerce")
+    assert woo["customer_status"] == "COMING_SOON"
+    get_settings.cache_clear()
 
 
 def test_woocommerce_json_callback_returns_accepted_and_schedules_initialization() -> None:

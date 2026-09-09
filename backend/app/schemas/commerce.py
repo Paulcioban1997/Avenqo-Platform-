@@ -18,6 +18,7 @@ class ConnectorCatalogResponse(BaseModel):
     supported_regions: list[str]
     configuration_requirements: list[str]
     configured: bool
+    internal_test_available: bool
     documentation_url: str
     supports_oauth: bool
     supports_webhooks: bool

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "لاوارث گاڑیاں",
       "capabilityCatalog": "کیٹلاگ",
       "capabilityWebhooks": "ویب ہکس",
-      "capabilityIncrementalSync": "بڑھتی ہوئی مطابقت پذیری"
+      "capabilityIncrementalSync": "بڑھتی ہوئی مطابقت پذیری",
+      "testConnector": "کنیکٹر کی جانچ کریں"
     },
     "businessDefaultTitle": "اپنا ڈیٹا منسلک کریں",
     "businessDefaultDescription": "شروع کرنے کے لیے اپنا ڈیٹا ذریعہ منسلک کریں",

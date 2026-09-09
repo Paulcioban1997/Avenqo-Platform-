@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "រទេះដែលបោះបង់ចោល",
       "capabilityCatalog": "កាតាឡុក",
       "capabilityWebhooks": "គេហទំព័រ",
-      "capabilityIncrementalSync": "បង្កើនសមកាលកម្ម"
+      "capabilityIncrementalSync": "បង្កើនសមកាលកម្ម",
+      "testConnector": "សាកល្បងឧបករណ៍ភ្ជាប់"
     },
     "businessDefaultTitle": "តភ្ជាប់ទិន្នន័យរបស់អ្នក",
     "businessDefaultDescription": "តភ្ជាប់ប្រភពទិន្នន័យរបស់អ្នកដើម្បីចាប់ផ្តើម",

@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Kereta terbiar",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Penyegerakan tambahan"
+      "capabilityIncrementalSync": "Penyegerakan tambahan",
+      "testConnector": "Uji penyambung"
     },
     "businessDefaultTitle": "Sambungkan data anda",
     "businessDefaultDescription": "Sambungkan sumber data anda untuk bermula",

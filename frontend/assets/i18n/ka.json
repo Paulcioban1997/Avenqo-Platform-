@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "მიტოვებული ურმები",
       "capabilityCatalog": "კატალოგი",
       "capabilityWebhooks": "ვებჰუკები",
-      "capabilityIncrementalSync": "დამატებითი სინქრონიზაცია"
+      "capabilityIncrementalSync": "დამატებითი სინქრონიზაცია",
+      "testConnector": "კონექტორის ტესტირება"
     },
     "businessDefaultTitle": "თქვენი სივრცე მზადაა",
     "businessDefaultDescription": "დააკავშირეთ თქვენი ხელსაწყოები, რომ ნახოთ განახლებული ინფორმაცია აქ.",

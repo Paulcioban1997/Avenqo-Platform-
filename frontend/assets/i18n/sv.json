@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Övergivna vagnar",
       "capabilityCatalog": "Katalog",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Inkrementell synkronisering"
+      "capabilityIncrementalSync": "Inkrementell synkronisering",
+      "testConnector": "Testa anslutningen"
     },
     "businessDefaultTitle": "Din arbetsyta är redo",
     "businessDefaultDescription": "Anslut dina verktyg för att se aktuell information här.",

@@ -87,6 +87,7 @@ List<Map<String, dynamic>> _catalog() => [
         _ => 'COMING_SOON',
       },
       'customer_status': index == 0 ? 'AVAILABLE' : 'COMING_SOON',
+      'internal_test_available': false,
       'configured': index == 0 || index == 29,
       'priority': index <= 5 ? 'P0' : 'P2',
       'auth_method': index == 5 ? 'OAUTH2' : 'PARTNER_AUTHORIZATION',
@@ -289,11 +290,46 @@ void main() {
     expect(connectWoo, findsOneWidget);
     expect(find.text('Beta'), findsNothing);
     expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    expect(find.byKey(const ValueKey('test-woocommerce')), findsNothing);
     expect(tester.widget<FilledButton>(connectWoo).onPressed, isNull);
     await tester.tap(connectWoo);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('woocommerce-store-url')), findsNothing);
     expect(authorizationRequested, isFalse);
+  });
+
+  testWidgets('internal WooCommerce test CTA reuses authorization flow', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final catalog = _catalog();
+    catalog.last['internal_test_available'] = true;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(catalog), 200);
+      }
+      if (request.url.path.endsWith('/connectors/connections') ||
+          request.url.path.endsWith('/datasets')) {
+        return http.Response('[]', 200);
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(await _app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bientôt disponible'), findsOneWidget);
+    expect(find.text('Tester le connecteur'), findsOneWidget);
+    expect(find.byKey(const ValueKey('connect-woocommerce')), findsNothing);
+    final testWoo = find.byKey(const ValueKey('test-woocommerce'));
+    expect(tester.widget<OutlinedButton>(testWoo).onPressed, isNotNull);
+    await tester.tap(testWoo);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsOneWidget);
   });
 
   testWidgets('coming-soon provider has a disabled CTA and selection cancels', (
@@ -571,6 +607,7 @@ void main() {
         'providerSearchHint',
         'providerDescription',
         'connectToAvenqo',
+        'testConnector',
         'connectedStores',
         'available',
         'comingSoon',

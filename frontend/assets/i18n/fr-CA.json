@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Chariots abandonnés",
       "capabilityCatalog": "Catalogue",
       "capabilityWebhooks": "Webhooks",
-      "capabilityIncrementalSync": "Synchronisation incrémentielle"
+      "capabilityIncrementalSync": "Synchronisation incrémentielle",
+      "testConnector": "Tester le connecteur"
     },
     "businessDefaultTitle": "Votre espace est prêt",
     "businessDefaultDescription": "Connectez vos outils pour afficher ici des informations à jour.",

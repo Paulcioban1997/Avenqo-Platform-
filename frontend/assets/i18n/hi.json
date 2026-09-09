@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "परित्यक्त गाड़ियाँ",
       "capabilityCatalog": "सूची",
       "capabilityWebhooks": "वेबहुक",
-      "capabilityIncrementalSync": "वृद्धिशील सिंक"
+      "capabilityIncrementalSync": "वृद्धिशील सिंक",
+      "testConnector": "कनेक्टर का परीक्षण करें"
     },
     "businessDefaultTitle": "अपना डेटा कनेक्ट करें",
     "businessDefaultDescription": "आरंभ करने के लिए अपना डेटा स्रोत कनेक्ट करें",

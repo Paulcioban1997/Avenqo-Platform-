@@ -658,7 +658,8 @@
       "capabilityAbandonedCarts": "Cărucioare abandonate",
       "capabilityCatalog": "Catalog",
       "capabilityWebhooks": "Webhook-uri",
-      "capabilityIncrementalSync": "Sincronizare incrementală"
+      "capabilityIncrementalSync": "Sincronizare incrementală",
+      "testConnector": "Testează conectorul"
     },
     "businessDefaultTitle": "Spațiul tău este pregătit",
     "businessDefaultDescription": "Conectează-ți instrumentele pentru a vedea informații actualizate aici.",
