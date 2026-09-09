@@ -108,7 +108,14 @@ def get_commerce_sync_runner(
             quota=DataImportPolicy(session),
             max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
             dispatcher=dispatcher,
+            dispatch_training=False,
         )
-        return CommerceSyncService(session, registry, connections, ingestion)
+        return CommerceSyncService(
+            session,
+            registry,
+            connections,
+            ingestion,
+            evaluation_debounce_seconds=settings.connector_ai_evaluation_debounce_seconds,
+        )
 
     return CommerceSyncRunner(session_factory, service_factory)

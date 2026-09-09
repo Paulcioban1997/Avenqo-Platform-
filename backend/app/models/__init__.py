@@ -17,6 +17,7 @@ from backend.app.models.base import (
     CompanyModuleStatus,
     CompanyStatus,
     DatasetStatus,
+    DatasetEvaluationStatus,
     DatasetVersionStatus,
     JobStatus,
     OnboardingStatus,
@@ -34,6 +35,7 @@ from backend.app.models.commerce_connection import (
     CommerceWebhookReceipt,
     NormalizedCommerceRecord,
 )
+from backend.app.models.connector_dataset_evaluation import ConnectorDatasetEvaluation
 from backend.app.models.data_quality_report import DataQualityReport
 from backend.app.models.dataset import Dataset
 from backend.app.models.dataset_profile import DatasetProfile
@@ -74,10 +76,12 @@ __all__ = [
     "CommerceConnectionStatus",
     "CommerceOAuthState",
     "CommerceWebhookReceipt",
+    "ConnectorDatasetEvaluation",
     "DataQualityReport",
     "Dataset",
     "DatasetProfile",
     "DatasetRelationship",
+    "DatasetEvaluationStatus",
     "DatasetStatus",
     "DatasetVersion",
     "DatasetVersionStatus",

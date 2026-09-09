@@ -24,6 +24,7 @@ from uuid import UUID
 import pandas as pd
 import sklearn
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models import (
@@ -70,6 +71,7 @@ from shared.ai_engine.retraining.scheduler import is_due
 from shared.ai_engine.retraining.service import compare_models, evaluate_retraining, should_activate
 from shared.ai_engine.retraining.types import (
     RetrainingDecision,
+    RetrainingDecisionResult,
     RetrainingRulesConfig,
     RetrainingSignals,
 )
@@ -137,7 +139,15 @@ class TrainingDispatcher:
     ) -> None:
         invalidate_dataset_versions(self._registry, tenant, str(dataset_id))
 
-    def dispatch(self, tenant: TenantContext, dataset: Dataset) -> list[AIJob]:
+    def dispatch(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+        *,
+        dataset_generation: int | None = None,
+        source_connection_id: UUID | None = None,
+        task_codes: set[str] | None = None,
+    ) -> list[AIJob]:
         """Résout les tâches réellement exécutables puis planifie leur entraînement.
 
         Pipeline réel (Phase 18.2) : schéma déjà détecté à l'import ->
@@ -157,6 +167,8 @@ class TrainingDispatcher:
         if self._scheduler is None:
             raise RuntimeError("A JobScheduler must be attached before dispatching")
 
+        generation = dataset_generation or self._current_dataset_generation(dataset)
+
         module_code = dataset.profile.module_code if dataset.profile else None
         module_specs = MODULE_TRAINING_SPECS.get(module_code or "")
         if not module_specs:
@@ -172,6 +184,7 @@ class TrainingDispatcher:
             for task_code, spec in module_specs.items()
             if spec.capability in executable_capabilities
             and self._is_task_compatible(dataset, task_code, spec, rows)
+            and (task_codes is None or task_code in task_codes)
         }
         if not executable_specs:
             return []
@@ -184,6 +197,29 @@ class TrainingDispatcher:
                 return []
             ai_jobs: list[AIJob] = []
             for task_code in executable_specs:
+                duplicate = session.scalar(
+                    select(TrainingJob.id).where(
+                        TrainingJob.company_id == tenant.company_id,
+                        TrainingJob.dataset_id == dataset.id,
+                        TrainingJob.dataset_generation == generation,
+                        TrainingJob.module_code == module_code,
+                        TrainingJob.task_code == task_code,
+                        TrainingJob.status.in_(
+                            (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.COMPLETED)
+                        ),
+                    )
+                )
+                active = session.scalar(
+                    select(TrainingJob.id).where(
+                        TrainingJob.company_id == tenant.company_id,
+                        TrainingJob.dataset_id == dataset.id,
+                        TrainingJob.module_code == module_code,
+                        TrainingJob.task_code == task_code,
+                        TrainingJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+                    )
+                )
+                if duplicate is not None or active is not None:
+                    continue
                 ai_job = AIJob(
                     company_id=tenant.company_id,
                     module_id=module.id,
@@ -194,14 +230,23 @@ class TrainingDispatcher:
                 training_job = TrainingJob(
                     company_id=tenant.company_id,
                     dataset_id=dataset.id,
+                    dataset_generation=generation,
+                    module_code=module_code,
+                    task_code=task_code,
+                    source_connection_id=source_connection_id,
                     algorithm="pending",
                     status=JobStatus.PENDING,
                 )
                 training_job.ai_job = ai_job
-                session.add_all([ai_job, training_job])
+                try:
+                    with session.begin_nested():
+                        session.add_all([ai_job, training_job])
+                        session.flush()
+                except IntegrityError:
+                    continue
                 ai_jobs.append(ai_job)
+                created.append((ai_job.id, task_code))
             session.commit()
-            created = [(ai_job.id, task_code) for ai_job, task_code in zip(ai_jobs, executable_specs)]
         finally:
             session.close()
 
@@ -216,6 +261,11 @@ class TrainingDispatcher:
                 )
             )
         return ai_jobs
+
+    @staticmethod
+    def _current_dataset_generation(dataset: Dataset) -> int:
+        current = next((version for version in dataset.versions if version.is_current), None)
+        return current.version_number if current is not None else 1
 
     def _is_task_compatible(
         self,
@@ -392,6 +442,12 @@ class TrainingDispatcher:
         module_code: str,
         task_code: str,
         manual: bool = False,
+        *,
+        dataset_id: UUID | None = None,
+        dataset_generation: int | None = None,
+        source_connection_id: UUID | None = None,
+        current_data_drift: DriftSeverity | None = None,
+        precomputed_decision: RetrainingDecisionResult | None = None,
     ) -> AIJob | None:
         """Évalue les signaux et déclenche un ré-entraînement si nécessaire.
 
@@ -416,25 +472,39 @@ class TrainingDispatcher:
 
         session = self._session_factory()
         try:
-            dataset = session.scalar(
-                select(Dataset)
-                .join(DatasetProfile, DatasetProfile.dataset_id == Dataset.id)
-                .where(
-                    Dataset.company_id == tenant.company_id,
-                    DatasetProfile.module_code == module_code,
+            dataset = (
+                session.get(Dataset, dataset_id)
+                if dataset_id is not None
+                else session.scalar(
+                    select(Dataset)
+                    .join(DatasetProfile, DatasetProfile.dataset_id == Dataset.id)
+                    .where(
+                        Dataset.company_id == tenant.company_id,
+                        DatasetProfile.module_code == module_code,
+                    )
+                    .order_by(Dataset.uploaded_at.desc())
                 )
-                .order_by(Dataset.uploaded_at.desc())
             )
             if dataset is None:
+                return None
+            if dataset.company_id != tenant.company_id:
                 return None
 
             previous_row = self._active_registry_row(session, tenant.company_id, module_code, task_code)
             latest_row = self._latest_registry_row(session, tenant.company_id, module_code, task_code)
 
-            signals = self._gather_signals(
-                tenant, module_code, task_code, dataset, previous_row, latest_row, manual
+            decision_result = precomputed_decision or evaluate_retraining(
+                self._gather_signals(
+                    tenant,
+                    module_code,
+                    task_code,
+                    dataset,
+                    previous_row,
+                    latest_row,
+                    manual,
+                    current_data_drift=current_data_drift,
+                )
             )
-            decision_result = evaluate_retraining(signals)
             triggered_rules = tuple(outcome.rule_name for outcome in decision_result.triggered_rules)
 
             if decision_result.decision < _RETRAINING_CONFIG.action_threshold:
@@ -457,6 +527,18 @@ class TrainingDispatcher:
             if module is None:
                 return None
 
+            active_job = session.scalar(
+                select(TrainingJob.id).where(
+                    TrainingJob.company_id == tenant.company_id,
+                    TrainingJob.dataset_id == dataset.id,
+                    TrainingJob.module_code == module_code,
+                    TrainingJob.task_code == task_code,
+                    TrainingJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+                )
+            )
+            if active_job is not None:
+                return None
+
             ai_job = AIJob(
                 company_id=tenant.company_id,
                 module_id=module.id,
@@ -467,6 +549,10 @@ class TrainingDispatcher:
             training_job = TrainingJob(
                 company_id=tenant.company_id,
                 dataset_id=dataset.id,
+                dataset_generation=dataset_generation or self._current_dataset_generation(dataset),
+                module_code=module_code,
+                task_code=task_code,
+                source_connection_id=source_connection_id,
                 algorithm="pending",
                 status=JobStatus.PENDING,
             )
@@ -493,6 +579,136 @@ class TrainingDispatcher:
             )
         )
         return ai_job
+
+    def evaluate_connector_dataset(
+        self,
+        tenant: TenantContext,
+        dataset_id: UUID,
+        dataset_generation: int,
+        source_connection_id: UUID,
+    ) -> dict[str, Any]:
+        """Run drift on one connector generation before deciding on retraining."""
+
+        session = self._session_factory()
+        try:
+            dataset = session.get(Dataset, dataset_id)
+            if dataset is None or dataset.company_id != tenant.company_id:
+                raise ValueError("Connector evaluation dataset tenant mismatch")
+            profile = session.scalar(
+                select(DatasetProfile).where(DatasetProfile.dataset_id == dataset.id)
+            )
+            if profile is None:
+                raise ValueError("Connector evaluation dataset has no profile")
+            active_tasks = session.execute(
+                select(DBModelRegistry.task_code, DBModelRegistry.version).where(
+                    DBModelRegistry.company_id == tenant.company_id,
+                    DBModelRegistry.module_code == profile.module_code,
+                    DBModelRegistry.is_active.is_(True),
+                )
+            ).all()
+            module_code = profile.module_code
+            dataset_source = dataset.source
+            if not active_tasks:
+                jobs = self.dispatch(
+                    tenant,
+                    dataset,
+                    dataset_generation=dataset_generation,
+                    source_connection_id=source_connection_id,
+                )
+                return {
+                    "decision": "initial_training",
+                    "reason": "no_active_model",
+                    "drift": {},
+                    "ai_job_ids": [str(job.id) for job in jobs],
+                }
+        finally:
+            session.close()
+
+        current_data = pd.read_csv(dataset_source)
+        drift_metrics: dict[str, Any] = {}
+        ai_job_ids: list[str] = []
+        plans: list[tuple[str, DriftSeverity, RetrainingDecisionResult]] = []
+        session = self._session_factory()
+        try:
+            stable_dataset = session.get(Dataset, dataset_id)
+            if stable_dataset is None or stable_dataset.company_id != tenant.company_id:
+                raise ValueError("Connector evaluation dataset tenant mismatch")
+            for task_code, version in active_tasks:
+                try:
+                    baseline = load_baseline(
+                        self._registry,
+                        tenant,
+                        module_code,
+                        task_code,
+                        version,
+                    )
+                    current_features = current_data.reindex(columns=baseline.features.columns)
+                    report = run_drift_check(baseline, current_features)
+                    severity = max_severity(
+                        report.data_drift.overall_severity,
+                        report.prediction_drift.severity
+                        if report.prediction_drift is not None
+                        else DriftSeverity.NONE,
+                    )
+                    drift_metrics[task_code] = {
+                        "severity": severity.name.lower(),
+                        "drifted_feature_ratio": report.data_drift.drifted_feature_ratio,
+                        "generated_at": report.generated_at,
+                    }
+                except (FileNotFoundError, OSError, ValueError):
+                    logger.warning(
+                        "Connector baseline unavailable company=%s source=%s task=%s",
+                        tenant.company_id,
+                        source_connection_id,
+                        task_code,
+                    )
+                    severity = DriftSeverity.NONE
+                    drift_metrics[task_code] = {"severity": "unavailable"}
+
+                previous_row = self._active_registry_row(
+                    session, tenant.company_id, module_code, task_code
+                )
+                latest_row = self._latest_registry_row(
+                    session, tenant.company_id, module_code, task_code
+                )
+                signals = self._gather_signals(
+                    tenant,
+                    module_code,
+                    task_code,
+                    stable_dataset,
+                    previous_row,
+                    latest_row,
+                    False,
+                    current_data_drift=severity,
+                )
+                plans.append((task_code, severity, evaluate_retraining(signals)))
+        finally:
+            session.close()
+
+        for task_code, severity, decision_result in plans:
+            job = self.dispatch_retraining_check(
+                tenant,
+                module_code,
+                task_code,
+                dataset_id=dataset_id,
+                dataset_generation=dataset_generation,
+                source_connection_id=source_connection_id,
+                current_data_drift=severity,
+                precomputed_decision=decision_result,
+            )
+            if job is not None:
+                ai_job_ids.append(str(job.id))
+
+        decision = max(
+            (decision_result.decision for _, _, decision_result in plans),
+            default=RetrainingDecision.NO_ACTION,
+        )
+        return {
+            "decision": decision.name.lower(),
+            "reason": "policy_threshold_met" if ai_job_ids else "policy_threshold_not_met",
+            "drift": drift_metrics,
+            "ai_job_ids": ai_job_ids,
+        }
 
     def run_retraining_job(self, job: AIEngineJob) -> None:
         """Exécute réellement le ré-entraînement autonome (appelé en tâche de fond)."""
@@ -645,10 +861,11 @@ class TrainingDispatcher:
         previous_row: DBModelRegistry | None,
         latest_row: DBModelRegistry | None,
         manual: bool,
+        current_data_drift: DriftSeverity | None = None,
     ) -> RetrainingSignals:
-        data_drift_severity = DriftSeverity.NONE
+        data_drift_severity = current_data_drift or DriftSeverity.NONE
         concept_drift = None
-        if latest_row is not None:
+        if latest_row is not None and current_data_drift is None:
             try:
                 report = load_drift_report(
                     self._registry, tenant, module_code, task_code, latest_row.version

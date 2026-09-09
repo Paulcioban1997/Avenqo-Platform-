@@ -90,6 +90,14 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class DatasetEvaluationStatus(str, Enum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    COALESCED = "coalesced"
+
+
 class OnboardingStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"

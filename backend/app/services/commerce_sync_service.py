@@ -32,7 +32,10 @@ from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
     CommerceWebhookReceipt,
+    ConnectorDatasetEvaluation,
     Dataset,
+    DatasetEvaluationStatus,
+    DatasetVersion,
     NormalizedCommerceRecord,
 )
 from shared.ai_engine.connectors.commerce import (
@@ -190,11 +193,13 @@ class CommerceSyncService:
         registry: CommerceConnectorRegistry,
         connections: _ConnectionLifecycle,
         ingestion: _DatasetIngestion,
+        evaluation_debounce_seconds: int = 300,
     ) -> None:
         self._db = db
         self._registry = registry
         self._connections = connections
         self._ingestion = ingestion
+        self._evaluation_debounce_seconds = evaluation_debounce_seconds
 
     async def initialize_woocommerce(
         self,
@@ -318,7 +323,11 @@ class CommerceSyncService:
 
             dataset = None
             if should_materialize:
-                dataset = self._materialize_retail_snapshot(tenant, connection)
+                dataset = self._materialize_retail_snapshot(
+                    tenant,
+                    connection,
+                    changed_records=changed,
+                )
                 if dataset is not None:
                     connection.dataset_ids = {
                         **dict(connection.dataset_ids or {}),
@@ -770,6 +779,8 @@ class CommerceSyncService:
         self,
         tenant: TenantContext,
         connection: CommerceConnection,
+        *,
+        changed_records: int = 0,
     ) -> Dataset | None:
         content = self.build_retail_snapshot(tenant, connection)
         if content is None:
@@ -780,12 +791,49 @@ class CommerceSyncService:
                 dataset_ids.pop("retail", None)
                 connection.dataset_ids = dataset_ids
             return None
-        return self._ingestion.upload(
+        dataset = self._ingestion.upload(
             tenant,
             "retail",
             f"{connection.provider}-{connection.id}-retail.csv",
             content,
         )
+        current_version = self._db.scalar(
+            select(DatasetVersion).where(
+                DatasetVersion.dataset_id == dataset.id,
+                DatasetVersion.is_current.is_(True),
+            )
+        )
+        if current_version is None:
+            return dataset
+        existing = self._db.scalar(
+            select(ConnectorDatasetEvaluation.id).where(
+                ConnectorDatasetEvaluation.company_id == tenant.company_id,
+                ConnectorDatasetEvaluation.connection_id == connection.id,
+                ConnectorDatasetEvaluation.dataset_id == dataset.id,
+                ConnectorDatasetEvaluation.dataset_generation
+                == current_version.version_number,
+            )
+        )
+        if existing is None:
+            now = datetime.now(timezone.utc)
+            debounce_seconds = (
+                0
+                if current_version.version_number == 1
+                else self._evaluation_debounce_seconds
+            )
+            self._db.add(
+                ConnectorDatasetEvaluation(
+                    company_id=tenant.company_id,
+                    connection_id=connection.id,
+                    dataset_id=dataset.id,
+                    dataset_generation=current_version.version_number,
+                    changed_records=max(0, changed_records),
+                    status=DatasetEvaluationStatus.PENDING,
+                    due_at=now + timedelta(seconds=debounce_seconds),
+                )
+            )
+            self._db.commit()
+        return dataset
 
     def build_retail_snapshot(
         self,

@@ -72,6 +72,22 @@ class Settings(BaseSettings):
         le=4,
         alias="TRAINING_SEARCH_MAX_PARALLEL_JOBS",
     )
+    connector_ai_evaluation_debounce_seconds: int = Field(
+        default=300,
+        ge=0,
+        alias="CONNECTOR_AI_EVALUATION_DEBOUNCE_SECONDS",
+    )
+    connector_ai_evaluation_lease_seconds: int = Field(
+        default=900,
+        ge=30,
+        alias="CONNECTOR_AI_EVALUATION_LEASE_SECONDS",
+    )
+    connector_ai_evaluation_batch_size: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+        alias="CONNECTOR_AI_EVALUATION_BATCH_SIZE",
+    )
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum as SAEnum, Float, ForeignKey, String
+from sqlalchemy import DateTime, Enum as SAEnum, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,18 @@ class TrainingJob(Base):
     """Représente un entraînement lié à un jeu de données et une tâche IA."""
 
     __tablename__ = "training_jobs"
+    __table_args__ = (
+        Index(
+            "uq_training_jobs_active_dataset_task",
+            "company_id",
+            "dataset_id",
+            "module_code",
+            "task_code",
+            unique=True,
+            postgresql_where=text("status IN ('PENDING', 'RUNNING')"),
+            sqlite_where=text("status IN ('PENDING', 'RUNNING')"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -30,6 +42,21 @@ class TrainingJob(Base):
         PGUUID(as_uuid=True),
         ForeignKey("datasets.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    dataset_generation: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+        index=True,
+    )
+    module_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    task_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    source_connection_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("commerce_connections.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     ai_job_id: Mapped[UUID] = mapped_column(

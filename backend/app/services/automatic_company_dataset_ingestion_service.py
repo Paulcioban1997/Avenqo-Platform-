@@ -36,7 +36,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.models import Dataset, DatasetStatus
+from backend.app.models import Dataset, DatasetStatus, JobStatus, TrainingJob
 from backend.app.services.company_dataset_ingestion_service import (
     CompanyDatasetIngestionService,
     InvalidMappingError,
@@ -64,6 +64,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         quota: DataImportPolicy,
         max_upload_bytes: int,
         dispatcher: TrainingDispatcher,
+        dispatch_training: bool = True,
     ) -> None:
         super().__init__(
             session=session,
@@ -72,6 +73,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
             max_upload_bytes=max_upload_bytes,
         )
         self._dispatcher = dispatcher
+        self._dispatch_training = dispatch_training
 
     def upload(
         self,
@@ -494,10 +496,39 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         return canonicalized
 
     def _dispatch_training_safely(self, tenant: TenantContext, dataset: Dataset) -> bool:
-        if dataset.training_jobs:
+        if not self._dispatch_training:
+            return True
+        current_version = next(
+            (version for version in dataset.versions if version.is_current),
+            None,
+        )
+        if current_version is None:
+            return False
+        blocking_job = self._session.scalar(
+            select(TrainingJob.id).where(
+                TrainingJob.company_id == tenant.company_id,
+                TrainingJob.dataset_id == dataset.id,
+                TrainingJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            )
+        )
+        if blocking_job is not None:
+            return True
+        processed_generation = self._session.scalar(
+            select(TrainingJob.id).where(
+                TrainingJob.company_id == tenant.company_id,
+                TrainingJob.dataset_id == dataset.id,
+                TrainingJob.dataset_generation == current_version.version_number,
+                TrainingJob.status == JobStatus.COMPLETED,
+            )
+        )
+        if processed_generation is not None:
             return True
         try:
-            self._dispatcher.dispatch(tenant, dataset)
+            self._dispatcher.dispatch(
+                tenant,
+                dataset,
+                dataset_generation=current_version.version_number,
+            )
             return True
         except Exception:
             # The upload is already READY. A scheduler/training outage must be
