@@ -197,9 +197,12 @@ void main() {
     );
     expect(find.text('Shopify'), findsOneWidget);
     expect(find.text('WooCommerce'), findsOneWidget);
+    expect(find.text('Etsy'), findsOneWidget);
     expect(find.text('VTEX'), findsOneWidget);
+    expect(find.text('BOUTIQUES EN LIGNE'), findsOneWidget);
+    expect(find.text('PLACES DE MARCHÉ'), findsOneWidget);
     expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(11));
+    expect(find.text('Bientôt disponible'), findsNWidgets(12));
     for (final provider in const [
       'shopify',
       'woocommerce',
@@ -213,6 +216,7 @@ void main() {
       'salesforce-commerce-cloud',
       'commercetools',
       'vtex',
+      'etsy',
     ]) {
       expect(find.byKey(ValueKey('brand-icon-$provider')), findsOneWidget);
     }
@@ -248,6 +252,56 @@ void main() {
     expect(launched?.host, 'shop.myshopify.com');
   });
 
+  testWidgets('Etsy is a coming-soon marketplace with no connection flow', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    var authorizationRequested = false;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/connectors')) {
+        return http.Response(jsonEncode(_catalog()), 200);
+      }
+      if (request.method == 'GET' &&
+          (request.url.path.endsWith('/connectors/connections') ||
+              request.url.path.endsWith('/datasets'))) {
+        return http.Response('[]', 200);
+      }
+      if (request.method == 'POST' &&
+          request.url.path.contains('/connectors/etsy')) {
+        authorizationRequested = true;
+      }
+      return http.Response('{}', 200);
+    });
+
+    await tester.pumpWidget(await _app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('ecommerce-provider-search')),
+      'Etsy',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('select-etsy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('brand-icon-etsy')), findsOneWidget);
+    expect(find.text('PLACES DE MARCHÉ'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('select-etsy')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('provider-etsy')), findsOneWidget);
+    expect(find.text('Etsy'), findsOneWidget);
+    expect(find.text('Places de marché'), findsOneWidget);
+    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    final disabled = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('connect-etsy')),
+    );
+    expect(disabled.onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('connect-etsy')));
+    await tester.pumpAndSettle();
+    expect(authorizationRequested, isFalse);
+  });
+
   testWidgets('unfinished WooCommerce is coming soon and cannot connect', (
     tester,
   ) async {
@@ -269,10 +323,7 @@ void main() {
       return http.Response('{}', 200);
     });
     await tester.pumpWidget(
-      await _app(
-        client,
-        openConnectorUrl: (uri) async => true,
-      ),
+      await _app(client, openConnectorUrl: (uri) async => true),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
@@ -371,37 +422,41 @@ void main() {
     expect(find.byKey(const ValueKey('provider-bigcommerce')), findsNothing);
   });
 
-  testWidgets('provider becomes actionable only when customer status is available', (
-    tester,
-  ) async {
-    _useDesktopViewport(tester);
-    final catalog = _catalog();
-    catalog.last['customer_status'] = 'AVAILABLE';
-    final client = MockClient((request) async {
-      if (request.url.path.endsWith('/connectors')) {
-        return http.Response(jsonEncode(catalog), 200);
-      }
-      if (request.url.path.endsWith('/connectors/connections') ||
-          request.url.path.endsWith('/datasets')) {
-        return http.Response('[]', 200);
-      }
-      return http.Response('{}', 200);
-    });
+  testWidgets(
+    'provider becomes actionable only when customer status is available',
+    (tester) async {
+      _useDesktopViewport(tester);
+      final catalog = _catalog();
+      catalog.last['customer_status'] = 'AVAILABLE';
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/connectors')) {
+          return http.Response(jsonEncode(catalog), 200);
+        }
+        if (request.url.path.endsWith('/connectors/connections') ||
+            request.url.path.endsWith('/datasets')) {
+          return http.Response('[]', 200);
+        }
+        return http.Response('{}', 200);
+      });
 
-    await tester.pumpWidget(await _app(client));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(await _app(client));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
+      await tester.pumpAndSettle();
 
-    final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
-    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNotNull);
-    expect(find.text('Disponible'), findsOneWidget);
-    await tester.tap(connectWoo);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsOneWidget);
-  });
+      final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
+      expect(tester.widget<FilledButton>(connectWoo).onPressed, isNotNull);
+      expect(find.text('Disponible'), findsOneWidget);
+      await tester.tap(connectWoo);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('woocommerce-store-url')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('global locale switching immediately updates connector status', (
     tester,
@@ -421,15 +476,13 @@ void main() {
       return http.Response('{}', 200);
     });
 
-    await tester.pumpWidget(
-      await _app(client, localeController: locale),
-    );
+    await tester.pumpWidget(await _app(client, localeController: locale));
     await tester.pumpAndSettle();
     expect(find.text('Connecter une boutique en ligne'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
     await tester.pumpAndSettle();
     expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(11));
+    expect(find.text('Bientôt disponible'), findsNWidgets(12));
     await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
     expect(find.text('Bientôt disponible'), findsNWidgets(2));
@@ -440,15 +493,18 @@ void main() {
     expect(find.text('Coming soon'), findsNWidgets(2));
   });
 
-  test('Connector Hub source exposes no internal Beta status or hardcoded copy', () {
-    final source = File(
-      'lib/features/connectors/connector_hub.dart',
-    ).readAsStringSync();
-    expect(source, isNot(contains("'BETA'")));
-    expect(source, isNot(contains("text('beta')")));
-    expect(source, isNot(contains('Synchronization failed')));
-    expect(source, isNot(contains('Storage unavailable')));
-  });
+  test(
+    'Connector Hub source exposes no internal Beta status or hardcoded copy',
+    () {
+      final source = File(
+        'lib/features/connectors/connector_hub.dart',
+      ).readAsStringSync();
+      expect(source, isNot(contains("'BETA'")));
+      expect(source, isNot(contains("text('beta')")));
+      expect(source, isNot(contains('Synchronization failed')));
+      expect(source, isNot(contains('Storage unavailable')));
+    },
+  );
 
   testWidgets('a connected Shopify store can start a sync', (tester) async {
     _useDesktopViewport(tester);

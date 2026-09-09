@@ -50,21 +50,72 @@ class _ConnectorHubState extends State<ConnectorHub> {
     final ecommerceProviders = widget.catalog
         .where((provider) => provider['category'] == 'ecommerce')
         .toList(growable: false);
-    final normalizedQuery = _providerQuery.trim().toLowerCase();
-    final visibleProviders = ecommerceProviders
-        .where((provider) {
-          if (normalizedQuery.isEmpty) return true;
-          return provider['display_name']?.toString().toLowerCase().contains(
-                normalizedQuery,
-              ) ==
-              true;
-        })
+    final marketplaceProviders = widget.catalog
+        .where((provider) => provider['provider'] == 'etsy')
         .toList(growable: false);
-    final selectedProvider = ecommerceProviders
+    final supportedProviders = [...ecommerceProviders, ...marketplaceProviders];
+    final normalizedQuery = _providerQuery.trim().toLowerCase();
+    bool matchesQuery(Map<String, dynamic> provider) =>
+        normalizedQuery.isEmpty ||
+        provider['display_name']?.toString().toLowerCase().contains(
+              normalizedQuery,
+            ) ==
+            true;
+    final visibleEcommerceProviders = ecommerceProviders
+        .where(matchesQuery)
+        .toList(growable: false);
+    final visibleMarketplaceProviders = marketplaceProviders
+        .where(matchesQuery)
+        .toList(growable: false);
+    final selectedProvider = supportedProviders
         .cast<Map<String, dynamic>?>()
         .firstWhere(
           (provider) => provider?['provider'] == _selectedProviderId,
           orElse: () => null,
+        );
+    MenuItemButton providerMenuItem(Map<String, dynamic> provider) =>
+        MenuItemButton(
+          key: ValueKey('select-${provider['provider']}'),
+          leadingIcon: _BrandMark(
+            provider: provider['provider']?.toString() ?? '',
+            size: 24,
+          ),
+          onPressed: () {
+            _providerMenu.close();
+            setState(() {
+              _providerQuery = '';
+              _selectedProviderId = provider['provider']?.toString();
+            });
+          },
+          child: SizedBox(
+            width: 250,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    provider['display_name']?.toString() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _text(
+                    provider['customer_status'] == 'AVAILABLE'
+                        ? 'available'
+                        : 'comingSoon',
+                  ),
+                  style: TextStyle(
+                    color: provider['customer_status'] == 'AVAILABLE'
+                        ? const Color(0xFF1B9E5A)
+                        : colors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,51 +229,14 @@ class _ConnectorHubState extends State<ConnectorHub> {
                     ),
                   ),
                 ),
-                for (final provider in visibleProviders)
-                  MenuItemButton(
-                    key: ValueKey('select-${provider['provider']}'),
-                    leadingIcon: _BrandMark(
-                      provider: provider['provider']?.toString() ?? '',
-                      size: 24,
-                    ),
-                    onPressed: () {
-                      _providerMenu.close();
-                      setState(() {
-                        _providerQuery = '';
-                        _selectedProviderId = provider['provider']?.toString();
-                      });
-                    },
-                    child: SizedBox(
-                      width: 250,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              provider['display_name']?.toString() ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _text(
-                              provider['customer_status'] == 'AVAILABLE'
-                                  ? 'available'
-                                  : 'comingSoon',
-                            ),
-                            style: TextStyle(
-                              color:
-                                  provider['customer_status'] == 'AVAILABLE'
-                                  ? const Color(0xFF1B9E5A)
-                                  : colors.muted,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                if (visibleEcommerceProviders.isNotEmpty)
+                  _ProviderGroupLabel(label: _text('ecommerce')),
+                for (final provider in visibleEcommerceProviders)
+                  providerMenuItem(provider),
+                if (visibleMarketplaceProviders.isNotEmpty)
+                  _ProviderGroupLabel(label: _text('marketplace')),
+                for (final provider in visibleMarketplaceProviders)
+                  providerMenuItem(provider),
               ],
               builder: (context, controller, child) => FilledButton.icon(
                 key: const ValueKey('add-ecommerce-connector'),
@@ -312,16 +326,13 @@ class _ProviderCard extends StatelessWidget {
     final colors = AvenqoColors.of(context);
     final providerId = provider['provider']?.toString() ?? '';
     final customerStatus =
-      provider['customer_status']?.toString() ?? 'COMING_SOON';
+        provider['customer_status']?.toString() ?? 'COMING_SOON';
     final available = customerStatus == 'AVAILABLE';
     final configured = provider['configured'] == true;
     final canConnect = configured && available;
-    final canTest =
-      !available && provider['internal_test_available'] == true;
+    final canTest = !available && provider['internal_test_available'] == true;
     final actionable = canConnect || canTest;
-    final accent = actionable
-        ? const Color(0xFF1B9E5A)
-        : colors.muted;
+    final accent = actionable ? const Color(0xFF1B9E5A) : colors.muted;
     final capabilities =
         (provider['capabilities'] as List<dynamic>? ?? const []).cast<Object>();
     return Container(
@@ -364,7 +375,11 @@ class _ProviderCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            text('ecommerce'),
+            text(
+              provider['category'] == 'marketplace'
+                  ? 'marketplace'
+                  : 'ecommerce',
+            ),
             style: TextStyle(
               color: colors.muted,
               fontSize: 12,
@@ -491,9 +506,9 @@ class _ConnectionRow extends StatelessWidget {
         ? text('neverSynced')
         : '${text('lastSync')} ${lastSync.split('T').first}';
     final statusLabel = status == 'ERROR' || status == 'FAILED'
-      ? text('syncFailed')
+        ? text('syncFailed')
         : status == 'DEGRADED'
-      ? text('storageUnavailable')
+        ? text('storageUnavailable')
         : text(switch (status) {
             'SYNCING' => 'syncing',
             'PROCESSING' => 'processing',
@@ -529,7 +544,7 @@ class _ConnectionRow extends StatelessWidget {
                       connection['display_name']?.toString() ??
                           connection['external_account_id']?.toString() ??
                           connection['provider']?.toString() ??
-                              text('ecommerce'),
+                          text('ecommerce'),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: colors.ink,
@@ -636,6 +651,28 @@ class _StatusBadge extends StatelessWidget {
       style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
     ),
   );
+}
+
+class _ProviderGroupLabel extends StatelessWidget {
+  const _ProviderGroupLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: colors.muted,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
 }
 
 class _ConnectorNotice extends StatelessWidget {
@@ -769,6 +806,11 @@ class _BrandMark extends StatelessWidget {
     icon: SimpleIcons.vtex,
     asset: null,
     color: const Color(0xFFF71963),
+  ),
+  'etsy' => (
+    icon: SimpleIcons.etsy,
+    asset: null,
+    color: const Color(0xFFF1641E),
   ),
   _ => (
     icon: Icons.storefront_outlined,

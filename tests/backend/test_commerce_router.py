@@ -242,7 +242,9 @@ def test_connector_catalog_contract_is_exact_and_truthful() -> None:
         for provider, definition in definitions.items()
         if definition.implementation_status
         == ConnectorImplementationStatus.CONFIGURATION_REQUIRED
-    } == {"amazon-seller-central", "ebay", "etsy", "tiktok-shop", "square"}
+    } == {"amazon-seller-central", "ebay", "tiktok-shop", "square"}
+    assert definitions["etsy"].category.value == "marketplace"
+    assert definitions["etsy"].customer_status.value == "COMING_SOON"
     assert all(item.documentation_url for item in definitions.values())
     assert all(item.auth_method for item in definitions.values())
     assert all(item.capabilities for item in definitions.values())
