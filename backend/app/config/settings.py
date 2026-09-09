@@ -88,6 +88,14 @@ class Settings(BaseSettings):
         le=200,
         alias="CONNECTOR_AI_EVALUATION_BATCH_SIZE",
     )
+    connector_ai_scheduler_token: str = Field(
+        default="",
+        alias="CONNECTOR_AI_SCHEDULER_TOKEN",
+    )
+    connector_ai_scheduler_url: str = Field(
+        default="",
+        alias="CONNECTOR_AI_SCHEDULER_URL",
+    )
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles
