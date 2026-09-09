@@ -321,10 +321,14 @@ async def test_new_woocommerce_authorization_supersedes_previous_state(
     )
     assert connection.status == CommerceConnectionStatus.CONNECTING.value
 
-    reconnect = service.begin_woocommerce_authorization(
+    previous_ciphertext = connection.encrypted_credentials
+    connection.status = CommerceConnectionStatus.REAUTH_REQUIRED.value
+    connection.error_category = "reauthorization_required"
+    session.commit()
+    reconnect = service.begin_woocommerce_reauthorization(
         tenant,
         actor_user_id=user.id,
-        store_url="https://merchant.example",
+        connection_id=connection.id,
     )
     reconnected = await service.complete_woocommerce_authorization(
         raw_state=reconnect.state,
@@ -338,6 +342,7 @@ async def test_new_woocommerce_authorization_supersedes_previous_state(
     credentials = cipher.decrypt(reconnected.encrypted_credentials or "")
     assert reconnected.id == connection.id
     assert len(service.list_connections(tenant)) == 1
+    assert reconnected.encrypted_credentials != previous_ciphertext
     assert credentials["consumer_key"] == "ck_reconnected_secret"
     assert credentials["consumer_secret"] == "cs_reconnected_secret"
 

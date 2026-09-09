@@ -74,6 +74,7 @@ class CommerceConnectionResponse(BaseModel):
     last_successful_sync: datetime | None
     sync_started_at: datetime | None
     dataset_id: UUID | None
+    reauthorization_available: bool = False
 
 
 class CommerceSyncAcceptedResponse(BaseModel):

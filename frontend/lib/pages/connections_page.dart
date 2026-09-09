@@ -433,6 +433,31 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
+  Future<void> _reauthorizeWooCommerce(Map<String, dynamic> connection) async {
+    final id = connection['id']?.toString();
+    if (id == null || _busyConnectionIds.contains(id)) return;
+    setState(() => _busyConnectionIds.add(id));
+    try {
+      final response =
+          await widget.api.post('/connectors/connections/$id/reauthorize')
+              as Map<String, dynamic>;
+      final authorizationUrl = Uri.tryParse(
+        response['authorization_url']?.toString() ?? '',
+      );
+      if (authorizationUrl == null ||
+          !authorizationUrl.hasScheme ||
+          !await widget.openConnectorUrl(authorizationUrl)) {
+        throw ApiException(_connectorText('wooLaunchFailed'));
+      }
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } on Object {
+      _showConnectorError(_connectorText('wooLaunchFailed'));
+    } finally {
+      if (mounted) setState(() => _busyConnectionIds.remove(id));
+    }
+  }
+
   Future<void> _disconnectConnection(Map<String, dynamic> connection) async {
     final id = connection['id']?.toString();
     if (id == null || _busyConnectionIds.contains(id)) return;
@@ -676,6 +701,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 connectorCatalogUnavailable: _connectorCatalogUnavailable,
                 onConnect: _connectProvider,
                 onSyncConnection: _syncConnection,
+                onReauthorizeConnection: _reauthorizeWooCommerce,
                 onDisconnectConnection: _disconnectConnection,
                 onRefreshConnectors: _refreshConnectorData,
                 deletingDatasetIds: _deletingDatasetIds,
@@ -841,6 +867,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.connectorCatalogUnavailable,
     required this.onConnect,
     required this.onSyncConnection,
+    required this.onReauthorizeConnection,
     required this.onDisconnectConnection,
     required this.onRefreshConnectors,
     required this.deletingDatasetIds,
@@ -863,6 +890,8 @@ class _ConnectedDataView extends StatelessWidget {
   final bool connectorCatalogUnavailable;
   final ValueChanged<String> onConnect;
   final Future<void> Function(Map<String, dynamic> connection) onSyncConnection;
+  final Future<void> Function(Map<String, dynamic> connection)
+  onReauthorizeConnection;
   final Future<void> Function(Map<String, dynamic> connection)
   onDisconnectConnection;
   final VoidCallback onRefreshConnectors;
@@ -1098,6 +1127,7 @@ class _ConnectedDataView extends StatelessWidget {
           catalogUnavailable: connectorCatalogUnavailable,
           onConnect: onConnect,
           onSync: onSyncConnection,
+          onReauthorize: onReauthorizeConnection,
           onDisconnect: onDisconnectConnection,
           onRefresh: onRefreshConnectors,
           t: t,

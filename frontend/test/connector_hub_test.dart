@@ -109,10 +109,16 @@ List<Map<String, dynamic>> _catalog() => [
     },
 ];
 
-Map<String, dynamic> _connection({String status = 'READY'}) => {
+Map<String, dynamic> _connection({
+  String status = 'READY',
+  String provider = 'shopify',
+  bool reauthorizationAvailable = false,
+}) => {
   'id': '11111111-1111-1111-1111-111111111111',
-  'provider': 'shopify',
-  'external_account_id': 'shop.myshopify.com',
+  'provider': provider,
+  'external_account_id': provider == 'woocommerce'
+      ? 'https://shop.example.com'
+      : 'shop.myshopify.com',
   'display_name': 'Shop',
   'status': status,
   'connection_status': switch (status) {
@@ -123,6 +129,7 @@ Map<String, dynamic> _connection({String status = 'READY'}) => {
   'sync_status': status,
   'capabilities': <String>[],
   'records_processed': 42,
+  'reauthorization_available': reauthorizationAvailable,
 };
 
 Future<Widget> _app(
@@ -621,7 +628,9 @@ void main() {
       final client = MockClient((request) async {
         if (request.url.path.endsWith('/connectors/connections')) {
           return http.Response(
-            jsonEncode([_connection(status: 'REAUTH_REQUIRED')]),
+            jsonEncode([
+              _connection(status: 'REAUTH_REQUIRED', provider: 'woocommerce'),
+            ]),
             200,
           );
         }
@@ -643,6 +652,75 @@ void main() {
       );
       expect(find.byTooltip('Nouvelle autorisation requise'), findsOneWidget);
       expect(find.byTooltip('Synchroniser maintenant'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'platform-authorized WooCommerce row launches reauthorization by id',
+    (tester) async {
+      _useDesktopViewport(tester);
+      Uri? launchedUrl;
+      String? reauthorizationPath;
+      final client = MockClient((request) async {
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/connectors/connections')) {
+          return http.Response(
+            jsonEncode([
+              _connection(
+                status: 'REAUTH_REQUIRED',
+                provider: 'woocommerce',
+                reauthorizationAvailable: true,
+              ),
+            ]),
+            200,
+          );
+        }
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/reauthorize')) {
+          reauthorizationPath = request.url.path;
+          return http.Response(
+            jsonEncode({
+              'authorization_url':
+                  'https://shop.example.com/wc-auth/v1/authorize?state=safe',
+              'expires_at': '2026-09-09T22:00:00Z',
+            }),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/connectors')) {
+          return http.Response(jsonEncode(_catalog()), 200);
+        }
+        if (request.url.path.endsWith('/datasets')) {
+          return http.Response('[]', 200);
+        }
+        return http.Response('{}', 200);
+      });
+
+      await tester.pumpWidget(
+        await _app(
+          client,
+          openConnectorUrl: (uri) async {
+            launchedUrl = uri;
+            return true;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final reauthorize = find.byKey(
+        const ValueKey('reauthorize-11111111-1111-1111-1111-111111111111'),
+      );
+      expect(find.text('Réautoriser WooCommerce'), findsOneWidget);
+      await tester.tap(reauthorize);
+      await tester.pumpAndSettle();
+
+      expect(
+        reauthorizationPath,
+        '/api/v1/connectors/connections/'
+        '11111111-1111-1111-1111-111111111111/reauthorize',
+      );
+      expect(launchedUrl?.host, 'shop.example.com');
+      expect(launchedUrl?.path, '/wc-auth/v1/authorize');
     },
   );
 
@@ -778,6 +856,11 @@ void main() {
         isFalse,
         reason: '$locale must not expose an internal beta label',
       );
+      expect(
+        strings.connectorHub['reauthorizeWooCommerce']?.trim(),
+        isNotEmpty,
+        reason: '$locale must resolve the WooCommerce reauthorization label',
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -792,6 +875,7 @@ void main() {
                 catalogUnavailable: false,
                 onConnect: (_) {},
                 onSync: (_) async {},
+                onReauthorize: (_) async {},
                 onDisconnect: (_) async {},
                 onRefresh: () {},
                 t: strings,
@@ -829,6 +913,7 @@ void main() {
     expect(french['connected'], 'Connecté');
     expect(french['ready'], 'Prêt');
     expect(french['reauthorizationRequired'], 'Nouvelle autorisation requise');
+    expect(french['reauthorizeWooCommerce'], 'Réautoriser WooCommerce');
 
     final english = hub('en-US');
     expect(english['addOnlineStore'], 'Connect an online store');
@@ -837,6 +922,7 @@ void main() {
     expect(english['comingSoon'], 'Coming soon');
     expect(english['connectToAvenqo'], 'Connect to Avenqo');
     expect(english['connectedStores'], 'Connected stores');
+    expect(english['reauthorizeWooCommerce'], 'Reauthorize WooCommerce');
   });
 
   testWidgets('fr-CA connector actions fit light and dark responsive layouts', (
@@ -869,6 +955,7 @@ void main() {
                   catalogUnavailable: false,
                   onConnect: (_) {},
                   onSync: (_) async {},
+                  onReauthorize: (_) async {},
                   onDisconnect: (_) async {},
                   onRefresh: () {},
                   t: strings,

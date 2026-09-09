@@ -186,6 +186,22 @@ class CommerceConnectionService:
             expires_at=expires_at,
         )
 
+    def begin_woocommerce_reauthorization(
+        self,
+        tenant: TenantContext,
+        *,
+        actor_user_id: UUID,
+        connection_id: UUID,
+    ) -> CommerceAuthorizationStart:
+        connection = self.get_connection(tenant, connection_id)
+        if connection.provider != "woocommerce":
+            raise CommerceConnectionError("Connection is not a WooCommerce connection")
+        return self.begin_woocommerce_authorization(
+            tenant,
+            actor_user_id=actor_user_id,
+            store_url=connection.external_account_id,
+        )
+
     async def complete_woocommerce_authorization(
         self,
         *,

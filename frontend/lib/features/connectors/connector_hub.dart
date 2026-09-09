@@ -14,6 +14,7 @@ class ConnectorHub extends StatefulWidget {
     required this.catalogUnavailable,
     required this.onConnect,
     required this.onSync,
+    required this.onReauthorize,
     required this.onDisconnect,
     required this.onRefresh,
     required this.t,
@@ -26,6 +27,7 @@ class ConnectorHub extends StatefulWidget {
   final bool catalogUnavailable;
   final ValueChanged<String> onConnect;
   final Future<void> Function(Map<String, dynamic> connection) onSync;
+  final Future<void> Function(Map<String, dynamic> connection) onReauthorize;
   final Future<void> Function(Map<String, dynamic> connection) onDisconnect;
   final VoidCallback onRefresh;
   final CompanyStrings t;
@@ -175,6 +177,8 @@ class _ConnectorHubState extends State<ConnectorHub> {
                       widget.connections[index]['id']?.toString(),
                     ),
                     onSync: () => widget.onSync(widget.connections[index]),
+                    onReauthorize: () =>
+                        widget.onReauthorize(widget.connections[index]),
                     onDisconnect: () =>
                         widget.onDisconnect(widget.connections[index]),
                     text: _text,
@@ -448,6 +452,7 @@ class _ConnectionRow extends StatelessWidget {
     required this.isLast,
     required this.busy,
     required this.onSync,
+    required this.onReauthorize,
     required this.onDisconnect,
     required this.text,
   });
@@ -456,6 +461,7 @@ class _ConnectionRow extends StatelessWidget {
   final bool isLast;
   final bool busy;
   final VoidCallback onSync;
+  final VoidCallback onReauthorize;
   final VoidCallback onDisconnect;
   final String Function(String key) text;
 
@@ -471,6 +477,10 @@ class _ConnectionRow extends StatelessWidget {
         connection['connection_status']?.toString().toUpperCase() ??
         (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
     final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
+    final canReauthorize =
+        status == 'REAUTH_REQUIRED' &&
+        connection['provider'] == 'woocommerce' &&
+        connection['reauthorization_available'] == true;
     final statusColor =
         {'ERROR', 'DEGRADED', 'FAILED', 'REAUTH_REQUIRED'}.contains(status)
         ? const Color(0xFFD1414B)
@@ -572,6 +582,13 @@ class _ConnectionRow extends StatelessWidget {
                     padding: EdgeInsets.all(11),
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
+                )
+              else if (canReauthorize)
+                FilledButton.icon(
+                  key: ValueKey('reauthorize-${connection['id']}'),
+                  onPressed: onReauthorize,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: Text(text('reauthorizeWooCommerce')),
                 )
               else
                 IconButton(

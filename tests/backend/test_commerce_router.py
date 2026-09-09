@@ -18,6 +18,7 @@ from backend.app.dependencies.commerce import (
 )
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.routers.commerce import router
+from backend.app.services.commerce_connection_service import CommerceConnectionNotFound
 from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
 from shared.ai_engine.connectors.commerce import ConnectorImplementationStatus
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
@@ -127,6 +128,7 @@ class _CallbackConnections:
 class _WooConnections:
     def __init__(self, company_id):
         self.received_credentials = None
+        self.reauthorized_connection_ids = []
         self.connection = SimpleNamespace(
             id=uuid4(),
             company_id=company_id,
@@ -173,6 +175,32 @@ class _WooConnections:
     ):
         return SimpleNamespace(
             authorization_url=f"{store_url}/wc-auth/v1/authorize",
+            expires_at=datetime.now(timezone.utc),
+        )
+
+    def get_connection(self, tenant, connection_id):
+        assert tenant.company_id == self.connection.company_id
+        if connection_id != self.connection.id:
+            raise CommerceConnectionNotFound("Commerce connection not found")
+        return self.connection
+
+    def list_connections(self, tenant):
+        assert tenant.company_id == self.connection.company_id
+        return [self.connection]
+
+    def begin_woocommerce_reauthorization(
+        self,
+        tenant,
+        *,
+        actor_user_id,
+        connection_id,
+    ):
+        connection = self.get_connection(tenant, connection_id)
+        self.reauthorized_connection_ids.append(connection.id)
+        return SimpleNamespace(
+            authorization_url=(
+                f"{connection.external_account_id}/wc-auth/v1/authorize"
+            ),
             expires_at=datetime.now(timezone.utc),
         )
 
@@ -522,6 +550,104 @@ def test_platform_admin_catalog_exposes_internal_test_permission_in_sandbox(
     woo = next(item for item in response.json() if item["provider"] == "woocommerce")
     assert woo["customer_status"] == "COMING_SOON"
     get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("is_platform_admin", "environment", "expected_status"),
+    [(False, "sandbox", 403), (True, "production", 403), (True, "sandbox", 200)],
+)
+def test_existing_woocommerce_reauthorization_is_server_gated(
+    monkeypatch,
+    is_platform_admin,
+    environment,
+    expected_status,
+) -> None:
+    company_id = uuid4()
+    identity = SimpleNamespace(
+        user=SimpleNamespace(
+            id=uuid4(),
+            company_id=company_id,
+            role=SimpleNamespace(),
+            is_platform_admin=is_platform_admin,
+        )
+    )
+    connections = _WooConnections(company_id)
+    connections.connection.status = "REAUTH_REQUIRED"
+    connections.connection.error_category = "reauthorization_required"
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[require_active_subscription] = lambda: TenantContext(
+        company_id=company_id
+    )
+    app.dependency_overrides[get_commerce_connection_service] = lambda: connections
+    app.dependency_overrides[get_commerce_connector_registry] = lambda: _WooRegistry()
+
+    from backend.app.routers import commerce as commerce_router
+
+    monkeypatch.setattr(
+        commerce_router,
+        "get_settings",
+        lambda: SimpleNamespace(environment=environment),
+    )
+    app.dependency_overrides[commerce_router.manage_connectors] = lambda: identity
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/v1/connectors/connections/{connections.connection.id}/reauthorize"
+        )
+
+    assert response.status_code == expected_status
+    if expected_status == 200:
+        assert connections.reauthorized_connection_ids == [connections.connection.id]
+        assert response.json()["authorization_url"].endswith(
+            "/wc-auth/v1/authorize"
+        )
+    else:
+        assert connections.reauthorized_connection_ids == []
+
+
+@pytest.mark.parametrize(
+    ("is_platform_admin", "environment", "expected_available"),
+    [(False, "sandbox", False), (True, "production", False), (True, "sandbox", True)],
+)
+def test_connection_row_reauthorization_permission_is_server_computed(
+    monkeypatch,
+    is_platform_admin,
+    environment,
+    expected_available,
+) -> None:
+    company_id = uuid4()
+    identity = SimpleNamespace(
+        user=SimpleNamespace(
+            id=uuid4(),
+            company_id=company_id,
+            role=SimpleNamespace(),
+            is_platform_admin=is_platform_admin,
+        )
+    )
+    connections = _WooConnections(company_id)
+    connections.connection.status = "REAUTH_REQUIRED"
+    connections.connection.error_category = "reauthorization_required"
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[require_active_subscription] = lambda: TenantContext(
+        company_id=company_id
+    )
+    app.dependency_overrides[get_commerce_connection_service] = lambda: connections
+    app.dependency_overrides[get_commerce_connector_registry] = lambda: _WooRegistry()
+
+    from backend.app.routers import commerce as commerce_router
+
+    monkeypatch.setattr(
+        commerce_router,
+        "get_settings",
+        lambda: SimpleNamespace(environment=environment),
+    )
+    app.dependency_overrides[commerce_router.require_connector_read] = lambda: identity
+    with TestClient(app) as client:
+        response = client.get("/api/v1/connectors/connections")
+
+    assert response.status_code == 200
+    assert response.json()[0]["reauthorization_available"] is expected_available
 
 
 def test_woocommerce_json_callback_returns_ok_and_schedules_initialization() -> None:

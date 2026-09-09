@@ -70,7 +70,11 @@ def _tenant(identity: CurrentIdentity) -> TenantContext:
     return TenantContext(company_id=identity.user.company_id)
 
 
-def _connection_response(connection: CommerceConnection) -> CommerceConnectionResponse:
+def _connection_response(
+    connection: CommerceConnection,
+    *,
+    reauthorization_available: bool = False,
+) -> CommerceConnectionResponse:
     dataset_id = (connection.dataset_ids or {}).get("retail")
     try:
         parsed_dataset_id = UUID(str(dataset_id)) if dataset_id else None
@@ -108,6 +112,7 @@ def _connection_response(connection: CommerceConnection) -> CommerceConnectionRe
         last_successful_sync=connection.last_successful_sync,
         sync_started_at=connection.sync_started_at,
         dataset_id=parsed_dataset_id,
+        reauthorization_available=reauthorization_available,
     )
 
 
@@ -140,6 +145,14 @@ def _require_connector_launch_access(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Connector is not available",
+    )
+
+
+def _woocommerce_reauthorization_required(connection: CommerceConnection) -> bool:
+    return connection.provider == "woocommerce" and (
+        connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value
+        or connection.error_category
+        in {"authorization_failed", "reauthorization_required"}
     )
 
 
@@ -196,9 +209,16 @@ def list_connections(
     identity: CurrentIdentity = Depends(require_connector_read),
     _: TenantContext = Depends(require_active_subscription),
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> list[CommerceConnectionResponse]:
     return [
-        _connection_response(item)
+        _connection_response(
+            item,
+            reauthorization_available=(
+                _woocommerce_reauthorization_required(item)
+                and _internal_connector_test_allowed(identity, registry, "woocommerce")
+            ),
+        )
         for item in service.list_connections(_tenant(identity))
     ]
 
@@ -212,10 +232,16 @@ def connection_detail(
     identity: CurrentIdentity = Depends(require_connector_read),
     _: TenantContext = Depends(require_active_subscription),
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
 ) -> CommerceConnectionResponse:
     try:
+        connection = service.get_connection(_tenant(identity), connection_id)
         return _connection_response(
-            service.get_connection(_tenant(identity), connection_id)
+            connection,
+            reauthorization_available=(
+                _woocommerce_reauthorization_required(connection)
+                and _internal_connector_test_allowed(identity, registry, "woocommerce")
+            ),
         )
     except CommerceConnectionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -268,6 +294,41 @@ def authorize_woocommerce(
             actor_user_id=identity.user.id,
             store_url=request.store_url,
         )
+    except (CommerceConnectionError, ConnectorNotRegisteredError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return ShopifyAuthorizationResponse(
+        authorization_url=result.authorization_url,
+        expires_at=result.expires_at,
+    )
+
+
+@router.post(
+    "/connections/{connection_id}/reauthorize",
+    response_model=ShopifyAuthorizationResponse,
+)
+def reauthorize_woocommerce(
+    connection_id: UUID,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
+) -> ShopifyAuthorizationResponse:
+    _require_connector_launch_access(identity, registry, "woocommerce")
+    tenant = _tenant(identity)
+    try:
+        connection = service.get_connection(tenant, connection_id)
+        if not _woocommerce_reauthorization_required(connection):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="WooCommerce reauthorization is not required",
+            )
+        result = service.begin_woocommerce_reauthorization(
+            tenant,
+            actor_user_id=identity.user.id,
+            connection_id=connection.id,
+        )
+    except CommerceConnectionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (CommerceConnectionError, ConnectorNotRegisteredError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ShopifyAuthorizationResponse(

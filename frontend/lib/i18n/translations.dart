@@ -2782,6 +2782,7 @@ class CompanyStrings {
       'connecting': 'Connecting',
       'authorizing': 'Awaiting authorization',
       'reauthorizationRequired': 'Authorization required',
+      'reauthorizeWooCommerce': 'Reauthorize WooCommerce',
       'lastSync': 'Last sync',
       'neverSynced': 'Not synced yet',
       'syncFailed': 'Synchronization failed',
