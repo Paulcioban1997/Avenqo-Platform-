@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 import scripts.bootstrap_platform_admin as bootstrap_module
 from backend.app.core.security import hash_token, verify_password
-from backend.app.models import AuditLogEntry, AuthSession, Base, Company, User
+from backend.app.models import AuditLogEntry, AuthSession, Base, BillingAccount, Company, User
 
 _TEST_EMAIL = "owner-test@example.com"
 _TEST_PASSWORD = "Sup3r!SecretTest"
@@ -54,6 +54,12 @@ def test_creates_platform_admin_and_internal_company_on_first_run(session_factor
         assert company is not None
         refreshed = session.scalar(select(User).where(User.email == _TEST_EMAIL))
         assert refreshed.is_platform_admin is True
+        billing = session.scalar(
+            select(BillingAccount).where(BillingAccount.company_id == company.id)
+        )
+        assert billing is not None
+        assert billing.plan_code == "enterprise"
+        assert billing.status == "active"
 
 
 def test_second_run_is_idempotent_no_duplicate(session_factory, monkeypatch) -> None:
@@ -69,6 +75,52 @@ def test_second_run_is_idempotent_no_duplicate(session_factory, monkeypatch) -> 
         assert len(users) == 1
         companies = session.scalars(select(Company).where(Company.slug == "avenqo-platform")).all()
         assert len(companies) == 1
+        billing_accounts = session.scalars(
+            select(BillingAccount).where(BillingAccount.company_id == user.company_id)
+        ).all()
+        assert len(billing_accounts) == 1
+
+
+def test_refuses_to_elevate_configured_email_inside_customer_tenant(
+    session_factory,
+    monkeypatch,
+) -> None:
+    _use_settings(monkeypatch, email=_TEST_EMAIL, password=_TEST_PASSWORD)
+    with session_factory() as session:
+        from backend.app.models import CompanyStatus, UserRole
+
+        tenant = Company(
+            name="Acme",
+            slug="acme",
+            email="acme@example.com",
+            country="CA",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="demo",
+            status=CompanyStatus.ACTIVE,
+        )
+        session.add(tenant)
+        session.flush()
+        session.add(
+            User(
+                company_id=tenant.id,
+                first_name="Tenant",
+                last_name="Owner",
+                email=_TEST_EMAIL,
+                password_hash="unchanged",
+                role=UserRole.OWNER,
+                is_platform_admin=False,
+            )
+        )
+        session.commit()
+
+    with pytest.raises(bootstrap_module.BootstrapError, match="Avenqo Platform"):
+        bootstrap_module.bootstrap_platform_admin()
+
+    with session_factory() as session:
+        user = session.scalar(select(User).where(User.email == _TEST_EMAIL))
+        assert user.is_platform_admin is False
+        assert session.scalar(select(BillingAccount)) is None
 
 
 def test_writes_audit_entry_on_each_run(session_factory, monkeypatch) -> None:

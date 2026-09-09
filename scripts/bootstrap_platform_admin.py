@@ -46,7 +46,7 @@ from sqlalchemy import select
 from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_password
 from backend.app.database import SessionLocal
-from backend.app.models import Company, CompanyStatus, User, UserRole
+from backend.app.models import BillingAccount, Company, CompanyStatus, User, UserRole
 from backend.app.schemas.auth import RegisterRequest
 from backend.app.services.audit_log_service import AuditLogService
 
@@ -75,6 +75,24 @@ def _get_or_create_platform_company(session) -> Company:
     session.add(company)
     session.flush()
     return company
+
+
+def _ensure_platform_billing_account(session, company: Company) -> BillingAccount:
+    account = session.scalar(
+        select(BillingAccount).where(BillingAccount.company_id == company.id)
+    )
+    if account is None:
+        account = BillingAccount(
+            company_id=company.id,
+            plan_code="enterprise",
+            status="active",
+        )
+        session.add(account)
+        return account
+    account.plan_code = "enterprise"
+    account.status = "active"
+    account.cancel_at_period_end = False
+    return account
 
 
 def _read_credentials() -> tuple[str, str]:
@@ -125,9 +143,16 @@ def bootstrap_platform_admin() -> tuple[User, bool]:
             created = True
             action = "platform_admin_bootstrapped"
         else:
+            if user.company.slug != _PLATFORM_COMPANY_SLUG:
+                raise BootstrapError(
+                    "Le compte configuré n'appartient pas à l'entreprise Avenqo Platform."
+                )
+            company = user.company
             if not user.is_platform_admin:
                 user.is_platform_admin = True
             action = "platform_admin_confirmed"
+
+        _ensure_platform_billing_account(session, company)
 
         AuditLogService(session).record(
             actor_user_id=user.id,
@@ -167,6 +192,11 @@ def sync_platform_admin_password() -> tuple[User, bool]:
             action = "platform_admin_bootstrapped"
             revoked_sessions = 0
         else:
+            if user.company.slug != _PLATFORM_COMPANY_SLUG:
+                raise BootstrapError(
+                    "Le compte configuré n'appartient pas à l'entreprise Avenqo Platform."
+                )
+            company = user.company
             user.password_hash = hash_password(password)
             user.is_active = True
             user.is_platform_admin = True
@@ -179,6 +209,8 @@ def sync_platform_admin_password() -> tuple[User, bool]:
                     auth_session.revoked_at = now
                     revoked_sessions += 1
             action = "platform_admin_password_synced"
+
+        _ensure_platform_billing_account(session, company)
 
         AuditLogService(session).record(
             actor_user_id=user.id,
