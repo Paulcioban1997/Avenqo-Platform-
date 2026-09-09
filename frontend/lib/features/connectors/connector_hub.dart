@@ -498,9 +498,16 @@ class _ConnectionRow extends StatelessWidget {
             'REAUTH_REQUIRED' => 'reauthorizationRequired',
             _ => 'error',
           });
-    final connectionLabel = connectionStatus == 'DISCONNECTED'
-        ? text('disconnected')
-        : text('connected');
+    final connectionLabel = switch (connectionStatus) {
+      'DISCONNECTED' => text('disconnected'),
+      'REAUTH_REQUIRED' => text('reauthorizationRequired'),
+      _ => text('connected'),
+    };
+    final connectionColor = connectionStatus == 'REAUTH_REQUIRED'
+        ? const Color(0xFFD1414B)
+        : connectionStatus == 'DISCONNECTED'
+        ? colors.muted
+        : const Color(0xFF1B9E5A);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -546,9 +553,7 @@ class _ConnectionRow extends StatelessWidget {
                   children: [
                     _StatusBadge(
                       label: '${text('connection')}: $connectionLabel',
-                      color: connectionStatus == 'DISCONNECTED'
-                          ? colors.muted
-                          : const Color(0xFF1B9E5A),
+                      color: connectionColor,
                     ),
                     _StatusBadge(label: statusLabel, color: statusColor),
                   ],
@@ -570,8 +575,13 @@ class _ConnectionRow extends StatelessWidget {
                 )
               else
                 IconButton(
-                  tooltip: text('sync'),
-                  onPressed: status == 'DISCONNECTED' ? null : onSync,
+                  tooltip: status == 'REAUTH_REQUIRED'
+                      ? text('reauthorizationRequired')
+                      : text('sync'),
+                  onPressed:
+                      {'DISCONNECTED', 'REAUTH_REQUIRED'}.contains(status)
+                      ? null
+                      : onSync,
                   icon: const Icon(Icons.sync),
                 ),
               IconButton(

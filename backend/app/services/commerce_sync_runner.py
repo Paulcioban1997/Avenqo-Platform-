@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models import (
@@ -26,6 +26,20 @@ logger = logging.getLogger(__name__)
 
 class CommerceSyncRunner:
     """Open an independent session for work executed after the HTTP response."""
+
+    _RECONCILABLE_STATUSES = (
+        CommerceConnectionStatus.CONNECTED.value,
+        CommerceConnectionStatus.SYNCING.value,
+        CommerceConnectionStatus.PROCESSING.value,
+        CommerceConnectionStatus.READY.value,
+        CommerceConnectionStatus.ERROR.value,
+        CommerceConnectionStatus.DEGRADED.value,
+    )
+    _NON_RETRYABLE_ERRORS = (
+        "authorization_failed",
+        "reauthorization_required",
+        "insufficient_permissions",
+    )
 
     def __init__(
         self,
@@ -67,6 +81,44 @@ class CommerceSyncRunner:
                     tenant.company_id,
                     connection_id,
                 )
+
+    async def reconcile_active(self) -> int:
+        with self._session_factory() as session:
+            candidates = list(
+                session.execute(
+                    select(CommerceConnection.id, CommerceConnection.company_id).where(
+                        CommerceConnection.provider.in_(("shopify", "woocommerce")),
+                        CommerceConnection.encrypted_credentials.is_not(None),
+                        CommerceConnection.status.in_(self._RECONCILABLE_STATUSES),
+                        or_(
+                            CommerceConnection.error_category.is_(None),
+                            CommerceConnection.error_category.notin_(
+                                self._NON_RETRYABLE_ERRORS
+                            ),
+                        ),
+                    )
+                ).all()
+            )
+
+        claimed = 0
+        for connection_id, company_id in candidates:
+            tenant = TenantContext(company_id=company_id)
+            with self._session_factory() as session:
+                service = self._service_factory(session)
+                try:
+                    service.reserve(tenant, connection_id)
+                except CommerceSyncAlreadyRunning:
+                    continue
+                except Exception:
+                    logger.exception(
+                        "Commerce reconciliation reservation failed company=%s connection=%s",
+                        company_id,
+                        connection_id,
+                    )
+                    continue
+            claimed += 1
+            await self.run_reserved(tenant, connection_id)
+        return claimed
 
     async def run_webhook(self, receipt_id: UUID) -> None:
         with self._session_factory() as session:

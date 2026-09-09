@@ -15,6 +15,7 @@ from backend.app.routers.dataset_archives import router as dataset_archives_rout
 from backend.app.routers.datasets import router as datasets_router
 from backend.app.routers.employees import router as employees_router
 from backend.app.routers.health import router as health_router
+from backend.app.routers.internal_commerce import router as internal_commerce_router
 from backend.app.routers.internal_retraining import router as internal_retraining_router
 from backend.app.routers.internal_connector_ai import router as internal_connector_ai_router
 from backend.app.routers.internal_versioning import router as internal_versioning_router
@@ -111,6 +112,7 @@ api_router.include_router(
 # `/api/v1`, jamais consommé par le frontend utilisateur.
 api_router.include_router(internal_retraining_router, prefix="/internal")
 api_router.include_router(internal_connector_ai_router, prefix="/internal")
+api_router.include_router(internal_commerce_router, prefix="/internal")
 
 # Routeur interne (Model Versioning Enterprise, Phase 9) : idem, jamais
 # consommé par le frontend utilisateur.

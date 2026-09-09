@@ -134,6 +134,15 @@ class _PagedShopifyConnector:
         }
 
 
+class _RejectingWooConnector:
+    definition = next(
+        item for item in COMMERCE_CONNECTOR_CATALOG if item.provider == "woocommerce"
+    )
+
+    async def sync_orders(self, context: ConnectorSyncContext) -> ConnectorPage:
+        raise WooCommerceAuthenticationError("credentials rejected")
+
+
 class _ConnectionLifecycle:
     def __init__(self, connection: CommerceConnection) -> None:
         self.connection = connection
@@ -514,6 +523,52 @@ async def test_materialization_permission_failure_is_truthful_and_retryable(tmp_
         assert connection.dataset_ids["retail"] == str(ingestion.dataset_id)
         assert connection.dataset_ids["retail"] != previous_dataset_id
         assert ingestion.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_woocommerce_authentication_failure_requires_reauthorization(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'commerce-woo-auth.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = Company(
+            name="Woo Auth",
+            slug="woo-auth",
+            email="woo-auth@example.com",
+            country="Canada",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+        )
+        session.add(company)
+        session.flush()
+        connection = CommerceConnection(
+            company_id=company.id,
+            provider="woocommerce",
+            external_account_id="https://shop.example.com",
+            encrypted_credentials="unused-by-test",
+            status=CommerceConnectionStatus.CONNECTED.value,
+            capabilities=["orders"],
+        )
+        session.add(connection)
+        session.commit()
+        registry = CommerceConnectorRegistry()
+        registry.register(_RejectingWooConnector())
+        service = CommerceSyncService(
+            session,
+            registry,
+            _WooConnectionLifecycle(connection),
+            _RecordingIngestion(),
+        )
+
+        with pytest.raises(Exception, match="Commerce synchronization failed"):
+            await service.synchronize(
+                TenantContext(company_id=company.id),
+                connection.id,
+            )
+
+        assert connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value
+        assert connection.error_category == "reauthorization_required"
 
 
 def test_legacy_failed_snapshot_is_marked_for_materialization() -> None:

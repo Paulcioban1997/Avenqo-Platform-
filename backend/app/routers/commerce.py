@@ -79,6 +79,8 @@ def _connection_response(connection: CommerceConnection) -> CommerceConnectionRe
     connection_status = (
         "DISCONNECTED"
         if connection.status == CommerceConnectionStatus.DISCONNECTED.value
+        else "REAUTH_REQUIRED"
+        if connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value
         else "CONNECTED"
         if getattr(connection, "encrypted_credentials", None)
         else "CONNECTING"

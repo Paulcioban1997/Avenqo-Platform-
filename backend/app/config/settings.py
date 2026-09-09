@@ -96,6 +96,10 @@ class Settings(BaseSettings):
         default="",
         alias="CONNECTOR_AI_SCHEDULER_URL",
     )
+    commerce_reconciliation_scheduler_url: str = Field(
+        default="",
+        alias="COMMERCE_RECONCILIATION_SCHEDULER_URL",
+    )
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles

@@ -355,8 +355,13 @@ class CommerceSyncService:
         except Exception as exc:
             self._db.rollback()
             connection = self._connections.get_connection(tenant, connection_id)
-            connection.status = CommerceConnectionStatus.ERROR.value
-            connection.error_category = self._error_category(exc)
+            error_category = self._error_category(exc)
+            connection.status = (
+                CommerceConnectionStatus.REAUTH_REQUIRED.value
+                if error_category == "reauthorization_required"
+                else CommerceConnectionStatus.ERROR.value
+            )
+            connection.error_category = error_category
             connection.sync_started_at = None
             self._db.commit()
             if isinstance(exc, CommerceSyncError):
@@ -368,7 +373,18 @@ class CommerceSyncService:
         tenant: TenantContext,
         connection_id: UUID,
     ) -> None:
-        connection = self._connections.get_connection(tenant, connection_id)
+        connection = self._db.scalar(
+            select(CommerceConnection)
+            .where(
+                CommerceConnection.id == connection_id,
+                CommerceConnection.company_id == tenant.company_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if connection is None:
+            self._connections.get_connection(tenant, connection_id)
+            raise CommerceSyncDataError("Commerce connection not found")
         if self._is_active_sync(connection):
             raise CommerceSyncAlreadyRunning("Commerce synchronization is already running")
         self._begin_or_resume(connection)

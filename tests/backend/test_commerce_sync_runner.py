@@ -43,6 +43,19 @@ class _ArrivingWebhookService:
             self._session.commit()
 
 
+class _ReconciliationService:
+    def __init__(self) -> None:
+        self.reserved = []
+        self.synchronized = []
+
+    def reserve(self, tenant, connection_id) -> None:
+        self.reserved.append((tenant.company_id, connection_id))
+
+    async def synchronize(self, tenant, connection_id, *, reserved=False) -> None:
+        assert reserved is True
+        self.synchronized.append((tenant.company_id, connection_id))
+
+
 class _WooSetupConnections:
     def __init__(self, connection) -> None:
         self.connection = connection
@@ -152,3 +165,50 @@ async def test_woocommerce_webhook_initialization_failure_is_degraded() -> None:
 
     assert connection.status == CommerceConnectionStatus.DEGRADED.value
     assert connections.degraded == "webhook_registration_failed"
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_claims_active_connections_and_skips_reauthorization(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'commerce-reconciliation.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = Company(
+            name="Reconciliation",
+            slug="reconciliation",
+            email="reconciliation@example.com",
+            country="Canada",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+        )
+        session.add(company)
+        session.flush()
+        ready = CommerceConnection(
+            company_id=company.id,
+            provider="shopify",
+            external_account_id="ready.myshopify.com",
+            encrypted_credentials="encrypted",
+            status=CommerceConnectionStatus.READY.value,
+        )
+        reauthorization = CommerceConnection(
+            company_id=company.id,
+            provider="woocommerce",
+            external_account_id="https://reauthorize.example.com",
+            encrypted_credentials="encrypted",
+            status=CommerceConnectionStatus.ERROR.value,
+            error_category="reauthorization_required",
+        )
+        session.add_all((ready, reauthorization))
+        session.commit()
+
+    service = _ReconciliationService()
+    runner = CommerceSyncRunner(factory, lambda _: service)
+
+    claimed = await runner.reconcile_active()
+
+    assert claimed == 1
+    assert service.reserved == [(company.id, ready.id)]
+    assert service.synchronized == [(company.id, ready.id)]

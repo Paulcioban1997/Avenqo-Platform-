@@ -115,7 +115,11 @@ Map<String, dynamic> _connection({String status = 'READY'}) => {
   'external_account_id': 'shop.myshopify.com',
   'display_name': 'Shop',
   'status': status,
-  'connection_status': status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED',
+  'connection_status': switch (status) {
+    'DISCONNECTED' => 'DISCONNECTED',
+    'REAUTH_REQUIRED' => 'REAUTH_REQUIRED',
+    _ => 'CONNECTED',
+  },
   'sync_status': status,
   'capabilities': <String>[],
   'records_processed': 42,
@@ -609,6 +613,38 @@ void main() {
     expect(find.text('La synchronisation a échoué'), findsOneWidget);
     expect(find.byTooltip('Synchroniser maintenant'), findsOneWidget);
   });
+
+  testWidgets(
+    'reauthorization state is not presented as connected or retryable',
+    (tester) async {
+      _useDesktopViewport(tester);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/connectors/connections')) {
+          return http.Response(
+            jsonEncode([_connection(status: 'REAUTH_REQUIRED')]),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/connectors')) {
+          return http.Response(jsonEncode(_catalog()), 200);
+        }
+        if (request.url.path.endsWith('/datasets')) {
+          return http.Response('[]', 200);
+        }
+        return http.Response('{}', 200);
+      });
+
+      await tester.pumpWidget(await _app(client));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Connexion: Nouvelle autorisation requise'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Nouvelle autorisation requise'), findsOneWidget);
+      expect(find.byTooltip('Synchroniser maintenant'), findsNothing);
+    },
+  );
 
   testWidgets('a connected Shopify store can be disconnected', (tester) async {
     _useDesktopViewport(tester);
