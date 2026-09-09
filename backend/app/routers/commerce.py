@@ -341,7 +341,7 @@ async def connect_woocommerce_manual(
 @router.post(
     "/woocommerce/callback",
     response_model=CommerceConnectionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     include_in_schema=False,
 )
 async def woocommerce_callback(

@@ -524,7 +524,7 @@ def test_platform_admin_catalog_exposes_internal_test_permission_in_sandbox(
     get_settings.cache_clear()
 
 
-def test_woocommerce_json_callback_returns_accepted_and_schedules_initialization() -> None:
+def test_woocommerce_json_callback_returns_ok_and_schedules_initialization() -> None:
     company_id = uuid4()
     connections = _WooConnections(company_id)
     runner = _Runner()
@@ -546,7 +546,7 @@ def test_woocommerce_json_callback_returns_accepted_and_schedules_initialization
             },
         )
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     assert connections.received_credentials == (
         "ck_callback_secret",
         "cs_callback_secret",

@@ -282,6 +282,77 @@ async def test_woocommerce_authorization_uses_thirty_minute_state_and_invalid_pa
 
 
 @pytest.mark.asyncio
+async def test_new_woocommerce_authorization_supersedes_previous_state(
+    woocommerce_environment,
+) -> None:
+    session, service, _, cipher, (company, user), _ = woocommerce_environment
+    tenant = TenantContext(company_id=company.id)
+    first = service.begin_woocommerce_authorization(
+        tenant,
+        actor_user_id=user.id,
+        store_url="https://merchant.example",
+    )
+    second = service.begin_woocommerce_authorization(
+        tenant,
+        actor_user_id=user.id,
+        store_url="https://merchant.example",
+    )
+
+    assert first.state != second.state
+    with pytest.raises(CommerceAuthorizationError, match="invalid or expired"):
+        await service.complete_woocommerce_authorization(
+            raw_state=first.state,
+            callback_payload={
+                "user_id": first.state,
+                "consumer_key": "ck_stale_secret",
+                "consumer_secret": "cs_stale_secret",
+                "key_permissions": "read_write",
+            },
+        )
+
+    connection = await service.complete_woocommerce_authorization(
+        raw_state=second.state,
+        callback_payload={
+            "user_id": second.state,
+            "consumer_key": "ck_fresh_secret",
+            "consumer_secret": "cs_fresh_secret",
+            "key_permissions": "read_write",
+        },
+    )
+    assert connection.status == CommerceConnectionStatus.CONNECTING.value
+
+    reconnect = service.begin_woocommerce_authorization(
+        tenant,
+        actor_user_id=user.id,
+        store_url="https://merchant.example",
+    )
+    reconnected = await service.complete_woocommerce_authorization(
+        raw_state=reconnect.state,
+        callback_payload={
+            "user_id": reconnect.state,
+            "consumer_key": "ck_reconnected_secret",
+            "consumer_secret": "cs_reconnected_secret",
+            "key_permissions": "read_write",
+        },
+    )
+    credentials = cipher.decrypt(reconnected.encrypted_credentials or "")
+    assert reconnected.id == connection.id
+    assert len(service.list_connections(tenant)) == 1
+    assert credentials["consumer_key"] == "ck_reconnected_secret"
+    assert credentials["consumer_secret"] == "cs_reconnected_secret"
+
+    reconnected.status = CommerceConnectionStatus.FAILED.value
+    session.commit()
+    service.begin_woocommerce_authorization(
+        tenant,
+        actor_user_id=user.id,
+        store_url="https://merchant.example",
+    )
+    assert reconnected.status == CommerceConnectionStatus.AUTHORIZING.value
+    assert reconnected.encrypted_credentials is None
+
+
+@pytest.mark.asyncio
 async def test_woocommerce_callback_rejects_expired_state(
     woocommerce_environment,
 ) -> None:

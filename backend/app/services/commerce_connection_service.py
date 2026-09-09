@@ -119,8 +119,19 @@ class CommerceConnectionService:
         connector = self._woocommerce()
         normalized_store = connector.normalize_store_url(store_url)
         self._assert_store_tenant(tenant, "woocommerce", normalized_store)
+        now = self._now()
+        previous_states = self._db.scalars(
+            select(CommerceOAuthState).where(
+                CommerceOAuthState.company_id == tenant.company_id,
+                CommerceOAuthState.provider == "woocommerce",
+                CommerceOAuthState.external_account_id == normalized_store,
+                CommerceOAuthState.consumed_at.is_(None),
+            )
+        ).all()
+        for previous_state in previous_states:
+            previous_state.consumed_at = now
         raw_state = secrets.token_urlsafe(48)
-        expires_at = self._now() + self._WOOCOMMERCE_STATE_TTL
+        expires_at = now + self._WOOCOMMERCE_STATE_TTL
         oauth_state = CommerceOAuthState(
             company_id=tenant.company_id,
             actor_user_id=actor_user_id,
@@ -146,9 +157,16 @@ class CommerceConnectionService:
             )
             self._db.add(connection)
         else:
+            previous_status = connection.status
             connection.status = CommerceConnectionStatus.AUTHORIZING.value
             connection.error_category = None
             connection.disconnected_at = None
+            if previous_status in {
+                CommerceConnectionStatus.FAILED.value,
+                CommerceConnectionStatus.REAUTH_REQUIRED.value,
+                CommerceConnectionStatus.DISCONNECTED.value,
+            }:
+                connection.encrypted_credentials = None
         self._db.add(oauth_state)
         self._db.commit()
         self._audit.record(

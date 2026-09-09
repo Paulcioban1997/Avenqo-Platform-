@@ -209,6 +209,67 @@ def test_shopify_active_source_filters_all_retail_services(source_environment):
     assert "SUPER" not in str(recommendation_result)
 
 
+def test_woocommerce_active_source_filters_all_retail_services(source_environment):
+    session, company, _, uploaded, _, _, prepared = source_environment
+    woocommerce_dataset = _dataset(session, company, "woocommerce-retail.csv")
+    connection = CommerceConnection(
+        company_id=company.id,
+        provider="woocommerce",
+        external_account_id="https://merchant.example",
+        display_name="merchant.example",
+        status=CommerceConnectionStatus.READY.value,
+        encrypted_credentials="encrypted",
+        dataset_ids={"retail": str(woocommerce_dataset.id)},
+        last_successful_sync=datetime(2026, 9, 8, 18, 0, tzinfo=timezone.utc),
+    )
+    session.add(connection)
+    session.commit()
+    prepared[woocommerce_dataset.id] = _prepared(
+        company,
+        woocommerce_dataset,
+        "WOO",
+        84,
+    )
+    tenant = TenantContext(company.id)
+    RetailSourceService(session).select_source(
+        tenant,
+        source_type="connector",
+        source_id=connection.id,
+    )
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared))
+    predictions = _UnusedPredictions()
+
+    snapshot = analytics.load(tenant)
+    sales_result = TenantSalesService(session, analytics, predictions).build(
+        tenant,
+        period_key="last_30_days",
+    )
+    customer_result = TenantCustomersService(analytics, predictions).build(tenant)
+    product_service = TenantProductsService(analytics)
+    product_result = product_service.build(tenant)
+    recommendation_result = TenantRecommendationsService(
+        analytics,
+        product_service,
+        None,
+    ).build(tenant)
+
+    assert snapshot.active_source_selected is True
+    assert snapshot.active_source_dataset_id == woocommerce_dataset.id
+    assert {item.dataset_id for item in snapshot.prepared} == {
+        woocommerce_dataset.id
+    }
+    assert uploaded.id not in {item.dataset_id for item in snapshot.prepared}
+    assert sales_result["summary"]["revenue"] == 84
+    assert [item["customer_id"] for item in customer_result["items"]] == [
+        "WOO-CUSTOMER"
+    ]
+    assert [item["product_id"] for item in product_result["items"]] == [
+        "WOO-PRODUCT"
+    ]
+    assert "SUPER" not in str(recommendation_result)
+    assert "SHOPIFY" not in str(recommendation_result)
+
+
 def test_shopify_without_dataset_never_falls_back_to_uploaded_data(source_environment):
     session, company, _, _, _, connection, prepared = source_environment
     connection.dataset_ids = {}
