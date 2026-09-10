@@ -163,7 +163,7 @@ class WooCommerceConnector(CommerceConnector):
         return await self._sync_collection(context, "orders", extra={"status": "any"})
 
     async def sync_customers(self, context: ConnectorSyncContext) -> ConnectorPage:
-        return await self._sync_collection(context, "customers")
+        return await self._sync_collection(context, "customers", orderby="id")
 
     async def sync_products(self, context: ConnectorSyncContext) -> ConnectorPage:
         page = await self._sync_collection(context, "products")
@@ -358,12 +358,13 @@ class WooCommerceConnector(CommerceConnector):
         endpoint: str,
         *,
         extra: Mapping[str, str] | None = None,
+        orderby: str = "modified",
     ) -> ConnectorPage:
         page_number = self._page_number(context.cursor)
         params: dict[str, Any] = {
             "per_page": self._page_size,
             "page": page_number,
-            "orderby": "modified",
+            "orderby": orderby,
             "order": "asc",
             **dict(extra or {}),
         }

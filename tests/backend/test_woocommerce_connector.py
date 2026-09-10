@@ -221,6 +221,27 @@ async def test_woocommerce_order_pagination_incremental_filter_and_rate_limit_re
 
 
 @pytest.mark.asyncio
+async def test_woocommerce_customers_use_supported_id_ordering() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/customers")
+        assert request.url.params["orderby"] == "id"
+        assert request.url.params["order"] == "asc"
+        return httpx.Response(
+            200,
+            headers={"X-WP-TotalPages": "1"},
+            json=[{"id": 12, "first_name": "Luc", "last_name": "Martin"}],
+        )
+
+    connector, client = _connector(handler)
+
+    page = await connector.sync_customers(_context())
+
+    assert [record["id"] for record in page.records] == [12]
+    assert page.next_cursor is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_woocommerce_raises_after_repeated_rate_limits() -> None:
     connector, client = _connector(
         lambda request: httpx.Response(429),
