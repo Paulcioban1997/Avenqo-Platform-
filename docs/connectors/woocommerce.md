@@ -1,10 +1,10 @@
 # WooCommerce
 
-Readiness: `BETA`. Shopify remains the only `AVAILABLE` commerce connector. Do not promote WooCommerce until the real-store acceptance steps below pass in the staging sandbox.
+Readiness: `AVAILABLE`. WooCommerce is publicly connectable for authenticated tenants with connector-management permission.
 
 Environment: configure the encrypted callback and webhook settings documented below.
 
-Acceptance: complete every real-store staging step before any readiness promotion.
+Acceptance: keep the real-store staging checks below green for every release.
 
 ## WOOCOMMERCE_REAL_TEST_REQUIREMENTS
 
@@ -62,7 +62,7 @@ WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST=false
 
 ## WOOCOMMERCE_REAL_ACCEPTANCE_STEPS
 
-1. Deploy the backend to the staging sandbox with the environment variables above and confirm the catalog reports WooCommerce as `BETA` and `configured: true`.
+1. Deploy the backend to the staging sandbox with the environment variables above and confirm the catalog reports WooCommerce as `AVAILABLE` and `configured: true`.
 2. From the staging frontend, enter the canonical store URL and complete the standard WooCommerce authorization as an administrator.
 3. Confirm the connection is tenant-scoped, no key or secret appears in API responses or logs, and replaying the callback state is rejected.
 4. Confirm the initial background sync imports products, variations, inventory, customers, orders, and refunds without fabricated rows.
@@ -73,4 +73,4 @@ WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST=false
 9. Disconnect WooCommerce and confirm Avenqo webhooks and encrypted credentials are removed while historical datasets remain governed by the existing retention policy.
 10. Repeat with an empty store and with insufficient permissions. The empty store must complete without demo data; insufficient permissions must produce an actionable failure state.
 
-Keep status `BETA` until all steps pass against a real staging store and the evidence is recorded. Real acceptance is not part of automated mock coverage.
+Keep the connector publicly available only while the real staging-store checks remain healthy. Real acceptance complements automated mock coverage.

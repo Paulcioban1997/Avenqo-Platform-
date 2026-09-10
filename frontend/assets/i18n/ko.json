@@ -623,6 +623,7 @@
       "connecting": "연결 중",
       "authorizing": "승인 대기 중",
       "reauthorizationRequired": "승인이 필요합니다",
+      "reauthorizeWooCommerce": "WooCommerce 재승인",
       "lastSync": "마지막 동기화",
       "neverSynced": "아직 동기화되지 않음",
       "unavailable": "구성을 사용할 수 없음",

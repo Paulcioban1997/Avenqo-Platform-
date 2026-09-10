@@ -623,6 +623,7 @@
       "connecting": "இணைக்கிறது",
       "authorizing": "அங்கீகாரத்திற்காக காத்திருக்கிறது",
       "reauthorizationRequired": "அங்கீகாரம் தேவை",
+      "reauthorizeWooCommerce": "WooCommerce-ஐ மீண்டும் அங்கீகரிக்கவும்",
       "lastSync": "கடைசி ஒத்திசைவு",
       "neverSynced": "இன்னும் ஒத்திசைக்கப்படவில்லை",
       "unavailable": "உள்ளமைவு கிடைக்கவில்லை",

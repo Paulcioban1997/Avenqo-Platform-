@@ -623,6 +623,7 @@
       "connecting": "Подключение",
       "authorizing": "Ожидание авторизации",
       "reauthorizationRequired": "Требуется авторизация",
+      "reauthorizeWooCommerce": "Повторно авторизовать WooCommerce",
       "lastSync": "Последняя синхронизация",
       "neverSynced": "Еще не синхронизировано",
       "unavailable": "Конфигурация недоступна",

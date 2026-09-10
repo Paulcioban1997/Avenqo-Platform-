@@ -623,6 +623,7 @@
       "connecting": "Připojování",
       "authorizing": "Čeká se na autorizaci",
       "reauthorizationRequired": "Vyžaduje se autorizace",
+      "reauthorizeWooCommerce": "Znovu autorizovat WooCommerce",
       "lastSync": "Poslední synchronizace",
       "neverSynced": "Dosud nesynchronizováno",
       "unavailable": "Konfigurace není k dispozici",

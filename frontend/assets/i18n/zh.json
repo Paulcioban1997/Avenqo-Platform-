@@ -623,6 +623,7 @@
       "connecting": "正在连接",
       "authorizing": "等待授权",
       "reauthorizationRequired": "需要授权",
+      "reauthorizeWooCommerce": "重新授权 WooCommerce",
       "lastSync": "上次同步",
       "neverSynced": "尚未同步",
       "unavailable": "配置不可用",

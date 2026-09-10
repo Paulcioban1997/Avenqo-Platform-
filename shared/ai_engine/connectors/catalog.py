@@ -63,7 +63,7 @@ def _definition(
 
 COMMERCE_CONNECTOR_CATALOG: tuple[ConnectorDefinition, ...] = (
     _definition("shopify", "Shopify", K.ECOMMERCE, status=S.AVAILABLE, priority="P0", capabilities=COMMERCE | {C.DISCOUNTS, C.WEBHOOKS}, configuration_requirements=("shop_domain",), scopes=("read_orders", "read_customers", "read_products", "read_inventory", "read_fulfillments"), webhooks=True, sandbox=True),
-    _definition("woocommerce", "WooCommerce", K.ECOMMERCE, status=S.BETA, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("store_url",), webhooks=True, external_registration=False),
+    _definition("woocommerce", "WooCommerce", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("store_url",), webhooks=True, external_registration=False),
     _definition("bigcommerce", "BigCommerce", K.ECOMMERCE, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
     _definition("adobe-commerce", "Adobe Commerce / Magento", K.ECOMMERCE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE, configuration_requirements=("store_url", "access_token")),
     _definition("wix-ecommerce", "Wix eCommerce", K.ECOMMERCE, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True),

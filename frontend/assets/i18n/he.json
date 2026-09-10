@@ -623,6 +623,7 @@
       "connecting": "מתחבר",
       "authorizing": "ממתין לאישור",
       "reauthorizationRequired": "נדרש אישור",
+      "reauthorizeWooCommerce": "אישור מחדש של WooCommerce",
       "lastSync": "סנכרון אחרון",
       "neverSynced": "עדיין לא מסונכרן",
       "unavailable": "התצורה אינה זמינה",

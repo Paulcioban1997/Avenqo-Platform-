@@ -623,6 +623,7 @@
       "connecting": "Ansluter",
       "authorizing": "Väntar på tillstånd",
       "reauthorizationRequired": "Auktorisering krävs",
+      "reauthorizeWooCommerce": "Auktorisera WooCommerce igen",
       "lastSync": "Senaste synkronisering",
       "neverSynced": "Inte synkroniserat ännu",
       "unavailable": "Konfigurationen är inte tillgänglig",

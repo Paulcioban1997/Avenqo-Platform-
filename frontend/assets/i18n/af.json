@@ -623,6 +623,7 @@
       "connecting": "Verbind",
       "authorizing": "Wag op magtiging",
       "reauthorizationRequired": "Magtiging vereis",
+      "reauthorizeWooCommerce": "Heroutoriseer WooCommerce",
       "lastSync": "Laaste sinkronisering",
       "neverSynced": "Nog nie gesinkroniseer nie",
       "unavailable": "Opstelling nie beskikbaar nie",

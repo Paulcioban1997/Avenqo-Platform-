@@ -623,6 +623,7 @@
       "connecting": "Холбож байна",
       "authorizing": "Зөвшөөрөл хүлээж байна",
       "reauthorizationRequired": "Зөвшөөрөл шаардлагатай",
+      "reauthorizeWooCommerce": "WooCommerce-г дахин зөвшөөрөх",
       "lastSync": "Сүүлийн синк",
       "neverSynced": "Одоогоор синк хийгдээгүй байна",
       "unavailable": "Тохиргоог хийх боломжгүй",

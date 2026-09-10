@@ -623,6 +623,7 @@
       "connecting": "ချိတ်ဆက်နေသည်။",
       "authorizing": "ခွင့်ပြုချက်ကို စောင့်နေသည်။",
       "reauthorizationRequired": "ခွင့်ပြုချက်လိုအပ်ပါသည်။",
+      "reauthorizeWooCommerce": "WooCommerce ကို ပြန်လည်ခွင့်ပြုရန်",
       "lastSync": "နောက်ဆုံး ထပ်တူကျသည်။",
       "neverSynced": "စင့်ခ်မလုပ်ရသေးပါ။",
       "unavailable": "ဖွဲ့စည်းမှုပုံစံ မရရှိနိုင်ပါ။",

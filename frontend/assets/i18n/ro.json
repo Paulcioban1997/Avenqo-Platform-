@@ -623,6 +623,7 @@
       "connecting": "Conectare",
       "authorizing": "În așteptarea autorizației",
       "reauthorizationRequired": "Este necesară autorizarea",
+      "reauthorizeWooCommerce": "Reautorizează WooCommerce",
       "lastSync": "Ultima sincronizare",
       "neverSynced": "Nu s-a sincronizat încă",
       "unavailable": "Configurație indisponibilă",

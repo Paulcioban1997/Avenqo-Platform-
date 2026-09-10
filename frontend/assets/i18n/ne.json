@@ -623,6 +623,7 @@
       "connecting": "जडान गर्दै",
       "authorizing": "प्राधिकरणको पर्खाइमा",
       "reauthorizationRequired": "प्राधिकरण आवश्यक छ",
+      "reauthorizeWooCommerce": "WooCommerce लाई पुनः अधिकार दिनुहोस्",
       "lastSync": "पछिल्लो सिंक",
       "neverSynced": "अझै सिंक गरिएको छैन",
       "unavailable": "कन्फिगरेसन अनुपलब्ध",

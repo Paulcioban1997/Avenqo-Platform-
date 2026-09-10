@@ -623,6 +623,7 @@
       "connecting": "กำลังเชื่อมต่อ",
       "authorizing": "รอการอนุญาต",
       "reauthorizationRequired": "จำเป็นต้องได้รับอนุญาต",
+      "reauthorizeWooCommerce": "อนุญาต WooCommerce อีกครั้ง",
       "lastSync": "การซิงค์ครั้งล่าสุด",
       "neverSynced": "ยังไม่ได้ซิงค์",
       "unavailable": "การกำหนดค่าไม่พร้อมใช้งาน",

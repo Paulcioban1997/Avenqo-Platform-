@@ -623,6 +623,7 @@
       "connecting": "በመገናኘት ላይ",
       "authorizing": "ፈቃድን በመጠባበቅ ላይ",
       "reauthorizationRequired": "ፈቃድ ያስፈልጋል",
+      "reauthorizeWooCommerce": "WooCommerceን እንደገና ፍቀድ",
       "lastSync": "የመጨረሻው ማመሳሰል",
       "neverSynced": "እስካሁን አልተሰመረም።",
       "unavailable": "ማዋቀር የለም።",

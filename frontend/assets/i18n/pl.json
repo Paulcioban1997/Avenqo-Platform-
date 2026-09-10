@@ -623,6 +623,7 @@
       "connecting": "Łączenie",
       "authorizing": "Oczekiwanie na autoryzację",
       "reauthorizationRequired": "Wymagana autoryzacja",
+      "reauthorizeWooCommerce": "Ponownie autoryzuj WooCommerce",
       "lastSync": "Ostatnia synchronizacja",
       "neverSynced": "Jeszcze nie zsynchronizowane",
       "unavailable": "Konfiguracja niedostępna",

@@ -623,6 +623,7 @@
       "connecting": "Bağlanıyor",
       "authorizing": "Yetki bekleniyor",
       "reauthorizationRequired": "Yetkilendirme gerekli",
+      "reauthorizeWooCommerce": "WooCommerce'u yeniden yetkilendir",
       "lastSync": "Son senkronizasyon",
       "neverSynced": "Henüz senkronize edilmedi",
       "unavailable": "Yapılandırma kullanılamıyor",

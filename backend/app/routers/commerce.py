@@ -136,15 +136,23 @@ def _require_connector_launch_access(
     registry: CommerceConnectorRegistry,
     provider: str,
 ) -> None:
-    if (
-        registry.definition(provider).customer_status
-        == ConnectorCustomerStatus.AVAILABLE
-        or _internal_connector_test_allowed(identity, registry, provider)
-    ):
+    if _connector_launch_allowed(identity, registry, provider):
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Connector is not available",
+    )
+
+
+def _connector_launch_allowed(
+    identity: CurrentIdentity,
+    registry: CommerceConnectorRegistry,
+    provider: str,
+) -> bool:
+    return (
+        registry.definition(provider).customer_status
+        == ConnectorCustomerStatus.AVAILABLE
+        or _internal_connector_test_allowed(identity, registry, provider)
     )
 
 
@@ -216,7 +224,7 @@ def list_connections(
             item,
             reauthorization_available=(
                 _woocommerce_reauthorization_required(item)
-                and _internal_connector_test_allowed(identity, registry, "woocommerce")
+                and _connector_launch_allowed(identity, registry, "woocommerce")
             ),
         )
         for item in service.list_connections(_tenant(identity))
@@ -240,7 +248,7 @@ def connection_detail(
             connection,
             reauthorization_available=(
                 _woocommerce_reauthorization_required(connection)
-                and _internal_connector_test_allowed(identity, registry, "woocommerce")
+                and _connector_launch_allowed(identity, registry, "woocommerce")
             ),
         )
     except CommerceConnectionNotFound as exc:

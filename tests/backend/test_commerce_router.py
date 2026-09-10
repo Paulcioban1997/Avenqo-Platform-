@@ -264,7 +264,7 @@ def test_connector_catalog_contract_is_exact_and_truthful() -> None:
         provider
         for provider, definition in definitions.items()
         if definition.implementation_status == ConnectorImplementationStatus.AVAILABLE
-    } == {"shopify"}
+    } == {"shopify", "woocommerce"}
     assert {
         provider
         for provider, definition in definitions.items()
@@ -294,7 +294,7 @@ def test_catalog_metadata_does_not_register_unimplemented_adapters() -> None:
         registry.get("woocommerce")
 
 
-def test_connector_catalog_and_manual_sync_routes() -> None:
+def test_connector_catalog_and_manual_sync_routes(monkeypatch) -> None:
     company_id = uuid4()
     user = SimpleNamespace(
         id=uuid4(),
@@ -319,6 +319,15 @@ def test_connector_catalog_and_manual_sync_routes() -> None:
 
     from backend.app.routers import commerce as commerce_router
 
+    monkeypatch.setattr(
+        commerce_router,
+        "get_settings",
+        lambda: SimpleNamespace(
+            environment="sandbox",
+            shopify_connector_configured=True,
+            woocommerce_connector_configured=True,
+        ),
+    )
     app.dependency_overrides[commerce_router.require_connector_read] = lambda: identity
     app.dependency_overrides[commerce_router.manage_connectors] = lambda: identity
     with TestClient(app) as client:
@@ -335,8 +344,10 @@ def test_connector_catalog_and_manual_sync_routes() -> None:
         item["provider"]: item["customer_status"] for item in catalog.json()
     }
     assert customer_statuses["shopify"] == "AVAILABLE"
-    assert customer_statuses["woocommerce"] == "COMING_SOON"
+    assert customer_statuses["woocommerce"] == "AVAILABLE"
     assert set(customer_statuses.values()) == {"AVAILABLE", "COMING_SOON"}
+    woo = next(item for item in catalog.json() if item["provider"] == "woocommerce")
+    assert woo["configured"] is True
     assert not any(item["internal_test_available"] for item in catalog.json())
     assert listed.json()[0]["external_account_id"] == "alpha.myshopify.com"
     assert listed.json()[0]["connection_status"] == "CONNECTED"
@@ -462,15 +473,12 @@ def test_woocommerce_manual_route_masks_secrets_and_reserves_sync(monkeypatch) -
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize(
-    ("is_platform_admin", "environment", "expected_status"),
-    [(False, "sandbox", 403), (True, "production", 403), (True, "sandbox", 200)],
-)
-def test_woocommerce_authorization_requires_server_side_internal_test_access(
+@pytest.mark.parametrize("is_platform_admin", [False, True])
+@pytest.mark.parametrize("environment", ["sandbox", "production"])
+def test_available_woocommerce_authorization_allows_tenant_manager(
     monkeypatch,
     is_platform_admin,
     environment,
-    expected_status,
 ) -> None:
     company_id = uuid4()
     user = SimpleNamespace(
@@ -505,14 +513,13 @@ def test_woocommerce_authorization_requires_server_side_internal_test_access(
             json={"store_url": "https://shop.example.com"},
         )
 
-    assert response.status_code == expected_status
-    if expected_status == 200:
-        assert response.json()["authorization_url"].endswith(
-            "/wc-auth/v1/authorize"
-        )
+    assert response.status_code == 200
+    assert response.json()["authorization_url"].endswith(
+        "/wc-auth/v1/authorize"
+    )
 
 
-def test_platform_admin_catalog_exposes_internal_test_permission_in_sandbox(
+def test_available_woocommerce_catalog_needs_no_internal_test_permission(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "sandbox")
@@ -545,22 +552,21 @@ def test_platform_admin_catalog_exposes_internal_test_permission_in_sandbox(
         item["provider"]: item["internal_test_available"]
         for item in response.json()
     }
-    assert permissions["woocommerce"] is True
-    assert sum(permissions.values()) == 1
+    assert permissions["woocommerce"] is False
+    assert not any(permissions.values())
     woo = next(item for item in response.json() if item["provider"] == "woocommerce")
-    assert woo["customer_status"] == "COMING_SOON"
+    assert woo["customer_status"] == "AVAILABLE"
     get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(
-    ("is_platform_admin", "environment", "expected_status"),
-    [(False, "sandbox", 403), (True, "production", 403), (True, "sandbox", 200)],
+    ("is_platform_admin", "environment"),
+    [(False, "sandbox"), (True, "production"), (True, "sandbox")],
 )
-def test_existing_woocommerce_reauthorization_is_server_gated(
+def test_available_woocommerce_reauthorization_reuses_existing_connection(
     monkeypatch,
     is_platform_admin,
     environment,
-    expected_status,
 ) -> None:
     company_id = uuid4()
     identity = SimpleNamespace(
@@ -595,25 +601,21 @@ def test_existing_woocommerce_reauthorization_is_server_gated(
             f"/api/v1/connectors/connections/{connections.connection.id}/reauthorize"
         )
 
-    assert response.status_code == expected_status
-    if expected_status == 200:
-        assert connections.reauthorized_connection_ids == [connections.connection.id]
-        assert response.json()["authorization_url"].endswith(
-            "/wc-auth/v1/authorize"
-        )
-    else:
-        assert connections.reauthorized_connection_ids == []
+    assert response.status_code == 200
+    assert connections.reauthorized_connection_ids == [connections.connection.id]
+    assert response.json()["authorization_url"].endswith(
+        "/wc-auth/v1/authorize"
+    )
 
 
 @pytest.mark.parametrize(
-    ("is_platform_admin", "environment", "expected_available"),
-    [(False, "sandbox", False), (True, "production", False), (True, "sandbox", True)],
+    ("is_platform_admin", "environment"),
+    [(False, "sandbox"), (True, "production"), (True, "sandbox")],
 )
-def test_connection_row_reauthorization_permission_is_server_computed(
+def test_available_woocommerce_reauthorization_is_visible_to_tenant_manager(
     monkeypatch,
     is_platform_admin,
     environment,
-    expected_available,
 ) -> None:
     company_id = uuid4()
     identity = SimpleNamespace(
@@ -647,7 +649,7 @@ def test_connection_row_reauthorization_permission_is_server_computed(
         response = client.get("/api/v1/connectors/connections")
 
     assert response.status_code == 200
-    assert response.json()[0]["reauthorization_available"] is expected_available
+    assert response.json()[0]["reauthorization_available"] is True
 
 
 def test_woocommerce_json_callback_returns_ok_and_schedules_initialization() -> None:

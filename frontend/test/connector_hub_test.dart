@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:simple_icons/simple_icons.dart';
 
 class _TokenStore implements TokenStore {
   @override
@@ -94,11 +95,13 @@ List<Map<String, dynamic>> _catalog() => [
       },
       'implementation_status': switch (index) {
         0 => 'AVAILABLE',
-        29 => 'BETA',
+        29 => 'AVAILABLE',
         >= 1 && <= 5 => 'CONFIGURATION_REQUIRED',
         _ => 'COMING_SOON',
       },
-      'customer_status': index == 0 ? 'AVAILABLE' : 'COMING_SOON',
+      'customer_status': index == 0 || index == 29
+          ? 'AVAILABLE'
+          : 'COMING_SOON',
       'internal_test_available': false,
       'configured': index == 0 || index == 29,
       'priority': index <= 5 ? 'P0' : 'P2',
@@ -226,8 +229,8 @@ void main() {
     expect(find.text('TikTok Shop'), findsOneWidget);
     expect(find.text('BOUTIQUES EN LIGNE'), findsNothing);
     expect(find.text('PLACES DE MARCHÉ'), findsNothing);
-    expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(28));
+    expect(find.text('Disponible'), findsNWidgets(2));
+    expect(find.text('Bientôt disponible'), findsNWidgets(27));
     for (final provider in const [
       'shopify',
       'woocommerce',
@@ -341,7 +344,7 @@ void main() {
     expect(authorizationRequested, isFalse);
   });
 
-  testWidgets('unfinished WooCommerce is coming soon and cannot connect', (
+  testWidgets('available WooCommerce has official icon and enabled connect', (
     tester,
   ) async {
     _useDesktopViewport(tester);
@@ -379,16 +382,24 @@ void main() {
     final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
     expect(connectWoo, findsOneWidget);
     expect(find.text('Beta'), findsNothing);
-    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    expect(find.text('Bientôt disponible'), findsNothing);
+    expect(find.text('Disponible'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('brand-icon-woocommerce')),
+        matching: find.byIcon(SimpleIcons.woocommerce),
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('test-woocommerce')), findsNothing);
-    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNull);
+    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNotNull);
     await tester.tap(connectWoo);
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsNothing);
+    expect(find.byKey(const ValueKey('woocommerce-store-url')), findsOneWidget);
     expect(authorizationRequested, isFalse);
   });
 
-  testWidgets('internal WooCommerce test CTA reuses authorization flow', (
+  testWidgets('available WooCommerce ignores internal test presentation', (
     tester,
   ) async {
     _useDesktopViewport(tester);
@@ -417,12 +428,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Bientôt disponible'), findsOneWidget);
-    expect(find.text('Tester le connecteur'), findsOneWidget);
-    expect(find.byKey(const ValueKey('connect-woocommerce')), findsNothing);
-    final testWoo = find.byKey(const ValueKey('test-woocommerce'));
-    expect(tester.widget<OutlinedButton>(testWoo).onPressed, isNotNull);
-    await tester.tap(testWoo);
+    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('Tester le connecteur'), findsNothing);
+    expect(find.byKey(const ValueKey('test-woocommerce')), findsNothing);
+    final connectWoo = find.byKey(const ValueKey('connect-woocommerce'));
+    expect(tester.widget<FilledButton>(connectWoo).onPressed, isNotNull);
+    await tester.tap(connectWoo);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('woocommerce-store-url')), findsOneWidget);
   });
@@ -530,8 +541,8 @@ void main() {
     expect(find.text('Connecter une boutique en ligne'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('add-ecommerce-connector')));
     await tester.pumpAndSettle();
-    expect(find.text('Disponible'), findsOneWidget);
-    expect(find.text('Bientôt disponible'), findsNWidgets(28));
+    expect(find.text('Disponible'), findsNWidgets(2));
+    expect(find.text('Bientôt disponible'), findsNWidgets(27));
     await tester.enterText(
       find.byKey(const ValueKey('ecommerce-provider-search')),
       'WooCommerce',
@@ -539,12 +550,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('select-woocommerce')));
     await tester.pumpAndSettle();
-    expect(find.text('Bientôt disponible'), findsNWidgets(2));
+    expect(find.text('Disponible'), findsOneWidget);
 
     await locale.setLocale('en-US');
     await tester.pumpAndSettle();
     expect(find.text('Connect an online store'), findsOneWidget);
-    expect(find.text('Coming soon'), findsNWidgets(2));
+    expect(find.text('Available'), findsOneWidget);
   });
 
   test(
@@ -819,6 +830,7 @@ void main() {
         'addOnlineStore',
         'providerSearchHint',
         'providerDescription',
+        'wooTitle',
         'connectToAvenqo',
         'testConnector',
         'connectedStores',
@@ -833,6 +845,8 @@ void main() {
         'connected',
         'ready',
         'reauthorizationRequired',
+        'reauthorizeWooCommerce',
+        'sync',
         'syncing',
         'lastSync',
         'disconnect',
@@ -855,6 +869,11 @@ void main() {
         connectorCopy.containsKey('beta'),
         isFalse,
         reason: '$locale must not expose an internal beta label',
+      );
+      expect(
+        connectorCopy['wooTitle'],
+        contains('WooCommerce'),
+        reason: '$locale must preserve the official WooCommerce brand name',
       );
       expect(
         strings.connectorHub['reauthorizeWooCommerce']?.trim(),

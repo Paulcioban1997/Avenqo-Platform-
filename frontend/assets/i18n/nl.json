@@ -623,6 +623,7 @@
       "connecting": "Verbinden",
       "authorizing": "In afwachting van toestemming",
       "reauthorizationRequired": "Autorisatie vereist",
+      "reauthorizeWooCommerce": "WooCommerce opnieuw autoriseren",
       "lastSync": "Laatste synchronisatie",
       "neverSynced": "Nog niet gesynchroniseerd",
       "unavailable": "Configuratie niet beschikbaar",

@@ -623,6 +623,7 @@
       "connecting": "Միացում",
       "authorizing": "Սպասում է թույլտվության",
       "reauthorizationRequired": "Պահանջվում է թույլտվություն",
+      "reauthorizeWooCommerce": "Կրկին լիազորել WooCommerce-ը",
       "lastSync": "Վերջին համաժամացումը",
       "neverSynced": "Դեռ համաժամեցված չէ",
       "unavailable": "Կարգավորումն անհասանելի է",

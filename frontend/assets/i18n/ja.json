@@ -623,6 +623,7 @@
       "connecting": "接続中",
       "authorizing": "承認待ち",
       "reauthorizationRequired": "許可が必要です",
+      "reauthorizeWooCommerce": "WooCommerce を再認証",
       "lastSync": "最終同期",
       "neverSynced": "まだ同期されていません",
       "unavailable": "構成が利用できません",

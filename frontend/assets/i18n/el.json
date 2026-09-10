@@ -623,6 +623,7 @@
       "connecting": "Σύνδεση",
       "authorizing": "Αναμονή εξουσιοδότησης",
       "reauthorizationRequired": "Απαιτείται εξουσιοδότηση",
+      "reauthorizeWooCommerce": "Επαναξουσιοδότηση WooCommerce",
       "lastSync": "Τελευταίος συγχρονισμός",
       "neverSynced": "Δεν έχει συγχρονιστεί ακόμα",
       "unavailable": "Η διαμόρφωση δεν είναι διαθέσιμη",

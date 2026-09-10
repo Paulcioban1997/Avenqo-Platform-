@@ -623,6 +623,7 @@
       "connecting": "Kumokonekta",
       "authorizing": "Naghihintay ng pahintulot",
       "reauthorizationRequired": "Kinakailangan ang pahintulot",
+      "reauthorizeWooCommerce": "Muling pahintulutan ang WooCommerce",
       "lastSync": "Huling pag-sync",
       "neverSynced": "Hindi pa naka-sync",
       "unavailable": "Hindi available ang configuration",

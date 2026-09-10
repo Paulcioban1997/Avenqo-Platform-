@@ -623,6 +623,7 @@
       "connecting": "সংযোগ করা হচ্ছে",
       "authorizing": "অনুমোদনের অপেক্ষায়",
       "reauthorizationRequired": "অনুমোদন প্রয়োজন",
+      "reauthorizeWooCommerce": "WooCommerce পুনরায় অনুমোদন করুন",
       "lastSync": "শেষ সিঙ্ক",
       "neverSynced": "এখনো সিঙ্ক করা হয়নি",
       "unavailable": "কনফিগারেশন অনুপলব্ধ",
