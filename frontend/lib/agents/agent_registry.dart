@@ -43,7 +43,8 @@ const avenqoAgentRegistry = <AvenqoAgentDefinition>[
     nameKey: 'crmName',
     descriptionKey: 'crmDescription',
     iconIdentifier: 'contacts',
-    availability: AvenqoAgentAvailability.comingSoon,
+    availability: AvenqoAgentAvailability.available,
+    route: '/crm',
   ),
   AvenqoAgentDefinition(
     id: 'hr',
@@ -57,7 +58,8 @@ const avenqoAgentRegistry = <AvenqoAgentDefinition>[
     nameKey: 'accountingName',
     descriptionKey: 'accountingDescription',
     iconIdentifier: 'account_balance',
-    availability: AvenqoAgentAvailability.comingSoon,
+    availability: AvenqoAgentAvailability.available,
+    route: '/accounting',
   ),
   AvenqoAgentDefinition(
     id: 'ocr',

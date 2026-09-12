@@ -108,7 +108,7 @@
       {
         "name": "CRM AI",
         "description": "Prioritize relationships, opportunities and next best actions.",
-        "available": false
+        "available": true
       },
       {
         "name": "OCR AI",
@@ -128,7 +128,7 @@
       {
         "name": "Accounting AI",
         "description": "Accelerate financial tracking and accounting close.",
-        "available": false
+        "available": true
       },
       {
         "name": "Legal AI",

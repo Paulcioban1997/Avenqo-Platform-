@@ -10,6 +10,8 @@ import 'package:avenqo/auth/auth_page.dart';
 import 'package:avenqo/auth/subscription_route_guard.dart';
 import 'package:avenqo/pages/billing_page.dart';
 import 'package:avenqo/pages/assistant_page.dart';
+import 'package:avenqo/pages/crm_page.dart';
+import 'package:avenqo/pages/accounting_page.dart';
 import 'package:avenqo/pages/support_page.dart';
 import 'package:avenqo/pages/business_page.dart';
 import 'package:avenqo/pages/connections_page.dart';
@@ -69,7 +71,9 @@ class _AvenqoAppState extends State<AvenqoApp> {
       GoRoute(path: '/forgot-password', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.forgot)),
       GoRoute(path: '/verify-email', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.verify, initialToken: state.uri.queryParameters['token'], initialEmail: state.uri.queryParameters['email'], emailDeliveryUnavailable: state.uri.queryParameters['delivery'] == 'unavailable')),
       ShellRoute(builder: (context, state, child) => AppShell(auth: widget.auth, currentPath: state.uri.path, child: child), routes: [
-        for (final destination in appDestinations) GoRoute(path: destination.path, builder: (context, state) => _protectedPage(destination.path, widget.auth)),
+        for (final destination in appDestinations)
+          if (destination.path != '/retail' && destination.path != '/dashboard')
+            GoRoute(path: destination.path, builder: (context, state) => _protectedPage(destination.path, widget.auth)),
         GoRoute(path: '/central-ai', builder: (context, state) => _protectedPage('/central-ai', widget.auth)),
         GoRoute(path: '/data', builder: (context, state) => _protectedPage('/data', widget.auth)),
         GoRoute(path: '/integrations', builder: (context, state) => _protectedPage('/integrations', widget.auth)),
@@ -122,6 +126,6 @@ Locale _localeFromCode(String code) {
       : Locale(parts[0]);
 }
 List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) { final supported = <Locale>{const Locale('en')}; for (final locale in locales) { final candidate = _localeFromCode(locale.code); if (GlobalMaterialLocalizations.delegate.isSupported(candidate)) supported.add(candidate); } return supported.toList(growable: false); }
-Widget _protectedPage(String path, AuthController auth) => switch (path) { '/agents' => AgentsPage(api: auth.api), '/assistant' || '/central-ai' => AssistantPage(api: auth.api), '/support' => SupportPage(api: auth.api), '/team' => EmployeesPage(api: auth.api), '/billing' => BillingPage(api: auth.api), '/connections' || '/data' || '/integrations' => ConnectionsPage(api: auth.api), '/settings' => SettingsPage(auth: auth), _ => BusinessPage(destination: destinationFor(path)), };
+Widget _protectedPage(String path, AuthController auth) => switch (path) { '/crm' => CrmPage(api: auth.api), '/accounting' => AccountingPage(api: auth.api), '/agents' => AgentsPage(api: auth.api), '/assistant' || '/central-ai' => AssistantPage(api: auth.api), '/support' => SupportPage(api: auth.api), '/team' => EmployeesPage(api: auth.api), '/billing' => BillingPage(api: auth.api), '/connections' || '/data' || '/integrations' => ConnectionsPage(api: auth.api), '/settings' => SettingsPage(auth: auth), _ => BusinessPage(destination: destinationFor(path)), };
 const _legacyRetailRoutes = <String, String>{'/dashboard': '/retail', '/sales': '/retail/sales', '/customers': '/retail/customers', '/products': '/retail/products', '/recommendations': '/retail/recommendations'};
 Widget _retailPage(String path, AuthController auth, {String? productId, String? sourceId}) { final companyId = auth.company?['id']; return switch (path) { '/retail' => DashboardPage(key: ValueKey('dashboard-$companyId-$sourceId'), auth: auth), '/retail/sales' => SalesPage(key: ValueKey('sales-$companyId-$sourceId'), api: auth.api), '/retail/customers' => CustomersPage(key: ValueKey('customers-$companyId-$sourceId'), api: auth.api), '/retail/products' => ProductsPage(key: ValueKey('products-$companyId-$productId-$sourceId'), api: auth.api, initialProductId: productId), '/retail/recommendations' => RecommendationsPage(key: ValueKey('recommendations-$companyId-$sourceId'), api: auth.api), _ => DashboardPage(key: ValueKey('dashboard-$companyId-$sourceId'), auth: auth), }; }

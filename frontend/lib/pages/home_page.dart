@@ -350,9 +350,9 @@ class _Hero extends StatelessWidget {
           children: [
             const _EyebrowDot(),
             const SizedBox(width: 9),
-            Text(
-              t.hero.eyebrow,
-              style: const TextStyle(
+            const Text(
+              'AVENQO PLATFORM',
+              style: TextStyle(
                 color: _Brand.blueDark,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
@@ -365,25 +365,25 @@ class _Hero extends StatelessWidget {
         Text.rich(
           TextSpan(
             style: TextStyle(
-              fontSize: wide ? 48 : 34,
+              fontSize: wide ? 44 : 32,
               fontWeight: FontWeight.w800,
-              height: 1.12,
+              height: 1.15,
               color: colors.ink,
             ),
             children: [
-              TextSpan(text: '${t.hero.titleLine1}\n'),
+              const TextSpan(text: 'AVENQO\n'),
               TextSpan(
-                text: t.hero.titleLine2,
-                style: const TextStyle(color: _Brand.blue),
+                text: 'Une plateforme IA tout-en-un pour propulser votre entreprise.',
+                style: TextStyle(color: colors.ink),
               ),
             ],
           ),
         ),
         const SizedBox(height: 20),
         SizedBox(
-          width: 520,
+          width: 540,
           child: Text(
-            t.hero.subtitle,
+            'Automatisez. Analysez. Prédisez. Développez.\nAvenqo connecte vos données et vos agents IA dans une seule plateforme.',
             style: TextStyle(color: colors.muted, fontSize: 16, height: 1.6),
           ),
         ),
@@ -395,21 +395,34 @@ class _Hero extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => context.go('/register'),
               style: FilledButton.styleFrom(
-                backgroundColor: colors.ink,
+                backgroundColor: _Brand.blue,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
               ),
               icon: const Icon(Icons.arrow_forward, size: 17),
-              label: Text(t.common.tryFree),
+              label: const Text('Commencer maintenant', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
             OutlinedButton.icon(
               onPressed: _contactByEmail,
               style: OutlinedButton.styleFrom(
                 foregroundColor: colors.ink,
                 side: BorderSide(color: colors.line),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               ),
               icon: const Icon(Icons.play_arrow, size: 16),
-              label: Text(t.common.watchDemo),
+              label: const Text('Voir la démo', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: const [
+            _AgentStatusBadge(label: 'Retail Intelligence — Disponible maintenant', isAvailable: true),
+            _AgentStatusBadge(label: 'CRM AI — Disponible', isAvailable: true),
+            _AgentStatusBadge(label: 'Accounting AI — Disponible', isAvailable: true),
+            _AgentStatusBadge(label: 'Autres agents — Bientôt disponible', isAvailable: false),
           ],
         ),
         const SizedBox(height: 20),
@@ -423,6 +436,49 @@ class _Hero extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _AgentStatusBadge extends StatelessWidget {
+  const _AgentStatusBadge({required this.label, required this.isAvailable});
+
+  final String label;
+  final bool isAvailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final color = isAvailable ? _Brand.blue : colors.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isAvailable ? _Brand.blue.withValues(alpha: 0.1) : colors.canvas,
+        border: Border.all(color: isAvailable ? _Brand.blue.withValues(alpha: 0.3) : colors.line),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: isAvailable ? const Color(0xFF10B981) : colors.muted,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1235,24 +1291,49 @@ class _ModuleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final isModuleAvailable = available ||
+        name.contains('Retail') ||
+        name.contains('CRM') ||
+        name.contains('Accounting');
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.line),
+        border: Border.all(
+          color: isModuleAvailable ? _Brand.blue.withValues(alpha: 0.3) : colors.line,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            name,
-            style: TextStyle(
-              color: colors.ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (isModuleAvailable)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Disponible',
+                    style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -1260,7 +1341,7 @@ class _ModuleCard extends StatelessWidget {
             style: TextStyle(color: colors.muted, fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 14),
-          if (available)
+          if (isModuleAvailable)
             InkWell(
               onTap: () => context.go('/pricing'),
               child: Row(
@@ -1289,18 +1370,6 @@ class _ModuleCard extends StatelessWidget {
                 color: colors.muted,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-              ),
-            ),
-          if (available)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                availableNowLabel,
-                style: const TextStyle(
-                  color: _Brand.blue,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
               ),
             ),
         ],

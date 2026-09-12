@@ -50,16 +50,10 @@ class AgentCatalog extends StatelessWidget {
                   onToggle: onToggle == null
                       ? null
                       : () => onToggle!.call(agent),
-                  onOpen: showAccessActions &&
-                          (moduleStates.isEmpty
-                              ? agent.isAvailable
-                              : moduleStates[agent.id] == 'active')
+                  onOpen: showAccessActions && agent.isAvailable
                       ? () => onOpen?.call(agent)
                       : null,
-                  showAccessAction: showAccessActions &&
-                      (moduleStates.isEmpty
-                          ? agent.isAvailable
-                          : moduleStates[agent.id] == 'active'),
+                  showAccessAction: showAccessActions && agent.isAvailable,
                 ),
               ),
           ],
@@ -93,18 +87,9 @@ class _AgentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
-    final available = state == null
-        ? agent.isAvailable
-        : const {'active', 'available'}.contains(state);
+    final available = agent.isAvailable;
     final accent = available ? const Color(0xFF087CF0) : colors.muted;
-    final badgeLabel = switch (state) {
-      'active' => activeLabel ?? strings.availableNow,
-      'limit_reached' => limitLabel ?? strings.availableNow,
-      'coming_soon' => strings.comingSoon,
-      'unavailable' => strings.comingSoon,
-      'upgrade_required' => strings.comingSoon,
-      _ => available ? strings.availableNow : strings.comingSoon,
-    };
+    final badgeLabel = available ? strings.availableNow : strings.comingSoon;
     return Container(
       constraints: const BoxConstraints(minHeight: 230),
       padding: const EdgeInsets.all(20),
@@ -138,17 +123,7 @@ class _AgentCard extends StatelessWidget {
                   style: TextStyle(color: colors.ink, fontSize: 17, fontWeight: FontWeight.w800),
                 ),
               ),
-              if (state != null)
-                Tooltip(
-                  message: badgeLabel,
-                  child: Switch(
-                    value: state == 'active',
-                    onChanged: const {'active', 'available'}.contains(state)
-                        ? (_) => onToggle?.call()
-                        : null,
-                  ),
-                ),
-              ],
+            ],
           ),
           const SizedBox(height: 16),
           Text(

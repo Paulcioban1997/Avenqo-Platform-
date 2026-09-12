@@ -32,6 +32,22 @@ class AppDestination {
 AppDestination localizeDestination(AppDestination destination, Translations translations) {
   final t = translations.company;
   return switch (destination.path) {
+    '/dashboard' => destination.copyWith(
+      label: 'Tableau de bord',
+      description: 'Vue d’ensemble de votre activité.',
+    ),
+    '/retail' => destination.copyWith(
+      label: translations.agents.value('retailName'),
+      description: translations.agents.value('retailDescription'),
+    ),
+    '/crm' => destination.copyWith(
+      label: translations.agents.value('crmName'),
+      description: translations.agents.value('crmDescription'),
+    ),
+    '/accounting' => destination.copyWith(
+      label: translations.agents.value('accountingName'),
+      description: translations.agents.value('accountingDescription'),
+    ),
     '/agents' => destination.copyWith(
       label: translations.agents.navLabel,
       description: translations.agents.subtitle,
@@ -48,16 +64,40 @@ AppDestination localizeDestination(AppDestination destination, Translations tran
 
 const appDestinations = <AppDestination>[
   AppDestination(
-    path: '/agents',
-    label: 'Agents',
-    description: 'Specialized business capabilities in one workspace.',
-    icon: Icons.apps_outlined,
+    path: '/dashboard',
+    label: 'Tableau de bord',
+    description: 'Vue d’ensemble de votre activité.',
+    icon: Icons.dashboard_outlined,
+  ),
+  AppDestination(
+    path: '/retail',
+    label: 'Retail Intelligence',
+    description: 'Ventes, clients, produits, inventaire et prévisions.',
+    icon: Icons.storefront_outlined,
+  ),
+  AppDestination(
+    path: '/crm',
+    label: 'CRM AI',
+    description: 'Leads, opportunités, pipeline et score de conversion.',
+    icon: Icons.hub_outlined,
+  ),
+  AppDestination(
+    path: '/accounting',
+    label: 'Accounting AI',
+    description: 'Finance, dépenses, factures, marges et trésorerie.',
+    icon: Icons.account_balance_outlined,
   ),
   AppDestination(
     path: '/assistant',
     label: 'AI Assistant',
     description: 'Posez vos questions et passez à l’action.',
     icon: Icons.auto_awesome_outlined,
+  ),
+  AppDestination(
+    path: '/agents',
+    label: 'Agents',
+    description: 'Catalogue complet des agents Avenqo.',
+    icon: Icons.apps_outlined,
   ),
   AppDestination(
     path: '/connections',
@@ -86,7 +126,7 @@ const appDestinations = <AppDestination>[
   ),
   AppDestination(
     path: '/support',
-    label: 'Avenqo Support',
+    label: 'Aide',
     description: "Besoin d'aide pour utiliser Avenqo ? Posez votre question ici.",
     icon: Icons.help_outline,
     sectionBreakBefore: true,

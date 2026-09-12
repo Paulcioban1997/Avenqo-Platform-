@@ -46,8 +46,8 @@ class _AppShellState extends State<AppShell> {
       '/data' || '/integrations' => '/connections',
       _ => widget.currentPath,
     };
-    final selectedPath = normalizedPath == '/retail' || normalizedPath.startsWith('/retail/') || normalizedPath == '/dashboard'
-        ? '/agents'
+    final selectedPath = normalizedPath.startsWith('/retail')
+        ? '/retail'
         : normalizedPath;
     final selected = appDestinations.indexWhere(
       (destination) => destination.path == selectedPath,
