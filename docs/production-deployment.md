@@ -35,7 +35,7 @@ secrets de la plateforme d'hébergement (jamais `backend/.env` en production).
 | `DATABASE_URL` | Oui | Doit être explicitement défini en production. Voir §4 — limite SQLite connue. |
 | `FRONTEND_URL` | Oui | Origine HTTPS utilisée pour les liens de vérification/réinitialisation et les retours Checkout/Customer Portal. |
 | `ALLOWED_HOSTS` | Oui | Liste séparée par virgules (ex. `api.avenqo.ca`) ; `*` est refusé en production. |
-| `CORS_ORIGINS` | Oui | Domaines HTTPS exacts du frontend (ex. `https://app.avenqo.ca`) ; les origines localhost sont refusées en production. |
+| `CORS_ORIGINS` | Oui | Domaines HTTPS exacts du frontend (ex. `https://avenqo.ca`) ; les origines localhost sont refusées en production. |
 | `RATE_LIMIT_*` | Optionnel | Voir §6 — limite technique par défaut raisonnable, ajustable. |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_AI_API_KEY` | Selon fournisseurs actifs | Voir `AI_PRIMARY_PROVIDER`/`AI_FALLBACK_PROVIDER_*`. |
 

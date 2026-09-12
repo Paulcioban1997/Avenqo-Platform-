@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -130,10 +129,16 @@ class ApiClient {
       _decode(response);
     }
     final disposition = response.headers['content-disposition'] ?? '';
-    final match = RegExp(r'filename="?([^";]+)').firstMatch(disposition);
+    final cleanedDisp = disposition.replaceAll("UTF-8''", '');
+    final match = RegExp(r'filename\*?="?([^";]+)"?', caseSensitive: false).firstMatch(cleanedDisp);
+    String fileName = match?.group(1)?.replaceAll('"', '').trim() ?? '';
+    if (fileName.isEmpty) {
+      final ext = path.split('/').last.split('?').first;
+      fileName = 'avenqo-dataset-export.$ext';
+    }
     return DownloadedFile(
       response.bodyBytes,
-      match?.group(1) ?? 'avenqo-export',
+      fileName,
     );
   }
 

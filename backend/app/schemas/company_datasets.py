@@ -93,6 +93,8 @@ class DatasetCleaningDetailResponse(BaseModel):
     header: dict[str, Any] | None = None
     columns: list[dict[str, Any]] | None = None
     modifications: list[dict[str, Any]] | None = None
+    business_sync: list[dict[str, Any]] | None = None
+    data_cleaning: list[dict[str, Any]] | None = None
     quality: dict[str, Any] | None = None
     business_preview: list[dict[str, Any]] | None = None
     technical_preview: list[dict[str, Any]] | None = None

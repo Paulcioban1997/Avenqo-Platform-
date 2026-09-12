@@ -786,12 +786,6 @@ String _cleaningText(CompanyStrings t, String key) =>
     CompanyStrings.fallback().connectionsCleaning[key] ??
     key.replaceAll('_', ' ');
 
-String _humanizeCode(String value) {
-  if (value.isEmpty) return '—';
-  final normalized = value.replaceAll('_', ' ');
-  return normalized[0].toUpperCase() + normalized.substring(1);
-}
-
 String? _trainingStatusLabel(CompanyStrings t, String? status) =>
     switch (status) {
       'preparing_data' => t.connectionsPreparingData,
@@ -1175,7 +1169,6 @@ class _DatasetRow extends StatelessWidget {
     final trainingLabel = _trainingStatusLabel(t, trainingStatus);
     final id = dataset['id']?.toString();
     final isReady = status == 'ready' || status == 'validated' || status == 'attention_required';
-    final needsAttention = false;
     final isError =
         status == 'failed' || status == 'invalid' || status == 'rejected';
     final statusLabel = switch (status) {
@@ -1778,11 +1771,25 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
         '/datasets/${widget.datasetId}/export/$format',
       );
       await saveExportFile(file.fileName, file.bytes);
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text('Export $format (${file.fileName}) téléchargé avec succès.'),
+            backgroundColor: const Color(0xFF16A34A),
+          ),
+        );
+      }
     } on ApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.maybeOf(
           context,
         )?.showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text('Erreur lors du téléchargement : $e')));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -1836,6 +1843,20 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                 .cast<Map<String, dynamic>>();
 
             final modifications = (detail['modifications'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final businessSync = (detail['business_sync'] as List<dynamic>? ??
+                    modifications.where((m) =>
+                        m['is_business_sync'] == true ||
+                        m['category'] == 'business_sync' ||
+                        m['category'] == 'inventory_sync' ||
+                        (m['source']?.toString().toLowerCase().contains('woo') ?? false) ||
+                        (m['source']?.toString().toLowerCase().contains('shopify') ?? false) ||
+                        (m['reason']?.toString().toLowerCase().contains('sync') ?? false)).toList())
+                .cast<Map<String, dynamic>>();
+
+            final dataCleaning = (detail['data_cleaning'] as List<dynamic>? ??
+                    modifications.where((m) => !businessSync.contains(m)).toList())
                 .cast<Map<String, dynamic>>();
 
             final technicalPreview = (detail['technical_preview'] as List<dynamic>? ??
@@ -2113,7 +2134,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                         Tab(
                           iconMargin: const EdgeInsets.only(bottom: 2),
                           icon: const Icon(Icons.table_chart_outlined, size: 16),
-                          text: 'APERÇU DES DONNÉES ($rowCount)',
+                          text: 'APERÇU MÉTIER ($rowCount)',
                         ),
                         Tab(
                           iconMargin: const EdgeInsets.only(bottom: 2),
@@ -2136,6 +2157,8 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                         // Tab 1: MODIFICATIONS (Avant -> Après)
                         _ModificationsTab(
                           modifications: modifications,
+                          businessSync: businessSync,
+                          dataCleaning: dataCleaning,
                           searchQuery: _modificationsSearch,
                           categoryFilter: _modificationsCategory,
                           onSearchChanged: (q) => setState(() => _modificationsSearch = q),
@@ -2271,6 +2294,8 @@ class _KpiSummaryCard extends StatelessWidget {
 class _ModificationsTab extends StatelessWidget {
   const _ModificationsTab({
     required this.modifications,
+    required this.businessSync,
+    required this.dataCleaning,
     required this.searchQuery,
     required this.categoryFilter,
     required this.onSearchChanged,
@@ -2280,6 +2305,8 @@ class _ModificationsTab extends StatelessWidget {
   });
 
   final List<Map<String, dynamic>> modifications;
+  final List<Map<String, dynamic>> businessSync;
+  final List<Map<String, dynamic>> dataCleaning;
   final String searchQuery;
   final String categoryFilter;
   final ValueChanged<String> onSearchChanged;
@@ -2287,57 +2314,120 @@ class _ModificationsTab extends StatelessWidget {
   final AvenqoColors colors;
   final CompanyStrings t;
 
+  bool _matchesQuery(Map<String, dynamic> m, String query) {
+    if (query.isEmpty) return true;
+    final entity = m['entity']?.toString().toLowerCase() ?? '';
+    final col = m['column']?.toString().toLowerCase() ?? '';
+    final colLabel = m['column_label']?.toString().toLowerCase() ?? '';
+    final reason = m['reason']?.toString().toLowerCase() ?? '';
+    final src = m['source']?.toString().toLowerCase() ?? '';
+    final before = m['before']?.toString().toLowerCase() ?? '';
+    final after = m['after']?.toString().toLowerCase() ?? '';
+    final diff = m['diff']?.toString().toLowerCase() ?? '';
+    return entity.contains(query) ||
+        col.contains(query) ||
+        colLabel.contains(query) ||
+        reason.contains(query) ||
+        src.contains(query) ||
+        before.contains(query) ||
+        after.contains(query) ||
+        diff.contains(query);
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = searchQuery.trim().toLowerCase();
-    final filtered = modifications.where((m) {
-      final entity = m['entity']?.toString().toLowerCase() ?? '';
-      final col = m['column']?.toString().toLowerCase() ?? '';
-      final colLabel = m['column_label']?.toString().toLowerCase() ?? '';
-      final reason = m['reason']?.toString().toLowerCase() ?? '';
-      final src = m['source']?.toString().toLowerCase() ?? '';
-      final before = m['before']?.toString().toLowerCase() ?? '';
-      final after = m['after']?.toString().toLowerCase() ?? '';
 
-      // Text search match
-      final matchesQuery = query.isEmpty ||
-          entity.contains(query) ||
-          col.contains(query) ||
-          colLabel.contains(query) ||
-          reason.contains(query) ||
-          src.contains(query) ||
-          before.contains(query) ||
-          after.contains(query);
-
-      if (!matchesQuery) return false;
-
-      // Category filter
+    final filteredSync = businessSync.where((m) {
+      if (!_matchesQuery(m, query)) return false;
       if (categoryFilter == 'woocommerce') {
-        return src.contains('woo');
+        return (m['source']?.toString().toLowerCase() ?? '').contains('woo');
       } else if (categoryFilter == 'shopify') {
-        return src.contains('shopify');
+        return (m['source']?.toString().toLowerCase() ?? '').contains('shopify');
       } else if (categoryFilter == 'stock') {
-        return col.contains('stock') || col.contains('qty') || col.contains('inventory') || colLabel.contains('stock');
-      } else if (categoryFilter == 'generic') {
-        return src.contains('dataset') || src.contains('cleaning');
+        final c = (m['column']?.toString().toLowerCase() ?? '');
+        final cl = (m['column_label']?.toString().toLowerCase() ?? '');
+        return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
+      } else if (categoryFilter == 'data_cleaning') {
+        return false;
       }
       return true;
     }).toList();
 
-    final wooCount = modifications.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('woo')).length;
-    final shopCount = modifications.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('shopify')).length;
+    final filteredCleaning = dataCleaning.where((m) {
+      if (!_matchesQuery(m, query)) return false;
+      if (categoryFilter == 'business_sync' || categoryFilter == 'woocommerce' || categoryFilter == 'shopify') {
+        return false;
+      }
+      if (categoryFilter == 'stock') {
+        final c = (m['column']?.toString().toLowerCase() ?? '');
+        final cl = (m['column_label']?.toString().toLowerCase() ?? '');
+        return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
+      }
+      return true;
+    }).toList();
+
+    final wooCount = businessSync.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('woo')).length;
+    final shopCount = businessSync.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('shopify')).length;
     final stockCount = modifications.where((m) {
       final c = (m['column']?.toString().toLowerCase() ?? '');
       final cl = (m['column_label']?.toString().toLowerCase() ?? '');
       return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
     }).length;
 
+    final totalFiltered = filteredSync.length + filteredCleaning.length;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Filter Chips & Search Bar Row
+          // 1. Primary Segmented Selector: [ Toutes ] [ A. Synchronisation métier ] [ B. Nettoyage réel ]
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: colors.canvas,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'Toutes (${modifications.length})',
+                    isSelected: categoryFilter == 'all',
+                    onTap: () => onCategoryChanged('all'),
+                    colors: colors,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'A. Synchronisation métier (${businessSync.length})',
+                    isSelected: categoryFilter == 'business_sync',
+                    onTap: () => onCategoryChanged('business_sync'),
+                    activeColor: const Color(0xFF7C3AED),
+                    icon: Icons.sync_alt_rounded,
+                    colors: colors,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'B. Nettoyage réel (${dataCleaning.length})',
+                    isSelected: categoryFilter == 'data_cleaning',
+                    onTap: () => onCategoryChanged('data_cleaning'),
+                    activeColor: _Brand.blue,
+                    icon: Icons.auto_fix_high,
+                    colors: colors,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 2. Search Bar + Subfilter Chips Row
           Row(
             children: [
               Expanded(
@@ -2346,7 +2436,7 @@ class _ModificationsTab extends StatelessWidget {
                   child: TextField(
                     onChanged: onSearchChanged,
                     decoration: InputDecoration(
-                      hintText: 'Rechercher une modification (ex: Avenqo Headphones X, Stock, 25, WooCommerce)...',
+                      hintText: 'Rechercher (Avenqo Headphones X, Stock, 25, WooCommerce, devise)...',
                       hintStyle: TextStyle(color: colors.muted, fontSize: 13),
                       prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
                       suffixIcon: searchQuery.isNotEmpty
@@ -2368,68 +2458,53 @@ class _ModificationsTab extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Categories Filter Chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChipButton(
-                  label: 'Toutes (${modifications.length})',
-                  isSelected: categoryFilter == 'all',
-                  onTap: () => onCategoryChanged('all'),
-                  colors: colors,
-                ),
-                if (wooCount > 0) ...[
-                  const SizedBox(width: 8),
-                  _FilterChipButton(
-                    label: 'WooCommerce ($wooCount)',
-                    icon: Icons.storefront_outlined,
-                    isSelected: categoryFilter == 'woocommerce',
-                    onTap: () => onCategoryChanged('woocommerce'),
-                    activeColor: const Color(0xFF7C3AED),
-                    colors: colors,
+              if (wooCount > 0 || shopCount > 0 || stockCount > 0) ...[
+                const SizedBox(width: 10),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (wooCount > 0) ...[
+                        _FilterChipButton(
+                          label: 'WooCommerce ($wooCount)',
+                          icon: Icons.storefront_outlined,
+                          isSelected: categoryFilter == 'woocommerce',
+                          onTap: () => onCategoryChanged(categoryFilter == 'woocommerce' ? 'all' : 'woocommerce'),
+                          activeColor: const Color(0xFF7C3AED),
+                          colors: colors,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (shopCount > 0) ...[
+                        _FilterChipButton(
+                          label: 'Shopify ($shopCount)',
+                          icon: Icons.shopping_bag_outlined,
+                          isSelected: categoryFilter == 'shopify',
+                          onTap: () => onCategoryChanged(categoryFilter == 'shopify' ? 'all' : 'shopify'),
+                          activeColor: const Color(0xFF16A34A),
+                          colors: colors,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (stockCount > 0)
+                        _FilterChipButton(
+                          label: 'Stock ($stockCount)',
+                          icon: Icons.inventory_2_outlined,
+                          isSelected: categoryFilter == 'stock',
+                          onTap: () => onCategoryChanged(categoryFilter == 'stock' ? 'all' : 'stock'),
+                          activeColor: _Brand.green,
+                          colors: colors,
+                        ),
+                    ],
                   ),
-                ],
-                if (shopCount > 0) ...[
-                  const SizedBox(width: 8),
-                  _FilterChipButton(
-                    label: 'Shopify ($shopCount)',
-                    icon: Icons.shopping_bag_outlined,
-                    isSelected: categoryFilter == 'shopify',
-                    onTap: () => onCategoryChanged('shopify'),
-                    activeColor: const Color(0xFF16A34A),
-                    colors: colors,
-                  ),
-                ],
-                if (stockCount > 0) ...[
-                  const SizedBox(width: 8),
-                  _FilterChipButton(
-                    label: 'Stock / Inventaire ($stockCount)',
-                    icon: Icons.inventory_2_outlined,
-                    isSelected: categoryFilter == 'stock',
-                    onTap: () => onCategoryChanged('stock'),
-                    activeColor: _Brand.green,
-                    colors: colors,
-                  ),
-                ],
-                const SizedBox(width: 8),
-                _FilterChipButton(
-                  label: 'Nettoyage & Formats',
-                  icon: Icons.auto_fix_high,
-                  isSelected: categoryFilter == 'generic',
-                  onTap: () => onCategoryChanged('generic'),
-                  colors: colors,
                 ),
               ],
-            ),
+            ],
           ),
           const SizedBox(height: 12),
 
-          if (filtered.isEmpty)
+          // 3. Modifications List
+          if (totalFiltered == 0)
             Expanded(
               child: Center(
                 child: Column(
@@ -2447,243 +2522,135 @@ class _ModificationsTab extends StatelessWidget {
             )
           else
             Expanded(
-              child: ListView.separated(
-                itemCount: filtered.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final m = filtered[index];
-                  final entity = m['entity']?.toString() ?? 'Entité';
-                  final rawCol = m['column']?.toString() ?? 'Champ';
-                  final colLabel = m['column_label']?.toString() ?? _humanizeColumnName(rawCol);
-                  final before = m['before']?.toString() ?? '—';
-                  final after = m['after']?.toString() ?? '—';
-                  final diff = m['diff']?.toString() ?? '';
-                  final reason = m['reason']?.toString() ?? 'Nettoyage automatique';
-                  final source = m['source']?.toString() ?? 'Data Cleaning';
-                  final timestamp = m['timestamp']?.toString().replaceAll('T', ' ').split('.').first ?? '';
-                  final rule = m['rule']?.toString() ?? '';
-
-                  final isWooCommerce = source.toLowerCase().contains('woo');
-                  final isShopify = source.toLowerCase().contains('shopify');
-
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: colors.canvas,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isWooCommerce
-                            ? const Color(0xFF7C3AED).withValues(alpha: 0.3)
-                            : colors.line,
+              child: ListView(
+                children: [
+                  // --- SECTION A: SYNCHRONISATION MÉTIER ---
+                  if (filteredSync.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
                       ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Card Header: Entity Name + Source Badge + Date
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.category_outlined,
-                              size: 16,
-                              color: isWooCommerce ? const Color(0xFF7C3AED) : colors.ink,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                entity,
-                                style: TextStyle(
-                                  color: colors.ink,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: isWooCommerce
-                                    ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
-                                    : isShopify
-                                        ? const Color(0xFF16A34A).withValues(alpha: 0.12)
-                                        : _Brand.blue.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: isWooCommerce
-                                      ? const Color(0xFF7C3AED).withValues(alpha: 0.4)
-                                      : isShopify
-                                          ? const Color(0xFF16A34A).withValues(alpha: 0.4)
-                                          : _Brand.blue.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                source,
-                                style: TextStyle(
-                                  color: isWooCommerce
-                                      ? const Color(0xFF7C3AED)
-                                      : isShopify
-                                          ? const Color(0xFF16A34A)
-                                          : _Brand.blue,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            if (timestamp.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                timestamp,
-                                style: TextStyle(color: colors.muted, fontSize: 11),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Card Body: Champ + Visual Avant -> Après + Diff
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            // Champ Label
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: colors.muted.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Champ : ',
-                                    style: TextStyle(color: colors.muted, fontSize: 12),
-                                  ),
-                                  Text(
-                                    colLabel,
-                                    style: TextStyle(
-                                      color: colors.ink,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-
-                            // Visual Diff Box: [Avant] -> [Après]  [Diff]
-                            Expanded(
-                              child: Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: [
-                                  // Badge Avant
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: colors.surface,
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: colors.line),
-                                    ),
-                                    child: Text(
-                                      before,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.sync_alt_rounded, size: 18, color: Color(0xFF7C3AED)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'A. Synchronisation métier',
                                       style: TextStyle(
-                                        color: colors.muted,
-                                        fontSize: 13,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Flèche ->
-                                  const Icon(
-                                    Icons.arrow_forward_rounded,
-                                    size: 16,
-                                    color: _Brand.blue,
-                                  ),
-
-                                  // Badge Après
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: _Brand.green.withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: _Brand.green.withValues(alpha: 0.5)),
-                                    ),
-                                    child: Text(
-                                      after,
-                                      style: const TextStyle(
-                                        color: _Brand.green,
-                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF7C3AED),
+                                        fontWeight: FontWeight.w800,
                                         fontSize: 13,
                                       ),
                                     ),
-                                  ),
-
-                                  // Badge Diff (+6, etc.)
-                                  if (diff.isNotEmpty)
+                                    const SizedBox(width: 8),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                                       decoration: BoxDecoration(
-                                        color: _Brand.green.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: _Brand.green),
+                                        color: const Color(0xFF7C3AED).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        diff,
+                                        '${filteredSync.length} mises à jour',
                                         style: const TextStyle(
-                                          color: _Brand.green,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12,
+                                          color: Color(0xFF7C3AED),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
                                         ),
                                       ),
                                     ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Card Footer: Raison & Règle
-                        Row(
-                          children: [
-                            const Icon(Icons.info_outline, size: 13, color: _Brand.blue),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Raison : ',
-                              style: TextStyle(color: colors.muted, fontSize: 11),
-                            ),
-                            Text(
-                              reason,
-                              style: TextStyle(
-                                color: colors.ink,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
-                            ),
-                            if (rule.isNotEmpty) ...[
-                              const SizedBox(width: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: colors.muted.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(4),
+                                  ],
                                 ),
-                                child: Text(
-                                  rule,
-                                  style: TextStyle(color: colors.muted, fontSize: 10),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Mises à jour opérationnelles issues des boutiques connectées (stocks, commandes). Ceci n\'est PAS une anomalie ou une correction de données.',
+                                  style: TextStyle(color: colors.ink, fontSize: 11),
                                 ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  );
-                },
+                    for (final m in filteredSync) ...[
+                      _BusinessSyncCard(m: m, colors: colors),
+                      const SizedBox(height: 10),
+                    ],
+                    const SizedBox(height: 12),
+                  ],
+
+                  // --- SECTION B: NETTOYAGE RÉEL DES DONNÉES ---
+                  if (filteredCleaning.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: _Brand.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.auto_fix_high, size: 18, color: _Brand.blue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'B. Nettoyage réel des données',
+                                      style: TextStyle(
+                                        color: _Brand.blue,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: _Brand.blue.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '${filteredCleaning.length} normalisations IA',
+                                        style: const TextStyle(
+                                          color: _Brand.blue,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Normalisation automatique par IA : espaces supprimés, devises normalisées, dates ISO 8601, conversions texte → nombre, doublons supprimés et complétion des valeurs manquantes. Aucun mapping manuel requis.',
+                                  style: TextStyle(color: colors.ink, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final m in filteredCleaning) ...[
+                      _DataCleaningCard(m: m, colors: colors),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ],
               ),
             ),
         ],
@@ -2691,7 +2658,7 @@ class _ModificationsTab extends StatelessWidget {
     );
   }
 
-  static String _humanizeColumnName(String raw) {
+  static String humanizeColumnName(String raw) {
     final lower = raw.toLowerCase();
     if (lower == 'stock_quantity' || lower == 'inventory_level') return 'Stock';
     if (lower == 'unit_price') return 'Prix unitaire';
@@ -2699,6 +2666,445 @@ class _ModificationsTab extends StatelessWidget {
     if (lower == 'order_timestamp') return 'Date de commande';
     if (lower == 'source_updated_at') return 'Dernière mise à jour';
     return raw;
+  }
+}
+
+class _SegmentTabButton extends StatelessWidget {
+  const _SegmentTabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.colors,
+    this.activeColor,
+    this.icon,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AvenqoColors colors;
+  final Color? activeColor;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final actColor = activeColor ?? _Brand.blue;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? actColor.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? actColor : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isSelected ? actColor : colors.muted),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? actColor : colors.ink,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessSyncCard extends StatelessWidget {
+  const _BusinessSyncCard({required this.m, required this.colors});
+  final Map<String, dynamic> m;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final entity = m['entity']?.toString() ?? 'Avenqo Headphones X';
+    final rawCol = m['column']?.toString() ?? 'stock_quantity';
+    final colLabel = m['column_label']?.toString() ?? _ModificationsTab.humanizeColumnName(rawCol);
+    final before = m['before']?.toString() ?? '19';
+    final after = m['after']?.toString() ?? '25';
+    final diff = m['diff']?.toString() ?? '+6';
+    final reason = m['reason']?.toString() ?? 'Synchronisation inventaire';
+    final source = m['source']?.toString() ?? 'WooCommerce';
+    final timestamp = m['timestamp']?.toString().replaceAll('T', ' ').split('.').first ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.sync_alt_rounded, size: 16, color: Color(0xFF7C3AED)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  entity,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+                ),
+                child: const Text(
+                  'SYNCHRONISATION MÉTIER',
+                  style: TextStyle(
+                    color: Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  source,
+                  style: const TextStyle(
+                    color: Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              if (timestamp.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(timestamp, style: TextStyle(color: colors.muted, fontSize: 11)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.muted.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text(
+                      colLabel,
+                      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: Text(
+                      before,
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_rounded, size: 16, color: _Brand.blue),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      after,
+                      style: const TextStyle(
+                        color: _Brand.green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  if (diff.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _Brand.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _Brand.green),
+                      ),
+                      child: Text(
+                        diff,
+                        style: const TextStyle(
+                          color: _Brand.green,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C3AED).withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: Color(0xFF7C3AED)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Raison : $reason — Mise à jour opérationnelle transmise par la boutique. Ceci n\'est PAS une correction de données.',
+                    style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DataCleaningCard extends StatelessWidget {
+  const _DataCleaningCard({required this.m, required this.colors});
+  final Map<String, dynamic> m;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final entity = m['entity']?.toString() ?? 'Ligne de données';
+    final rawCol = m['column']?.toString() ?? 'Champ';
+    final colLabel = m['column_label']?.toString() ?? _ModificationsTab.humanizeColumnName(rawCol);
+    final before = m['before']?.toString() ?? '—';
+    final after = m['after']?.toString() ?? '—';
+    final diff = m['diff']?.toString() ?? '';
+    final reason = m['reason']?.toString() ?? 'Normalisation automatique IA';
+    final source = m['source']?.toString() ?? 'Data Cleaning';
+    final timestamp = m['timestamp']?.toString().replaceAll('T', ' ').split('.').first ?? '';
+    final rule = m['rule']?.toString() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_fix_high, size: 16, color: _Brand.blue),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  entity,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _Brand.blue.withValues(alpha: 0.4)),
+                ),
+                child: const Text(
+                  'NETTOYAGE RÉEL',
+                  style: TextStyle(
+                    color: _Brand.blue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _Brand.blue.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  source,
+                  style: const TextStyle(
+                    color: _Brand.blue,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              if (timestamp.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(timestamp, style: TextStyle(color: colors.muted, fontSize: 11)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.muted.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text(
+                      colLabel,
+                      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: Text(
+                      before,
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_rounded, size: 16, color: _Brand.blue),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      after,
+                      style: const TextStyle(
+                        color: _Brand.green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  if (diff.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _Brand.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _Brand.green),
+                      ),
+                      child: Text(
+                        diff,
+                        style: const TextStyle(
+                          color: _Brand.green,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_outline, size: 14, color: _Brand.blue),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Raison : $reason${rule.isNotEmpty ? " ($rule)" : ""} — Standardisation automatique sans mapping manuel requis.',
+                    style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

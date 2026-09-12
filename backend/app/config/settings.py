@@ -373,7 +373,6 @@ class Settings(BaseSettings):
             if clean_frontend not in {
                 "https://avenqo.ca",
                 "https://www.avenqo.ca",
-                "https://app.avenqo.ca",
             }:
                 missing.append("FRONTEND_URL")
             if not self.cors_origins or any(

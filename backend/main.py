@@ -20,7 +20,6 @@ from backend.app.services.artifact_storage_health import artifact_storage_health
 FIRST_PARTY_WEB_ORIGINS = {
     "https://avenqo.ca",
     "https://www.avenqo.ca",
-    "https://app.avenqo.ca",
 }
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ def create_application() -> FastAPI:
     # port via une regex. Les environnements non-production (ex. sandbox/staging)
     # doivent aussi pouvoir déclarer explicitement des origines distantes via
     # CORS_ORIGINS. En production, on conserve CORS_ORIGINS mais on ajoute
-    # systématiquement les trois origines first-party Avenqo.
+    # systématiquement les deux origines first-party Avenqo.
     cors_kwargs: dict[str, object] = {
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -78,6 +77,12 @@ def create_application() -> FastAPI:
             "Stripe-Signature",
             "X-Requested-With",
             "X-CSRF-Token",
+        ],
+        "expose_headers": [
+            "Content-Disposition",
+            "Content-Type",
+            "Content-Length",
+            "X-Request-ID",
         ],
     }
     if is_production:

@@ -194,6 +194,9 @@ class DatasetCleaningService:
             for i, r in enumerate(cleaned_rows[offset : offset + bounded_limit])
         ]
 
+        business_sync_list = [m for m in modifications_list if m.get("is_business_sync")]
+        data_cleaning_list = [m for m in modifications_list if not m.get("is_business_sync")]
+
         return {
             "dataset_id": str(dataset.id),
             "name": dataset.name,
@@ -206,6 +209,8 @@ class DatasetCleaningService:
             "header": header,
             "columns": column_cards,
             "modifications": modifications_list,
+            "business_sync": business_sync_list,
+            "data_cleaning": data_cleaning_list,
             "quality": quality_dict,
             "business_preview": business_rows,
             "technical_preview": technical_rows,
@@ -618,8 +623,37 @@ class DatasetCleaningService:
             key=lambda item: 0
             if str(item.get("source", "")).lower() in ("woocommerce", "shopify")
             or "sync" in str(item.get("reason", "")).lower()
+            or item.get("is_business_sync") is True
             else 1
         )
+
+        for item in deduped:
+            is_sync = (
+                item.get("is_business_sync") is True
+                or item.get("category") in ("business_sync", "inventory_sync")
+                or str(item.get("source", "")).lower() in ("woocommerce", "shopify")
+                or "sync" in str(item.get("reason", "")).lower()
+                or (
+                    "stock" in str(item.get("column", "")).lower()
+                    and str(item.get("source", "")).lower() in ("woocommerce", "shopify")
+                )
+            )
+            if is_sync:
+                item["category"] = "business_sync"
+                item["is_business_sync"] = True
+                item["badge_label"] = "SYNCHRONISATION MÉTIER"
+                item["explanation"] = (
+                    "Synchronisation opérationnelle du stock/catalogue via l'intégration e-commerce. "
+                    "Ceci n'est PAS une correction de données."
+                )
+            else:
+                item["category"] = "data_cleaning"
+                item["is_business_sync"] = False
+                item["badge_label"] = "NETTOYAGE RÉEL"
+                item["explanation"] = (
+                    "Normalisation automatique par IA : types, espaces, dates et devises standardisés sans mapping manuel."
+                )
+
         return deduped
 
     def _canonical_entities(

@@ -63,10 +63,29 @@ Future<Uint8List> _readAsBytes(html.File file) {
 }
 
 Future<void> saveExportFile(String fileName, Uint8List bytes) async {
-  final blob = html.Blob([bytes]);
+  String mimeType = 'application/octet-stream';
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.csv')) {
+    mimeType = 'text/csv;charset=utf-8';
+  } else if (lower.endsWith('.xlsx')) {
+    mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  } else if (lower.endsWith('.pdf')) {
+    mimeType = 'application/pdf';
+  } else if (lower.endsWith('.docx')) {
+    mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+
+  final blob = html.Blob([bytes], mimeType);
   final url = html.Url.createObjectUrlFromBlob(blob);
-  html.AnchorElement(href: url)
-    ..download = fileName
-    ..click();
-  html.Url.revokeObjectUrl(url);
+  final anchor = html.AnchorElement(href: url)
+    ..setAttribute('download', fileName)
+    ..style.display = 'none';
+
+  html.document.body?.children.add(anchor);
+  anchor.click();
+
+  Timer(const Duration(seconds: 15), () {
+    anchor.remove();
+    html.Url.revokeObjectUrl(url);
+  });
 }

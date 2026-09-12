@@ -157,3 +157,80 @@ def test_cleaning_detail_classical_dataset_transformations():
     assert stock_mod is not None
     assert "integer" in stock_mod["reason"] or "stock" in stock_mod["rule"].lower()
 
+    # Verify business_sync and data_cleaning lists are populated and separated
+    assert "business_sync" in detail
+    assert "data_cleaning" in detail
+    assert isinstance(detail["business_sync"], list)
+    assert isinstance(detail["data_cleaning"], list)
+    assert len(detail["data_cleaning"]) > 0
+
+
+def test_cleaning_export_all_four_formats():
+    """Verify export produces non-empty bytes and correct media types/filenames for CSV, XLSX, PDF, DOCX."""
+    tenant = TenantContext(company_id=uuid4())
+    dataset_id = uuid4()
+    dataset = Dataset(
+        id=dataset_id,
+        company_id=tenant.company_id,
+        name="store-inventory.csv",
+        status=DatasetStatus.READY,
+        rows_count=2,
+        columns_count=3,
+    )
+    version = DatasetVersion(
+        dataset_id=dataset_id,
+        version_number=1,
+        name="v1",
+        status=DatasetVersionStatus.READY,
+        is_current=True,
+        row_count=2,
+        column_count=3,
+    )
+    dataset.versions.append(version)
+
+    mock_ingestion = MagicMock()
+    mock_ingestion.get.return_value = dataset
+    mock_ingestion._expected_row_count.return_value = 2
+    raw_rows = [
+        {"item": "Avenqo Headphones X", "qty": "19", "price": "245.00 $"},
+        {"item": "Avenqo Smart Watch", "qty": "10", "price": "399.00 $"},
+    ]
+    cleaned_rows = [
+        {"item": "Avenqo Headphones X", "qty": 25, "price": 245.0},
+        {"item": "Avenqo Smart Watch", "qty": 10, "price": 399.0},
+    ]
+    mock_ingestion._reload_current_version_rows.return_value = raw_rows
+    mock_ingestion.get_cleaned_rows.return_value = tuple(cleaned_rows)
+    mock_ingestion._storage.metadata_path.return_value.is_file.return_value = False
+    mock_ingestion._storage.canonical_path.return_value.is_file.return_value = False
+
+    service = DatasetCleaningService(mock_ingestion)
+
+    # 1. CSV
+    csv_bytes, csv_media, csv_name = service.export(tenant, dataset_id, "csv")
+    assert len(csv_bytes) > 0
+    assert "csv" in csv_media
+    assert csv_name.endswith(".csv")
+    assert b"Avenqo Headphones X" in csv_bytes
+
+    # 2. XLSX
+    xlsx_bytes, xlsx_media, xlsx_name = service.export(tenant, dataset_id, "xlsx")
+    assert len(xlsx_bytes) > 0
+    assert "openxmlformats" in xlsx_media
+    assert xlsx_name.endswith(".xlsx")
+
+    # 3. PDF
+    pdf_bytes, pdf_media, pdf_name = service.export(tenant, dataset_id, "pdf")
+    assert len(pdf_bytes) > 0
+    assert pdf_media == "application/pdf"
+    assert pdf_name.endswith(".pdf")
+    assert pdf_bytes[:4] == b"%PDF"
+
+    # 4. DOCX
+    docx_bytes, docx_media, docx_name = service.export(tenant, dataset_id, "docx")
+    assert len(docx_bytes) > 0
+    assert "wordprocessingml" in docx_media
+    assert docx_name.endswith(".docx")
+    assert docx_bytes[:2] == b"PK"
+
+

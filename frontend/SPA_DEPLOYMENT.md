@@ -1,9 +1,9 @@
 # Flutter Web SPA Deployment Configuration
 
 ## Deployment Target
-- **Domain**: app.avenqo.ca
-- **Build Output**: `frontend/build/web`
-- **Build Command**: `flutter build web --release --dart-define=API_BASE_URL=https://api.avenqo.ca/api/v1`
+- **Domain**: avenqo.ca
+- **Build Output**: `frontend/build/web` (served via `web/public/app`)
+- **Build Command**: `flutter build web --release`
 
 ## SPA Rewrite Rule
 
@@ -33,7 +33,7 @@ For direct navigation and page refresh to work correctly on Flutter Web, configu
 ```nginx
 server {
     listen 80;
-    server_name app.avenqo.ca;
+    server_name avenqo.ca;
     root /path/to/frontend/build/web;
 
     location / {
@@ -126,12 +126,12 @@ frontend/build/web/
 
 ## Deployment Checklist
 
-- [ ] Deploy `frontend/build/web/` to web server at app.avenqo.ca
+- [ ] Deploy `frontend/build/web/` to web server at avenqo.ca via `web/public/app/`
 - [ ] Configure SPA rewrite rule (serve index.html for unknown routes)
 - [ ] Set cache headers for static assets (30+ days)
-- [ ] Verify direct navigation works: `https://app.avenqo.ca/dashboard`
+- [ ] Verify direct navigation works: `https://avenqo.ca/dashboard`
 - [ ] Verify page refresh works on all routes
 - [ ] Verify unauthenticated redirect to login works
 - [ ] Test theme switcher (light/dark/system)
-- [ ] Verify API endpoints use `https://api.avenqo.ca/api/v1`
+- [ ] Verify API endpoints use `/api/v1`
 - [ ] Test cross-origin requests if API is on different domain (CORS configured on backend)
