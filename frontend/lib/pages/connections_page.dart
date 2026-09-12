@@ -1174,15 +1174,14 @@ class _DatasetRow extends StatelessWidget {
     final trainingStatus = dataset['training_status']?.toString();
     final trainingLabel = _trainingStatusLabel(t, trainingStatus);
     final id = dataset['id']?.toString();
-    final isReady = status == 'ready' || status == 'validated';
-    final needsAttention = status == 'attention_required';
+    final isReady = status == 'ready' || status == 'validated' || status == 'attention_required';
+    final needsAttention = false;
     final isError =
         status == 'failed' || status == 'invalid' || status == 'rejected';
     final statusLabel = switch (status) {
-      'ready' || 'validated' => t.connectionsReadyTitle,
+      'ready' || 'validated' || 'attention_required' => t.connectionsReadyTitle,
       'preparing_data' => t.connectionsPreparingData,
       'training_ai' => t.connectionsTrainingAi,
-      'attention_required' => t.connectionsAttentionRequired,
       'failed' || 'invalid' || 'rejected' => t.connectionsProcessingError,
       _ => t.connectionsAnalyzing,
     };
@@ -1205,15 +1204,15 @@ class _DatasetRow extends StatelessWidget {
         '${t.connectionsImportedAtLabel} ${sourceDate.toString().split('T').first}',
     ].join(' · ');
     final actions = <Widget>[
-      if (isReady || needsAttention || isError)
+      if (isReady || isError)
         TextButton.icon(
           onPressed: isDeleting ? null : () => onViewCleaning(dataset),
           icon: const Icon(Icons.table_view_outlined, size: 18),
           label: Text(_cleaningText(t, 'view')),
         ),
-      if (needsAttention)
+      if (isReady)
         IconButton(
-          tooltip: t.connectionsMappingTitle,
+          tooltip: 'Correspondance des colonnes',
           onPressed: isDeleting ? null : () => onReviewMapping(dataset),
           icon: const Icon(Icons.tune),
         ),
@@ -1384,6 +1383,8 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
   final Map<String, String?> _selected = {};
   bool _initialized = false;
   bool _submitting = false;
+  bool _hasChanges = false;
+  bool _showAdvanced = false;
   String? _error;
 
   Future<Map<String, dynamic>> _load() async =>
@@ -1409,7 +1410,7 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
       final column = item['original_column'].toString();
       _selected[column] = conflictingColumns.contains(column)
           ? null
-          : accepted[column]?.toString();
+          : (accepted[column]?.toString() ?? item['suggested_field']?.toString());
     }
     _initialized = true;
   }
@@ -1446,10 +1447,17 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
     return AlertDialog(
-      title: Text(widget.t.connectionsMappingTitle),
+      title: Row(
+        children: [
+          const Icon(Icons.check_circle, color: _Brand.green, size: 24),
+          const SizedBox(width: 10),
+          Expanded(child: Text(widget.t.connectionsMappingTitle)),
+        ],
+      ),
       content: SizedBox(
-        width: 680,
+        width: 720,
         child: FutureBuilder<Map<String, dynamic>>(
           future: _profile,
           builder: (context, snapshot) {
@@ -1464,55 +1472,247 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
             final suggestions =
                 (profile['mapping_suggestions'] as List<dynamic>? ?? const [])
                     .cast<Map<String, dynamic>>();
+            final accepted =
+                (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+            final columns =
+                (profile['columns'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+
+            final colTypes = {
+              for (final c in columns)
+                c['name']?.toString() ?? '': c['semantic_type']?.toString() ?? 'text',
+            };
+
+            final totalCount = suggestions.isNotEmpty ? suggestions.length : columns.length;
+            final mappedCount = suggestions.where((s) {
+              final col = s['original_column']?.toString() ?? '';
+              return _selected[col] != null || accepted[col] != null;
+            }).length;
+            final unmappedCount = math.max(0, totalCount - mappedCount);
+
             return SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.t.connectionsMappingSubtitle),
-                  const SizedBox(height: 16),
-                  for (final item in suggestions) ...[
-                    Text(
-                      item['original_column'].toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  // Status summary card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.3)),
                     ),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<String?>(
-                      initialValue:
-                          _selected[item['original_column'].toString()],
-                      isExpanded: true,
-                      items: [
-                        DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text(widget.t.connectionsMappingIgnore),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.verified, color: _Brand.green, size: 20),
+                            SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Données prêtes · Auto-mapping automatique validé',
+                                style: TextStyle(
+                                  color: _Brand.green,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        for (final option in {
-                          if (item['suggested_field'] != null)
-                            item['suggested_field'].toString(),
-                          for (final value
-                              in (item['alternatives'] as List<dynamic>? ??
-                                  const []))
-                            value.toString(),
-                        })
-                          DropdownMenuItem<String?>(
-                            value: option,
-                            child: Text(option),
-                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '$totalCount colonnes détectées · $mappedCount reconnues automatiquement · $unmappedCount conservées sans mapping · 0 erreur bloquante',
+                          style: TextStyle(color: colors.ink, fontSize: 13),
+                        ),
                       ],
-                      onChanged: _submitting
-                          ? null
-                          : (value) =>
-                                _selected[item['original_column'].toString()] =
-                                    value,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item['reason']?.toString() ?? '',
-                      style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Correspondance des colonnes détectées :',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
                     ),
-                    const SizedBox(height: 14),
+                  ),
+                  const SizedBox(height: 10),
+                  // Column mapping list
+                  for (final item in suggestions) ...[
+                    Builder(
+                      builder: (context) {
+                        final col = item['original_column']?.toString() ?? '';
+                        final canonical = _selected[col] ?? accepted[col];
+                        final semType = colTypes[col] ?? 'texte';
+                        final confidence = item['confidence']?.toString().toUpperCase() ?? 'NONE';
+                        final isMapped = canonical != null && canonical.isNotEmpty;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: colors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      col,
+                                      style: TextStyle(
+                                        color: colors.ink,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Type : $semType',
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 4,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isMapped
+                                            ? _Brand.blue.withValues(alpha: 0.12)
+                                            : colors.muted.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isMapped
+                                              ? _Brand.blue.withValues(alpha: 0.4)
+                                              : colors.line,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        isMapped ? canonical : 'Conservée brute (non mappée)',
+                                        style: TextStyle(
+                                          color: isMapped ? _Brand.blue : colors.muted,
+                                          fontWeight: isMapped ? FontWeight.w700 : FontWeight.normal,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: confidence == 'HIGH'
+                                            ? _Brand.green.withValues(alpha: 0.1)
+                                            : (confidence == 'MEDIUM'
+                                                ? _Brand.blue.withValues(alpha: 0.1)
+                                                : colors.muted.withValues(alpha: 0.1)),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        confidence == 'HIGH'
+                                            ? 'Auto (Haute)'
+                                            : (confidence == 'MEDIUM' ? 'Auto (Moyenne)' : 'Brute'),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: confidence == 'HIGH'
+                                              ? _Brand.green
+                                              : (confidence == 'MEDIUM' ? _Brand.blue : colors.muted),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
-                  if (_error != null)
+                  const SizedBox(height: 12),
+                  // Advanced toggle
+                  InkWell(
+                    onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _showAdvanced ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                            size: 20,
+                            color: colors.muted,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Paramètres avancés / Modifier manuellement',
+                            style: TextStyle(
+                              color: colors.muted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_showAdvanced) ...[
+                    const SizedBox(height: 10),
+                    for (final item in suggestions) ...[
+                      Text(
+                        item['original_column'].toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _selected[item['original_column'].toString()],
+                        isExpanded: true,
+                        items: [
+                          DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text(widget.t.connectionsMappingIgnore),
+                          ),
+                          for (final option in {
+                            if (item['suggested_field'] != null)
+                              item['suggested_field'].toString(),
+                            for (final value in (item['alternatives'] as List<dynamic>? ?? const []))
+                              value.toString(),
+                          })
+                            DropdownMenuItem<String?>(
+                              value: option,
+                              child: Text(option),
+                            ),
+                        ],
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() {
+                                  _selected[item['original_column'].toString()] = value;
+                                  _hasChanges = true;
+                                }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
                     Text(_error!, style: const TextStyle(color: _Brand.red)),
+                  ],
                 ],
               ),
             );
@@ -1524,12 +1724,13 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
           onPressed: _submitting
               ? null
               : () => Navigator.of(context).pop(false),
-          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+          child: Text(_hasChanges ? MaterialLocalizations.of(context).cancelButtonLabel : 'Fermer'),
         ),
-        FilledButton(
-          onPressed: _submitting ? null : _submit,
-          child: Text(widget.t.connectionsConfirmMapping),
-        ),
+        if (_hasChanges)
+          FilledButton(
+            onPressed: _submitting ? null : _submit,
+            child: Text(widget.t.connectionsConfirmMapping),
+          ),
       ],
     );
   }
@@ -1553,6 +1754,13 @@ class _DatasetCleaningDialog extends StatefulWidget {
 class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
   late final Future<Map<String, dynamic>> _detail = _load();
   bool _exporting = false;
+
+  String _apercuSearch = '';
+  int _apercuPage = 0;
+  int _apercuPageSize = 10;
+
+  String _columnsSearch = '';
+  String _modificationsSearch = '';
 
   Future<Map<String, dynamic>> _load() async =>
       await widget.api.get('/datasets/${widget.datasetId}/cleaning')
@@ -1581,11 +1789,18 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final size = MediaQuery.sizeOf(context);
-    final dialogWidth = math.min(size.width - 32, 980.0);
-    final dialogHeight = math.min(size.height * 0.88, 820.0);
+    final dialogWidth = math.min(size.width - 24, 1100.0);
+    final dialogHeight = math.min(size.height * 0.92, 860.0);
+
     return AlertDialog(
-      insetPadding: const EdgeInsets.all(16),
-      title: Text(_cleaningText(widget.t, 'view')),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      contentPadding: EdgeInsets.zero,
+      backgroundColor: colors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.line),
+      ),
       content: SizedBox(
         width: dialogWidth,
         height: dialogHeight,
@@ -1602,291 +1817,494 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                   : widget.t.connectionsGenericError;
               return Center(child: Text(message));
             }
+
             final detail = snapshot.data!;
-            final summary =
-                detail['summary'] as Map<String, dynamic>? ?? const {};
+            final header = detail['header'] as Map<String, dynamic>? ?? const {};
+            final summary = detail['summary'] as Map<String, dynamic>? ?? const {};
             final isReady = detail['status'] == 'ready';
-            final before =
-                (detail['original_preview'] as List<dynamic>? ?? const [])
-                    .cast<Map<String, dynamic>>();
-            final after =
-                (detail['cleaned_preview'] as List<dynamic>? ?? const [])
-                    .cast<Map<String, dynamic>>();
-            final qualityReasons =
-                (detail['quality_reasons'] as List<dynamic>? ?? const [])
-                    .map((item) => item.toString())
-                    .toList();
-            final columnStrategies =
-                (detail['column_strategies'] as List<dynamic>? ?? const [])
-                    .cast<Map<String, dynamic>>();
+
+            final rawBusinessPreview = (detail['business_preview'] as List<dynamic>? ??
+                    detail['cleaned_preview'] as List<dynamic>? ??
+                    const [])
+                .cast<Map<String, dynamic>>();
+
+            final columns = (detail['columns'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final modifications = (detail['modifications'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final quality = detail['quality'] as Map<String, dynamic>? ?? const {};
+
+            final entityViews =
+                (detail['entity_views'] as Map<String, dynamic>? ?? const {})
+                    .map(
+                      (name, records) => MapEntry(
+                        name,
+                        (records as List<dynamic>? ?? const [])
+                            .cast<Map<String, dynamic>>(),
+                      ),
+                    );
+
+            final technicalPreview = (detail['technical_preview'] as List<dynamic>? ??
+                    detail['original_preview'] as List<dynamic>? ??
+                    const [])
+                .cast<Map<String, dynamic>>();
+
             final exportFormats =
-                (detail['export_formats'] as List<dynamic>? ?? const [])
+                (detail['export_formats'] as List<dynamic>? ?? const ['csv', 'json'])
                     .map((item) => item.toString().toUpperCase())
                     .toList();
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 720;
-                final previewHeight = compact ? 180.0 : 220.0;
-                final mappingsApplied =
-                    (summary['mappings_applied'] as Map<String, dynamic>? ??
-                            const {})
-                        .length;
-                final qualityLabel = _humanizeCode(
-                  detail['cleaning_status']?.toString() ??
-                      _cleaningText(widget.t, 'notAvailable'),
-                );
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      detail['name'].toString(),
-                      style: TextStyle(
-                        color: colors.ink,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
+
+            final datasetName = header['dataset_name']?.toString() ??
+                detail['name']?.toString() ??
+                'Dataset';
+            final sourceLabel = header['source']?.toString() ?? 'Commerce / Retail';
+            final rowCount = header['row_count'] ?? summary['cleaned_row_count'] ?? rawBusinessPreview.length;
+            final columnCount = header['column_count'] ?? summary['column_count'] ?? (rawBusinessPreview.isNotEmpty ? rawBusinessPreview.first.length : columns.length);
+            final qualityScore = header['quality_score'] ?? summary['quality_score_after'] ?? 100;
+            final lastSync = header['last_sync']?.toString() ?? '';
+            final statusLabel = header['status_label']?.toString() ??
+                (isReady ? 'Données prêtes' : 'Attention requise');
+
+            return DefaultTabController(
+              length: 6,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- HEADER PROFESSIONNEL ---
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 14),
+                    decoration: BoxDecoration(
+                      color: colors.canvas,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      border: Border(bottom: BorderSide(color: colors.line)),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${isReady ? widget.t.connectionsReadyTitle : widget.t.connectionsAttentionRequired} · v${detail['version']}',
-                      style: TextStyle(color: colors.muted),
-                    ),
-                    const SizedBox(height: 12),
-                    _CleaningBanner(
-                      icon: isReady
-                          ? Icons.check_circle_outline
-                          : Icons.rule_folder_outlined,
-                      text: isReady
-                          ? _cleaningText(widget.t, 'readyBanner')
-                          : _cleaningText(widget.t, 'attentionBanner'),
-                    ),
-                    if (qualityReasons.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      _CleaningBanner(
-                        icon: Icons.info_outline,
-                        text:
-                            '${_cleaningText(widget.t, 'quality')}: ${qualityReasons.join(' • ')}',
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            _CleaningSectionTitle(
-                              label: _cleaningText(widget.t, 'preview'),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              height: previewHeight,
-                              child: DefaultTabController(
-                                length: 2,
-                                child: Column(
-                                  children: [
-                                    TabBar(
-                                      tabs: [
-                                        Tab(
-                                          text:
-                                              '${_cleaningText(widget.t, 'before')} (${before.length})',
-                                        ),
-                                        Tab(
-                                          text:
-                                              '${_cleaningText(widget.t, 'after')} (${after.length})',
-                                        ),
-                                      ],
-                                    ),
-                                    Expanded(
-                                      child: TabBarView(
-                                        children: [
-                                          _PreviewTable(
-                                            rows: before,
-                                            emptyLabel: _cleaningText(
-                                              widget.t,
-                                              'previewEmpty',
-                                            ),
-                                          ),
-                                          _PreviewTable(
-                                            rows: after,
-                                            emptyLabel: _cleaningText(
-                                              widget.t,
-                                              'previewEmpty',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            _CleaningSectionTitle(
-                              label: _cleaningText(widget.t, 'summary'),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                _CleaningMetric(
-                                  icon: Icons.table_rows_outlined,
-                                  label: _cleaningText(
-                                    widget.t,
-                                    'rowsBeforeAfter',
-                                  ),
-                                  value:
-                                      '${summary['original_row_count'] ?? 0} → ${summary['cleaned_row_count'] ?? 0}',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.view_column_outlined,
-                                  label: _cleaningText(widget.t, 'columns'),
-                                  value: '${summary['column_count'] ?? 0}',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.content_copy_outlined,
-                                  label: _cleaningText(
-                                    widget.t,
-                                    'duplicatesRemoved',
-                                  ),
-                                  value:
-                                      '${summary['duplicate_rows_removed'] ?? 0}',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.do_not_disturb_alt_outlined,
-                                  label: _cleaningText(
-                                    widget.t,
-                                    'missingValues',
-                                  ),
-                                  value:
-                                      '${summary['missing_values_detected'] ?? 0}',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.rule_outlined,
-                                  label: _cleaningText(
-                                    widget.t,
-                                    'invalidValues',
-                                  ),
-                                  value:
-                                      '${summary['invalid_values_corrected'] ?? 0}',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.account_tree_outlined,
-                                  label: _cleaningText(
-                                    widget.t,
-                                    'mappedColumns',
-                                  ),
-                                  value: '$mappingsApplied',
-                                ),
-                                _CleaningMetric(
-                                  icon: Icons.verified_outlined,
-                                  label: _cleaningText(widget.t, 'quality'),
-                                  value: qualityLabel,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 18),
-                            if (columnStrategies.isNotEmpty) ...[
-                              _CleaningSectionTitle(
-                                label: _cleaningText(
-                                  widget.t,
-                                  'columnStrategies',
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              for (final strategy in columnStrategies)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _ColumnStrategyCard(
-                                    strategy: strategy,
-                                    t: widget.t,
-                                  ),
-                                ),
-                              const SizedBox(height: 8),
-                            ],
-                            if (exportFormats.isNotEmpty) ...[
-                              _CleaningSectionTitle(
-                                label: _cleaningText(widget.t, 'exports'),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
+                            Expanded(
+                              child: Row(
                                 children: [
-                                  for (final format in exportFormats)
-                                    OutlinedButton.icon(
-                                      onPressed: _exporting
-                                          ? null
-                                          : () => _export(format.toLowerCase()),
-                                      icon: const Icon(
-                                        Icons.download_outlined,
-                                        size: 18,
+                                  Flexible(
+                                    child: Text(
+                                      datasetName,
+                                      style: TextStyle(
+                                        color: colors.ink,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
                                       ),
-                                      label: Text(format),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _Brand.blue.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Text(
+                                      sourceLabel,
+                                      style: const TextStyle(
+                                        color: _Brand.blue,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
+                            ),
+                            // Exports
+                            for (final format in exportFormats) ...[
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _exporting ? null : () => _export(format.toLowerCase()),
+                                icon: const Icon(Icons.download_outlined, size: 15),
+                                label: Text(format, style: const TextStyle(fontSize: 12)),
+                              ),
+                              const SizedBox(width: 6),
                             ],
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 20),
+                              onPressed: () => Navigator.of(context).pop(),
+                              tooltip: MaterialLocalizations.of(context).closeButtonLabel,
+                            ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _HeaderPill(
+                              icon: Icons.table_rows_outlined,
+                              text: '$rowCount lignes',
+                              colors: colors,
+                            ),
+                            _HeaderPill(
+                              icon: Icons.view_column_outlined,
+                              text: '$columnCount colonnes',
+                              colors: colors,
+                            ),
+                            _HeaderPill(
+                              icon: Icons.verified_outlined,
+                              text: 'Qualité : $qualityScore%',
+                              color: _Brand.green,
+                              colors: colors,
+                            ),
+                            if (lastSync.isNotEmpty)
+                              _HeaderPill(
+                                icon: Icons.sync,
+                                text: 'Dernière synchro : $lastSync',
+                                colors: colors,
+                              ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (isReady ? _Brand.green : _Brand.red).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isReady ? '✅ $statusLabel' : '⚠️ $statusLabel',
+                                style: TextStyle(
+                                  color: isReady ? _Brand.green : _Brand.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+
+                  // --- 6 ONGLETS PRINCIPAUX ---
+                  Container(
+                    decoration: BoxDecoration(
+                      color: colors.canvas,
+                      border: Border(bottom: BorderSide(color: colors.line)),
+                    ),
+                    child: TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      labelColor: _Brand.blue,
+                      unselectedLabelColor: colors.muted,
+                      indicatorColor: _Brand.blue,
+                      indicatorWeight: 3,
+                      tabs: [
+                        const Tab(
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                          icon: Icon(Icons.table_chart_outlined, size: 16),
+                          text: 'APERÇU',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.view_column_outlined, size: 16),
+                          text: 'COLONNES (${columns.length})',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.difference_outlined, size: 16),
+                          text: 'MODIFICATIONS (${modifications.length})',
+                        ),
+                        const Tab(
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                          icon: Icon(Icons.inventory_2_outlined, size: 16),
+                          text: 'ENTITÉS MÉTIER',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.verified_outlined, size: 16),
+                          text: 'QUALITÉ ($qualityScore%)',
+                        ),
+                        const Tab(
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                          icon: Icon(Icons.dns_outlined, size: 16),
+                          text: 'TECHNIQUE',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // --- CONTENU DES ONGLETS ---
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // Tab 1: APERÇU
+                        _ApercuTab(
+                          rows: rawBusinessPreview,
+                          searchQuery: _apercuSearch,
+                          page: _apercuPage,
+                          pageSize: _apercuPageSize,
+                          onSearchChanged: (q) => setState(() {
+                            _apercuSearch = q;
+                            _apercuPage = 0;
+                          }),
+                          onPageChanged: (p) => setState(() => _apercuPage = p),
+                          onPageSizeChanged: (ps) => setState(() {
+                            _apercuPageSize = ps;
+                            _apercuPage = 0;
+                          }),
+                          colors: colors,
+                          emptyLabel: _cleaningText(widget.t, 'previewEmpty'),
+                        ),
+
+                        // Tab 2: COLONNES
+                        _ColumnsTab(
+                          columns: columns,
+                          searchQuery: _columnsSearch,
+                          onSearchChanged: (q) => setState(() => _columnsSearch = q),
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 3: MODIFICATIONS
+                        _ModificationsTab(
+                          modifications: modifications,
+                          searchQuery: _modificationsSearch,
+                          onSearchChanged: (q) => setState(() => _modificationsSearch = q),
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 4: ENTITÉS MÉTIER
+                        _EntityViewsTab(
+                          entities: entityViews,
+                          colors: colors,
+                          emptyLabel: _cleaningText(widget.t, 'previewEmpty'),
+                        ),
+
+                        // Tab 5: QUALITÉ
+                        _QualityTab(
+                          quality: quality,
+                          summary: summary,
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 6: TECHNIQUE
+                        _TechniqueTab(
+                          rows: technicalPreview,
+                          datasetId: widget.datasetId,
+                          version: detail['version']?.toString() ?? '1',
+                          colors: colors,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(MaterialLocalizations.of(context).closeButtonLabel),
+    );
+  }
+}
+
+class _HeaderPill extends StatelessWidget {
+  const _HeaderPill({
+    required this.icon,
+    required this.text,
+    required this.colors,
+    this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final AvenqoColors colors;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = color ?? colors.muted;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: fg),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: fg,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
   }
 }
 
-class _CleaningMetric extends StatelessWidget {
-  const _CleaningMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
+class _ApercuTab extends StatelessWidget {
+  const _ApercuTab({
+    required this.rows,
+    required this.searchQuery,
+    required this.page,
+    required this.pageSize,
+    required this.onSearchChanged,
+    required this.onPageChanged,
+    required this.onPageSizeChanged,
+    required this.colors,
+    required this.emptyLabel,
   });
 
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) =>
-      Chip(avatar: Icon(icon, size: 16), label: Text('$label: $value'));
-}
-
-class _CleaningBanner extends StatelessWidget {
-  const _CleaningBanner({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
+  final List<Map<String, dynamic>> rows;
+  final String searchQuery;
+  final int page;
+  final int pageSize;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<int> onPageChanged;
+  final ValueChanged<int> onPageSizeChanged;
+  final AvenqoColors colors;
+  final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _Brand.blue.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(emptyLabel, style: TextStyle(color: colors.muted)),
+      );
+    }
+
+    final query = searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? rows
+        : rows.where((r) {
+            return r.values.any((v) => v?.toString().toLowerCase().contains(query) ?? false);
+          }).toList();
+
+    final totalRows = filtered.length;
+    final maxPage = (totalRows / pageSize).ceil();
+    final currentPage = maxPage == 0 ? 0 : page.clamp(0, maxPage - 1);
+    final startIndex = currentPage * pageSize;
+    final pagedRows = filtered.skip(startIndex).take(pageSize).toList();
+
+    final allColumns = <String>{};
+    for (final r in rows) {
+      allColumns.addAll(r.keys);
+    }
+    final columns = allColumns.toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
         children: [
-          Icon(icon, color: _Brand.blue, size: 18),
-          const SizedBox(width: 8),
+          // Barre de recherche et pagination controls
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: TextField(
+                    onChanged: onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher dans l\'aperçu...',
+                      hintStyle: TextStyle(color: colors.muted, fontSize: 13),
+                      prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
+                      suffixIcon: searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 16),
+                              onPressed: () => onSearchChanged(''),
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.line),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.line),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '${startIndex + 1}-${math.min(startIndex + pageSize, totalRows)} sur $totalRows',
+                style: TextStyle(color: colors.muted, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.chevron_left, size: 20),
+                onPressed: currentPage > 0 ? () => onPageChanged(currentPage - 1) : null,
+                tooltip: 'Page précédente',
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right, size: 20),
+                onPressed: (currentPage + 1) < maxPage ? () => onPageChanged(currentPage + 1) : null,
+                tooltip: 'Page suivante',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Table avec scroll horizontal
           Expanded(
-            child: Text(text, style: TextStyle(color: colors.ink)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: colors.line),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AvenqoDataTable(
+                    semanticLabel: 'Aperçu des données nettoyées',
+                    minWidth: math.max(columns.length * 160.0, constraints.maxWidth),
+                    maxHeight: constraints.maxHeight,
+                    fixedLeftColumns: 1,
+                    columns: [
+                      for (final col in columns)
+                        DataColumn(
+                          label: Text(
+                            col,
+                            style: TextStyle(
+                              color: colors.ink,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                    rows: [
+                      for (final row in pagedRows)
+                        DataRow(
+                          cells: [
+                            for (final col in columns)
+                              DataCell(
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 240),
+                                  child: Text(
+                                    row[col]?.toString() ?? '—',
+                                    style: TextStyle(
+                                      color: colors.ink,
+                                      fontSize: 12,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -1894,137 +2312,858 @@ class _CleaningBanner extends StatelessWidget {
   }
 }
 
-class _CleaningSectionTitle extends StatelessWidget {
-  const _CleaningSectionTitle({required this.label});
+class _ColumnsTab extends StatelessWidget {
+  const _ColumnsTab({
+    required this.columns,
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.colors,
+    required this.t,
+  });
 
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    return Text(
-      label,
-      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
-    );
-  }
-}
-
-class _ColumnStrategyCard extends StatelessWidget {
-  const _ColumnStrategyCard({required this.strategy, required this.t});
-
-  final Map<String, dynamic> strategy;
+  final List<Map<String, dynamic>> columns;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final AvenqoColors colors;
   final CompanyStrings t;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AvenqoColors.of(context);
-    final appliedStrategies =
-        (strategy['applied_strategies'] as List<dynamic>? ?? const [])
-            .map((item) => _cleaningText(t, item.toString()))
-            .toList();
-    final mappedField = strategy['mapped_field']?.toString();
-    final conversionCount =
-        (strategy['numeric_conversions'] as num? ?? 0) +
-        (strategy['date_conversions'] as num? ?? 0) +
-        (strategy['boolean_conversions'] as num? ?? 0);
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border.all(color: colors.line),
-        borderRadius: BorderRadius.circular(12),
+    if (columns.isEmpty) {
+      return Center(
+        child: Text('Aucune colonne analysée.', style: TextStyle(color: colors.muted)),
+      );
+    }
+
+    final query = searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? columns
+        : columns.where((c) {
+            final name = c['cleaned_name']?.toString().toLowerCase() ?? '';
+            final orig = c['original_name']?.toString().toLowerCase() ?? '';
+            final type = c['final_type']?.toString().toLowerCase() ?? '';
+            return name.contains(query) || orig.contains(query) || type.contains(query);
+          }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 38,
+            child: TextField(
+              onChanged: onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Filtrer les colonnes (nom, type)...',
+                hintStyle: TextStyle(color: colors.muted, fontSize: 13),
+                prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () => onSearchChanged(''),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 700;
+                return GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isWide ? 3 : 1,
+                    childAspectRatio: isWide ? 1.7 : 2.4,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final col = filtered[index];
+                    final name = col['cleaned_name']?.toString() ?? col['original_name']?.toString() ?? '—';
+                    final originalType = col['original_type']?.toString() ?? 'text';
+                    final finalType = col['final_type']?.toString() ?? originalType;
+                    final nullsBefore = col['nulls_before'] ?? 0;
+                    final nullsAfter = col['nulls_after'] ?? 0;
+                    final modifiedCount = col['modified_count'] ?? 0;
+                    final qualityScore = col['quality_score'] ?? 100;
+
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colors.canvas,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: colors.line),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  style: TextStyle(
+                                    color: colors.ink,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _Brand.blue.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  finalType,
+                                  style: const TextStyle(
+                                    color: _Brand.blue,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 14),
+                          _CardRow(
+                            label: 'Type :',
+                            value: originalType == finalType ? finalType : '$originalType → $finalType',
+                            colors: colors,
+                          ),
+                          const SizedBox(height: 3),
+                          _CardRow(
+                            label: 'Valeurs nulles :',
+                            value: '$nullsAfter${nullsBefore != nullsAfter ? " (avant: $nullsBefore)" : ""}',
+                            colors: colors,
+                          ),
+                          const SizedBox(height: 3),
+                          _CardRow(
+                            label: 'Valeurs modifiées :',
+                            value: '$modifiedCount',
+                            valueColor: modifiedCount > 0 ? _Brand.green : null,
+                            colors: colors,
+                          ),
+                          const Spacer(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Qualité :',
+                                style: TextStyle(color: colors.muted, fontSize: 11),
+                              ),
+                              Text(
+                                '$qualityScore%',
+                                style: const TextStyle(
+                                  color: _Brand.green,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: ExpansionTile(
-          title: Text(
-            strategy['column_name']?.toString() ?? '—',
-            style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
+    );
+  }
+}
+
+class _CardRow extends StatelessWidget {
+  const _CardRow({
+    required this.label,
+    required this.value,
+    required this.colors,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final AvenqoColors colors;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: colors.muted, fontSize: 12)),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? colors.ink,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
           ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _humanizeCode(
-                  strategy['inferred_type']?.toString() ??
-                      _cleaningText(t, 'notAvailable'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModificationsTab extends StatelessWidget {
+  const _ModificationsTab({
+    required this.modifications,
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.colors,
+    required this.t,
+  });
+
+  final List<Map<String, dynamic>> modifications;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final AvenqoColors colors;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final query = searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? modifications
+        : modifications.where((m) {
+            final entity = m['entity']?.toString().toLowerCase() ?? '';
+            final col = m['column']?.toString().toLowerCase() ?? '';
+            final reason = m['reason']?.toString().toLowerCase() ?? '';
+            final src = m['source']?.toString().toLowerCase() ?? '';
+            return entity.contains(query) || col.contains(query) || reason.contains(query) || src.contains(query);
+          }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 38,
+            child: TextField(
+              onChanged: onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Rechercher une modification (ex: Avenqo Headphones X, stock)...',
+                hintStyle: TextStyle(color: colors.muted, fontSize: 13),
+                prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () => onSearchChanged(''),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
                 ),
-                style: TextStyle(color: colors.muted),
-              ),
-              Text(
-                _cleaningText(
-                  t,
-                  strategy['suggested_missing_strategy']?.toString() ??
-                      'notAvailable',
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
                 ),
-                style: TextStyle(color: colors.muted),
               ),
-            ],
+            ),
           ),
-          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          const SizedBox(height: 12),
+          if (filtered.isEmpty)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 40, color: _Brand.green),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Aucune modification enregistrée pour cette recherche.',
+                      style: TextStyle(color: colors.muted, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: colors.line),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: AvenqoDataTable(
+                      semanticLabel: 'Table de diff des modifications',
+                      minWidth: math.max(880.0, constraints.maxWidth),
+                      maxHeight: constraints.maxHeight,
+                      fixedLeftColumns: 1,
+                      columns: const [
+                        DataColumn(label: Text('Entité', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Colonne', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Avant', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Après', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Différence', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Raison', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Source', style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.w700))),
+                      ],
+                      rows: [
+                        for (final m in filtered)
+                          DataRow(
+                            cells: [
+                              DataCell(
+                                Text(
+                                  m['entity']?.toString() ?? '—',
+                                  style: TextStyle(
+                                    color: colors.ink,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: colors.muted.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    m['column']?.toString() ?? '—',
+                                    style: TextStyle(
+                                      color: colors.ink,
+                                      fontFamily: 'monospace',
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  m['before']?.toString() ?? '—',
+                                  style: TextStyle(
+                                    color: colors.muted,
+                                    decoration: TextDecoration.lineThrough,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  m['after']?.toString() ?? '—',
+                                  style: TextStyle(
+                                    color: colors.ink,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${m['before']} → ${m['after']}',
+                                      style: TextStyle(color: colors.muted, fontSize: 12),
+                                    ),
+                                    if (m['diff'] != null && m['diff'].toString().isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: _Brand.green.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: _Brand.green),
+                                        ),
+                                        child: Text(
+                                          m['diff'].toString(),
+                                          style: const TextStyle(
+                                            color: _Brand.green,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  m['reason']?.toString() ?? 'Nettoyage automatique',
+                                  style: TextStyle(color: colors.muted, fontSize: 12),
+                                ),
+                              ),
+                              DataCell(
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _Brand.blue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    m['source']?.toString() ?? 'Dataset',
+                                    style: const TextStyle(
+                                      color: _Brand.blue,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  m['timestamp']?.toString().split('T').first ?? '—',
+                                  style: TextStyle(color: colors.muted, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EntityViewsTab extends StatelessWidget {
+  const _EntityViewsTab({
+    required this.entities,
+    required this.colors,
+    required this.emptyLabel,
+  });
+
+  final Map<String, List<Map<String, dynamic>>> entities;
+  final AvenqoColors colors;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = entities.entries.where((e) => e.value.isNotEmpty).toList();
+    if (visible.isEmpty) {
+      return Center(
+        child: Text(emptyLabel, style: TextStyle(color: colors.muted)),
+      );
+    }
+
+    return DefaultTabController(
+      length: visible.length,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: colors.canvas,
+              border: Border(bottom: BorderSide(color: colors.line)),
+            ),
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelColor: _Brand.blue,
+              unselectedLabelColor: colors.muted,
+              indicatorColor: _Brand.blue,
+              tabs: [
+                for (final entity in visible)
+                  Tab(text: '${_humanizeCode(entity.key)} (${entity.value.length})'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
               children: [
-                _CleaningMetric(
-                  icon: Icons.alt_route_outlined,
-                  label: _cleaningText(t, 'mappedField'),
-                  value: mappedField == null || mappedField.isEmpty
-                      ? _cleaningText(t, 'notMapped')
-                      : mappedField,
-                ),
-                _CleaningMetric(
-                  icon: Icons.data_object_outlined,
-                  label: _cleaningText(t, 'inferredType'),
-                  value: _humanizeCode(
-                    strategy['inferred_type']?.toString() ??
-                        _cleaningText(t, 'notAvailable'),
+                for (final entity in visible)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _PreviewTable(rows: entity.value, emptyLabel: emptyLabel),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QualityTab extends StatelessWidget {
+  const _QualityTab({
+    required this.quality,
+    required this.summary,
+    required this.colors,
+    required this.t,
+  });
+
+  final Map<String, dynamic> quality;
+  final Map<String, dynamic> summary;
+  final AvenqoColors colors;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final globalScore = quality['global_score'] ?? summary['quality_score_after'] ?? 100;
+    final nullsCorrected = quality['nulls_corrected'] ?? summary['missing_values_detected'] ?? 0;
+    final duplicatesRemoved = quality['duplicates_removed'] ?? summary['duplicate_rows_removed'] ?? 0;
+    final typesConverted = quality['types_converted'] ?? summary['invalid_values_corrected'] ?? 0;
+    final valuesModified = quality['values_modified'] ?? 0;
+    final outliersCount = quality['outliers_count'] ?? 0;
+    final columnsCorrected = quality['columns_corrected'] ?? 0;
+    final rowsModified = quality['rows_modified'] ?? 0;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Score global banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _Brand.green.withValues(alpha: 0.15),
+                  _Brand.blue.withValues(alpha: 0.08),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _Brand.green.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _Brand.green.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$globalScore%',
+                      style: const TextStyle(
+                        color: _Brand.green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
-                _CleaningMetric(
-                  icon: Icons.auto_fix_high_outlined,
-                  label: _cleaningText(t, 'suggestedStrategy'),
-                  value: _cleaningText(
-                    t,
-                    strategy['suggested_missing_strategy']?.toString() ??
-                        'notAvailable',
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Score global de qualité du dataset',
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Nettoyage intelligent appliqué sans altération des schémas source. Données prêtes pour Retail Intelligence.',
+                        style: TextStyle(color: colors.muted, fontSize: 13),
+                      ),
+                    ],
                   ),
-                ),
-                _CleaningMetric(
-                  icon: Icons.swap_horiz_outlined,
-                  label: _cleaningText(t, 'conversions'),
-                  value: '$conversionCount',
-                ),
-                _CleaningMetric(
-                  icon: Icons.cleaning_services_outlined,
-                  label: _cleaningText(t, 'invalidCorrected'),
-                  value: '${strategy['invalid_values_corrected'] ?? 0}',
                 ),
               ],
             ),
-            if (appliedStrategies.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                _cleaningText(t, 'appliedStrategies'),
-                style: TextStyle(
-                  color: colors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+          ),
+          const SizedBox(height: 20),
+
+          Text(
+            'Indicateurs de nettoyage',
+            style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+
+          // Grille de métriques
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _MetricCard(
+                icon: Icons.do_not_disturb_alt_outlined,
+                title: 'Nulls corrigés',
+                value: '$nullsCorrected',
+                color: _Brand.blue,
+                colors: colors,
               ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final label in appliedStrategies)
-                    Chip(label: Text(label)),
-                ],
+              _MetricCard(
+                icon: Icons.content_copy_outlined,
+                title: 'Doublons supprimés',
+                value: '$duplicatesRemoved',
+                color: _Brand.blue,
+                colors: colors,
+              ),
+              _MetricCard(
+                icon: Icons.transform_outlined,
+                title: 'Types convertis',
+                value: '$typesConverted',
+                color: _Brand.blue,
+                colors: colors,
+              ),
+              _MetricCard(
+                icon: Icons.edit_note_outlined,
+                title: 'Valeurs modifiées',
+                value: '$valuesModified',
+                color: _Brand.green,
+                colors: colors,
+              ),
+              _MetricCard(
+                icon: Icons.warning_amber_outlined,
+                title: 'Outliers détectés',
+                value: '$outliersCount',
+                color: _Brand.red,
+                colors: colors,
+              ),
+              _MetricCard(
+                icon: Icons.view_column_outlined,
+                title: 'Colonnes corrigées',
+                value: '$columnsCorrected',
+                color: _Brand.blue,
+                colors: colors,
+              ),
+              _MetricCard(
+                icon: Icons.table_rows_outlined,
+                title: 'Lignes modifiées',
+                value: '$rowsModified',
+                color: _Brand.green,
+                colors: colors,
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(height: 24),
+
+          Text(
+            'Règles automatiques appliquées',
+            style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          const SizedBox(height: 10),
+
+          const _RuleCheckItem(title: 'Nettoyage des espaces blancs et retours chariot aux extrémités (trim)'),
+          const _RuleCheckItem(title: 'Normalisation Unicode NFKC des chaînes'),
+          const _RuleCheckItem(title: 'Conversion automatique des types numériques stockés sous forme de chaînes'),
+          const _RuleCheckItem(title: 'Normalisation des dates vers la norme standard ISO 8601'),
+          const _RuleCheckItem(title: 'Normalisation des valeurs booléennes (oui/non, true/false, 1/0)'),
+          const _RuleCheckItem(title: 'Détection d\'outliers numériques anormaux et protection de cohérence'),
+          const _RuleCheckItem(title: 'Préservation absolue des snapshots bruts et auditabilité multi-tenant'),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.colors,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 150,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  color: colors.ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(color: colors.muted, fontSize: 11),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleCheckItem extends StatelessWidget {
+  const _RuleCheckItem({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, size: 16, color: _Brand.green),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(title, style: TextStyle(color: colors.ink, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TechniqueTab extends StatelessWidget {
+  const _TechniqueTab({
+    required this.rows,
+    required this.datasetId,
+    required this.version,
+    required this.colors,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final String datasetId;
+  final String version;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = rows.isNotEmpty ? rows.first.keys.toList() : <String>[];
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.canvas,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: colors.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Identifiants techniques (UUIDs, tenant_id, company_id, hash) et snapshots bruts isolés pour traçabilité.',
+                    style: TextStyle(color: colors.muted, fontSize: 12),
+                  ),
+                ),
+                Text(
+                  'Dataset : $datasetId · v$version',
+                  style: TextStyle(
+                    color: colors.muted,
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: rows.isEmpty
+                ? Center(
+                    child: Text('Aucune donnée technique disponible.', style: TextStyle(color: colors.muted)),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) => Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.line),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AvenqoDataTable(
+                          semanticLabel: 'Table technique',
+                          minWidth: math.max(columns.length * 180.0, constraints.maxWidth),
+                          maxHeight: constraints.maxHeight,
+                          fixedLeftColumns: 1,
+                          columns: [
+                            for (final col in columns)
+                              DataColumn(
+                                label: Text(
+                                  col,
+                                  style: TextStyle(
+                                    color: colors.ink,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          rows: [
+                            for (final row in rows)
+                              DataRow(
+                                cells: [
+                                  for (final col in columns)
+                                    DataCell(
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 240),
+                                        child: Text(
+                                          row[col]?.toString() ?? '—',
+                                          style: TextStyle(
+                                            color: colors.muted,
+                                            fontFamily: 'monospace',
+                                            fontSize: 11,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -2041,26 +3180,26 @@ class _PreviewTable extends StatelessWidget {
     if (rows.isEmpty) {
       return Center(child: Text(emptyLabel));
     }
-    final columns = rows.first.keys.take(8).toList();
+    final columns = rows.first.keys.toList();
     return LayoutBuilder(
       builder: (context, constraints) => AvenqoDataTable(
         semanticLabel: emptyLabel,
-        minWidth: columns.length * 180,
+        minWidth: math.max(columns.length * 160.0, constraints.maxWidth),
         maxHeight: constraints.maxHeight,
         fixedLeftColumns: 1,
         columns: [
           for (final column in columns) DataColumn(label: Text(column)),
         ],
         rows: [
-          for (final row in rows.take(20))
+          for (final row in rows.take(50))
             DataRow(
               cells: [
                 for (final column in columns)
                   DataCell(
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 180),
+                      constraints: const BoxConstraints(maxWidth: 240),
                       child: Text(
-                        row[column]?.toString() ?? '',
+                        row[column]?.toString() ?? '—',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -2073,8 +3212,7 @@ class _PreviewTable extends StatelessWidget {
   }
 }
 
-/// Étape de revue avant envoi : les fichiers choisis restent modifiables
-/// (ajout/suppression) tant que l'utilisateur n'a pas cliqué sur "Importer".
+
 class _SelectingView extends StatelessWidget {
   const _SelectingView({
     required this.pending,

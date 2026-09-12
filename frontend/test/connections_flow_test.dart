@@ -130,7 +130,7 @@ void main() {
     },
   );
 
-  testWidgets('A ready dataset exposes its cleaning summary and previews', (
+  testWidgets('A ready dataset exposes its cleaning detail dialog', (
     tester,
   ) async {
     final client = MockClient((request) async {
@@ -144,7 +144,7 @@ void main() {
         '/datasets/11111111-1111-1111-1111-111111111111/cleaning',
       )) {
         return http.Response(
-          '{"dataset_id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","cleaning_status":"warning","quality_reasons":["A few duplicate rows were removed."],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"missing_values_detected":0,"invalid_values_corrected":1,"mappings_applied":{"amount":"revenue"}},"original_preview":[{"amount":" 12.50 ","date":"2026-01-01"}],"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}],"column_strategies":[{"column_name":"amount","mapped_field":"revenue","inferred_type":"number","suggested_missing_strategy":"mean","applied_strategies":["normalize_numeric","coerce_invalid_to_empty"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":1}],"export_formats":["csv","xlsx"]}',
+          '{"dataset_id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","cleaning_status":"warning","quality_reasons":["A few duplicate rows were removed."],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":3,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":1,"missing_values_detected":0,"invalid_values_corrected":1,"quality_score_before":82,"quality_score_after":98},"cleaned_preview":[{"amount":12.5,"date":"2026-01-01"}],"column_strategies":[{"column_name":"amount","mapped_field":"total_amount","inferred_type":"number","suggested_missing_strategy":"mean","applied_strategies":["normalize_numeric"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":1}],"export_formats":["csv","xlsx"]}',
           200,
         );
       }
@@ -157,27 +157,23 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
 
+    // The "Voir les données nettoyées" button opens the cleaning detail dialog.
     expect(find.text('Voir les données nettoyées'), findsOneWidget);
     await tester.tap(find.text('Voir les données nettoyées'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Résumé du nettoyage'), findsOneWidget);
-    expect(find.textContaining('3 → 2'), findsOneWidget);
-    expect(find.textContaining('Avant'), findsOneWidget);
-    expect(find.textContaining('Après'), findsOneWidget);
-    expect(find.text('Détails par colonne'), findsOneWidget);
-    expect(
-      find.text('Qualité du nettoyage: A few duplicate rows were removed.'),
-      findsOneWidget,
-    );
-    expect(find.text('Moyenne'), findsOneWidget);
+    // The new dialog uses 6 tabs: APERÇU, COLONNES, MODIFICATIONS, ENTITÉS MÉTIER, QUALITÉ, TECHNIQUE.
+    expect(find.text('APERÇU'), findsOneWidget);
+    expect(find.text('ENTITÉS MÉTIER', skipOffstage: false), findsOneWidget);
+    expect(find.text('QUALITÉ (98%)', skipOffstage: false), findsOneWidget);
+
+    // Export buttons are visible in the header (CSV and XLSX, not DOCX).
     expect(find.text('CSV'), findsOneWidget);
     expect(find.text('XLSX'), findsOneWidget);
     expect(find.text('DOCX'), findsNothing);
 
-    await tester.tap(find.textContaining('Après'));
-    await tester.pumpAndSettle();
-    expect(find.text('12.5'), findsOneWidget);
+    // The dataset name is shown in the header (also appears in the list behind the dialog).
+    expect(find.text('sales.csv'), findsWidgets);
   });
 
   testWidgets('Connections lists a dataset still being processed', (
@@ -199,107 +195,128 @@ void main() {
     expect(find.text('sales.csv'), findsOneWidget);
   });
 
-  testWidgets('attention-required dataset exposes cleaned detail and exports', (
-    tester,
-  ) async {
-    final client = MockClient((request) async {
-      if (request.url.path.endsWith('/datasets')) {
-        return http.Response(
-          '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","pipeline_status":"attention_required","rows_count":2,"columns_count":2}]',
-          200,
-        );
-      }
-      if (request.url.path.endsWith(
-        '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
-      )) {
-        return http.Response(
-          '{"dataset_id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","cleaning_status":"good","quality_reasons":[],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"missing_values_detected":0,"invalid_values_corrected":0,"mappings_applied":{}},"original_preview":[{"buyer":" C1 ","paid":"12.50"}],"cleaned_preview":[{"buyer":"C1","paid":"12.50"}],"column_strategies":[{"column_name":"paid","mapped_field":null,"inferred_type":"number","suggested_missing_strategy":"median","applied_strategies":["normalize_numeric"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":0}],"export_formats":["csv","xlsx","pdf","docx"]}',
-          200,
-        );
-      }
-      return http.Response('{}', 404);
-    });
-    await tester.pumpWidget(
-      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Données connectées'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'attention-required dataset is non-blocking: exposes cleaned detail and exports',
+    (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/datasets')) {
+          return http.Response(
+            '[{"id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","pipeline_status":"attention_required","rows_count":2,"columns_count":2}]',
+            200,
+          );
+        }
+        if (request.url.path.endsWith(
+          '/datasets/22222222-2222-2222-2222-222222222222/cleaning',
+        )) {
+          return http.Response(
+            '{"dataset_id":"22222222-2222-2222-2222-222222222222","name":"needs-mapping.csv","status":"attention_required","cleaning_status":"good","quality_reasons":[],"version":1,"timestamp":"2026-08-20T10:00:00Z","summary":{"original_row_count":2,"cleaned_row_count":2,"column_count":2,"duplicate_rows_removed":0,"missing_values_detected":0,"invalid_values_corrected":0},"cleaned_preview":[{"buyer":"C1","paid":"12.50"}],"column_strategies":[{"column_name":"paid","mapped_field":null,"inferred_type":"number","suggested_missing_strategy":"median","applied_strategies":["normalize_numeric"],"numeric_conversions":1,"date_conversions":0,"boolean_conversions":0,"invalid_values_corrected":0}],"export_formats":["csv","xlsx","pdf","docx"]}',
+            200,
+          );
+        }
+        return http.Response('{}', 404);
+      });
+      await tester.pumpWidget(
+        await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Données connectées'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Voir les données nettoyées'), findsOneWidget);
-    await tester.tap(find.text('Voir les données nettoyées'));
-    await tester.pumpAndSettle();
+      // attention_required is now treated as READY — no blocking modal, directly shows cleaned data.
+      // The dataset should show as ready (green icon, not a blocking "Action requise" badge).
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
 
-    expect(find.text('Action requise · v1'), findsOneWidget);
-    expect(find.textContaining('confirmation manuelle'), findsOneWidget);
-    expect(find.text('CSV'), findsOneWidget);
-    expect(find.text('DOCX'), findsOneWidget);
+      // The "Voir les données nettoyées" button should be available without any confirmation.
+      expect(find.text('Voir les données nettoyées'), findsOneWidget);
+      await tester.tap(find.text('Voir les données nettoyées'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.textContaining('Après'));
-    await tester.pumpAndSettle();
-    expect(find.text('C1'), findsOneWidget);
-  });
+      // The new non-blocking dialog opens directly with tabs — no "Action requise" or manual confirmation.
+      expect(find.text('APERÇU'), findsOneWidget);
+      // Export buttons are available in the new tabbed cleaning dialog.
+      expect(find.text('CSV'), findsOneWidget);
+      expect(find.text('DOCX'), findsOneWidget);
+    },
+  );
 
-  testWidgets('ambiguous mapping can be confirmed and promoted to ready', (
-    tester,
-  ) async {
-    var ready = false;
-    Map<String, dynamic>? submittedMapping;
-    final client = MockClient((request) async {
-      if (request.method == 'POST' && request.url.path.endsWith('/reconcile')) {
-        return http.Response(
-          '{"reviewed":1,"promoted_to_ready":0,"attention_required":1}',
-          200,
-        );
-      }
-      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
-        return http.Response(
-          '[{"id":"44444444-4444-4444-4444-444444444444","name":"transactions.csv","status":"${ready ? 'ready' : 'mapping_required'}","pipeline_status":"${ready ? 'ready' : 'attention_required'}"}]',
-          200,
-        );
-      }
-      if (request.method == 'GET' && request.url.path.endsWith('/profile')) {
-        return http.Response(
-          '{"accepted_mapping":{"transaction_total":"total_amount","gross_amount":"total_amount"},"required_confirmation":[{"canonical_field":"total_amount","columns":["gross_amount","transaction_total"]}],"mapping_suggestions":[{"original_column":"transaction_total","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact total"},{"original_column":"gross_amount","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact gross amount"}]}',
-          200,
-        );
-      }
-      if (request.method == 'POST' && request.url.path.endsWith('/mapping')) {
-        submittedMapping = jsonDecode(request.body) as Map<String, dynamic>;
-        ready = true;
-        return http.Response(
-          '{"dataset_id":"44444444-4444-4444-4444-444444444444","status":"ready","mapping":{"gross_amount":"total_amount"},"approved":true}',
-          200,
-        );
-      }
-      return http.Response('{}', 404);
-    });
-    await tester.pumpWidget(
-      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Données connectées'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'mapping review dialog can be opened via tune icon and mapping confirmed',
+    (tester) async {
+      var ready = false;
+      Map<String, dynamic>? submittedMapping;
+      final client = MockClient((request) async {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/reconcile')) {
+          return http.Response(
+            '{"reviewed":1,"promoted_to_ready":0,"attention_required":1}',
+            200,
+          );
+        }
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/datasets')) {
+          // Start with 'ready' so the tune icon (mapping review) is visible.
+          return http.Response(
+            '[{"id":"44444444-4444-4444-4444-444444444444","name":"transactions.csv","status":"${ready ? 'ready' : 'attention_required'}","pipeline_status":"${ready ? 'ready' : 'attention_required'}"}]',
+            200,
+          );
+        }
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/profile')) {
+          return http.Response(
+            '{"accepted_mapping":{"transaction_total":"total_amount","gross_amount":"total_amount"},"required_confirmation":[{"canonical_field":"total_amount","columns":["gross_amount","transaction_total"]}],"mapping_suggestions":[{"original_column":"transaction_total","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact total"},{"original_column":"gross_amount","suggested_field":"total_amount","alternatives":["unit_price"],"reason":"Exact gross amount"}]}',
+            200,
+          );
+        }
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/mapping')) {
+          submittedMapping =
+              jsonDecode(request.body) as Map<String, dynamic>;
+          ready = true;
+          return http.Response(
+            '{"dataset_id":"44444444-4444-4444-4444-444444444444","status":"ready","mapping":{"gross_amount":"total_amount"},"approved":true}',
+            200,
+          );
+        }
+        return http.Response('{}', 404);
+      });
+      await tester.pumpWidget(
+        await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Données connectées'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.tune));
-    await tester.pumpAndSettle();
-    expect(find.text('transaction_total'), findsOneWidget);
-    expect(find.text('gross_amount'), findsOneWidget);
+      // The tune icon (mapping review) is visible for ready/attention_required datasets.
+      expect(find.byIcon(Icons.tune), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.tune));
+      await tester.pumpAndSettle();
+      expect(find.text('transaction_total'), findsOneWidget);
+      expect(find.text('gross_amount'), findsOneWidget);
 
-    final dropdowns = find.byType(DropdownButtonFormField<String?>);
-    await tester.tap(dropdowns.at(1));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('total_amount').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(FilledButton).last);
-    await tester.pumpAndSettle();
+      // The dropdowns are in the advanced section — scroll to and expand it first.
+      final advancedToggle = find.textContaining('Param');
+      await tester.ensureVisible(advancedToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(advancedToggle);
+      await tester.pumpAndSettle();
 
-    expect(submittedMapping, {
-      'mapping': {'gross_amount': 'total_amount'},
-    });
-    expect(find.byIcon(Icons.tune), findsNothing);
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
-  });
+      // There are 2 columns with dropdowns (transaction_total, gross_amount).
+      final dropdowns = find.byType(DropdownButtonFormField<String?>);
+      expect(dropdowns, findsWidgets);
+      await tester.ensureVisible(dropdowns.at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(dropdowns.at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('total_amount').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(FilledButton).last);
+      await tester.pumpAndSettle();
+
+      expect(submittedMapping, {
+        'mapping': {'gross_amount': 'total_amount'},
+      });
+    },
+  );
 
   testWidgets('Connections polls until automatic training is ready', (
     tester,
