@@ -446,7 +446,12 @@ html.dark .auth-top-controls .region-language-trigger:hover {
 .auth-form { display: flex; flex-direction: column; gap: 17px; }
 .auth-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .auth-field { display: flex; flex-direction: column; gap: 7px; }
-.auth-field > span { color: #303744; font-size: 12px; font-weight: 650; }
+.auth-field-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.auth-field > span, .auth-field-header > span { color: #303744; font-size: 12px; font-weight: 650; }
+.auth-forgot-link { color: var(--blue-dark); font-size: 12px; font-weight: 600; text-decoration: none; transition: color .15s ease; outline-offset: 2px; }
+.auth-forgot-link:hover { text-decoration: underline; color: #064eb5; }
+html.dark .auth-forgot-link, .dark .auth-forgot-link { color: #38bdf8; }
+html.dark .auth-forgot-link:hover, .dark .auth-forgot-link:hover { color: #7dd3fc; }
 .auth-field input, .auth-field select { width: 100%; min-height: 47px; padding: 0 13px; color: var(--ink); background: #ffffff; border: 1px solid #ccd3dd; border-radius: 6px; outline: none; font: inherit; font-size: 14px; }
 .auth-field input:focus, .auth-field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(8,124,240,.12); }
 .auth-field small { color: #737c89; font-size: 10px; line-height: 1.45; }

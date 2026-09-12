@@ -10,7 +10,25 @@ const rawBase = (
 
 const API_BASE_URL = rawBase.endsWith("/api/v1") ? rawBase : `${rawBase}/api/v1`;
 
-const ALLOWED_ACTIONS = new Set(["login", "register", "refresh", "logout", "me"]);
+const ALLOWED_ACTIONS = new Set([
+  "login",
+  "register",
+  "refresh",
+  "logout",
+  "me",
+  "forgot-password",
+  "reset-password",
+]);
+
+const ACTION_UPSTREAM_MAP: Record<string, string> = {
+  login: "/auth/login",
+  register: "/auth/register",
+  refresh: "/auth/refresh",
+  logout: "/auth/logout",
+  me: "/auth/me",
+  "forgot-password": "/auth/password/forgot",
+  "reset-password": "/auth/password/reset",
+};
 
 export async function POST(
   request: NextRequest,
@@ -40,7 +58,8 @@ export async function POST(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const upstream = await fetch(`${API_BASE_URL}/auth/${action}`, {
+    const upstreamPath = ACTION_UPSTREAM_MAP[action] || `/auth/${action}`;
+    const upstream = await fetch(`${API_BASE_URL}${upstreamPath}`, {
       method: "POST",
       headers,
       body: body || undefined,
