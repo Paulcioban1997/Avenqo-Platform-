@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, AlertCircle } from "lucide-react";
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { RegionLanguageSelector } from "./region-language-selector";
 import { ThemeToggle } from "./theme-toggle";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -33,14 +32,19 @@ function isPasswordStrong(pw: string): boolean {
   return hasUpper && hasLower && hasDigit && hasSymbol;
 }
 
-function AuthFormInner({ mode }: { mode: AuthMode }) {
+export function AuthForm({ mode }: { mode: AuthMode }) {
   const isRegister = mode === "register";
   const isForgot = mode === "forgot-password";
   const isReset = mode === "reset-password";
   const isLogin = mode === "login";
 
-  const searchParams = useSearchParams();
-  const tokenFromUrl = searchParams.get("token") || "";
+  const [tokenFromUrl, setTokenFromUrl] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const t = new URLSearchParams(window.location.search).get("token") || "";
+      setTokenFromUrl(t);
+    }
+  }, []);
 
   const { locale } = useLocale();
   const s = getAuthStrings(locale);
@@ -420,14 +424,6 @@ function AuthFormInner({ mode }: { mode: AuthMode }) {
         </div>
       </section>
     </div>
-  );
-}
-
-export function AuthForm({ mode }: { mode: AuthMode }) {
-  return (
-    <Suspense fallback={<div className="auth-layout" />}>
-      <AuthFormInner mode={mode} />
-    </Suspense>
   );
 }
 
