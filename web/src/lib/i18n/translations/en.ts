@@ -135,13 +135,13 @@ const en: Translations = {
       {
         tier: "Demo",
         title: "To get started",
-        items: ["1 Avenqo module", "Up to 5 users", "Built-in assistant", "Standard support"],
+        items: ["3 Avenqo modules (Retail, CRM, Accounting)", "Up to 5 users", "Built-in assistant", "Standard support"],
         action: "Talk to an advisor",
       },
       {
         tier: "Professional",
         title: "To accelerate",
-        items: ["Up to 5 modules", "Up to 25 users", "Advanced automations", "Priority support"],
+        items: ["Up to 6 modules", "Up to 25 users", "Advanced automations", "Priority support"],
         action: "Try for free",
       },
       {

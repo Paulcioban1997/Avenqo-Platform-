@@ -135,13 +135,13 @@ const vi: Translations = {
       {
         tier: "Demo",
         title: "Để bắt đầu",
-        items: ["1 mô-đun Avenqo", "Tối đa 5 người dùng", "Trợ lý tích hợp sẵn", "Hỗ trợ tiêu chuẩn"],
+        items: ["3 mô-đun Avenqo (Retail, CRM, Accounting)", "Tối đa 5 người dùng", "Trợ lý tích hợp sẵn", "Hỗ trợ tiêu chuẩn"],
         action: "Nói chuyện với cố vấn",
       },
       {
         tier: "Professional",
         title: "Để tăng tốc",
-        items: ["Tối đa 5 mô-đun", "Tối đa 25 người dùng", "Tự động hóa nâng cao", "Hỗ trợ ưu tiên"],
+        items: ["Tối đa  6 mô-đun", "Tối đa 25 người dùng", "Tự động hóa nâng cao", "Hỗ trợ ưu tiên"],
         action: "Dùng thử miễn phí",
       },
       {

@@ -135,13 +135,13 @@ const af: Translations = {
       {
         tier: "Demo",
         title: "Om te begin",
-        items: ["1 Avenqo-module", "Tot 5 gebruikers", "Ingeboude assistent", "Standaardondersteuning"],
+        items: ["3 Avenqo-module (Retail, CRM, Accounting)", "Tot 5 gebruikers", "Ingeboude assistent", "Standaardondersteuning"],
         action: "Praat met 'n adviseur",
       },
       {
         tier: "Professional",
         title: "Om te versnel",
-        items: ["Tot 5 modules", "Tot 25 gebruikers", "Gevorderde outomatisering", "Prioriteitondersteuning"],
+        items: ["Tot  6 modules", "Tot 25 gebruikers", "Gevorderde outomatisering", "Prioriteitondersteuning"],
         action: "Probeer gratis",
       },
       {

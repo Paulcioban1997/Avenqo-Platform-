@@ -134,13 +134,13 @@ const zh: Translations = {
       {
         tier: "Demo",
         title: "适合起步",
-        items: ["1 个 Avenqo 模块", "最多 5 位用户", "内置智能助手", "标准支持"],
+        items: ["3 个 Avenqo 模块 (Retail, CRM, Accounting)", "最多 5 位用户", "内置智能助手", "标准支持"],
         action: "联系顾问",
       },
       {
         tier: "Professional",
         title: "适合加速",
-        items: ["最多 5 个模块", "最多 25 位用户", "高级自动化", "优先支持"],
+        items: ["最多  6 个模块", "最多 25 位用户", "高级自动化", "优先支持"],
         action: "免费试用",
       },
       {

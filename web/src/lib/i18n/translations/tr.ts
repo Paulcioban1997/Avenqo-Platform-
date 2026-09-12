@@ -135,13 +135,13 @@ const tr: Translations = {
       {
         tier: "Demo",
         title: "Başlamak için",
-        items: ["1 Avenqo modülü", "5 kullanıcıya kadar", "Entegre asistan", "Standart destek"],
+        items: ["3 Avenqo modülü (Retail, CRM, Accounting)", "5 kullanıcıya kadar", "Entegre asistan", "Standart destek"],
         action: "Bir danışmanla konuşun",
       },
       {
         tier: "Professional",
         title: "Hızlanmak için",
-        items: ["5 modüle kadar", "25 kullanıcıya kadar", "Gelişmiş otomasyonlar", "Öncelikli destek"],
+        items: [" 6 modüle kadar", "25 kullanıcıya kadar", "Gelişmiş otomasyonlar", "Öncelikli destek"],
         action: "Ücretsiz deneyin",
       },
       {

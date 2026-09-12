@@ -135,13 +135,13 @@ const cs: Translations = {
       {
         tier: "Demo",
         title: "Pro začátek",
-        items: ["1 modul Avenqo", "Až 5 uživatelů", "Vestavěný asistent", "Standardní podpora"],
+        items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Až 5 uživatelů", "Vestavěný asistent", "Standardní podpora"],
         action: "Promluvte si s poradcem",
       },
       {
         tier: "Professional",
         title: "Pro zrychlení",
-        items: ["Až 5 modulů", "Až 25 uživatelů", "Pokročilé automatizace", "Prioritní podpora"],
+        items: ["Až  6 modulů", "Až 25 uživatelů", "Pokročilé automatizace", "Prioritní podpora"],
         action: "Vyzkoušet zdarma",
       },
       {

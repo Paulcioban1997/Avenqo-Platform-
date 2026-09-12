@@ -135,13 +135,13 @@ const tl: Translations = {
       {
         tier: "Demo",
         title: "Para magsimula",
-        items: ["1 Avenqo module", "Hanggang 5 user", "Built-in na assistant", "Standard na suporta"],
+        items: ["3 Avenqo module (Retail, CRM, Accounting)", "Hanggang 5 user", "Built-in na assistant", "Standard na suporta"],
         action: "Kausapin ang isang consultant",
       },
       {
         tier: "Professional",
         title: "Para pabilisin",
-        items: ["Hanggang 5 module", "Hanggang 25 user", "Advanced na automation", "Priyoridad na suporta"],
+        items: ["Hanggang  6 module", "Hanggang 25 user", "Advanced na automation", "Priyoridad na suporta"],
         action: "Subukan nang libre",
       },
       {

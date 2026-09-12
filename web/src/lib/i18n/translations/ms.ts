@@ -135,13 +135,13 @@ const ms: Translations = {
       {
         tier: "Demo",
         title: "Untuk bermula",
-        items: ["1 modul Avenqo", "Sehingga 5 pengguna", "Pembantu terbina dalam", "Sokongan standard"],
+        items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Sehingga 5 pengguna", "Pembantu terbina dalam", "Sokongan standard"],
         action: "Bercakap dengan perunding",
       },
       {
         tier: "Professional",
         title: "Untuk mempercepatkan",
-        items: ["Sehingga 5 modul", "Sehingga 25 pengguna", "Automasi lanjutan", "Sokongan keutamaan"],
+        items: ["Sehingga  6 modul", "Sehingga 25 pengguna", "Automasi lanjutan", "Sokongan keutamaan"],
         action: "Cuba percuma",
       },
       {

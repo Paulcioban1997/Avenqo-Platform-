@@ -135,13 +135,13 @@ const ro: Translations = {
       {
         tier: "Demo",
         title: "Pentru început",
-        items: ["1 modul Avenqo", "Până la 5 utilizatori", "Asistent integrat", "Suport standard"],
+        items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Până la 5 utilizatori", "Asistent integrat", "Suport standard"],
         action: "Vorbește cu un consilier",
       },
       {
         tier: "Professional",
         title: "Pentru accelerare",
-        items: ["Până la 5 module", "Până la 25 de utilizatori", "Automatizări avansate", "Suport prioritar"],
+        items: ["Până la  6 module", "Până la 25 de utilizatori", "Automatizări avansate", "Suport prioritar"],
         action: "Încearcă gratuit",
       },
       {
