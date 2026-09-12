@@ -262,11 +262,12 @@ class _PricingContent extends StatelessWidget {
                       _PlanCard(
                         plan: pricing.plans[index],
                         price: _livePrice(
+                          context,
                           index,
                           pricing.plans[index],
                           pricing.monthlyPrice,
                         ),
-                        moduleAllowance: _moduleAllowance(context, index),
+                        features: _planFeatures(context, index),
                         featured: index == 1,
                         popularLabel: pricing.popular,
                         onPressed: index == pricing.plans.length - 1
@@ -327,32 +328,113 @@ class _PricingContent extends StatelessWidget {
     );
   }
 
-  String _livePrice(int index, PricingPlan fallback, String monthlyPrice) {
-    if (index >= livePlans.length || livePlans[index] is! Map) {
-      return fallback.priceLabel;
+  String _livePrice(
+    BuildContext context,
+    int index,
+    PricingPlan fallback,
+    String monthlyPrice,
+  ) {
+    final language = AvenqoLocaleScope.of(context).code.split('-').first;
+    if (index >= 2) {
+      return language == 'fr' ? 'Sur devis' : (language == 'ro' ? 'La cerere' : 'Custom quote');
     }
-    final plan = livePlans[index] as Map;
-    final price = plan['monthly_price_usd'];
-    return price == null
-      ? fallback.priceLabel
-      : monthlyPrice.replaceFirst('{price}', '$price');
+    if (index < livePlans.length && livePlans[index] is Map) {
+      final plan = livePlans[index] as Map;
+      final price = plan['monthly_price_usd'];
+      if (price != null) {
+        return monthlyPrice.replaceFirst('{price}', '$price');
+      }
+    }
+    if (index == 0) {
+      return language == 'fr' ? '28 USD / mois' : (language == 'ro' ? '28 USD / lună' : '\$28 USD / month');
+    }
+    return language == 'fr' ? '49 USD / mois' : (language == 'ro' ? '49 USD / lună' : '\$49 USD / month');
   }
 
-  String _moduleAllowance(BuildContext context, int index) {
+  List<String> _planFeatures(BuildContext context, int index) {
     final language = AvenqoLocaleScope.of(context).code.split('-').first;
-    final count = index == 0 ? 2 : 8;
-    if (index >= 2) {
+    if (index == 0) {
       return switch (language) {
-        'fr' => 'Tous les modules inclus',
-        'ro' => 'Toate modulele incluse',
-        _ => 'All modules included',
+        'fr' => const [
+          '3 agents/modules Avenqo',
+          '6 500 crédits IA / mois',
+          'Jusqu\'à 5 utilisateurs',
+          'AI Assistant',
+          'Connexions standards',
+          'Support standard',
+        ],
+        'ro' => const [
+          '3 agenți/module Avenqo',
+          '6 500 credite AI / lună',
+          'Până la 5 utilizatori',
+          'AI Assistant',
+          'Conexiuni standard',
+          'Suport standard',
+        ],
+        _ => const [
+          '3 Avenqo agents/modules',
+          '6,500 AI credits / month',
+          'Up to 5 users',
+          'AI Assistant',
+          'Standard connections',
+          'Standard support',
+        ],
+      };
+    } else if (index == 1) {
+      return switch (language) {
+        'fr' => const [
+          'Jusqu\'à 6 agents/modules Avenqo',
+          '25 000 crédits IA / mois',
+          'Jusqu\'à 25 utilisateurs',
+          'Automatisations avancées',
+          'Analytics avancés',
+          'Accompagnement / support prioritaire',
+        ],
+        'ro' => const [
+          'Până la 6 agenți/module Avenqo',
+          '25 000 credite AI / lună',
+          'Până la 25 utilizatori',
+          'Automatizări avansate',
+          'Analitice avansate',
+          'Asistență prioritară',
+        ],
+        _ => const [
+          'Up to 6 Avenqo agents/modules',
+          '25,000 AI credits / month',
+          'Up to 25 users',
+          'Advanced automations',
+          'Advanced analytics',
+          'Priority onboarding / support',
+        ],
+      };
+    } else {
+      return switch (language) {
+        'fr' => const [
+          'Tous les agents/modules Avenqo',
+          'Crédits IA sur mesure',
+          'Utilisateurs sur mesure',
+          'Connexions personnalisées',
+          'Sécurité / gouvernance avancée',
+          'Support Enterprise',
+        ],
+        'ro' => const [
+          'Toate modulele/agenții Avenqo',
+          'Credite AI personalizate',
+          'Utilizatori personalizați',
+          'Conexiuni personalizate',
+          'Securitate și guvernanță avansată',
+          'Suport Enterprise',
+        ],
+        _ => const [
+          'All Avenqo agents/modules',
+          'Custom AI credits',
+          'Custom users',
+          'Custom connections',
+          'Advanced security & governance',
+          'Enterprise support',
+        ],
       };
     }
-    return switch (language) {
-      'fr' => '$count modules inclus',
-      'ro' => '$count module incluse',
-      _ => '$count modules included',
-    };
   }
 }
 
@@ -360,7 +442,7 @@ class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.price,
-    required this.moduleAllowance,
+    required this.features,
     required this.featured,
     required this.popularLabel,
     required this.onPressed,
@@ -368,7 +450,7 @@ class _PlanCard extends StatelessWidget {
 
   final PricingPlan plan;
   final String price;
-  final String moduleAllowance;
+  final List<String> features;
   final bool featured;
   final String popularLabel;
   final VoidCallback onPressed;
@@ -502,12 +584,7 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: 22),
           Divider(color: featured ? Colors.white24 : colors.line),
           const SizedBox(height: 18),
-          for (final item in [
-            moduleAllowance,
-            ...plan.items.where(
-              (item) => !item.toLowerCase().contains('retail intelligence'),
-            ),
-          ])
+          for (final item in features)
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Row(

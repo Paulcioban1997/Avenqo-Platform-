@@ -87,7 +87,6 @@ const ro: Translations = {
       { name: "Avenqo Documents", description: "Transformă documentele primite în operațiuni structurate." },
       { name: "Avenqo Analytics", description: "Înțelege tendințele și abaterile care contează cu adevărat." },
       { name: "Avenqo Marketing", description: "Orchestrează campanii mai relevante și mai ușor de măsurat." },
-      { name: "Avenqo Knowledge", description: "Oferă răspunsuri fiabile din cunoștințele companiei." },
       { name: "Avenqo Voice", description: "Automatizează interacțiunile vocale fără a pierde contextul clientului." },
       { name: "Avenqo Workflow", description: "Conectează echipele și automatizează sarcinile repetitive." },
       { name: "Avenqo Media", description: "Produce și organizează conținutul dintr-un singur spațiu." },

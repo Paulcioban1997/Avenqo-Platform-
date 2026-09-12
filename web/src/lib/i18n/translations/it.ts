@@ -87,7 +87,6 @@ const it: Translations = {
       { name: "Avenqo Documents", description: "Trasforma i documenti in arrivo in operazioni strutturate." },
       { name: "Avenqo Analytics", description: "Comprendi le tendenze e gli scostamenti che contano davvero." },
       { name: "Avenqo Marketing", description: "Orchestra campagne più pertinenti e misurabili." },
-      { name: "Avenqo Knowledge", description: "Fornisci risposte affidabili basate sulla conoscenza aziendale." },
       { name: "Avenqo Voice", description: "Automatizza le interazioni vocali senza perdere il contesto." },
       { name: "Avenqo Workflow", description: "Collega i team e automatizza le attività ripetitive." },
       { name: "Avenqo Media", description: "Produci e organizza i tuoi contenuti da un unico spazio." },

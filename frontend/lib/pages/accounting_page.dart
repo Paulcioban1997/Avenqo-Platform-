@@ -183,6 +183,8 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                     _buildConfirmedTag(),
                     const SizedBox(width: 8),
                     _buildForecastTag(),
+                    const SizedBox(width: 8),
+                    _buildDemoTag(),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -247,6 +249,33 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
             'PRÉVISION IA',
             style: TextStyle(
               color: _Brand.purple,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDemoTag() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: _Brand.amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _Brand.amber.withValues(alpha: 0.35)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.info_outline, size: 12, color: _Brand.amber),
+          SizedBox(width: 4),
+          Text(
+            'DONNÉES DE DÉMONSTRATION',
+            style: TextStyle(
+              color: _Brand.amber,
               fontSize: 10,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,

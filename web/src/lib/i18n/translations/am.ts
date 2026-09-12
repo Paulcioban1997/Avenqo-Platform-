@@ -87,7 +87,6 @@ const am: Translations = {
       { name: "Avenqo Documents", description: "የገቡ ሰነዶችን ወደ የተዋቀሩ ሂደቶች ይለውጡ።" },
       { name: "Avenqo Analytics", description: "በእውነት አስፈላጊ የሆኑ አዝማሚያዎችን እና ልዩነቶችን ይረዱ።" },
       { name: "Avenqo Marketing", description: "የበለጠ ተዛማጅ እና ሊለካ የሚችል ዘመቻዎችን ያደራጁ።" },
-      { name: "Avenqo Knowledge", description: "በኩባንያው እውቀት ላይ የተመሰረቱ አስተማማኝ መልሶችን ያቅርቡ።" },
       { name: "Avenqo Voice", description: "አውዱን ሳያጡ የድምጽ ግንኙነቶችን በራስ-ሰር ያድርጉ።" },
       { name: "Avenqo Workflow", description: "ቡድኖችን ያገናኙ እና ተደጋጋሚ ስራዎችን በራስ-ሰር ያድርጉ።" },
       { name: "Avenqo Media", description: "ይዘትዎን ከአንድ የስራ ቦታ ያዘጋጁ እና ያደራጁ።" },

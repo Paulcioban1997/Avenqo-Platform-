@@ -87,7 +87,6 @@ const ur: Translations = {
       { name: "Avenqo Documents", description: "آنے والی دستاویزات کو منظم عمل میں تبدیل کریں۔" },
       { name: "Avenqo Analytics", description: "ان رجحانات اور انحرافات کو سمجھیں جو واقعی اہم ہیں۔" },
       { name: "Avenqo Marketing", description: "زیادہ متعلقہ اور قابل پیمائش مہمات کو منظم کریں۔" },
-      { name: "Avenqo Knowledge", description: "کمپنی کے علم پر مبنی قابل اعتماد جوابات فراہم کریں۔" },
       { name: "Avenqo Voice", description: "سیاق و سباق کھوئے بغیر آواز کے تعاملات کو خودکار بنائیں۔" },
       { name: "Avenqo Workflow", description: "ٹیموں کو جوڑیں اور دہرائے جانے والے کاموں کو خودکار بنائیں۔" },
       { name: "Avenqo Media", description: "ایک ہی ورک اسپیس سے اپنا مواد تیار اور منظم کریں۔" },

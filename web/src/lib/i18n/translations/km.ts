@@ -87,7 +87,6 @@ const km: Translations = {
       { name: "Avenqo Documents", description: "ប្រែក្លាយឯកសារចូលទៅជាដំណើរការមានរចនាសម្ព័ន្ធ។" },
       { name: "Avenqo Analytics", description: "យល់ពីនិន្នាការ និងគម្លាតដែលសំខាន់ពិតប្រាកដ។" },
       { name: "Avenqo Marketing", description: "រៀបចំយុទ្ធនាការដែលពាក់ព័ន្ធ និងអាចវាស់វែងបានច្រើនជាងមុន។" },
-      { name: "Avenqo Knowledge", description: "ផ្តល់ចម្លើយដែលអាចទុកចិត្តបានផ្អែកលើចំណេះដឹងរបស់ក្រុមហ៊ុន។" },
       { name: "Avenqo Voice", description: "ធ្វើស្វ័យប្រវត្តិកម្មអន្តរកម្មសំឡេងដោយមិនបាត់បង់បរិបទ។" },
       { name: "Avenqo Workflow", description: "តភ្ជាប់ក្រុម និងធ្វើស្វ័យប្រវត្តិកម្មភារកិច្ចដដែលៗ។" },
       { name: "Avenqo Media", description: "ផលិត និងរៀបចំមាតិការបស់អ្នកពីកន្លែងធ្វើការតែមួយ។" },

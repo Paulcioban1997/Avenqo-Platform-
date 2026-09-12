@@ -87,7 +87,6 @@ const mn: Translations = {
       { name: "Avenqo Documents", description: "Ирж буй баримт бичгүүдийг бүтэцтэй процесс болгон хувиргах." },
       { name: "Avenqo Analytics", description: "Жинхэнэ утга учиртай чиг хандлага, хазайлтуудыг ойлгох." },
       { name: "Avenqo Marketing", description: "Илүү холбогдолтой, хэмжигдэхүйц кампанит ажлуудыг зохион байгуулах." },
-      { name: "Avenqo Knowledge", description: "Компанийн мэдлэг дээр үндэслэсэн найдвартай хариултыг өгөх." },
       { name: "Avenqo Voice", description: "Нөхцөл байдлыг алдалгүйгээр дуут харилцан яриаг автоматжуулах." },
       { name: "Avenqo Workflow", description: "Багуудыг холбож, давтагдах ажлуудыг автоматжуулах." },
       { name: "Avenqo Media", description: "Контентоо нэг ажлын орон зайгаас бүтээж, зохион байгуулах." },

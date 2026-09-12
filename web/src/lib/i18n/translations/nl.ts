@@ -87,7 +87,6 @@ const nl: Translations = {
       { name: "Avenqo Documents", description: "Zet binnenkomende documenten om in gestructureerde processen." },
       { name: "Avenqo Analytics", description: "Begrijp de trends en afwijkingen die er echt toe doen." },
       { name: "Avenqo Marketing", description: "Orkestreer relevantere en meetbare campagnes." },
-      { name: "Avenqo Knowledge", description: "Geef betrouwbare antwoorden op basis van bedrijfskennis." },
       { name: "Avenqo Voice", description: "Automatiseer spraakinteracties zonder de context te verliezen." },
       { name: "Avenqo Workflow", description: "Verbind teams en automatiseer repetitieve taken." },
       { name: "Avenqo Media", description: "Produceer en organiseer uw content vanuit één werkruimte." },

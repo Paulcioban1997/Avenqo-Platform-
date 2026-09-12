@@ -87,7 +87,6 @@ const sw: Translations = {
       { name: "Avenqo Documents", description: "Badilisha hati zinazoingia kuwa taratibu zilizopangwa." },
       { name: "Avenqo Analytics", description: "Elewa mienendo na tofauti zinazofaa kweli." },
       { name: "Avenqo Marketing", description: "Panga kampeni zinazofaa zaidi na zinazoweza kupimwa." },
-      { name: "Avenqo Knowledge", description: "Toa majibu ya kuaminika kulingana na ujuzi wa kampuni." },
       { name: "Avenqo Voice", description: "Jiendeshe mwingiliano wa sauti bila kupoteza muktadha." },
       { name: "Avenqo Workflow", description: "Unganisha timu na jiendeshe kazi zinazojirudia." },
       { name: "Avenqo Media", description: "Tengeneza na panga maudhui yako kutoka nafasi moja ya kazi." },

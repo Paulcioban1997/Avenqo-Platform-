@@ -16,6 +16,10 @@ import 'package:avenqo/pages/support_page.dart';
 import 'package:avenqo/pages/business_page.dart';
 import 'package:avenqo/pages/connections_page.dart';
 import 'package:avenqo/pages/dashboard_page.dart';
+import 'package:avenqo/pages/command_center_page.dart';
+import 'package:avenqo/pages/retail_inventory_page.dart';
+import 'package:avenqo/pages/retail_forecasts_page.dart';
+import 'package:avenqo/pages/retail_anomalies_page.dart';
 import 'package:avenqo/pages/employees_page.dart';
 import 'package:avenqo/pages/home_page.dart';
 import 'package:avenqo/pages/onboarding_page.dart';
@@ -71,6 +75,7 @@ class _AvenqoAppState extends State<AvenqoApp> {
       GoRoute(path: '/forgot-password', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.forgot)),
       GoRoute(path: '/verify-email', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.verify, initialToken: state.uri.queryParameters['token'], initialEmail: state.uri.queryParameters['email'], emailDeliveryUnavailable: state.uri.queryParameters['delivery'] == 'unavailable')),
       ShellRoute(builder: (context, state, child) => AppShell(auth: widget.auth, currentPath: state.uri.path, child: child), routes: [
+        GoRoute(path: '/dashboard', builder: (context, state) => CommandCenterPage(auth: widget.auth)),
         for (final destination in appDestinations)
           if (destination.path != '/retail' && destination.path != '/dashboard')
             GoRoute(path: destination.path, builder: (context, state) => _protectedPage(destination.path, widget.auth)),
@@ -78,12 +83,13 @@ class _AvenqoAppState extends State<AvenqoApp> {
         GoRoute(path: '/data', builder: (context, state) => _protectedPage('/data', widget.auth)),
         GoRoute(path: '/integrations', builder: (context, state) => _protectedPage('/integrations', widget.auth)),
         ShellRoute(builder: (context, state, child) => RetailAgentShell(api: widget.auth.api, currentPath: state.uri.path, child: child), routes: [
-          GoRoute(path: '/dashboard', builder: (context, state) => _retailPage('/retail', widget.auth, sourceId: state.uri.queryParameters['source'])),
-          for (final destination in retailAgentDestinations) GoRoute(path: destination.path, builder: (context, state) => _retailPage(destination.path, widget.auth, productId: state.uri.queryParameters['product_id'], sourceId: state.uri.queryParameters['source'])),
+          GoRoute(path: '/retail', builder: (context, state) => _retailPage('/retail', widget.auth, sourceId: state.uri.queryParameters['source'])),
+          for (final destination in retailAgentDestinations)
+            if (destination.path != '/retail')
+              GoRoute(path: destination.path, builder: (context, state) => _retailPage(destination.path, widget.auth, productId: state.uri.queryParameters['product_id'], sourceId: state.uri.queryParameters['source'])),
         ]),
         for (final legacyPath in _legacyRetailRoutes.keys)
-          if (legacyPath != '/dashboard')
-            GoRoute(path: legacyPath, redirect: (context, state) => _legacyRetailRoutes[legacyPath]),
+          GoRoute(path: legacyPath, redirect: (context, state) => _legacyRetailRoutes[legacyPath]),
       ]),
       ShellRoute(builder: (context, state, child) => AdminShell(auth: widget.auth, currentPath: state.uri.path, child: child), routes: [
         GoRoute(path: '/admin', builder: (context, state) => AdminDashboardPage(api: widget.auth.api)),
@@ -126,6 +132,6 @@ Locale _localeFromCode(String code) {
       : Locale(parts[0]);
 }
 List<Locale> _supportedLocalesFrom(List<LocaleInfo> locales) { final supported = <Locale>{const Locale('en')}; for (final locale in locales) { final candidate = _localeFromCode(locale.code); if (GlobalMaterialLocalizations.delegate.isSupported(candidate)) supported.add(candidate); } return supported.toList(growable: false); }
-Widget _protectedPage(String path, AuthController auth) => switch (path) { '/crm' => CrmPage(api: auth.api), '/accounting' => AccountingPage(api: auth.api), '/agents' => AgentsPage(api: auth.api), '/assistant' || '/central-ai' => AssistantPage(api: auth.api), '/support' => SupportPage(api: auth.api), '/team' => EmployeesPage(api: auth.api), '/billing' => BillingPage(api: auth.api), '/connections' || '/data' || '/integrations' => ConnectionsPage(api: auth.api), '/settings' => SettingsPage(auth: auth), _ => BusinessPage(destination: destinationFor(path)), };
-const _legacyRetailRoutes = <String, String>{'/dashboard': '/retail', '/sales': '/retail/sales', '/customers': '/retail/customers', '/products': '/retail/products', '/recommendations': '/retail/recommendations'};
-Widget _retailPage(String path, AuthController auth, {String? productId, String? sourceId}) { final companyId = auth.company?['id']; return switch (path) { '/retail' => DashboardPage(key: ValueKey('dashboard-$companyId-$sourceId'), auth: auth), '/retail/sales' => SalesPage(key: ValueKey('sales-$companyId-$sourceId'), api: auth.api), '/retail/customers' => CustomersPage(key: ValueKey('customers-$companyId-$sourceId'), api: auth.api), '/retail/products' => ProductsPage(key: ValueKey('products-$companyId-$productId-$sourceId'), api: auth.api, initialProductId: productId), '/retail/recommendations' => RecommendationsPage(key: ValueKey('recommendations-$companyId-$sourceId'), api: auth.api), _ => DashboardPage(key: ValueKey('dashboard-$companyId-$sourceId'), auth: auth), }; }
+Widget _protectedPage(String path, AuthController auth) => switch (path) { '/dashboard' => CommandCenterPage(auth: auth), '/crm' => CrmPage(api: auth.api), '/accounting' => AccountingPage(api: auth.api), '/agents' => AgentsPage(api: auth.api), '/assistant' || '/central-ai' => AssistantPage(api: auth.api), '/support' => SupportPage(api: auth.api), '/team' => EmployeesPage(api: auth.api), '/billing' => BillingPage(api: auth.api), '/connections' || '/data' || '/integrations' => ConnectionsPage(api: auth.api), '/settings' => SettingsPage(auth: auth), _ => BusinessPage(destination: destinationFor(path)), };
+const _legacyRetailRoutes = <String, String>{'/sales': '/retail/sales', '/customers': '/retail/customers', '/products': '/retail/products', '/recommendations': '/retail/recommendations'};
+Widget _retailPage(String path, AuthController auth, {String? productId, String? sourceId}) { final companyId = auth.company?['id']; return switch (path) { '/retail' => DashboardPage(key: ValueKey('retail-$companyId-$sourceId'), auth: auth), '/retail/sales' => SalesPage(key: ValueKey('sales-$companyId-$sourceId'), api: auth.api), '/retail/products' => ProductsPage(key: ValueKey('products-$companyId-$productId-$sourceId'), api: auth.api, initialProductId: productId), '/retail/customers' => CustomersPage(key: ValueKey('customers-$companyId-$sourceId'), api: auth.api), '/retail/inventory' => RetailInventoryPage(key: ValueKey('inventory-$companyId-$sourceId'), api: auth.api), '/retail/forecasts' => RetailForecastsPage(key: ValueKey('forecasts-$companyId-$sourceId'), api: auth.api), '/retail/anomalies' => RetailAnomaliesPage(key: ValueKey('anomalies-$companyId-$sourceId'), api: auth.api), '/retail/recommendations' => RecommendationsPage(key: ValueKey('recommendations-$companyId-$sourceId'), api: auth.api), _ => DashboardPage(key: ValueKey('retail-$companyId-$sourceId'), auth: auth), }; }

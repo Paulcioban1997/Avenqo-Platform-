@@ -87,7 +87,6 @@ const bn: Translations = {
       { name: "Avenqo Documents", description: "আগত নথিগুলিকে কাঠামোগত প্রক্রিয়ায় রূপান্তরিত করুন।" },
       { name: "Avenqo Analytics", description: "প্রবণতা এবং বিচ্যুতিগুলি বুঝুন যা সত্যিই গুরুত্বপূর্ণ।" },
       { name: "Avenqo Marketing", description: "আরও প্রাসঙ্গিক এবং পরিমাপযোগ্য প্রচারাভিযান সংগঠিত করুন।" },
-      { name: "Avenqo Knowledge", description: "কোম্পানির জ্ঞানের উপর ভিত্তি করে নির্ভরযোগ্য উত্তর প্রদান করুন।" },
       { name: "Avenqo Voice", description: "প্রসঙ্গ না হারিয়ে ভয়েস ইন্টারঅ্যাকশন স্বয়ংক্রিয় করুন।" },
       { name: "Avenqo Workflow", description: "দলগুলিকে সংযুক্ত করুন এবং পুনরাবৃত্তিমূলক কাজ স্বয়ংক্রিয় করুন।" },
       { name: "Avenqo Media", description: "একক কর্মক্ষেত্র থেকে আপনার সামগ্রী তৈরি এবং সংগঠিত করুন।" },

@@ -87,7 +87,6 @@ const pa: Translations = {
       { name: "Avenqo Documents", description: "ਆਉਣ ਵਾਲੇ ਦਸਤਾਵੇਜ਼ਾਂ ਨੂੰ ਢਾਂਚਾਗਤ ਪ੍ਰਕਿਰਿਆਵਾਂ ਵਿੱਚ ਬਦਲੋ।" },
       { name: "Avenqo Analytics", description: "ਉਹ ਰੁਝਾਨ ਅਤੇ ਵਿਵਹਾਰ ਸਮਝੋ ਜੋ ਸੱਚਮੁੱਚ ਮਹੱਤਵਪੂਰਨ ਹਨ।" },
       { name: "Avenqo Marketing", description: "ਵਧੇਰੇ ਢੁਕਵੀਆਂ ਅਤੇ ਮਾਪਣਯੋਗ ਮੁਹਿੰਮਾਂ ਦਾ ਆਯੋਜਨ ਕਰੋ।" },
-      { name: "Avenqo Knowledge", description: "ਕੰਪਨੀ ਦੇ ਗਿਆਨ 'ਤੇ ਆਧਾਰਿਤ ਭਰੋਸੇਯੋਗ ਜਵਾਬ ਪ੍ਰਦਾਨ ਕਰੋ।" },
       { name: "Avenqo Voice", description: "ਸੰਦਰਭ ਗੁਆਏ ਬਿਨਾਂ ਆਵਾਜ਼ ਦੀਆਂ ਗੱਲਾਂਬਾਤਾਂ ਨੂੰ ਆਟੋਮੇਟ ਕਰੋ।" },
       { name: "Avenqo Workflow", description: "ਟੀਮਾਂ ਨੂੰ ਜੋੜੋ ਅਤੇ ਦੁਹਰਾਉਣ ਵਾਲੇ ਕੰਮਾਂ ਨੂੰ ਆਟੋਮੇਟ ਕਰੋ।" },
       { name: "Avenqo Media", description: "ਇੱਕ ਹੀ ਕੰਮ ਦੇ ਸਥਾਨ ਤੋਂ ਆਪਣੀ ਸਮੱਗਰੀ ਬਣਾਓ ਅਤੇ ਵਿਵਸਥਿਤ ਕਰੋ।" },

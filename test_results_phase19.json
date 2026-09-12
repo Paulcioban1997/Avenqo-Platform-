@@ -1,0 +1,17 @@
+{
+  "e2e": {
+    "source_value": 30,
+    "normalized_value": 30,
+    "api_value": 30,
+    "ui_value": 30,
+    "ai_assistant_value": 30
+  },
+  "multitenant": {
+    "retail_isolated": true,
+    "crm_isolated": true,
+    "accounting_isolated": true,
+    "ai_isolated": true,
+    "source_hijack_prevented": true,
+    "exports_isolated": true
+  }
+}

@@ -90,7 +90,6 @@ const fr: Translations = {
       { name: "Avenqo Documents", description: "Transformez les documents entrants en opérations structurées." },
       { name: "Avenqo Analytics", description: "Comprenez les tendances et les écarts qui comptent vraiment." },
       { name: "Avenqo Marketing", description: "Orchestrez des campagnes plus pertinentes et mesurables." },
-      { name: "Avenqo Knowledge", description: "Donnez des réponses fiables à partir du savoir de l'entreprise." },
       { name: "Avenqo Voice", description: "Automatisez les échanges vocaux sans perdre le contexte client." },
       { name: "Avenqo Workflow", description: "Reliez les équipes et automatisez les tâches répétitives." },
       { name: "Avenqo Media", description: "Produisez et organisez vos contenus depuis un espace unique." },

@@ -87,7 +87,6 @@ const vi: Translations = {
       { name: "Avenqo Documents", description: "Biến các tài liệu đến thành các quy trình có cấu trúc." },
       { name: "Avenqo Analytics", description: "Hiểu các xu hướng và sai lệch thực sự quan trọng." },
       { name: "Avenqo Marketing", description: "Điều phối các chiến dịch phù hợp hơn và có thể đo lường được." },
-      { name: "Avenqo Knowledge", description: "Cung cấp câu trả lời đáng tin cậy dựa trên kiến thức của công ty." },
       { name: "Avenqo Voice", description: "Tự động hóa các tương tác giọng nói mà không mất ngữ cảnh." },
       { name: "Avenqo Workflow", description: "Kết nối các nhóm và tự động hóa các tác vụ lặp đi lặp lại." },
       { name: "Avenqo Media", description: "Sản xuất và sắp xếp nội dung của bạn từ một không gian làm việc duy nhất." },

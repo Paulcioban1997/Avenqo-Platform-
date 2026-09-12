@@ -87,7 +87,6 @@ const ka: Translations = {
       { name: "Avenqo Documents", description: "გადააქციეთ შემომავალი დოკუმენტები სტრუქტურირებულ პროცესებად." },
       { name: "Avenqo Analytics", description: "გაიგეთ ტენდენციები და გადახრები, რომლებსაც რეალურად აქვს მნიშვნელობა." },
       { name: "Avenqo Marketing", description: "მოაწყვეთ უფრო რელევანტური და გაზომვადი კამპანიები." },
-      { name: "Avenqo Knowledge", description: "მიაწოდეთ სანდო პასუხები კომპანიის ცოდნაზე დაყრდნობით." },
       { name: "Avenqo Voice", description: "ავტომატიზირება გაუწიეთ ხმოვან ურთიერთქმედებებს კონტექსტის დაკარგვის გარეშე." },
       { name: "Avenqo Workflow", description: "დააკავშირეთ გუნდები და ავტომატიზირება გაუწიეთ განმეორებით ამოცანებს." },
       { name: "Avenqo Media", description: "შექმენით და მოაწესრიგეთ თქვენი კონტენტი ერთი სამუშაო სივრციდან." },

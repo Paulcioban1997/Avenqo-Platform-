@@ -87,7 +87,6 @@ const fa: Translations = {
       { name: "Avenqo Documents", description: "اسناد ورودی را به فرآیندهای ساختاریافته تبدیل کنید." },
       { name: "Avenqo Analytics", description: "روندها و انحرافاتی که واقعاً اهمیت دارند را درک کنید." },
       { name: "Avenqo Marketing", description: "کمپین‌های مرتبط‌تر و قابل اندازه‌گیری‌تری سازماندهی کنید." },
-      { name: "Avenqo Knowledge", description: "پاسخ‌های قابل اعتماد مبتنی بر دانش شرکت ارائه دهید." },
       { name: "Avenqo Voice", description: "تعاملات صوتی را بدون از دست دادن زمینه خودکار کنید." },
       { name: "Avenqo Workflow", description: "تیم‌ها را به هم متصل کرده و وظایف تکراری را خودکار کنید." },
       { name: "Avenqo Media", description: "محتوای خود را از یک فضای کاری واحد تولید و سازماندهی کنید." },

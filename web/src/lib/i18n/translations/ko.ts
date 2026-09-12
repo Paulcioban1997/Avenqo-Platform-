@@ -86,7 +86,6 @@ const ko: Translations = {
       { name: "Avenqo Documents", description: "수신 문서를 구조화된 업무 프로세스로 전환하세요." },
       { name: "Avenqo Analytics", description: "정말 중요한 추세와 격차를 파악하세요." },
       { name: "Avenqo Marketing", description: "더 관련성 높고 측정 가능한 캠페인을 운영하세요." },
-      { name: "Avenqo Knowledge", description: "회사의 지식을 바탕으로 신뢰할 수 있는 답변을 제공하세요." },
       { name: "Avenqo Voice", description: "맥락을 잃지 않고 음성 상호작용을 자동화하세요." },
       { name: "Avenqo Workflow", description: "팀을 연결하고 반복 업무를 자동화하세요." },
       { name: "Avenqo Media", description: "하나의 공간에서 콘텐츠를 제작하고 관리하세요." },

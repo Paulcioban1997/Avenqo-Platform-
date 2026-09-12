@@ -87,7 +87,6 @@ const tl: Translations = {
       { name: "Avenqo Documents", description: "Gawing structured process ang mga papasok na dokumento." },
       { name: "Avenqo Analytics", description: "Unawain ang mga trend at deviation na talagang mahalaga." },
       { name: "Avenqo Marketing", description: "Ayusin ang mas relevant at masusukat na mga kampanya." },
-      { name: "Avenqo Knowledge", description: "Magbigay ng maaasahang sagot batay sa kaalaman ng kumpanya." },
       { name: "Avenqo Voice", description: "I-automate ang voice interaction nang hindi nawawala ang konteksto." },
       { name: "Avenqo Workflow", description: "Ikonekta ang mga team at i-automate ang paulit-ulit na gawain." },
       { name: "Avenqo Media", description: "Gumawa at ayusin ang iyong content mula sa iisang workspace." },

@@ -87,7 +87,6 @@ const el: Translations = {
       { name: "Avenqo Documents", description: "Μετατρέψτε τα εισερχόμενα έγγραφα σε δομημένες διαδικασίες." },
       { name: "Avenqo Analytics", description: "Κατανοήστε τις τάσεις και τις αποκλίσεις που πραγματικά έχουν σημασία." },
       { name: "Avenqo Marketing", description: "Οργανώστε πιο σχετικές και μετρήσιμες καμπάνιες." },
-      { name: "Avenqo Knowledge", description: "Παρέχετε αξιόπιστες απαντήσεις βασισμένες στη γνώση της εταιρείας." },
       { name: "Avenqo Voice", description: "Αυτοματοποιήστε τις φωνητικές αλληλεπιδράσεις χωρίς απώλεια πλαισίου." },
       { name: "Avenqo Workflow", description: "Συνδέστε ομάδες και αυτοματοποιήστε επαναλαμβανόμενες εργασίες." },
       { name: "Avenqo Media", description: "Παράγετε και οργανώστε το περιεχόμενό σας από έναν ενιαίο χώρο." },

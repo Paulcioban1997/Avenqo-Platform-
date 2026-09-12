@@ -87,7 +87,6 @@ const ha: Translations = {
       { name: "Avenqo Documents", description: "Mayar da takardun da ke shigowa zuwa hanyoyin da aka tsara." },
       { name: "Avenqo Analytics", description: "Fahimci yanayin da bambance-bambancen da suke da mahimmanci." },
       { name: "Avenqo Marketing", description: "Shirya yaƙe-yaƙe masu dacewa da za a iya aunawa." },
-      { name: "Avenqo Knowledge", description: "Bayar da amsoshi masu dogaro dangane da ilimin kamfani." },
       { name: "Avenqo Voice", description: "Sarrafa mu'amalar murya ta atomatik ba tare da rasa mahallin ba." },
       { name: "Avenqo Workflow", description: "Haɗa ƙungiyoyi da sarrafa ayyuka masu maimaitawa ta atomatik." },
       { name: "Avenqo Media", description: "Kirkiro da tsara abubuwan ku daga wuri ɗaya na aiki." },

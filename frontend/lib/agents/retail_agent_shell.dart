@@ -16,8 +16,11 @@ class RetailAgentDestination {
 const retailAgentDestinations = <RetailAgentDestination>[
   RetailAgentDestination('/retail', 'retailOverviewLabel', Icons.dashboard_outlined),
   RetailAgentDestination('/retail/sales', 'retailSalesLabel', Icons.trending_up),
-  RetailAgentDestination('/retail/customers', 'retailCustomersLabel', Icons.people_outline),
   RetailAgentDestination('/retail/products', 'retailProductsLabel', Icons.inventory_2_outlined),
+  RetailAgentDestination('/retail/customers', 'retailCustomersLabel', Icons.people_outline),
+  RetailAgentDestination('/retail/inventory', 'retailInventoryLabel', Icons.warehouse_outlined),
+  RetailAgentDestination('/retail/forecasts', 'retailForecastsLabel', Icons.auto_graph_outlined),
+  RetailAgentDestination('/retail/anomalies', 'retailAnomaliesLabel', Icons.warning_amber_outlined),
   RetailAgentDestination('/retail/recommendations', 'retailRecommendationsLabel', Icons.lightbulb_outline),
 ];
 
@@ -90,9 +93,8 @@ class _RetailAgentShellState extends State<RetailAgentShell> {
                             padding: const EdgeInsets.only(right: 6),
                             child: _RetailNavigationItem(
                               destination: destination,
-                              label: strings.value(destination.labelKey),
-                              selected: widget.currentPath == destination.path ||
-                                  (widget.currentPath == '/dashboard' && destination.path == '/retail'),
+                              label: _retailDestinationLabel(context, destination, strings),
+                              selected: widget.currentPath == destination.path,
                               onTap: () => (widget.onSelect ?? context.go)(destination.path),
                             ),
                           ),
@@ -220,3 +222,50 @@ class _RetailNavigationItem extends StatelessWidget {
         ),
       );
 }
+
+String _retailDestinationLabel(BuildContext context, RetailAgentDestination destination, dynamic strings) {
+  final lang = AvenqoLocaleScope.of(context).code.split('-').first;
+  return switch (destination.path) {
+    '/retail' => switch (lang) {
+      'fr' => 'Vue d’ensemble',
+      'ro' => 'Privire de ansamblu',
+      _ => 'Overview',
+    },
+    '/retail/sales' => switch (lang) {
+      'fr' => 'Ventes',
+      'ro' => 'Vânzări',
+      _ => 'Sales',
+    },
+    '/retail/products' => switch (lang) {
+      'fr' => 'Produits',
+      'ro' => 'Produse',
+      _ => 'Products',
+    },
+    '/retail/customers' => switch (lang) {
+      'fr' => 'Clients',
+      'ro' => 'Clienți',
+      _ => 'Customers',
+    },
+    '/retail/inventory' => switch (lang) {
+      'fr' => 'Inventaire',
+      'ro' => 'Inventar',
+      _ => 'Inventory',
+    },
+    '/retail/forecasts' => switch (lang) {
+      'fr' => 'Prévisions',
+      'ro' => 'Prognoze',
+      _ => 'Forecasts',
+    },
+    '/retail/anomalies' => switch (lang) {
+      'fr' => 'Anomalies',
+      'ro' => 'Anomalii',
+      _ => 'Anomalies',
+    },
+    '/retail/recommendations' => switch (lang) {
+      'fr' => 'Recommandations IA',
+      'ro' => 'Recomandări AI',
+      _ => 'AI Recommendations',
+    },
+    _ => strings.value(destination.labelKey),
+  };
+}

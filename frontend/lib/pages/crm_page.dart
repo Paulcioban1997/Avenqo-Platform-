@@ -188,11 +188,36 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                           Icon(Icons.check_circle, size: 12, color: _Brand.emerald),
                           SizedBox(width: 4),
                           Text(
-                            'Actif & Connecté',
+                            'Agent Actif',
                             style: TextStyle(
                               color: _Brand.emerald,
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _Brand.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _Brand.amber.withValues(alpha: 0.35)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline, size: 12, color: _Brand.amber),
+                          SizedBox(width: 4),
+                          Text(
+                            'DONNÉES DE DÉMONSTRATION',
+                            style: TextStyle(
+                              color: _Brand.amber,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.4,
                             ),
                           ),
                         ],

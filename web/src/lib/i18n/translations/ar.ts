@@ -88,7 +88,6 @@ const ar: Translations = {
       { name: "Avenqo Documents", description: "حوّل المستندات الواردة إلى عمليات منظمة." },
       { name: "Avenqo Analytics", description: "افهم الاتجاهات والانحرافات المهمة فعلاً." },
       { name: "Avenqo Marketing", description: "نسّق حملات أكثر صلة وقابلية للقياس." },
-      { name: "Avenqo Knowledge", description: "قدّم إجابات موثوقة انطلاقًا من معرفة الشركة." },
       { name: "Avenqo Voice", description: "أتمتة التفاعلات الصوتية دون فقدان سياق العميل." },
       { name: "Avenqo Workflow", description: "اربط الفرق وأتمتة المهام المتكررة." },
       { name: "Avenqo Media", description: "أنتج ونظّم محتوياتك من مساحة واحدة." },

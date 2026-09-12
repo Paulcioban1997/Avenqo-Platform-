@@ -1,4 +1,4 @@
-﻿"""Catalogue des offres d'abonnement Avenqo indépendant de Stripe."""
+"""Catalogue des offres d'abonnement Avenqo indépendant de Stripe."""
 
 from dataclasses import dataclass
 from enum import StrEnum
@@ -49,7 +49,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         PlanCode.DEMO,
         "Demo",
         ALL_MODULES,
-        max_selectable_modules=2,
+        max_selectable_modules=3,
         monthly_price_usd=28,
         monthly_ai_credits=6_500,
     ),
@@ -57,7 +57,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         PlanCode.PROFESSIONAL,
         "Professional",
         ALL_MODULES,
-        max_selectable_modules=8,
+        max_selectable_modules=6,
         monthly_price_usd=49,
         monthly_ai_credits=25_000,
     ),

@@ -86,7 +86,6 @@ const zh: Translations = {
       { name: "Avenqo Documents", description: "将收到的文档转化为结构化操作。" },
       { name: "Avenqo Analytics", description: "洞察真正重要的趋势与偏差。" },
       { name: "Avenqo Marketing", description: "编排更相关、更可衡量的营销活动。" },
-      { name: "Avenqo Knowledge", description: "基于企业知识库提供可靠答案。" },
       { name: "Avenqo Voice", description: "自动化语音交互，同时保留客户上下文。" },
       { name: "Avenqo Workflow", description: "连接团队并自动化重复性任务。" },
       { name: "Avenqo Media", description: "在统一空间中制作并管理内容。" },

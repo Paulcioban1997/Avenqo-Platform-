@@ -87,7 +87,6 @@ const sv: Translations = {
       { name: "Avenqo Documents", description: "Omvandla inkommande dokument till strukturerade processer." },
       { name: "Avenqo Analytics", description: "Förstå trender och avvikelser som verkligen betyder något." },
       { name: "Avenqo Marketing", description: "Orkestrera mer relevanta och mätbara kampanjer." },
-      { name: "Avenqo Knowledge", description: "Ge tillförlitliga svar baserade på företagets kunskap." },
       { name: "Avenqo Voice", description: "Automatisera röstinteraktioner utan att förlora kontexten." },
       { name: "Avenqo Workflow", description: "Koppla samman team och automatisera repetitiva uppgifter." },
       { name: "Avenqo Media", description: "Producera och organisera ditt innehåll från en enda arbetsyta." },
