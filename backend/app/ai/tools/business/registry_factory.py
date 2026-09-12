@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.business.customer_tools import GetCustomerSegmentsTool, GetCustomerSummaryTool
-from backend.app.ai.tools.business.inventory_tools import GetInventorySummaryTool
+from backend.app.ai.tools.business.commerce_tools import GetInventorySummaryTool, GetProductDetailTool
 from backend.app.ai.tools.business.predictive_tools import (
     GetAnomaliesTool,
     GetChurnRiskTool,
@@ -51,7 +51,8 @@ def build_business_tool_registry(
     registry.register(GetTopProductsTool(session, ingestion))
     registry.register(GetCustomerSummaryTool(session, ingestion))
     registry.register(GetCustomerSegmentsTool(session, prediction_service))
-    registry.register(GetInventorySummaryTool())  # prepared, always unavailable today
+    registry.register(GetProductDetailTool(session))
+    registry.register(GetInventorySummaryTool(session))
     # Phase 31 — Avenqo Predictive Intelligence : réutilise EXACTEMENT le
     # même Model Registry/PredictionService, jamais un second moteur.
     registry.register(GetChurnRiskTool(session, prediction_service))
