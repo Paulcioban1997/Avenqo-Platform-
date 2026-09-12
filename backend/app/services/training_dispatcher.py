@@ -44,6 +44,7 @@ from backend.app.services.target_resolution_service import (
 )
 from modules.retailsense.training_specs import MODULE_TRAINING_SPECS
 from shared.ai_engine.contracts import DatasetArtifact, DetectedSchema, TenantContext
+from shared.ai_engine.dataset_ingestion.ml_readiness import assess_ml_readiness
 from shared.ai_engine.drift.serializer import (
     load_baseline,
     load_drift_report,
@@ -277,7 +278,8 @@ class TrainingDispatcher:
         columns = tuple(dict.fromkeys(key for row in rows for key in row))
         try:
             if spec.family in ("clustering", "anomaly_detection"):
-                return True
+                readiness = assess_ml_readiness(rows, family=spec.family)
+                return self._log_readiness(dataset, task_code, readiness)
             if spec.family == "recommendation":
                 user_column = self._resolver.resolve(columns, spec.user_column_aliases)
                 item_column = self._resolver.resolve(columns, spec.item_column_aliases)
@@ -285,12 +287,25 @@ class TrainingDispatcher:
                     raise TargetColumnUnresolved(
                         "Client and product columns resolved to the same column."
                     )
-                return True
+                readiness = assess_ml_readiness(
+                    rows,
+                    family=spec.family,
+                    minimum_samples=getattr(spec, "minimum_interactions", None),
+                )
+                return self._log_readiness(dataset, task_code, readiness)
 
-            self._resolver.resolve(columns, spec.target_aliases)
+            target_column = self._resolver.resolve(columns, spec.target_aliases)
+            time_column = None
             if spec.family == "forecasting":
-                self._resolver.resolve(columns, spec.time_column_aliases)
-            return True
+                time_column = self._resolver.resolve(columns, spec.time_column_aliases)
+            readiness = assess_ml_readiness(
+                rows,
+                family=spec.family,
+                target_column=target_column,
+                time_column=time_column,
+                minimum_samples=getattr(spec, "minimum_observations", None),
+            )
+            return self._log_readiness(dataset, task_code, readiness)
         except TargetColumnUnresolved as exc:
             logger.info(
                 "Automatic training skipped as not applicable company=%s dataset=%s task=%s reason=%s",
@@ -300,6 +315,19 @@ class TrainingDispatcher:
                 str(exc),
             )
             return False
+
+    @staticmethod
+    def _log_readiness(dataset: Dataset, task_code: str, readiness) -> bool:
+        if not readiness.ready:
+            logger.info(
+                "Automatic training skipped company=%s dataset=%s task=%s code=%s reasons=%s",
+                dataset.company_id,
+                dataset.id,
+                task_code,
+                readiness.code,
+                ",".join(readiness.reasons),
+            )
+        return readiness.ready
 
     def _load_dataset_rows(self, dataset: Dataset) -> list[dict[str, Any]]:
         """Relit le CSV importé et réapplique le même typage qu'à l'import.

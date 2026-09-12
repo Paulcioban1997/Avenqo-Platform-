@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.models import DatasetStatus
 
@@ -84,11 +84,18 @@ class DatasetCleaningDetailResponse(BaseModel):
     original_preview: list[dict[str, Any]]
     cleaned_preview: list[dict[str, Any]]
     column_strategies: list[dict[str, Any]]
+    entity_views: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     export_formats: list[str]
     preview_offset: int
     preview_limit: int
     preview_total: int
     transformation_history: list[dict[str, Any]]
+    header: dict[str, Any] | None = None
+    columns: list[dict[str, Any]] | None = None
+    modifications: list[dict[str, Any]] | None = None
+    quality: dict[str, Any] | None = None
+    business_preview: list[dict[str, Any]] | None = None
+    technical_preview: list[dict[str, Any]] | None = None
 
 
 class MappingOverrideRequest(BaseModel):

@@ -650,7 +650,7 @@ def test_attention_required_exposes_cleaned_detail_and_exports(
     assert detail_response.status_code == 200
     detail = detail_response.json()
     assert detail["status"] == "attention_required"
-    assert detail["cleaning_status"] in {"good", "warning"}
+    assert detail["cleaning_status"] in {"excellent", "good", "warning"}
     assert detail["summary"]["original_row_count"] == 3
     assert detail["summary"]["cleaned_row_count"] == 3
     assert detail["original_preview"][0]["customer_review"] == "Great service and fast"
@@ -790,7 +790,7 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             quota=DataImportPolicy(session),
             max_upload_bytes=5 * 1024 * 1024,
             dispatcher=SimpleNamespace(
-                dispatch=lambda resolved_tenant, dataset: dispatched.append(
+                dispatch=lambda resolved_tenant, dataset, **_kwargs: dispatched.append(
                     (resolved_tenant.company_id, dataset.id)
                 )
             ),
@@ -1177,5 +1177,5 @@ def test_training_handoff_returns_prepared_dataset(phase26_environment) -> None:
     assert prepared.dataset_id == dataset_id
     assert prepared.canonical_columns
     assert len(prepared.rows) > 0
-    assert prepared.quality.status.value in {"good", "warning"}
+    assert prepared.quality.status.value in {"excellent", "good", "warning"}
 

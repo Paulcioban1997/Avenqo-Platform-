@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from decimal import Decimal
 from functools import lru_cache
@@ -125,7 +125,8 @@ class Settings(BaseSettings):
     auth_jwt_algorithm: str = Field(default="HS256", alias="AUTH_JWT_ALGORITHM")
     auth_jwt_issuer: str = Field(default="avenqo-api", alias="AUTH_JWT_ISSUER")
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
-    frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
+    auth_cookie_secure: bool | None = Field(default=None, alias="AUTH_COOKIE_SECURE")
+    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
@@ -337,13 +338,28 @@ class Settings(BaseSettings):
                 return True
         return value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        if isinstance(value, str) and value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql://", 1)
+        return value
+
     @model_validator(mode="after")
     def validate_production_auth(self) -> "Settings":
-        if self.environment.lower() in {"production", "prod"}:
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
             missing: list[str] = []
             if not self.database_url.strip() or self.database_url == "sqlite:///./var/avenqo.db":
                 missing.append("DATABASE_URL")
-            if self.auth_jwt_secret == "development-only-change-this-jwt-secret":
+            if (
+                not self.auth_jwt_secret.strip()
+                or self.auth_jwt_secret in {
+                    "development-only-change-this-jwt-secret",
+                    "replace-with-at-least-32-random-characters",
+                }
+                or len(self.auth_jwt_secret.strip()) < 32
+            ):
                 missing.append("AUTH_JWT_SECRET")
             for name, value in (
                 ("STRIPE_SECRET_KEY", self.stripe_secret_key),
@@ -351,12 +367,17 @@ class Settings(BaseSettings):
                 ("STRIPE_PRICE_DEMO", self.stripe_price_demo),
                 ("STRIPE_PRICE_PROFESSIONAL", self.stripe_price_professional),
             ):
-                if not value:
+                if not value or not str(value).strip():
                     missing.append(name)
-            if self.frontend_url.rstrip("/") != "https://app.avenqo.ca":
+            clean_frontend = self.frontend_url.rstrip("/")
+            if clean_frontend not in {
+                "https://avenqo.ca",
+                "https://www.avenqo.ca",
+                "https://app.avenqo.ca",
+            }:
                 missing.append("FRONTEND_URL")
             if not self.cors_origins or any(
-                not origin.startswith("https://") for origin in self.cors_origins
+                not origin.startswith("https://") or "*" in origin for origin in self.cors_origins
             ):
                 missing.append("CORS_ORIGINS")
             if not self.allowed_hosts or "*" in self.allowed_hosts:
@@ -366,7 +387,29 @@ class Settings(BaseSettings):
                     "Configuration production manquante ou non sécurisée : "
                     + ", ".join(missing)
                 )
+        elif env in {"staging", "sandbox"}:
+            missing: list[str] = []
+            if (
+                not self.auth_jwt_secret.strip()
+                or self.auth_jwt_secret in {
+                    "development-only-change-this-jwt-secret",
+                    "replace-with-at-least-32-random-characters",
+                }
+                or len(self.auth_jwt_secret.strip()) < 32
+            ):
+                missing.append("AUTH_JWT_SECRET")
+            if missing:
+                raise ValueError(
+                    "Configuration staging manquante ou non sécurisée : "
+                    + ", ".join(missing)
+                )
         return self
+
+    @property
+    def is_secure_cookie(self) -> bool:
+        if self.auth_cookie_secure is not None:
+            return self.auth_cookie_secure
+        return self.environment.lower() in {"production", "prod", "staging", "sandbox"}
 
     @property
     def email_delivery_configured(self) -> bool:

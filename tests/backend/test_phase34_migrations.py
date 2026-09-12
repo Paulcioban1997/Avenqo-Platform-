@@ -60,13 +60,14 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
         "commerce_connections",
         "commerce_oauth_states",
         "normalized_commerce_records",
+        "commerce_raw_snapshots",
         "commerce_webhook_receipts",
     ):
         assert expected in tables
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0014_commerce_webhook_tombstones"
+    assert current == "0017_canonical_data_layers"
     receipt_columns = {
         column["name"]
         for column in inspector.get_columns("commerce_webhook_receipts")
@@ -105,6 +106,32 @@ def test_upgrade_downgrade_cycle_between_revisions(temp_db_url: str) -> None:
     inspector = inspect(engine)
     index_names_reverted = {idx["name"] for idx in inspector.get_indexes("audit_log_entries")}
     assert "ix_audit_log_entries_created_at" not in index_names_reverted
+
+
+def test_canonical_data_layers_upgrade_and_downgrade(temp_db_url: str) -> None:
+    config = _alembic_config(temp_db_url)
+    command.upgrade(config, "0016_connector_ai_evaluations")
+
+    engine = create_engine(temp_db_url)
+    assert "commerce_raw_snapshots" not in inspect(engine).get_table_names()
+
+    command.upgrade(config, "0017_canonical_data_layers")
+    inspector = inspect(engine)
+    assert "commerce_raw_snapshots" in inspector.get_table_names()
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("normalized_commerce_records")
+    }
+    assert "source_snapshot_id" in columns
+
+    command.downgrade(config, "0016_connector_ai_evaluations")
+    inspector = inspect(engine)
+    assert "commerce_raw_snapshots" not in inspector.get_table_names()
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("normalized_commerce_records")
+    }
+    assert "source_snapshot_id" not in columns
 
 
 def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:

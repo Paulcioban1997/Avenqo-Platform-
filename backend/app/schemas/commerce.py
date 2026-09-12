@@ -69,12 +69,22 @@ class CommerceConnectionResponse(BaseModel):
     sync_status: str
     capabilities: list[str]
     records_processed: int
+    records_created: int = 0
+    records_updated: int = 0
+    records_failed: int = 0
     current_entity: str | None
     error_category: str | None
+    sync_run_id: str | None = None
+    sync_error_code: str | None = None
+    sync_error_message: str | None = None
     last_successful_sync: datetime | None
     sync_started_at: datetime | None
+    last_heartbeat: datetime | None = None
+    sync_completed_at: datetime | None = None
+    sync_failed_at: datetime | None = None
     dataset_id: UUID | None
     reauthorization_available: bool = False
+    is_stalled: bool = False
 
 
 class CommerceSyncAcceptedResponse(BaseModel):

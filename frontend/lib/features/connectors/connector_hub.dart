@@ -476,13 +476,25 @@ class _ConnectionRow extends StatelessWidget {
     final connectionStatus =
         connection['connection_status']?.toString().toUpperCase() ??
         (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
-    final active = status == 'SYNCING' || status == 'PROCESSING' || busy;
+    final isStalled = connection['is_stalled'] == true;
+    final currentEntity = connection['current_entity']?.toString();
+    final recordsProcessed = connection['records_processed'];
+    final entityLabel = switch (currentEntity) {
+      'orders' => 'Lecture des commandes...',
+      'products' => 'Lecture des produits...',
+      'customers' => 'Lecture des clients...',
+      'inventory' => 'Lecture des stocks...',
+      'refunds' => 'Lecture des remboursements...',
+      'retail_snapshot' => 'Normalisation & Nettoyage...',
+      _ => null,
+    };
+    final active = (status == 'SYNCING' || status == 'PROCESSING' || busy) && !isStalled;
     final canReauthorize =
         status == 'REAUTH_REQUIRED' &&
         connection['provider'] == 'woocommerce' &&
         connection['reauthorization_available'] == true;
     final statusColor =
-        {'ERROR', 'DEGRADED', 'FAILED', 'REAUTH_REQUIRED'}.contains(status)
+        {'ERROR', 'DEGRADED', 'FAILED', 'REAUTH_REQUIRED'}.contains(status) || isStalled
         ? const Color(0xFFD1414B)
         : status == 'DISCONNECTED'
         ? colors.muted
@@ -493,21 +505,25 @@ class _ConnectionRow extends StatelessWidget {
     final metadata = lastSync == null
         ? text('neverSynced')
         : '${text('lastSync')} ${lastSync.split('T').first}';
-    final statusLabel = status == 'ERROR' || status == 'FAILED'
-        ? text('syncFailed')
-        : status == 'DEGRADED'
-        ? text('storageUnavailable')
-        : text(switch (status) {
-            'SYNCING' => 'syncing',
-            'PROCESSING' => 'processing',
-            'READY' => 'ready',
-            'CONNECTED' => 'connected',
-            'DISCONNECTED' => 'disconnected',
-            'CONNECTING' => 'connecting',
-            'AUTHORIZING' => 'authorizing',
-            'REAUTH_REQUIRED' => 'reauthorizationRequired',
-            _ => 'error',
-          });
+    final statusLabel = isStalled
+        ? 'Synchronisation interrompue (délai dépassé)'
+        : (status == 'ERROR' || status == 'FAILED'
+            ? text('syncFailed')
+            : status == 'DEGRADED'
+            ? text('storageUnavailable')
+            : (active && entityLabel != null
+                ? '$entityLabel${recordsProcessed != null ? ' ($recordsProcessed enregistrements)' : ''}'
+                : text(switch (status) {
+                    'SYNCING' => 'syncing',
+                    'PROCESSING' => 'processing',
+                    'READY' => 'ready',
+                    'CONNECTED' => 'connected',
+                    'DISCONNECTED' => 'disconnected',
+                    'CONNECTING' => 'connecting',
+                    'AUTHORIZING' => 'authorizing',
+                    'REAUTH_REQUIRED' => 'reauthorizationRequired',
+                    _ => 'error',
+                  })));
     final connectionLabel = switch (connectionStatus) {
       'DISCONNECTED' => text('disconnected'),
       'REAUTH_REQUIRED' => text('reauthorizationRequired'),
@@ -590,7 +606,17 @@ class _ConnectionRow extends StatelessWidget {
                   icon: const Icon(Icons.refresh, size: 18),
                   label: Text(text('reauthorizeWooCommerce')),
                 )
-              else
+              else ...[
+                if (isStalled)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilledButton.icon(
+                      key: ValueKey('retry-sync-${connection['id']}'),
+                      onPressed: onSync,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Réessayer'),
+                    ),
+                  ),
                 IconButton(
                   tooltip: status == 'REAUTH_REQUIRED'
                       ? text('reauthorizationRequired')
@@ -601,6 +627,7 @@ class _ConnectionRow extends StatelessWidget {
                       : onSync,
                   icon: const Icon(Icons.sync),
                 ),
+              ],
               IconButton(
                 tooltip: text('disconnect'),
                 onPressed: active || status == 'DISCONNECTED'

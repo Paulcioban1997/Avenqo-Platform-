@@ -31,24 +31,46 @@ def ready(
     db: Session = Depends(get_db),
     health_registry: ProviderHealthRegistry = Depends(get_provider_health_registry),
 ) -> ReadinessResponse:
-    """Vérifie les dépendances indispensables (DB) sans appel coûteux aux
-    fournisseurs IA/Stripe (juste leur état interne déjà connu / présence de
-    configuration)."""
+    """Vérifie les dépendances indispensables (DB, migrations, stockage)."""
     try:
         db.execute(text("SELECT 1"))
         database_status = "ok"
     except Exception:
         database_status = "unavailable"
+
     storage_status = artifact_storage_health.check(Path(settings.artifact_root))
+
+    migrations_status = "ok"
+    if database_status == "ok":
+        try:
+            from alembic.config import Config
+            from alembic.migration import MigrationContext
+            from alembic.script import ScriptDirectory
+
+            alembic_cfg = Config("alembic.ini")
+            script = ScriptDirectory.from_config(alembic_cfg)
+            head_rev = script.get_current_head()
+            context = MigrationContext.configure(db.connection())
+            current_rev = context.get_current_revision()
+            if current_rev != head_rev:
+                migrations_status = "pending"
+        except Exception:
+            migrations_status = "unverified"
+    else:
+        migrations_status = "unavailable"
+
+    is_ready = (
+        database_status == "ok"
+        and storage_status.status == "ok"
+        and migrations_status in {"ok", "unverified"}
+    )
+
     return ReadinessResponse(
-        status=(
-            "ready"
-            if database_status == "ok" and storage_status.status == "ok"
-            else "degraded"
-        ),
+        status="ready" if is_ready else "degraded",
         database=database_status,
         artifact_storage=storage_status.status,
         ai_providers=dict(health_registry.snapshot()),
         stripe_configured=bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
+        migrations=migrations_status,
     )
 

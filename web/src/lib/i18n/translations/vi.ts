@@ -134,19 +134,19 @@ const vi: Translations = {
     priceLabel: "Theo yêu cầu",
     plans: [
       {
-        tier: "Cơ bản",
+        tier: "Demo",
         title: "Để bắt đầu",
         items: ["1 mô-đun Avenqo", "Tối đa 5 người dùng", "Trợ lý tích hợp sẵn", "Hỗ trợ tiêu chuẩn"],
         action: "Nói chuyện với cố vấn",
       },
       {
-        tier: "Chuyên nghiệp",
+        tier: "Professional",
         title: "Để tăng tốc",
         items: ["Tối đa 5 mô-đun", "Tối đa 25 người dùng", "Tự động hóa nâng cao", "Hỗ trợ ưu tiên"],
         action: "Dùng thử miễn phí",
       },
       {
-        tier: "Doanh nghiệp",
+        tier: "Enterprise",
         title: "Để điều phối",
         items: ["Mô-đun không giới hạn", "Người dùng theo yêu cầu", "Tích hợp tùy chỉnh", "Quản trị chuyên biệt"],
         action: "Liên hệ đội ngũ bán hàng",

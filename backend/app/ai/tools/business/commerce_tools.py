@@ -24,7 +24,8 @@ from backend.app.models.commerce_connection import NormalizedCommerceRecord
 
 logger = logging.getLogger("avenqo.ai.commerce_tools")
 
-_ENTITY_PRODUCT = "product"
+_PRODUCT_ENTITY_TYPES = ("product", "products")
+_INVENTORY_ENTITY_TYPES = ("inventory", "inventories")
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ class GetProductDetailTool(AITool):
             select(NormalizedCommerceRecord)
             .where(
                 NormalizedCommerceRecord.company_id == company_id,
-                NormalizedCommerceRecord.entity_type == _ENTITY_PRODUCT,
+                NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
                 NormalizedCommerceRecord.deleted.is_(False),
             )
             .order_by(NormalizedCommerceRecord.source_updated_at.desc())
@@ -268,7 +269,7 @@ class GetInventorySummaryTool(AITool):
                     select(NormalizedCommerceRecord)
                     .where(
                         NormalizedCommerceRecord.company_id == company_id,
-                        NormalizedCommerceRecord.entity_type == _ENTITY_PRODUCT,
+                        NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
                         NormalizedCommerceRecord.deleted.is_(False),
                     )
                     .order_by(NormalizedCommerceRecord.source_updated_at.desc())

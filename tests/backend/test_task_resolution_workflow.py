@@ -204,30 +204,21 @@ def test_upload_reaches_task_resolution_and_dispatches_matching_task(workflow_en
             select(ModelRegistry).where(ModelRegistry.company_id == tenant.company_id)
         ).all()
 
-    assert len(ai_jobs) == 4
-    # Phase 22 : "recommendation" est détectée sur ce dataset (customer_id +
-    # product_id + quantity) mais ce fixture ne contient que 15 lignes, sous
-    # le seuil minimum d'interactions (20) : son job échoue seul, sans jamais
-    # bloquer ni désactiver les trois tâches réellement exécutables, et ne
-    # produit aucune ligne ModelRegistry.
-    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED, JobStatus.FAILED}
-    assert len([job for job in ai_jobs if job.status == JobStatus.COMPLETED]) == 3
-    assert len(registry_rows) == 3
+    # Le garde de préparation s'exécute avant toute création de job. Avec 15
+    # lignes, seules les prévisions atteignent leur seuil explicite de 12;
+    # régressions et recommandations (20 minimum) ne créent aucun faux échec.
+    assert len(ai_jobs) == 1
+    assert {job.status for job in ai_jobs} == {JobStatus.COMPLETED}
+    assert len(registry_rows) == 1
     by_task = {row.task_code: row for row in registry_rows}
-    assert set(by_task) == {"price", "demand", "weekly_forecast"}
-    assert by_task["price"].module_code == "retail"
-    assert by_task["price"].model_type == "regression"
-    assert by_task["price"].is_active is True
-    assert by_task["demand"].module_code == "retail"
-    assert by_task["demand"].model_type == "regression"
-    assert by_task["demand"].is_active is True
+    assert set(by_task) == {"weekly_forecast"}
     assert by_task["weekly_forecast"].module_code == "retail"
     assert by_task["weekly_forecast"].model_type == "forecasting"
     assert by_task["weekly_forecast"].is_active is True
 
     status_response = client.get(f"/api/v1/training-jobs/{ai_jobs[0].id}")
     assert status_response.status_code == 200
-    # Seul le message métier ("message") doit rester exempt de terme technique :
+    # Le message métier ("message") doit rester exempt de terme technique :
     # `ai_job_id` est un UUID opaque qui peut contenir, par pur hasard, une
     # sous-chaîne hexadécimale identique à un terme interdit (ex. "f1") sans que
     # cela ne révèle jamais rien de technique à l'utilisateur final.

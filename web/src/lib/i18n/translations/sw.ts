@@ -134,19 +134,19 @@ const sw: Translations = {
     priceLabel: "Kwa mahitaji",
     plans: [
       {
-        tier: "Msingi",
+        tier: "Demo",
         title: "Kuanza",
         items: ["Moduli 1 ya Avenqo", "Hadi watumiaji 5", "Msaidizi aliyojengwa ndani", "Msaada wa kawaida"],
         action: "Zungumza na mshauri",
       },
       {
-        tier: "Kitaalamu",
+        tier: "Professional",
         title: "Kuharakisha",
         items: ["Hadi moduli 5", "Hadi watumiaji 25", "Uendeshaji wa kina wa kiotomatiki", "Msaada wa kipaumbele"],
         action: "Jaribu bila malipo",
       },
       {
-        tier: "Biashara Kubwa",
+        tier: "Enterprise",
         title: "Kuratibu",
         items: ["Moduli zisizo na kikomo", "Watumiaji kwa mahitaji", "Uunganishaji maalum", "Utawala maalum"],
         action: "Wasiliana na mauzo",

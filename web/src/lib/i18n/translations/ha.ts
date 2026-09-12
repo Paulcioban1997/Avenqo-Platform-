@@ -134,19 +134,19 @@ const ha: Translations = {
     priceLabel: "Bisa buƙata",
     plans: [
       {
-        tier: "Na asali",
+        tier: "Demo",
         title: "Don farawa",
         items: ["Module Avenqo 1", "Har zuwa masu amfani 5", "Mataimaki da aka gina a ciki", "Tallafi na yau da kullun"],
         action: "Yi magana da mai ba da shawara",
       },
       {
-        tier: "Ƙwararre",
+        tier: "Professional",
         title: "Don hanzarta",
         items: ["Har zuwa modules 5", "Har zuwa masu amfani 25", "Atomatik na ci gaba", "Tallafi mai fifiko"],
         action: "Gwada kyauta",
       },
       {
-        tier: "Kamfani",
+        tier: "Enterprise",
         title: "Don daidaitawa",
         items: ["Modules marasa iyaka", "Masu amfani bisa buƙata", "Haɗin gwiwa na musamman", "Gudanarwa na musamman"],
         action: "Tuntuɓi tawagar siyarwa",

@@ -134,13 +134,13 @@ const pl: Translations = {
     priceLabel: "Wycena indywidualna",
     plans: [
       {
-        tier: "Podstawowy",
+        tier: "Demo",
         title: "Aby zacząć",
         items: ["1 moduł Avenqo", "Do 5 użytkowników", "Wbudowany asystent", "Standardowe wsparcie"],
         action: "Porozmawiaj z doradcą",
       },
       {
-        tier: "Profesjonalny",
+        tier: "Professional",
         title: "Aby przyspieszyć",
         items: ["Do 5 modułów", "Do 25 użytkowników", "Zaawansowane automatyzacje", "Priorytetowe wsparcie"],
         action: "Wypróbuj za darmo",

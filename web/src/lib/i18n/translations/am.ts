@@ -134,19 +134,19 @@ const am: Translations = {
     priceLabel: "እንደ ፍላጎት",
     plans: [
       {
-        tier: "መሰረታዊ",
+        tier: "Demo",
         title: "ለመጀመር",
         items: ["1 የAvenqo ሞጁል", "እስከ 5 ተጠቃሚዎች", "የተካተተ ረዳት", "መደበኛ ድጋፍ"],
         action: "ከአማካሪ ጋር ይነጋገሩ",
       },
       {
-        tier: "ሙያዊ",
+        tier: "Professional",
         title: "ለማፋጠን",
         items: ["እስከ 5 ሞጁሎች", "እስከ 25 ተጠቃሚዎች", "የላቀ አውቶሜሽን", "ቅድሚያ ድጋፍ"],
         action: "በነጻ ይሞክሩ",
       },
       {
-        tier: "ድርጅት",
+        tier: "Enterprise",
         title: "ለማስተባበር",
         items: ["ያልተገደበ ሞጁሎች", "እንደ ፍላጎት ተጠቃሚዎች", "ብጁ ውህደቶች", "የተለየ አስተዳደር"],
         action: "ከሽያጭ ጋር ይገናኙ",

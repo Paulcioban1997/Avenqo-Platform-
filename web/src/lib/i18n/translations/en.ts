@@ -134,7 +134,7 @@ const en: Translations = {
     priceLabel: "Custom pricing",
     plans: [
       {
-        tier: "Essential",
+        tier: "Demo",
         title: "To get started",
         items: ["1 Avenqo module", "Up to 5 users", "Built-in assistant", "Standard support"],
         action: "Talk to an advisor",

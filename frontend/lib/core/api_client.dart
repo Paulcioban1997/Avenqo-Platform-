@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:avenqo/core/app_config.dart';
+import 'package:avenqo/core/platform_http_client.dart';
 import 'package:avenqo/core/token_store.dart';
 
 class ApiException implements Exception {
@@ -28,10 +30,10 @@ class ApiClient {
   ApiClient({
     required this.tokenStore,
     http.Client? httpClient,
-    String baseUrl = AppConfig.apiBaseUrl,
+    String? baseUrl,
     this._requestTimeout = const Duration(seconds: 15),
-  }) : _httpClient = httpClient ?? http.Client(),
-       _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), '');
+  }) : _httpClient = httpClient ?? createPlatformHttpClient(),
+       _baseUrl = (baseUrl ?? AppConfig.apiBaseUrl).replaceFirst(RegExp(r'/$'), '');
 
   final TokenStore tokenStore;
   final http.Client _httpClient;
@@ -39,6 +41,17 @@ class ApiClient {
   final Duration _requestTimeout;
   String? _accessToken;
   String? _refreshToken;
+
+  Uri _buildUri(String path) {
+    if (_baseUrl.startsWith('http://') || _baseUrl.startsWith('https://')) {
+      return Uri.parse('$_baseUrl$path');
+    }
+    final cleanPath = '$_baseUrl$path'.replaceAll(RegExp(r'/+'), '/');
+    if (kIsWeb) {
+      return Uri.base.resolve(cleanPath);
+    }
+    return Uri.parse(cleanPath);
+  }
 
   bool get hasSession => _accessToken != null && _refreshToken != null;
 
@@ -96,12 +109,14 @@ class ApiClient {
     String path, {
     bool retryAfterRefresh = true,
   }) async {
-    final headers = <String, String>{};
+    final headers = <String, String>{
+      'X-Requested-With': 'XMLHttpRequest',
+    };
     if (_accessToken != null) headers['Authorization'] = 'Bearer $_accessToken';
     late final http.Response response;
     try {
       response = await _httpClient
-          .get(Uri.parse('$_baseUrl$path'), headers: headers)
+          .get(_buildUri(path), headers: headers)
           .timeout(_requestTimeout);
     } on TimeoutException {
       throw const ApiException('Avenqo request timed out', isTimeout: true);
@@ -145,12 +160,13 @@ class ApiClient {
     final isDatasetZip =
         path == '/datasets/upload' && fileName.toLowerCase().endsWith('.zip');
     final effectivePath = isDatasetZip ? '/datasets/archive' : path;
-    final uri = Uri.parse('$_baseUrl$effectivePath');
+    final uri = _buildUri(effectivePath);
     final request = http.MultipartRequest('POST', uri)
       ..fields.addAll(fields)
       ..files.add(
         http.MultipartFile.fromBytes(fileField, fileBytes, filename: fileName),
       );
+    request.headers['X-Requested-With'] = 'XMLHttpRequest';
     if (_accessToken != null) {
       request.headers['Authorization'] = 'Bearer $_accessToken';
     }
@@ -194,11 +210,12 @@ class ApiClient {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     };
     if (_accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
     }
-    final request = http.Request('POST', Uri.parse('$_baseUrl$path'))
+    final request = http.Request('POST', _buildUri(path))
       ..headers.addAll(headers)
       ..body = jsonEncode(body);
     late final http.StreamedResponse response;
@@ -241,11 +258,14 @@ class ApiClient {
     required bool authenticated,
     bool retryAfterRefresh = true,
   }) async {
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
     if (authenticated && _accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
     }
-    final request = http.Request(method, Uri.parse('$_baseUrl$path'))
+    final request = http.Request(method, _buildUri(path))
       ..headers.addAll(headers);
     if (body != null) {
       request.body = jsonEncode(body);
@@ -277,14 +297,22 @@ class ApiClient {
   }
 
   Future<bool> _refresh() async {
-    if (_refreshToken == null) return false;
+    // If not web and no refresh token in memory/store, cannot refresh
+    if (!kIsWeb && _refreshToken == null) return false;
     late final http.Response response;
     try {
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      final body = (kIsWeb && _refreshToken == null)
+          ? '{}'
+          : jsonEncode({'refresh_token': _refreshToken});
       response = await _httpClient
           .post(
-            Uri.parse('$_baseUrl/auth/refresh'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'refresh_token': _refreshToken}),
+            _buildUri('/auth/refresh'),
+            headers: headers,
+            body: body,
           )
           .timeout(_requestTimeout);
     } on TimeoutException {
@@ -304,9 +332,18 @@ class ApiClient {
   }
 
   Future<void> _saveSession(Map<String, dynamic> data) async {
-    _accessToken = data['access_token'] as String;
-    _refreshToken = data['refresh_token'] as String;
-    await tokenStore.writeTokens(_accessToken!, _refreshToken!);
+    if (!kIsWeb) {
+      _accessToken = data['access_token'] as String?;
+      _refreshToken = data['refresh_token'] as String?;
+      if (_accessToken != null && _refreshToken != null) {
+        await tokenStore.writeTokens(_accessToken!, _refreshToken!);
+      }
+    } else {
+      // In web, tokens are in HttpOnly cookies; clear legacy local storage
+      _accessToken = null;
+      _refreshToken = null;
+      await tokenStore.clear();
+    }
   }
 
   dynamic _decode(http.Response response) {

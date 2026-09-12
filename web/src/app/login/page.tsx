@@ -1,5 +1,19 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { AuthForm } from "@/components/auth-form";
+
+export const metadata: Metadata = {
+  title: "Connexion",
+  description: "Connectez-vous à votre espace sécurisé Avenqo.",
+  robots: {
+    index: false,
+    follow: true,
+  },
+  alternates: {
+    canonical: "/login",
+  },
+};
 
 export default function LoginPage() {
-  redirect(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.avenqo.ca"}/login`);
+  return <AuthForm mode="login" />;
 }
+

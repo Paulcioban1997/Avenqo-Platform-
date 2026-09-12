@@ -133,19 +133,19 @@ const ko: Translations = {
     priceLabel: "맞춤 견적",
     plans: [
       {
-        tier: "에센셜",
+        tier: "Demo",
         title: "시작을 위한",
         items: ["Avenqo 모듈 1개", "최대 5명 사용자", "내장 어시스턴트", "표준 지원"],
         action: "상담원과 이야기하기",
       },
       {
-        tier: "프로페셔널",
+        tier: "Professional",
         title: "가속화를 위한",
         items: ["모듈 최대 5개", "최대 25명 사용자", "고급 자동화", "우선 지원"],
         action: "무료로 체험하기",
       },
       {
-        tier: "엔터프라이즈",
+        tier: "Enterprise",
         title: "전사 통합을 위한",
         items: ["무제한 모듈", "맞춤형 사용자 수", "맞춤형 연동", "전담 거버넌스"],
         action: "영업팀 문의하기",

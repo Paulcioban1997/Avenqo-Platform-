@@ -56,6 +56,16 @@ class DatasetStorage(ABC):
     ) -> str:
         ...
 
+    @abstractmethod
+    def save_canonical(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        entities: dict[str, list[dict[str, Any]]],
+    ) -> str:
+        ...
+
 
 class LocalDatasetStorage(DatasetStorage):
     """Implémentation locale sur disque (GCS/S3 : placeholders pour Phase future)."""
@@ -97,6 +107,17 @@ class LocalDatasetStorage(DatasetStorage):
         payload = json.dumps(metadata, default=str).encode("utf-8")
         return str(self._write_bytes(directory, "metadata.json", payload))
 
+    def save_canonical(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        entities: dict[str, list[dict[str, Any]]],
+    ) -> str:
+        directory = self._version_dir(company_id, dataset_id, version) / "canonical"
+        payload = json.dumps(entities, default=str).encode("utf-8")
+        return str(self._write_bytes(directory, "entities.json", payload))
+
     def _version_dir(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
         return self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}"
 
@@ -107,6 +128,9 @@ class LocalDatasetStorage(DatasetStorage):
 
     def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
         return self._version_dir(company_id, dataset_id, version) / "metadata" / "metadata.json"
+
+    def canonical_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        return self._version_dir(company_id, dataset_id, version) / "canonical" / "entities.json"
 
     def delete_dataset(self, company_id: UUID, dataset_id: UUID) -> None:
         directory = (self._root / str(company_id) / "datasets" / str(dataset_id)).resolve()

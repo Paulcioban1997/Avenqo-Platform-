@@ -10,10 +10,12 @@ export const REGIONS: { code: RegionCode; label: Record<"fr" | "en", string> }[]
 
 /** Une seule source de vérité pour les langues disponibles ; ajouter une langue = ajouter une entrée ici + un fichier de traduction. */
 export const LOCALES: LocaleDefinition[] = [
-  { code: "fr", region: "americas", flag: "🇨🇦", nativeName: "Français", englishName: "French", direction: "ltr" },
-  { code: "en", region: "americas", flag: "🇺🇸", nativeName: "English", englishName: "English", direction: "ltr" },
+  { code: "fr", region: "americas", flag: "🇨🇦", nativeName: "Français (Canada)", englishName: "French (Canada)", direction: "ltr" },
+  { code: "en", region: "americas", flag: "🇺🇸", nativeName: "English (US)", englishName: "English (US)", direction: "ltr" },
   { code: "es", region: "americas", flag: "🇪🇸", nativeName: "Español", englishName: "Spanish", direction: "ltr" },
   { code: "pt", region: "americas", flag: "🇧🇷", nativeName: "Português", englishName: "Portuguese", direction: "ltr" },
+  { code: "fr-FR", region: "europe", flag: "🇫🇷", nativeName: "Français (France)", englishName: "French (France)", direction: "ltr" },
+  { code: "en-GB", region: "europe", flag: "🇬🇧", nativeName: "English (UK)", englishName: "English (UK)", direction: "ltr" },
   { code: "ro", region: "europe", flag: "🇷🇴", nativeName: "Română", englishName: "Romanian", direction: "ltr" },
   { code: "de", region: "europe", flag: "🇩🇪", nativeName: "Deutsch", englishName: "German", direction: "ltr" },
   { code: "it", region: "europe", flag: "🇮🇹", nativeName: "Italiano", englishName: "Italian", direction: "ltr" },

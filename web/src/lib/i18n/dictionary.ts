@@ -42,6 +42,8 @@ import tl from "./translations/tl";
 import my from "./translations/my";
 import km from "./translations/km";
 import mn from "./translations/mn";
+import frFR from "./translations/fr-FR";
+import enGB from "./translations/en-GB";
 
 /** Source de vérité unique associant chaque locale à ses traductions complètes. */
 export const TRANSLATIONS: Record<LocaleCode, Translations> = {
@@ -87,6 +89,8 @@ export const TRANSLATIONS: Record<LocaleCode, Translations> = {
   mn,
   ka,
   hy,
+  "fr-FR": frFR,
+  "en-GB": enGB,
 };
 
 /** Retourne les traductions d'une locale, avec repli sur la locale par défaut si absente. */

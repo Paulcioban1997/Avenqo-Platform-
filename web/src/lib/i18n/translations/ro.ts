@@ -134,13 +134,13 @@ const ro: Translations = {
     priceLabel: "Personalizat",
     plans: [
       {
-        tier: "Esențial",
+        tier: "Demo",
         title: "Pentru început",
         items: ["1 modul Avenqo", "Până la 5 utilizatori", "Asistent integrat", "Suport standard"],
         action: "Vorbește cu un consilier",
       },
       {
-        tier: "Profesional",
+        tier: "Professional",
         title: "Pentru accelerare",
         items: ["Până la 5 module", "Până la 25 de utilizatori", "Automatizări avansate", "Suport prioritar"],
         action: "Încearcă gratuit",

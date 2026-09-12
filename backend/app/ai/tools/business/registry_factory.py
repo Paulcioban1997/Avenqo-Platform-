@@ -9,6 +9,23 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from backend.app.ai.tools.business.accounting_tools import (
+    GetCashFlowForecastTool,
+    GetExpenseAnomaliesTool,
+    GetFinancialOverviewTool,
+    GetMonthlyExpensesTool,
+    GetProfitMarginTool,
+    GetUnpaidInvoicesTool,
+)
+from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusinessHealthTool
+from backend.app.ai.tools.business.crm_tools import (
+    GetCRMOverviewTool,
+    GetFollowUpRecommendationTool,
+    GetHighRiskCustomersTool,
+    GetLeadsToContactTool,
+    GetRankedLeadsTool,
+    GetTopRevenueDealsTool,
+)
 from backend.app.ai.tools.business.customer_tools import GetCustomerSegmentsTool, GetCustomerSummaryTool
 from backend.app.ai.tools.business.commerce_tools import GetInventorySummaryTool, GetProductDetailTool
 from backend.app.ai.tools.business.predictive_tools import (
@@ -61,6 +78,22 @@ def build_business_tool_registry(
     registry.register(GetSalesForecastTool(session, prediction_service))
     registry.register(GetAnomaliesTool(session, prediction_service))
     registry.register(GetPredictionSummaryTool(session))
+    # Phase 13 — CRM AI Tools
+    registry.register(GetCRMOverviewTool(session))
+    registry.register(GetLeadsToContactTool(session))
+    registry.register(GetRankedLeadsTool(session))
+    registry.register(GetHighRiskCustomersTool(session))
+    registry.register(GetTopRevenueDealsTool(session))
+    registry.register(GetFollowUpRecommendationTool(session))
+    # Phase 14 — Accounting AI Tools
+    registry.register(GetFinancialOverviewTool(session))
+    registry.register(GetMonthlyExpensesTool(session))
+    registry.register(GetProfitMarginTool(session))
+    registry.register(GetUnpaidInvoicesTool(session))
+    registry.register(GetExpenseAnomaliesTool(session))
+    registry.register(GetCashFlowForecastTool(session))
+    # Phase 15 — Cross-Agent Synthesis Tools
+    registry.register(GetCrossAgentBusinessHealthTool(session))
     return registry
 
 

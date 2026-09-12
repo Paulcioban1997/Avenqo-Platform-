@@ -16,6 +16,7 @@ from backend.app.models import (
     Base,
     CommerceConnection,
     CommerceConnectionStatus,
+    CommerceRawSnapshot,
     CommerceWebhookReceipt,
     Company,
     NormalizedCommerceRecord,
@@ -443,7 +444,14 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
         incremental = await service.synchronize(tenant, connection.id)
 
         records = session.scalars(select(NormalizedCommerceRecord)).all()
+        raw_snapshots = session.scalars(
+            select(CommerceRawSnapshot).order_by(CommerceRawSnapshot.observed_at)
+        ).all()
         assert len(records) == 1
+        assert len(raw_snapshots) == 2
+        assert len(raw_snapshots[0].raw_payload["lineItems"]["nodes"]) == 1
+        assert len(raw_snapshots[1].raw_payload["lineItems"]["nodes"]) == 2
+        assert records[0].source_snapshot_id == raw_snapshots[1].id
         assert len(records[0].normalized_data["line_items"]) == 2
         assert initial.initial_sync is True
         assert incremental.initial_sync is False

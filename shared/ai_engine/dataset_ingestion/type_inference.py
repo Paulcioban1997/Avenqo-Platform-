@@ -20,6 +20,20 @@ _PERCENTAGE_TOKENS = ("percent", "rate", "ratio")
 _CURRENCY_SYMBOLS = re.compile(r"[$€£]")
 _PERCENTAGE_SUFFIX = re.compile(r"%\s*$")
 _THOUSANDS_SEPARATED_NUMBER = re.compile(r"^-?[\d.,]+$")
+_EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_URL = re.compile(r"^https?://", re.IGNORECASE)
+_PHONE_NAME_TOKENS = ("phone", "telephone", "mobile", "fax")
+_POSTAL_NAME_TOKENS = ("postal", "postcode", "zip")
+_COUNTRY_NAME_TOKENS = ("country", "country_code", "pays")
+_REGION_NAME_TOKENS = ("region", "state", "province")
+_ISO_CURRENCY_CODES = frozenset({
+    "USD", "CAD", "EUR", "GBP", "AUD", "JPY", "CHF", "CNY", "INR",
+    "BRL", "MXN", "SEK", "NOK", "NZD", "SGD", "HKD", "DKK", "PLN", "ZAR",
+})
+_COMMON_COUNTRIES = frozenset({
+    "CA", "US", "USA", "FR", "DE", "GB", "UK", "ES", "IT", "NL", "AU", "JP",
+    "CANADA", "UNITED STATES", "FRANCE", "GERMANY", "UNITED KINGDOM", "SPAIN", "ITALY",
+})
 
 
 class SemanticType(str, Enum):
@@ -31,8 +45,18 @@ class SemanticType(str, Enum):
     TEXT = "text"
     IDENTIFIER = "identifier"
     CURRENCY = "currency"
+    CURRENCY_CODE = "currency_code"
     PERCENTAGE = "percentage"
     UNKNOWN = "unknown"
+    DECIMAL = "decimal"
+    EMAIL = "email"
+    PHONE = "phone"
+    POSTAL_CODE = "postal_code"
+    COUNTRY = "country"
+    REGION = "region"
+    URL = "url"
+    SKU = "sku"
+    FREE_TEXT = "free_text"
 
 
 def infer_semantic_type(column_name: str, values: Sequence[Any]) -> SemanticType:
@@ -42,10 +66,46 @@ def infer_semantic_type(column_name: str, values: Sequence[Any]) -> SemanticType
     if not present:
         return SemanticType.UNKNOWN
 
-    lowered_name = column_name.lower()
+    lowered_name = column_name.lower().strip()
     total = len(present)
     distinct = len({str(value) for value in present})
     uniqueness_ratio = distinct / total if total else 0.0
+
+    # 1. Détection des devises (codes ISO 3 lettres ou colonne 'currency')
+    if (
+        all(isinstance(value, str) and value.strip().upper() in _ISO_CURRENCY_CODES for value in present)
+        or (any(token in lowered_name for token in ("currency", "devise")) and distinct <= 20)
+    ):
+        return SemanticType.CURRENCY_CODE
+
+    if any(token in lowered_name for token in _PHONE_NAME_TOKENS):
+        return SemanticType.PHONE
+    if any(token in lowered_name for token in _POSTAL_NAME_TOKENS):
+        return SemanticType.POSTAL_CODE
+    if "sku" in lowered_name:
+        return SemanticType.SKU
+    if (
+        all(isinstance(value, str) and _EMAIL.match(value.strip()) for value in present)
+        or ("email" in lowered_name and any(isinstance(value, str) and "@" in value for value in present))
+    ):
+        return SemanticType.EMAIL
+    if all(isinstance(value, str) and _URL.match(value.strip()) for value in present):
+        return SemanticType.URL
+    if any(token in lowered_name for token in _COUNTRY_NAME_TOKENS) or (
+        all(isinstance(value, str) and value.strip().upper() in _COMMON_COUNTRIES for value in present)
+    ):
+        return SemanticType.COUNTRY
+    if any(token in lowered_name for token in _REGION_NAME_TOKENS):
+        return SemanticType.REGION
+
+    if any(
+        isinstance(value, str)
+        and len(value.strip()) > 1
+        and value.strip().startswith("0")
+        and value.strip().isdigit()
+        for value in present
+    ):
+        return SemanticType.IDENTIFIER
 
     if all(isinstance(value, bool) for value in present):
         return SemanticType.BOOLEAN
@@ -85,6 +145,8 @@ def infer_semantic_type(column_name: str, values: Sequence[Any]) -> SemanticType
     if uniqueness_ratio <= 0.5 and distinct <= 50:
         return SemanticType.CATEGORICAL
 
+    if any(isinstance(value, str) and len(value.split()) >= 8 for value in present):
+        return SemanticType.FREE_TEXT
     return SemanticType.TEXT
 
 

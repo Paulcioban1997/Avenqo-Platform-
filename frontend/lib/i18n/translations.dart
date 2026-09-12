@@ -378,12 +378,12 @@ class Phase4eStrings {
     _ => 'statusUnknown',
   });
 
-  String planName(String plan) => billingValue(switch (plan) {
-    'demo' => 'planDemo',
-    'professional' => 'planProfessional',
-    'enterprise' || 'custom_enterprise' => 'planEnterprise',
-    _ => 'statusUnknown',
-  });
+  String planName(String plan) => switch (plan) {
+    'demo' => 'Demo',
+    'professional' => 'Professional',
+    'enterprise' || 'custom_enterprise' => 'Enterprise',
+    _ => billingValue('statusUnknown'),
+  };
 }
 
 class Phase4dStrings {
@@ -2475,6 +2475,18 @@ class CompanyStrings {
           'before',
           'after',
           'quality',
+          'qualityBefore',
+          'qualityAfter',
+          'entityViews',
+          'mappingAudit',
+          'structuralNulls',
+          'notApplicableFields',
+          'requiredMissing',
+          'optionalMissing',
+          'customers',
+          'catalog',
+          'commerce',
+          'otherFields',
           'rowsBeforeAfter',
           'columns',
           'duplicatesRemoved',
@@ -2694,6 +2706,18 @@ class CompanyStrings {
       'before': 'Before',
       'after': 'After',
       'quality': 'Cleaning quality',
+      'qualityBefore': 'Quality before',
+      'qualityAfter': 'Quality after',
+      'entityViews': 'Business entities',
+      'mappingAudit': 'Mapping audit',
+      'structuralNulls': 'Structural nulls',
+      'notApplicableFields': 'Not applicable',
+      'requiredMissing': 'Required values missing',
+      'optionalMissing': 'Optional values missing',
+      'customers': 'Customers',
+      'catalog': 'Products and inventory',
+      'commerce': 'Orders and payments',
+      'otherFields': 'Other fields',
       'rowsBeforeAfter': 'Rows',
       'columns': 'Columns',
       'duplicatesRemoved': 'Duplicates removed',

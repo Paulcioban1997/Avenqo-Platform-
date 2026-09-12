@@ -133,19 +133,19 @@ const ja: Translations = {
     priceLabel: "個別見積もり",
     plans: [
       {
-        tier: "エッセンシャル",
+        tier: "Demo",
         title: "はじめての方向け",
         items: ["Avenqoモジュール1つ", "ユーザー数5名まで", "内蔵アシスタント", "標準サポート"],
         action: "アドバイザーに相談",
       },
       {
-        tier: "プロフェッショナル",
+        tier: "Professional",
         title: "加速を目指す方向け",
         items: ["モジュール最大5つ", "ユーザー数25名まで", "高度な自動化", "優先サポート"],
         action: "無料で試す",
       },
       {
-        tier: "エンタープライズ",
+        tier: "Enterprise",
         title: "全体最適を目指す方向け",
         items: ["モジュール数無制限", "ユーザー数を柔軟に設定", "カスタム連携", "専任ガバナンス"],
         action: "営業に問い合わせる",

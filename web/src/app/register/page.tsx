@@ -1,5 +1,19 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { AuthForm } from "@/components/auth-form";
+
+export const metadata: Metadata = {
+  title: "Inscription",
+  description: "Créez votre compte entreprise sur la plateforme Avenqo.",
+  robots: {
+    index: false,
+    follow: true,
+  },
+  alternates: {
+    canonical: "/register",
+  },
+};
 
 export default function RegisterPage() {
-  redirect(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.avenqo.ca"}/register`);
+  return <AuthForm mode="register" />;
 }
+

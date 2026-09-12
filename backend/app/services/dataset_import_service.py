@@ -1,4 +1,4 @@
-﻿"""Importe et profile les datasets sans entraîner de modèle."""
+"""Importe et profile les datasets sans entraîner de modèle."""
 
 from collections import Counter
 from collections.abc import Sequence
@@ -9,17 +9,20 @@ from pathlib import Path
 import shutil
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import (
     CommerceConnection,
+    ConnectorDatasetEvaluation,
     DataQualityReport,
     Dataset,
     DatasetProfile,
+    DatasetRelationship,
     DatasetStatus,
     DatasetVersion,
     DatasetVersionStatus,
+    Mapping,
     NormalizedCommerceRecord,
     RetailActiveSource,
     TrainingJob,
@@ -278,15 +281,27 @@ class DatasetImportService:
                     )
 
         try:
-            # Les anciennes bases sandbox ont bien un FK ON DELETE CASCADE sur
-            # training_jobs.dataset_id, mais l'ORM tentait auparavant de mettre
-            # dataset_id à NULL avant de supprimer le Dataset, ce qui viole le
-            # NOT NULL. On supprime explicitement ces jobs en premier; leurs
-            # dépendances DB (ex. model_registries) suivent leur cascade FK.
+            # Nettoyage transactionnel complet et ordonné des tables dépendantes
+            # pour ce tenant uniquement, avant suppression du Dataset.
             self._session.execute(
                 delete(TrainingJob).where(
                     TrainingJob.dataset_id.in_(unique_ids),
                     TrainingJob.company_id == tenant.company_id,
+                )
+            )
+            self._session.execute(
+                delete(ConnectorDatasetEvaluation).where(
+                    ConnectorDatasetEvaluation.dataset_id.in_(unique_ids),
+                    ConnectorDatasetEvaluation.company_id == tenant.company_id,
+                )
+            )
+            self._session.execute(
+                delete(DatasetRelationship).where(
+                    or_(
+                        DatasetRelationship.left_dataset_id.in_(unique_ids),
+                        DatasetRelationship.right_dataset_id.in_(unique_ids),
+                    ),
+                    DatasetRelationship.company_id == tenant.company_id,
                 )
             )
             for connection in linked_connections:
@@ -306,6 +321,26 @@ class DatasetImportService:
                 delete(RetailActiveSource).where(
                     RetailActiveSource.company_id == tenant.company_id,
                     RetailActiveSource.dataset_id.in_(unique_ids),
+                )
+            )
+            self._session.execute(
+                delete(DatasetProfile).where(
+                    DatasetProfile.dataset_id.in_(unique_ids)
+                )
+            )
+            self._session.execute(
+                delete(DataQualityReport).where(
+                    DataQualityReport.dataset_id.in_(unique_ids)
+                )
+            )
+            self._session.execute(
+                delete(Mapping).where(
+                    Mapping.dataset_id.in_(unique_ids)
+                )
+            )
+            self._session.execute(
+                delete(DatasetVersion).where(
+                    DatasetVersion.dataset_id.in_(unique_ids)
                 )
             )
             for dataset in datasets:

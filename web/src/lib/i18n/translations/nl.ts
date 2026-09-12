@@ -134,19 +134,19 @@ const nl: Translations = {
     priceLabel: "Op maat",
     plans: [
       {
-        tier: "Essentieel",
+        tier: "Demo",
         title: "Om te beginnen",
         items: ["1 Avenqo-module", "Tot 5 gebruikers", "Ingebouwde assistent", "Standaard support"],
         action: "Praat met een adviseur",
       },
       {
-        tier: "Professioneel",
+        tier: "Professional",
         title: "Om te versnellen",
         items: ["Tot 5 modules", "Tot 25 gebruikers", "Geavanceerde automatiseringen", "Prioritaire support"],
         action: "Gratis proberen",
       },
       {
-        tier: "Onderneming",
+        tier: "Enterprise",
         title: "Om te orkestreren",
         items: ["Onbeperkte modules", "Gebruikers op maat", "Aangepaste integraties", "Toegewijde governance"],
         action: "Contacteer sales",

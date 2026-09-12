@@ -331,7 +331,112 @@ footer { padding: 70px 0 24px; background: #05070b; color: #ffffff; }
 .auth-aside-copy h1 { margin: 18px 0; font-size: 48px; line-height: 1.08; }
 .auth-aside-copy p { max-width: 440px; color: #c5d0de; font-size: 16px; line-height: 1.7; }
 .auth-legal { margin: 0; color: #8492a5; font-size: 11px; }
-.auth-panel { display: grid; place-items: center; padding: 54px; overflow-y: auto; }
+.auth-panel { position: relative; display: grid; place-items: center; padding: 74px 54px 54px; overflow-y: auto; transition: background .2s, color .2s; }
+.auth-top-controls {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 40;
+}
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #2b3545;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.theme-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.09);
+  border-color: rgba(0, 0, 0, 0.22);
+}
+.auth-top-controls .region-language-trigger {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #2b3545;
+}
+.auth-top-controls .region-language-trigger:hover {
+  background: rgba(0, 0, 0, 0.09);
+  border-color: rgba(0, 0, 0, 0.22);
+}
+
+/* Dark Mode Overrides */
+html.dark {
+  color-scheme: dark;
+}
+html.dark body {
+  background: #080b12;
+  color: #f1f4f9;
+}
+html.dark .auth-layout {
+  background: #080b12;
+}
+html.dark .auth-panel {
+  background: #0b0e16;
+  color: #f1f4f9;
+}
+html.dark .auth-heading h2 {
+  color: #ffffff;
+}
+html.dark .auth-heading p {
+  color: #8a94a6;
+}
+html.dark .auth-field > span {
+  color: #c5cad3;
+}
+html.dark .auth-field input,
+html.dark .auth-field select {
+  background: #121722;
+  color: #ffffff;
+  border-color: #242c3d;
+}
+html.dark .auth-field input:focus,
+html.dark .auth-field select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(8, 124, 240, 0.25);
+}
+html.dark .auth-field small {
+  color: #7d889b;
+}
+html.dark .password-field button {
+  color: #8a94a6;
+}
+html.dark .password-field button:hover {
+  color: #ffffff;
+}
+html.dark .auth-switch {
+  color: #8a94a6;
+}
+html.dark .auth-switch a {
+  color: #53adff;
+}
+html.dark .theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e7eaf0;
+}
+html.dark .theme-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+html.dark .auth-top-controls .region-language-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e7eaf0;
+}
+html.dark .auth-top-controls .region-language-trigger:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
 .auth-form-wrap { width: min(100%, 520px); }
 .auth-wordmark { position: relative; display: block; width: 154px; height: 68px; overflow: hidden; margin-bottom: 48px; background: #080b12; border-radius: 6px; }
 .auth-wordmark img { object-fit: cover; object-position: left center; transform: scale(1.08); }
@@ -361,22 +466,25 @@ footer { padding: 70px 0 24px; background: #05070b; color: #ffffff; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 860px) {
+  .auth-top-controls { top: 14px; right: 16px; }
   .auth-layout { grid-template-columns: 1fr; }
   .auth-aside { min-height: 250px; padding: 30px 32px; }
   .auth-aside-copy { margin-block: 45px 30px; }
   .auth-aside-copy h1 { font-size: 38px; }
   .auth-legal { display: none; }
-  .auth-panel { padding: 48px 24px 70px; }
+  .auth-panel { padding: 68px 24px 70px; }
   .auth-wordmark { margin-bottom: 36px; }
 }
 
 @media (max-width: 480px) {
+  .auth-top-controls { top: 12px; right: 12px; gap: 6px; }
   .auth-aside { min-height: 220px; padding: 24px 20px; }
   .auth-aside-copy { margin-block: 34px 10px; }
   .auth-aside-copy h1 { font-size: 31px; }
   .auth-aside-copy p { font-size: 14px; }
-  .auth-panel { place-items: start center; padding: 38px 20px 60px; }
+  .auth-panel { place-items: start center; padding: 58px 16px 50px; }
   .auth-wordmark { width: 140px; height: 62px; margin-bottom: 30px; }
   .auth-heading h2 { font-size: 29px; }
   .auth-field-row { grid-template-columns: 1fr; }
 }
+

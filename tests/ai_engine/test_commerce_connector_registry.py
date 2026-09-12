@@ -14,12 +14,15 @@ def test_catalog_lists_all_retail_providers_once() -> None:
 
     assert len(catalog) == 30
     assert len({item.provider for item in catalog}) == 30
-    assert {item.provider for item in catalog if item.enabled} == {"shopify"}
-    assert all(
-        item.implementation_status == ConnectorImplementationStatus.COMING_SOON
+    assert {item.provider for item in catalog if item.enabled} == {
+        "shopify",
+        "woocommerce",
+    }
+    assert {
+        item.provider
         for item in catalog
-        if item.provider != "shopify"
-    )
+        if item.implementation_status == ConnectorImplementationStatus.AVAILABLE
+    } == {"shopify", "woocommerce"}
 
 
 def test_shopify_exposes_implemented_read_capabilities() -> None:

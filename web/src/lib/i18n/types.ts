@@ -167,7 +167,9 @@ export type LocaleCode =
   | "km"
   | "mn"
   | "ka"
-  | "hy";
+  | "hy"
+  | "fr-FR"
+  | "en-GB";
 
 export type RegionCode =
   | "americas"

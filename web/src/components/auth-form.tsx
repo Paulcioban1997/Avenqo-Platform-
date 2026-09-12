@@ -4,6 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { RegionLanguageSelector } from "./region-language-selector";
+import { ThemeToggle } from "./theme-toggle";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAuthStrings } from "@/lib/i18n/auth-dictionary";
 
 type AuthMode = "login" | "register";
 type ApiPayload = {
@@ -20,6 +24,9 @@ type ApiPayload = {
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const isRegister = mode === "register";
+  const { locale } = useLocale();
+  const s = getAuthStrings(locale);
+
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -32,19 +39,20 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setIsError(false);
 
     const form = new FormData(event.currentTarget);
+    const email = form.get("email")?.toString() || "";
     const payload = isRegister
       ? {
           company_name: form.get("company_name"),
-          company_email: form.get("company_email"),
+          company_email: form.get("company_email") || email,
           first_name: form.get("first_name"),
           last_name: form.get("last_name"),
-          email: form.get("email"),
+          email: email,
           password: form.get("password"),
           country: "Canada",
           timezone: "America/Toronto",
-          industry: form.get("industry"),
+          industry: form.get("industry") || "Commerce",
         }
-      : { email: form.get("email"), password: form.get("password") };
+      : { email: email, password: form.get("password") };
 
     try {
       const response = await fetch(`/api/auth/${mode}`, {
@@ -67,15 +75,18 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         );
       }
 
-      if (!isRegister && data.access_token && data.refresh_token) {
-        localStorage.setItem("avenqo_access_token", data.access_token);
-        localStorage.setItem("avenqo_refresh_token", data.refresh_token);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("avenqo_access_token");
+        localStorage.removeItem("avenqo_refresh_token");
+      }
+
+      if (!isRegister) {
+        window.location.href = "/dashboard";
+        return;
       }
 
       setMessage(
-        isRegister
-          ? data.message || "Compte créé. Vérifiez votre adresse email."
-          : `Connexion réussie${data.user?.first_name ? `, ${data.user.first_name}` : ""}.`,
+        data.message || "Compte créé. Vérifiez votre adresse email.",
       );
     } catch (error) {
       setIsError(true);
@@ -88,54 +99,58 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   return (
     <div className="auth-layout">
       <aside className="auth-aside">
-        <Link href="/" className="auth-back"><ArrowLeft size={16} /> Retour à l’accueil</Link>
+        <Link href="/" className="auth-back"><ArrowLeft size={16} /> {s.backToHome}</Link>
         <div className="auth-aside-copy">
-          <span>ESPACE AVENQO</span>
-          <h1>{isRegister ? "Votre entreprise, enfin réunie." : "Content de vous revoir."}</h1>
-          <p>{isRegister ? "Créez votre espace sécurisé et activez les modules adaptés à vos priorités." : "Retrouvez vos équipes, vos indicateurs et vos prochaines actions."}</p>
+          <span>{s.workspace}</span>
+          <h1>{isRegister ? s.asideRegisterTitle : s.asideLoginTitle}</h1>
+          <p>{isRegister ? s.asideRegisterDesc : s.asideLoginDesc}</p>
         </div>
-        <p className="auth-legal">Une plateforme de PMC Solutions AI</p>
+        <p className="auth-legal">{s.legal}</p>
       </aside>
       <section className="auth-panel">
+        <div className="auth-top-controls" data-testid="auth-top-controls">
+          <RegionLanguageSelector />
+          <ThemeToggle />
+        </div>
         <div className="auth-form-wrap">
           <Link href="/" className="auth-wordmark" aria-label="Avenqo, accueil">
             <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} priority />
           </Link>
           <div className="auth-heading">
-            <span>{isRegister ? "Démarrer avec Avenqo" : "Espace sécurisé"}</span>
-            <h2>{isRegister ? "Créer votre organisation" : "Connexion"}</h2>
-            <p>{isRegister ? "Configurez votre espace professionnel." : "Accédez à votre espace Avenqo."}</p>
+            <span>{isRegister ? s.badgeRegister : s.badgeLogin}</span>
+            <h2>{isRegister ? s.headingRegister : s.headingLogin}</h2>
+            <p>{isRegister ? s.subheadingRegister : s.subheadingLogin}</p>
           </div>
           <form onSubmit={submit} className="auth-form">
             {isRegister && (
               <>
                 <div className="auth-field-row">
-                  <AuthField name="first_name" label="Prénom" autoComplete="given-name" />
-                  <AuthField name="last_name" label="Nom" autoComplete="family-name" />
+                  <AuthField name="first_name" label={s.firstName} autoComplete="given-name" />
+                  <AuthField name="last_name" label={s.lastName} autoComplete="family-name" />
                 </div>
-                <AuthField name="company_name" label="Organisation" autoComplete="organization" />
-                <AuthField name="company_email" label="Email de facturation" type="email" autoComplete="email" />
+                <AuthField name="company_name" label={s.organization} autoComplete="organization" />
+                <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" />
                 <label className="auth-field">
-                  <span>Secteur d’activité</span>
+                  <span>{s.industry}</span>
                   <select name="industry" defaultValue="Commerce" required>
                     <option>Commerce</option><option>Services professionnels</option><option>Technologie</option><option>Finance</option><option>Immobilier</option><option>Autre</option>
                   </select>
                 </label>
               </>
             )}
-            <AuthField name="email" label="Email professionnel" type="email" autoComplete="email" />
+            <AuthField name="email" label={s.email} type="email" autoComplete="email" />
             <label className="auth-field">
-              <span>Mot de passe</span>
+              <span>{s.password}</span>
               <div className="password-field">
                 <input name="password" type={showPassword ? "text" : "password"} autoComplete={isRegister ? "new-password" : "current-password"} minLength={isRegister ? 10 : 1} required />
                 <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
               </div>
-              {isRegister && <small>10 caractères minimum, avec majuscule, minuscule, chiffre et symbole.</small>}
+              {isRegister && <small>{s.passwordHint}</small>}
             </label>
             {message && <div className={`auth-message ${isError ? "error" : "success"}`}><CheckCircle2 size={17} /> {message}</div>}
-            <button className="auth-submit" type="submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <>{isRegister ? "Créer mon espace" : "Se connecter"}<ArrowRight size={17} /></>}</button>
+            <button className="auth-submit" type="submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <>{isRegister ? s.registerSubmit : s.loginSubmit}<ArrowRight size={17} /></>}</button>
           </form>
-          <p className="auth-switch">{isRegister ? "Vous avez déjà un compte ?" : "Nouveau sur Avenqo ?"} <Link href={isRegister ? "/login" : "/register"}>{isRegister ? "Se connecter" : "Créer une organisation"}</Link></p>
+          <p className="auth-switch">{isRegister ? s.hasAccountPrompt : s.newToAvenqoPrompt} <Link href={isRegister ? "/login" : "/register"}>{isRegister ? s.signInLink : s.createOrgLink}</Link></p>
         </div>
       </section>
     </div>

@@ -133,19 +133,19 @@ const zh: Translations = {
     priceLabel: "按需定制",
     plans: [
       {
-        tier: "基础版",
+        tier: "Demo",
         title: "适合起步",
         items: ["1 个 Avenqo 模块", "最多 5 位用户", "内置智能助手", "标准支持"],
         action: "联系顾问",
       },
       {
-        tier: "专业版",
+        tier: "Professional",
         title: "适合加速",
         items: ["最多 5 个模块", "最多 25 位用户", "高级自动化", "优先支持"],
         action: "免费试用",
       },
       {
-        tier: "企业版",
+        tier: "Enterprise",
         title: "适合统筹",
         items: ["模块无限制", "用户数量按需定制", "定制化集成", "专属治理"],
         action: "联系销售团队",

@@ -12,7 +12,9 @@ class DatasetVersion(Base):
     __tablename__ = "dataset_versions"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     version_number: Mapped[int] = mapped_column(nullable=False, default=1)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[DatasetVersionStatus] = mapped_column(nullable=False, default=DatasetVersionStatus.UPLOADED)

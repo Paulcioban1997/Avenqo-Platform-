@@ -5,12 +5,13 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +32,7 @@ from backend.app.connectors.woocommerce import (
 from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
+    CommerceRawSnapshot,
     CommerceWebhookReceipt,
     ConnectorDatasetEvaluation,
     Dataset,
@@ -44,6 +46,10 @@ from shared.ai_engine.connectors.commerce import (
 )
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.dataset_ingestion.canonical_retail import (
+    CanonicalRetailContext,
+    project_canonical_retail,
+)
 
 
 class CommerceSyncError(RuntimeError):
@@ -140,7 +146,7 @@ class _SyncRun:
 class CommerceSyncService:
     """Persist provider pages and hand one stable snapshot to Retail ingestion."""
 
-    _ACTIVE_SYNC_TIMEOUT = timedelta(minutes=30)
+    _ACTIVE_SYNC_TIMEOUT = timedelta(minutes=3)
     _SHOPIFY_DELETION_RESOURCES = {
         "orders/delete": ("orders", "Order"),
         "products/delete": ("products", "Product"),
@@ -160,31 +166,32 @@ class CommerceSyncService:
         ("refunds", ConnectorCapability.REFUNDS, "sync_refunds"),
     )
     _SNAPSHOT_FIELDS = (
+        "product_name",
+        "product_id",
+        "sku",
+        "unit_price",
+        "inventory_level",
+        "product_category",
+        "order_id",
+        "order_timestamp",
+        "quantity",
+        "total_amount",
+        "currency",
+        "fulfillment_status",
+        "customer_id",
+        "customer_email",
+        "customer_country",
+        "discount_amount",
+        "refund_amount",
+        "sales_channel",
+        "source_updated_at",
         "source_provider",
-        "source_connection_id",
         "source_store",
+        "source_connection_id",
         "source_order_id",
         "source_line_item_id",
         "shopify_order_gid",
         "shopify_line_item_gid",
-        "order_id",
-        "order_timestamp",
-        "customer_id",
-        "product_id",
-        "product_name",
-        "product_category",
-        "quantity",
-        "unit_price",
-        "total_amount",
-        "inventory_level",
-        "currency",
-        "discount_amount",
-        "refund_amount",
-        "fulfillment_status",
-        "sales_channel",
-        "customer_email",
-        "customer_country",
-        "source_updated_at",
     )
 
     def __init__(
@@ -302,8 +309,13 @@ class CommerceSyncService:
                         "completed": next_cursor is None,
                     }
                     run.state[entity_type] = entity_state
+                    conn_mods = list((connection.sync_cursor or {}).get("modifications") or [])
+                    if conn_mods:
+                        run.state["modifications"] = conn_mods
                     connection.sync_cursor = dict(run.state)
                     connection.records_processed += stats.processed
+                    connection.records_created = (connection.records_created or 0) + stats.changed
+                    connection.last_heartbeat = self._now()
                     changed += stats.changed
                     self._db.commit()
                     if next_cursor is None:
@@ -313,11 +325,17 @@ class CommerceSyncService:
             changed += self._apply_pending_tombstones(tenant, connection)
             connection.status = CommerceConnectionStatus.PROCESSING.value
             connection.current_entity = "retail_snapshot"
+            connection.last_heartbeat = self._now()
             existing_dataset_id = self._dataset_id(connection)
             snapshot_pending = bool(run.state.get("_snapshot_pending"))
             should_materialize = changed > 0 or existing_dataset_id is None or snapshot_pending
             if should_materialize:
+                existing_mods = list(
+                    (connection.sync_cursor or {}).get("modifications") or []
+                )
                 run.state["_snapshot_pending"] = True
+                if existing_mods:
+                    run.state["modifications"] = existing_mods
                 connection.sync_cursor = dict(run.state)
             self._db.commit()
 
@@ -334,13 +352,20 @@ class CommerceSyncService:
                         "retail": str(dataset.id),
                     }
 
+            now_completed = self._now()
             connection.status = CommerceConnectionStatus.READY.value
             connection.current_entity = None
             connection.error_category = None
             connection.last_successful_sync = run.started_at
             connection.sync_started_at = None
+            connection.sync_completed_at = now_completed
+            connection.last_heartbeat = now_completed
+            connection.sync_error_code = None
+            connection.sync_error_message = None
+            final_mods = list((connection.sync_cursor or {}).get("modifications") or [])
             connection.sync_cursor = {
-                "checkpoint": {"updated_since": self._isoformat(run.started_at)}
+                "checkpoint": {"updated_since": self._isoformat(run.started_at)},
+                "modifications": final_mods,
             }
             self._db.commit()
             return CommerceSyncResult(
@@ -356,13 +381,18 @@ class CommerceSyncService:
             self._db.rollback()
             connection = self._connections.get_connection(tenant, connection_id)
             error_category = self._error_category(exc)
+            now_failed = self._now()
             connection.status = (
                 CommerceConnectionStatus.REAUTH_REQUIRED.value
                 if error_category == "reauthorization_required"
-                else CommerceConnectionStatus.ERROR.value
+                else CommerceConnectionStatus.FAILED.value
             )
             connection.error_category = error_category
             connection.sync_started_at = None
+            connection.sync_failed_at = now_failed
+            connection.last_heartbeat = now_failed
+            connection.sync_error_code = getattr(exc, "code", type(exc).__name__)
+            connection.sync_error_message = str(exc)
             self._db.commit()
             if isinstance(exc, CommerceSyncError):
                 raise
@@ -704,18 +734,31 @@ class CommerceSyncService:
                 if connection.last_successful_sync is not None
                 else None
             )
+            prior_mods = list((connection.sync_cursor or {}).get("modifications") or [])
             state = {
                 "_run": {
                     "started_at": self._isoformat(started_at),
                     "updated_since": updated_since,
                 }
             }
+            if prior_mods:
+                state["modifications"] = prior_mods
             connection.records_processed = 0
+            connection.records_created = 0
+            connection.records_updated = 0
+            connection.records_failed = 0
         if legacy_snapshot_pending:
             state["_snapshot_pending"] = True
+        sync_run_id = uuid4().hex
+        connection.sync_run_id = sync_run_id
         connection.status = CommerceConnectionStatus.SYNCING.value
         connection.sync_started_at = started_at
-        connection.current_entity = None
+        connection.last_heartbeat = started_at
+        connection.sync_completed_at = None
+        connection.sync_failed_at = None
+        connection.sync_error_code = None
+        connection.sync_error_message = None
+        connection.current_entity = "connecting"
         connection.error_category = None
         connection.sync_cursor = dict(state)
         self._db.commit()
@@ -730,16 +773,24 @@ class CommerceSyncService:
     ) -> _UpsertStats:
         if connection.company_id != tenant.company_id:
             raise CommerceSyncDataError("Commerce connection tenant mismatch")
-        normalized_by_id: dict[str, tuple[dict[str, Any], datetime | None]] = {}
+        normalized_by_id: dict[
+            str, tuple[dict[str, Any], datetime | None, dict[str, Any], str]
+        ] = {}
         for raw_record in records:
             source_record_id = self._optional_text(raw_record.get("id"))
             if source_record_id is None:
                 raise CommerceSyncDataError(
                     f"Provider returned {entity_type} data without an id"
                 )
+            raw_payload = dict(raw_record)
+            payload_hash = hashlib.sha256(
+                json.dumps(raw_payload, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
             normalized_by_id[source_record_id] = (
                 self._normalize_provider(connection.provider, entity_type, raw_record),
                 self._source_updated_at(raw_record),
+                raw_payload,
+                payload_hash,
             )
         if not normalized_by_id:
             return _UpsertStats(processed=0, changed=0)
@@ -754,7 +805,33 @@ class CommerceSyncService:
         ).all()
         existing_by_id = {item.source_record_id: item for item in existing_records}
         changed = 0
-        for source_record_id, (normalized, source_updated_at) in normalized_by_id.items():
+        for source_record_id, (
+            normalized,
+            source_updated_at,
+            raw_payload,
+            payload_hash,
+        ) in normalized_by_id.items():
+            snapshot = self._db.scalar(
+                select(CommerceRawSnapshot).where(
+                    CommerceRawSnapshot.connection_id == connection.id,
+                    CommerceRawSnapshot.entity_type == entity_type,
+                    CommerceRawSnapshot.source_record_id == source_record_id,
+                    CommerceRawSnapshot.payload_hash == payload_hash,
+                )
+            )
+            if snapshot is None:
+                snapshot = CommerceRawSnapshot(
+                    company_id=tenant.company_id,
+                    connection_id=connection.id,
+                    provider=connection.provider,
+                    entity_type=entity_type,
+                    source_record_id=source_record_id,
+                    payload_hash=payload_hash,
+                    raw_payload=raw_payload,
+                    source_updated_at=source_updated_at,
+                )
+                self._db.add(snapshot)
+                self._db.flush()
             stored = existing_by_id.get(source_record_id)
             if stored is None:
                 self._db.add(
@@ -765,6 +842,7 @@ class CommerceSyncService:
                         entity_type=entity_type,
                         source_record_id=source_record_id,
                         source_updated_at=source_updated_at,
+                        source_snapshot_id=snapshot.id,
                         normalized_data=normalized,
                     )
                 )
@@ -779,12 +857,82 @@ class CommerceSyncService:
                 continue
             if (
                 stored.normalized_data == normalized
+                and stored.source_snapshot_id == snapshot.id
                 and self._same_datetime(stored.source_updated_at, source_updated_at)
                 and not stored.deleted
             ):
                 continue
+            if stored.normalized_data != normalized:
+                old_data = dict(stored.normalized_data or {})
+                new_data = dict(normalized or {})
+                cursor = dict(connection.sync_cursor or {})
+                mods = list(cursor.get("modifications") or [])
+                now_str = datetime.now(timezone.utc).isoformat()
+                entity_label = (
+                    new_data.get("product_name")
+                    or old_data.get("product_name")
+                    or new_data.get("order_id")
+                    or f"{entity_type.title()} {source_record_id}"
+                )
+                for f_key in (
+                    "inventory_level",
+                    "stock_quantity",
+                    "unit_price",
+                    "regular_price",
+                    "price",
+                    "fulfillment_status",
+                    "status",
+                ):
+                    old_v = old_data.get(f_key)
+                    new_v = new_data.get(f_key)
+                    if (
+                        old_v is not None
+                        and new_v is not None
+                        and str(old_v) != str(new_v)
+                    ):
+                        diff_badge = ""
+                        try:
+                            num_delta = float(new_v) - float(old_v)
+                            if num_delta.is_integer():
+                                diff_badge = (
+                                    f"+{int(num_delta)}"
+                                    if num_delta > 0
+                                    else str(int(num_delta))
+                                )
+                            else:
+                                diff_badge = (
+                                    f"+{num_delta:.2f}"
+                                    if num_delta > 0
+                                    else f"{num_delta:.2f}"
+                                )
+                        except Exception:
+                            pass
+                        col_disp = (
+                            "stock_quantity"
+                            if f_key in ("inventory_level", "stock_quantity")
+                            else f_key
+                        )
+                        mods.append(
+                            {
+                                "row_id": str(source_record_id),
+                                "entity": entity_label,
+                                "column": col_disp,
+                                "before": str(old_v),
+                                "after": str(new_v),
+                                "reason": f"Synchronisation {connection.provider.title()}",
+                                "source": connection.provider.title(),
+                                "timestamp": now_str,
+                                "diff": diff_badge,
+                                "rule": "Mise à jour connecteur e-commerce",
+                                "category": "changed",
+                            }
+                        )
+                cursor["modifications"] = mods[-200:]
+                connection.sync_cursor = cursor
+
             stored.provider = connection.provider
             stored.source_updated_at = source_updated_at
+            stored.source_snapshot_id = snapshot.id
             stored.normalized_data = normalized
             stored.deleted = False
             changed += 1
@@ -813,6 +961,46 @@ class CommerceSyncService:
             f"{connection.provider}-{connection.id}-retail.csv",
             content,
         )
+        save_canonical = getattr(self._ingestion, "save_canonical_entities", None)
+        if callable(save_canonical):
+            canonical = self._canonical_retail_dataset(tenant, connection)
+            save_canonical(tenant, dataset, canonical.entities)
+
+        # Merge modifications from connection.sync_cursor into dataset metadata
+        try:
+            get_vn = getattr(self._ingestion, "_current_version_number", None)
+            storage = getattr(self._ingestion, "_storage", None)
+            if callable(get_vn) and storage is not None:
+                version_number = get_vn(dataset)
+                meta_path = storage.metadata_path(
+                    tenant.company_id, dataset.id, version_number
+                )
+                if meta_path.is_file():
+                    mdata = json.loads(meta_path.read_text(encoding="utf-8"))
+                    existing_mods = list(mdata.get("modifications") or [])
+                    conn_mods = list(
+                        (connection.sync_cursor or {}).get("modifications") or []
+                    )
+                    merged_mods = conn_mods + existing_mods
+                    seen_mods = set()
+                    deduped_mods = []
+                    for m in merged_mods:
+                        mk = (
+                            m.get("entity"),
+                            m.get("column"),
+                            m.get("before"),
+                            m.get("after"),
+                            m.get("timestamp"),
+                        )
+                        if mk not in seen_mods:
+                            seen_mods.add(mk)
+                            deduped_mods.append(m)
+                    mdata["modifications"] = deduped_mods
+                    meta_path.write_text(
+                        json.dumps(mdata, indent=2, default=str), encoding="utf-8"
+                    )
+        except Exception:
+            pass
         current_version = self._db.scalar(
             select(DatasetVersion).where(
                 DatasetVersion.dataset_id == dataset.id,
@@ -850,6 +1038,32 @@ class CommerceSyncService:
             )
             self._db.commit()
         return dataset
+
+    def _canonical_retail_dataset(
+        self,
+        tenant: TenantContext,
+        connection: CommerceConnection,
+    ):
+        records = self._db.scalars(
+            select(NormalizedCommerceRecord).where(
+                NormalizedCommerceRecord.company_id == tenant.company_id,
+                NormalizedCommerceRecord.connection_id == connection.id,
+                NormalizedCommerceRecord.deleted.is_(False),
+            )
+        ).all()
+        normalized_by_entity: dict[str, list[dict[str, Any]]] = {}
+        for record in records:
+            normalized_by_entity.setdefault(record.entity_type, []).append(
+                dict(record.normalized_data or {})
+            )
+        context = CanonicalRetailContext(
+            tenant_id=tenant.company_id,
+            company_id=tenant.company_id,
+            source_id=connection.id,
+            source_provider=connection.provider,
+            store_id=connection.external_account_id,
+        )
+        return project_canonical_retail(context, normalized_by_entity)
 
     def build_retail_snapshot(
         self,
@@ -1065,29 +1279,40 @@ class CommerceSyncService:
                 identifiers = {str(value) for value in identity_values if value}
                 if identifiers & referenced_products:
                     continue
-                stock = inventory.get(
-                    str(variant.get("inventory_item_id") or "")
-                ) or inventory.get(str(variant.get("sku") or "")) or {}
+                stock = (
+                    inventory.get(str(variant.get("inventory_item_id") or ""))
+                    or inventory.get(str(variant.get("sku") or ""))
+                    or inventory.get(str(product.get("product_id") or ""))
+                    or {}
+                )
+                inv_level = (
+                    stock.get("inventory_level")
+                    if stock.get("inventory_level") not in (None, "")
+                    else variant.get("inventory_level")
+                    if variant.get("inventory_level") not in (None, "")
+                    else product.get("inventory_level")
+                    if product.get("inventory_level") not in (None, "")
+                    else product.get("stock_quantity", "")
+                )
                 rows.append(
                     {
-                        "source_provider": connection.provider,
-                        "source_connection_id": str(connection.id),
-                        "source_store": connection.external_account_id,
+                        "product_name": product.get("product_name") or "",
                         "product_id": variant.get("sku")
                         or variant.get("variant_id")
                         or product.get("product_id")
                         or "",
-                        "product_name": product.get("product_name") or "",
-                        "product_category": product.get("product_category") or "",
+                        "sku": variant.get("sku") or product.get("sku") or "",
                         "unit_price": variant.get("unit_price")
                         or product.get("unit_price")
                         or "",
-                        "inventory_level": stock.get("inventory_level")
-                        if stock
-                        else variant.get("inventory_level", ""),
+                        "inventory_level": inv_level,
+                        "product_category": product.get("product_category") or "",
                         "source_updated_at": variant.get("updated_at")
                         or product.get("updated_at")
                         or "",
+                        "source_provider": connection.provider,
+                        "source_connection_id": str(connection.id),
+                        "source_store": connection.external_account_id,
                     }
                 )
         return rows
@@ -1250,12 +1475,16 @@ class CommerceSyncService:
                     ),
                 }
             )
+        stock_qty = record.get("stock_quantity")
         return {
             "product_id": self._text(record.get("id")),
             "product_name": self._text(record.get("name")),
             "product_category": ", ".join(categories),
             "vendor": "",
+            "sku": self._text(record.get("sku")),
             "unit_price": self._decimal_text(self._decimal(record.get("price"))),
+            "inventory_level": stock_qty if stock_qty is not None else "",
+            "stock_quantity": stock_qty if stock_qty is not None else "",
             "created_at": self._text(
                 record.get("date_created_gmt") or record.get("date_created")
             ),
@@ -1591,9 +1820,30 @@ class CommerceSyncService:
             CommerceConnectionStatus.PROCESSING.value,
         }:
             return False
-        if connection.sync_started_at is None:
+        ref_time = connection.last_heartbeat or connection.sync_started_at
+        if ref_time is None:
             return False
-        return cls._as_utc(connection.sync_started_at) > cls._now() - cls._ACTIVE_SYNC_TIMEOUT
+        return cls._as_utc(ref_time) > cls._now() - cls._ACTIVE_SYNC_TIMEOUT
+
+    def _recover_zombie_if_stalled(self, connection: CommerceConnection) -> bool:
+        if connection.status not in {
+            CommerceConnectionStatus.SYNCING.value,
+            CommerceConnectionStatus.PROCESSING.value,
+        }:
+            return False
+        ref_time = connection.last_heartbeat or connection.sync_started_at
+        if ref_time is None or self._as_utc(ref_time) <= self._now() - self._ACTIVE_SYNC_TIMEOUT:
+            connection.status = CommerceConnectionStatus.FAILED.value
+            connection.sync_error_code = "STALLED_TIMEOUT"
+            connection.sync_error_message = (
+                "Synchronisation interrompue par dépassement du délai de pulsation (zombie job)."
+            )
+            connection.sync_failed_at = self._now()
+            connection.sync_started_at = None
+            connection.current_entity = None
+            self._db.commit()
+            return True
+        return False
 
     @classmethod
     def _same_datetime(

@@ -96,7 +96,7 @@ def _pipeline_status(dataset) -> str:
     if dataset.status in {DatasetStatus.FAILED, DatasetStatus.INVALID, DatasetStatus.REJECTED}:
         return "failed"
     if dataset.status == DatasetStatus.MAPPING_REQUIRED:
-        return "attention_required"
+        return "ready"
     if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
         return "analyzing"
     if _current_source_missing(dataset):
@@ -142,8 +142,8 @@ def dataset_response(dataset) -> DatasetResponse:
             module_code="unknown",
             rows_count=dataset.rows_count,
             columns_count=dataset.columns_count,
-            numerical_columns=[],
-            categorical_columns=[],
+            numerical_columns=0,
+            categorical_columns=0,
             missing_values=0,
             duplicates=0,
             quality_score=0.0,

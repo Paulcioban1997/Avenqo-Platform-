@@ -31,6 +31,38 @@ RETAIL_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
+CRM_MODULE_CODE = "crm"
+CRM_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "get_crm_overview",
+        "get_leads_to_contact",
+        "get_ranked_leads",
+        "get_high_risk_customers",
+        "get_top_revenue_deals",
+        "get_follow_up_recommendation",
+    }
+)
+
+ACCOUNTING_MODULE_CODE = "accounting"
+ACCOUNTING_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "get_financial_overview",
+        "get_monthly_expenses",
+        "get_profit_margin",
+        "get_unpaid_invoices",
+        "get_expense_anomalies",
+        "get_cash_flow_forecast",
+    }
+)
+
+CROSS_AGENT_MODULE_CODE = "cross_agent"
+CROSS_AGENT_TOOL_NAMES: frozenset[str] = (
+    RETAIL_TOOL_NAMES
+    | CRM_TOOL_NAMES
+    | ACCOUNTING_TOOL_NAMES
+    | frozenset({"get_cross_agent_business_health"})
+)
+
 
 class AssistantRegistry:
     """Résout les métadonnées/statut d'un assistant par slug."""
@@ -71,7 +103,22 @@ def build_default_assistant_registry() -> AssistantRegistry:
                 module_code=module.key,
                 allowed_tool_names=RETAIL_TOOL_NAMES
                 if module.key == RETAIL_MODULE_CODE
-                else frozenset(),
+                else (
+                    CRM_TOOL_NAMES
+                    if module.key == CRM_MODULE_CODE
+                    else (ACCOUNTING_TOOL_NAMES if module.key == ACCOUNTING_MODULE_CODE else frozenset())
+                ),
             )
         )
+    registry.register(
+        AssistantDefinition(
+            slug=CROSS_AGENT_MODULE_CODE,
+            name_key="assistant.cross_agent.name",
+            description_key="assistant.cross_agent.description",
+            status=AssistantStatus.AVAILABLE,
+            category="intelligence",
+            module_code=CROSS_AGENT_MODULE_CODE,
+            allowed_tool_names=CROSS_AGENT_TOOL_NAMES,
+        )
+    )
     return registry

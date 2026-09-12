@@ -91,7 +91,8 @@ class _RetailAgentShellState extends State<RetailAgentShell> {
                             child: _RetailNavigationItem(
                               destination: destination,
                               label: strings.value(destination.labelKey),
-                              selected: widget.currentPath == destination.path,
+                              selected: widget.currentPath == destination.path ||
+                                  (widget.currentPath == '/dashboard' && destination.path == '/retail'),
                               onTap: () => (widget.onSelect ?? context.go)(destination.path),
                             ),
                           ),

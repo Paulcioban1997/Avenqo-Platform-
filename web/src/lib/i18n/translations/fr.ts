@@ -137,19 +137,19 @@ const fr: Translations = {
     priceLabel: "Sur mesure",
     plans: [
       {
-        tier: "Essentiel",
+        tier: "Demo",
         title: "Pour démarrer",
         items: ["1 module Avenqo", "Jusqu'à 5 utilisateurs", "Assistant intégré", "Support standard"],
         action: "Parler à un conseiller",
       },
       {
-        tier: "Professionnel",
+        tier: "Professional",
         title: "Pour accélérer",
         items: ["Jusqu'à 5 modules", "Jusqu'à 25 utilisateurs", "Automatisations avancées", "Accompagnement prioritaire"],
         action: "Essayer gratuitement",
       },
       {
-        tier: "Entreprise",
+        tier: "Enterprise",
         title: "Pour orchestrer",
         items: ["Modules illimités", "Utilisateurs sur mesure", "Connexions personnalisées", "Gouvernance dédiée"],
         action: "Contacter les ventes",

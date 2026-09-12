@@ -25,7 +25,7 @@ class AuthController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await api.initialize();
-    if (api.hasSession) {
+    if (kIsWeb || api.hasSession) {
       try {
         _account = await api.get('/auth/me') as Map<String, dynamic>;
         await _refreshSubscription();
@@ -114,7 +114,7 @@ class AuthController extends ChangeNotifier {
   /// pas issu de `login` (ex. : complétion/abandon de l'onboarding), sans
   /// exiger de nouvelle authentification.
   Future<void> refreshAccount() async {
-    if (!api.hasSession) return;
+    if (!kIsWeb && !api.hasSession) return;
     try {
       _account = await api.get('/auth/me') as Map<String, dynamic>;
       await _refreshSubscription();

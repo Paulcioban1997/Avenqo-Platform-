@@ -94,8 +94,13 @@ const appDestinations = <AppDestination>[
 ];
 
 AppDestination destinationFor(String path) {
+  final canonicalPath = switch (path) {
+    '/central-ai' => '/assistant',
+    '/data' || '/integrations' => '/connections',
+    _ => path,
+  };
   return appDestinations.firstWhere(
-    (destination) => destination.path == path,
+    (destination) => destination.path == canonicalPath,
     orElse: () => appDestinations.first,
   );
 }

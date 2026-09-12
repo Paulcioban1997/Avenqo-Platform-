@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 abstract interface class TokenStore {
@@ -7,7 +8,7 @@ abstract interface class TokenStore {
   Future<void> clear();
 }
 
-/// Persistance de la langue choisie, m\u00eame abstraction que [TokenStore] :
+/// Persistance de la langue choisie, même abstraction que [TokenStore] :
 /// permet d'injecter un double en test au lieu de passer par le vrai canal de
 /// plateforme de flutter_secure_storage (voir [SecureLocalePreferenceStore]).
 abstract interface class LocalePreferenceStore {
@@ -56,20 +57,35 @@ class SecureTokenStore implements TokenStore {
   static const _refreshKey = 'avenqo_refresh_token';
 
   @override
-  Future<String?> readAccessToken() => _storage.read(key: _accessKey);
+  Future<String?> readAccessToken() async {
+    if (kIsWeb) return null;
+    return _storage.read(key: _accessKey);
+  }
 
   @override
-  Future<String?> readRefreshToken() => _storage.read(key: _refreshKey);
+  Future<String?> readRefreshToken() async {
+    if (kIsWeb) return null;
+    return _storage.read(key: _refreshKey);
+  }
 
   @override
   Future<void> writeTokens(String accessToken, String refreshToken) async {
+    if (kIsWeb) {
+      // En Web, les sessions sont portées par les cookies HttpOnly.
+      // Aucun token sensible n'est persisté dans localStorage.
+      return;
+    }
     await _storage.write(key: _accessKey, value: accessToken);
     await _storage.write(key: _refreshKey, value: refreshToken);
   }
 
   @override
   Future<void> clear() async {
-    await _storage.delete(key: _accessKey);
-    await _storage.delete(key: _refreshKey);
+    try {
+      await _storage.delete(key: _accessKey);
+      await _storage.delete(key: _refreshKey);
+    } catch (_) {
+      // Ignore si le storage n'est pas accessible
+    }
   }
 }

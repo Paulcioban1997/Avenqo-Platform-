@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.app.api.router import api_router
@@ -70,7 +71,14 @@ def create_application() -> FastAPI:
     cors_kwargs: dict[str, object] = {
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        "allow_headers": ["Authorization", "Content-Type", "X-Request-ID", "Stripe-Signature"],
+        "allow_headers": [
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",
+            "Stripe-Signature",
+            "X-Requested-With",
+            "X-CSRF-Token",
+        ],
     }
     if is_production:
         cors_kwargs["allow_origins"] = sorted(set(settings.cors_origins) | FIRST_PARTY_WEB_ORIGINS)
@@ -78,11 +86,14 @@ def create_application() -> FastAPI:
         cors_kwargs["allow_origins"] = settings.cors_origins
         cors_kwargs["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     app.add_middleware(CORSMiddleware, **cors_kwargs)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     app.add_middleware(SecurityHeadersMiddleware, force_https=is_production)
     app.add_middleware(RequestIDMiddleware)
 
     register_exception_handlers(app)
+    from backend.app.routers.health import router as health_router
+    app.include_router(health_router)
     app.include_router(api_router)
 
     @app.get("/", tags=["root"])

@@ -20,6 +20,7 @@ class CommerceConnectionStatus(str, Enum):
     SYNCING = "SYNCING"
     PROCESSING = "PROCESSING"
     READY = "READY"
+    COMPLETED = "COMPLETED"
     ERROR = "ERROR"
     DEGRADED = "DEGRADED"
     FAILED = "FAILED"
@@ -56,8 +57,14 @@ class CommerceConnection(Base, TimestampMixin):
     sync_cursor: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     dataset_ids: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     records_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    records_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    records_updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    records_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_entity: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sync_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sync_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sync_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -65,6 +72,9 @@ class CommerceConnection(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     sync_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_successful_sync: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -124,8 +134,54 @@ class NormalizedCommerceRecord(Base, TimestampMixin):
     entity_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("commerce_raw_snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     normalized_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class CommerceRawSnapshot(Base):
+    """Append-only copy of a provider payload before normalization."""
+
+    __tablename__ = "commerce_raw_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "connection_id",
+            "entity_type",
+            "source_record_id",
+            "payload_hash",
+            name="uq_commerce_raw_snapshot_payload",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    connection_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("commerce_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class CommerceWebhookReceipt(Base):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -97,6 +98,19 @@ def _connection_response(
         and storage_status.status != "ok"
     ):
         sync_status = "DEGRADED"
+    now = datetime.now(timezone.utc)
+    is_stalled = False
+    if connection.status in {
+        CommerceConnectionStatus.SYNCING.value,
+        CommerceConnectionStatus.PROCESSING.value,
+    }:
+        ref_time = connection.last_heartbeat or connection.sync_started_at
+        if ref_time is not None:
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.replace(tzinfo=timezone.utc)
+            if now - ref_time > timedelta(minutes=3):
+                is_stalled = True
+
     return CommerceConnectionResponse(
         id=connection.id,
         provider=connection.provider,
@@ -107,12 +121,22 @@ def _connection_response(
         sync_status=sync_status,
         capabilities=list(connection.capabilities or []),
         records_processed=connection.records_processed,
+        records_created=getattr(connection, "records_created", 0) or 0,
+        records_updated=getattr(connection, "records_updated", 0) or 0,
+        records_failed=getattr(connection, "records_failed", 0) or 0,
         current_entity=connection.current_entity,
         error_category=connection.error_category,
+        sync_run_id=getattr(connection, "sync_run_id", None),
+        sync_error_code=getattr(connection, "sync_error_code", None),
+        sync_error_message=getattr(connection, "sync_error_message", None),
         last_successful_sync=connection.last_successful_sync,
         sync_started_at=connection.sync_started_at,
+        last_heartbeat=getattr(connection, "last_heartbeat", None),
+        sync_completed_at=getattr(connection, "sync_completed_at", None),
+        sync_failed_at=getattr(connection, "sync_failed_at", None),
         dataset_id=parsed_dataset_id,
         reauthorization_available=reauthorization_available,
+        is_stalled=is_stalled,
     )
 
 

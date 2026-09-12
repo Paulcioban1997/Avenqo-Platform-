@@ -4,12 +4,15 @@ from backend.app.dependencies.subscription import require_active_subscription
 
 from backend.app.routers.ai_chat import router as ai_chat_router
 from backend.app.routers.ai_support import router as ai_support_router
+from backend.app.routers.accounting import router as accounting_router
 from backend.app.routers.admin import router as admin_router
 from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
 from backend.app.routers.central_ai import router as central_ai_router
 from backend.app.routers.commerce import router as commerce_router
+from backend.app.routers.crm import router as crm_router
+from backend.app.routers.cross_agent import router as cross_agent_router
 from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.dataset_archives import router as dataset_archives_router
 from backend.app.routers.datasets import router as datasets_router
@@ -21,6 +24,7 @@ from backend.app.routers.internal_connector_ai import router as internal_connect
 from backend.app.routers.internal_versioning import router as internal_versioning_router
 from backend.app.routers.modules import router as modules_router
 from backend.app.routers.onboarding import router as onboarding_router
+from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.tenant_business import customers_router, sales_router
@@ -104,6 +108,26 @@ api_router.include_router(
 )
 api_router.include_router(
 	training_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	crm_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	accounting_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	cross_agent_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	performance_router,
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )

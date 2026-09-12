@@ -41,15 +41,20 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedPath = widget.currentPath == '/retail' || widget.currentPath.startsWith('/retail/')
+    final normalizedPath = switch (widget.currentPath) {
+      '/central-ai' => '/assistant',
+      '/data' || '/integrations' => '/connections',
+      _ => widget.currentPath,
+    };
+    final selectedPath = normalizedPath == '/retail' || normalizedPath.startsWith('/retail/') || normalizedPath == '/dashboard'
         ? '/agents'
-        : widget.currentPath;
+        : normalizedPath;
     final selected = appDestinations.indexWhere(
       (destination) => destination.path == selectedPath,
     );
     final index = selected < 0 ? 0 : selected;
     final compact = MediaQuery.sizeOf(context).width < 960;
-    final showAskCta = widget.currentPath != '/assistant';
+    final showAskCta = widget.currentPath != '/assistant' && widget.currentPath != '/central-ai';
     final askCta = AvenqoLocaleScope.translationsOf(context).dashboardHome.askAvenqoCta;
     return Scaffold(
       appBar: AppBar(

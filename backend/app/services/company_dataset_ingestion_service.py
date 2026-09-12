@@ -1,4 +1,4 @@
-﻿"""Ingestion universelle de datasets d'entreprise, tous formats (Phase 26).
+"""Ingestion universelle de datasets d'entreprise, tous formats (Phase 26).
 
 Ce service NE remplace PAS `DatasetImportService` (chemin CSV historique,
 conservÃ© pour compatibilitÃ©) : il ajoute un pipeline gÃ©nÃ©rique
@@ -10,6 +10,7 @@ prÃ©paration, en rÃ©utilisant les mÃªmes fondations tenant-isolÃ©es
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 import json
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,10 @@ from backend.app.services import retail_kpi_cache
 from modules.catalog import MODULES_BY_CODE
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELDS
+from shared.ai_engine.dataset_ingestion.canonical_retail import (
+    CanonicalRetailContext,
+    project_flat_canonical_retail,
+)
 from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
 from shared.ai_engine.dataset_ingestion.column_mapper import (
     ColumnMappingSuggestion,
@@ -53,12 +58,19 @@ from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 from shared.ai_engine.dataset_management.service import DatasetManagementService
 from shared.ai_engine.schema_detection.detector import SchemaDetector
 
-_AMBIGUOUS_CONFIDENCES = (MappingConfidence.MEDIUM, MappingConfidence.LOW)
-_AUTO_ACCEPTED_CONFIDENCES = (MappingConfidence.EXACT, MappingConfidence.HIGH)
+_AMBIGUOUS_CONFIDENCES = (MappingConfidence.LOW, MappingConfidence.UNRESOLVED)
+_AUTO_ACCEPTED_CONFIDENCES = (
+    MappingConfidence.EXACT,
+    MappingConfidence.HIGH,
+    MappingConfidence.MEDIUM,
+)
 
 
 class DatasetNotFoundError(ValueError):
     """Masque aussi les datasets appartenant Ã  un autre tenant."""
+
+
+CompanyDatasetNotFoundError = DatasetNotFoundError
 
 
 class InvalidMappingError(ValueError):
@@ -145,12 +157,22 @@ class CompanyDatasetIngestionService:
         schema_report = SchemaDetector().detect(rows)
         validation = DatasetManagementService.validate_rows(rows)
         suggestions = self._mapper.suggest(loaded.columns, rows)
-        review_required = any(s.confidence in _AMBIGUOUS_CONFIDENCES for s in suggestions)
-        accepted_mapping = {
+        
+        # Auto-mapping multi-signal sans intervention client
+        raw_accepted = {
             s.original_column: s.suggested_field
             for s in suggestions
             if s.confidence in _AUTO_ACCEPTED_CONFIDENCES and s.suggested_field is not None
         }
+        # Dé-dupliquer les champs canoniques pour attribuer la meilleure colonne
+        best_by_canonical: dict[str, tuple[str, float]] = {}
+        for s in suggestions:
+            if s.original_column in raw_accepted and s.suggested_field:
+                canon = s.suggested_field
+                if canon not in best_by_canonical or s.score > best_by_canonical[canon][1]:
+                    best_by_canonical[canon] = (s.original_column, s.score)
+        accepted_mapping = {col: canon for canon, (col, _) in best_by_canonical.items()}
+        review_required = False
 
         dataset = existing or Dataset(
             id=dataset_id,
@@ -246,12 +268,8 @@ class CompanyDatasetIngestionService:
             self._session.add(dataset)
             self._session.commit()
             raise
-        if review_required:
-            dataset.status = DatasetStatus.MAPPING_REQUIRED
-            version_record.status = DatasetVersionStatus.VALIDATED
-        else:
-            dataset.status = DatasetStatus.READY
-            version_record.status = DatasetVersionStatus.READY
+        dataset.status = DatasetStatus.READY
+        version_record.status = DatasetVersionStatus.READY
         self._session.add(dataset)
         self._session.commit()
         if dataset.status == DatasetStatus.READY and self._expected_row_count(dataset) > 50_000:
@@ -313,17 +331,16 @@ class CompanyDatasetIngestionService:
             suggestions = tuple(
                 self._dict_to_suggestion(item) for item in dataset.mapping.mapping_json.get("suggestions", [])
             )
-        review_required = dataset.status == DatasetStatus.MAPPING_REQUIRED
+        review_required = False
         quality_status = None
         quality_reasons: tuple[str, ...] = ()
         if dataset.quality_report is not None:
             quality_status = self._quality_status_from_score(dataset.quality_report.quality_score)
             quality_reasons = ("Voir score de qualitÃ© dÃ©taillÃ©.",)
-        mapped_fields = set(
-            (dataset.mapping.mapping_json.get("accepted") or {}).values()
-            if dataset.mapping is not None
-            else ()
-        )
+        mapped_fields: set[str] = set()
+        if dataset.mapping is not None:
+            accepted_dict = dataset.mapping.mapping_json.get("accepted") or {}
+            mapped_fields = {str(v) for v in accepted_dict.values()}
         readiness = assess_capability_readiness(mapped_fields)
         return DatasetProfileSummary(
             dataset=dataset,
@@ -515,6 +532,23 @@ class CompanyDatasetIngestionService:
         if current_version is not None:
             current_version.status = DatasetVersionStatus.READY
 
+    def save_canonical_entities(
+        self,
+        tenant: TenantContext,
+        dataset: Dataset,
+        entities: Mapping[str, Sequence[Mapping[str, Any]]],
+    ) -> str:
+        if dataset.company_id != tenant.company_id:
+            raise CompanyDatasetNotFoundError(str(dataset.id))
+        version_number = self._current_version_number(dataset)
+        payload = {
+            name: [dict(record) for record in records]
+            for name, records in entities.items()
+        }
+        return self._storage.save_canonical(
+            tenant.company_id, dataset.id, version_number, payload
+        )
+
     def _persist_cleaning(
         self,
         tenant: TenantContext,
@@ -526,35 +560,64 @@ class CompanyDatasetIngestionService:
     ) -> None:
         cleaned_rows, cleaning_report = self._cleaner.clean(rows, accepted_mapping)
         quality = assess_quality(cleaning_report)
-
-        quality_score = {
-            DataQualityStatus.GOOD: 0.95,
-            DataQualityStatus.WARNING: 0.6,
-            DataQualityStatus.POOR: 0.2,
-        }[quality.status]
+        _, post_cleaning_report = self._cleaner.clean(
+            [dict(row) for row in cleaned_rows], accepted_mapping
+        )
+        quality_after = assess_quality(post_cleaning_report)
+        null_counts = {kind.value: count for kind, count in quality.null_counts}
+        relevant_missing_values = sum(
+            null_counts.get(kind, 0)
+            for kind in ("required_missing", "optional_missing", "unknown")
+        )
+        quality_score = quality.score / 100.0
 
         if dataset.quality_report is None:
             dataset.quality_report = DataQualityReport(
                 duplicates=cleaning_report.duplicates_removed,
-                missing_values=cleaning_report.null_cells_detected,
+                missing_values=relevant_missing_values,
                 invalid_dates=0,
                 negative_values=0,
                 quality_score=quality_score,
             )
         else:
             dataset.quality_report.duplicates = cleaning_report.duplicates_removed
-            dataset.quality_report.missing_values = cleaning_report.null_cells_detected
+            dataset.quality_report.missing_values = relevant_missing_values
             dataset.quality_report.quality_score = quality_score
 
         self._storage.save_prepared(
             tenant.company_id, dataset.id, version_number, list(cleaned_rows)
+        )
+        canonical = project_flat_canonical_retail(
+            CanonicalRetailContext(
+                tenant_id=tenant.company_id,
+                company_id=tenant.company_id,
+                source_id=dataset.id,
+                source_provider="uploaded_dataset",
+                store_id=f"dataset:{dataset.id}",
+            ),
+            cleaned_rows,
+            accepted_mapping,
+        )
+        self._storage.save_canonical(
+            tenant.company_id,
+            dataset.id,
+            version_number,
+            {
+                name: [dict(record) for record in records]
+                for name, records in canonical.entities.items()
+            },
         )
         self._storage.save_metadata(
             tenant.company_id,
             dataset.id,
             version_number,
             {
+                "pipeline_version": "company-ingestion-v2",
+                "schema_version": "canonical-business-v1",
+                "source_snapshot_id": self._current_source_snapshot_id(dataset),
+                "dataset_version": version_number,
                 "canonical_columns": accepted_mapping,
+                "mapping_audit": self._mapping_audit(dataset),
                 "inferred_data_types": {
                     str(column.get("name")): str(column.get("inferred_type"))
                     for column in (
@@ -564,19 +627,43 @@ class CompanyDatasetIngestionService:
                     )
                 },
                 "quality_status": quality.status.value,
+                "quality_score": quality.score,
+                "quality_score_before": quality.score,
+                "quality_score_after": quality_after.score,
                 "quality_reasons": list(quality.reasons),
+                "quality_dimensions": (
+                    {
+                        name: getattr(quality.dimensions, name)
+                        for name in quality.dimensions.__slots__
+                    }
+                    if quality.dimensions is not None
+                    else {}
+                ),
+                "null_classification": null_counts,
                 "column_strategies": self._build_column_strategies(
                     cleaning_report,
                     dataset.profile.schema_json.get("columns", [])
                     if dataset.profile is not None
                     else [],
                 ),
+                "column_reports": [
+                    cr if isinstance(cr, dict) else cr.to_dict()
+                    for cr in (cleaning_report.column_reports or ())
+                ],
+                "modifications": [
+                    m if isinstance(m, dict) else m.to_dict()
+                    for m in (cleaning_report.modifications or ())
+                ],
                 "cleaning_report": {
                     "original_row_count": cleaning_report.rows_before,
                     "cleaned_row_count": cleaning_report.rows_after,
                     "column_count": len(columns),
                     "columns_renamed": {},
-                    "missing_values_detected": cleaning_report.null_cells_detected,
+                    "missing_values_detected": relevant_missing_values,
+                    "structural_nulls": null_counts.get("structural_null", 0),
+                    "not_applicable_fields": null_counts.get("not_applicable", 0),
+                    "required_values_missing": null_counts.get("required_missing", 0),
+                    "optional_values_missing": null_counts.get("optional_missing", 0),
                     "missing_values_corrected": 0,
                     "duplicate_rows_detected": cleaning_report.duplicates_removed,
                     "duplicate_rows_removed": cleaning_report.duplicates_removed,
@@ -589,9 +676,41 @@ class CompanyDatasetIngestionService:
                     "outlier_handling": None,
                     "mappings_applied": accepted_mapping,
                     "dataset_version": version_number,
+                    "quality_score_before": quality.score,
+                    "quality_score_after": quality_after.score,
                 },
             },
         )
+
+    @staticmethod
+    def _mapping_audit(dataset: Dataset) -> list[dict[str, Any]]:
+        if dataset.mapping is None:
+            return []
+        payload = dict(dataset.mapping.mapping_json or {})
+        accepted = dict(payload.get("accepted") or {})
+        provenance = dict(payload.get("provenance") or {})
+        suggestions = {
+            str(item.get("original_column")): item
+            for item in payload.get("suggestions") or ()
+            if isinstance(item, dict) and item.get("original_column")
+        }
+        return [
+            {
+                "source_column": column,
+                "canonical_field": accepted.get(column),
+                "confidence": suggestions.get(column, {}).get("score", 0.0),
+                "mapping_reason": suggestions.get(column, {}).get(
+                    "reason", "Unmapped: insufficient confidence."
+                ),
+                "mapping_method": provenance.get(column, "unmapped"),
+            }
+            for column in sorted(set(suggestions) | set(accepted))
+        ]
+
+    @staticmethod
+    def _current_source_snapshot_id(dataset: Dataset) -> str | None:
+        current = next((version for version in dataset.versions if version.is_current), None)
+        return current.checksum if current is not None else None
 
     @classmethod
     def _build_column_strategies(
@@ -691,7 +810,29 @@ class CompanyDatasetIngestionService:
             return []
         raw_path = Path(current_version.artifact_path)
         if not raw_path.is_file():
-            return []
+            # Support cross-environment paths (e.g. /data/artifacts on Linux vs local Windows paths)
+            normalized_str = str(current_version.artifact_path).replace("\\", "/")
+            if "company_datasets/" in normalized_str:
+                rel = normalized_str.split("company_datasets/", 1)[1]
+                candidates = [
+                    self._storage._root / rel,
+                    Path("var/artifacts/company_datasets") / rel,
+                    Path("artifacts/company_datasets") / rel,
+                ]
+                for c in candidates:
+                    if c.is_file():
+                        raw_path = c
+                        break
+            if not raw_path.is_file() and dataset.company_id and dataset.id:
+                fname = current_version.file_name or Path(current_version.artifact_path).name
+                v_rel = f"{dataset.company_id}/datasets/{dataset.id}/v{current_version.version_number}/raw/{fname}"
+                for base in [self._storage._root, Path("var/artifacts/company_datasets"), Path("artifacts/company_datasets")]:
+                    cand = base / v_rel
+                    if cand.is_file():
+                        raw_path = cand
+                        break
+            if not raw_path.is_file():
+                return []
         content = raw_path.read_bytes()
         loaded = CompanyDatasetLoader(max_upload_bytes=len(content) + 1).load(
             current_version.file_name or raw_path.name, content

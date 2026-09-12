@@ -31,6 +31,19 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<LocaleCode>(DEFAULT_LOCALE);
 
   useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const queryParam = params.get("lang") || params.get("locale");
+      if (isLocaleCode(queryParam)) {
+        setLocaleState(queryParam);
+        window.localStorage.setItem(STORAGE_KEY, queryParam);
+        applyDocumentAttributes(queryParam);
+        return;
+      }
+    } catch {
+      // Ignored in environments where window/URLSearchParams is restricted
+    }
+
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (isLocaleCode(stored)) {
       setLocaleState(stored);

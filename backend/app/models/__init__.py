@@ -1,4 +1,5 @@
 from backend.app.models.account_token import AccountToken
+from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
@@ -30,11 +31,13 @@ from backend.app.models.company_module import CompanyModule
 from backend.app.models.company_onboarding import CompanyOnboarding
 from backend.app.models.commerce_connection import (
     CommerceConnection,
+    CommerceRawSnapshot,
     CommerceConnectionStatus,
     CommerceOAuthState,
     CommerceWebhookReceipt,
     NormalizedCommerceRecord,
 )
+from backend.app.models.crm import CRMActivity, CRMContact, CRMLead, CRMOpportunity
 from backend.app.models.connector_dataset_evaluation import ConnectorDatasetEvaluation
 from backend.app.models.data_quality_report import DataQualityReport
 from backend.app.models.dataset import Dataset
@@ -51,6 +54,8 @@ from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
 
 __all__ = [
+    "AccountingInvoice",
+    "AccountingTransaction",
     "AccountToken",
     "AccountTokenPurpose",
     "AIJob",
@@ -73,9 +78,14 @@ __all__ = [
     "CompanyOnboarding",
     "CompanyStatus",
     "CommerceConnection",
+    "CommerceRawSnapshot",
     "CommerceConnectionStatus",
     "CommerceOAuthState",
     "CommerceWebhookReceipt",
+    "CRMActivity",
+    "CRMContact",
+    "CRMLead",
+    "CRMOpportunity",
     "ConnectorDatasetEvaluation",
     "DataQualityReport",
     "Dataset",

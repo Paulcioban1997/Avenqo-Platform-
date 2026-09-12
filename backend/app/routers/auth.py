@@ -1,7 +1,10 @@
-﻿"""Routes HTTP de crÃ©ation et de sÃ©curisation des comptes Avenqo."""
+"""Routes HTTP de crÃ©ation et de sÃ©curisation des comptes Avenqo."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
 
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
+from backend.app.config.settings import get_settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
@@ -59,6 +62,54 @@ def _company_response(company: Company) -> CompanyResponse:
         currency_code=getattr(company, "currency_code", None),
         timezone=company.timezone,
     )
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    settings = get_settings()
+    is_secure = settings.is_secure_cookie
+    access_max_age = int(settings.auth_access_minutes * 60)
+    refresh_max_age = int(settings.auth_refresh_days * 86400)
+
+    # 1. Access token : HttpOnly, Secure en staging/prod HTTPS, SameSite=Lax, Path=/
+    response.set_cookie(
+        key="avenqo_access_token",
+        value=access_token,
+        max_age=access_max_age,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",
+        path="/",
+    )
+
+    # 2. Refresh token : HttpOnly, Secure en staging/prod HTTPS, SameSite=Strict, Path=/api/v1/auth
+    response.set_cookie(
+        key="avenqo_refresh_token",
+        value=refresh_token,
+        max_age=refresh_max_age,
+        httponly=True,
+        secure=is_secure,
+        samesite="strict",
+        path="/api/v1/auth",
+    )
+
+    # 3. Cookie CSRF pour validation double-submit
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="avenqo_csrf",
+        value=csrf_token,
+        max_age=refresh_max_age,
+        httponly=False,
+        secure=is_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(key="avenqo_access_token", path="/")
+    response.delete_cookie(key="avenqo_refresh_token", path="/api/v1/auth")
+    response.delete_cookie(key="avenqo_refresh_token", path="/")
+    response.delete_cookie(key="avenqo_csrf", path="/")
 
 
 @router.post(
@@ -136,12 +187,14 @@ def resend_verification(
 )
 def login(
     request: LoginRequest,
+    response: Response,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthResponse:
     try:
         result = service.login(str(request.email), request.password)
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    _set_auth_cookies(response, result.access_token, result.refresh_token)
     return AuthResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
@@ -154,13 +207,24 @@ def login(
 
 @router.post("/refresh", response_model=AuthResponse)
 def refresh(
-    request: RefreshTokenRequest,
+    http_request: Request,
+    response: Response,
+    payload: RefreshTokenRequest | None = None,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthResponse:
+    refresh_token = (
+        payload.refresh_token
+        if payload and payload.refresh_token
+        else http_request.cookies.get("avenqo_refresh_token")
+    )
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token requis")
     try:
-        result = service.refresh(request.refresh_token)
+        result = service.refresh(refresh_token)
     except AuthenticationError as exc:
+        _clear_auth_cookies(response)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    _set_auth_cookies(response, result.access_token, result.refresh_token)
     return AuthResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
@@ -181,11 +245,13 @@ def me(identity: CurrentIdentity = Depends(get_current_identity)) -> CurrentAcco
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(
+    response: Response,
     identity: CurrentIdentity = Depends(get_current_identity),
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     service.logout(identity.raw_token)
-    return MessageResponse(message="Session fermÃ©e.")
+    _clear_auth_cookies(response)
+    return MessageResponse(message="Session fermée.")
 
 
 @router.post(

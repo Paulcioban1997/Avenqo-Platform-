@@ -45,7 +45,7 @@ class AITool(ABC):
         )
 
     @abstractmethod
-    async def run(self, context: ToolExecutionContext, arguments: ToolArguments) -> ToolResult:
+    async def run(self, context: ToolExecutionContext, arguments: Any) -> ToolResult:
         """Exécute l'outil avec des arguments déjà validés. Ne jamais lever d'erreur brute."""
 
         raise NotImplementedError

@@ -1,4 +1,4 @@
-﻿"""Moteur et sessions SQLAlchemy de Avenqo."""
+"""Moteur et sessions SQLAlchemy de Avenqo."""
 
 from collections.abc import Generator
 from pathlib import Path
@@ -15,6 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 def _build_engine():
     settings = get_settings()
     database_url = settings.database_url
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     if database_url.startswith("sqlite:///"):
         database_path = Path(database_url.removeprefix("sqlite:///"))
         if not database_path.is_absolute():
@@ -26,9 +28,16 @@ def _build_engine():
         if database_url.startswith("sqlite")
         else {}
     )
-    # pool_pre_ping évite de réutiliser une connexion morte (coupure réseau,
-    # redémarrage DB) — sans impact notable en dev/SQLite.
-    return create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+    engine_kwargs: dict[str, object] = {
+        "connect_args": connect_args,
+        "pool_pre_ping": True,
+    }
+    if not database_url.startswith("sqlite"):
+        engine_kwargs["pool_size"] = 10
+        engine_kwargs["max_overflow"] = 20
+        engine_kwargs["pool_recycle"] = 300
+
+    return create_engine(database_url, **engine_kwargs)
 
 
 engine = _build_engine()

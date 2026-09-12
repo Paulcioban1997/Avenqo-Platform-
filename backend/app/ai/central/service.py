@@ -106,9 +106,14 @@ class CentralAIService:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
             return result
-        if agent is not None and (agent.module_code is None or agent.module_code not in context.active_modules):
+        is_cross_agent = agent is not None and agent.slug == "cross_agent"
+        if agent is not None and not is_cross_agent and (agent.module_code is None or agent.module_code not in context.active_modules):
             result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_inactive")
+            return result
+        if is_cross_agent and not any(m in context.active_modules for m in ("retail", "crm", "accounting")):
+            result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
+            self._log_result(tenant.company_id, "cross_agent", result, started_at, "no_active_business_modules")
             return result
 
         try:

@@ -3,8 +3,17 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 
 export const metadata: Metadata = {
-  title: "Conditions | Avenqo",
-  description: "Conditions d'utilisation de la plateforme Avenqo.",
+  title: "Conditions d'utilisation",
+  description: "Conditions d'utilisation de la plateforme Avenqo éditée par PMC Solutions AI.",
+  alternates: {
+    canonical: "/terms",
+  },
+  openGraph: {
+    title: "Conditions d'utilisation | Avenqo",
+    description: "Conditions d'utilisation de la plateforme Avenqo éditée par PMC Solutions AI.",
+    url: "https://avenqo.ca/terms",
+    images: ["/brand/avenqo-card.png"],
+  },
 };
 
 export default function TermsPage() {
@@ -29,7 +38,7 @@ export default function TermsPage() {
               Le titulaire du compte est responsable de la gestion des accès accordés à ses utilisateurs.
             </p>
             <p>
-              <strong>Facturation.</strong> Les offres Essentiel, Professionnel et Entreprise sont détaillées sur la
+              <strong>Facturation.</strong> Les offres Demo, Professional et Enterprise sont détaillées sur la
               page tarifs. Toute mise à niveau ou changement de plan peut être demandé auprès de notre équipe.
             </p>
             <p>

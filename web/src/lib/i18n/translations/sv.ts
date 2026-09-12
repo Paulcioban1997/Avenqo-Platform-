@@ -134,19 +134,19 @@ const sv: Translations = {
     priceLabel: "Skräddarsytt",
     plans: [
       {
-        tier: "Grundläggande",
+        tier: "Demo",
         title: "För att komma igång",
         items: ["1 Avenqo-modul", "Upp till 5 användare", "Inbyggd assistent", "Standardsupport"],
         action: "Prata med en rådgivare",
       },
       {
-        tier: "Professionell",
+        tier: "Professional",
         title: "För att accelerera",
         items: ["Upp till 5 moduler", "Upp till 25 användare", "Avancerade automatiseringar", "Prioriterad support"],
         action: "Prova gratis",
       },
       {
-        tier: "Företag",
+        tier: "Enterprise",
         title: "För att orkestrera",
         items: ["Obegränsade moduler", "Skräddarsytt antal användare", "Anpassade integrationer", "Dedikerad styrning"],
         action: "Kontakta säljteamet",

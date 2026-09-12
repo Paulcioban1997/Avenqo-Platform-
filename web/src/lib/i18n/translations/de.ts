@@ -134,19 +134,19 @@ const de: Translations = {
     priceLabel: "Individuelles Angebot",
     plans: [
       {
-        tier: "Essenziell",
+        tier: "Demo",
         title: "Zum Einstieg",
         items: ["1 Avenqo-Modul", "Bis zu 5 Nutzer", "Integrierter Assistent", "Standard-Support"],
         action: "Mit einem Berater sprechen",
       },
       {
-        tier: "Professionell",
+        tier: "Professional",
         title: "Zum Beschleunigen",
         items: ["Bis zu 5 Module", "Bis zu 25 Nutzer", "Erweiterte Automatisierungen", "Priorisierter Support"],
         action: "Kostenlos testen",
       },
       {
-        tier: "Unternehmen",
+        tier: "Enterprise",
         title: "Zum Orchestrieren",
         items: ["Unbegrenzte Module", "Individuelle Nutzerzahl", "Individuelle Integrationen", "Dedizierte Governance"],
         action: "Vertrieb kontaktieren",

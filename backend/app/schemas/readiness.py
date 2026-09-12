@@ -13,3 +13,4 @@ class ReadinessResponse(BaseModel):
     artifact_storage: str
     ai_providers: dict[str, str]
     stripe_configured: bool
+    migrations: str = "ok"

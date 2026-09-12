@@ -17,9 +17,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("billing_invoices", sa.Column("plan_code", sa.String(length=64), nullable=True))
-    op.add_column("billing_invoices", sa.Column("period_start", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("billing_invoices", sa.Column("period_end", sa.DateTime(timezone=True), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    columns = {c["name"] for c in inspector.get_columns("billing_invoices")}
+    if "plan_code" not in columns:
+        op.add_column("billing_invoices", sa.Column("plan_code", sa.String(length=64), nullable=True))
+    if "period_start" not in columns:
+        op.add_column("billing_invoices", sa.Column("period_start", sa.DateTime(timezone=True), nullable=True))
+    if "period_end" not in columns:
+        op.add_column("billing_invoices", sa.Column("period_end", sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:

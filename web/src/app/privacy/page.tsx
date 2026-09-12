@@ -3,8 +3,17 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 
 export const metadata: Metadata = {
-  title: "Confidentialité | Avenqo",
-  description: "Politique de confidentialité de la plateforme Avenqo.",
+  title: "Politique de confidentialité",
+  description: "Politique de protection des données et de confidentialité de la plateforme Avenqo par PMC Solutions AI.",
+  alternates: {
+    canonical: "/privacy",
+  },
+  openGraph: {
+    title: "Politique de confidentialité | Avenqo",
+    description: "Politique de protection des données et de confidentialité de la plateforme Avenqo par PMC Solutions AI.",
+    url: "https://avenqo.ca/privacy",
+    images: ["/brand/avenqo-card.png"],
+  },
 };
 
 export default function PrivacyPage() {

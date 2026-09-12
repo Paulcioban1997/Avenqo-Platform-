@@ -134,19 +134,19 @@ const id: Translations = {
     priceLabel: "Sesuai permintaan",
     plans: [
       {
-        tier: "Dasar",
+        tier: "Demo",
         title: "Untuk memulai",
         items: ["1 modul Avenqo", "Hingga 5 pengguna", "Asisten bawaan", "Dukungan standar"],
         action: "Bicara dengan konsultan",
       },
       {
-        tier: "Profesional",
+        tier: "Professional",
         title: "Untuk mempercepat",
         items: ["Hingga 5 modul", "Hingga 25 pengguna", "Otomatisasi lanjutan", "Dukungan prioritas"],
         action: "Coba gratis",
       },
       {
-        tier: "Perusahaan",
+        tier: "Enterprise",
         title: "Untuk mengorkestrasi",
         items: ["Modul tak terbatas", "Pengguna sesuai permintaan", "Integrasi khusus", "Tata kelola khusus"],
         action: "Hubungi tim penjualan",

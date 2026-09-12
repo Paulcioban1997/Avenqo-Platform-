@@ -134,19 +134,19 @@ const cs: Translations = {
     priceLabel: "Na míru",
     plans: [
       {
-        tier: "Základní",
+        tier: "Demo",
         title: "Pro začátek",
         items: ["1 modul Avenqo", "Až 5 uživatelů", "Vestavěný asistent", "Standardní podpora"],
         action: "Promluvte si s poradcem",
       },
       {
-        tier: "Profesionální",
+        tier: "Professional",
         title: "Pro zrychlení",
         items: ["Až 5 modulů", "Až 25 uživatelů", "Pokročilé automatizace", "Prioritní podpora"],
         action: "Vyzkoušet zdarma",
       },
       {
-        tier: "Podnikový",
+        tier: "Enterprise",
         title: "Pro orchestraci",
         items: ["Neomezené moduly", "Uživatelé na míru", "Vlastní integrace", "Vyhrazené řízení"],
         action: "Kontaktujte obchodní tým",

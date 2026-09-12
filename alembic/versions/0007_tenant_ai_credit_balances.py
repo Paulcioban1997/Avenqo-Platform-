@@ -17,19 +17,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "tenant_ai_credit_balances",
-        sa.Column("company_id", sa.UUID(), nullable=False),
-        sa.Column("monthly_period", sa.String(length=7), nullable=False),
-        sa.Column("monthly_used", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("purchased_balance", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.CheckConstraint("monthly_used >= 0", name="ck_ai_credit_monthly_used_nonnegative"),
-        sa.CheckConstraint("purchased_balance >= 0", name="ck_ai_credit_purchased_nonnegative"),
-        sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("company_id"),
-    )
+    inspector = sa.inspect(op.get_bind())
+    if "tenant_ai_credit_balances" not in inspector.get_table_names():
+        op.create_table(
+            "tenant_ai_credit_balances",
+            sa.Column("company_id", sa.UUID(), nullable=False),
+            sa.Column("monthly_period", sa.String(length=7), nullable=False),
+            sa.Column("monthly_used", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("purchased_balance", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+            sa.CheckConstraint("monthly_used >= 0", name="ck_ai_credit_monthly_used_nonnegative"),
+            sa.CheckConstraint("purchased_balance >= 0", name="ck_ai_credit_purchased_nonnegative"),
+            sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("company_id"),
+        )
 
 
 def downgrade() -> None:

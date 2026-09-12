@@ -75,3 +75,9 @@ tmp_e2e_avenqo/
 # OS / IDE
 Thumbs.db
 .vscode/
+
+# Local deployment & scratch
+.vercel/
+web/.vercel/
+scratch/
+artifacts/

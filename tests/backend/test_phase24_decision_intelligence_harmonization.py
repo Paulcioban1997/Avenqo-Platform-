@@ -500,7 +500,7 @@ def test_segmentation_insight_wording_backward_compatible_for_legacy_metric() ->
 # ---------------------------------------------------------------------------
 
 
-def test_demand_opportunity_and_price_stable_through_real_pipeline(phase24_environment) -> None:
+def test_demand_opportunity_skips_constant_price_model(phase24_environment) -> None:
     client, _session_factory, _model_root, app, create_company = phase24_environment
     tenant = create_company("Company Growth")
     _set_tenant(app, tenant)
@@ -519,7 +519,7 @@ def test_demand_opportunity_and_price_stable_through_real_pipeline(phase24_envir
 
     titles = [decision["title"] for decision in decisions]
     assert "La demande devrait augmenter sensiblement." in titles
-    assert "Aucun changement significatif de prix n'est actuellement détecté." in titles
+    assert "Aucun changement significatif de prix n'est actuellement détecté." not in titles
     for decision in decisions:
         _assert_no_ml_jargon(decision["title"], decision["impact"], decision["recommendation"])
 

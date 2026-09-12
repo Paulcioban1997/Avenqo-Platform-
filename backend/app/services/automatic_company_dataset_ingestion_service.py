@@ -111,15 +111,37 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         payload = dict(dataset.mapping.mapping_json or {})
         accepted = dict(payload.get("accepted") or {})
         conflicts = self._mapping_conflicts(accepted)
-        if accepted and not conflicts:
+        if not conflicts:
             return dataset
-        if conflicts:
-            dataset.mapping.mapping_json = {
-                **payload,
-                "required_confirmation": conflicts,
-            }
-        dataset.mapping.approved = False
-        dataset.status = DatasetStatus.MAPPING_REQUIRED
+
+        # Résolution automatique sans intervention client :
+        # Pour chaque champ canonique disputé par plusieurs colonnes,
+        # conserver celle qui a le score le plus élevé / l'alias le plus exact
+        suggestions = {
+            str(s.get("original_column")): s
+            for s in payload.get("suggestions") or []
+        }
+        for conflict in conflicts:
+            canonical = str(conflict.get("canonical_field") or "")
+            cols = [str(c) for c in conflict.get("columns") or ()]
+            cols.sort(
+                key=lambda c: (
+                    float(suggestions.get(c, {}).get("score") or 0.0),
+                    1 if c.lower().replace("_", "") == canonical.lower().replace("_", "") else 0,
+                ),
+                reverse=True,
+            )
+            # La meilleure colonne reste dans accepted, les autres sont retirées d'accepted
+            for other in cols[1:]:
+                accepted.pop(other, None)
+
+        dataset.mapping.mapping_json = {
+            **payload,
+            "accepted": accepted,
+            "required_confirmation": [],
+        }
+        dataset.mapping.approved = True
+        dataset.status = DatasetStatus.READY
         self._session.add(dataset)
         self._session.commit()
         return dataset
@@ -285,20 +307,21 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                     ignored.append(str(column))
         conflicts = self._mapping_conflicts(accepted)
         if conflicts:
-            dataset.mapping.mapping_json = {
-                **payload,
-                "required_confirmation": conflicts,
-                "automatic_resolution": {
-                    "policy": self._AUTO_POLICY_VERSION,
-                    "auto_added_columns": [],
-                    "ignored_columns": [],
-                },
-            }
-            dataset.mapping.approved = False
-            dataset.status = DatasetStatus.MAPPING_REQUIRED
-            self._session.add(dataset)
-            self._session.commit()
-            return dataset
+            # Auto-resolve remaining conflicts by keeping the column with highest confidence
+            def _col_confidence(c: str) -> float:
+                for s in suggestions:
+                    if str(s.get("original_column")) == c:
+                        return float(s.get("confidence_score") or 0.0)
+                return 0.0
+
+            for conflict in conflicts:
+                cols = list(conflict.get("columns") or [])
+                cols.sort(key=_col_confidence, reverse=True)
+                winner = cols[0]
+                for loser in cols[1:]:
+                    accepted.pop(loser, None)
+                    provenance.pop(loser, None)
+                    ignored.append(loser)
 
         used_canonical_fields = set(accepted.values())
         for suggestion in suggestions:
@@ -314,35 +337,6 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                 auto_added.append(original)
             else:
                 ignored.append(original)
-
-        if not accepted:
-            dataset.mapping.mapping_json = {
-                **payload,
-                "accepted": {},
-                "provenance": {},
-                "ignored_optional_columns": sorted(set(ignored)),
-                "required_confirmation": [
-                    {
-                        "canonical_field": "",
-                        "columns": sorted(
-                            str(item.get("original_column"))
-                            for item in suggestions
-                            if item.get("original_column")
-                        ),
-                        "reason": "no_safe_canonical_mapping",
-                    }
-                ],
-                "automatic_resolution": {
-                    "policy": self._AUTO_POLICY_VERSION,
-                    "auto_added_columns": [],
-                    "ignored_columns": sorted(set(ignored)),
-                },
-            }
-            dataset.mapping.approved = False
-            dataset.status = DatasetStatus.MAPPING_REQUIRED
-            self._session.add(dataset)
-            self._session.commit()
-            return dataset
 
         # Assign a brand-new dict so SQLAlchemy JSON mutation tracking sees the
         # change reliably on both SQLite tests and PostgreSQL production.
