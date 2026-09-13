@@ -1,17 +1,62 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --blue: #087cf0;
-  --blue-dark: #0757c9;
-  --ink: #080b12;
+  --canvas: #f8fafc;
+  --surface: #ffffff;
+  --surface-raised: #f1f5f9;
+  --surface-hover: #e2e8f0;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --avenqo-blue: #0076ff;
+  --ai-cyan: #00d4ff;
+
+  --blue: #0076ff;
+  --blue-dark: #005bd3;
+  --ink: #0f172a;
   --muted: #5c6472;
   --line: #e5e8ed;
   --soft: #f5f7fa;
 }
 
+.dark {
+  --canvas: #060b13;
+  --surface: #0b132b;
+  --surface-raised: #111d3d;
+  --surface-hover: #172652;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-primary: #f4f7fb;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --avenqo-blue: #0076ff;
+  --ai-cyan: #00d4ff;
+
+  --blue: #0076ff;
+  --blue-dark: #005bd3;
+  --ink: #f4f7fb;
+  --muted: #94a3b8;
+  --line: rgba(255, 255, 255, 0.08);
+  --soft: #0b132b;
+}
+
 @theme inline {
-  --color-background: #ffffff;
-  --color-foreground: var(--ink);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-electric-blue: var(--avenqo-blue);
+  --color-ai-cyan: var(--ai-cyan);
+  --color-background: var(--canvas);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
 }
 

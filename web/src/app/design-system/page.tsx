@@ -38,6 +38,12 @@ import {
   AIState,
   Modal,
   Drawer,
+  AvenqoCard,
+  MetricCard,
+  StatusBadge,
+  KPISkeleton,
+  ChartSkeleton,
+  AIInsightSkeleton,
 } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -109,9 +115,68 @@ export default function DesignSystemShowcasePage() {
           </TextMuted>
         </div>
 
-        {/* Section 1: AI States & Grounding Banners */}
+        {/* Section 1: Enterprise Tokens & Primitives */}
         <section className="space-y-4">
-          <H2>1. AI Grounding & Signature States</H2>
+          <H2>1. Enterprise Tokens & Primitives (Qualité Linear / Stripe / Datadog)</H2>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <StatusBadge status="connected" />
+            <StatusBadge status="syncing" />
+            <StatusBadge status="needs_attention" />
+            <StatusBadge status="disconnected" />
+            <StatusBadge status="coming_soon" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AvenqoCard variant="default">
+              <div className="text-xs font-bold text-slate-500 uppercase">AvenqoCard Default</div>
+              <div className="mt-2 text-sm font-semibold">Bordure subtile & surface Deep Navy / Pure White</div>
+              <p className="mt-1 text-xs text-slate-400">Fond adapté aux thèmes dark (#0B132B) et light (#FFFFFF).</p>
+            </AvenqoCard>
+
+            <AvenqoCard variant="elevated">
+              <div className="text-xs font-bold text-slate-500 uppercase">AvenqoCard Elevated</div>
+              <div className="mt-2 text-sm font-semibold">Ombrage doux & surface surélevée</div>
+              <p className="mt-1 text-xs text-slate-400">Utilisé pour les panneaux de premier plan et KPI maîtres.</p>
+            </AvenqoCard>
+
+            <AvenqoCard variant="highlighted">
+              <div className="text-xs font-bold text-[#0076FF] uppercase">AvenqoCard Highlighted</div>
+              <div className="mt-2 text-sm font-semibold">Glow subtil & liseré Bleu Électrique</div>
+              <p className="mt-1 text-xs text-slate-400">Réservé aux synthèses IA et recommandations actionnables.</p>
+            </AvenqoCard>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            <MetricCard
+              title="Chiffre d'affaires"
+              value="284 650 $"
+              delta={14.2}
+              period="vs mois dernier"
+              sparklineData={[30, 42, 55, 62, 78, 92]}
+            />
+            <MetricCard
+              title="Commandes"
+              value="1 842"
+              delta={-2.4}
+              period="vs mois dernier"
+              sparklineData={[50, 48, 44, 46, 42, 38]}
+            />
+            <MetricCard
+              title="Taux de conversion"
+              value="3.8 %"
+              delta={0.0}
+              period="stable"
+            />
+            <MetricCard
+              title="Données en cours..."
+              isLoading={true}
+            />
+          </div>
+        </section>
+
+        {/* Section 2: AI Grounding & Signature States */}
+        <section className="space-y-4">
+          <H2>2. AI Grounding & Signature States</H2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AIState
               status="grounded"
@@ -437,9 +502,14 @@ export default function DesignSystemShowcasePage() {
 
         {/* Section 6: Skeletons & Fallback States */}
         <section className="space-y-4">
-          <H2>6. Skeletons & États Feedback</H2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <H2>6. Skeletons & États Feedback Réactifs</H2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPISkeleton />
+            <KPISkeleton />
+            <AIInsightSkeleton />
             <CardSkeleton />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             <EmptyState
               title="Aucun litige en cours"
               description="Toutes les factures du trimestre courant sont parfaitement rapprochées."

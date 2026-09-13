@@ -1,6 +1,7 @@
 export * from "./typography";
 export * from "./button";
 export * from "./card";
+export * from "./avenqo-card";
 export * from "./input";
 export * from "./table";
 export * from "./chart";
@@ -8,3 +9,4 @@ export * from "./skeleton";
 export * from "./status-states";
 export * from "./modal";
 export * from "./drawer";
+
