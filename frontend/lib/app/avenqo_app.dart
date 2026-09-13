@@ -74,6 +74,7 @@ class _AvenqoAppState extends State<AvenqoApp> {
       GoRoute(path: '/register', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.register)),
       GoRoute(path: '/forgot-password', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.forgot)),
       GoRoute(path: '/verify-email', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.verify, initialToken: state.uri.queryParameters['token'], initialEmail: state.uri.queryParameters['email'], emailDeliveryUnavailable: state.uri.queryParameters['delivery'] == 'unavailable')),
+      GoRoute(path: '/reset-password', builder: (context, state) => AuthPage(auth: widget.auth, mode: AuthMode.reset, initialToken: state.uri.queryParameters['token'], initialEmail: state.uri.queryParameters['email'])),
       ShellRoute(builder: (context, state, child) => AppShell(auth: widget.auth, currentPath: state.uri.path, child: child), routes: [
         GoRoute(path: '/dashboard', builder: (context, state) => CommandCenterPage(auth: widget.auth)),
         for (final destination in appDestinations)
