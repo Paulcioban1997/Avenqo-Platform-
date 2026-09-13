@@ -270,7 +270,7 @@ class TenantAnalyticsService:
         if active_source is not None and active_source.connection_id is not None:
             connection = self._session.get(CommerceConnection, active_source.connection_id)
             active_source_provider = connection.provider if connection is not None else None
-        if active_source is not None:
+        if active_source is not None and active_source.source_type != "all":
             datasets = tuple(
                 dataset
                 for dataset in datasets

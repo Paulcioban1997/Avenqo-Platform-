@@ -557,7 +557,28 @@ async def disconnect_connection(
         )
     except CommerceConnectionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return _connection_response(connection)
+@router.delete(
+    "/connections/{connection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@router.delete(
+    "/connections/{connection_id}/data",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_connection_and_data(
+    connection_id: UUID,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+) -> None:
+    try:
+        await service.delete_connection_data(
+            _tenant(identity),
+            connection_id,
+            actor_user_id=identity.user.id,
+        )
+    except CommerceConnectionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post(

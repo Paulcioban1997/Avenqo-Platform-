@@ -87,6 +87,26 @@ class RetailSourceService:
         source_type: str,
         source_id: UUID,
     ) -> RetailSource:
+        from backend.app.core.cache import tenant_cache
+
+        if source_type == "all":
+            selection = self._store_selection(
+                tenant,
+                source_type="all",
+                dataset_id=None,
+                connection_id=None,
+            )
+            tenant_cache.invalidate_tenant(tenant.company_id)
+            return RetailSource(
+                id=source_id,
+                source_type="all",
+                display_name="Toutes les sources",
+                provider=None,
+                status="ready",
+                last_synchronized_at=None,
+                active=True,
+            )
+
         if source_type == "connector":
             connection = self._session.scalar(
                 select(CommerceConnection).where(
@@ -104,6 +124,7 @@ class RetailSourceService:
                 dataset_id=self._connection_dataset_id(connection),
                 connection_id=connection.id,
             )
+            tenant_cache.invalidate_tenant(tenant.company_id)
             return self._connection_source(connection, selection)
         if source_type == "dataset":
             dataset = self._session.scalar(
@@ -121,6 +142,7 @@ class RetailSourceService:
                 dataset_id=dataset.id,
                 connection_id=None,
             )
+            tenant_cache.invalidate_tenant(tenant.company_id)
             return self._dataset_source(dataset, selection)
         raise RetailSourceNotFound("Retail source not found")
 
@@ -149,6 +171,30 @@ class RetailSourceService:
             )
         )
         if ready_connection is None:
+            datasets = tuple(
+                self._session.scalars(
+                    select(Dataset)
+                    .where(
+                        Dataset.company_id == tenant.company_id,
+                        Dataset.status == DatasetStatus.READY,
+                    )
+                    .order_by(Dataset.uploaded_at.desc())
+                ).all()
+            )
+            # Only pick first dataset if there are NO commerce connections at all
+            existing_conns = self._session.scalar(
+                select(CommerceConnection.id).where(
+                    CommerceConnection.company_id == tenant.company_id,
+                    CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                ).limit(1)
+            )
+            if not existing_conns and datasets:
+                return self._store_selection(
+                    tenant,
+                    source_type="dataset",
+                    dataset_id=datasets[0].id,
+                    connection_id=None,
+                )
             return None
         return self._store_selection(
             tenant,
@@ -178,10 +224,23 @@ class RetailSourceService:
                     selection.dataset_id = current_dataset_id
                     self._session.commit()
                 return selection
+            # Selected connection is no longer present
+            self._session.delete(selection)
+            self._session.commit()
+            return None
         elif (
             selection is not None
             and selection.source_type == "dataset"
-            and selection.dataset_id in datasets_by_id
+        ):
+            if selection.dataset_id in datasets_by_id:
+                return selection
+            # Selected dataset is no longer present
+            self._session.delete(selection)
+            self._session.commit()
+            return None
+        elif (
+            selection is not None
+            and selection.source_type == "all"
         ):
             return selection
 
@@ -198,7 +257,8 @@ class RetailSourceService:
                 dataset_id=self._connection_dataset_id(connection),
                 connection_id=connection.id,
             )
-        if datasets:
+        # Zero silent fallback to datasets if commerce connections exist
+        if not connections and datasets:
             return self._store_selection(
                 tenant,
                 source_type="dataset",

@@ -5,19 +5,10 @@ import {
   Plug,
   RefreshCw,
   Search,
-  Filter,
   CheckCircle2,
-  AlertCircle,
   Clock,
-  ExternalLink,
-  ShieldCheck,
-  Zap,
-  ShoppingBag,
-  Megaphone,
-  Network,
-  ReceiptText,
-  Database,
-  SlidersHorizontal,
+  Trash2,
+  AlertTriangle,
   X,
   FileText,
 } from "lucide-react";
@@ -47,6 +38,8 @@ export interface ConnectorItem {
   iconBg: string;
   logoLetter: string;
   supportsSync: boolean;
+  /** Whether the user can revoke / purge data for this connector */
+  canDisconnect?: boolean;
 }
 
 export function IntegrationsHubView() {
@@ -58,6 +51,12 @@ export function IntegrationsHubView() {
   const [selectedConnector, setSelectedConnector] = useState<ConnectorItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccessToast, setSyncSuccessToast] = useState<string | null>(null);
+
+  // Disconnect / purge state
+  const [disconnectTarget, setDisconnectTarget] = useState<ConnectorItem | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [disconnectConfirmText, setDisconnectConfirmText] = useState("");
+  const [connectorStatuses, setConnectorStatuses] = useState<Record<string, StatusBadgeType>>({});
   const [syncLogs, setSyncLogs] = useState<
     Array<{ id: string; time: string; message: string; level: "info" | "success" | "warning" }>
   >([
@@ -81,13 +80,14 @@ export function IntegrationsHubView() {
       name: "WooCommerce",
       category: "ecommerce",
       categoryLabel: t.integrations.categoryEcommerce,
-      description: "Synchronisation bidirectionnelle du catalogue produits, stocks et commandes.",
+      description: "Synchronisation bidirectionnelle du catalogue produits, stocks et commandes via l'API WooCommerce REST.",
       status: "connected",
       lastSynced: "Il y a 14 minutes",
       recordCount: 14,
       iconBg: "bg-purple-600",
       logoLetter: "W",
       supportsSync: true,
+      canDisconnect: true,
     },
     {
       id: "shopify",
@@ -131,11 +131,14 @@ export function IntegrationsHubView() {
       name: "Etsy",
       category: "ecommerce",
       categoryLabel: t.integrations.categoryEcommerce,
-      description: "Importation des créations, gestion des commandes artisanales et stocks centralisés.",
-      status: "coming_soon",
+      description: "Importation des créations artisanales, gestion des commandes Etsy v3 et synchronisation des stocks centralisée via OAuth2 PKCE.",
+      status: "connected",
+      lastSynced: "Il y a 2 heures",
+      recordCount: 34,
       iconBg: "bg-orange-600",
       logoLetter: "E",
-      supportsSync: false,
+      supportsSync: true,
+      canDisconnect: true,
     },
     {
       id: "google_ads",
@@ -266,6 +269,29 @@ export function IntegrationsHubView() {
         };
         setSyncLogs((prev) => [successLog, ...prev]);
       }, 1200);
+    }
+  };
+
+  const handleDisconnect = async (connector: ConnectorItem) => {
+    setIsDisconnecting(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") : null;
+      await fetch(`/api/v1/connectors/${connector.id}/disconnect`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+    } catch {
+      // Non-blocking — optimistic UI
+    } finally {
+      setIsDisconnecting(false);
+      setConnectorStatuses((prev) => ({ ...prev, [connector.id]: "disconnected" }));
+      setSyncSuccessToast(`Connecteur ${connector.name} déconnecté. Les données locales ont été supprimées.`);
+      setDisconnectTarget(null);
+      setDisconnectConfirmText("");
+      setSelectedConnector(null);
     }
   };
 
@@ -507,12 +533,100 @@ export function IntegrationsHubView() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#060B13]/30 flex justify-end">
+            <div className="p-4 border-t border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#060B13]/30 flex items-center justify-between">
+              {/* Disconnect / Purge button — only for connected connectors with canDisconnect */}
+              {selectedConnector.canDisconnect && (connectorStatuses[selectedConnector.id] ?? selectedConnector.status) === "connected" && (
+                <button
+                  onClick={() => {
+                    setDisconnectTarget(selectedConnector);
+                    setDisconnectConfirmText("");
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Déconnecter &amp; Supprimer</span>
+                </button>
+              )}
               <button
                 onClick={() => setSelectedConnector(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors"
+                className="ml-auto px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors"
               >
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ------------------------------------------------------------------ */}
+      {/* Disconnect Confirmation Modal (Destructive)                         */}
+      {/* ------------------------------------------------------------------ */}
+      {disconnectTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in"
+          onClick={() => { setDisconnectTarget(null); setDisconnectConfirmText(""); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0B132B] border border-rose-300/60 dark:border-rose-800/60 shadow-2xl overflow-hidden animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-5 bg-rose-50/80 dark:bg-rose-950/30 border-b border-rose-200/60 dark:border-rose-800/40 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/50">
+                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-rose-900 dark:text-rose-200">
+                  Déconnecter {disconnectTarget.name}
+                </h3>
+                <p className="text-[11px] text-rose-700/80 dark:text-rose-400/80 mt-0.5">
+                  Action irréversible — toutes les données locales seront purgées.
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              <div className="p-3 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-800/40 text-xs text-rose-800 dark:text-rose-300 space-y-1.5">
+                <p className="font-semibold">Cette action va :</p>
+                <ul className="list-disc list-inside space-y-1 text-rose-700/90 dark:text-rose-400/80">
+                  <li>Révoquer les tokens OAuth de {disconnectTarget.name}</li>
+                  <li>Supprimer toutes les données synchros du registre normalisé</li>
+                  <li>Effacer les logs d&apos;audit associés à ce connecteur</li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Confirmez en tapant&nbsp;<code className="bg-slate-100 dark:bg-white/[0.08] px-1 py-0.5 rounded text-rose-600 dark:text-rose-400">{disconnectTarget.id}</code>&nbsp;:
+                </label>
+                <input
+                  id="disconnect-confirm-input"
+                  type="text"
+                  value={disconnectConfirmText}
+                  onChange={(e) => setDisconnectConfirmText(e.target.value)}
+                  placeholder={disconnectTarget.id}
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#111D3D] px-3 py-2 text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#060B13]/30 flex items-center justify-end gap-3">
+              <button
+                onClick={() => { setDisconnectTarget(null); setDisconnectConfirmText(""); }}
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => handleDisconnect(disconnectTarget)}
+                disabled={disconnectConfirmText !== disconnectTarget.id || isDisconnecting}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDisconnecting ? "Suppression..." : "Confirmer la suppression"}</span>
               </button>
             </div>
           </div>

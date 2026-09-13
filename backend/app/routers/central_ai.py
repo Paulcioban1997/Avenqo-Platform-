@@ -38,6 +38,27 @@ async def message(
     if tenant.company_id != identity.user.company_id:
         raise HTTPException(status_code=403, detail="Contexte tenant invalide")
     company = identity.user.company
+    from backend.app.services.retail_source_service import RetailSourceService
+    active_source_name = None
+    active_source_id_str = None
+    if request.active_source_id and request.source_type:
+        try:
+            from uuid import UUID as PyUUID
+            src = RetailSourceService(db).select_source(
+                tenant, source_type=request.source_type, source_id=PyUUID(request.active_source_id)
+            )
+            active_source_name = src.display_name
+            active_source_id_str = str(src.id)
+        except Exception:
+            pass
+
+    if not active_source_name:
+        sources = RetailSourceService(db).list_sources(tenant)
+        active_src = next((s for s in sources if s.active), None)
+        if active_src:
+            active_source_name = active_src.display_name
+            active_source_id_str = str(active_src.id)
+
     try:
         result = await service.execute(
             tenant,
@@ -59,4 +80,9 @@ async def message(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except AIRequestConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return CentralAIResponse(**asdict(result), conversation_id=conversation_id)
+    return CentralAIResponse(
+        **asdict(result),
+        conversation_id=conversation_id,
+        grounded_source=f"Analyse basée sur : [{active_source_name}]" if active_source_name else None,
+        source_id=active_source_id_str,
+    )

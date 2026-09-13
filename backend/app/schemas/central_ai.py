@@ -4,11 +4,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CentralAIRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     content: str = Field(min_length=1, max_length=12000)
     page_context: str | None = Field(default=None, max_length=200)
     locale: str | None = Field(default=None, min_length=2, max_length=16, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2})?$")
+    active_source_id: str | None = None
+    source_type: str | None = None
 
 
 class CentralAIResponse(BaseModel):
@@ -18,3 +20,5 @@ class CentralAIResponse(BaseModel):
     remaining_ai_credits: int | None
     agent_availability: str
     conversation_id: UUID
+    grounded_source: str | None = None
+    source_id: str | None = None

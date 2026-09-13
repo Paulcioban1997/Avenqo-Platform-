@@ -207,6 +207,36 @@ export function AvenqoCopilot({
         </span>
       </div>
 
+      {/* Active Data Sources — grounding context for the AI */}
+      <div className="px-4 py-2.5 bg-white dark:bg-[#0B132B] border-b border-slate-100 dark:border-white/[0.04]">
+        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+          Sources Actives (IA Ancrée)
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+            </span>
+            WooCommerce · 14 enreg.
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200/70 dark:border-orange-800/50 text-[10px] font-semibold text-orange-700 dark:text-orange-400">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
+            </span>
+            Etsy · 34 enreg.
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-800/50 text-[10px] font-semibold text-blue-700 dark:text-blue-400">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
+            </span>
+            Stripe · 420 enreg.
+          </div>
+        </div>
+      </div>
+
       {/* Quick Action Pills */}
       <div className="p-3 border-b border-slate-100 dark:border-white/[0.04] bg-white dark:bg-[#0B132B]">
         <div className="text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-2 tracking-wider">

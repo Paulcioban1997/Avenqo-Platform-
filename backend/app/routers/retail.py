@@ -58,7 +58,27 @@ def ask_retail_assistant(
     request: RetailAssistantRequest,
     tenant: TenantContext = Depends(get_tenant_context),
     assistant: RetailAssistantService = Depends(get_retail_assistant),
+    db: Session = Depends(get_db),
 ) -> RetailAssistantResponse:
+    active_source_name = None
+    active_source_id_str = None
+    if request.source_id and request.source_type:
+        try:
+            source = RetailSourceService(db).select_source(
+                tenant, source_type=request.source_type, source_id=request.source_id
+            )
+            active_source_name = source.display_name
+            active_source_id_str = str(source.id)
+        except Exception:
+            pass
+
+    if not active_source_name:
+        sources = RetailSourceService(db).list_sources(tenant)
+        active_src = next((s for s in sources if s.active), None)
+        if active_src:
+            active_source_name = active_src.display_name
+            active_source_id_str = str(active_src.id)
+
     try:
         reply = assistant.answer(tenant, request.question)
     except ModuleAccessDenied as exc:
@@ -68,4 +88,6 @@ def ask_retail_assistant(
     return RetailAssistantResponse(
         answer=reply.answer,
         suggested_actions=list(reply.suggested_actions),
+        grounded_source=f"Analyse basée sur : [{active_source_name}]" if active_source_name else None,
+        source_id=active_source_id_str,
     )

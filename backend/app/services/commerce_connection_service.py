@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.app.connectors.shopify import ShopifyConnector, ShopifyConnectorError
@@ -25,6 +25,10 @@ from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
     CommerceOAuthState,
+    CommerceWebhookReceipt,
+    Dataset,
+    NormalizedCommerceRecord,
+    RetailActiveSource,
 )
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -528,6 +532,88 @@ class CommerceConnectionService:
             metadata={"provider": connection.provider},
         )
         return connection
+
+    async def delete_connection_data(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        actor_user_id: UUID,
+    ) -> None:
+        """Transactionally purges all records, webhooks, dataset, and connection for a store."""
+        connection = self.get_connection(tenant, connection_id)
+
+        # 1. Disconnect upstream credentials
+        if connection.status != CommerceConnectionStatus.DISCONNECTED.value:
+            await self.disconnect(tenant, connection_id, actor_user_id=actor_user_id)
+
+        # 2. Delete normalized commerce records
+        self._db.execute(
+            delete(NormalizedCommerceRecord).where(
+                NormalizedCommerceRecord.connection_id == connection.id,
+                NormalizedCommerceRecord.company_id == tenant.company_id,
+            )
+        )
+
+        # 3. Delete webhook receipts
+        self._db.execute(
+            delete(CommerceWebhookReceipt).where(
+                CommerceWebhookReceipt.connection_id == connection.id,
+                CommerceWebhookReceipt.company_id == tenant.company_id,
+            )
+        )
+
+        # 4. Delete OAuth states
+        self._db.execute(
+            delete(CommerceOAuthState).where(
+                CommerceOAuthState.company_id == tenant.company_id,
+                CommerceOAuthState.provider == connection.provider,
+                CommerceOAuthState.external_account_id == connection.external_account_id,
+            )
+        )
+
+        # 5. Delete materialized retail dataset if present
+        retail_dataset_id_str = (connection.dataset_ids or {}).get("retail")
+        if retail_dataset_id_str:
+            try:
+                ds_uuid = UUID(str(retail_dataset_id_str))
+                dataset = self._db.scalar(
+                    select(Dataset).where(
+                        Dataset.id == ds_uuid,
+                        Dataset.company_id == tenant.company_id,
+                    )
+                )
+                if dataset is not None:
+                    self._db.delete(dataset)
+            except Exception:
+                logger.warning("Failed to delete materialized dataset for connection %s", connection_id)
+
+        # 6. Reset RetailActiveSource if it pointed to this connection
+        active_source = self._db.scalar(
+            select(RetailActiveSource).where(
+                RetailActiveSource.company_id == tenant.company_id,
+                RetailActiveSource.connection_id == connection.id,
+            )
+        )
+        if active_source is not None:
+            self._db.delete(active_source)
+
+        # 7. Delete connection record
+        self._db.delete(connection)
+        self._db.commit()
+
+        # 8. Invalidate tenant cache
+        from backend.app.core.cache import tenant_cache
+        tenant_cache.invalidate_tenant(tenant.company_id)
+
+        self._audit.record(
+            actor_user_id=actor_user_id,
+            action="connector.connection_deleted",
+            target_type="CommerceConnection",
+            target_id=str(connection_id),
+            company_id=tenant.company_id,
+            metadata={"provider": connection.provider},
+        )
 
     def _shopify(self) -> ShopifyConnector:
         connector = self._registry.get("shopify")

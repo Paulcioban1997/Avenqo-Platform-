@@ -136,6 +136,19 @@ class GetProductDetailTool(AITool):
                 error="Please provide a product name, product ID, or SKU to look up.",
             )
 
+        from backend.app.services.retail_source_service import RetailSourceService
+
+        active_source = RetailSourceService(self._session).active_selection(context.tenant)
+        if active_source is not None and active_source.source_type == "dataset":
+            return ToolResult(
+                success=True,
+                data={
+                    "found": False,
+                    "query": arguments.product_name or arguments.product_id or arguments.sku,
+                    "message": "La source active est un dataset importé. Consultez la vue Ventes pour ces données.",
+                },
+            )
+
         base_query = (
             select(NormalizedCommerceRecord)
             .where(
@@ -143,8 +156,12 @@ class GetProductDetailTool(AITool):
                 NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
                 NormalizedCommerceRecord.deleted.is_(False),
             )
-            .order_by(NormalizedCommerceRecord.source_updated_at.desc())
         )
+        if active_source is not None and active_source.connection_id is not None:
+            base_query = base_query.where(
+                NormalizedCommerceRecord.connection_id == active_source.connection_id
+            )
+        base_query = base_query.order_by(NormalizedCommerceRecord.source_updated_at.desc())
 
         records: list[NormalizedCommerceRecord] = []
 
@@ -262,17 +279,36 @@ class GetInventorySummaryTool(AITool):
 
     async def run(self, context: ToolExecutionContext, arguments: InventorySummaryArgs) -> ToolResult:
         company_id = context.tenant.company_id
+        from backend.app.services.retail_source_service import RetailSourceService
+
+        active_source = RetailSourceService(self._session).active_selection(context.tenant)
+        if active_source is not None and active_source.source_type == "dataset":
+            return ToolResult(
+                success=True,
+                data={
+                    "total_products": 0,
+                    "message": (
+                        "La source sélectionnée est un fichier importé. L'inventaire en direct nécessite une boutique connectée (WooCommerce ou Shopify)."
+                    ),
+                },
+            )
 
         try:
+            inv_query = (
+                select(NormalizedCommerceRecord)
+                .where(
+                    NormalizedCommerceRecord.company_id == company_id,
+                    NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
+                    NormalizedCommerceRecord.deleted.is_(False),
+                )
+            )
+            if active_source is not None and active_source.connection_id is not None:
+                inv_query = inv_query.where(
+                    NormalizedCommerceRecord.connection_id == active_source.connection_id
+                )
             records = list(
                 self._session.scalars(
-                    select(NormalizedCommerceRecord)
-                    .where(
-                        NormalizedCommerceRecord.company_id == company_id,
-                        NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
-                        NormalizedCommerceRecord.deleted.is_(False),
-                    )
-                    .order_by(NormalizedCommerceRecord.source_updated_at.desc())
+                    inv_query.order_by(NormalizedCommerceRecord.source_updated_at.desc())
                 ).all()
             )
         except Exception as exc:

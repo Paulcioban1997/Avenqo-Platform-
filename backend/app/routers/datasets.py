@@ -89,7 +89,20 @@ def _current_source_missing(dataset) -> bool:
     expected_rows = int(current_version.row_count or dataset.rows_count or 0)
     if expected_rows <= 0:
         return False
-    return not Path(current_version.artifact_path).is_file()
+    # Commerce-backed datasets have NormalizedCommerceRecord in PostgreSQL as durable truth
+    name = (dataset.name or "").lower()
+    if any(provider in name for provider in ("shopify", "woocommerce", "etsy")):
+        return False
+    path = Path(current_version.artifact_path)
+    if path.is_file():
+        return False
+    normalized_str = str(current_version.artifact_path).replace("\\", "/")
+    if "company_datasets/" in normalized_str:
+        rel = normalized_str.split("company_datasets/", 1)[1]
+        for base in [Path("var/artifacts/company_datasets"), Path("artifacts/company_datasets")]:
+            if (base / rel).is_file():
+                return False
+    return True
 
 
 def _pipeline_status(dataset) -> str:

@@ -161,6 +161,24 @@ export function AppShell({ children }: AppShellProps) {
               </div>
             )}
           </div>
+
+          {/* Active Data Sources Pill */}
+          <div className="hidden sm:flex items-center gap-1.5">
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              </span>
+              <span>WooCommerce</span>
+            </div>
+            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 text-[10px] font-bold text-orange-700 dark:text-orange-400">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
+              </span>
+              <span>Etsy</span>
+            </div>
+          </div>
         </div>
 
         {/* Center: Command Palette Input Trigger */}
