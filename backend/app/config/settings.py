@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Centralise les paramÃ¨tres chargÃ©s depuis les variables d'environnement."""
+    """Centralise les paramètres chargés depuis les variables d'environnement."""
 
     model_config = SettingsConfigDict(
         env_file="backend/.env",
@@ -373,6 +373,7 @@ class Settings(BaseSettings):
             if clean_frontend not in {
                 "https://avenqo.ca",
                 "https://www.avenqo.ca",
+                "https://app.avenqo.ca",
             }:
                 missing.append("FRONTEND_URL")
             if not self.cors_origins or any(
@@ -513,16 +514,23 @@ class Settings(BaseSettings):
                 self.stripe_price_credit_professional_25000
                 or self.stripe_price_credit_professional
             ),
-            "professional_extra": (
-                self.stripe_price_credit_professional_25000
-                or self.stripe_price_credit_professional
-            ),
             "professional_6500": self.stripe_price_credit_professional_6500,
-            "professional_25000": (
-                self.stripe_price_credit_professional_25000
-                or self.stripe_price_credit_professional
-            ),
+            "professional_25000": self.stripe_price_credit_professional_25000,
+            "enterprise": self.stripe_price_enterprise,
         }.get(pack_code)
+
+    @lru_cache(maxsize=1)
+    def is_ai_configured(self) -> bool:
+        """Teste si au moins un fournisseur IA est complètement configuré (clé + modèle)."""
+
+        return (
+            (self.openai_api_key and self.openai_model)
+            or (self.anthropic_api_key and self.anthropic_model)
+            or (self.google_ai_api_key and self.gemini_model)
+        )
+
+    def stripe_webhook_signing_secret(self) -> str | None:
+        return self.stripe_webhook_secret
 
 
 @lru_cache(maxsize=1)
