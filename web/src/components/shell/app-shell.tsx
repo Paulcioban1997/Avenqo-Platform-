@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -112,11 +113,15 @@ export function AppShell({ children }: AppShellProps) {
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          {/* Compact brand logo for mobile/topbar */}
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-[#0076FF] to-[#00D4FF] text-white font-bold text-sm shadow-sm shadow-blue-500/20">
-              A
-            </div>
+          {/* Official Avenqo brand logo for mobile/topbar */}
+          <Link href="/dashboard" className="flex items-center gap-2.5 group">
+            <Image
+              src="/brand/avenqo-icon.png"
+              alt="Avenqo"
+              width={32}
+              height={32}
+              className="rounded-xl object-contain shadow-xs shadow-blue-500/20 group-hover:scale-105 transition-transform"
+            />
             <span className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base hidden sm:inline-block">
               {t.brand.name}
             </span>
@@ -296,15 +301,19 @@ export function AppShell({ children }: AppShellProps) {
               onClick={() => setIsSidebarOpen(false)}
               className="flex items-center gap-3 group"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#0076FF] to-[#00D4FF] text-white font-bold text-base shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform">
-                A
-              </div>
+              <Image
+                src="/brand/avenqo-icon.png"
+                alt="Avenqo"
+                width={38}
+                height={38}
+                className="rounded-xl object-contain shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform"
+              />
               <div>
                 <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none">
                   {t.brand.name}
                 </div>
                 <div className="text-[9px] font-bold text-slate-400 dark:text-[#94A3B8] tracking-widest uppercase mt-1">
-                  {t.brand.tagline}
+                  AI FOR A SMARTER FUTURE
                 </div>
               </div>
             </Link>

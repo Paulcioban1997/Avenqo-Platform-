@@ -35,6 +35,16 @@ CRM_MODULE_CODE = "crm"
 CRM_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "get_crm_overview",
+        "get_crm_metrics",
+        "search_clients",
+        "get_client",
+        "search_appointments",
+        "check_availability",
+        "list_available_slots",
+        "create_appointment",
+        "update_appointment",
+        "cancel_appointment",
+        "get_client_history",
         "get_leads_to_contact",
         "get_ranked_leads",
         "get_high_risk_customers",

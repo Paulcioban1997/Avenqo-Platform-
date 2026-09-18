@@ -26,8 +26,10 @@ import {
   Calendar,
   Wrench,
   TrendingUp,
+  UserCheck,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
+import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -55,47 +57,66 @@ export function CommandPalette({
 
     const timer = setTimeout(async () => {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") : null;
-        const res = await fetch(`/api/v1/crm/search?query=${encodeURIComponent(query)}&limit=5`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const res = await fetch(`/api/v1/crm/search?q=${encodeURIComponent(query)}&limit=6`, {
+          headers: getAuthHeaders(),
         });
         if (res.ok) {
           const data = await res.json();
+          const results = data.results || data;
           const items: any[] = [];
-          if (data.clients) {
-            data.clients.forEach((c: any) => {
+
+          // Clients
+          if (results.clients && Array.isArray(results.clients)) {
+            results.clients.forEach((c: any) => {
               items.push({
                 id: `crm-client-${c.id}`,
-                title: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ""}`,
+                title: c.title || `${c.first_name || ""} ${c.last_name || ""}`,
+                subtitle: c.subtitle || c.email || c.phone,
                 group: "CRM — Clients",
                 icon: <Users className="w-4 h-4 text-[#0076FF]" />,
                 onSelect: () => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("crm:select-entity", { detail: { type: "client", id: c.id } })
+                    );
+                  }
                   router.push("/crm");
                   onClose();
                 },
               });
             });
           }
-          if (data.appointments) {
-            data.appointments.forEach((a: any) => {
+
+          // Appointments
+          if (results.appointments && Array.isArray(results.appointments)) {
+            results.appointments.forEach((a: any) => {
               items.push({
                 id: `crm-app-${a.id}`,
-                title: `${a.title} • ${a.client_name}`,
+                title: a.title || "Rendez-vous",
+                subtitle: a.subtitle || a.client_name,
                 group: "CRM — Rendez-vous",
                 icon: <Calendar className="w-4 h-4 text-[#00D4FF]" />,
                 onSelect: () => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("crm:select-entity", { detail: { type: "appointment", id: a.id } })
+                    );
+                  }
                   router.push("/crm");
                   onClose();
                 },
               });
             });
           }
-          if (data.services) {
-            data.services.forEach((s: any) => {
+
+          // Services
+          if (results.services && Array.isArray(results.services)) {
+            results.services.forEach((s: any) => {
               items.push({
                 id: `crm-srv-${s.id}`,
-                title: `${s.name} (${s.duration_minutes} min)`,
-                group: "CRM — Services",
+                title: s.title || s.name,
+                subtitle: s.subtitle || `${s.duration_minutes || 30} min`,
+                group: "CRM — Prestations & Services",
                 icon: <Wrench className="w-4 h-4 text-emerald-400" />,
                 onSelect: () => {
                   router.push("/crm");
@@ -104,13 +125,16 @@ export function CommandPalette({
               });
             });
           }
-          if (data.opportunities) {
-            data.opportunities.forEach((o: any) => {
+
+          // Employees
+          if (results.employees && Array.isArray(results.employees)) {
+            results.employees.forEach((e: any) => {
               items.push({
-                id: `crm-opp-${o.id}`,
-                title: `${o.title} (${o.amount} $)`,
-                group: "CRM — Opportunités",
-                icon: <TrendingUp className="w-4 h-4 text-violet-400" />,
+                id: `crm-emp-${e.id}`,
+                title: e.title || `${e.first_name || ""} ${e.last_name || ""}`,
+                subtitle: e.subtitle || e.email || e.phone,
+                group: "CRM — Collaborateurs",
+                icon: <UserCheck className="w-4 h-4 text-indigo-400" />,
                 onSelect: () => {
                   router.push("/crm");
                   onClose();
@@ -118,12 +142,52 @@ export function CommandPalette({
               });
             });
           }
+
+          // Notes
+          if (results.notes && Array.isArray(results.notes)) {
+            results.notes.forEach((n: any) => {
+              items.push({
+                id: `crm-note-${n.id}`,
+                title: n.title || "Note client",
+                subtitle: n.subtitle || n.content,
+                group: "CRM — Notes",
+                icon: <FileText className="w-4 h-4 text-amber-400" />,
+                onSelect: () => {
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+
+          // Opportunities / Deals
+          if (results.opportunities && Array.isArray(results.opportunities)) {
+            results.opportunities.forEach((o: any) => {
+              items.push({
+                id: `crm-opp-${o.id}`,
+                title: o.title,
+                subtitle: o.subtitle || `${o.amount || 0} $`,
+                group: "CRM — Pipelines & Opportunités",
+                icon: <TrendingUp className="w-4 h-4 text-violet-400" />,
+                onSelect: () => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("crm:select-entity", { detail: { type: "opportunity", id: o.id } })
+                    );
+                  }
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+
           setCrmResults(items);
         }
       } catch {
         // Silently fail
       }
-    }, 200);
+    }, 180);
 
     return () => clearTimeout(timer);
   }, [query, router, onClose]);

@@ -29,7 +29,7 @@ BUSINESS_MODULE_REGISTRY: tuple[BusinessModuleDefinition, ...] = (
     BusinessModuleDefinition("retail", "Retail Intelligence", "Retail sales, products and customer intelligence.", ModuleAvailability.AVAILABLE, "commerce"),
     BusinessModuleDefinition("crm", "CRM AI", "Customer relationship intelligence and actions.", ModuleAvailability.AVAILABLE, "customer"),
     BusinessModuleDefinition("marketing", "Marketing AI", "Campaign and audience intelligence.", ModuleAvailability.COMING_SOON, "growth"),
-    BusinessModuleDefinition("appointments", "Appointments AI", "Booking and scheduling intelligence.", ModuleAvailability.COMING_SOON, "operations"),
+    BusinessModuleDefinition("appointments", "Appointments AI", "Booking and scheduling intelligence.", ModuleAvailability.AVAILABLE, "operations"),
     BusinessModuleDefinition("accounting", "Accounting AI", "Accounting workflow intelligence.", ModuleAvailability.AVAILABLE, "finance"),
     BusinessModuleDefinition("ocr", "OCR / Documents AI", "Structured extraction from business documents.", ModuleAvailability.COMING_SOON, "documents"),
     BusinessModuleDefinition("hr", "HR AI", "Workforce and people operations intelligence.", ModuleAvailability.COMING_SOON, "people"),

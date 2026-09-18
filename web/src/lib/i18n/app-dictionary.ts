@@ -161,6 +161,8 @@ export type AppTranslations = {
       appointments: string;
       pipelines: string;
       automations: string;
+      campaigns: string;
+      reports: string;
       calendarSync: string;
       connections: string;
     };
@@ -238,7 +240,7 @@ export type AppTranslations = {
 const frApp: AppTranslations = {
   brand: {
     name: "AVENQO",
-    tagline: "AI FOR A SMARTER TOMORROW",
+    tagline: "AI FOR A SMARTER FUTURE",
   },
   navigation: {
     dashboard: "Tableau de bord",
@@ -259,7 +261,7 @@ const frApp: AppTranslations = {
     billing: "Facturation & Plans",
   },
   shell: {
-    searchPlaceholder: "Rechercher ou exécuter (Ctrl+K)...",
+    searchPlaceholder: "Rechercher un client, un rendez-vous, une note...",
     commandPaletteShortcut: "Ctrl+K",
     activeTenant: "Organisation active",
     switchTenant: "Changer d'organisation",
@@ -391,13 +393,15 @@ const frApp: AppTranslations = {
       newAppointment: "Nouveau rendez-vous",
     },
     tabs: {
-      overview: "Vue d'ensemble",
-      clients: "Clients (360°)",
-      appointments: "Rendez-vous & Calendrier",
-      pipelines: "Pipelines & Opportunités",
-      automations: "Automatisations & Relances",
-      calendarSync: "Connexion Calendriers",
-      connections: "Connexion Calendriers",
+      overview: "Aperçu",
+      clients: "Clients",
+      appointments: "Rendez-vous",
+      pipelines: "Pipelines & Deals",
+      automations: "Automatisations",
+      campaigns: "Campagnes",
+      reports: "Rapports",
+      calendarSync: "Connexions calendrier",
+      connections: "Connexions calendrier",
     },
     kpis: {
       activeClients: "Clients Actifs",
@@ -473,7 +477,7 @@ const frApp: AppTranslations = {
 const enApp: AppTranslations = {
   brand: {
     name: "AVENQO",
-    tagline: "AI FOR A SMARTER TOMORROW",
+    tagline: "AI FOR A SMARTER FUTURE",
   },
   navigation: {
     dashboard: "Dashboard",
@@ -494,7 +498,7 @@ const enApp: AppTranslations = {
     billing: "Billing & Plans",
   },
   shell: {
-    searchPlaceholder: "Search or execute command (Ctrl+K)...",
+    searchPlaceholder: "Search client, appointment, note...",
     commandPaletteShortcut: "Ctrl+K",
     activeTenant: "Active Organization",
     switchTenant: "Switch organization",
@@ -627,10 +631,12 @@ const enApp: AppTranslations = {
     },
     tabs: {
       overview: "Overview",
-      clients: "Clients (360°)",
-      appointments: "Appointments & Calendar",
+      clients: "Clients",
+      appointments: "Appointments",
       pipelines: "Pipelines & Deals",
-      automations: "Automations & Reminders",
+      automations: "Automations",
+      campaigns: "Campaigns",
+      reports: "Reports",
       calendarSync: "Calendar Connections",
       connections: "Calendar Connections",
     },

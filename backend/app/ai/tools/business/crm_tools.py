@@ -249,6 +249,40 @@ class GetClientTool(AITool):
         )
 
 
+class SearchAppointmentsTool(AITool):
+    name = "search_appointments"
+    description = (
+        "Recherche des rendez-vous par client, motif, notes ou statut."
+    )
+    input_schema = SearchAppointmentsArgs
+    required_permissions = ("ai:use",)
+
+    def __init__(self, session: Session) -> None:
+        self._crm = CRMService(session)
+
+    async def run(self, context: ToolExecutionContext, arguments: SearchAppointmentsArgs) -> ToolResult:
+        appts = self._crm.list_appointments(
+            context.tenant.company_id,
+            status=arguments.status,
+            search=arguments.query,
+            limit=arguments.limit,
+        )
+        data = [
+            {
+                "id": str(a.id),
+                "title": a.title,
+                "client_name": a.client.full_name if a.client else "Client inconnu",
+                "start_time": a.start_time.isoformat(),
+                "end_time": a.end_time.isoformat(),
+                "status": a.status,
+                "duration_minutes": a.duration_minutes,
+                "notes": a.notes,
+            }
+            for a in appts
+        ]
+        return ToolResult(success=True, data={"count": len(data), "appointments": data}, source_refs=("crm_appointments",))
+
+
 class CheckAvailabilityTool(AITool):
     name = "check_availability"
     description = (
