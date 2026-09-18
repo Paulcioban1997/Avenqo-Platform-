@@ -1,4 +1,4 @@
-﻿from collections.abc import Generator
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -556,8 +556,6 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
             "hr",
             "accounting",
             "ocr",
-            "voice",
-            "media",
         ],
     }
 
@@ -613,7 +611,7 @@ def test_inscription_refuse_un_depassement_de_modules_sans_creer_de_compte(
     client, session_factory, _ = auth_environment
     payload = registration_payload("over-limit@acme.ca", "Over Limit Company") | {
         "plan_code": "demo",
-        "selected_modules": ["retail", "crm", "accounting"],
+        "selected_modules": ["retail", "crm", "accounting", "marketing"],
     }
 
     response = client.post("/api/v1/auth/register", json=payload)

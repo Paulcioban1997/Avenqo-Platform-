@@ -369,10 +369,11 @@ class Settings(BaseSettings):
             ):
                 if not value or not str(value).strip():
                     missing.append(name)
-            clean_frontend = self.frontend_url.rstrip("/")
+            clean_frontend = self.frontend_url.strip().rstrip("/")
             if clean_frontend not in {
                 "https://avenqo.ca",
                 "https://www.avenqo.ca",
+                "https://app.avenqo.ca",
             }:
                 missing.append("FRONTEND_URL")
             if not self.cors_origins or any(

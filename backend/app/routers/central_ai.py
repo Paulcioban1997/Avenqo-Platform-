@@ -48,7 +48,7 @@ async def message(
                 tenant, source_type=request.source_type, source_id=PyUUID(request.active_source_id)
             )
             active_source_name = src.display_name
-            active_source_id_str = str(src.id)
+            active_source_id_str = str(src.source_id)
         except Exception:
             pass
 
@@ -57,7 +57,7 @@ async def message(
         active_src = next((s for s in sources if s.active), None)
         if active_src:
             active_source_name = active_src.display_name
-            active_source_id_str = str(active_src.id)
+            active_source_id_str = str(active_src.source_id)
 
     try:
         result = await service.execute(

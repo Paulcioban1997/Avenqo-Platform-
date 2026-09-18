@@ -142,3 +142,55 @@ def test_smtp_notifier_raises_clear_error_when_host_missing(_clean_settings_cach
 
     with pytest.raises(ValueError, match="SMTP"):
         SMTPAccountNotifier(settings)
+
+
+@pytest.mark.parametrize(
+    "valid_url",
+    [
+        "https://avenqo.ca",
+        "https://avenqo.ca/",
+        "https://www.avenqo.ca",
+        "https://www.avenqo.ca/",
+        "https://app.avenqo.ca",
+        "  https://avenqo.ca  ",
+    ],
+)
+def test_production_settings_accepts_valid_frontend_urls(
+    _clean_settings_cache,
+    monkeypatch,
+    valid_url: str,
+) -> None:
+    settings = _build_settings(monkeypatch, FRONTEND_URL=valid_url)
+    assert settings.environment == "production"
+    assert settings.frontend_url.strip().rstrip("/") in {
+        "https://avenqo.ca",
+        "https://www.avenqo.ca",
+        "https://app.avenqo.ca",
+    }
+
+
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        "http://avenqo.ca",
+        "http://localhost:3000",
+        "https://avenqo.vercel.app",
+        "https://malicious-site.com",
+        "",
+    ],
+)
+def test_production_settings_rejects_insecure_frontend_urls(
+    _clean_settings_cache,
+    monkeypatch,
+    invalid_url: str,
+) -> None:
+    with pytest.raises(ValueError, match="FRONTEND_URL"):
+        _build_settings(monkeypatch, FRONTEND_URL=invalid_url)
+
+
+def test_production_settings_rejects_wildcard_cors(
+    _clean_settings_cache,
+    monkeypatch,
+) -> None:
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        _build_settings(monkeypatch, CORS_ORIGINS="*")

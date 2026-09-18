@@ -33,6 +33,10 @@ class RetailSource:
     last_synchronized_at: datetime | None
     active: bool
 
+    @property
+    def id(self) -> UUID:
+        return self.source_id
+
 
 class RetailSourceService:
     def __init__(self, session: Session) -> None:
