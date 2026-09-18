@@ -207,6 +207,28 @@ def upgrade() -> None:
         )
         op.create_index("ix_crm_pipeline_stages_pipeline_id", "crm_pipeline_stages", ["pipeline_id"])
 
+    if inspector.has_table("crm_opportunities"):
+        opp_cols = [c["name"] for c in inspector.get_columns("crm_opportunities")]
+        if "pipeline_id" not in opp_cols:
+            op.add_column("crm_opportunities", sa.Column("pipeline_id", sa.Uuid(), nullable=True))
+            op.create_foreign_key("fk_crm_opportunities_pipeline_id", "crm_opportunities", "crm_pipelines", ["pipeline_id"], ["id"], ondelete="SET NULL")
+            op.create_index("ix_crm_opportunities_pipeline_id", "crm_opportunities", ["pipeline_id"])
+        if "stage_id" not in opp_cols:
+            op.add_column("crm_opportunities", sa.Column("stage_id", sa.Uuid(), nullable=True))
+            op.create_foreign_key("fk_crm_opportunities_stage_id", "crm_opportunities", "crm_pipeline_stages", ["stage_id"], ["id"], ondelete="SET NULL")
+            op.create_index("ix_crm_opportunities_stage_id", "crm_opportunities", ["stage_id"])
+        if "client_id" not in opp_cols:
+            op.add_column("crm_opportunities", sa.Column("client_id", sa.Uuid(), nullable=True))
+            op.create_foreign_key("fk_crm_opportunities_client_id", "crm_opportunities", "crm_clients", ["client_id"], ["id"], ondelete="SET NULL")
+            op.create_index("ix_crm_opportunities_client_id", "crm_opportunities", ["client_id"])
+
+    if inspector.has_table("crm_activities"):
+        act_cols = [c["name"] for c in inspector.get_columns("crm_activities")]
+        if "client_id" not in act_cols:
+            op.add_column("crm_activities", sa.Column("client_id", sa.Uuid(), nullable=True))
+            op.create_foreign_key("fk_crm_activities_client_id", "crm_activities", "crm_clients", ["client_id"], ["id"], ondelete="CASCADE")
+            op.create_index("ix_crm_activities_client_id", "crm_activities", ["client_id"])
+
     if not inspector.has_table("crm_communications"):
         op.create_table(
             "crm_communications",

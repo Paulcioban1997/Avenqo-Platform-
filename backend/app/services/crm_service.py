@@ -136,6 +136,7 @@ class CRMService:
                 or_(
                     CRMClient.first_name.ilike(pat),
                     CRMClient.last_name.ilike(pat),
+                    (CRMClient.first_name + " " + CRMClient.last_name).ilike(pat),
                     CRMClient.email.ilike(pat),
                     CRMClient.phone.ilike(pat),
                     CRMClient.company_name.ilike(pat),
@@ -801,12 +802,24 @@ class CRMService:
         actor_name: str,
         details: dict[str, Any],
     ) -> None:
+        clean_details: dict[str, Any] = {}
+        if isinstance(details, dict):
+            for k, v in details.items():
+                if isinstance(v, (datetime, date)):
+                    clean_details[k] = v.isoformat()
+                elif isinstance(v, UUID):
+                    clean_details[k] = str(v)
+                else:
+                    clean_details[k] = v
+        else:
+            clean_details = details or {}
+
         log = CRMActivityLog(
             company_id=company_id,
             entity_type=entity_type,
             entity_id=entity_id,
             action=action,
             actor_name=actor_name,
-            details=details,
+            details=clean_details,
         )
         self._session.add(log)

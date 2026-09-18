@@ -66,6 +66,7 @@ class CRMSearchService:
                 or_(
                     CRMClient.first_name.ilike(search_pattern),
                     CRMClient.last_name.ilike(search_pattern),
+                    (CRMClient.first_name + " " + CRMClient.last_name).ilike(search_pattern),
                     CRMClient.email.ilike(search_pattern),
                     CRMClient.phone.ilike(search_pattern),
                     CRMClient.company_name.ilike(search_pattern),

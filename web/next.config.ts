@@ -60,14 +60,6 @@ const nextConfig: NextConfig = {
         destination: "/app/index.html",
       },
       {
-        source: "/crm",
-        destination: "/app/index.html",
-      },
-      {
-        source: "/crm/:path*",
-        destination: "/app/index.html",
-      },
-      {
         source: "/accounting",
         destination: "/app/index.html",
       },
