@@ -76,7 +76,6 @@ def upgrade() -> None:
         "COALESCED",
         name="dataset_evaluation_status",
     )
-    evaluation_status.create(bind, checkfirst=True)
     op.create_table(
         "connector_dataset_evaluations",
         sa.Column("id", sa.Uuid(), nullable=False),
