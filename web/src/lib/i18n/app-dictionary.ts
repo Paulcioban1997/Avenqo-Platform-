@@ -146,6 +146,93 @@ export type AppTranslations = {
     drawerLogsTitle: string;
     noLogs: string;
   };
+  crm: {
+    title: string;
+    headerTitle: string;
+    headerSubtitle: string;
+    newAppointment: string;
+    searchPlaceholder: string;
+    header: {
+      newAppointment: string;
+    };
+    tabs: {
+      overview: string;
+      clients: string;
+      appointments: string;
+      pipelines: string;
+      automations: string;
+      calendarSync: string;
+      connections: string;
+    };
+    kpis: {
+      activeClients: string;
+      appointmentsThisMonth: string;
+      attendanceRate: string;
+      revenueGenerated: string;
+    };
+    calendarModes: {
+      day: string;
+      week: string;
+      month: string;
+      agenda: string;
+      kanban: string;
+      list: string;
+    };
+    calendar: {
+      today: string;
+      day: string;
+      week: string;
+      month: string;
+      agenda: string;
+      kanban: string;
+      list: string;
+      connected: string;
+      disconnected: string;
+      connectGoogle: string;
+      disconnect: string;
+    };
+    appointmentStatuses: {
+      confirmed: string;
+      pending: string;
+      completed: string;
+      cancelled: string;
+      noShow: string;
+    };
+    status: {
+      confirmed: string;
+      pending: string;
+      completed: string;
+      cancelled: string;
+      noShow: string;
+    };
+    filters: {
+      service: string;
+      employee: string;
+      status: string;
+    };
+    modal: {
+      newAppointmentTitle: string;
+      editAppointmentTitle: string;
+      subtitle: string;
+      dateRequired: string;
+      clientRequired: string;
+    };
+    clients: {
+      client: string;
+    };
+    actions: {
+      modify: string;
+      reschedule: string;
+      cancel: string;
+      markCompleted: string;
+      save: string;
+      close: string;
+      addNote: string;
+      connectGoogle: string;
+      disconnect: string;
+      syncNow: string;
+    };
+  };
 };
 
 const frApp: AppTranslations = {
@@ -294,6 +381,93 @@ const frApp: AppTranslations = {
     drawerLogsTitle: "Journal d'audit de synchronisation",
     noLogs: "Aucune synchronisation récente enregistrée.",
   },
+  crm: {
+    title: "CRM AI & Planification Intelligente",
+    headerTitle: "CRM AI & Relations Clients",
+    headerSubtitle: "Planification intelligente, gestion des clients 360° et synchronisation multi-calendriers",
+    newAppointment: "Nouveau rendez-vous",
+    searchPlaceholder: "Rechercher un client, un rendez-vous, une note...",
+    header: {
+      newAppointment: "Nouveau rendez-vous",
+    },
+    tabs: {
+      overview: "Vue d'ensemble",
+      clients: "Clients (360°)",
+      appointments: "Rendez-vous & Calendrier",
+      pipelines: "Pipelines & Opportunités",
+      automations: "Automatisations & Relances",
+      calendarSync: "Connexion Calendriers",
+      connections: "Connexion Calendriers",
+    },
+    kpis: {
+      activeClients: "Clients Actifs",
+      appointmentsThisMonth: "Rendez-vous ce mois",
+      attendanceRate: "Taux de présence",
+      revenueGenerated: "Chiffre d'affaires généré",
+    },
+    calendarModes: {
+      day: "Jour",
+      week: "Semaine",
+      month: "Mois",
+      agenda: "Agenda",
+      kanban: "Kanban",
+      list: "Liste",
+    },
+    calendar: {
+      today: "Aujourd'hui",
+      day: "Jour",
+      week: "Semaine",
+      month: "Mois",
+      agenda: "Agenda",
+      kanban: "Kanban",
+      list: "Liste",
+      connected: "Connecté",
+      disconnected: "Non connecté",
+      connectGoogle: "Connecter Google Calendar",
+      disconnect: "Déconnecter",
+    },
+    appointmentStatuses: {
+      confirmed: "Confirmé",
+      pending: "En attente",
+      completed: "Terminé",
+      cancelled: "Annulé",
+      noShow: "Absent (No-show)",
+    },
+    status: {
+      confirmed: "Confirmé",
+      pending: "En attente",
+      completed: "Terminé",
+      cancelled: "Annulé",
+      noShow: "Absent (No-show)",
+    },
+    filters: {
+      service: "Service / Prestation",
+      employee: "Employé / Collaborateur",
+      status: "Statut du rendez-vous",
+    },
+    modal: {
+      newAppointmentTitle: "Nouveau rendez-vous",
+      editAppointmentTitle: "Modifier le rendez-vous",
+      subtitle: "Planification intelligente & synchronisation Google Calendar",
+      dateRequired: "Date et heure requises.",
+      clientRequired: "Veuillez sélectionner un client.",
+    },
+    clients: {
+      client: "Client",
+    },
+    actions: {
+      modify: "Modifier",
+      reschedule: "Déplacer / Reporter",
+      cancel: "Annuler le rendez-vous",
+      markCompleted: "Marquer comme terminé",
+      save: "Enregistrer",
+      close: "Fermer",
+      addNote: "Ajouter une note",
+      connectGoogle: "Connecter Google Calendar",
+      disconnect: "Déconnecter",
+      syncNow: "Synchroniser maintenant",
+    },
+  },
 };
 
 const enApp: AppTranslations = {
@@ -441,6 +615,93 @@ const enApp: AppTranslations = {
     drawerTitle: "Manual Sync & Connector Settings",
     drawerLogsTitle: "Sync Audit Log",
     noLogs: "No recent synchronization entries recorded.",
+  },
+  crm: {
+    title: "CRM AI & Intelligent Scheduling",
+    headerTitle: "CRM AI & Customer Operations",
+    headerSubtitle: "Intelligent scheduling, 360° client profiles and multi-calendar synchronization",
+    newAppointment: "New Appointment",
+    searchPlaceholder: "Search client, appointment, note...",
+    header: {
+      newAppointment: "New Appointment",
+    },
+    tabs: {
+      overview: "Overview",
+      clients: "Clients (360°)",
+      appointments: "Appointments & Calendar",
+      pipelines: "Pipelines & Deals",
+      automations: "Automations & Reminders",
+      calendarSync: "Calendar Connections",
+      connections: "Calendar Connections",
+    },
+    kpis: {
+      activeClients: "Active Clients",
+      appointmentsThisMonth: "Appointments this month",
+      attendanceRate: "Attendance Rate",
+      revenueGenerated: "Revenue Generated",
+    },
+    calendarModes: {
+      day: "Day",
+      week: "Week",
+      month: "Month",
+      agenda: "Agenda",
+      kanban: "Kanban",
+      list: "List",
+    },
+    calendar: {
+      today: "Today",
+      day: "Day",
+      week: "Week",
+      month: "Month",
+      agenda: "Agenda",
+      kanban: "Kanban",
+      list: "List",
+      connected: "Connected",
+      disconnected: "Disconnected",
+      connectGoogle: "Connect Google Calendar",
+      disconnect: "Disconnect",
+    },
+    appointmentStatuses: {
+      confirmed: "Confirmed",
+      pending: "Pending",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      noShow: "No-show",
+    },
+    status: {
+      confirmed: "Confirmed",
+      pending: "Pending",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      noShow: "No-show",
+    },
+    filters: {
+      service: "Service",
+      employee: "Employee",
+      status: "Appointment Status",
+    },
+    modal: {
+      newAppointmentTitle: "New Appointment",
+      editAppointmentTitle: "Edit Appointment",
+      subtitle: "Intelligent scheduling & Google Calendar synchronization",
+      dateRequired: "Date and time are required.",
+      clientRequired: "Please select a client.",
+    },
+    clients: {
+      client: "Client",
+    },
+    actions: {
+      modify: "Modify",
+      reschedule: "Reschedule",
+      cancel: "Cancel Appointment",
+      markCompleted: "Mark as Completed",
+      save: "Save",
+      close: "Close",
+      addNote: "Add note",
+      connectGoogle: "Connect Google Calendar",
+      disconnect: "Disconnect",
+      syncNow: "Sync now",
+    },
   },
 };
 

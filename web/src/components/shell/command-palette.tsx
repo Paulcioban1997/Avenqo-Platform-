@@ -22,6 +22,10 @@ import {
   ArrowRight,
   Command,
   X,
+  Users,
+  Calendar,
+  Wrench,
+  TrendingUp,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 
@@ -41,6 +45,88 @@ export function CommandPalette({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [crmResults, setCrmResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!query.trim() || query.length < 2) {
+      setCrmResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") : null;
+        const res = await fetch(`/api/v1/crm/search?query=${encodeURIComponent(query)}&limit=5`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const items: any[] = [];
+          if (data.clients) {
+            data.clients.forEach((c: any) => {
+              items.push({
+                id: `crm-client-${c.id}`,
+                title: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ""}`,
+                group: "CRM — Clients",
+                icon: <Users className="w-4 h-4 text-[#0076FF]" />,
+                onSelect: () => {
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+          if (data.appointments) {
+            data.appointments.forEach((a: any) => {
+              items.push({
+                id: `crm-app-${a.id}`,
+                title: `${a.title} • ${a.client_name}`,
+                group: "CRM — Rendez-vous",
+                icon: <Calendar className="w-4 h-4 text-[#00D4FF]" />,
+                onSelect: () => {
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+          if (data.services) {
+            data.services.forEach((s: any) => {
+              items.push({
+                id: `crm-srv-${s.id}`,
+                title: `${s.name} (${s.duration_minutes} min)`,
+                group: "CRM — Services",
+                icon: <Wrench className="w-4 h-4 text-emerald-400" />,
+                onSelect: () => {
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+          if (data.opportunities) {
+            data.opportunities.forEach((o: any) => {
+              items.push({
+                id: `crm-opp-${o.id}`,
+                title: `${o.title} (${o.amount} $)`,
+                group: "CRM — Opportunités",
+                icon: <TrendingUp className="w-4 h-4 text-violet-400" />,
+                onSelect: () => {
+                  router.push("/crm");
+                  onClose();
+                },
+              });
+            });
+          }
+          setCrmResults(items);
+        }
+      } catch {
+        // Silently fail
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [query, router, onClose]);
 
   const items = useMemo(() => {
     const pages = [
@@ -197,12 +283,13 @@ export function CommandPalette({
 
     if (!query.trim()) return all;
     const lower = query.toLowerCase();
-    return all.filter(
+    const filtered = all.filter(
       (item) =>
         item.title.toLowerCase().includes(lower) ||
         item.group.toLowerCase().includes(lower)
     );
-  }, [query, router, onClose, onTriggerAction, t]);
+    return [...crmResults, ...filtered];
+  }, [query, router, onClose, onTriggerAction, t, crmResults]);
 
   useEffect(() => {
     setSelectedIndex(0);

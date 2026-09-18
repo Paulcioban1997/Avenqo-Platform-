@@ -19,12 +19,21 @@ from backend.app.ai.tools.business.accounting_tools import (
 )
 from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusinessHealthTool
 from backend.app.ai.tools.business.crm_tools import (
+    CancelAppointmentTool,
+    CheckAvailabilityTool,
+    CreateAppointmentTool,
+    GetCRMMetricsTool,
     GetCRMOverviewTool,
+    GetClientHistoryTool,
+    GetClientTool,
     GetFollowUpRecommendationTool,
     GetHighRiskCustomersTool,
     GetLeadsToContactTool,
     GetRankedLeadsTool,
     GetTopRevenueDealsTool,
+    ListAvailableSlotsTool,
+    SearchClientsTool,
+    UpdateAppointmentTool,
 )
 from backend.app.ai.tools.business.customer_tools import GetCustomerSegmentsTool, GetCustomerSummaryTool
 from backend.app.ai.tools.business.commerce_tools import GetInventorySummaryTool, GetProductDetailTool
@@ -78,13 +87,22 @@ def build_business_tool_registry(
     registry.register(GetSalesForecastTool(session, prediction_service))
     registry.register(GetAnomaliesTool(session, prediction_service))
     registry.register(GetPredictionSummaryTool(session))
-    # Phase 13 — CRM AI Tools
+    # Phase 13 & Production CRM AI Suite Tools
     registry.register(GetCRMOverviewTool(session))
     registry.register(GetLeadsToContactTool(session))
     registry.register(GetRankedLeadsTool(session))
     registry.register(GetHighRiskCustomersTool(session))
     registry.register(GetTopRevenueDealsTool(session))
     registry.register(GetFollowUpRecommendationTool(session))
+    registry.register(SearchClientsTool(session))
+    registry.register(GetClientTool(session))
+    registry.register(CheckAvailabilityTool(session))
+    registry.register(ListAvailableSlotsTool(session))
+    registry.register(CreateAppointmentTool(session))
+    registry.register(UpdateAppointmentTool(session))
+    registry.register(CancelAppointmentTool(session))
+    registry.register(GetClientHistoryTool(session))
+    registry.register(GetCRMMetricsTool(session))
     # Phase 14 — Accounting AI Tools
     registry.register(GetFinancialOverviewTool(session))
     registry.register(GetMonthlyExpensesTool(session))
