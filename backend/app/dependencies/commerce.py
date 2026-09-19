@@ -33,17 +33,17 @@ from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 def get_commerce_connector_registry() -> CommerceConnectorRegistry:
     settings = get_settings()
     registry = CommerceConnectorRegistry()
-    if settings.shopify_connector_configured:
-        registry.register(
-            ShopifyConnector(
-                client_id=settings.shopify_client_id or "",
-                client_secret=settings.shopify_client_secret or "",
-                redirect_uri=settings.shopify_redirect_uri or "",
-                api_version=settings.shopify_api_version,
-                scopes=settings.shopify_scopes,
-                webhook_uri=settings.shopify_webhook_uri,
-            )
+    # Register Shopify connector so existing connections can synchronize
+    registry.register(
+        ShopifyConnector(
+            client_id=settings.shopify_client_id or "",
+            client_secret=settings.shopify_client_secret or "",
+            redirect_uri=settings.shopify_redirect_uri or "",
+            api_version=settings.shopify_api_version,
+            scopes=settings.shopify_scopes,
+            webhook_uri=settings.shopify_webhook_uri,
         )
+    )
     if settings.woocommerce_connector_configured:
         registry.register(
             WooCommerceConnector(

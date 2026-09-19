@@ -115,7 +115,7 @@ def retail_status(
         select(func.count(NormalizedCommerceRecord.id))
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
     ) or 0
@@ -124,7 +124,7 @@ def retail_status(
         select(func.count(NormalizedCommerceRecord.id))
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "order",
+            NormalizedCommerceRecord.entity_type.in_(["order", "orders"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
     ) or 0
@@ -133,7 +133,7 @@ def retail_status(
         select(func.count(NormalizedCommerceRecord.id))
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "customer",
+            NormalizedCommerceRecord.entity_type.in_(["customer", "customers"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
     ) or 0
@@ -149,6 +149,30 @@ def retail_status(
         "order_count": order_count,
         "customer_count": customer_count,
     }
+
+
+def _extract_product_fields(d: dict) -> tuple[str, str, float, int]:
+    name = str(d.get("product_name") or d.get("name") or d.get("title") or "Produit sans nom")
+    variants = d.get("variants") or []
+    v0 = variants[0] if isinstance(variants, list) and variants else {}
+
+    sku = str(d.get("sku") or v0.get("sku") or d.get("id") or "—")
+
+    price_val = d.get("unit_price") or d.get("price") or d.get("regular_price") or v0.get("unit_price") or 0.0
+    try:
+        price = float(price_val)
+    except (ValueError, TypeError):
+        price = 0.0
+
+    stock_val = d.get("inventory_level") or d.get("stock_quantity")
+    if stock_val is None and variants and isinstance(variants, list):
+        stock_val = sum(int(v.get("inventory_level") or 0) for v in variants)
+    try:
+        stock = int(stock_val or 0)
+    except (ValueError, TypeError):
+        stock = 0
+
+    return name, sku, price, stock
 
 
 @router.get("/products")
@@ -175,7 +199,7 @@ def list_retail_products(
         select(NormalizedCommerceRecord)
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
         .order_by(NormalizedCommerceRecord.updated_at.desc())
@@ -185,20 +209,7 @@ def list_retail_products(
     products = []
     for r in records:
         d = r.normalized_data or {}
-        price_val = d.get("unit_price") or d.get("price") or d.get("regular_price") or 0.0
-        try:
-            price = float(price_val)
-        except (ValueError, TypeError):
-            price = 0.0
-
-        stock_val = d.get("inventory_level") or d.get("stock_quantity") or 0
-        try:
-            stock = int(stock_val)
-        except (ValueError, TypeError):
-            stock = 0
-
-        name = str(d.get("product_name") or d.get("name") or "Produit sans nom")
-        sku = str(d.get("sku") or d.get("id") or "—")
+        name, sku, price, stock = _extract_product_fields(d)
         category = str(d.get("product_category") or d.get("category") or "Général")
         stock_status = "instock" if stock > 0 else (d.get("stock_status") or "outofstock")
 
@@ -237,7 +248,7 @@ def list_retail_orders(
         select(NormalizedCommerceRecord)
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "order",
+            NormalizedCommerceRecord.entity_type.in_(["order", "orders"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
         .order_by(NormalizedCommerceRecord.updated_at.desc())
@@ -275,7 +286,7 @@ def list_retail_customers(
         select(NormalizedCommerceRecord)
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "customer",
+            NormalizedCommerceRecord.entity_type.in_(["customer", "customers"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
         .order_by(NormalizedCommerceRecord.updated_at.desc())
@@ -312,7 +323,7 @@ def list_retail_inventory(
         select(NormalizedCommerceRecord)
         .where(
             NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
             NormalizedCommerceRecord.deleted.is_(False),
         )
         .order_by(NormalizedCommerceRecord.updated_at.desc())
@@ -323,10 +334,7 @@ def list_retail_inventory(
     anomalies = []
     for r in records:
         d = r.normalized_data or {}
-        name = str(d.get("product_name") or d.get("name") or "Produit")
-        sku = str(d.get("sku") or d.get("id") or "—")
-        stock = int(d.get("inventory_level") or d.get("stock_quantity") or 0)
-        price = float(d.get("unit_price") or d.get("price") or 0.0)
+        name, sku, price, stock = _extract_product_fields(d)
 
         item = {
             "id": str(r.id),
