@@ -513,7 +513,7 @@ async def connect_shopify_manual(
         domain = f"{domain}.myshopify.com"
     token = request.access_token.get_secret_value().strip()
 
-    encrypted_creds = cipher.encrypt_json({"access_token": token, "shop_domain": domain})
+    encrypted_creds = cipher.encrypt({"access_token": token, "shop_domain": domain})
 
     connection = db.scalar(
         select(CommerceConnection).where(
