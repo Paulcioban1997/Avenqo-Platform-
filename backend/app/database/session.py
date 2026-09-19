@@ -36,6 +36,7 @@ def _build_engine():
         engine_kwargs["pool_size"] = 10
         engine_kwargs["max_overflow"] = 20
         engine_kwargs["pool_recycle"] = 300
+        engine_kwargs["pool_reset_on_return"] = "rollback"
 
     return create_engine(database_url, **engine_kwargs)
 
@@ -45,18 +46,19 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def create_database_tables() -> None:
-    """CrÃ©e les tables en dÃ©veloppement avant l'arrivÃ©e des migrations."""
+    """Crée les tables en développement avant l'arrivée des migrations."""
 
     Base.metadata.create_all(bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Fournit une session courte Ã  une requÃªte FastAPI."""
+    """Fournit une session courte à une requête FastAPI."""
 
     session = SessionLocal()
     try:
         yield session
     finally:
+        session.rollback()
         session.close()
 
 
