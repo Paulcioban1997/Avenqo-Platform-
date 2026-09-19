@@ -114,13 +114,15 @@ class AuthService:
             is_active=True,
             email_verified_at=None,
         )
+        self._session.add_all((company, user))
+        self._session.flush()
         billing_account = BillingAccount(
             company_id=company.id,
             plan_code=request.plan_code or "demo",
             status="trialing",
             current_period_end=datetime.now(timezone.utc) + timedelta(days=14),
         )
-        self._session.add_all((company, user, billing_account))
+        self._session.add(billing_account)
         self._session.flush()
         if request.business_goals or request.current_tools or request.selected_modules:
             self._session.add(
