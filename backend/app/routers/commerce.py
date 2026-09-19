@@ -18,7 +18,9 @@ from backend.app.dependencies.commerce import (
     get_commerce_connector_registry,
     get_commerce_sync_runner,
     get_commerce_sync_service,
+    get_connector_secret_cipher,
 )
+from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import CommerceConnection, CommerceConnectionStatus
 from backend.app.database import get_db
@@ -501,6 +503,7 @@ async def connect_shopify_manual(
     sync: CommerceSyncService = Depends(get_commerce_sync_service),
     runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
     registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
+    cipher: ConnectorSecretCipher = Depends(get_connector_secret_cipher),
     db: Session = Depends(get_db),
 ) -> CommerceConnectionResponse:
     _require_connector_launch_access(identity, registry, "shopify")
@@ -510,8 +513,6 @@ async def connect_shopify_manual(
         domain = f"{domain}.myshopify.com"
     token = request.access_token.get_secret_value().strip()
 
-    from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
-    cipher = ConnectorSecretCipher()
     encrypted_creds = cipher.encrypt_json({"access_token": token, "shop_domain": domain})
 
     connection = db.scalar(
