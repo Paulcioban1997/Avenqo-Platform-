@@ -15,7 +15,7 @@ export function Header() {
     [t.nav.modules, "/#modules"],
     [t.nav.pricing, "/pricing"],
     [t.nav.enterprise, "/#entreprise"],
-    [t.nav.docs, "/#faq"],
+    [t.nav.docs, "/docs"],
   ];
   return (
     <header className="site-header">
