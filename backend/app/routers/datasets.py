@@ -492,10 +492,17 @@ def list_datasets(
     try:
         datasets = service.list(tenant)
         logger.info(f"List datasets: found {len(datasets)} datasets for tenant {tenant.company_id}")
-        return [dataset_response(dataset) for dataset in datasets]
     except Exception as exc:
         logger.exception(f"Error listing datasets: {exc}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    results = []
+    for dataset in datasets:
+        try:
+            results.append(dataset_response(dataset))
+        except Exception as exc:
+            logger.warning(f"Skipping dataset {dataset.id} ({dataset.name!r}) due to serialization error: {exc}")
+    return results
+
 
 
 @router.post("/delete-selection", response_model=DatasetDeleteSelectionResponse)
