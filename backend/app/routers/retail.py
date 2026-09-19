@@ -91,3 +91,278 @@ def ask_retail_assistant(
         grounded_source=f"Analyse basée sur : [{active_source_name}]" if active_source_name else None,
         source_id=active_source_id_str,
     )
+
+
+@router.get("/status")
+def retail_status(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+):
+    """Retourne le statut réel de connexion e-commerce du tenant pour le module Retail."""
+    from backend.app.models.commerce_connection import CommerceConnection, CommerceConnectionStatus, NormalizedCommerceRecord
+    from sqlalchemy import select, func
+
+    connection = db.scalar(
+        select(CommerceConnection)
+        .where(
+            CommerceConnection.company_id == tenant.company_id,
+            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+        )
+        .order_by(CommerceConnection.updated_at.desc())
+    )
+
+    product_count = db.scalar(
+        select(func.count(NormalizedCommerceRecord.id))
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+    ) or 0
+
+    order_count = db.scalar(
+        select(func.count(NormalizedCommerceRecord.id))
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "order",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+    ) or 0
+
+    customer_count = db.scalar(
+        select(func.count(NormalizedCommerceRecord.id))
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "customer",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+    ) or 0
+
+    return {
+        "is_connected": connection is not None,
+        "provider": connection.provider if connection else None,
+        "store_url": connection.external_account_id if connection else None,
+        "status": connection.status if connection else "DISCONNECTED",
+        "last_synced_at": connection.last_successful_sync.isoformat() if connection and connection.last_successful_sync else None,
+        "records_count": (product_count + order_count + customer_count),
+        "product_count": product_count,
+        "order_count": order_count,
+        "customer_count": customer_count,
+    }
+
+
+@router.get("/products")
+def list_retail_products(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+):
+    """Retourne la liste des produits normalisés synchronisés pour le tenant."""
+    from backend.app.models.commerce_connection import CommerceConnection, CommerceConnectionStatus, NormalizedCommerceRecord
+    from sqlalchemy import select
+
+    connection = db.scalar(
+        select(CommerceConnection)
+        .where(
+            CommerceConnection.company_id == tenant.company_id,
+            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+        )
+        .order_by(CommerceConnection.updated_at.desc())
+    )
+    store_url = connection.external_account_id if connection else None
+
+    records = db.scalars(
+        select(NormalizedCommerceRecord)
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        .order_by(NormalizedCommerceRecord.updated_at.desc())
+        .limit(limit)
+    ).all()
+
+    products = []
+    for r in records:
+        d = r.normalized_data or {}
+        price_val = d.get("unit_price") or d.get("price") or d.get("regular_price") or 0.0
+        try:
+            price = float(price_val)
+        except (ValueError, TypeError):
+            price = 0.0
+
+        stock_val = d.get("inventory_level") or d.get("stock_quantity") or 0
+        try:
+            stock = int(stock_val)
+        except (ValueError, TypeError):
+            stock = 0
+
+        name = str(d.get("product_name") or d.get("name") or "Produit sans nom")
+        sku = str(d.get("sku") or d.get("id") or "—")
+        category = str(d.get("product_category") or d.get("category") or "Général")
+        stock_status = "instock" if stock > 0 else (d.get("stock_status") or "outofstock")
+
+        products.append({
+            "id": str(r.id),
+            "source_record_id": r.source_record_id,
+            "provider": r.provider,
+            "product_name": name,
+            "sku": sku,
+            "product_category": category,
+            "unit_price": price,
+            "stock_quantity": stock,
+            "stock_status": stock_status,
+            "store_url": store_url,
+        })
+
+    return {
+        "products": products,
+        "total": len(products),
+        "store_url": store_url,
+        "provider": connection.provider if connection else None,
+    }
+
+
+@router.get("/orders")
+def list_retail_orders(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+):
+    """Retourne la liste des commandes normalisées synchronisées pour le tenant."""
+    from backend.app.models.commerce_connection import NormalizedCommerceRecord
+    from sqlalchemy import select
+
+    records = db.scalars(
+        select(NormalizedCommerceRecord)
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "order",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        .order_by(NormalizedCommerceRecord.updated_at.desc())
+        .limit(limit)
+    ).all()
+
+    orders = []
+    for r in records:
+        d = r.normalized_data or {}
+        orders.append({
+            "id": str(r.id),
+            "source_record_id": r.source_record_id,
+            "order_number": str(d.get("order_number") or d.get("number") or d.get("id") or r.source_record_id),
+            "customer_name": str(d.get("customer_name") or (f"{d.get('billing', {}).get('first_name', '')} {d.get('billing', {}).get('last_name', '')}").strip() or "Client"),
+            "total_amount": float(d.get("total_amount") or d.get("total") or 0.0),
+            "currency": str(d.get("currency") or "CAD"),
+            "status": str(d.get("status") or "completed"),
+            "created_at": d.get("date_created") or d.get("created_at") or (r.created_at.isoformat() if r.created_at else None),
+        })
+
+    return {"orders": orders, "total": len(orders)}
+
+
+@router.get("/customers")
+def list_retail_customers(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+):
+    """Retourne la liste des clients normalisés synchronisés pour le tenant."""
+    from backend.app.models.commerce_connection import NormalizedCommerceRecord
+    from sqlalchemy import select
+
+    records = db.scalars(
+        select(NormalizedCommerceRecord)
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "customer",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        .order_by(NormalizedCommerceRecord.updated_at.desc())
+        .limit(limit)
+    ).all()
+
+    customers = []
+    for r in records:
+        d = r.normalized_data or {}
+        name = str(d.get("name") or f"{d.get('first_name', '')} {d.get('last_name', '')}".strip() or "Client")
+        customers.append({
+            "id": str(r.id),
+            "source_record_id": r.source_record_id,
+            "name": name,
+            "email": str(d.get("email") or "—"),
+            "total_spent": float(d.get("total_spent") or 0.0),
+            "orders_count": int(d.get("orders_count") or 0),
+        })
+
+    return {"customers": customers, "total": len(customers)}
+
+
+@router.get("/inventory")
+def list_retail_inventory(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+):
+    """Retourne l'inventaire avec détection des ruptures et des surstocks."""
+    from backend.app.models.commerce_connection import NormalizedCommerceRecord
+    from sqlalchemy import select
+
+    records = db.scalars(
+        select(NormalizedCommerceRecord)
+        .where(
+            NormalizedCommerceRecord.company_id == tenant.company_id,
+            NormalizedCommerceRecord.entity_type == "product",
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        .order_by(NormalizedCommerceRecord.updated_at.desc())
+        .limit(limit)
+    ).all()
+
+    items = []
+    anomalies = []
+    for r in records:
+        d = r.normalized_data or {}
+        name = str(d.get("product_name") or d.get("name") or "Produit")
+        sku = str(d.get("sku") or d.get("id") or "—")
+        stock = int(d.get("inventory_level") or d.get("stock_quantity") or 0)
+        price = float(d.get("unit_price") or d.get("price") or 0.0)
+
+        item = {
+            "id": str(r.id),
+            "product_name": name,
+            "sku": sku,
+            "stock_quantity": stock,
+            "unit_price": price,
+            "status": "critical" if stock <= 5 else ("warning" if stock <= 15 else "normal"),
+        }
+        items.append(item)
+
+        if stock <= 5:
+            anomalies.append({
+                "id": f"crit-{r.id}",
+                "product": name,
+                "sku": sku,
+                "currentStock": stock,
+                "safetyThreshold": 15,
+                "type": "stockout_risk",
+                "severity": "critical",
+                "message": f"Rupture imminente : seulement {stock} unités restantes en stock.",
+            })
+        elif stock > 200:
+            anomalies.append({
+                "id": f"over-{r.id}",
+                "product": name,
+                "sku": sku,
+                "currentStock": stock,
+                "safetyThreshold": 50,
+                "type": "overstock",
+                "severity": "medium",
+                "message": f"Surstock détecté : {stock} unités disponibles. Risque d'immobilisation de trésorerie.",
+            })
+
+    return {
+        "inventory": items,
+        "total": len(items),
+        "anomalies": anomalies,
+    }

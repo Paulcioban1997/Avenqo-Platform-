@@ -37,6 +37,16 @@ class ShopifyAuthorizationRequest(BaseModel):
     shop_domain: str = Field(min_length=1, max_length=255)
 
 
+class ShopifyManualConnectionRequest(BaseModel):
+    shop_domain: str = Field(min_length=1, max_length=255)
+    access_token: SecretStr
+
+
+class GenericSyncRequest(BaseModel):
+    connector_id: str | None = None
+    provider: str | None = None
+
+
 class ShopifyAuthorizationResponse(BaseModel):
     authorization_url: str
     expires_at: datetime

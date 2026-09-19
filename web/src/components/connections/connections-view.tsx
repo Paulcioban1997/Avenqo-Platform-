@@ -226,13 +226,17 @@ export function ConnectionsView() {
     setActionLoading(true);
     setAlertError(null);
     try {
+      let formattedUrl = wooStoreUrl.trim();
+      if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
+        formattedUrl = `https://${formattedUrl}`;
+      }
       const res = await fetch("/api/v1/connectors/woocommerce/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
-          store_url: wooStoreUrl,
-          consumer_key: wooKey,
-          consumer_secret: wooSecret,
+          store_url: formattedUrl,
+          consumer_key: wooKey.trim(),
+          consumer_secret: wooSecret.trim(),
         }),
       });
 
@@ -939,7 +943,7 @@ export function ConnectionsView() {
                   URL de la boutique WooCommerce
                 </label>
                 <input
-                  type="url"
+                  type="text"
                   required
                   value={wooStoreUrl}
                   onChange={(e) => setWooStoreUrl(e.target.value)}

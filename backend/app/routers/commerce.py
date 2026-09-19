@@ -21,13 +21,18 @@ from backend.app.dependencies.commerce import (
 )
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import CommerceConnection, CommerceConnectionStatus
+from backend.app.database import get_db
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 from backend.app.schemas.commerce import (
     CommerceConnectionResponse,
     CommerceSyncAcceptedResponse,
     CommerceWebhookResponse,
     ConnectorCatalogResponse,
+    GenericSyncRequest,
     ShopifyAuthorizationRequest,
     ShopifyAuthorizationResponse,
+    ShopifyManualConnectionRequest,
     UpdateConnectorSettingsRequest,
     WooCommerceAuthorizationRequest,
     WooCommerceCallbackPayload,
@@ -468,9 +473,80 @@ async def connect_woocommerce_manual(
             registry=registry,
         )
     except (CommerceAuthorizationError, CommerceConnectionError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raw_err = str(exc)
+        if "Invalid WooCommerce credentials" in raw_err:
+            msg = "Clés WooCommerce invalides. Assurez-vous que la Consumer Key commence par 'ck_' et la Consumer Secret par 'cs_'."
+        elif "Invalid WooCommerce store URL" in raw_err:
+            msg = "URL de boutique WooCommerce invalide. Renseignez une URL complète et accessible (ex: https://ma-boutique.com)."
+        elif "connection validation failed" in raw_err or "authentication was rejected" in raw_err:
+            msg = f"Impossible de joindre la boutique WooCommerce ({request.store_url}). Assurez-vous que le domaine est accessible sur Internet (sans erreur DNS) et que les clés API disposent des droits Lecture/Écriture."
+        else:
+            msg = raw_err
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg) from exc
     except ConnectorNotRegisteredError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return _connection_response(connection)
+
+
+@router.post(
+    "/shopify/manual",
+    response_model=CommerceConnectionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def connect_shopify_manual(
+    request: ShopifyManualConnectionRequest,
+    background_tasks: BackgroundTasks,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    sync: CommerceSyncService = Depends(get_commerce_sync_service),
+    runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
+    db: Session = Depends(get_db),
+) -> CommerceConnectionResponse:
+    _require_connector_launch_access(identity, registry, "shopify")
+    tenant = _tenant(identity)
+    domain = request.shop_domain.strip().lower()
+    if not domain.endswith(".myshopify.com") and "." not in domain:
+        domain = f"{domain}.myshopify.com"
+    token = request.access_token.get_secret_value().strip()
+
+    from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+    cipher = ConnectorSecretCipher()
+    encrypted_creds = cipher.encrypt_json({"access_token": token, "shop_domain": domain})
+
+    connection = db.scalar(
+        select(CommerceConnection).where(
+            CommerceConnection.company_id == tenant.company_id,
+            CommerceConnection.provider == "shopify",
+            CommerceConnection.external_account_id == domain,
+        )
+    )
+
+    if not connection:
+        connection = CommerceConnection(
+            company_id=tenant.company_id,
+            provider="shopify",
+            external_account_id=domain,
+            display_name=domain,
+            status=CommerceConnectionStatus.CONNECTED.value,
+            encrypted_credentials=encrypted_creds,
+            capabilities=["orders", "products", "customers", "inventory"],
+        )
+        db.add(connection)
+    else:
+        connection.encrypted_credentials = encrypted_creds
+        connection.status = CommerceConnectionStatus.CONNECTED.value
+        connection.error_category = None
+        connection.disconnected_at = None
+
+    db.commit()
+    db.refresh(connection)
+
+    try:
+        sync.reserve(tenant, connection.id)
+        background_tasks.add_task(runner.run_reserved, tenant, connection.id)
+    except Exception:
+        pass
     return _connection_response(connection)
 
 
@@ -578,6 +654,104 @@ def synchronize_connection(
         connection_id=connection_id,
         status="SYNCING",
     )
+
+
+@router.post(
+    "/sync",
+    response_model=CommerceSyncAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def synchronize_generic_connector(
+    request: GenericSyncRequest,
+    background_tasks: BackgroundTasks,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    sync: CommerceSyncService = Depends(get_commerce_sync_service),
+    runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
+    db: Session = Depends(get_db),
+) -> CommerceSyncAcceptedResponse:
+    tenant = _tenant(identity)
+    target_id: UUID | None = None
+
+    if request.connector_id:
+        try:
+            target_id = UUID(request.connector_id)
+        except ValueError:
+            pass
+
+    provider = request.provider or (request.connector_id if not target_id else None)
+    if not target_id and provider:
+        connection = db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.provider == provider.lower(),
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+            ).order_by(CommerceConnection.updated_at.desc())
+        )
+        if connection:
+            target_id = connection.id
+
+    if not target_id:
+        connection = db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+            ).order_by(CommerceConnection.updated_at.desc())
+        )
+        if connection:
+            target_id = connection.id
+
+    if not target_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aucune boutique active trouvée pour ce connecteur. Veuillez d'abord configurer et connecter votre boutique.",
+        )
+
+    try:
+        sync.reserve(tenant, target_id)
+    except CommerceConnectionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CommerceSyncAlreadyRunning as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CommerceConnectionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    background_tasks.add_task(runner.run_reserved, tenant, target_id)
+    return CommerceSyncAcceptedResponse(
+        connection_id=target_id,
+        status="SYNCING",
+    )
+
+
+@router.get("/sync/history")
+def get_sync_history(
+    identity: CurrentIdentity = Depends(require_connector_read),
+    _: TenantContext = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+):
+    tenant = _tenant(identity)
+    connections = db.scalars(
+        select(CommerceConnection)
+        .where(CommerceConnection.company_id == tenant.company_id)
+        .order_by(CommerceConnection.updated_at.desc())
+        .limit(limit)
+    ).all()
+    history = []
+    for c in connections:
+        ts = c.last_successful_sync or c.sync_completed_at or c.updated_at or c.created_at
+        history.append({
+            "id": f"sync-{c.id}",
+            "connection_id": str(c.id),
+            "provider": c.provider,
+            "status": c.status,
+            "timestamp": ts.isoformat() if ts else None,
+            "records_synced": c.records_processed,
+            "records_created": getattr(c, "records_created", 0) or 0,
+            "records_updated": getattr(c, "records_updated", 0) or 0,
+            "records_failed": getattr(c, "records_failed", 0) or 0,
+            "message": c.sync_error_message or f"Dernière synchronisation {c.provider} : {c.records_processed} enregistrements réconciliés.",
+        })
+    return history
 
 
 @router.post(
