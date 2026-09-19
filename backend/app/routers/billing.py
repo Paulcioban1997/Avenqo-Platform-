@@ -198,6 +198,10 @@ def invoice_history(
         offset=offset,
         limit=limit,
     )
+    if total == 0 and offset == 0:
+        items = service.ensure_company_invoices(identity.user.company_id)
+        total = len(items)
+
     bounded_limit = min(max(limit, 1), 200)
     return InvoiceHistoryResponse(
         items=[InvoiceResponse.model_validate(invoice) for invoice in items],
@@ -284,14 +288,22 @@ def official_invoice_pdf(
     invoice_id: UUID,
     identity: CurrentIdentity = Depends(manage_billing),
     service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
-) -> HTTPRedirectResponse:
+) -> Response:
     try:
         invoice = service.get_invoice(identity.user.company_id, invoice_id)
     except InvoiceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    if not invoice.invoice_pdf:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Official Stripe PDF unavailable")
-    return HTTPRedirectResponse(invoice.invoice_pdf, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+    if invoice.invoice_pdf and invoice.invoice_pdf.startswith("http"):
+        return HTTPRedirectResponse(invoice.invoice_pdf, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+    # Génération officielle PDF déterministe via ReportLab si Stripe PDF indisponible
+    content, media_type, file_name = service.generate_invoice_pdf(invoice)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
 
 
 @router.get("/invoices/{invoice_id}/export/{export_format}")

@@ -85,6 +85,13 @@ class CommerceConnectionResponse(BaseModel):
     dataset_id: UUID | None
     reauthorization_available: bool = False
     is_stalled: bool = False
+    is_enabled: bool = True
+    selected_entities: list[str] = Field(default_factory=list)
+
+
+class UpdateConnectorSettingsRequest(BaseModel):
+    is_enabled: bool | None = None
+    selected_entities: list[str] | None = None
 
 
 class CommerceSyncAcceptedResponse(BaseModel):

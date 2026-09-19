@@ -11,11 +11,15 @@ import {
   AlertTriangle,
   X,
   FileText,
+  Power,
+  Sliders,
+  Check,
 } from "lucide-react";
 import { AvenqoCard, StatusBadge, StatusBadgeType } from "@/components/ui/avenqo-card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getAuthHeaders } from "@/lib/api-headers";
 
 export type ConnectorCategory =
   | "all"
@@ -57,6 +61,22 @@ export function IntegrationsHubView() {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectConfirmText, setDisconnectConfirmText] = useState("");
   const [connectorStatuses, setConnectorStatuses] = useState<Record<string, StatusBadgeType>>({});
+  const [connectorActiveState, setConnectorActiveState] = useState<Record<string, boolean>>({
+    woocommerce: true,
+    shopify: true,
+    stripe: true,
+    etsy: true,
+    amazon: false,
+    google_ads: true,
+  });
+  const [connectorEntitiesState, setConnectorEntitiesState] = useState<Record<string, string[]>>({
+    woocommerce: ["orders", "products", "customers", "inventory", "refunds"],
+    shopify: ["orders", "products", "customers", "inventory"],
+    stripe: ["orders", "customers", "refunds"],
+    etsy: ["orders", "products", "inventory"],
+    amazon: ["orders", "inventory"],
+    google_ads: ["customers"],
+  });
   const [syncLogs, setSyncLogs] = useState<
     Array<{ id: string; time: string; message: string; level: "info" | "success" | "warning" }>
   >([
@@ -73,6 +93,42 @@ export function IntegrationsHubView() {
       level: "info",
     },
   ]);
+
+  const handleToggleConnectorActive = async (connectorId: string) => {
+    const currentState = connectorActiveState[connectorId] ?? true;
+    const nextState = !currentState;
+    setConnectorActiveState((prev) => ({ ...prev, [connectorId]: nextState }));
+    setSyncSuccessToast(
+      `Connecteur ${selectedConnector?.name} : ${nextState ? "Activé" : "Désactivé (synchronisation suspendue)"}.`
+    );
+    try {
+      await fetch(`/api/v1/connectors/connections/${connectorId}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ is_enabled: nextState }),
+      });
+    } catch {
+      // Local fallback
+    }
+  };
+
+  const handleToggleEntity = async (connectorId: string, entityKey: string) => {
+    const current = connectorEntitiesState[connectorId] || ["orders", "products", "customers", "inventory", "refunds"];
+    const next = current.includes(entityKey)
+      ? current.filter((e) => e !== entityKey)
+      : [...current, entityKey];
+    setConnectorEntitiesState((prev) => ({ ...prev, [connectorId]: next }));
+    setSyncSuccessToast(`Flux de données sélectionné mis à jour pour ${selectedConnector?.name}.`);
+    try {
+      await fetch(`/api/v1/connectors/connections/${connectorId}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ selected_entities: next }),
+      });
+    } catch {
+      // Local fallback
+    }
+  };
 
   const connectors: ConnectorItem[] = [
     {
@@ -480,6 +536,100 @@ export function IntegrationsHubView() {
                 {selectedConnector.description}
               </div>
 
+              {/* Activation / Deactivation Switch */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#111D3D]/60">
+                <div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-1.5">
+                    <Power size={14} className={connectorActiveState[selectedConnector.id] ?? true ? "text-emerald-500" : "text-slate-400"} />
+                    <span>Statut du Connecteur</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-[#94A3B8] mt-0.5">
+                    {connectorActiveState[selectedConnector.id] ?? true
+                      ? "Connecteur actif — Synchronisation automatique en arrière-plan autorisée."
+                      : "Connecteur inactif — La synchronisation automatique est suspendue."}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleConnectorActive(selectedConnector.id)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    connectorActiveState[selectedConnector.id] ?? true
+                      ? "bg-[#0076FF]"
+                      : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      connectorActiveState[selectedConnector.id] ?? true ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Data Entities Selector (Choix des données) */}
+              <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#111D3D] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-1.5">
+                      <Sliders size={14} className="text-[#0076FF]" />
+                      <span>Sélection des Données à Synchroniser</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Choisissez vous-même les données à importer dans Avenqo.
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]">
+                    {(connectorEntitiesState[selectedConnector.id] || []).length} sélectionnés
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {[
+                    { id: "orders", label: "Commandes & Ventes", desc: "Historique et transactions" },
+                    { id: "products", label: "Produits & Catalogue", desc: "SKUs, prix, variantes" },
+                    { id: "customers", label: "Clients & Profils", desc: "Adresses et contacts" },
+                    { id: "inventory", label: "Niveaux de Stocks", desc: "Quantités et alertes" },
+                    { id: "refunds", label: "Remboursements", desc: "Avoirs et retours" },
+                  ].map((entity) => {
+                    const isChecked = (connectorEntitiesState[selectedConnector.id] || [
+                      "orders",
+                      "products",
+                      "customers",
+                    ]).includes(entity.id);
+
+                    return (
+                      <button
+                        key={entity.id}
+                        type="button"
+                        onClick={() => handleToggleEntity(selectedConnector.id, entity.id)}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                          isChecked
+                            ? "bg-blue-50/70 border-blue-200 dark:bg-[#172652]/60 dark:border-[#0076FF]/40 text-slate-900 dark:text-[#F4F7FB]"
+                            : "bg-slate-50/50 border-slate-200/60 dark:bg-[#0B132B]/60 dark:border-white/[0.04] text-slate-500 dark:text-slate-400 hover:border-slate-300"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-md border mt-0.5 ${
+                            isChecked
+                              ? "bg-[#0076FF] border-[#0076FF] text-white"
+                              : "border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0B132B]"
+                          }`}
+                        >
+                          {isChecked && <Check size={11} strokeWidth={3} />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold leading-tight">{entity.label}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                            {entity.desc}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Sync Action Area */}
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#111D3D]">
                 <div>
@@ -487,7 +637,7 @@ export function IntegrationsHubView() {
                     Déclenchement Manuel
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    Forcer la réconciliation immédiate des données.
+                    Forcer la réconciliation immédiate des données sélectionnées.
                   </div>
                 </div>
 

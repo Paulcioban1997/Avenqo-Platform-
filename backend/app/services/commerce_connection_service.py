@@ -390,6 +390,27 @@ class CommerceConnectionService:
             raise CommerceConnectionNotFound("Commerce connection not found")
         return connection
 
+    def update_connection_settings(
+        self,
+        tenant: TenantContext,
+        connection_id: UUID,
+        *,
+        is_enabled: bool | None = None,
+        selected_entities: list[str] | None = None,
+    ) -> CommerceConnection:
+        connection = self.get_connection(tenant, connection_id)
+        cursor = dict(connection.sync_cursor or {})
+        settings = dict(cursor.get("settings", {}))
+        if is_enabled is not None:
+            settings["is_enabled"] = is_enabled
+        if selected_entities is not None:
+            settings["selected_entities"] = selected_entities
+        cursor["settings"] = settings
+        connection.sync_cursor = cursor
+        self._db.commit()
+        self._db.refresh(connection)
+        return connection
+
     def mark_setup_failed(
         self,
         tenant: TenantContext,

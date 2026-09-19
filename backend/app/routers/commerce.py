@@ -28,6 +28,7 @@ from backend.app.schemas.commerce import (
     ConnectorCatalogResponse,
     ShopifyAuthorizationRequest,
     ShopifyAuthorizationResponse,
+    UpdateConnectorSettingsRequest,
     WooCommerceAuthorizationRequest,
     WooCommerceCallbackPayload,
     WooCommerceManualConnectionRequest,
@@ -111,6 +112,14 @@ def _connection_response(
             if now - ref_time > timedelta(minutes=3):
                 is_stalled = True
 
+    cursor = connection.sync_cursor or {}
+    conn_settings = cursor.get("settings", {})
+    is_enabled = conn_settings.get("is_enabled", True)
+    default_entities = ["orders", "products", "customers", "inventory", "refunds"]
+    selected_entities = conn_settings.get("selected_entities")
+    if selected_entities is None:
+        selected_entities = list(connection.capabilities or default_entities)
+
     return CommerceConnectionResponse(
         id=connection.id,
         provider=connection.provider,
@@ -137,6 +146,8 @@ def _connection_response(
         dataset_id=parsed_dataset_id,
         reauthorization_available=reauthorization_available,
         is_stalled=is_stalled,
+        is_enabled=is_enabled,
+        selected_entities=selected_entities,
     )
 
 
@@ -268,6 +279,36 @@ def connection_detail(
 ) -> CommerceConnectionResponse:
     try:
         connection = service.get_connection(_tenant(identity), connection_id)
+        return _connection_response(
+            connection,
+            reauthorization_available=(
+                _woocommerce_reauthorization_required(connection)
+                and _connector_launch_allowed(identity, registry, "woocommerce")
+            ),
+        )
+    except CommerceConnectionNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/connections/{connection_id}/settings",
+    response_model=CommerceConnectionResponse,
+)
+def update_connection_settings(
+    connection_id: UUID,
+    request: UpdateConnectorSettingsRequest,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
+) -> CommerceConnectionResponse:
+    try:
+        connection = service.update_connection_settings(
+            _tenant(identity),
+            connection_id,
+            is_enabled=request.is_enabled,
+            selected_entities=request.selected_entities,
+        )
         return _connection_response(
             connection,
             reauthorization_available=(
