@@ -28,16 +28,16 @@ class BusinessModuleDefinition:
 BUSINESS_MODULE_REGISTRY: tuple[BusinessModuleDefinition, ...] = (
     BusinessModuleDefinition("retail", "Retail Intelligence", "Retail sales, products and customer intelligence.", ModuleAvailability.AVAILABLE, "commerce"),
     BusinessModuleDefinition("crm", "CRM AI", "Customer relationship intelligence and actions.", ModuleAvailability.AVAILABLE, "customer"),
-    BusinessModuleDefinition("marketing", "Marketing AI", "Campaign and audience intelligence.", ModuleAvailability.COMING_SOON, "growth"),
+    BusinessModuleDefinition("marketing", "Marketing AI", "Campaign and audience intelligence.", ModuleAvailability.AVAILABLE, "growth"),
     BusinessModuleDefinition("appointments", "Appointments AI", "Booking and scheduling intelligence.", ModuleAvailability.AVAILABLE, "operations"),
     BusinessModuleDefinition("accounting", "Accounting AI", "Accounting workflow intelligence.", ModuleAvailability.AVAILABLE, "finance"),
-    BusinessModuleDefinition("ocr", "OCR / Documents AI", "Structured extraction from business documents.", ModuleAvailability.COMING_SOON, "documents"),
-    BusinessModuleDefinition("hr", "HR AI", "Workforce and people operations intelligence.", ModuleAvailability.COMING_SOON, "people"),
-    BusinessModuleDefinition("voice", "Voice AI", "Voice interaction automation.", ModuleAvailability.COMING_SOON, "communication", premium=True, credit_multiplier=2.0),
-    BusinessModuleDefinition("media", "Media AI", "Business media generation and organization.", ModuleAvailability.COMING_SOON, "content", premium=True, credit_multiplier=2.0),
-    BusinessModuleDefinition("legal", "Legal AI", "Contract and legal document intelligence.", ModuleAvailability.COMING_SOON, "legal"),
+    BusinessModuleDefinition("ocr", "OCR / Documents AI", "Structured extraction from business documents.", ModuleAvailability.AVAILABLE, "documents"),
+    BusinessModuleDefinition("hr", "HR AI", "Workforce and people operations intelligence.", ModuleAvailability.AVAILABLE, "people"),
+    BusinessModuleDefinition("voice", "Voice AI", "Voice interaction automation.", ModuleAvailability.AVAILABLE, "communication", premium=True, credit_multiplier=2.0),
+    BusinessModuleDefinition("media", "Media AI", "Business media generation and organization.", ModuleAvailability.AVAILABLE, "content", premium=True, credit_multiplier=2.0),
+    BusinessModuleDefinition("legal", "Legal AI", "Contract and legal document intelligence.", ModuleAvailability.AVAILABLE, "legal"),
     BusinessModuleDefinition("workflow", "Workflow Automation", "Cross-system workflow automation.", ModuleAvailability.COMING_SOON, "operations"),
-    BusinessModuleDefinition("ai_agents", "AI Agents", "Advanced custom business agents.", ModuleAvailability.COMING_SOON, "automation", premium=True, credit_multiplier=2.0),
+    BusinessModuleDefinition("ai_agents", "AI Agents", "Advanced custom business agents.", ModuleAvailability.AVAILABLE, "automation", premium=True, credit_multiplier=2.0),
 )
 
 BUSINESS_MODULES_BY_KEY = {module.key: module for module in BUSINESS_MODULE_REGISTRY}
