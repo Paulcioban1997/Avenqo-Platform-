@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AuthForm } from "@/components/auth-form";
 
 export const metadata: Metadata = {
-  title: "Mot de passe oublié | Avenqo",
+  title: "Mot de passe oublié",
   description: "Réinitialisez votre mot de passe pour accéder à votre espace sécurisé Avenqo.",
   robots: {
     index: false,
