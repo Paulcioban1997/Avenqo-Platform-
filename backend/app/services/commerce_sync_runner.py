@@ -60,11 +60,14 @@ class CommerceSyncRunner:
                 await service.synchronize(tenant, connection_id, reserved=True)
                 await self._drain_pending_webhooks(session, service, tenant, connection_id)
             except Exception:
+                session.rollback()
                 logger.exception(
                     "Commerce sync job failed company=%s connection=%s",
                     tenant.company_id,
                     connection_id,
                 )
+            finally:
+                session.close()
 
     async def initialize_woocommerce(
         self,
@@ -76,11 +79,14 @@ class CommerceSyncRunner:
             try:
                 await service.initialize_woocommerce(tenant, connection_id)
             except Exception:
+                session.rollback()
                 logger.exception(
                     "WooCommerce initialization failed company=%s connection=%s",
                     tenant.company_id,
                     connection_id,
                 )
+            finally:
+                session.close()
 
     async def reconcile_active(self) -> int:
         with self._session_factory() as session:

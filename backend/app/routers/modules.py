@@ -43,8 +43,10 @@ def activate_module(
     try:
         service.activate_module(tenant, module_key)
     except ModuleUpgradeRequired as exc:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ModuleEntitlementError as exc:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     db.commit()
     return _response(service, tenant)
