@@ -18,6 +18,8 @@ const ALLOWED_ACTIONS = new Set([
   "me",
   "forgot-password",
   "reset-password",
+  "verify-email",
+  "resend-verification",
 ]);
 
 const ACTION_UPSTREAM_MAP: Record<string, string> = {
@@ -28,6 +30,8 @@ const ACTION_UPSTREAM_MAP: Record<string, string> = {
   me: "/auth/me",
   "forgot-password": "/auth/password/forgot",
   "reset-password": "/auth/password/reset",
+  "verify-email": "/auth/verify-email",
+  "resend-verification": "/auth/resend-verification",
 };
 
 export async function POST(
