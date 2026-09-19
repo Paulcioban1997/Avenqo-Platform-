@@ -11,6 +11,9 @@ from dataclasses import asdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from backend.app.database import get_db
 
 from backend.app.dependencies.admin import (
     get_admin_service,
@@ -314,3 +317,38 @@ def get_audit_log(
         )
         for entry in audit_log.recent(limit=limit)
     ]
+
+
+@router.get("/enterprise-quotes")
+def get_enterprise_quotes(
+    db: Session = Depends(get_db),
+    limit: int = 100,
+) -> list[dict]:
+    from backend.app.models.billing import EnterpriseQuote
+    from backend.app.models.company import Company
+    from sqlalchemy import select
+
+    quotes = db.scalars(
+        select(EnterpriseQuote)
+        .order_by(EnterpriseQuote.created_at.desc())
+        .limit(min(max(limit, 1), 200))
+    ).all()
+    return [
+        {
+            "id": str(q.id),
+            "reference_id": q.reference_id,
+            "company_id": str(q.company_id),
+            "contact_name": q.contact_name,
+            "contact_email": q.contact_email,
+            "contact_phone": q.contact_phone,
+            "requested_modules": q.requested_modules,
+            "estimated_users": q.estimated_users,
+            "monthly_volume": q.monthly_volume,
+            "required_integrations": q.required_integrations,
+            "notes": q.notes,
+            "status": q.status,
+            "created_at": q.created_at.isoformat() if q.created_at else None,
+        }
+        for q in quotes
+    ]
+

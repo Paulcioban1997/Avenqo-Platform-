@@ -499,16 +499,33 @@ def request_enterprise_quote(
     db: Session = Depends(get_db),
 ) -> EnterpriseQuoteResponse:
     from backend.app.models.audit_log import AuditLogEntry
+    from backend.app.models.billing import EnterpriseQuote
 
     reference_id = f"EQ-{uuid4().hex[:8].upper()}"
     now = datetime.now(timezone.utc)
+
+    quote = EnterpriseQuote(
+        reference_id=reference_id,
+        company_id=identity.user.company_id,
+        user_id=identity.user.id,
+        contact_name=request.contact_name or f"{identity.user.first_name} {identity.user.last_name}",
+        contact_email=request.contact_email or identity.user.email,
+        contact_phone=request.contact_phone,
+        requested_modules=request.requested_modules or [],
+        estimated_users=request.estimated_users,
+        monthly_volume=request.monthly_volume,
+        required_integrations=request.required_integrations or [],
+        notes=request.notes,
+        status="received",
+    )
+    db.add(quote)
 
     safe_lead_metadata = {
         "reference_id": reference_id,
         "company_name": identity.user.company.name,
         "company_id": str(identity.user.company_id),
-        "requester_name": request.contact_name or f"{identity.user.first_name} {identity.user.last_name}",
-        "requester_email": request.contact_email or identity.user.email,
+        "requester_name": quote.contact_name,
+        "requester_email": quote.contact_email,
         "contact_phone": request.contact_phone,
         "requested_modules": request.requested_modules,
         "estimated_users": request.estimated_users,
@@ -542,6 +559,30 @@ def request_enterprise_quote(
         message="Votre demande de devis Enterprise a été enregistrée avec succès. Notre équipe vous contactera sous 24h ouvrées.",
         created_at=now,
     )
+
+
+@router.get("/enterprise-quote", response_model=list[EnterpriseQuoteResponse])
+def list_enterprise_quotes(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> list[EnterpriseQuoteResponse]:
+    from backend.app.models.billing import EnterpriseQuote
+
+    quotes = db.scalars(
+        select(EnterpriseQuote)
+        .where(EnterpriseQuote.company_id == identity.user.company_id)
+        .order_by(EnterpriseQuote.created_at.desc())
+    ).all()
+    return [
+        EnterpriseQuoteResponse(
+            reference_id=q.reference_id,
+            status=q.status,
+            message=f"Demande {q.reference_id} ({q.status}).",
+            created_at=q.created_at,
+        )
+        for q in quotes
+    ]
+
 
 
 @router.post("/webhook", include_in_schema=False)

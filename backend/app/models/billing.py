@@ -1,4 +1,4 @@
-﻿"""Persistance de facturation indÃ©pendante du catalogue des modules IA."""
+"""Persistance de facturation indÃ©pendante du catalogue des modules IA."""
 
 from __future__ import annotations
 
@@ -128,3 +128,35 @@ class StripeWebhookEvent(Base):
     stripe_event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     event_type: Mapped[str] = mapped_column(String(120), nullable=False)
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EnterpriseQuote(TimestampMixin, Base):
+    """Demande de devis Enterprise consultable par le client et l'administration."""
+
+    __tablename__ = "enterprise_quotes"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    reference_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    requested_modules: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    estimated_users: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_volume: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    required_integrations: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="received")
+
+    company: Mapped["Company"] = relationship()
+

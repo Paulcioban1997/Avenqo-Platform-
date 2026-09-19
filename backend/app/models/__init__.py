@@ -25,7 +25,7 @@ from backend.app.models.base import (
     TimestampMixin,
     UserRole,
 )
-from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, StripeWebhookEvent
+from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, EnterpriseQuote, StripeWebhookEvent
 from backend.app.models.company import Company
 from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.company_module import CompanyModule
