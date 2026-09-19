@@ -3,13 +3,17 @@
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
+from backend.app.core.security import create_access_token
+from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
-from backend.app.models import Company, User
-from backend.app.models.base import OnboardingStatus
+from backend.app.models import AuditLogEntry, Company, CompanyMembership, User
+from backend.app.models.base import CompanyStatus, OnboardingStatus
 from backend.app.schemas.auth import (
     AuthResponse,
     CompanyResponse,
@@ -17,9 +21,11 @@ from backend.app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    OrganizationMembershipResponse,
     RefreshTokenRequest,
     RegisterRequest,
     ResetPasswordRequest,
+    SwitchTenantRequest,
     TokenRequest,
     UserResponse,
 )
@@ -39,6 +45,7 @@ def _user_response(user: User) -> UserResponse:
         company_id=user.company_id,
         first_name=user.first_name,
         last_name=user.last_name,
+        job_title=getattr(user, "job_title", "Owner"),
         email=user.email,
         role=user.role,
         permissions=permissions_for(user.role),
@@ -235,11 +242,165 @@ def refresh(
     )
 
 
+def _get_user_organizations(db: Session, user: User) -> list[OrganizationMembershipResponse]:
+    """Retourne la liste des organisations autorisées pour l'utilisateur.
+    Pour un SUPER_ADMIN (is_platform_admin=True) : toutes les entreprises actives.
+    Pour un utilisateur standard : son entreprise principale + ses adhésions actives."""
+    if user.is_platform_admin:
+        all_companies = db.scalars(
+            select(Company)
+            .where(Company.status == CompanyStatus.ACTIVE)
+            .order_by(Company.name)
+        ).all()
+        return [
+            OrganizationMembershipResponse(
+                id=c.id,
+                name=c.name,
+                slug=c.slug,
+                subscription_plan=c.subscription_plan,
+                role="SUPER_ADMIN",
+                is_active=True,
+                is_current=(c.id == user.company_id),
+            )
+            for c in all_companies
+        ]
+
+    memberships_dict: dict[UUID, OrganizationMembershipResponse] = {}
+    if user.company and user.company.status == CompanyStatus.ACTIVE:
+        role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+        memberships_dict[user.company.id] = OrganizationMembershipResponse(
+            id=user.company.id,
+            name=user.company.name,
+            slug=user.company.slug,
+            subscription_plan=user.company.subscription_plan,
+            role=role_str,
+            is_active=True,
+            is_current=True,
+        )
+
+    extra_memberships = db.scalars(
+        select(CompanyMembership)
+        .where(
+            CompanyMembership.user_id == user.id,
+            CompanyMembership.is_active == True,
+        )
+    ).all()
+
+    for m in extra_memberships:
+        comp = db.get(Company, m.company_id)
+        if comp and comp.status == CompanyStatus.ACTIVE:
+            is_cur = (comp.id == user.company_id)
+            m_role_str = m.role.value if hasattr(m.role, "value") else str(m.role)
+            memberships_dict[comp.id] = OrganizationMembershipResponse(
+                id=comp.id,
+                name=comp.name,
+                slug=comp.slug,
+                subscription_plan=comp.subscription_plan,
+                role=m_role_str,
+                is_active=m.is_active,
+                is_current=is_cur,
+            )
+
+    return list(memberships_dict.values())
+
+
 @router.get("/me", response_model=CurrentAccountResponse)
-def me(identity: CurrentIdentity = Depends(get_current_identity)) -> CurrentAccountResponse:
+def me(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> CurrentAccountResponse:
+    orgs = _get_user_organizations(db, identity.user)
     return CurrentAccountResponse(
         user=_user_response(identity.user),
         company=_company_response(identity.user.company),
+        organizations=orgs,
+    )
+
+
+@router.get("/organizations", response_model=list[OrganizationMembershipResponse])
+def get_organizations(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> list[OrganizationMembershipResponse]:
+    return _get_user_organizations(db, identity.user)
+
+
+@router.post("/switch-tenant", response_model=AuthResponse)
+def switch_tenant(
+    request_data: SwitchTenantRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> AuthResponse:
+    target_company = db.get(Company, request_data.company_id)
+    if not target_company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organisation introuvable",
+        )
+
+    if target_company.status != CompanyStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organisation inactive",
+        )
+
+    # Vérification d'autorisation stricte
+    if identity.user.is_platform_admin:
+        audit = AuditLogEntry(
+            actor_user_id=identity.user.id,
+            action="super_admin_tenant_switch",
+            target_type="company",
+            target_id=str(target_company.id),
+            company_id=target_company.id,
+            safe_metadata={
+                "source_tenant": str(identity.user.company_id),
+                "target_tenant": str(target_company.id),
+                "admin_email": identity.user.email,
+            },
+        )
+        db.add(audit)
+    else:
+        is_primary = (identity.user.company_id == target_company.id)
+        has_membership = False
+        if not is_primary:
+            has_membership = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(CompanyMembership)
+                    .where(
+                        CompanyMembership.user_id == identity.user.id,
+                        CompanyMembership.company_id == target_company.id,
+                        CompanyMembership.is_active == True,
+                    )
+                )
+                or 0
+            ) > 0
+
+        if not (is_primary or has_membership):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès non autorisé à cette organisation",
+            )
+
+    identity.user.company_id = target_company.id
+    db.commit()
+    db.refresh(identity.user)
+
+    access_token, access_expires_at = create_access_token(
+        identity.user.id,
+        target_company.id,
+        identity.auth_session.id,
+    )
+
+    orgs = _get_user_organizations(db, identity.user)
+    return AuthResponse(
+        access_token=access_token,
+        refresh_token=identity.raw_token,
+        access_expires_at=access_expires_at,
+        refresh_expires_at=identity.auth_session.expires_at,
+        user=_user_response(identity.user),
+        company=_company_response(target_company),
+        organizations=orgs,
     )
 
 

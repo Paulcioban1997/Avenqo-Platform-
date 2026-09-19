@@ -48,21 +48,107 @@ export function AppShell({ children }: AppShellProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
 
+  interface UserProfile {
+    id: string;
+    first_name: string;
+    last_name: string;
+    job_title?: string;
+    role: string;
+    is_platform_admin: boolean;
+  }
+
+  interface OrganizationItem {
+    id: string;
+    name: string;
+    slug: string;
+    subscription_plan: string;
+    role: string;
+    is_current: boolean;
+  }
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
-  const [activeTenant, setActiveTenant] = useState("Produits_Ero");
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [activeTenant, setActiveTenant] = useState<string>("");
+  const [organizations, setOrganizations] = useState<OrganizationItem[]>([]);
   const [isTenantMenuOpen, setIsTenantMenuOpen] = useState(false);
   const [isNotifMenuOpen, setIsNotifMenuOpen] = useState(false);
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(2);
 
-  // Available tenants for multi-tenant isolation testing
-  const tenants = ["Produits_Ero", "AcmeCorp", "Demo_Enterprise"];
+  // Dynamic AI credit meter state
+  const [aiCreditsUsed, setAiCreditsUsed] = useState<number>(0);
+  const [aiCreditsLimit, setAiCreditsLimit] = useState<number>(6500);
+  const creditPercent = Math.min(100, Math.round((aiCreditsUsed / (aiCreditsLimit || 1)) * 100));
 
-  // AI credit meter state
-  const aiCreditsUsed = 1840;
-  const aiCreditsLimit = 5000;
-  const creditPercent = Math.min(100, Math.round((aiCreditsUsed / aiCreditsLimit) * 100));
+  useEffect(() => {
+    async function loadIdentity() {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
+        if (!token) return;
+        const res = await fetch("/api/v1/auth/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUser(data.user);
+          setActiveTenant(data.company?.name || "");
+          if (Array.isArray(data.organizations)) {
+            setOrganizations(data.organizations);
+          }
+        }
+        const credRes = await fetch("/api/v1/billing/ai-credits", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (credRes.ok) {
+          const credData = await credRes.json();
+          setAiCreditsUsed(credData.monthly_used || 0);
+          setAiCreditsLimit(credData.monthly_allocation || credData.total_available || 6500);
+        }
+      } catch {}
+    }
+    loadIdentity();
+  }, []);
+
+  const handleSwitchTenant = async (org: OrganizationItem) => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
+      const res = await fetch("/api/v1/auth/switch-tenant", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ company_id: org.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.access_token) {
+          localStorage.setItem("avenqo_token", data.access_token);
+          localStorage.setItem("avenqo_access_token", data.access_token);
+        }
+        setActiveTenant(org.name);
+        setIsTenantMenuOpen(false);
+        window.location.reload();
+      }
+    } catch {}
+  };
+
+  const handleSignOut = async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
+      if (token) {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {}
+    localStorage.removeItem("avenqo_token");
+    localStorage.removeItem("avenqo_access_token");
+    localStorage.removeItem("avenqo_refresh_token");
+    window.location.href = "/login";
+  };
 
   // Navigation modules
   const mainModules = [
@@ -141,29 +227,42 @@ export function AppShell({ children }: AppShellProps) {
 
             {isTenantMenuOpen && (
               <div
-                className="absolute left-0 mt-2 w-52 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.12] shadow-xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95"
+                className="absolute left-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.12] shadow-xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95"
                 onMouseLeave={() => setIsTenantMenuOpen(false)}
               >
                 <div className="px-2.5 py-1.5 text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">
                   {t.shell.switchTenant}
                 </div>
-                {tenants.map((ten) => (
-                  <button
-                    key={ten}
-                    onClick={() => {
-                      setActiveTenant(ten);
-                      setIsTenantMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
-                      ten === activeTenant
-                        ? "bg-blue-50 text-[#0076FF] dark:bg-[#172652] dark:text-[#00D4FF] font-semibold"
-                        : "text-slate-700 dark:text-[#94A3B8] hover:bg-slate-50 dark:hover:bg-white/[0.04]"
-                    }`}
-                  >
-                    <span>{ten}</span>
-                    {ten === activeTenant && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+                {organizations.length === 0 ? (
+                  <div className="px-3 py-2 text-slate-400 dark:text-slate-500 text-[11px]">
+                    {activeTenant || "Aucune organisation"}
+                  </div>
+                ) : (
+                  organizations.map((org) => {
+                    const isSelected = org.name === activeTenant;
+                    return (
+                      <button
+                        key={org.id}
+                        onClick={() => handleSwitchTenant(org)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                          isSelected
+                            ? "bg-blue-50 text-[#0076FF] dark:bg-[#172652] dark:text-[#00D4FF] font-semibold"
+                            : "text-slate-700 dark:text-[#94A3B8] hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                        }`}
+                      >
+                        <div className="truncate">
+                          <div className="truncate font-medium">{org.name}</div>
+                          {org.role && (
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                              {org.role}
+                            </div>
+                          )}
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-2" />}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>
@@ -447,27 +546,34 @@ export function AppShell({ children }: AppShellProps) {
 
             {/* User Profile */}
             <div className="flex items-center justify-between px-2 py-1.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-200 dark:bg-white/[0.1] text-slate-800 dark:text-white font-bold text-xs">
-                  MP
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 dark:bg-white/[0.1] text-slate-800 dark:text-white font-bold text-xs">
+                  {currentUser
+                    ? `${(currentUser.first_name || "")[0] || ""}${(currentUser.last_name || "")[0] || ""}`.toUpperCase() || "U"
+                    : "U"}
                 </div>
-                <div className="leading-tight">
-                  <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                    Mircea Paul
+                <div className="leading-tight min-w-0">
+                  <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB] truncate">
+                    {currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : "Utilisateur"}
                   </div>
-                  <div className="text-[10px] text-slate-400 dark:text-[#94A3B8]">
-                    Lead Architect
+                  <div className="text-[10px] text-slate-400 dark:text-[#94A3B8] truncate flex items-center gap-1">
+                    <span>{currentUser?.job_title || currentUser?.role || "Membre"}</span>
+                    {currentUser?.is_platform_admin && (
+                      <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 font-bold text-[8px]">
+                        ADMIN
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-              <Link
-                href="/login"
+              <button
+                onClick={handleSignOut}
                 aria-label={t.shell.signOut}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer"
                 title={t.shell.signOut}
               >
                 <LogOut size={16} />
-              </Link>
+              </button>
             </div>
           </div>
         </aside>

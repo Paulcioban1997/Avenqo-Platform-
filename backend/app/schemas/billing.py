@@ -1,4 +1,4 @@
-﻿"""SchÃ©mas HTTP de la facturation Avenqo."""
+"""SchÃ©mas HTTP de la facturation Avenqo."""
 
 from datetime import datetime
 from uuid import UUID
@@ -49,11 +49,52 @@ class AICreditBalanceResponse(BaseModel):
     total_remaining: int | None
 
 
+class PaymentMethodSummary(BaseModel):
+    brand: str | None = "visa"
+    last4: str | None = "4242"
+    exp_month: int | None = 9
+    exp_year: int | None = 2028
+
+
 class SubscriptionResponse(BaseModel):
     plan_code: str
     status: str
     current_period_end: datetime | None
     cancel_at_period_end: bool
+    plan_name: str | None = None
+    monthly_price_usd: int | None = None
+    billing_frequency: str | None = "monthly"
+    currency: str | None = "USD"
+    company_name: str | None = None
+    payment_method: PaymentMethodSummary | None = None
+
+
+class AICreditBreakdownItem(BaseModel):
+    module: str
+    credits_used: int
+    percentage: float = 0.0
+
+
+class AICreditBreakdownResponse(BaseModel):
+    period: str
+    total_used: int
+    items: list[AICreditBreakdownItem]
+
+
+class AICreditHistoryItem(BaseModel):
+    id: str
+    date: str
+    module: str
+    operation: str
+    credits_used: int
+    user: str = "Système"
+
+
+class AICreditHistoryResponse(BaseModel):
+    items: list[AICreditHistoryItem]
+    total: int
+    offset: int
+    limit: int
 
 
 class InvoiceResponse(BaseModel):

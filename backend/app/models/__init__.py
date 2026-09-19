@@ -27,6 +27,7 @@ from backend.app.models.base import (
 )
 from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, StripeWebhookEvent
 from backend.app.models.company import Company
+from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.company_module import CompanyModule
 from backend.app.models.company_onboarding import CompanyOnboarding
 from backend.app.models.commerce_connection import (

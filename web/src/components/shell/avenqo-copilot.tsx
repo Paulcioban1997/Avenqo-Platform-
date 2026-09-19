@@ -39,7 +39,7 @@ export function AvenqoCopilot({
   isOpen,
   onClose,
   activeRoute,
-  tenantName = "Produits_Ero",
+  tenantName = "Avenqo",
   t,
 }: AvenqoCopilotProps) {
   const [input, setInput] = useState("");

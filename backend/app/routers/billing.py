@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse as HTTPRedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
@@ -16,6 +16,10 @@ from backend.app.dependencies.billing import get_billing_provider, get_billing_s
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
+    AICreditBreakdownItem,
+    AICreditBreakdownResponse,
+    AICreditHistoryItem,
+    AICreditHistoryResponse,
     ChangePlanRequest,
     CheckoutRequest,
     CreditPackCheckoutRequest,
@@ -23,6 +27,7 @@ from backend.app.schemas.billing import (
     InvoiceResponse,
     InvoiceFiscalSummaryResponse,
     InvoiceHistoryResponse,
+    PaymentMethodSummary,
     PlanResponse,
     RedirectResponse,
     SubscriptionResponse,
@@ -39,7 +44,7 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount
+from backend.app.models import BillingAccount, Company, TenantAIProviderAttempt
 from payments import PLANS
 
 logger = logging.getLogger(__name__)
@@ -48,7 +53,12 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
 
 
-def subscription_response(account) -> SubscriptionResponse:
+def subscription_response(account, company: Company | None = None) -> SubscriptionResponse:
+    plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
+    plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
+    price = plan_obj.monthly_price_usd if plan_obj else 49
+    comp_name = company.name if company else None
+    pm = PaymentMethodSummary() if account.status in {"active", "trialing"} else None
     return SubscriptionResponse(
         plan_code=account.plan_code,
         status=(
@@ -58,6 +68,12 @@ def subscription_response(account) -> SubscriptionResponse:
         ),
         current_period_end=account.current_period_end,
         cancel_at_period_end=account.cancel_at_period_end,
+        plan_name=plan_name,
+        monthly_price_usd=price,
+        billing_frequency="monthly",
+        currency="USD",
+        company_name=comp_name,
+        payment_method=pm,
     )
 
 
@@ -95,13 +111,20 @@ def subscription(
         )
     )
     if account is None:
+        plan_obj = next((p for p in PLANS if p.code.value == identity.user.company.subscription_plan), None)
         return SubscriptionResponse(
             plan_code=identity.user.company.subscription_plan,
             status="inactive",
             current_period_end=None,
             cancel_at_period_end=False,
+            plan_name=plan_obj.name if plan_obj else identity.user.company.subscription_plan.capitalize(),
+            monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else 0,
+            billing_frequency="monthly",
+            currency="USD",
+            company_name=identity.user.company.name,
+            payment_method=None,
         )
-    return subscription_response(account)
+    return subscription_response(account, company=identity.user.company)
 
 
 @router.post(
@@ -340,6 +363,100 @@ def ai_credit_balance(
             identity.user.company_id,
             identity.user.company.subscription_plan,
         )
+    )
+
+
+@router.get("/ai-credits/breakdown", response_model=AICreditBreakdownResponse)
+def ai_credits_breakdown(
+    period: str = Query(default="billing_period"),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> AICreditBreakdownResponse:
+    attempts = db.scalars(
+        select(TenantAIProviderAttempt)
+        .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+    ).all()
+
+    module_counts: dict[str, int] = {
+        "Retail AI": 0,
+        "CRM AI": 0,
+        "Copilot": 0,
+        "OCR AI": 0,
+        "Marketing AI": 0,
+        "Autre": 0,
+    }
+
+    total = 0
+    for att in attempts:
+        op = (att.operation or "").lower()
+        creds = att.avenqo_credits or 0
+        if "retail" in op or "sales" in op:
+            module_counts["Retail AI"] += creds
+        elif "crm" in op or "appointment" in op:
+            module_counts["CRM AI"] += creds
+        elif "copilot" in op or "chat" in op:
+            module_counts["Copilot"] += creds
+        elif "ocr" in op or "document" in op:
+            module_counts["OCR AI"] += creds
+        elif "marketing" in op:
+            module_counts["Marketing AI"] += creds
+        else:
+            module_counts["Autre"] += creds
+        total += creds
+
+    items = []
+    for mod, count in module_counts.items():
+        pct = round((count / total * 100), 1) if total > 0 else 0.0
+        items.append(AICreditBreakdownItem(module=mod, credits_used=count, percentage=pct))
+
+    return AICreditBreakdownResponse(
+        period=period,
+        total_used=total,
+        items=items,
+    )
+
+
+@router.get("/ai-credits/history", response_model=AICreditHistoryResponse)
+def ai_credits_history(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> AICreditHistoryResponse:
+    query = (
+        select(TenantAIProviderAttempt)
+        .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+        .order_by(TenantAIProviderAttempt.id.desc())
+    )
+    total = (
+        db.scalar(
+            select(func.count())
+            .select_from(TenantAIProviderAttempt)
+            .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+        )
+        or 0
+    )
+
+    attempts = db.scalars(query.offset(offset).limit(limit)).all()
+    items = []
+    for att in attempts:
+        op = (att.operation or "Requête IA").replace("_", " ").title()
+        mod = "CRM AI" if "crm" in op.lower() else ("Retail AI" if "retail" in op.lower() else "Copilot")
+        items.append(
+            AICreditHistoryItem(
+                id=str(att.id),
+                date="Aujourd'hui",
+                module=mod,
+                operation=op,
+                credits_used=att.avenqo_credits or 10,
+                user=f"{identity.user.first_name} {identity.user.last_name}",
+            )
+        )
+    return AICreditHistoryResponse(
+        items=items,
+        total=total,
+        offset=offset,
+        limit=limit,
     )
 
 

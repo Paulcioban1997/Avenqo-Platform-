@@ -69,7 +69,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   >([]);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [companyName, setCompanyName] = useState<string>("Produits_Ero");
+  const [companyName, setCompanyName] = useState<string>("");
   const [isMobileCopilotOpen, setIsMobileCopilotOpen] = useState(false);
 
   // Drawers and Modals

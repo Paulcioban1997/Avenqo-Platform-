@@ -44,7 +44,7 @@ export interface RetailIntelligenceViewProps {
 }
 
 export function RetailIntelligenceView({
-  tenantName = "Produits_Ero",
+  tenantName = "",
   defaultTab = "overview",
 }: RetailIntelligenceViewProps) {
   const { locale } = useLocale();

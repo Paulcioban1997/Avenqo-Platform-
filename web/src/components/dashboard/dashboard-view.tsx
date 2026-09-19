@@ -23,6 +23,7 @@ import { KPISkeleton, ChartSkeleton, AIInsightSkeleton } from "@/components/ui/s
 import { EmptyState, ErrorState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
   tenantName?: string;
@@ -48,8 +49,8 @@ interface DashboardPriority {
 }
 
 export function DashboardView({
-  tenantName = "Produits_Ero",
-  userName = "Mircea",
+  tenantName = "",
+  userName = "",
 }: DashboardViewProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
@@ -61,6 +62,8 @@ export function DashboardView({
   const [priorities, setPriorities] = useState<DashboardPriority[]>([]);
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
+  const [userFirstName, setUserFirstName] = useState<string>(userName);
+  const [currentTenant, setCurrentTenant] = useState<string>(tenantName);
 
   // Dynamic greeting based on current local hour
   const greeting = (() => {
@@ -74,12 +77,21 @@ export function DashboardView({
     setIsLoading(true);
     setError(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") : null;
-      const res = await fetch("/api/v1/dashboard", {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const headers = getAuthHeaders();
+      const [res, meRes] = await Promise.all([
+        fetch("/api/v1/dashboard", { headers }),
+        fetch("/api/v1/auth/me", { headers }),
+      ]);
+
+      if (meRes.ok) {
+        const meData = await meRes.json();
+        if (meData.user?.first_name) {
+          setUserFirstName(meData.user.first_name);
+        }
+        if (meData.company?.name) {
+          setCurrentTenant(meData.company.name);
+        }
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -110,7 +122,7 @@ export function DashboardView({
 
   useEffect(() => {
     fetchDashboardData();
-  }, [dateRange, tenantName]);
+  }, [dateRange]);
 
   // Unified chart timeline points derived strictly from actual data availability
   const hasData = Object.keys(kpis).length > 0 && Object.values(kpis).some((k) => k.available);
@@ -132,11 +144,13 @@ export function DashboardView({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-              {greeting}, {userName}
+              {greeting}{userFirstName ? `, ${userFirstName}` : ""}
             </h1>
-            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-[#0076FF]/15 dark:text-[#00D4FF] border border-blue-200 dark:border-[#0076FF]/30">
-              {tenantName}
-            </span>
+            {currentTenant && (
+              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-[#0076FF]/15 dark:text-[#00D4FF] border border-blue-200 dark:border-[#0076FF]/30">
+                {currentTenant}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
             {t.dashboard.trendSubtitle}

@@ -1,4 +1,4 @@
-﻿"""SchÃ©mas HTTP publics de l'authentification Avenqo."""
+"""SchÃ©mas HTTP publics de l'authentification Avenqo."""
 
 from datetime import datetime
 from uuid import UUID
@@ -109,12 +109,27 @@ class UserResponse(BaseModel):
     company_id: UUID
     first_name: str
     last_name: str
+    job_title: str | None = None
     email: EmailStr
     role: UserRole
     permissions: tuple[str, ...]
     is_active: bool
     is_platform_admin: bool = False
     email_verified_at: datetime | None
+
+
+class OrganizationMembershipResponse(BaseModel):
+    id: UUID
+    name: str
+    slug: str
+    subscription_plan: str
+    role: str
+    is_active: bool = True
+    is_current: bool = False
+
+
+class SwitchTenantRequest(BaseModel):
+    company_id: UUID
 
 
 class AuthResponse(BaseModel):
@@ -125,11 +140,13 @@ class AuthResponse(BaseModel):
     refresh_expires_at: datetime
     user: UserResponse
     company: CompanyResponse
+    organizations: list[OrganizationMembershipResponse] = []
 
 
 class CurrentAccountResponse(BaseModel):
     user: UserResponse
     company: CompanyResponse
+    organizations: list[OrganizationMembershipResponse] = []
 
 
 class MessageResponse(BaseModel):
