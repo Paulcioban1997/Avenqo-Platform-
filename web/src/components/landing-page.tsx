@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { DashboardPreview } from "@/components/dashboard-preview";
 import { Header } from "@/components/header";
-import { useTranslations } from "@/lib/i18n/locale-context";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
 
 const moduleIcons = [
   ShoppingBag, Network, ReceiptText, FileScan, BarChart3, Megaphone,
@@ -27,9 +27,59 @@ const fadeUp = {
   transition: { duration: 0.6, ease: "easeOut" as const },
 };
 
+const MODULE_SLUGS = [
+  "retail",
+  "crm",
+  "accounting",
+  "documents",
+  "analytics",
+  "marketing",
+  "voice",
+  "workflow",
+  "media",
+  "support",
+  "chat",
+];
+
+const PLATFORM_LINK_HREFS = ["#fonctionnalites", "#modules", "/pricing", "#fonctionnement"];
+const COMPANY_LINK_HREFS = ["#entreprise", "/contact", "#securite", "/pricing"];
+const RESOURCES_LINK_HREFS = ["/docs", "#faq", "/privacy", "/terms"];
+
 export function LandingPage() {
   const t = useTranslations();
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const usecaseEntries = [t.usecases.direction, t.usecases.finance, t.usecases.commerce, t.usecases.operations];
+
+  const planTiers = [
+    {
+      tier: "Demo",
+      price: "$28 USD",
+      period: isEn ? "/ month" : "/ mois",
+      credits: isEn ? "6,500 AI credits included" : "6 500 crédits IA inclus",
+      action: isEn ? "Choose Demo" : "Choisir Demo",
+      href: "/register?plan=demo",
+      featured: false,
+    },
+    {
+      tier: "Professional",
+      price: "$49 USD",
+      period: isEn ? "/ month" : "/ mois",
+      credits: isEn ? "25,000 AI credits included" : "25 000 crédits IA inclus",
+      action: isEn ? "Choose Professional" : "Choisir Professional",
+      href: "/register?plan=professional",
+      featured: true,
+    },
+    {
+      tier: "Enterprise",
+      price: isEn ? "Custom quote" : "Sur mesure",
+      period: isEn ? "Tailored plan" : "Devis personnalisé",
+      credits: isEn ? "Custom AI credit volume" : "Crédits IA sur mesure",
+      action: isEn ? "Contact Sales" : "Contacter les ventes",
+      href: "/contact",
+      featured: false,
+    },
+  ];
 
   return (
     <main>
@@ -73,6 +123,7 @@ export function LandingPage() {
           <div className="module-grid">
             {t.modulesSection.items.map(({ name, description }, index) => {
               const Icon = moduleIcons[index] ?? ShoppingBag;
+              const slug = MODULE_SLUGS[index] ?? "retail";
               return (
                 <motion.article
                   className="module-card"
@@ -84,7 +135,7 @@ export function LandingPage() {
                   whileHover={{ y: -6 }}
                 >
                   <div className="module-icon"><Icon size={21} /></div><h3>{name}</h3><p>{description}</p>
-                  <Link href="#contact" aria-label={`${t.modulesSection.discover} ${name}`}>{t.modulesSection.discover} <ArrowRight size={15} /></Link>
+                  <Link href={`/modules/${slug}`} aria-label={`${t.modulesSection.discover} ${name}`}>{t.modulesSection.discover} <ArrowRight size={15} /></Link>
                 </motion.article>
               );
             })}
@@ -144,16 +195,39 @@ export function LandingPage() {
         <div className="page-shell">
           <motion.div className="section-heading center" {...fadeUp}><span className="section-kicker">{t.pricing.kicker}</span><h2>{t.pricing.title}</h2><p>{t.pricing.subtitle}</p></motion.div>
           <div className="pricing-grid">
-            {t.pricing.plans.map((plan, index) => (
-              <PriceCard key={plan.tier} {...plan} priceLabel={t.pricing.priceLabel} popularLabel={t.pricing.popular} featured={index === 1} />
-            ))}
+            {t.pricing.plans.map((plan, index) => {
+              const meta = planTiers[index] || planTiers[0];
+              return (
+                <PriceCard
+                  key={plan.tier}
+                  tier={meta.tier}
+                  title={plan.title}
+                  price={meta.price}
+                  period={meta.period}
+                  credits={meta.credits}
+                  items={plan.items}
+                  action={meta.action}
+                  href={meta.href}
+                  popularLabel={t.pricing.popular}
+                  featured={meta.featured}
+                />
+              );
+            })}
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 32, fontSize: "0.9rem", color: "var(--muted)" }}>
+            <p>
+              {isEn
+                ? "✨ All plans include a 14-day free trial. No credit card required to explore. AI evaluation credits included."
+                : "✨ Tous les forfaits incluent un essai gratuit de 14 jours. Aucune carte de crédit requise. Crédits d'évaluation IA inclus."}
+            </p>
           </div>
         </div>
       </section>
 
       <section className="section faq-section" id="faq">
         <div className="page-shell faq-grid">
-          <motion.div {...fadeUp}><span className="section-kicker">{t.faq.kicker}</span><h2>{t.faq.title}</h2><p>{t.faq.subtitle}</p><a href={`mailto:${t.faq.contactCta}`}>{t.faq.contactCta} <ArrowRight size={15} /></a></motion.div>
+          <motion.div {...fadeUp}><span className="section-kicker">{t.faq.kicker}</span><h2>{t.faq.title}</h2><p>{t.faq.subtitle}</p><Link href="/contact" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{isEn ? "Contact our specialists" : "Parler à un conseiller"} <ArrowRight size={15} /></Link></motion.div>
           <motion.div className="faq-list" {...fadeUp}>
             {t.faq.items.map(({ question, answer }) => <details key={question}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}
           </motion.div>
@@ -163,7 +237,7 @@ export function LandingPage() {
       <section className="final-cta" id="contact">
         <div className="page-shell final-cta-inner">
           <div><span>{t.finalCta.label}</span><h2>{t.finalCta.title}</h2></div>
-          <div><Link className="button white-button" href="/register">{t.finalCta.tryFree} <ArrowRight size={17} /></Link><Link className="text-link" href="mailto:bonjour@avenqo.ca">{t.finalCta.scheduleDemo}</Link></div>
+          <div><Link className="button white-button" href="/register">{t.finalCta.tryFree} <ArrowRight size={17} /></Link><Link className="text-link" href="/contact">{t.finalCta.scheduleDemo}</Link></div>
         </div>
       </section>
 
@@ -181,8 +255,28 @@ export function LandingPage() {
 }
 
 function PriceCard({
-  tier, title, items, action, priceLabel, popularLabel, featured = false,
-}: { tier: string; title: string; items: string[]; action: string; priceLabel: string; popularLabel: string; featured?: boolean }) {
+  tier,
+  title,
+  price,
+  period,
+  credits,
+  items,
+  action,
+  href,
+  popularLabel,
+  featured = false,
+}: {
+  tier: string;
+  title: string;
+  price: string;
+  period: string;
+  credits: string;
+  items: string[];
+  action: string;
+  href: string;
+  popularLabel: string;
+  featured?: boolean;
+}) {
   return (
     <motion.article
       className={`price-card ${featured ? "featured-price" : ""}`}
@@ -193,18 +287,29 @@ function PriceCard({
       whileHover={{ y: -4 }}
     >
       {featured && <div className="popular">{popularLabel}</div>}
-      <span>{tier}</span><h3>{title}</h3><p className="price">{priceLabel}</p>
-      <ul>{items.map(item => <li key={item}><Check /> {item}</li>)}</ul>
-      {featured ? <Link href="/register">{action}</Link> : <a href="#contact">{action}</a>}
+      <span>{tier}</span>
+      <h3>{title}</h3>
+      <div style={{ margin: "14px 0 6px" }}>
+        <span style={{ fontSize: 34, fontWeight: 800, color: "var(--foreground)" }}>{price}</span>
+        <span style={{ fontSize: 14, color: "var(--muted)", marginLeft: 6 }}>{period}</span>
+      </div>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 9999, background: "rgba(56, 189, 248, 0.1)", color: "#38bdf8", marginBottom: 16 }}>
+        <Sparkles size={13} /> {credits}
+      </div>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>
+            <Check size={16} /> {item}
+          </li>
+        ))}
+      </ul>
+      <Link href={href} className={featured ? "button button-primary" : "button"} style={{ display: "block", textAlign: "center", marginTop: "auto" }}>
+        {action}
+      </Link>
     </motion.article>
   );
 }
 
-// Hrefs mapped by position, not by label text, so every locale (fr/en/es/pt/ar/ja/ko...) resolves to a real destination.
-const PLATFORM_LINK_HREFS = ["#fonctionnalites", "#modules", "#tarifs", "#fonctionnement"];
-const COMPANY_LINK_HREFS = ["#entreprise", "#contact", "#securite", "#contact"];
-const RESOURCES_LINK_HREFS = ["#faq", "#faq", "/privacy", "/terms"];
-
 function FooterColumn({ title, links, hrefs }: { title: string; links: string[]; hrefs: string[] }) {
-  return <div><strong>{title}</strong>{links.map((link, index) => <Link href={hrefs[index] ?? "#contact"} key={link}>{link}</Link>)}</div>;
+  return <div><strong>{title}</strong>{links.map((link, index) => <Link href={hrefs[index] ?? "/contact"} key={link}>{link}</Link>)}</div>;
 }
