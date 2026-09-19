@@ -184,14 +184,15 @@ class ModuleEntitlementService:
         active_modules = self.get_active_modules(tenant)
         limit = self.get_module_limit(tenant)
         remaining = None if limit is None else max(limit - len(active_modules), 0)
+        active_set = set(active_modules)
         modules = tuple(
             ModuleEntitlement(
                 key=definition.key,
                 display_name=definition.display_name,
                 description=definition.description,
                 availability=definition.availability.value,
-                active=definition.key in active_modules,
-                state=self._state(tenant, definition.key),
+                active=definition.key in active_set,
+                state=self._calculate_state(definition, plan, active_set, remaining),
                 premium=definition.premium,
                 category=definition.category,
                 credit_multiplier=definition.credit_multiplier,
@@ -207,20 +208,31 @@ class ModuleEntitlementService:
             modules=modules,
         )
 
-    def _state(self, tenant: TenantContext, module_key: str) -> ModuleEntitlementState:
-        definition = self._by_key.get(module_key)
+    def _calculate_state(
+        self,
+        definition: BusinessModuleDefinition | None,
+        plan: SubscriptionPlan,
+        active_set: set[str],
+        remaining: int | None,
+    ) -> ModuleEntitlementState:
         if definition is None or definition.availability == ModuleAvailability.UNAVAILABLE:
             return ModuleEntitlementState.UNAVAILABLE
         if definition.availability == ModuleAvailability.COMING_SOON:
             return ModuleEntitlementState.COMING_SOON
-        plan = self.get_company_plan(tenant)
-        if not plan.allows_module(module_key):
+        if not plan.allows_module(definition.key):
             return ModuleEntitlementState.UPGRADE_REQUIRED
-        if module_key in self.get_active_modules(tenant):
+        if definition.key in active_set:
             return ModuleEntitlementState.ACTIVE
-        if self.get_remaining_module_slots(tenant) == 0:
+        if remaining == 0:
             return ModuleEntitlementState.LIMIT_REACHED
         return ModuleEntitlementState.AVAILABLE
+
+    def _state(self, tenant: TenantContext, module_key: str) -> ModuleEntitlementState:
+        definition = self._by_key.get(module_key)
+        plan = self.get_company_plan(tenant)
+        active_set = set(self.get_active_modules(tenant))
+        remaining = self.get_remaining_module_slots(tenant)
+        return self._calculate_state(definition, plan, active_set, remaining)
 
     def _stored_active_module_keys(self, tenant: TenantContext) -> tuple[str, ...]:
         now = datetime.now(timezone.utc)
