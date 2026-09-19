@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.models import BillingAccount, Company, CompanyModule, CompanyModuleStatus, Module
@@ -116,6 +116,12 @@ class ModuleEntitlementService:
         }
 
     def activate_module(self, tenant: TenantContext, module_key: str) -> CompanyEntitlements:
+        # Acquire atomic transaction-scoped advisory lock on tenant's company_id
+        # strictly serializes concurrent activations for this company without locking any tables or rows
+        self._session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"module_quota:{tenant.company_id}"}
+        )
         state = self._state(tenant, module_key)
         if state == ModuleEntitlementState.ACTIVE:
             return self.summary(tenant)

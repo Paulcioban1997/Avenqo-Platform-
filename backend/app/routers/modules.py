@@ -29,7 +29,10 @@ def entitlements(
     db: Session = Depends(get_db),
 ) -> CompanyEntitlementsResponse:
     tenant = TenantContext(identity.user.company_id)
-    return _response(ModuleEntitlementService(db), tenant)
+    result = _response(ModuleEntitlementService(db), tenant)
+    db.rollback()
+    return result
+
 
 
 @router.post("/{module_key}/activate", response_model=CompanyEntitlementsResponse)
@@ -41,15 +44,15 @@ def activate_module(
     tenant = TenantContext(identity.user.company_id)
     service = ModuleEntitlementService(db)
     try:
-        service.activate_module(tenant, module_key)
+        result = service.activate_module(tenant, module_key)
+        db.commit()
     except ModuleUpgradeRequired as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ModuleEntitlementError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    db.commit()
-    return _response(service, tenant)
+    return CompanyEntitlementsResponse(**asdict(result))
 
 
 @router.post("/{module_key}/deactivate", response_model=CompanyEntitlementsResponse)
@@ -60,6 +63,7 @@ def deactivate_module(
 ) -> CompanyEntitlementsResponse:
     tenant = TenantContext(identity.user.company_id)
     service = ModuleEntitlementService(db)
-    service.deactivate_module(tenant, module_key)
+    result = service.deactivate_module(tenant, module_key)
     db.commit()
-    return _response(service, tenant)
+    return CompanyEntitlementsResponse(**asdict(result))
+
