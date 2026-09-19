@@ -276,6 +276,12 @@ class AuthService:
         token = self._consume_account_token(raw_token, AccountTokenPurpose.PASSWORD_RESET)
         token.user.password_hash = hash_password(new_password)
         now = datetime.now(timezone.utc)
+        # A valid password-reset token proves control of the user's email inbox.
+        # Treat that proof as email verification too; otherwise a newly-created
+        # account can successfully reset its password and still be locked out
+        # by login with a misleading 401 "email must be verified".
+        if token.user.email_verified_at is None:
+            token.user.email_verified_at = now
         for auth_session in token.user.auth_sessions:
             if auth_session.revoked_at is None:
                 auth_session.revoked_at = now
