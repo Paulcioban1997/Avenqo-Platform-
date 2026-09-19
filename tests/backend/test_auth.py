@@ -1,4 +1,4 @@
-from collections.abc import Generator
+﻿from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -290,7 +290,7 @@ def test_email_verification_smtp_utilise_le_domaine_production(
     monkeypatch.setattr("backend.app.services.account_notifications.smtplib.SMTP", FakeSMTP)
     notifier = SMTPAccountNotifier(
         Settings(
-            FRONTEND_URL="https://app.avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
             SMTP_HOST="smtp.example.test",
             SMTP_USERNAME="mailer@example.test",
             SMTP_PASSWORD="test-password",
@@ -306,7 +306,7 @@ def test_email_verification_smtp_utilise_le_domaine_production(
     assert message["To"] == "customer@example.ca"
     assert message["From"] == "info@avenqo.ca"
     body = message.get_body(preferencelist=("plain",)).get_content()
-    assert "https://app.avenqo.ca/verify-email?token=safe-token" in body
+    assert "https://avenqo.ca/verify-email?token=safe-token" in body
     assert "24 heures" in body
 
 
@@ -318,7 +318,7 @@ def test_configuration_production_selectionne_le_transport_https(
         EMAIL_API_KEY="provider-api-key",
         EMAIL_FROM_EMAIL="info@avenqo.ca",
         EMAIL_FROM_NAME="Avenqo",
-        FRONTEND_URL="https://app.avenqo.ca",
+        FRONTEND_URL="https://avenqo.ca",
         SMTP_HOST=None,
         SMTP_USERNAME=None,
         SMTP_PASSWORD=None,
@@ -361,7 +361,7 @@ def test_email_verification_https_envoie_le_payload_attendu(
             EMAIL_API_KEY="provider-api-key",
             EMAIL_FROM_EMAIL="info@avenqo.ca",
             EMAIL_FROM_NAME="Avenqo",
-            FRONTEND_URL="https://app.avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
             SMTP_HOST=None,
             SMTP_USERNAME=None,
             SMTP_PASSWORD=None,
@@ -378,8 +378,8 @@ def test_email_verification_https_envoie_le_payload_attendu(
     assert payload["from"] == "Avenqo <info@avenqo.ca>"
     assert payload["to"] == ["customer@example.ca"]
     assert payload["subject"] == "Vérifiez votre adresse email Avenqo"
-    assert "https://app.avenqo.ca/verify-email?token=safe-token" in payload["text"]
-    assert "https://app.avenqo.ca/verify-email?token=safe-token" in payload["html"]
+    assert "https://avenqo.ca/verify-email?token=safe-token" in payload["text"]
+    assert "https://avenqo.ca/verify-email?token=safe-token" in payload["html"]
     assert "24 heures" in payload["text"]
 
 
@@ -403,7 +403,7 @@ def test_echec_email_https_est_journalise_sans_secrets(
             EMAIL_PROVIDER="https_api",
             EMAIL_API_KEY=secret,
             EMAIL_FROM_EMAIL="info@avenqo.ca",
-            FRONTEND_URL="https://app.avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
         )
     )
 
@@ -471,7 +471,7 @@ def test_echec_smtp_est_journalise_sans_secrets(
     )
     notifier = SMTPAccountNotifier(
         Settings(
-            FRONTEND_URL="https://app.avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
             SMTP_HOST="smtp.private.example",
             SMTP_USERNAME="mailer@example.test",
             SMTP_PASSWORD=secret,
@@ -513,7 +513,7 @@ def test_renvoi_masque_lexistence_du_compte_si_https_echoue(
             EMAIL_PROVIDER="https_api",
             EMAIL_API_KEY="provider-api-key",
             EMAIL_FROM_EMAIL="info@avenqo.ca",
-            FRONTEND_URL="https://app.avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
         )
     )
     client.app.dependency_overrides[get_account_notifier] = lambda: notifier
@@ -847,3 +847,4 @@ def test_seed_demo_est_idempotent(auth_environment) -> None:
     )
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "owner"
+

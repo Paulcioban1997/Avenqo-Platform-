@@ -1,4 +1,4 @@
-"""Tests ciblés de la configuration CORS par environnement (DEV vs PROD).
+﻿"""Tests ciblés de la configuration CORS par environnement (DEV vs PROD).
 
 DEV  : localhost / 127.0.0.1 sur n'importe quel port autorisé via regex.
 PROD : regex jamais utilisée — seules les origines explicites de CORS_ORIGINS.
@@ -41,7 +41,7 @@ def _build_app(environment: str, cors_origins: list[str] | None = None):
         os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_dummy")
         os.environ.setdefault("STRIPE_PRICE_DEMO", "price_demo_dummy")
         os.environ.setdefault("STRIPE_PRICE_PROFESSIONAL", "price_pro_dummy")
-        os.environ.setdefault("FRONTEND_URL", "https://app.avenqo.ca")
+        os.environ.setdefault("FRONTEND_URL", "https://avenqo.ca")
         os.environ.setdefault("ALLOWED_HOSTS", "testserver")
     try:
         app = create_application()
@@ -93,7 +93,7 @@ def test_dev_allows_localhost_8080() -> None:
 def test_prod_rejects_localhost_random_port() -> None:
     app = _build_app(
         "production",
-        cors_origins=["https://app.avenqo.ca", "https://avenqo.ca"],
+        cors_origins=["https://avenqo.ca", "https://avenqo.ca"],
     )
     status, allow_origin = _preflight(TestClient(app), "http://localhost:58404")
 
@@ -104,9 +104,10 @@ def test_prod_rejects_localhost_random_port() -> None:
 def test_prod_allows_explicit_production_origin() -> None:
     app = _build_app(
         "production",
-        cors_origins=["https://app.avenqo.ca", "https://avenqo.ca"],
+        cors_origins=["https://avenqo.ca", "https://avenqo.ca"],
     )
-    status, allow_origin = _preflight(TestClient(app), "https://app.avenqo.ca")
+    status, allow_origin = _preflight(TestClient(app), "https://avenqo.ca")
 
     assert status == 200
-    assert allow_origin == "https://app.avenqo.ca"
+    assert allow_origin == "https://avenqo.ca"
+

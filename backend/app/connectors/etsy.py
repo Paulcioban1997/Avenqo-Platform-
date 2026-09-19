@@ -55,7 +55,7 @@ class EtsyConnector(CommerceConnector):
         self,
         *,
         client_id: str = "avenqo_etsy_app",
-        callback_uri: str = "https://app.avenqo.ca/api/v1/commerce/oauth/etsy/callback",
+        callback_uri: str = "https://avenqo.ca/api/v1/commerce/oauth/etsy/callback",
         http_client: httpx.AsyncClient | None = None,
         page_size: int = 100,
     ) -> None:

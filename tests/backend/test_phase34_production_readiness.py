@@ -1,4 +1,4 @@
-"""Phase 34 — Production readiness : sécurité, config, rate limiting, pagination.
+﻿"""Phase 34 — Production readiness : sécurité, config, rate limiting, pagination.
 
 Ne duplique pas les tests d'isolation tenant déjà couverts (Phase 21/24/25/26/
 27/30.1/31/33). Couvre spécifiquement les ajouts Phase 34 : configuration
@@ -75,8 +75,8 @@ def test_production_reports_email_delivery_unconfigured_without_blocking_startup
         STRIPE_PRICE_DEMO="price_demo",
         STRIPE_PRICE_PROFESSIONAL="price_pro",
         STRIPE_PRICE_ENTERPRISE="",
-        FRONTEND_URL="https://app.avenqo.ca",
-        CORS_ORIGINS="https://app.avenqo.ca",
+        FRONTEND_URL="https://avenqo.ca",
+        CORS_ORIGINS="https://avenqo.ca",
         ALLOWED_HOSTS="api.avenqo.ca",
     )
     assert settings.email_delivery_configured is False
@@ -96,8 +96,8 @@ def test_production_settings_accepted_when_fully_configured() -> None:
         STRIPE_PRICE_DEMO="price_demo",
         STRIPE_PRICE_PROFESSIONAL="price_pro",
         STRIPE_PRICE_ENTERPRISE="",
-        FRONTEND_URL="https://app.avenqo.ca",
-        CORS_ORIGINS="https://app.avenqo.ca",
+        FRONTEND_URL="https://avenqo.ca",
+        CORS_ORIGINS="https://avenqo.ca",
         ALLOWED_HOSTS="api.avenqo.ca",
     )
     assert settings.environment == "production"
@@ -118,8 +118,8 @@ def test_docs_disabled_in_production(monkeypatch: pytest.MonkeyPatch, db_session
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_pro")
     monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "")
-    monkeypatch.setenv("FRONTEND_URL", "https://app.avenqo.ca")
-    monkeypatch.setenv("CORS_ORIGINS", "https://app.avenqo.ca")
+    monkeypatch.setenv("FRONTEND_URL", "https://avenqo.ca")
+    monkeypatch.setenv("CORS_ORIGINS", "https://avenqo.ca")
     monkeypatch.setenv("ALLOWED_HOSTS", "api.avenqo.ca")
     get_settings.cache_clear()
     app = create_application()
@@ -220,3 +220,4 @@ async def test_unhandled_exception_never_leaks_traceback() -> None:
     assert "sk-should-not-leak" not in body
     assert "Traceback" not in body
     assert "RuntimeError" not in body
+

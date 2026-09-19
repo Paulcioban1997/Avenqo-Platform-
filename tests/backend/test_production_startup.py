@@ -1,4 +1,4 @@
-"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
+﻿"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
 
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ def _build_settings(monkeypatch, **overrides):
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo_dummy")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_pro_dummy")
     monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "")
-    monkeypatch.setenv("FRONTEND_URL", "https://app.avenqo.ca")
-    monkeypatch.setenv("CORS_ORIGINS", "https://app.avenqo.ca")
+    monkeypatch.setenv("FRONTEND_URL", "https://avenqo.ca")
+    monkeypatch.setenv("CORS_ORIGINS", "https://avenqo.ca")
     monkeypatch.setenv("ALLOWED_HOSTS", "api.avenqo.ca")
     init_kwargs = {}
     for key, value in overrides.items():
@@ -151,7 +151,7 @@ def test_smtp_notifier_raises_clear_error_when_host_missing(_clean_settings_cach
         "https://avenqo.ca/",
         "https://www.avenqo.ca",
         "https://www.avenqo.ca/",
-        "https://app.avenqo.ca",
+        "https://avenqo.ca",
         "  https://avenqo.ca  ",
     ],
 )
@@ -165,7 +165,7 @@ def test_production_settings_accepts_valid_frontend_urls(
     assert settings.frontend_url.strip().rstrip("/") in {
         "https://avenqo.ca",
         "https://www.avenqo.ca",
-        "https://app.avenqo.ca",
+        "https://avenqo.ca",
     }
 
 
@@ -194,3 +194,4 @@ def test_production_settings_rejects_wildcard_cors(
 ) -> None:
     with pytest.raises(ValueError, match="CORS_ORIGINS"):
         _build_settings(monkeypatch, CORS_ORIGINS="*")
+
