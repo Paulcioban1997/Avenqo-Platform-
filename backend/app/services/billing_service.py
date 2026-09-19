@@ -602,12 +602,18 @@ class BillingService:
             raise BillingOperationError("Tenant introuvable pour la facture Stripe")
         return account.company_id
 
-    @staticmethod
-    def _company_id(resource: dict[str, Any]) -> UUID:
+    def _company_id(self, resource: dict[str, Any]) -> UUID:
         raw_company_id = (resource.get("metadata") or {}).get("avenqo_company_id")
-        if not raw_company_id:
-            raise BillingOperationError("Métadonnée avenqo_company_id absente")
-        return UUID(str(raw_company_id))
+        if raw_company_id:
+            return UUID(str(raw_company_id))
+        customer_id = str(resource.get("customer") or "")
+        if customer_id:
+            account = self._session.scalar(select(BillingAccount).where(
+                BillingAccount.stripe_customer_id == customer_id,
+            ))
+            if account is not None:
+                return account.company_id
+        raise BillingOperationError("Métadonnée avenqo_company_id absente")
 
     def _required_price(self, plan_code: PlanCode, currency_code: str) -> str:
         price_id = self._settings.stripe_price_id(plan_code.value, currency_code)

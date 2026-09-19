@@ -22,6 +22,8 @@ export type AppTranslations = {
     support: string;
     team: string;
     billing: string;
+    connections: string;
+    admin: string;
   };
   shell: {
     searchPlaceholder: string;
@@ -259,6 +261,8 @@ const frApp: AppTranslations = {
     support: "Support & SLA",
     team: "Équipe & Accès",
     billing: "Facturation & Plans",
+    connections: "Connexions",
+    admin: "Administration",
   },
   shell: {
     searchPlaceholder: "Rechercher un client, un rendez-vous, une note...",
@@ -496,6 +500,8 @@ const enApp: AppTranslations = {
     support: "Support & SLA",
     team: "Team & Roles",
     billing: "Billing & Plans",
+    connections: "Connections",
+    admin: "Administration",
   },
   shell: {
     searchPlaceholder: "Search client, appointment, note...",

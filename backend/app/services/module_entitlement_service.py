@@ -116,6 +116,10 @@ class ModuleEntitlementService:
         }
 
     def activate_module(self, tenant: TenantContext, module_key: str) -> CompanyEntitlements:
+        # Verrouiller la ligne Company pour sérialiser les activations concurrentes
+        self._session.scalar(
+            select(Company).where(Company.id == tenant.company_id).with_for_update()
+        )
         state = self._state(tenant, module_key)
         if state == ModuleEntitlementState.ACTIVE:
             return self.summary(tenant)

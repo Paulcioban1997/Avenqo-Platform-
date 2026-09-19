@@ -147,3 +147,22 @@ class AdminInvoiceSummaryResponse(BaseModel):
     invoice_count: int
     latest_invoice: dict | None
     fiscal_totals: InvoiceFiscalSummaryResponse
+
+
+class EnterpriseQuoteRequest(BaseModel):
+    requested_modules: list[str] = Field(default_factory=list)
+    estimated_users: int = Field(default=10, ge=1, le=10000)
+    monthly_volume: str = Field(default="Standard")
+    required_integrations: list[str] = Field(default_factory=list)
+    contact_name: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
+    notes: str | None = None
+
+
+class EnterpriseQuoteResponse(BaseModel):
+    reference_id: str
+    status: str = "received"
+    message: str
+    created_at: datetime
+

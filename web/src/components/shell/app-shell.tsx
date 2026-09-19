@@ -168,7 +168,8 @@ export function AppShell({ children }: AppShellProps) {
   ];
 
   const platformModules = [
-    { href: "/integrations", label: t.navigation.integrations, icon: Plug },
+    { href: "/connections", label: locale === "fr" ? "Connexions" : "Connections", icon: Plug },
+    { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
     { href: "/billing", label: t.navigation.billing || "Facturation", icon: CreditCard },
     { href: "/settings", label: t.navigation.settings, icon: Settings },

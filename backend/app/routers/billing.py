@@ -1,8 +1,8 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
-from datetime import datetime
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse as HTTPRedirectResponse
@@ -24,6 +24,8 @@ from backend.app.schemas.billing import (
     CheckoutRequest,
     CreditPackCheckoutRequest,
     CreditPackResponse,
+    EnterpriseQuoteRequest,
+    EnterpriseQuoteResponse,
     InvoiceResponse,
     InvoiceFiscalSummaryResponse,
     InvoiceHistoryResponse,
@@ -488,6 +490,58 @@ def credit_pack_checkout(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/enterprise-quote", response_model=EnterpriseQuoteResponse)
+def request_enterprise_quote(
+    request: EnterpriseQuoteRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> EnterpriseQuoteResponse:
+    from backend.app.models.audit_log import AuditLogEntry
+
+    reference_id = f"EQ-{uuid4().hex[:8].upper()}"
+    now = datetime.now(timezone.utc)
+
+    safe_lead_metadata = {
+        "reference_id": reference_id,
+        "company_name": identity.user.company.name,
+        "company_id": str(identity.user.company_id),
+        "requester_name": request.contact_name or f"{identity.user.first_name} {identity.user.last_name}",
+        "requester_email": request.contact_email or identity.user.email,
+        "contact_phone": request.contact_phone,
+        "requested_modules": request.requested_modules,
+        "estimated_users": request.estimated_users,
+        "monthly_volume": request.monthly_volume,
+        "required_integrations": request.required_integrations,
+        "notes": request.notes,
+        "submitted_at": now.isoformat(),
+    }
+
+    entry = AuditLogEntry(
+        actor_user_id=identity.user.id,
+        action="billing.enterprise_quote_requested",
+        target_type="company",
+        target_id=str(identity.user.company_id),
+        company_id=identity.user.company_id,
+        safe_metadata=safe_lead_metadata,
+        created_at=now,
+    )
+    db.add(entry)
+    db.commit()
+
+    logger.info(
+        "Enterprise quote request %s recorded for tenant %s",
+        reference_id,
+        identity.user.company_id,
+    )
+
+    return EnterpriseQuoteResponse(
+        reference_id=reference_id,
+        status="received",
+        message="Votre demande de devis Enterprise a été enregistrée avec succès. Notre équipe vous contactera sous 24h ouvrées.",
+        created_at=now,
+    )
 
 
 @router.post("/webhook", include_in_schema=False)
