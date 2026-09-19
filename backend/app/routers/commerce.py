@@ -773,6 +773,10 @@ async def disconnect_connection(
         )
     except CommerceConnectionNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _connection_response(connection)
+
+
+
 @router.delete(
     "/connections/{connection_id}",
     status_code=status.HTTP_204_NO_CONTENT,
