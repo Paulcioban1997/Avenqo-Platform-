@@ -1,33 +1,20 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const isStaging =
-    process.env.ENVIRONMENT === "staging" ||
-    process.env.NEXT_PUBLIC_ENVIRONMENT === "staging" ||
-    process.env.VERCEL_ENV === "preview" ||
-    process.env.VERCEL_ENV === "development";
-
-  if (isStaging) {
-    return {
-      rules: [
-        {
-          userAgent: "*",
-          disallow: ["/"],
-        },
-      ],
-    };
-  }
-
   const baseUrl = "https://avenqo.ca";
 
   return {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/pricing", "/terms", "/privacy"],
+        allow: "/",
         disallow: [
           "/dashboard",
           "/dashboard/",
+          "/admin",
+          "/admin/",
+          "/api",
+          "/api/",
           "/retail",
           "/retail/",
           "/central-ai",
@@ -42,21 +29,26 @@ export default function robots(): MetadataRoute.Robots {
           "/team/",
           "/settings",
           "/settings/",
-          "/admin",
-          "/admin/",
-          "/api",
-          "/api/",
-          "/login",
-          "/register",
-          "/app/",
-          "/onboarding",
-          "/assistant",
           "/connections",
-          "/support",
-          "/sales",
-          "/customers",
-          "/products",
-          "/recommendations",
+          "/connections/",
+          "/crm",
+          "/crm/",
+          "/accounting",
+          "/accounting/",
+          "/marketing",
+          "/marketing/",
+          "/automations",
+          "/automations/",
+          "/chatbots",
+          "/chatbots/",
+          "/voice",
+          "/voice/",
+          "/ocr",
+          "/ocr/",
+          "/agents",
+          "/agents/",
+          "/reset-password",
+          "/verify-email",
         ],
       },
     ],

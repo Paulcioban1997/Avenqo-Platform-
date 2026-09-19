@@ -30,41 +30,43 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    const isStaging =
-      process.env.ENVIRONMENT === "staging" ||
-      process.env.NEXT_PUBLIC_ENVIRONMENT === "staging" ||
-      process.env.VERCEL_ENV === "preview" ||
-      process.env.VERCEL_ENV === "development";
+    const cspHeader = `
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;
+      style-src 'self' 'unsafe-inline' https:;
+      img-src 'self' blob: data: https:;
+      font-src 'self' data: https:;
+      connect-src 'self' https: wss:;
+      frame-ancestors 'self';
+      form-action 'self';
+      base-uri 'self';
+    `
+      .replace(/\s{2,}/g, " ")
+      .trim();
 
     const globalHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "SAMEORIGIN" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "Content-Security-Policy", value: cspHeader },
     ];
-
-    if (isStaging) {
-      globalHeaders.push({
-        key: "X-Robots-Tag",
-        value: "noindex, nofollow, noarchive",
-      });
-    }
 
     return [
       {
-        // Global basic security headers for all routes
+        // Global basic security headers for all routes (public pages are indexable)
         source: "/:path*",
         headers: globalHeaders,
       },
       {
         // Strictly prevent indexing of private SaaS and app routes via HTTP headers
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api)/:subpath*",
+        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api|accounting|marketing|chatbots|automations|voice|ocr|agents|connections)/:subpath*",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],
       },
       {
         // Strictly prevent indexing of root private endpoints
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting)",
+        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting|marketing|chatbots|automations|voice|ocr|agents)",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],
