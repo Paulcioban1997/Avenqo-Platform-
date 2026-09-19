@@ -134,6 +134,24 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           .join(" ");
 
         let errorMsg = detail || errorDetails || data.error?.message || data.message;
+        if (typeof errorMsg === "string") {
+          // Remove Pydantic "Value error, " prefix
+          errorMsg = errorMsg.replace(/^Value error,\s*/i, "").trim();
+          // Fix UTF-8 mojibake
+          errorMsg = errorMsg
+            .replace(/caractÃ¨re spÃ©cial/g, "caractère spécial")
+            .replace(/vÃ©rifiÃ©e/g, "vérifiée")
+            .replace(/Ã©/g, "é")
+            .replace(/Ã¨/g, "è")
+            .replace(/Ã /g, "à");
+
+          const lower = errorMsg.toLowerCase();
+          if (lower.includes("mot de passe") && (lower.includes("minuscule") || lower.includes("caractère") || lower.includes("special"))) {
+            errorMsg = locale === "en"
+              ? "The password must contain at least one lowercase letter, one uppercase letter, one digit, and one special character."
+              : "Le mot de passe doit contenir au moins une lettre minuscule, une lettre majuscule, un chiffre et un caractère spécial.";
+          }
+        }
         if (isReset && response.status === 400) {
           errorMsg = s.linkInvalid || s.linkExpired || errorMsg;
         }
@@ -268,12 +286,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                   <label className="auth-field">
                     <span>{s.industry}</span>
                     <select name="industry" defaultValue="Commerce" required>
-                      <option>Commerce</option>
-                      <option>Services professionnels</option>
-                      <option>Technologie</option>
-                      <option>Finance</option>
-                      <option>Immobilier</option>
-                      <option>Autre</option>
+                      <option value="Commerce">{locale === "en" ? "Commerce / Retail" : "Commerce"}</option>
+                      <option value="Services professionnels">{locale === "en" ? "Professional Services" : "Services professionnels"}</option>
+                      <option value="Technologie">{locale === "en" ? "Technology" : "Technologie"}</option>
+                      <option value="Finance">{locale === "en" ? "Finance" : "Finance"}</option>
+                      <option value="Immobilier">{locale === "en" ? "Real Estate" : "Immobilier"}</option>
+                      <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
                     </select>
                   </label>
                 </>

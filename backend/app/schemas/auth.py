@@ -1,4 +1,4 @@
-"""SchÃ©mas HTTP publics de l'authentification Avenqo."""
+"""Schémas HTTP publics de l'authentification Avenqo."""
 
 from datetime import datetime
 from uuid import UUID
@@ -9,7 +9,7 @@ from backend.app.models.base import UserRole
 
 
 class RegisterRequest(BaseModel):
-    """Informations nÃ©cessaires pour crÃ©er une entreprise et son propriÃ©taire."""
+    """Informations nécessaires pour créer une entreprise et son propriétaire."""
 
     company_name: str = Field(min_length=2, max_length=255)
     company_email: EmailStr
@@ -48,7 +48,7 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
-        """Impose une base simple sans politique impossible Ã  expliquer."""
+        """Impose une base simple sans politique impossible à expliquer."""
 
         requirements = (
             any(character.islower() for character in value),
@@ -58,8 +58,8 @@ class RegisterRequest(BaseModel):
         )
         if not all(requirements):
             raise ValueError(
-                "Le mot de passe doit contenir une minuscule, une majuscule, "
-                "un chiffre et un caractÃ¨re spÃ©cial"
+                "Le mot de passe doit contenir au moins une lettre minuscule, une lettre majuscule, "
+                "un chiffre et un caractère spécial"
             )
         return value
 

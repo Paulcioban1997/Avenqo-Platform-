@@ -26,18 +26,29 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
+def _clean_error_message(msg: str) -> str:
+    if not isinstance(msg, str):
+        return str(msg)
+    cleaned = msg
+    for prefix in ("Value error, ", "Assertion failed, ", "Value error,"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+    return cleaned
+
+
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Renvoie une réponse JSON uniforme pour les erreurs de validation."""
     details = [
         {
             "type": error.get("type", "validation_error"),
             "loc": list(error.get("loc", ())),
-            "msg": error.get("msg", "Invalid value"),
+            "msg": _clean_error_message(str(error.get("msg", "Invalid value"))),
         }
         for error in exc.errors()
     ]
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        headers={"Content-Type": "application/json; charset=utf-8"},
         content={
             "success": False,
             "error": {

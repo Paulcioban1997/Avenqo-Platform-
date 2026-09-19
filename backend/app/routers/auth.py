@@ -158,7 +158,7 @@ def verify_email(
         service.verify_email(request.token)
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return MessageResponse(message="Adresse email vÃ©rifiÃ©e.")
+    return MessageResponse(message="Adresse email vérifiée.")
 
 
 @router.post(
@@ -425,7 +425,7 @@ def forgot_password(
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     service.forgot_password(str(request.email))
-    return MessageResponse(message="Si le compte existe, un email a Ã©tÃ© envoyÃ©.")
+    return MessageResponse(message="Si le compte existe, un email a été envoyé.")
 
 
 @router.post(
@@ -441,4 +441,4 @@ def reset_password(
         service.reset_password(request.token, request.new_password)
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return MessageResponse(message="Mot de passe modifiÃ©. Reconnectez-vous.")
+    return MessageResponse(message="Mot de passe modifié. Reconnectez-vous.")
