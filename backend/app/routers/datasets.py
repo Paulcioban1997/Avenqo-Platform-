@@ -1,6 +1,7 @@
 """Routes minces d'import et de consultation des datasets."""
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -534,9 +535,15 @@ def list_datasets(
                 dataset.id, dataset.name, exc,
             )
             try:
+                uploaded_at_val = getattr(dataset, "uploaded_at", None) or getattr(dataset, "created_at", None)
+                fallback_uploaded_at: datetime = (
+                    uploaded_at_val
+                    if isinstance(uploaded_at_val, datetime)
+                    else datetime.now(timezone.utc)
+                )
                 results.append(DatasetResponse(
                     id=dataset.id,
-                    name=dataset.name,
+                    name=getattr(dataset, "name", "Dataset"),
                     type=getattr(dataset, "type", "unknown"),
                     module_code="unknown",
                     rows_count=getattr(dataset, "rows_count", 0),
@@ -554,12 +561,12 @@ def list_datasets(
                     source_missing_message=(
                         "Fichier source indisponible. Veuillez réimporter ce dataset."
                     ),
-                    uploaded_at=getattr(dataset, "uploaded_at", None),
+                    uploaded_at=fallback_uploaded_at,
                     columns=[],
                     distributions={},
                 ))
             except Exception:
-                logger.exception("Could not build stub for dataset %s — omitting", dataset.id)
+                logger.exception("Could not build stub for dataset %s — omitting", getattr(dataset, "id", "unknown"))
     return results
 
 
