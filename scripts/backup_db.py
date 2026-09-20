@@ -44,6 +44,7 @@ class BackupRuntimeSettings:
     backup_s3_access_key: str | None
     backup_s3_secret_key: str | None
     backup_s3_region: str
+    artifact_root: str = "var/artifacts"
 
     @property
     def backup_s3_enabled(self) -> bool:
@@ -86,6 +87,7 @@ def _load_backup_settings() -> BackupRuntimeSettings:
         backup_s3_access_key=_optional_env("BACKUP_S3_ACCESS_KEY"),
         backup_s3_secret_key=_optional_env("BACKUP_S3_SECRET_KEY"),
         backup_s3_region=os.getenv("BACKUP_S3_REGION", "auto").strip() or "auto",
+        artifact_root=os.getenv("ARTIFACT_ROOT", "var/artifacts").strip() or "var/artifacts",
     )
 
 

@@ -46,6 +46,8 @@ class BackupMetadata:
     format_version: int
     checksum_sha256: str
     size_bytes: int
+    artifacts_checksum_sha256: str | None = None
+    artifacts_size_bytes: int | None = None
 
     def to_safe_dict(self) -> dict:
         """Jamais de secret dans les métadonnées — uniquement des faits techniques."""
@@ -223,6 +225,27 @@ class BackupService:
                 raise BackupError(f"pg_dump a échoué (code {result.returncode})")
 
         checksum = _sha256_of_file(destination_path)
+
+        # Sauvegarde des artefacts fichiers (données brutes et nettoyées)
+        artifacts_path: Path | None = None
+        artifacts_checksum: str | None = None
+        artifacts_size: int | None = None
+
+        import os
+        artifact_root_val = getattr(self._settings, "artifact_root", None) or os.getenv("ARTIFACT_ROOT", "var/artifacts")
+        artifact_dir = Path(artifact_root_val)
+        if not artifact_dir.is_absolute():
+            artifact_dir = Path.cwd() / artifact_dir
+
+        if artifact_dir.exists() and any(artifact_dir.iterdir()):
+            artifacts_archive_path = self.root / f"{backup_id}_artifacts.tar.gz"
+            import tarfile
+            with tarfile.open(artifacts_archive_path, "w:gz") as tar:
+                tar.add(str(artifact_dir), arcname="artifacts")
+            artifacts_checksum = _sha256_of_file(artifacts_archive_path)
+            artifacts_size = artifacts_archive_path.stat().st_size
+            artifacts_path = artifacts_archive_path
+
         metadata = BackupMetadata(
             backup_id=backup_id,
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -233,6 +256,8 @@ class BackupService:
             format_version=self.FORMAT_VERSION,
             checksum_sha256=checksum,
             size_bytes=destination_path.stat().st_size,
+            artifacts_checksum_sha256=artifacts_checksum,
+            artifacts_size_bytes=artifacts_size,
         )
         metadata_path = self.root / f"{backup_id}.json"
         metadata_path.write_text(
@@ -241,6 +266,8 @@ class BackupService:
         if self._s3 is not None:
             self._s3.upload(destination_path)
             self._s3.upload(metadata_path)
+            if artifacts_path is not None and artifacts_path.exists():
+                self._s3.upload(artifacts_path)
         self._apply_retention()
         return metadata
 
@@ -261,7 +288,10 @@ class BackupService:
         ]
 
     def _load_metadata(self, metadata_path: Path) -> BackupMetadata:
-        return BackupMetadata(**json.loads(metadata_path.read_text(encoding="utf-8")))
+        data = json.loads(metadata_path.read_text(encoding="utf-8"))
+        valid_fields = set(BackupMetadata.__dataclass_fields__.keys())
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return BackupMetadata(**filtered)
 
     def _resolve_backup_id(self, backup_id: str) -> tuple[Path, Path]:
         # Confine toujours l'identifiant au répertoire de sauvegarde : refuse
@@ -335,6 +365,56 @@ class BackupService:
             if result.returncode != 0:
                 raise BackupError(f"psql restore a échoué (code {result.returncode})")
 
+    def restore_artifacts(self, backup_id: str, target_dir: Path) -> dict[str, str]:
+        """Restaure les artefacts archivés vers un répertoire cible isolé.
+
+        Vérifie l'empreinte SHA256 de l'archive avant toute extraction et
+        retourne un dictionnaire {chemin_relatif: sha256} pour vérification.
+        Ne touche ni n'écrase jamais les données de production.
+        """
+        target_path = Path(target_dir)
+        target_path.mkdir(parents=True, exist_ok=True)
+        safe_id = Path(backup_id).name
+        if safe_id != backup_id or ".." in backup_id or not backup_id:
+            raise BackupError("Identifiant de sauvegarde invalide.")
+
+        metadata_path = self.root / f"{safe_id}.json"
+        if not metadata_path.exists() and self._s3 is not None:
+            if self._s3.exists(f"{safe_id}.json"):
+                self._s3.download(f"{safe_id}.json", metadata_path)
+        if not metadata_path.exists():
+            raise BackupError(f"Métadonnées introuvables : {backup_id}")
+
+        metadata = self._load_metadata(metadata_path)
+        archive_name = f"{safe_id}_artifacts.tar.gz"
+        archive_path = self.root / archive_name
+        if not archive_path.exists() and self._s3 is not None:
+            if self._s3.exists(archive_name):
+                self._s3.download(archive_name, archive_path)
+        if not archive_path.exists():
+            raise BackupError(f"Archive d'artefacts introuvable pour la sauvegarde {backup_id}")
+
+        if metadata.artifacts_checksum_sha256 is not None:
+            actual_checksum = _sha256_of_file(archive_path)
+            if actual_checksum != metadata.artifacts_checksum_sha256:
+                raise CorruptBackupError(
+                    f"Somme de contrôle invalide pour les artefacts {backup_id}."
+                )
+
+        import tarfile
+        extracted_manifest: dict[str, str] = {}
+        with tarfile.open(archive_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                resolved = (target_path / member.name).resolve()
+                if not str(resolved).startswith(str(target_path.resolve())):
+                    raise BackupError(f"Traversée de chemin interdite : {member.name}")
+            tar.extractall(path=str(target_path))
+            for member in tar.getmembers():
+                if member.isfile():
+                    file_path = target_path / member.name
+                    extracted_manifest[member.name] = _sha256_of_file(file_path)
+        return extracted_manifest
+
     def _apply_retention(self) -> None:
         cutoff = datetime.now(timezone.utc).timestamp() - (
             self._settings.backup_retention_days * 86400
@@ -353,7 +433,7 @@ class BackupService:
                     if meta_local.stat().st_mtime < cutoff:
                         candidates.add(stem)
         for backup_id in candidates:
-            for suffix in (".db", ".sql", ".json"):
+            for suffix in (".db", ".sql", ".json", "_artifacts.tar.gz"):
                 name = f"{backup_id}{suffix}"
                 (self.root / name).unlink(missing_ok=True)
                 if self._s3 is not None and self._s3.exists(name):
