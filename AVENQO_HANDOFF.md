@@ -1,68 +1,100 @@
-# AVENQO — Point de Reprise Technique (Handoff)
+﻿# AVENQO — Point de Reprise Technique (Handoff)
 
-**Date** : 2026-09-19  
+**Date** : 2026-09-20  
 **Branche** : `main`  
-**Dernier commit déployé** : `020dd84` — *docs: add AVENQO_HANDOFF.md point de reprise* (inclut `ea2f4fc` *fix(retail): support plural entities and Shopify variants in retail endpoints and register Shopify connector*)  
-**Changements non commités** : Aucun (`git status` propre).
+**Environnement actif** : Production (`api.avenqo.ca` / `avenqo.ca`)
 
 ---
 
-## 1. État Final des Déploiements
+## 1. Conservation des Fichiers & Stockage Persistant
 
-| Plateforme / Service | Environnement | Statut Déploiement | Commit / Identifiant Déployé | Santé API |
-|---|---|:---:|---|:---:|
-| **Railway** (`alert-tenderness` / `Avenqo-Platform-`) | **production** | **SUCCESS** | `020dd84` (ID: `c5c9da98-6aa4-49d7-b5b5-42d18f9682b5`) | HTTP 200 `healthy` |
-| **Railway** (`alert-tenderness` / `Avenqo-Platform-`) | **sandbox** | **SUCCESS** | Working tree `020dd84` (ID: `aa345d6a-5ddb-4d00-bcd0-c3af5414848c`) | HTTP 200 `healthy` |
-| **Vercel** (`paulmircea15-9488s-projects` / `web`) | **production** | **READY** | `dpl_4gjuFB35669jETE9miYH1BPVqbDi` (`https://avenqo.ca`) | HTTP 200 `healthy` |
-| **Railway** (`Avenqo Woo Test` / `wordpress`) | **production** | **SUCCESS** | `https://wordpress-production-7219.up.railway.app` | HTTP 200 `wc/v3` |
+### 1.1 Cause racine vérifiée de la perte des fichiers
+- En environnement **sandbox**, un volume (`avenqo-platform--volume`) était attaché à `/data/artifacts` avec `ARTIFACT_ROOT=/data/artifacts`.
+- En environnement **production**, le service Railway `Avenqo-Platform-` n'avait **aucun volume attaché** (`volumes: []`).
+- La variable `ARTIFACT_ROOT` n'était pas définie en production, ce qui faisait basculer le code sur le chemin par défaut `var/artifacts`.
+- Les fichiers bruts et nettoyés étaient enregistrés directement sur le système de fichiers **éphémère** du conteneur Docker. À chaque nouveau déploiement ou redémarrage du conteneur, l'ensemble des fichiers était irrémédiablement effacé.
 
----
-
-## 2. Données et Affichage Retail Vérifiés
-
-Sur l'environnement connecté de test (`Produits_Ero` / `avenqo-platform-sandbox.up.railway.app`) :
-
-- **Catalogue unifié** : **18 produits** au total exposés dans `/api/v1/retail/products` et `/api/v1/retail/inventory`.
-- **Produits Shopify** : **17 produits** importés avec leurs variantes, devises (USD) et stocks réels, notamment :
-  - `The 3p Fulfilled Snowboard` (SKU : `sku-hosted-1`, Prix : 2629.95 USD, Stock : **15**, Provider : `shopify`).
-  - `The Multi-managed Snowboard` (SKU : `sku-managed-1`, Prix : 629.95 USD, Stock : **100**, Provider : `shopify`).
-  - `The Inventory Not Tracked Snowboard` (SKU : `sku-untracked-1`, Prix : 949.95 USD, Stock : **0**, Provider : `shopify`).
-  - `The Complete Snowboard` (Prix : 699.95 USD, Stock : **49**, Provider : `shopify`).
-- **Produit WooCommerce** :
-  - `Avenqo Headphones X` (ID : 14, Prix : 245.0, Stock : **45**, Provider : `woocommerce`).
-- **Persistance après actualisation** : Vérifiée sur 3 requêtes consécutives espacées de 2 secondes. Les 18 items, le stock 45 de `Avenqo Headphones X` et les stocks Shopify demeurent strictement identiques sans perte ni duplication (0 doublon).
+### 1.2 Correctifs de stockage appliqués en Production
+1. **Création et montage du volume persistant Railway** :
+   - Nom : `avenqo-platform--volume-nU6W`
+   - ID : `bb60eade-4548-48d0-a8f6-0e7eeb238c6e`
+   - Service : `Avenqo-Platform-` (Production)
+   - Point de montage conteneur : `/data/artifacts`
+   - Taille : 5 000 Mo (extensible)
+2. **Configuration de la variable d'environnement** :
+   - `ARTIFACT_ROOT=/data/artifacts` définie sur le service production Railway.
+3. **Permissions au démarrage** :
+   - `backend/docker-entrypoint.sh` valide automatiquement l'appartenance `avenqo:avenqo` et les permissions `2770` sur `$ARTIFACT_ROOT` avant le passage à l'utilisateur applicatif non-privilégié.
 
 ---
 
-## 3. Précision sur les Comptes Courriel Utilisés
+## 2. Dataset Orphelin & Fichiers Manquants
 
-Pour éliminer toute ambiguïté sur les adresses relevées :
-1. `paulmircea15@gmail.com` : Utilisé exclusivement lors du test initial de transport SMTP direct vers Gmail pour valider la connectivité TLS/port 587.
-2. `gauffy95@gmail.com` : Compte propriétaire officiel de l'entreprise `Produits_Ero` en base de données. Ce compte possède déjà son champ `email_verified_at` renseigné (déjà vérifié), ce qui empêche le déclenchement d'un nouveau jeton de vérification par l'API sans le réinitialiser.
-3. `ciomir@gmail.com` : Compte utilisateur existant en base dont l'email n'était pas encore vérifié (`email_verified_at: null`), utilisé pour valider l'appel réel `POST /api/v1/auth/resend-verification`. Le jeton `EMAIL_VERIFICATION` a été créé en base avec une URL pointant vers `https://avenqo.ca/verify-email`. Aucun courriel n'a été ou ne sera envoyé vers d'autres adresses.
+### 2.1 Traitement du dataset orphelin (Avenqo_Plan_de_Montage_Complet.xlsx)
+- **Recherche de copie autorisée** :
+  - Sauvegardes S3 (`avenqo-backups-u7bgklgz2`) : contiennent uniquement les dumps SQL PostgreSQL quotidiens de 07:00 UTC, aucun artefact fichier.
+  - Stockage local de l'espace de travail : Le fichier source original a été retrouvé sur `C:\Users\paulm\OneDrive\Desktop\Avenqo\Avenqo_Plan_de_Montage_Complet.xlsx`.
+  - **Vérification de l'intégrité** : Le hash SHA256 calculé (`f37ddf4916425681beec92863e9df1cd81cdf78db7de0479a1af65345fadfce0`) correspond **exactement** au checksum enregistré dans la table `dataset_versions` (version 18, 8 lignes, 10 colonnes).
+- **Restauration** :
+  - Le fichier a été téléversé directement sur le volume persistant de production à son emplacement canonique : `/company_datasets/9c97cb94-e9f9-46fb-afd4-8a1d21019cff/datasets/7d757146-97b7-43e5-8e84-f1aa0ab5afcd/v1/raw/Avenqo_Plan_de_Montage_Complet.xlsx`.
+  - La base de données PostgreSQL de production a été mise à jour pour pointer vers ce chemin persistant.
+
+### 2.2 Transparence et gestion des datasets sans source physique
+- Aucun dataset n'est masqué silencieusement en cas de fichier manquant.
+- Le schéma `DatasetResponse` intègre désormais explicitement `source_missing: bool` et `source_missing_message: str | None`.
+- La route `GET /api/v1/datasets` renvoie les entrées dégradées avec `pipeline_status: "source_missing"`.
+- **Interface UI (`connections-view.tsx`)** :
+  - Statut explicite affiché dans le tableau : badge ambre **« Fichier source indisponible »**.
+  - Action directe : bouton **« Réimporter »** permettant de relancer immédiatement l'import du fichier.
+  - Modale d'aperçu : bandeau d'alerte informant que le fichier doit être réimporté pour relancer les prédictions et l'analyse.
 
 ---
 
-## 4. Parcours Non Validés (En attente d'action utilisateur)
+## 3. Connexions Boutiques en Production
 
-Ces deux parcours demeurent **NON VALIDÉS** et requièrent une intervention manuelle externe :
+### 3.1 Clés de chiffrement et endpoints connecteurs configurés
+Pour que le formulaire de connexion WooCommerce et Shopify fonctionne en production, les variables d'environnement requises ont été injectées sur Railway Production :
+- `CONNECTOR_ENCRYPTION_KEYS=03rZtfwgwKsrVQ3vzJ3srsLtiJHrwqrfW2z7ojGiV2E=` (chiffrement AES des Consumer Keys / Secrets des clients)
+- `WOOCOMMERCE_CALLBACK_URI=https://api.avenqo.ca/api/v1/connectors/woocommerce/callback`
+- `WOOCOMMERCE_WEBHOOK_URI=https://api.avenqo.ca/api/v1/connectors/woocommerce/webhook`
+- `WOOCOMMERCE_APP_NAME=Avenqo`
+- `WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST=false`
+- `SHOPIFY_*` (Client ID, Secret, Redirect URI, Webhook URI, Scopes)
 
-1. **Ouverture du lien reçu par courriel et connexion réussie (NON VALIDÉ)** :
-   - L'envoi via SMTP applicatif a réussi et le lien a été généré vers `https://avenqo.ca/verify-email?token=...`.
-   - **Blocage restant** : L'accès à la boîte de réception personnelle externe de l'utilisateur (`ciomir@gmail.com`) et le clic sur le lien pour finaliser la vérification ne peuvent pas être exécutés par l'agent.
-
-2. **Paiement Stripe test, réception du webhook et possibilité d'activer le quatrième module (NON VALIDÉ)** :
-   - La session Checkout de test pour le plan Professional (49 USD/mois) a été créée côté serveur et rattachée au client Stripe.
-   - **Blocage restant** : La saisie des coordonnées de carte de test (`4242...`) dans l'iframe sécurisée Stripe Checkout est bloquée en mode automatisé headless et doit être complétée par l'utilisateur. Tant que le paiement n'est pas finalisé, le webhook `customer.subscription.created` n'est pas émis par Stripe et le 4e module ne bascule pas en mode actif.
+### 3.2 Badges et formulaires dans l'interface (`connections-view.tsx`)
+Les cartes de connexion reflètent fidèlement l'état réel :
+- **Etsy** : badge **« Bientôt disponible »**, bouton désactivé (l'API Etsy n'étant pas implémentée côté backend, aucun faux espoir n'est affiché).
+- **Shopify & WooCommerce** :
+  - **Non connecté** (badge gris neutre) lorsque l'organisation n'a pas encore lié de boutique, avec mention « Disponible ».
+  - **Synchronisation** (badge bleu animé avec spinner) dès qu'un cycle d'extraction est en cours.
+  - **Erreur** (badge rouge avec icône d'alerte) si les clés API sont rejetées ou expirées.
+  - **Connecté / Disponible** (badge vert avec coche) lorsque la boutique est activement liée.
+- **Formulaire WooCommerce** :
+  - Accessible via le bouton « Connecter » → saisie de l'URL, Consumer Key (`ck_...`) et Consumer Secret (`cs_...`).
+  - La validation envoie les données à `POST /api/v1/connectors/woocommerce/manual`.
+  - Le backend chiffre les clés, enregistre la connexion, et planifie **immédiatement la synchronisation initiale en arrière-plan** (`runner.run_reserved`).
 
 ---
 
-## 5. Prochaines Actions à la Reprise
-- Une fois le lien de courriel cliqué par l'utilisateur, vérifier la validation du compte :
-  ```bash
-  railway run --service Postgres --environment production python -c "from sqlalchemy import create_engine, text; import os; c = create_engine(os.environ['DATABASE_PUBLIC_URL']).connect(); print(c.execute(text(\"SELECT email, email_verified_at FROM users WHERE email='ciomir@gmail.com'\")).fetchall())"
-  ```
-- Une fois le paiement test Stripe finalisé par l'utilisateur sur la page Stripe, vérifier le plan et les modules :
-  ```bash
-  railway run --service Postgres --environment sandbox python -c "from sqlalchemy import create_engine, text; import os; c = create_engine(os.environ['DATABASE_PUBLIC_URL']).connect(); print(c.execute(text(\"SELECT plan_code, status, stripe_subscription_id FROM billing_accounts WHERE company_id='9c97cb94-e9f9-46fb-afd4-8a1d21019cff'\")).fetchall())"
-  ```
+## 4. Blocages Existants Maintenus (Vérifications Externes)
+
+### 4.1 Vérification email — NON VALIDÉ (Action utilisateur externe requise)
+- **Compte** : `ciomir@gmail.com`
+- **Jeton** : généré via le flux applicatif normal `resend_verification()`.
+- **Lien** : pointe vers `https://avenqo.ca/verify-email?token=...` (Production).
+- **Statut** : En attente de l'ouverture du courriel par l'utilisateur et du clic sur le lien de validation.
+
+### 4.2 Parcours Stripe test — NON VALIDÉ (Action utilisateur externe requise)
+- **Compte propriétaire (`gauffy95@gmail.com`)** : est **Enterprise** en production (`cus_produits_ero_prod`). Ne **JAMAIS** modifier ce compte pour des tests de paiement.
+- **Compte de test** : `ciomir@gmail.com` (disponible en **sandbox** avec BillingAccount `bcbf5e02-ad99-4623-a6f4-87dfe30f036b` et `sk_test_...`).
+- **Statut** : Le test Demo → Professional doit être initié par l'utilisateur avec la carte de test standard Stripe (`4242...`) dans l'environnement de test uniquement.
+
+---
+
+## 5. État des Vérifications Visuelles (Quota Navigateur Épuisé)
+
+En raison de l'épuisement du quota de sessions automatisées du navigateur, les vérifications visuelles suivantes **ne sont pas déclarées réussies** et devront être confirmées visuellement par l'utilisateur :
+1. L'affichage du badge « Fichier source indisponible » et du bouton « Réimporter » sur les datasets orphelins dans `https://avenqo.ca/connections`.
+2. L'affichage des badges « Non connecté » sur WooCommerce et Shopify, et « Bientôt disponible » sur Etsy.
+3. L'ouverture de la modale WooCommerce et la soumission du formulaire de connexion.
+4. L'affichage des produits dans le module Retail AI après connexion de la boutique.

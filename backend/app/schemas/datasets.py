@@ -32,6 +32,8 @@ class DatasetResponse(BaseModel):
     pipeline_status: str
     training_status: str | None = None
     training_retryable: bool = False
+    source_missing: bool = False
+    source_missing_message: str | None = None
     uploaded_at: datetime
     columns: list[FieldProfileResponse]
     distributions: dict[str, dict[str, int]]

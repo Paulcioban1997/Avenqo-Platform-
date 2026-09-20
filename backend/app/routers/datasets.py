@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
+from backend.app.config.settings import get_settings
 from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.datasets import (
@@ -83,24 +84,40 @@ def _current_source_missing(dataset) -> bool:
     "ready" or as a semantic "attention_required" mapping issue — it is a
     distinct, honest, reprocessing-required situation.
     """
-    current_version = next((item for item in dataset.versions if item.is_current), None)
-    if current_version is None or not current_version.artifact_path:
+    current_version = next((item for item in dataset.versions if getattr(item, "is_current", False)), None)
+    if current_version is None or not getattr(current_version, "artifact_path", None):
         return False
-    expected_rows = int(current_version.row_count or dataset.rows_count or 0)
+    expected_rows = int(getattr(current_version, "row_count", None) or getattr(dataset, "rows_count", 0) or 0)
     if expected_rows <= 0:
         return False
     # Commerce-backed datasets have NormalizedCommerceRecord in PostgreSQL as durable truth
-    name = (dataset.name or "").lower()
+    name = (getattr(dataset, "name", "") or "").lower()
     if any(provider in name for provider in ("shopify", "woocommerce", "etsy")):
         return False
     path = Path(current_version.artifact_path)
     if path.is_file():
         return False
     normalized_str = str(current_version.artifact_path).replace("\\", "/")
+    settings = get_settings()
+    bases = [
+        Path(settings.artifact_root) / "company_datasets",
+        Path("var/artifacts/company_datasets"),
+        Path("artifacts/company_datasets"),
+        Path("/data/artifacts/company_datasets"),
+    ]
     if "company_datasets/" in normalized_str:
         rel = normalized_str.split("company_datasets/", 1)[1]
-        for base in [Path("var/artifacts/company_datasets"), Path("artifacts/company_datasets")]:
+        for base in bases:
             if (base / rel).is_file():
+                return False
+    company_id = getattr(dataset, "company_id", None)
+    dataset_id = getattr(dataset, "id", None)
+    if company_id and dataset_id:
+        fname = getattr(current_version, "file_name", None) or Path(current_version.artifact_path).name
+        v_num = getattr(current_version, "version_number", 1)
+        v_rel = f"{company_id}/datasets/{dataset_id}/v{v_num}/raw/{fname}"
+        for base in bases:
+            if (base / v_rel).is_file():
                 return False
     return True
 
@@ -109,7 +126,7 @@ def _pipeline_status(dataset) -> str:
     if dataset.status in {DatasetStatus.FAILED, DatasetStatus.INVALID, DatasetStatus.REJECTED}:
         return "failed"
     if dataset.status == DatasetStatus.MAPPING_REQUIRED:
-        return "ready"
+        return "attention_required"
     if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
         return "analyzing"
     if _current_source_missing(dataset):
@@ -143,11 +160,31 @@ def dataset_response(dataset) -> DatasetResponse:
     profile = dataset.profile
     quality = dataset.quality_report
     training_status = _training_status(dataset)
-    
-    # Handle case where profile or quality_report might be None
+    source_missing = _current_source_missing(dataset)
+
+    if quality is None:
+        quality_data = {"missing_values": 0, "duplicates": 0, "quality_score": 0.0}
+    else:
+        quality_data = {
+            "missing_values": quality.missing_values,
+            "duplicates": quality.duplicates,
+            "quality_score": quality.quality_score,
+        }
+
+    # Determine source_missing_message — shown in UI as an explicit warning
+    source_missing_message: str | None = None
+    if source_missing:
+        source_missing_message = (
+            "Fichier source indisponible. Le fichier original a été perdu lors d'un redéploiement "
+            "(stockage éphémère). Veuillez réimporter ce dataset pour restaurer l'analyse."
+        )
+        logger.warning(
+            "Dataset %s (%r) has a missing source artifact — reported to UI for re-import",
+            dataset.id, dataset.name,
+        )
+
     if profile is None:
-        logger.warning(f"Dataset {dataset.id} has no profile")
-        # Return minimal response without profile data
+        logger.warning("Dataset %s has no profile", dataset.id)
         return DatasetResponse(
             id=dataset.id,
             name=dataset.name,
@@ -157,32 +194,20 @@ def dataset_response(dataset) -> DatasetResponse:
             columns_count=dataset.columns_count,
             numerical_columns=0,
             categorical_columns=0,
-            missing_values=0,
-            duplicates=0,
-            quality_score=0.0,
+            missing_values=quality_data["missing_values"],
+            duplicates=quality_data["duplicates"],
+            quality_score=quality_data["quality_score"],
             status=dataset.status,
-            pipeline_status=_pipeline_status(dataset),
+            pipeline_status="source_missing" if source_missing else _pipeline_status(dataset),
             training_status=training_status,
-            training_retryable=training_status == "training_failed",
+            training_retryable=False,
+            source_missing=source_missing,
+            source_missing_message=source_missing_message,
             uploaded_at=dataset.uploaded_at,
             columns=[],
             distributions={},
         )
-    
-    if quality is None:
-        logger.warning(f"Dataset {dataset.id} has no quality report")
-        quality_data = {
-            "missing_values": 0,
-            "duplicates": 0,
-            "quality_score": 0.0,
-        }
-    else:
-        quality_data = {
-            "missing_values": quality.missing_values,
-            "duplicates": quality.duplicates,
-            "quality_score": quality.quality_score,
-        }
-    
+
     return DatasetResponse(
         id=dataset.id,
         name=dataset.name,
@@ -196,9 +221,11 @@ def dataset_response(dataset) -> DatasetResponse:
         duplicates=quality_data["duplicates"],
         quality_score=quality_data["quality_score"],
         status=dataset.status,
-        pipeline_status=_pipeline_status(dataset),
+        pipeline_status="source_missing" if source_missing else _pipeline_status(dataset),
         training_status=training_status,
-        training_retryable=training_status == "training_failed",
+        training_retryable=training_status == "training_failed" and not source_missing,
+        source_missing=source_missing,
+        source_missing_message=source_missing_message,
         uploaded_at=dataset.uploaded_at,
         columns=profile.schema_json["columns"],
         distributions=profile.distribution_json,
@@ -491,16 +518,48 @@ def list_datasets(
 ) -> list[DatasetResponse]:
     try:
         datasets = service.list(tenant)
-        logger.info(f"List datasets: found {len(datasets)} datasets for tenant {tenant.company_id}")
+        logger.info("List datasets: found %d datasets for tenant %s", len(datasets), tenant.company_id)
     except Exception as exc:
-        logger.exception(f"Error listing datasets: {exc}")
+        logger.exception("Error listing datasets: %s", exc)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
     results = []
     for dataset in datasets:
         try:
             results.append(dataset_response(dataset))
         except Exception as exc:
-            logger.warning(f"Skipping dataset {dataset.id} ({dataset.name!r}) due to serialization error: {exc}")
+            # Last-resort fallback: a partially-broken dataset must still appear
+            # in the list so the user can see it and take action (re-import).
+            logger.exception(
+                "dataset_response failed for %s (%r): %s — returning minimal stub",
+                dataset.id, dataset.name, exc,
+            )
+            try:
+                results.append(DatasetResponse(
+                    id=dataset.id,
+                    name=dataset.name,
+                    type=getattr(dataset, "type", "unknown"),
+                    module_code="unknown",
+                    rows_count=getattr(dataset, "rows_count", 0),
+                    columns_count=getattr(dataset, "columns_count", 0),
+                    numerical_columns=0,
+                    categorical_columns=0,
+                    missing_values=0,
+                    duplicates=0,
+                    quality_score=0.0,
+                    status=getattr(dataset, "status", DatasetStatus.FAILED),
+                    pipeline_status="source_missing",
+                    training_status=None,
+                    training_retryable=False,
+                    source_missing=True,
+                    source_missing_message=(
+                        "Fichier source indisponible. Veuillez réimporter ce dataset."
+                    ),
+                    uploaded_at=getattr(dataset, "uploaded_at", None),
+                    columns=[],
+                    distributions={},
+                ))
+            except Exception:
+                logger.exception("Could not build stub for dataset %s — omitting", dataset.id)
     return results
 
 

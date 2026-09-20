@@ -40,6 +40,8 @@ interface DatasetItem {
   duplicates?: number;
   status: string;
   pipeline_status?: string;
+  source_missing?: boolean;
+  source_missing_message?: string | null;
   uploaded_at: string;
   columns?: Array<{ name: string; type?: string }>;
 }
@@ -455,79 +457,157 @@ export function ConnectionsView() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Shopify */}
-          <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Shopify</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  Prêt
-                </span>
+          {(() => {
+            const conn = connections.find((c) => c.provider.toLowerCase() === "shopify");
+            const isSyncing = conn?.status === "syncing" || actionLoading;
+            const isError = conn && (conn.status === "error" || conn.status === "failed");
+            const isConnected = conn && (conn.is_active || conn.status === "active" || conn.status === "completed");
+
+            return (
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Shopify</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Disponible</span>
+                    </div>
+                    {isSyncing ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
+                        <RefreshCw size={10} className="animate-spin" />
+                        <span>Synchronisation</span>
+                      </span>
+                    ) : isError ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                        <AlertTriangle size={10} />
+                        <span>Erreur</span>
+                      </span>
+                    ) : isConnected ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <CheckCircle2 size={10} />
+                        <span>Connecté</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
+                        Non connecté
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
+                    Commandes, produits, inventaire et clients synchronisés via OAuth 2.0 officiel.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">OAuth / REST</span>
+                  {isConnected ? (
+                    <button
+                      onClick={() => handleTriggerSync(conn.id)}
+                      disabled={actionLoading}
+                      className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-white/[0.08] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      Synchroniser
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const shop = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
+                        if (shop) {
+                          window.location.href = `/api/v1/connectors/shopify/authorize?shop=${encodeURIComponent(shop)}`;
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    >
+                      Connecter
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                Commandes, produits, inventaire et clients synchronisés via OAuth 2.0 officiel.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">OAuth / REST</span>
-              <button
-                onClick={() => {
-                  const shop = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
-                  if (shop) {
-                    window.location.href = `/api/v1/connectors/shopify/authorize?shop=${encodeURIComponent(shop)}`;
-                  }
-                }}
-                className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                Connecter
-              </button>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* WooCommerce */}
-          <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">WooCommerce</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  Prêt
-                </span>
+          {(() => {
+            const conn = connections.find((c) => c.provider.toLowerCase() === "woocommerce");
+            const isSyncing = conn?.status === "syncing" || actionLoading;
+            const isError = conn && (conn.status === "error" || conn.status === "failed");
+            const isConnected = conn && (conn.is_active || conn.status === "active" || conn.status === "completed");
+
+            return (
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">WooCommerce</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Disponible</span>
+                    </div>
+                    {isSyncing ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
+                        <RefreshCw size={10} className="animate-spin" />
+                        <span>Synchronisation</span>
+                      </span>
+                    ) : isError ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                        <AlertTriangle size={10} />
+                        <span>Erreur</span>
+                      </span>
+                    ) : isConnected ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <CheckCircle2 size={10} />
+                        <span>Connecté</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
+                        Non connecté
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
+                    Connexion directe par clés API REST sécurisées avec synchronisation bidirectionnelle.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">API REST v3</span>
+                  {isConnected ? (
+                    <button
+                      onClick={() => handleTriggerSync(conn.id)}
+                      disabled={actionLoading}
+                      className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-white/[0.08] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      Synchroniser
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setIsWooModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    >
+                      Connecter
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                Connexion directe par clés API REST sécurisées avec synchronisation bidirectionnelle.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">API REST v3</span>
-              <button
-                onClick={() => setIsWooModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                Connecter
-              </button>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Etsy */}
-          <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-[#111D3D]/60 border border-slate-200/50 dark:border-white/[0.05] flex flex-col justify-between opacity-90">
             <div>
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Etsy</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  Prêt
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+                  Bientôt disponible
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                Marketplace Etsy via Open API v3 officielle (listings et transactions).
+                Marketplace Etsy (en cours de certification officielle pour une prochaine mise à jour).
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
               <span className="text-[11px] text-slate-400">Open API v3</span>
-              <Link
-                href="/integrations"
-                className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-white/[0.1] hover:bg-slate-300 dark:hover:bg-white/[0.15] text-slate-800 dark:text-white text-xs font-semibold transition-colors"
+              <button
+                disabled
+                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
               >
-                Gérer
-              </Link>
+                Bientôt disponible
+              </button>
             </div>
           </div>
 
@@ -749,27 +829,60 @@ export function ConnectionsView() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 size={12} />
-                        <span>Prêt</span>
-                      </span>
+                      {ds.source_missing || ds.pipeline_status === "source_missing" ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 text-[10px] font-bold"
+                          title={ds.source_missing_message || "Fichier source indisponible"}
+                        >
+                          <AlertTriangle size={12} className="shrink-0 text-amber-500" />
+                          <span>Fichier source indisponible</span>
+                        </span>
+                      ) : ds.pipeline_status === "analyzing" || ds.status === "analyzing" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                          <RefreshCw size={12} className="animate-spin" />
+                          <span>Analyse...</span>
+                        </span>
+                      ) : ds.status === "failed" || ds.pipeline_status === "failed" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                          <AlertCircle size={12} />
+                          <span>Échec</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          <CheckCircle2 size={12} />
+                          <span>Prêt</span>
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => setPreviewDataset(ds)}
-                          title="Aperçu des colonnes et données"
-                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-500 dark:text-slate-400 cursor-pointer"
-                        >
-                          <Eye size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDownloadDataset(ds, "csv")}
-                          title="Télécharger les données nettoyées (CSV)"
-                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-[#0076FF] cursor-pointer"
-                        >
-                          <Download size={14} />
-                        </button>
+                        {ds.source_missing || ds.pipeline_status === "source_missing" ? (
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Réimporter ce fichier pour restaurer l'analyse"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-[11px] font-semibold transition-colors cursor-pointer"
+                          >
+                            <UploadCloud size={12} />
+                            <span>Réimporter</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setPreviewDataset(ds)}
+                              title="Aperçu des colonnes et données"
+                              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-500 dark:text-slate-400 cursor-pointer"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadDataset(ds, "csv")}
+                              title="Télécharger les données nettoyées (CSV)"
+                              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-[#0076FF] cursor-pointer"
+                            >
+                              <Download size={14} />
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => setDeleteModalDataset(ds)}
                           title="Supprimer ce jeu de données"
@@ -840,6 +953,18 @@ export function ConnectionsView() {
             </div>
 
             <div className="space-y-3">
+              {(previewDataset.source_missing || previewDataset.pipeline_status === "source_missing") && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                  <AlertTriangle size={16} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                  <div>
+                    <div className="font-bold">Fichier source indisponible</div>
+                    <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                      {previewDataset.source_missing_message ||
+                        "Le fichier original n'est plus accessible sur le stockage. Utilisez le bouton Réimporter pour recharger ce fichier et relancer l'analyse."}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Colonnes détectées et typées par l'IA :
               </div>

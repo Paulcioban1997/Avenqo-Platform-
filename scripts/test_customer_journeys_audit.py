@@ -1,7 +1,7 @@
 import io
 import json
 import sys
-if hasattr(sys.stdout, "reconfigure"):
+if isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout.reconfigure(encoding="utf-8")
 import uuid
 import time
@@ -27,7 +27,7 @@ from backend.app.core.security import generate_token, hash_token
 FRONTEND_URL = "http://127.0.0.1:3000"
 BACKEND_URL = "http://127.0.0.1:8000"
 
-def post_json(url: str, payload: dict, token: str = None) -> tuple[int, dict, dict]:
+def post_json(url: str, payload: dict, token: str | None = None) -> tuple[int, dict, dict]:
     headers = {"Content-Type": "application/json", "Accept": "application/json", "Connection": "close"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -50,7 +50,7 @@ def post_json(url: str, payload: dict, token: str = None) -> tuple[int, dict, di
             parsed = {"raw": body}
         return e.code, parsed, dict(e.headers)
 
-def get_json(url: str, token: str = None) -> tuple[int, dict, dict]:
+def get_json(url: str, token: str | None = None) -> tuple[int, dict, dict]:
     headers = {"Accept": "application/json", "Connection": "close"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -68,7 +68,7 @@ def get_json(url: str, token: str = None) -> tuple[int, dict, dict]:
             parsed = {"raw": body}
         return e.code, parsed, dict(e.headers)
 
-def delete_req(url: str, token: str = None) -> tuple[int, dict, dict]:
+def delete_req(url: str, token: str | None = None) -> tuple[int, dict, dict]:
     headers = {"Accept": "application/json", "Connection": "close"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -86,7 +86,7 @@ def delete_req(url: str, token: str = None) -> tuple[int, dict, dict]:
             parsed = {"raw": body}
         return e.code, parsed, dict(e.headers)
 
-def get_bytes(url: str, token: str = None) -> tuple[int, bytes, dict]:
+def get_bytes(url: str, token: str | None = None) -> tuple[int, bytes, dict]:
     headers = {"Connection": "close"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -180,6 +180,7 @@ def main():
     # Generate activation token
     with SessionLocal() as db:
         user_a = db.scalar(select(User).where(User.email == email_a))
+        assert user_a is not None, f"User {email_a} not found in DB"
         raw_token_a = generate_token()
         db.add(AccountToken(
             user_id=user_a.id,
@@ -255,7 +256,9 @@ def main():
     print("\n--- [4] Stripe Webhook Upgrade (Demo -> Professional) ---")
     with SessionLocal() as db:
         user_a = db.scalar(select(User).where(User.email == email_a))
+        assert user_a is not None, f"User {email_a} not found in DB"
         acct_a = db.scalar(select(BillingAccount).where(BillingAccount.company_id == user_a.company_id))
+        assert acct_a is not None, f"BillingAccount not found for company {user_a.company_id}"
         cust_id = acct_a.stripe_customer_id or f"cus_test_{uid_a}"
         sub_id = f"sub_test_{uid_a}"
         acct_a.stripe_customer_id = cust_id
@@ -331,6 +334,7 @@ def main():
     invoice_id = uuid.uuid4()
     with SessionLocal() as db:
         user_a = db.scalar(select(User).where(User.email == email_a))
+        assert user_a is not None, f"User {email_a} not found in DB"
         inv = BillingInvoice(
             id=invoice_id,
             company_id=user_a.company_id,
@@ -375,6 +379,7 @@ def main():
     post_json(f"{FRONTEND_URL}/api/auth/register", reg_b)
     with SessionLocal() as db:
         user_b = db.scalar(select(User).where(User.email == email_b))
+        assert user_b is not None, f"User {email_b} not found in DB"
         raw_token_b = generate_token()
         db.add(AccountToken(
             user_id=user_b.id,
