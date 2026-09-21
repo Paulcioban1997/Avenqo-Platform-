@@ -1,0 +1,31 @@
+name: Membership migration repair
+on:
+  push:
+    branches: [codex/avenqo-critical-repair]
+permissions:
+  contents: read
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: migration-test-only
+          POSTGRES_DB: repair_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt
+      - run: python scripts/verify_membership_postgres.py
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql+psycopg2://postgres:migration-test-only@localhost:5432/repair_test
+      - run: python -m pytest tests/backend/test_membership_migration.py tests/backend/test_master_security_and_billing.py -q
+        env:
+          ENVIRONMENT: test
