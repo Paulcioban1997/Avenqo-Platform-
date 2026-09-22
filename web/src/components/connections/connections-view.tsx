@@ -76,6 +76,7 @@ export function ConnectionsView() {
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [shopifyLoading, setShopifyLoading] = useState(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
 
@@ -180,12 +181,16 @@ export function ConnectionsView() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.detail || `Erreur lors de l'import de ${file.name}`);
+          if (res.status === 402) {
+            throw new Error("Import bloqué : aucun abonnement actif ou essai valide n'est reconnu pour cette entreprise. Vérifiez Facturation & Plans.");
+          }
+          const detail = typeof errData.detail === "string" ? errData.detail : errData.error?.message;
+          throw new Error(detail || `Erreur lors de l'import de ${file.name} (HTTP ${res.status}).`);
         }
       }
 
       setUploadProgress(100);
-      setAlertSuccess(`${fileList.length} fichier(s) importé(s) et nettoyé(s) automatiquement par l'IA.`);
+      setAlertSuccess(`${fileList.length} fichier(s) reçu(s). Consultez leur statut pour suivre le traitement.`);
       setTimeout(() => setUploadProgress(null), 1500);
       setTimeout(() => setAlertSuccess(null), 5000);
       loadData();
@@ -470,15 +475,39 @@ export function ConnectionsView() {
             <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
               <span className="text-[11px] text-slate-400">OAuth / REST</span>
               <button
-                onClick={() => {
-                  const shop = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
-                  if (shop) {
-                    window.location.href = `/api/v1/connectors/shopify/authorize?shop=${encodeURIComponent(shop)}`;
+                disabled={shopifyLoading}
+                onClick={async () => {
+                  const input = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
+                  if (input === null) return;
+                  const shop = input.trim().toLowerCase();
+                  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) {
+                    setAlertError("Entrez un domaine valide se terminant par .myshopify.com, sans https:// ni chemin.");
+                    return;
+                  }
+                  setShopifyLoading(true);
+                  setAlertError(null);
+                  try {
+                    const response = await fetch("/api/v1/connectors/shopify/authorize", {
+                      method: "POST",
+                      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+                      body: JSON.stringify({ shop_domain: shop }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Connexion Shopify impossible (HTTP ${response.status}).`);
+                    const destination = new URL(data.authorization_url);
+                    if (destination.protocol !== "https:" || destination.hostname !== shop || destination.pathname !== "/admin/oauth/authorize" || destination.username || destination.password || destination.port) {
+                      throw new Error("URL d'autorisation Shopify invalide.");
+                    }
+                    window.location.assign(destination.href);
+                  } catch (error) {
+                    setAlertError(error instanceof Error ? error.message : "Connexion Shopify impossible.");
+                  } finally {
+                    setShopifyLoading(false);
                   }
                 }}
                 className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                Connecter
+                {shopifyLoading ? "Connexion..." : "Connecter"}
               </button>
             </div>
           </div>

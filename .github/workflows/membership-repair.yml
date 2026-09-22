@@ -29,3 +29,13 @@ jobs:
       - run: python -m pytest tests/backend/test_membership_migration.py tests/backend/test_master_security_and_billing.py -q
         env:
           ENVIRONMENT: test
+      - run: python -m pytest tests/backend/test_commerce_router.py tests/backend/test_commerce_connection_service.py tests/backend/test_shopify_connector.py tests/backend/test_shopify_authorization_input.py tests/backend/test_core_data_import.py -q
+        env:
+          ENVIRONMENT: test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web

@@ -272,7 +272,7 @@ class CommerceConnectionService:
                 CommerceOAuthState.provider == "shopify",
                 CommerceOAuthState.state_hash == hash_token(raw_state),
                 CommerceOAuthState.consumed_at.is_(None),
-            )
+            ).with_for_update()
         )
         now = self._now()
         if oauth_state is None or not raw_state or self._as_utc(oauth_state.expires_at) <= now:

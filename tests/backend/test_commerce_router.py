@@ -77,6 +77,7 @@ class _Connections:
             last_successful_sync=datetime.now(timezone.utc),
             sync_started_at=None,
             dataset_ids={},
+            sync_cursor={},
         )
 
     def list_connections(self, tenant):
@@ -144,6 +145,7 @@ class _WooConnections:
             last_successful_sync=None,
             sync_started_at=None,
             dataset_ids={},
+            sync_cursor={},
         )
 
     async def complete_woocommerce_authorization(self, *, raw_state, callback_payload):
@@ -523,6 +525,7 @@ def test_available_woocommerce_catalog_needs_no_internal_test_permission(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "sandbox")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "test-only-connector-catalog-secret-at-least-32-characters")
     get_settings.cache_clear()
     company_id = uuid4()
     identity = SimpleNamespace(

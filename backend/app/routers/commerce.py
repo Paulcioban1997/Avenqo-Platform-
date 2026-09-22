@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import RedirectResponse
 
 from backend.app.config.settings import get_settings
-from backend.app.connectors.shopify import ShopifyConnectorError
+from backend.app.connectors.shopify import ShopifyAuthenticationError, ShopifyConnectorError
 from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
 from backend.app.dependencies.commerce import (
@@ -614,6 +614,10 @@ async def shopify_callback(
         service.mark_setup_complete(tenant, connection.id)
         sync.reserve(tenant, connection.id)
         background_tasks.add_task(runner.run_reserved, tenant, connection.id)
+    except ShopifyAuthenticationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shopify authorization could not be verified. Reconnect the store.") from exc
+    except ShopifyConnectorError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Shopify is unavailable. Retry the connection.") from exc
     except (CommerceAuthorizationError, CommerceConnectionError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ConnectorNotRegisteredError as exc:

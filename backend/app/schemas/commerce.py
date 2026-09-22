@@ -3,7 +3,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
+import re
 
 
 class ConnectorCatalogResponse(BaseModel):
@@ -35,6 +36,14 @@ class ConnectorCatalogResponse(BaseModel):
 
 class ShopifyAuthorizationRequest(BaseModel):
     shop_domain: str = Field(min_length=1, max_length=255)
+
+    @field_validator("shop_domain")
+    @classmethod
+    def validate_shop_domain(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.myshopify\.com", value):
+            raise ValueError("A valid .myshopify.com domain is required")
+        return value
 
 
 class ShopifyManualConnectionRequest(BaseModel):
