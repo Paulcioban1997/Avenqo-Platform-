@@ -13,6 +13,7 @@ class CreditCheckoutSession:
 
 
 class BillingProvider(Protocol):
+    def retrieve_subscription(self, subscription_id: str) -> dict[str, Any]: ...
     def create_customer(self, email: str, name: str, company_id: str) -> str: ...
     def create_checkout(
         self,
@@ -42,6 +43,13 @@ class StripeGateway:
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
+
+    def retrieve_subscription(self, subscription_id: str) -> dict[str, Any]:
+        client = stripe.StripeClient(
+            self._api_key, http_client=stripe.RequestsClient(timeout=10), max_network_retries=0,
+        )
+        subscription = client.v1.subscriptions.retrieve(subscription_id)
+        return subscription.to_dict_recursive()
 
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         customer = stripe.Customer.create(
