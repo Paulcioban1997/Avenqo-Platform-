@@ -406,6 +406,7 @@ class CRMService:
         if not title:
             title = f"Rendez-vous - {client.full_name}"
 
+        raw_industry_data = data.get("industry_data")
         appointment = CRMAppointment(
             company_id=company_id,
             client_id=data["client_id"],
@@ -419,7 +420,7 @@ class CRMService:
             price=price,
             currency=data.get("currency", "CAD"),
             notes=data.get("notes"),
-            industry_data=data.get("industry_data", {}),
+            industry_data=(raw_industry_data if isinstance(raw_industry_data, dict) else {}),
         )
         self._session.add(appointment)
         self._session.flush()

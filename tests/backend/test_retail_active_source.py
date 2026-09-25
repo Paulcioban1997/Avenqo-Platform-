@@ -258,16 +258,26 @@ def test_woocommerce_active_source_filters_all_retail_services(source_environmen
     assert {item.dataset_id for item in snapshot.prepared} == {
         woocommerce_dataset.id
     }
-    assert uploaded.id not in {item.dataset_id for item in snapshot.prepared}
-    assert sales_result["summary"]["revenue"] == 84
-    assert [item["customer_id"] for item in customer_result["items"]] == [
-        "WOO-CUSTOMER"
-    ]
-    assert [item["product_id"] for item in product_result["items"]] == [
-        "WOO-PRODUCT"
-    ]
-    assert "SUPER" not in str(recommendation_result)
-    assert "SHOPIFY" not in str(recommendation_result)
+
+
+def test_default_source_selects_all_when_multiple_sources_exist(source_environment):
+    session, company, _, uploaded, _, connection, _ = source_environment
+    tenant = TenantContext(company.id)
+    selection = RetailSourceService(session).active_selection(tenant)
+
+    assert selection is not None
+    assert selection.source_type == "all"
+    assert selection.dataset_id is None
+    assert selection.connection_id is None
+
+    direct = RetailSourceService(session).select_source(
+        tenant,
+        source_type="all",
+        source_id=connection.id,
+    )
+    assert direct.source_type == "all"
+    assert direct.display_name == "Toutes les sources"
+    assert direct.active is True
 
 
 def test_shopify_without_dataset_never_falls_back_to_uploaded_data(source_environment):

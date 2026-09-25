@@ -244,6 +244,37 @@ def test_appointment_crud_and_conflict_detection(db_session):
     assert updated_app.status == "completed"
 
 
+def test_create_appointment_accepts_null_industry_data(db_session):
+    company = _create_company(db_session, "tenant-null-industry")
+    crm_svc = CRMAppService(db_session)
+
+    client = crm_svc.create_client(
+        company_id=company.id,
+        data={
+            "first_name": "Avenqo",
+            "last_name": "Test",
+            "email": "avenqo@example.com",
+        },
+    )
+
+    app, err = asyncio.run(
+        crm_svc.create_appointment(
+            company_id=company.id,
+            data={
+                "client_id": client.id,
+                "title": "Test production CRM",
+                "start_time": datetime.now(timezone.utc) + timedelta(days=2, hours=9),
+                "duration_minutes": 30,
+                "industry_data": None,
+            },
+        )
+    )
+
+    assert err is None
+    assert app is not None
+    assert app.industry_data == {}
+
+
 def test_availability_engine_open_slots(db_session):
     """Vérifie le calcul des créneaux libres sans double réservation."""
     company = _create_company(db_session, "tenant-availability")

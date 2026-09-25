@@ -107,7 +107,7 @@ AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
     # Rétrocompatibilité
     AICreditPack("demo_extra", PlanCode.BASE, credits=6_500, price_usd=10),
     AICreditPack("professional_6500", PlanCode.PROFESSIONAL, credits=6_500, price_usd=10),
-    AICreditPack("professional_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=35),
+    AICreditPack("professional_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=25),
 )
 AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
 # Preserve delayed Checkout sessions created before the Phase 2 code rename.

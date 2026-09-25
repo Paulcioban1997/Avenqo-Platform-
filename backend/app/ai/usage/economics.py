@@ -218,6 +218,8 @@ def professional_pack_economics(settings: Settings) -> dict[str, PackEconomics]:
     for pack in AI_CREDIT_PACKS:
         if pack.plan_code != PlanCode.PROFESSIONAL:
             continue
+        if not pack.code.startswith("professional_"):
+            continue
         results[pack.code] = _pack_economics(
             pack,
             settings.avenqo_provider_cost_per_credit_usd,

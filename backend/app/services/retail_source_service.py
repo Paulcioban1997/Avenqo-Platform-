@@ -103,8 +103,10 @@ class RetailSourceService:
             )
             tenant_cache.invalidate_tenant(tenant.company_id)
             return RetailSource(
-                id=source_id,
                 source_type="all",
+                source_id=source_id,
+                dataset_id=None,
+                connection_id=None,
                 display_name="Toutes les sources",
                 provider=None,
                 status="ready",
@@ -175,49 +177,52 @@ class RetailSourceService:
                 CommerceConnection.created_at.desc(),
             )
         )
-        if ready_connection is None:
-            datasets = tuple(
-                self._session.scalars(
-                    select(Dataset)
-                    .where(
-                        Dataset.company_id == tenant.company_id,
-                        Dataset.status == DatasetStatus.READY,
-                    )
-                    .order_by(Dataset.uploaded_at.desc())
-                ).all()
-            )
-            # Only pick first dataset if there are NO commerce connections at all
-            existing_conns = self._session.scalar(
-                select(CommerceConnection.id).where(
+        connections = tuple(
+            self._session.scalars(
+                select(CommerceConnection)
+                .where(
                     CommerceConnection.company_id == tenant.company_id,
-                    CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
-                ).limit(1)
-            )
-            has_relationships = self._session.scalar(
-                select(DatasetRelationship.id).where(
-                    DatasetRelationship.company_id == tenant.company_id
-                ).limit(1)
-            ) is not None
-            if not existing_conns and datasets:
-                if has_relationships:
-                    return self._store_selection(
-                        tenant,
-                        source_type="all",
-                        dataset_id=None,
-                        connection_id=None,
-                    )
+                    CommerceConnection.status
+                    != CommerceConnectionStatus.DISCONNECTED.value,
+                )
+                .order_by(
+                    CommerceConnection.last_successful_sync.desc(),
+                    CommerceConnection.created_at.desc(),
+                )
+            ).all()
+        )
+        datasets = tuple(
+            self._session.scalars(
+                select(Dataset)
+                .where(
+                    Dataset.company_id == tenant.company_id,
+                    Dataset.status == DatasetStatus.READY,
+                )
+                .order_by(Dataset.uploaded_at.desc())
+            ).all()
+        )
+        total_valid_sources = int(ready_connection is not None) + len(datasets)
+        if total_valid_sources == 0:
+            return None
+        if total_valid_sources == 1:
+            if ready_connection is not None:
                 return self._store_selection(
                     tenant,
-                    source_type="dataset",
-                    dataset_id=datasets[0].id,
-                    connection_id=None,
+                    source_type="connector",
+                    dataset_id=self._connection_dataset_id(ready_connection),
+                    connection_id=ready_connection.id,
                 )
-            return None
+            return self._store_selection(
+                tenant,
+                source_type="dataset",
+                dataset_id=datasets[0].id,
+                connection_id=None,
+            )
         return self._store_selection(
             tenant,
-            source_type="connector",
-            dataset_id=self._connection_dataset_id(ready_connection),
-            connection_id=ready_connection.id,
+            source_type="all",
+            dataset_id=None,
+            connection_id=None,
         )
 
     def _resolve_active(
