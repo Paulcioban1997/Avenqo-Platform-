@@ -37,6 +37,10 @@ class DatasetResponse(BaseModel):
     uploaded_at: datetime
     columns: list[FieldProfileResponse]
     distributions: dict[str, dict[str, int]]
+    row_count: int | None = None
+    column_count: int | None = None
+    created_at: datetime | None = None
+    file_type: str | None = None
 
 
 class DatasetDeleteSelectionRequest(BaseModel):

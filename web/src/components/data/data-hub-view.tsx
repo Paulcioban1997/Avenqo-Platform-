@@ -28,26 +28,73 @@ import { getAuthHeaders } from "@/lib/api-headers";
 interface Dataset {
   id: string;
   name: string;
-  status: "processing" | "completed" | "failed";
+  status: string;
   row_count?: number;
+  rows_count?: number;
   column_count?: number;
+  columns_count?: number;
   file_type?: string;
-  created_at: string;
+  type?: string;
+  created_at?: string;
+  uploaded_at?: string;
   error_message?: string | null;
+  source_missing?: boolean;
+  source_missing_message?: string | null;
 }
 
 interface DatasetRow {
   [key: string]: unknown;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  completed: "var(--color-success, #22c55e)",
+type StatusCategory = "ready" | "processing" | "failed";
+
+function getStatusCategory(status?: string): StatusCategory {
+  if (!status) return "processing";
+  const s = status.toLowerCase();
+  if (s === "ready" || s === "completed" || s === "validated") return "ready";
+  if (
+    s === "processing" ||
+    s === "parsing" ||
+    s === "cleaning" ||
+    s === "uploaded" ||
+    s === "pending"
+  )
+    return "processing";
+  return "failed";
+}
+
+function getStatusLabel(status?: string): string {
+  const cat = getStatusCategory(status);
+  if (cat === "ready") return "Prêt";
+  if (cat === "processing") return "Traitement…";
+  return "Échec";
+}
+
+function formatDatasetDate(d?: Dataset): string {
+  if (!d) return "—";
+  const raw = d.uploaded_at || d.created_at;
+  if (!raw) return "—";
+  try {
+    const dt = new Date(raw);
+    if (isNaN(dt.getTime())) return "—";
+    return dt.toLocaleDateString("fr-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+const STATUS_COLOR: Record<StatusCategory, string> = {
+  ready: "var(--color-success, #22c55e)",
   processing: "var(--color-warning, #f59e0b)",
   failed: "var(--color-error, #ef4444)",
 };
 
-const STATUS_ICON: Record<string, React.ReactNode> = {
-  completed: <CheckCircle2 size={14} />,
+const STATUS_ICON: Record<StatusCategory, React.ReactNode> = {
+  ready: <CheckCircle2 size={14} />,
   processing: <Loader2 size={14} className="spin" />,
   failed: <AlertCircle size={14} />,
 };
@@ -112,7 +159,9 @@ export function DataHubView() {
 
   // Poll processing datasets
   useEffect(() => {
-    const processing = datasets.filter((d) => d.status === "processing");
+    const processing = datasets.filter(
+      (d) => getStatusCategory(d.status) === "processing"
+    );
     if (processing.length === 0) return;
     const id = setInterval(fetchDatasets, 4000);
     return () => clearInterval(id);
@@ -271,13 +320,13 @@ export function DataHubView() {
             <ArrowLeft size={16} /> Retour
           </button>
           <div className="data-hub-detail-title">
-            {FILE_ICON[selectedDataset.file_type ?? "csv"] ?? <Database size={20} />}
+            {FILE_ICON[selectedDataset.type ?? selectedDataset.file_type ?? "csv"] ?? <Database size={20} />}
             <span>{selectedDataset.name}</span>
             <span
               className="data-hub-status-badge"
-              style={{ color: STATUS_COLOR[selectedDataset.status] }}
+              style={{ color: STATUS_COLOR[getStatusCategory(selectedDataset.status)] }}
             >
-              {STATUS_ICON[selectedDataset.status]} {selectedDataset.status}
+              {STATUS_ICON[getStatusCategory(selectedDataset.status)]} {getStatusLabel(selectedDataset.status)}
             </span>
           </div>
           <div className="data-hub-detail-actions">
@@ -473,58 +522,65 @@ export function DataHubView() {
         </div>
       ) : (
         <div className="data-hub-list">
-          {filteredDatasets.map((ds) => (
-            <div key={ds.id} className="data-hub-card">
-              <div className="data-hub-card-icon">
-                {FILE_ICON[ds.file_type ?? "csv"] ?? <Database size={20} />}
-              </div>
-              <div className="data-hub-card-info">
-                <span className="data-hub-card-name">{ds.name}</span>
-                <span className="data-hub-card-meta">
-                  {ds.row_count != null ? `${ds.row_count.toLocaleString()} lignes` : "—"}
-                  {ds.column_count != null ? ` · ${ds.column_count} colonnes` : ""}
-                  {" · "}
-                  {new Date(ds.created_at).toLocaleDateString("fr-CA")}
-                </span>
-                {ds.status === "failed" && ds.error_message && (
-                  <span className="data-hub-card-error">{ds.error_message}</span>
-                )}
-              </div>
-              <div
-                className="data-hub-card-status"
-                style={{ color: STATUS_COLOR[ds.status] }}
-              >
-                {STATUS_ICON[ds.status]}{" "}
-                {ds.status === "processing"
-                  ? "Traitement…"
-                  : ds.status === "completed"
-                  ? "Terminé"
-                  : "Échec"}
-              </div>
-              <div className="data-hub-card-actions">
-                {ds.status === "completed" && (
-                  <button title="Voir les données" onClick={() => fetchDatasetDetail(ds)}>
-                    <Eye size={15} />
+          {filteredDatasets.map((ds) => {
+            const statusCat = getStatusCategory(ds.status);
+            const statusLabel = getStatusLabel(ds.status);
+            const rowCount = ds.rows_count ?? ds.row_count;
+            const colCount = ds.columns_count ?? ds.column_count;
+            const fileType = ds.type ?? ds.file_type ?? "csv";
+
+            return (
+              <div key={ds.id} className="data-hub-card">
+                <div className="data-hub-card-icon">
+                  {FILE_ICON[fileType] ?? <Database size={20} />}
+                </div>
+                <div className="data-hub-card-info">
+                  <span className="data-hub-card-name">{ds.name}</span>
+                  <span className="data-hub-card-meta">
+                    {rowCount != null ? `${rowCount.toLocaleString()} lignes` : "—"}
+                    {colCount != null ? ` · ${colCount} colonnes` : ""}
+                    {" · "}
+                    {formatDatasetDate(ds)}
+                  </span>
+                  {statusCat === "failed" && ds.error_message && (
+                    <span className="data-hub-card-error">{ds.error_message}</span>
+                  )}
+                  {ds.source_missing && ds.source_missing_message && (
+                    <span className="data-hub-card-error">{ds.source_missing_message}</span>
+                  )}
+                </div>
+                <div
+                  className="data-hub-card-status"
+                  style={{ color: STATUS_COLOR[statusCat] }}
+                >
+                  {STATUS_ICON[statusCat]}{" "}
+                  {statusLabel}
+                </div>
+                <div className="data-hub-card-actions">
+                  {statusCat === "ready" && (
+                    <button title="Voir les données" onClick={() => fetchDatasetDetail(ds)}>
+                      <Eye size={15} />
+                    </button>
+                  )}
+                  <button title="Exporter" onClick={() => handleExport(ds)}>
+                    <Download size={15} />
+                  </button>
+                  <button
+                    title="Supprimer"
+                    className="danger"
+                    onClick={() => setDeleteConfirm(ds.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                {statusCat === "ready" && (
+                  <button className="data-hub-card-open" onClick={() => fetchDatasetDetail(ds)}>
+                    <ChevronRight size={18} />
                   </button>
                 )}
-                <button title="Exporter" onClick={() => handleExport(ds)}>
-                  <Download size={15} />
-                </button>
-                <button
-                  title="Supprimer"
-                  className="danger"
-                  onClick={() => setDeleteConfirm(ds.id)}
-                >
-                  <Trash2 size={15} />
-                </button>
               </div>
-              {ds.status === "completed" && (
-                <button className="data-hub-card-open" onClick={() => fetchDatasetDetail(ds)}>
-                  <ChevronRight size={18} />
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

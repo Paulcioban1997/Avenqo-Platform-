@@ -190,9 +190,12 @@ def dataset_response(dataset) -> DatasetResponse:
             id=dataset.id,
             name=dataset.name,
             type=dataset.type,
+            file_type=dataset.type,
             module_code="unknown",
             rows_count=dataset.rows_count,
+            row_count=dataset.rows_count,
             columns_count=dataset.columns_count,
+            column_count=dataset.columns_count,
             numerical_columns=0,
             categorical_columns=0,
             missing_values=quality_data["missing_values"],
@@ -205,6 +208,7 @@ def dataset_response(dataset) -> DatasetResponse:
             source_missing=source_missing,
             source_missing_message=source_missing_message,
             uploaded_at=dataset.uploaded_at,
+            created_at=dataset.uploaded_at,
             columns=[],
             distributions={},
         )
@@ -213,9 +217,12 @@ def dataset_response(dataset) -> DatasetResponse:
         id=dataset.id,
         name=dataset.name,
         type=dataset.type,
+        file_type=dataset.type,
         module_code=profile.module_code,
         rows_count=dataset.rows_count,
+        row_count=dataset.rows_count,
         columns_count=dataset.columns_count,
+        column_count=dataset.columns_count,
         numerical_columns=profile.numerical_columns,
         categorical_columns=profile.categorical_columns,
         missing_values=quality_data["missing_values"],
@@ -228,6 +235,7 @@ def dataset_response(dataset) -> DatasetResponse:
         source_missing=source_missing,
         source_missing_message=source_missing_message,
         uploaded_at=dataset.uploaded_at,
+        created_at=dataset.uploaded_at,
         columns=profile.schema_json["columns"],
         distributions=profile.distribution_json,
     )
@@ -463,10 +471,11 @@ def get_dataset_cleaning_detail(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.get("/{dataset_id}/export")
 @router.get("/{dataset_id}/export/{export_format}")
 def export_cleaned_dataset(
     dataset_id: UUID,
-    export_format: str,
+    export_format: str = "csv",
     tenant: TenantContext = Depends(get_tenant_context),
     _: CurrentIdentity = Depends(require_dataset_read),
     service: DatasetCleaningService = Depends(get_dataset_cleaning_service),
@@ -486,6 +495,35 @@ def export_cleaned_dataset(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{dataset_id}/rows")
+def get_dataset_rows(
+    dataset_id: UUID,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    tenant: TenantContext = Depends(get_tenant_context),
+    _: CurrentIdentity = Depends(require_dataset_read),
+    service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+) -> dict:
+    dataset = service.get(tenant, dataset_id)
+    raw_rows = []
+    try:
+        raw_rows = list(service.get_cleaned_rows(tenant, dataset_id))
+    except Exception:
+        try:
+            raw_rows = list(service._reload_current_version_rows(dataset))
+        except Exception as exc:
+            logger.warning("Could not reload rows for %s: %s", dataset_id, exc)
+            raw_rows = []
+    total = len(raw_rows)
+    paged = [dict(r) for r in raw_rows[offset : offset + limit]]
+    return {
+        "rows": paged,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post(
@@ -582,6 +620,10 @@ def list_datasets(
                         "Fichier source indisponible. Veuillez réimporter ce dataset."
                     ),
                     uploaded_at=fallback_uploaded_at,
+                    created_at=fallback_uploaded_at,
+                    row_count=getattr(dataset, "rows_count", 0),
+                    column_count=getattr(dataset, "columns_count", 0),
+                    file_type=getattr(dataset, "type", "unknown"),
                     columns=[],
                     distributions={},
                 ))
