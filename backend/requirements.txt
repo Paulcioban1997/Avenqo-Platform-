@@ -4,6 +4,7 @@ pydantic-settings>=2.3.0
 python-dotenv>=1.0.0
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9
+psycopg[binary]>=3.2.0
 alembic>=1.13.0
 pwdlib[argon2]>=0.2.0
 email-validator>=2.2.0
