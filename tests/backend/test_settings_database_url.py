@@ -14,6 +14,12 @@ from pathlib import Path
 import pytest
 
 
+def test_sqlite_memory_database_url_is_not_rewritten() -> None:
+    from backend.app.database.session import _normalize_sqlite_database_url
+
+    assert _normalize_sqlite_database_url("sqlite:///:memory:") == "sqlite:///:memory:"
+
+
 def test_database_url_from_os_env_only_without_dotenv(tmp_path, monkeypatch) -> None:
     """DATABASE_URL défini uniquement dans os.environ (pas de .env) doit être lu."""
 

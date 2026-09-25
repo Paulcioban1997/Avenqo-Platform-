@@ -12,17 +12,27 @@ from backend.app.models import Base
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+def _normalize_sqlite_database_url(database_url: str) -> str:
+    if not database_url.startswith("sqlite:///"):
+        return database_url
+
+    database_target = database_url.removeprefix("sqlite:///")
+    if database_target == ":memory:":
+        return database_url
+
+    database_path = Path(database_target)
+    if not database_path.is_absolute():
+        database_path = PROJECT_ROOT / database_path
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{database_path.as_posix()}"
+
+
 def _build_engine():
     settings = get_settings()
     database_url = settings.database_url
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    if database_url.startswith("sqlite:///"):
-        database_path = Path(database_url.removeprefix("sqlite:///"))
-        if not database_path.is_absolute():
-            database_path = PROJECT_ROOT / database_path
-        database_path.parent.mkdir(parents=True, exist_ok=True)
-        database_url = f"sqlite:///{database_path.as_posix()}"
+    database_url = _normalize_sqlite_database_url(database_url)
     connect_args = (
         {"check_same_thread": False}
         if database_url.startswith("sqlite")
