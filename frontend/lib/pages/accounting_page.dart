@@ -151,6 +151,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
   }
 
   Widget _buildHeader(BuildContext context, AvenqoColors colors) {
+    final agentStrings = AvenqoLocaleScope.translationsOf(context).agents;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       color: colors.surface,
@@ -172,7 +173,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                 Row(
                   children: [
                     Text(
-                      'Accounting AI',
+                      agentStrings.value('accountingName'),
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,

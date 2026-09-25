@@ -147,6 +147,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
   }
 
   Widget _buildHeader(BuildContext context, AvenqoColors colors) {
+    final agentStrings = AvenqoLocaleScope.translationsOf(context).agents;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       color: colors.surface,
@@ -168,7 +169,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                 Row(
                   children: [
                     Text(
-                      'CRM AI',
+                      agentStrings.value('crmName'),
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,

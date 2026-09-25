@@ -149,6 +149,8 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
     String companyName,
     AvenqoColors colors,
   ) {
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final agentStrings = translations.agents;
     final pillars = data.crossAgent['pillars'] as Map<String, dynamic>? ?? {};
     final correlations = data.crossAgent['cross_domain_correlations'] as Map<String, dynamic>? ?? {};
     final strategicBalance = correlations['strategic_balance'] as Map<String, dynamic>? ?? {};
@@ -224,7 +226,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Synthèse stratégique unifiée en temps réel (Retail Intelligence ↔ CRM AI ↔ Accounting AI).',
+                      'Synthèse stratégique unifiée en temps réel (${agentStrings.value('retailName')} ↔ ${agentStrings.value('crmName')} ↔ ${agentStrings.value('accountingName')}).',
                       style: TextStyle(fontSize: 14, color: colors.muted),
                     ),
                   ],
@@ -245,7 +247,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                       foregroundColor: Colors.white,
                     ),
                     icon: const Icon(Icons.auto_awesome, size: 16),
-                    label: const Text('AI Assistant'),
+                    label: Text(translations.company.navAssistantLabel),
                   ),
                 ],
               ),
@@ -289,7 +291,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               );
               final crmCard = _buildPillarCard(
                 context,
-                title: 'CRM AI',
+                title: agentStrings.value('crmName'),
                 icon: Icons.hub_outlined,
                 color: _Brand.emerald,
                 route: '/crm',
@@ -303,7 +305,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               );
               final acctCard = _buildPillarCard(
                 context,
-                title: 'Accounting AI',
+                title: agentStrings.value('accountingName'),
                 icon: Icons.account_balance_outlined,
                 color: _Brand.purple,
                 route: '/accounting',
