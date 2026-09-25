@@ -133,7 +133,7 @@ const sv: Translations = {
     priceLabel: "Skräddarsytt",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "För att komma igång",
         items: ["3 Avenqo-modul (Retail, CRM, Accounting)", "Upp till 5 användare", "Inbyggd assistent", "Standardsupport"],
         action: "Prata med en rådgivare",

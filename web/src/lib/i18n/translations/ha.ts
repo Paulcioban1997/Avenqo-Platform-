@@ -133,7 +133,7 @@ const ha: Translations = {
     priceLabel: "Bisa buƙata",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Don farawa",
         items: ["Module Avenqo 1", "Har zuwa masu amfani 5", "Mataimaki da aka gina a ciki", "Tallafi na yau da kullun"],
         action: "Yi magana da mai ba da shawara",

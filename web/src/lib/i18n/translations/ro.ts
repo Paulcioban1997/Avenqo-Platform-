@@ -133,7 +133,7 @@ const ro: Translations = {
     priceLabel: "Personalizat",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Pentru început",
         items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Până la 5 utilizatori", "Asistent integrat", "Suport standard"],
         action: "Vorbește cu un consilier",

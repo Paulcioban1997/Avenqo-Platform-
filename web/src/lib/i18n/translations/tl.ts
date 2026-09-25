@@ -133,7 +133,7 @@ const tl: Translations = {
     priceLabel: "Ayon sa hiling",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Para magsimula",
         items: ["3 Avenqo module (Retail, CRM, Accounting)", "Hanggang 5 user", "Built-in na assistant", "Standard na suporta"],
         action: "Kausapin ang isang consultant",

@@ -133,7 +133,7 @@ const pa: Translations = {
     priceLabel: "ਬੇਨਤੀ 'ਤੇ",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "ਸ਼ੁਰੂ ਕਰਨ ਲਈ",
         items: ["3 Avenqo ਮੌਡਿਊਲ (Retail, CRM, Accounting)", "5 ਵਰਤੋਂਕਾਰਾਂ ਤੱਕ", "ਬਿਲਟ-ਇਨ ਸਹਾਇਕ", "ਸਟੈਂਡਰਡ ਸਹਾਇਤਾ"],
         action: "ਇੱਕ ਸਲਾਹਕਾਰ ਨਾਲ ਗੱਲ ਕਰੋ",

@@ -133,7 +133,7 @@ const af: Translations = {
     priceLabel: "Op aanvraag",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Om te begin",
         items: ["3 Avenqo-module (Retail, CRM, Accounting)", "Tot 5 gebruikers", "Ingeboude assistent", "Standaardondersteuning"],
         action: "Praat met 'n adviseur",

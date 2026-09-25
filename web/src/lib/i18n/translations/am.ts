@@ -133,7 +133,7 @@ const am: Translations = {
     priceLabel: "እንደ ፍላጎት",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "ለመጀመር",
         items: ["3 የAvenqo ሞጁል (Retail, CRM, Accounting)", "እስከ 5 ተጠቃሚዎች", "የተካተተ ረዳት", "መደበኛ ድጋፍ"],
         action: "ከአማካሪ ጋር ይነጋገሩ",

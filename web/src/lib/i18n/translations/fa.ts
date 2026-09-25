@@ -133,7 +133,7 @@ const fa: Translations = {
     priceLabel: "سفارشی",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "برای شروع",
         items: ["۱ ماژول Avenqo", "تا ۵ کاربر", "دستیار داخلی", "پشتیبانی استاندارد"],
         action: "با یک مشاور صحبت کنید",

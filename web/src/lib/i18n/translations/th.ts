@@ -133,7 +133,7 @@ const th: Translations = {
     priceLabel: "ตามคำขอ",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "เพื่อเริ่มต้น",
         items: ["3 โมดูล Avenqo (Retail, CRM, Accounting)", "ผู้ใช้สูงสุด 5 คน", "ผู้ช่วยในตัว", "การสนับสนุนมาตรฐาน"],
         action: "พูดคุยกับที่ปรึกษา",

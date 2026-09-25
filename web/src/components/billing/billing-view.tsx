@@ -691,10 +691,10 @@ export function BillingView() {
             <div className="space-y-1">
               <div className="text-xs font-bold text-[#0076FF] dark:text-[#00D4FF] flex items-center gap-1.5">
                 <Lock size={14} />
-                <span>Limite de 3 modules atteinte pour la formule Demo</span>
+                <span>Limite de 3 modules atteinte pour la formule Base</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                Passez à la formule Professional ($49.00 USD/mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
+                Passez à la formule Professional ($49.99 USD/mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
               </p>
             </div>
             <button

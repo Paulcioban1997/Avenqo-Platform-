@@ -132,7 +132,7 @@ const zh: Translations = {
     priceLabel: "按需定制",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "适合起步",
         items: ["3 个 Avenqo 模块 (Retail, CRM, Accounting)", "最多 5 位用户", "内置智能助手", "标准支持"],
         action: "联系顾问",

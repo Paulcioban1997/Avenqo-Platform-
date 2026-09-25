@@ -132,7 +132,7 @@ const ko: Translations = {
     priceLabel: "맞춤 견적",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "시작을 위한",
         items: ["Avenqo 모듈 1개", "최대 5명 사용자", "내장 어시스턴트", "표준 지원"],
         action: "상담원과 이야기하기",

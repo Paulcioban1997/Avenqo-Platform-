@@ -133,7 +133,7 @@ const mn: Translations = {
     priceLabel: "Хүсэлтээр",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Эхлэхэд",
         items: ["3 Avenqo модуль (Retail, CRM, Accounting)", "5 хэрэглэгч хүртэл", "Суулгагдсан туслах", "Стандарт дэмжлэг"],
         action: "Зөвлөхтэй ярилцах",

@@ -133,7 +133,7 @@ const ta: Translations = {
     priceLabel: "கோரிக்கையின் பேரில்",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "தொடங்குவதற்கு",
         items: ["3 Avenqo தொகுதி (Retail, CRM, Accounting)", "5 பயனர்கள் வரை", "உள்ளமைக்கப்பட்ட உதவியாளர்", "நிலையான ஆதரவு"],
         action: "ஆலோசகருடன் பேசுங்கள்",

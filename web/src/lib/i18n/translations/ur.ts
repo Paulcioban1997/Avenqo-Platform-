@@ -133,7 +133,7 @@ const ur: Translations = {
     priceLabel: "درخواست پر",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "شروع کرنے کے لیے",
         items: ["3 Avenqo ماڈیول (Retail, CRM, Accounting)", "5 صارفین تک", "بلٹ ان اسسٹنٹ", "معیاری مدد"],
         action: "ایک مشیر سے بات کریں",

@@ -133,7 +133,7 @@ const vi: Translations = {
     priceLabel: "Theo yêu cầu",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Để bắt đầu",
         items: ["3 mô-đun Avenqo (Retail, CRM, Accounting)", "Tối đa 5 người dùng", "Trợ lý tích hợp sẵn", "Hỗ trợ tiêu chuẩn"],
         action: "Nói chuyện với cố vấn",

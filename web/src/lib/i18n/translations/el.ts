@@ -133,7 +133,7 @@ const el: Translations = {
     priceLabel: "Κατά παραγγελία",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Για να ξεκινήσετε",
         items: ["3 ενότητα Avenqo (Retail, CRM, Accounting)", "Έως 5 χρήστες", "Ενσωματωμένος βοηθός", "Τυπική υποστήριξη"],
         action: "Μιλήστε με έναν σύμβουλο",

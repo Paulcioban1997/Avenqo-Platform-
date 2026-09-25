@@ -133,7 +133,7 @@ const he: Translations = {
     priceLabel: "לפי דרישה",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "כדי להתחיל",
         items: ["מודול Avenqo אחד", "עד 5 משתמשים", "עוזר מובנה", "תמיכה סטנדרטית"],
         action: "שוחחו עם יועץ",

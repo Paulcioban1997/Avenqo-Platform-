@@ -133,7 +133,7 @@ const id: Translations = {
     priceLabel: "Sesuai permintaan",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Untuk memulai",
         items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Hingga 5 pengguna", "Asisten bawaan", "Dukungan standar"],
         action: "Bicara dengan konsultan",

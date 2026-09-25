@@ -133,7 +133,7 @@ const tr: Translations = {
     priceLabel: "Özel fiyatlandırma",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Başlamak için",
         items: ["3 Avenqo modülü (Retail, CRM, Accounting)", "5 kullanıcıya kadar", "Entegre asistan", "Standart destek"],
         action: "Bir danışmanla konuşun",

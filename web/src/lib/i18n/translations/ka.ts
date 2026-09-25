@@ -133,7 +133,7 @@ const ka: Translations = {
     priceLabel: "ინდივიდუალური",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "დასაწყებად",
         items: ["3 Avenqo მოდული (Retail, CRM, Accounting)", "5 მომხმარებლამდე", "ჩაშენებული ასისტენტი", "სტანდარტული მხარდაჭერა"],
         action: "ესაუბრეთ კონსულტანტს",

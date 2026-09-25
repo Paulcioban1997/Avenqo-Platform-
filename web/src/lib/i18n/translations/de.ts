@@ -133,7 +133,7 @@ const de: Translations = {
     priceLabel: "Individuelles Angebot",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Zum Einstieg",
         items: ["3 Avenqo-Modul (Retail, CRM, Accounting)", "Bis zu 5 Nutzer", "Integrierter Assistent", "Standard-Support"],
         action: "Mit einem Berater sprechen",

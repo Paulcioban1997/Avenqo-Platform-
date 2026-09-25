@@ -134,7 +134,7 @@ const ar: Translations = {
     priceLabel: "حسب الطلب",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "للبدء",
         items: ["وحدة Avenqo واحدة", "حتى 5 مستخدمين", "مساعد مدمج", "دعم قياسي"],
         action: "تحدّث مع مستشار",

@@ -133,7 +133,7 @@ const ne: Translations = {
     priceLabel: "अनुरोधमा",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "सुरु गर्नका लागि",
         items: ["3 Avenqo मोड्युल (Retail, CRM, Accounting)", "5 प्रयोगकर्तासम्म", "अन्तर्निहित सहायक", "मानक सहयोग"],
         action: "सल्लाहकारसँग कुरा गर्नुहोस्",

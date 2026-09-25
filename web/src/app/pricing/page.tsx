@@ -4,14 +4,14 @@ import { PricingContent } from "@/components/pricing-content";
 export const metadata: Metadata = {
   title: "Tarifs & Offres",
   description:
-    "Découvrez les offres Demo, Professional et Enterprise d'Avenqo. Solutions IA modulaires avec Retail Intelligence et intégrations directes.",
+    "Découvrez les offres Base, Professional et Enterprise d'Avenqo. Solutions IA modulaires avec Retail Intelligence et intégrations directes.",
   alternates: {
     canonical: "/pricing",
   },
   openGraph: {
     title: "Tarifs & Offres | Avenqo",
     description:
-      "Découvrez les offres Demo, Professional et Enterprise d'Avenqo. Solutions IA modulaires pour entreprises et PME.",
+      "Découvrez les offres Base, Professional et Enterprise d'Avenqo. Solutions IA modulaires pour entreprises et PME.",
     url: "https://avenqo.ca/pricing",
     images: [
       {
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Tarifs & Offres | Avenqo",
     description:
-      "Découvrez les offres Demo, Professional et Enterprise d'Avenqo. Solutions IA modulaires pour entreprises et PME.",
+      "Découvrez les offres Base, Professional et Enterprise d'Avenqo. Solutions IA modulaires pour entreprises et PME.",
     images: ["/brand/avenqo-card.png"],
   },
 };

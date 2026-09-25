@@ -132,7 +132,7 @@ const ja: Translations = {
     priceLabel: "個別見積もり",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "はじめての方向け",
         items: ["Avenqoモジュール1つ", "ユーザー数5名まで", "内蔵アシスタント", "標準サポート"],
         action: "アドバイザーに相談",

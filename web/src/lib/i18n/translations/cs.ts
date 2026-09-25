@@ -133,7 +133,7 @@ const cs: Translations = {
     priceLabel: "Na míru",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Pro začátek",
         items: ["3 modul Avenqo (Retail, CRM, Accounting)", "Až 5 uživatelů", "Vestavěný asistent", "Standardní podpora"],
         action: "Promluvte si s poradcem",

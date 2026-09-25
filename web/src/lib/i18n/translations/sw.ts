@@ -133,7 +133,7 @@ const sw: Translations = {
     priceLabel: "Kwa mahitaji",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Kuanza",
         items: ["Moduli 1 ya Avenqo", "Hadi watumiaji 5", "Msaidizi aliyojengwa ndani", "Msaada wa kawaida"],
         action: "Zungumza na mshauri",

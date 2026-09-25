@@ -133,7 +133,7 @@ const hy: Translations = {
     priceLabel: "Հարմարեցված",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Սկսելու համար",
         items: ["3 Avenqo մոդուլ (Retail, CRM, Accounting)", "Մինչև 5 օգտատեր", "Ներկառուցված օգնական", "Ստանդարտ աջակցություն"],
         action: "Խոսեք խորհրդատուի հետ",

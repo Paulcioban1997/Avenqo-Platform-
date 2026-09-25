@@ -133,7 +133,7 @@ const hi: Translations = {
     priceLabel: "अनुरोध पर",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "शुरू करने के लिए",
         items: ["3 Avenqo मॉड्यूल (Retail, CRM, Accounting)", "5 उपयोगकर्ताओं तक", "अंतर्निहित सहायक", "मानक समर्थन"],
         action: "सलाहकार से बात करें",

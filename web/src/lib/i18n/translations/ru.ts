@@ -133,7 +133,7 @@ const ru: Translations = {
     priceLabel: "Индивидуально",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Чтобы начать",
         items: ["3 модуль Avenqo (Retail, CRM, Accounting)", "До 5 пользователей", "Встроенный ассистент", "Стандартная поддержка"],
         action: "Поговорить с консультантом",
