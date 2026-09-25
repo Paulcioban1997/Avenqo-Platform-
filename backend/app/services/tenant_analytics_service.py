@@ -75,37 +75,62 @@ class TenantAnalyticsSnapshot:
         ]
         if not usable:
             return None
-        selected = max(
-            usable,
-            key=lambda pair: (
+
+        def score(pair):
+            return (
                 sum(
                     required <= set(pair[1].canonical_columns.values())
                     for required in BUSINESS_METRIC_FIELDS.values()
                 ),
                 len(pair[1].canonical_columns),
                 len(pair[1].rows),
-            ),
-        )[1]
-        compatible = [
-            composed
-            for _, composed in usable
-            if set(required_fields) <= set(composed.canonical_columns.values())
-        ]
-        candidate_ids = {item.dataset_id for item in compatible}
-        related_candidates = any(
-            relationship.left_dataset_id in candidate_ids
-            and relationship.right_dataset_id in candidate_ids
-            for relationship in self.relationships
-        )
-        if len(compatible) == 1 or related_candidates:
+            )
+
+        compatible_ids = {anchor.dataset_id for anchor, _ in usable}
+        graph: dict[object, set[object]] = {
+            dataset_id: set() for dataset_id in compatible_ids
+        }
+        for relationship in self.relationships:
+            left, right = relationship.left_dataset_id, relationship.right_dataset_id
+            if left in compatible_ids and right in compatible_ids:
+                graph[left].add(right)
+                graph[right].add(left)
+
+        component_by_id: dict[object, int] = {}
+        component_index = 0
+        for dataset_id in graph:
+            if dataset_id in component_by_id:
+                continue
+            pending = [dataset_id]
+            component_by_id[dataset_id] = component_index
+            while pending:
+                current = pending.pop()
+                for related in graph[current]:
+                    if related not in component_by_id:
+                        component_by_id[related] = component_index
+                        pending.append(related)
+            component_index += 1
+
+        best_by_component: dict[int, tuple[PreparedCompanyDataset, PreparedCompanyDataset]] = {}
+        for pair in usable:
+            component = component_by_id[pair[0].dataset_id]
+            if component not in best_by_component or score(pair) > score(best_by_component[component]):
+                best_by_component[component] = pair
+        components = [pair[1] for pair in best_by_component.values()]
+        selected = max(components, key=lambda item: (
+            sum(required <= set(item.canonical_columns.values()) for required in BUSINESS_METRIC_FIELDS.values()),
+            len(item.canonical_columns),
+            len(item.rows),
+        ))
+        if len(components) == 1:
             return selected
 
         canonical_fields = set().union(
-            *(set(item.canonical_columns.values()) for item in compatible)
+            *(set(item.canonical_columns.values()) for item in components)
         )
         reconciled_rows: list[dict[str, object]] = []
         seen_rows: set[tuple[tuple[str, str], ...]] = set()
-        for item in compatible:
+        for item in components:
             for row in self._canonical_rows(item):
                 normalized = {field: row.get(field) for field in canonical_fields}
                 fingerprint = tuple(

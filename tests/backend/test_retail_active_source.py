@@ -16,6 +16,7 @@ from backend.app.models import (
     Company,
     Dataset,
     DatasetStatus,
+    DatasetRelationship,
     Mapping,
 )
 from backend.app.routers.retail import (
@@ -238,16 +239,31 @@ def test_enabled_sources_reconcile_and_deduplicate_identical_rows(source_environ
         source_type="all",
         source_id=connection.id,
     )
-    repeated = _prepared(company, shopify_dataset, "SUPER", 999)
-    prepared[shopify_dataset.id] = repeated
+    other_source = _dataset(session, company, "independent.csv")
+    prepared[other_source.id] = _prepared(company, other_source, "OTHER", 250)
+    session.add(
+        DatasetRelationship(
+            company_id=company.id,
+            left_dataset_id=uploaded.id,
+            right_dataset_id=shopify_dataset.id,
+            left_column="order",
+            right_column="order",
+            canonical_field="order_id",
+            overlap_ratio=1.0,
+            confidence=1.0,
+        )
+    )
+    session.commit()
     snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant)
 
     source = snapshot.source_for(frozenset({"total_amount", "order_id"}))
 
     assert source is not None
-    assert len(source.rows) == 1
-    assert source.rows[0]["order_id"] == "SUPER-ORDER"
-    assert source.rows[0]["total_amount"] == 999
+    assert len(source.rows) == 2
+    assert {row["order_id"] for row in source.rows} == {
+        "SUPER-ORDER",
+        "OTHER-ORDER",
+    }
 
 
 def test_disconnected_enabled_connector_does_not_activate_its_dataset(source_environment):
