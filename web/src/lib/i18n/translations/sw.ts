@@ -156,7 +156,7 @@ const sw: Translations = {
     kicker: "Maswali yanayoulizwa mara kwa mara",
     title: "Kila kitu unachohitaji kujua.",
     subtitle: "Swali lingine? Timu yetu itakujibu moja kwa moja.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Je, Avenqo inabadilisha zana zangu za sasa?", answer: "Avenqo inaunganisha na mazingira yako na kukusanya maamuzi, mapendekezo na uendeshaji wa kiotomatiki katika uzoefu mmoja." },
       { question: "Je, ninaweza kuanza na moduli moja tu?", answer: "Ndiyo. Anza na kipaumbele chako kikuu, kisha ongeza uwezo kwa kasi ya biashara yako." },

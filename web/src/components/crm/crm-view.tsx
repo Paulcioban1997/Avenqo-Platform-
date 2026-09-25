@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import {
   Calendar as CalendarIcon,
   Users,
@@ -206,16 +207,25 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
       <div className="flex-1 min-w-0 space-y-6">
         {/* CRM HEADER */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-[#0B132B] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <Building className="w-3.5 h-3.5 text-[#0076FF]" />
-              <span className="font-bold text-slate-700 dark:text-slate-200">{companyName}</span>
-              <span>•</span>
-              <span className="capitalize">{formattedCurrentDate}</span>
+          <div className="flex items-center gap-3.5">
+            <Image
+              src="/brand/avenqo-icon.png"
+              alt="Avenqo CRM AI"
+              width={42}
+              height={42}
+              className="rounded-xl object-contain shadow-sm shadow-blue-500/20 shrink-0"
+            />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <Building className="w-3.5 h-3.5 text-[#0076FF]" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">{companyName || "Avenqo"}</span>
+                <span>•</span>
+                <span className="capitalize">{formattedCurrentDate}</span>
+              </div>
+              <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                {t.crm.title || "CRM AI & Planification Intelligente"}
+              </h1>
             </div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              {t.crm.title || "CRM AI & Planification Intelligente"}
-            </h1>
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">

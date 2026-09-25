@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const recipientEmail =
       process.env.AVENQO_OWNER_NOTIFICATION_EMAIL ||
       process.env.NOTIFICATION_EMAIL ||
-      "bonjour@avenqo.ca";
+      "info@avenqo.ca";
 
     if (resendApiKey) {
       try {

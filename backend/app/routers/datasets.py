@@ -276,7 +276,7 @@ async def upload_csv(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_company_dataset(
-    module_code: str = Form(),
+    module_code: str = Form(default="retail"),
     file: UploadFile = File(),
     tenant: TenantContext = Depends(get_tenant_context),
     service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),

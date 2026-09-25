@@ -11,7 +11,7 @@ export function StructuredData() {
     contactPoint: {
       "@type": "ContactPoint",
       contactType: "customer service",
-      email: "bonjour@avenqo.ca",
+      email: "info@avenqo.ca",
       availableLanguage: ["French", "English"],
     },
     sameAs: [],

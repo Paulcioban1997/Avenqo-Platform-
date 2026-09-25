@@ -28,7 +28,7 @@ class RegisterRequest(BaseModel):
     billing_email: EmailStr | None = None
     job_title: str = Field(default="Owner", min_length=1, max_length=120)
     phone: str | None = Field(default=None, max_length=32)
-    plan_code: str = Field(default="demo", pattern="^(demo|professional|enterprise)$")
+    plan_code: str = Field(default="base", pattern="^(base|demo|professional|enterprise)$")
     business_goals: list[str] = Field(default_factory=list, max_length=20)
     current_tools: list[str] = Field(default_factory=list, max_length=20)
     selected_modules: list[str] = Field(default_factory=list, max_length=11)
@@ -146,6 +146,18 @@ class AuthResponse(BaseModel):
 class CurrentAccountResponse(BaseModel):
     user: UserResponse
     company: CompanyResponse
+    organizations: list[OrganizationMembershipResponse] = []
+
+
+class VerifyEmailResponse(BaseModel):
+    message: str
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    access_expires_at: datetime | None = None
+    refresh_expires_at: datetime | None = None
+    user: UserResponse | None = None
+    company: CompanyResponse | None = None
     organizations: list[OrganizationMembershipResponse] = []
 
 

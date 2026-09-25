@@ -136,21 +136,21 @@ const fr: Translations = {
     priceLabel: "Sur mesure",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "Pour démarrer",
-        items: ["3 modules Avenqo (Retail, CRM, Accounting)", "Jusqu'à 5 utilisateurs", "Assistant intégré", "Support standard"],
-        action: "Parler à un conseiller",
+        items: ["3 modules Avenqo au choix", "6 500 crédits IA inclus / mois", "Jusqu'à 5 utilisateurs", "Assistant IA intégré", "Support standard"],
+        action: "Choisir Base",
       },
       {
         tier: "Professional",
         title: "Pour accélérer",
-        items: ["Jusqu'à 6 modules", "Jusqu'à 25 utilisateurs", "Automatisations avancées", "Accompagnement prioritaire"],
-        action: "Essayer gratuitement",
+        items: ["Jusqu'à 6 modules au choix", "25 000 crédits IA inclus / mois", "Jusqu'à 25 utilisateurs", "Automatisations & Copilotes avancés", "Support prioritaire"],
+        action: "Choisir Professional",
       },
       {
         tier: "Enterprise",
         title: "Pour orchestrer",
-        items: ["Modules illimités", "Utilisateurs sur mesure", "Connexions personnalisées", "Gouvernance dédiée"],
+        items: ["Tous les modules (illimités)", "Volume de crédits IA sur mesure", "Utilisateurs illimités", "Connexions & Connecteurs sur mesure", "Gouvernance & SLA dédiés"],
         action: "Contacter les ventes",
       },
     ],
@@ -159,7 +159,7 @@ const fr: Translations = {
     kicker: "Questions fréquentes",
     title: "Tout ce qu'il faut savoir.",
     subtitle: "Une autre question ? Notre équipe vous répond directement.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo remplace-t-il mes outils actuels ?", answer: "Avenqo se connecte à votre environnement et rassemble décisions, recommandations et automatisations dans une expérience unique." },
       { question: "Puis-je commencer avec un seul module ?", answer: "Oui. Commencez par votre priorité, puis ajoutez des capacités au rythme de votre entreprise." },

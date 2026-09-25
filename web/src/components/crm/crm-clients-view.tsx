@@ -73,12 +73,12 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
 
       let url = "/api/v1/crm/clients?limit=100";
       if (selectedStatus !== "all") url += `&status=${selectedStatus}`;
-      if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
 
       const res = await fetch(url, { headers });
       if (res.ok) {
         const data = await res.json();
-        setClients(data.items || []);
+        setClients(Array.isArray(data) ? data : (data.items || []));
       }
     } catch {
       // Keep empty list on network error

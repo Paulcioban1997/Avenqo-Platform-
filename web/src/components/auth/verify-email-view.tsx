@@ -51,6 +51,13 @@ export function VerifyEmailView() {
 
         if (response.ok) {
           setStatus("success");
+          if (data.access_token) {
+            localStorage.setItem("avenqo_token", data.access_token);
+            localStorage.setItem("avenqo_access_token", data.access_token);
+          }
+          if (data.refresh_token) {
+            localStorage.setItem("avenqo_refresh_token", data.refresh_token);
+          }
         } else {
           setStatus("error");
           const rawDetail = data.detail || data.error?.message || data.message;
@@ -92,12 +99,12 @@ export function VerifyEmailView() {
     };
   }, [token, isEn]);
 
-  // Countdown auto-redirect on success
+  // Countdown auto-redirect on success directly to onboarding / workspace
   useEffect(() => {
     if (status !== "success") return;
 
     if (countdown <= 0) {
-      router.push("/login");
+      router.push("/onboarding");
       return;
     }
 
@@ -211,19 +218,19 @@ export function VerifyEmailView() {
                   </p>
                   <p style={{ fontSize: "0.9rem", marginTop: "4px", opacity: 0.85 }}>
                     {isEn
-                      ? `Your account is now fully active. Redirecting to login in ${countdown} second${countdown > 1 ? "s" : ""}...`
-                      : `Votre compte est maintenant actif. Redirection automatique vers la connexion dans ${countdown} seconde${countdown > 1 ? "s" : ""}...`}
+                      ? `Your account is now fully active. Redirecting to your workspace in ${countdown} second${countdown > 1 ? "s" : ""}...`
+                      : `Votre compte est maintenant actif. Redirection automatique vers votre espace dans ${countdown} seconde${countdown > 1 ? "s" : ""}...`}
                   </p>
                 </div>
               </div>
 
               <div className="pt-2">
                 <Link
-                  href="/login"
+                  href="/onboarding"
                   className="auth-submit inline-flex items-center justify-center gap-2 w-full text-center"
                   style={{ textDecoration: "none" }}
                 >
-                  {isEn ? "Go to login now" : "Se connecter maintenant"} <ArrowRight size={16} />
+                  {isEn ? "Access my space now" : "Accéder à mon espace maintenant"} <ArrowRight size={16} />
                 </Link>
               </div>
             </div>

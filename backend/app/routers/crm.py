@@ -182,12 +182,14 @@ def search_crm(
 def list_clients(
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    query: str | None = Query(default=None),
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> list[dict[str, Any]]:
-    clients = service.list_clients(tenant.company_id, status=status, search=search, limit=limit, offset=offset)
+    search_term = search or query
+    clients = service.list_clients(tenant.company_id, status=status, search=search_term, limit=limit, offset=offset)
     return [
         {
             "id": str(c.id),
@@ -617,7 +619,13 @@ async def crm_copilot_chat(
 
     # 1. Natural Language Appointment Creation (Target workflow §12)
     # Example: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes."
-    is_create_intent = any(k in msg for k in ["crée un rendez-vous", "créer un rendez-vous", "planifie", "planifier", "prendre rendez-vous", "nouveau rendez-vous", "rendez-vous"]) and any(h in msg for h in ["h", ":", "heure"])
+    is_create_intent = any(k in msg for k in [
+        "crée un rendez-vous", "créer un rendez-vous", "planifie", "planifier",
+        "prendre rendez-vous", "nouveau rendez-vous", "rendez-vous",
+        "create an appointment", "create appointment", "schedule appointment",
+        "book appointment", "new appointment", "appointment"
+    ]) and any(h in msg for h in ["h", ":", "heure", "am", "pm", "at "])
+
     if is_create_intent:
         now = datetime.now(timezone.utc)
         target_date = now.date()
@@ -640,17 +648,17 @@ async def crm_copilot_chat(
         duration = int(duration_match.group(1)) if duration_match else 30
 
         # Extract service title
-        service_title = "Physiothérapie"
+        service_title = "Physiotherapy" if req.locale == "en" else "Physiothérapie"
         if "physio" in msg:
-            service_title = "Physiothérapie"
-        elif "massage" in msg or "massothérapie" in msg:
-            service_title = "Massothérapie"
-        elif "consultation" in msg:
+            service_title = "Physiotherapy" if req.locale == "en" else "Physiothérapie"
+        elif "massage" in msg or "massoth" in msg:
+            service_title = "Massage therapy" if req.locale == "en" else "Massothérapie"
+        elif "consult" in msg:
             service_title = "Consultation"
-        elif "entretien" in msg:
-            service_title = "Entretien"
-        elif "réparation" in msg:
-            service_title = "Réparation"
+        elif "entretien" in msg or "maintenance" in msg:
+            service_title = "Maintenance" if req.locale == "en" else "Entretien"
+        elif "répar" in msg or "repair" in msg:
+            service_title = "Repair" if req.locale == "en" else "Réparation"
 
         start_dt = datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=timezone.utc)
         end_dt = start_dt + timedelta(minutes=duration)
@@ -660,7 +668,11 @@ async def crm_copilot_chat(
         has_conflict, conflict_reason = avail_svc.check_conflict(tenant.company_id, start_dt, end_dt)
         if has_conflict:
             return {
-                "reply": f"Impossible de créer le rendez-vous : créneau occupé à {hour:02d}h{minute:02d} ({conflict_reason}).",
+                "reply": (
+                    f"Unable to create appointment: slot is already booked at {hour:02d}:{minute:02d} ({conflict_reason})."
+                    if req.locale == "en"
+                    else f"Impossible de créer le rendez-vous : créneau occupé à {hour:02d}h{minute:02d} ({conflict_reason})."
+                ),
                 "status": "conflict",
                 "action": "conflict_detected",
                 "conflict_reason": conflict_reason,
@@ -688,19 +700,22 @@ async def crm_copilot_chat(
                 "title": service_title,
                 "start_time": start_dt,
                 "duration_minutes": duration,
-                "notes": f"Créé via Avenqo Copilot • {service_title}",
+                "notes": f"Created via Avenqo Copilot • {service_title}" if req.locale == "en" else f"Créé via Avenqo Copilot • {service_title}",
             },
             actor_name="Avenqo Copilot",
         )
         if err:
-            return {"reply": f"Erreur lors de la réservation : {err}", "status": "error"}
+            return {
+                "reply": f"Booking error: {err}" if req.locale == "en" else f"Erreur lors de la réservation : {err}",
+                "status": "error"
+            }
 
         end_hour = end_dt.hour
         end_minute = end_dt.minute
         reply_msg = (
-            f"Rendez-vous de {service_title.lower()} créé {date_label} de {hour:02d}h{minute:02d} à {end_hour:02d}h{end_minute:02d}."
-            if req.locale == "fr"
-            else f"{service_title} appointment created for {date_label} from {hour:02d}:{minute:02d} to {end_hour:02d}:{end_minute:02d}."
+            f"{service_title} appointment created for {date_label} from {hour:02d}:{minute:02d} to {end_hour:02d}:{end_minute:02d}."
+            if req.locale == "en"
+            else f"Rendez-vous de {service_title.lower()} créé {date_label} de {hour:02d}h{minute:02d} à {end_hour:02d}h{end_minute:02d}."
         )
         return {
             "reply": reply_msg,
@@ -716,6 +731,8 @@ async def crm_copilot_chat(
             },
         }
 
+    is_en = req.locale == "en"
+
     # 2. Available Slots / Availability Search
     if any(k in msg for k in ["créneau", "créneaux", "disponibilité", "dispo", "slot", "slots", "libre", "available"]):
         avail_svc = CRMAvailabilityService(db)
@@ -725,45 +742,65 @@ async def crm_copilot_chat(
         slots = await avail_svc.list_available_slots(tenant.company_id, target_date)
         count = len(slots)
         if count == 0:
+            date_str = target_date.strftime("%Y-%m-%d") if is_en else target_date.strftime("%d/%m/%Y")
+            msg_reply = f"No available slots found for {date_str}." if is_en else f"Aucun créneau libre disponible pour le {date_str}."
             return {
-                "reply": f"Aucun créneau libre disponible pour le {target_date.strftime('%d/%m/%Y')}.",
+                "reply": msg_reply,
                 "status": "success",
                 "slots": [],
             }
         sample_slots = slots[:4]
         slots_str = ", ".join([s.get("start_time", "").split("T")[-1][:5] for s in sample_slots])
+        date_str = target_date.strftime("%Y-%m-%d") if is_en else target_date.strftime("%d/%m/%Y")
+        msg_reply = (
+            f"I found {count} available slot(s) for {date_str}. Earliest openings: {slots_str}."
+            if is_en
+            else f"J'ai trouvé {count} créneau(x) libre(s) pour le {date_str}. Premières disponibilités : {slots_str}."
+        )
         return {
-            "reply": f"J'ai trouvé {count} créneau(x) libre(s) pour le {target_date.strftime('%d/%m/%Y')}. Premières disponibilités : {slots_str}.",
+            "reply": msg_reply,
             "status": "success",
             "slots": slots,
         }
 
     # 3. View Today's Appointments
-    if any(k in msg for k in ["mes rendez-vous", "rendez-vous aujourd'hui", "agenda", "today's appointments"]):
+    if any(k in msg for k in ["mes rendez-vous", "rendez-vous aujourd'hui", "agenda", "today's appointments", "my appointments"]):
         today_date = datetime.now(timezone.utc).date()
         appts = service.list_appointments(tenant.company_id, target_date=today_date, limit=10)
         if not appts:
+            msg_reply = (
+                "Your calendar is completely open for today. No appointments scheduled."
+                if is_en
+                else "Votre calendrier est entièrement libre pour aujourd'hui. Aucun rendez-vous prévu."
+            )
             return {
-                "reply": "Votre calendrier est entièrement libre pour aujourd'hui. Aucun rendez-vous prévu.",
+                "reply": msg_reply,
                 "status": "success",
                 "appointments": [],
             }
-        lines = [f"• {a.title} ({a.client.full_name if a.client else 'Client'}) à {a.start_time.strftime('%H:%M')}" for a in appts]
+        lines = [
+            f"• {a.title} ({a.client.full_name if a.client else ('Client' if not is_en else 'Customer')}) "
+            f"{'at' if is_en else 'à'} {a.start_time.strftime('%H:%M')}"
+            for a in appts
+        ]
+        header = f"You have {len(appts)} appointment(s) scheduled today:\n" if is_en else f"Vous avez {len(appts)} rendez-vous prévu(s) aujourd'hui :\n"
         return {
-            "reply": f"Vous avez {len(appts)} rendez-vous prévu(s) aujourd'hui :\n" + "\n".join(lines),
+            "reply": header + "\n".join(lines),
             "status": "success",
             "appointments": [{"id": str(a.id), "title": a.title} for a in appts],
         }
 
     # 4. Search Client
-    if any(k in msg for k in ["rechercher un client", "cherche client", "trouver client", "search client"]):
-        query_cleaned = re.sub(r"(rechercher|cherche|trouver|un|le|la|les|client|clients|search)", "", msg).strip()
+    if any(k in msg for k in ["rechercher un client", "cherche client", "trouver client", "search client", "find client"]):
+        query_cleaned = re.sub(r"(rechercher|cherche|trouver|un|le|la|les|client|clients|search|find)", "", msg).strip()
         clients = service.list_clients(tenant.company_id, search=query_cleaned or None, limit=5)
         if not clients:
-            return {"reply": f"Aucun client trouvé pour '{query_cleaned}'.", "status": "success", "clients": []}
-        lines = [f"• {c.full_name} ({c.email or c.phone or 'Contact'})" for c in clients]
+            msg_reply = f"No clients found matching '{query_cleaned}'." if is_en else f"Aucun client trouvé pour '{query_cleaned}'."
+            return {"reply": msg_reply, "status": "success", "clients": []}
+        lines = [f"• {c.full_name} ({c.email or c.phone or ('Contact' if not is_en else 'No phone/email')})" for c in clients]
+        header = f"{len(clients)} client(s) found:\n" if is_en else f"{len(clients)} client(s) trouvé(s) :\n"
         return {
-            "reply": f"{len(clients)} client(s) trouvé(s) :\n" + "\n".join(lines),
+            "reply": header + "\n".join(lines),
             "status": "success",
             "clients": [{"id": str(c.id), "name": c.full_name} for c in clients],
         }
@@ -776,33 +813,53 @@ async def crm_copilot_chat(
         clients_count = kpis.get("active_clients", 0)
         appts_count = kpis.get("appointments_this_month", 0)
         att_rate = kpis.get("attendance_rate_percent", 0.0)
-        return {
-            "reply": (
+        if is_en:
+            msg_reply = (
+                f"Live CRM performance overview:\n"
+                f"• Active clients: {clients_count}\n"
+                f"• Appointments this month: {appts_count}\n"
+                f"• Attendance rate: {att_rate:.1f} %\n"
+                f"• Revenue generated: {rev:,.2f} {cur}\n"
+                f"All metrics are computed live from your tenant registry."
+            )
+        else:
+            msg_reply = (
                 f"Synthèse de vos indicateurs CRM en direct :\n"
                 f"• Clients actifs : {clients_count}\n"
                 f"• Rendez-vous ce mois : {appts_count}\n"
                 f"• Taux de présence : {att_rate:.1f} %\n"
                 f"• Revenus générés : {rev:,.2f} {cur}\n"
                 f"Toutes ces données sont issues du registre normalisé de votre entreprise."
-            ),
+            )
+        return {
+            "reply": msg_reply,
             "status": "success",
             "kpis": kpis,
         }
 
     # 6. Send Reminders Intent
-    if any(k in msg for k in ["rappels", "envoyer des rappels", "relance", "reminders"]):
+    if any(k in msg for k in ["rappels", "envoyer des rappels", "relance", "reminders", "send reminders"]):
+        msg_reply = (
+            "24-hour automated reminders and confirmations are active and operational. Notifications trigger automatically based on your configured workflows."
+            if is_en
+            else "Les rappels automatiques 24h et les confirmations sont actifs et prêts. Les notifications sont envoyées dès que les déclencheurs d'automatisation sont atteints."
+        )
         return {
-            "reply": "Les rappels automatiques 24h et les confirmations sont actifs et prêts. Les notifications sont envoyées dès que les déclencheurs d'automatisation sont atteints.",
+            "reply": msg_reply,
             "status": "success",
         }
 
     # General Contextual Help Response
+    msg_reply = (
+        "Hello! I am your live Avenqo Copilot connected directly to your CRM. "
+        "I can check availability, schedule or reschedule appointments, search clients, or generate real-time activity reports."
+        if is_en
+        else "Bonjour ! Je suis votre Copilot Avenqo connecté en temps réel à votre CRM. "
+        "Je peux vérifier vos disponibilités, planifier ou déplacer des rendez-vous, "
+        "rechercher vos clients ou générer vos rapports d'activité."
+    )
     return {
-        "reply": (
-            "Bonjour ! Je suis votre Copilot Avenqo connecté en temps réel à votre CRM. "
-            "Je peux vérifier vos disponibilités, planifier ou déplacer des rendez-vous, "
-            "rechercher vos clients ou générer vos rapports d'activité."
-        ),
+        "reply": msg_reply,
         "status": "success",
     }
 

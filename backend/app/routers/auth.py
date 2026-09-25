@@ -28,6 +28,7 @@ from backend.app.schemas.auth import (
     SwitchTenantRequest,
     TokenRequest,
     UserResponse,
+    VerifyEmailResponse,
 )
 from backend.app.services.auth_service import (
     AuthenticationError,
@@ -148,17 +149,31 @@ def register(
     )
 
 
-@router.post("/verify-email", response_model=MessageResponse)
-@router.post("/email/verify", response_model=MessageResponse)
+@router.post("/verify-email", response_model=VerifyEmailResponse)
+@router.post("/email/verify", response_model=VerifyEmailResponse)
 def verify_email(
     request: TokenRequest,
+    response: Response,
     service: AuthService = Depends(get_auth_service),
-) -> MessageResponse:
+    db: Session = Depends(get_db),
+) -> VerifyEmailResponse:
     try:
-        service.verify_email(request.token)
+        user = service.verify_email(request.token)
+        result = service._create_auth_session(user)
+        _set_auth_cookies(response, result.access_token, result.refresh_token)
+        return VerifyEmailResponse(
+            message="Adresse email vérifiée.",
+            access_token=result.access_token,
+            refresh_token=result.refresh_token,
+            token_type="bearer",
+            access_expires_at=result.access_expires_at,
+            refresh_expires_at=result.refresh_expires_at,
+            user=_user_response(result.user),
+            company=_company_response(result.user.company),
+            organizations=_get_user_organizations(db, result.user),
+        )
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return MessageResponse(message="Adresse email vérifiée.")
 
 
 @router.post(

@@ -156,7 +156,7 @@ const id: Translations = {
     kicker: "Pertanyaan yang sering diajukan",
     title: "Semua yang perlu Anda ketahui.",
     subtitle: "Pertanyaan lain? Tim kami akan menjawab Anda secara langsung.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Apakah Avenqo menggantikan alat saya saat ini?", answer: "Avenqo terhubung ke lingkungan Anda dan menyatukan keputusan, rekomendasi, dan otomatisasi dalam satu pengalaman." },
       { question: "Bisakah saya mulai dengan hanya satu modul?", answer: "Ya. Mulailah dengan prioritas utama Anda, lalu tambahkan kemampuan sesuai kecepatan bisnis Anda." },

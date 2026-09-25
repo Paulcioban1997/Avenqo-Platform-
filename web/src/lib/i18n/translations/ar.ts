@@ -157,7 +157,7 @@ const ar: Translations = {
     kicker: "الأسئلة الشائعة",
     title: "كل ما تحتاج إلى معرفته.",
     subtitle: "لديك سؤال آخر؟ فريقنا يجيبك مباشرة.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "هل يستبدل Avenqo أدواتي الحالية؟", answer: "يتصل Avenqo ببيئتك ويجمع القرارات والتوصيات والأتمتة في تجربة واحدة." },
       { question: "هل يمكنني البدء بوحدة واحدة فقط؟", answer: "نعم. ابدأ بأولويتك ثم أضف قدرات بوتيرة شركتك." },

@@ -156,7 +156,7 @@ const tr: Translations = {
     kicker: "Sıkça sorulan sorular",
     title: "Bilmeniz gereken her şey.",
     subtitle: "Başka bir sorunuz mu var? Ekibimiz size doğrudan yanıt verecektir.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo mevcut araçlarımın yerini alır mı?", answer: "Avenqo, ortamınıza bağlanır ve kararları, önerileri ve otomasyonları tek bir deneyimde bir araya getirir." },
       { question: "Tek bir modülle başlayabilir miyim?", answer: "Evet. Ana önceliğinizle başlayın, ardından işletmenizin hızında özellikler ekleyin." },

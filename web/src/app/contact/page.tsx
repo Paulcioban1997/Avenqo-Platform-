@@ -92,8 +92,8 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <span style={{ fontSize: "0.8rem", color: "var(--muted)", display: "block" }}>Email</span>
-                    <a href="mailto:bonjour@avenqo.ca" style={{ color: "var(--foreground)", fontWeight: 600, textDecoration: "none" }}>
-                      bonjour@avenqo.ca
+                    <a href="mailto:info@avenqo.ca" style={{ color: "var(--foreground)", fontWeight: 600, textDecoration: "none" }}>
+                      info@avenqo.ca
                     </a>
                   </div>
                 </div>

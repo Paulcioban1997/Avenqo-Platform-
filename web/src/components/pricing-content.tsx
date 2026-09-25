@@ -14,21 +14,21 @@ export function PricingContent() {
 
   const planMeta = [
     {
-      tier: "Demo",
-      price: "$28",
+      tier: "Base",
+      price: "$29.99",
       period: isFr ? "USD / mois" : "USD / month",
       credits: isFr ? "6 500 crédits IA inclus / mois" : "6,500 AI credits included / mo",
-      creditExtra: isFr ? "Supplément : +6 500 crédits pour 10 USD" : "Add-on: +6,500 credits for $10 USD",
-      actionHref: "/register?plan=demo",
-      actionText: isFr ? "Choisir Demo" : "Select Demo",
+      creditExtra: isFr ? "3 modules au choix • Jusqu'à 5 utilisateurs" : "3 modules of choice • Up to 5 users",
+      actionHref: "/register?plan=base",
+      actionText: isFr ? "Choisir Base" : "Select Base",
       featured: false,
     },
     {
       tier: "Professional",
-      price: "$49",
+      price: "$49.99",
       period: isFr ? "USD / mois" : "USD / month",
       credits: isFr ? "25 000 crédits IA inclus / mois" : "25,000 AI credits included / mo",
-      creditExtra: isFr ? "Supplément : +25 000 crédits pour 25 USD" : "Add-on: +25,000 credits for $25 USD",
+      creditExtra: isFr ? "Jusqu'à 6 modules • Jusqu'à 25 utilisateurs" : "Up to 6 modules • Up to 25 users",
       actionHref: "/register?plan=professional",
       actionText: isFr ? "Choisir Professional" : "Select Professional",
       featured: true,
@@ -38,7 +38,7 @@ export function PricingContent() {
       price: isFr ? "Sur mesure" : "Custom quote",
       period: isFr ? "Devis personnalisé" : "Tailored solution",
       credits: isFr ? "Crédits IA sur mesure" : "Custom AI credit volume",
-      creditExtra: isFr ? "Accompagnement et SLA dédiés" : "Dedicated SLA & onboarding",
+      creditExtra: isFr ? "Tous modules illimités • SLA dédié" : "All unlimited modules • Dedicated SLA",
       actionHref: "/contact",
       actionText: isFr ? "Contacter les ventes" : "Contact sales",
       featured: false,
@@ -114,6 +114,51 @@ export function PricingContent() {
                 </motion.article>
               );
             })}
+          </div>
+
+          {/* Credit Packs Section */}
+          <div style={{ marginTop: 64, textAlign: "center" }}>
+            <span className="section-kicker" style={{ color: "#38bdf8" }}>
+              {isFr ? "Recharges flexibles" : "Flexible Top-ups"}
+            </span>
+            <h2 style={{ fontSize: "clamp(24px, 3vw, 36px)", margin: "10px 0 14px", fontWeight: 700 }}>
+              {isFr ? "Packs de crédits IA additionnels" : "Add-on AI Credit Packs"}
+            </h2>
+            <p style={{ color: "var(--muted)", maxWidth: 580, margin: "0 auto 36px", fontSize: 15 }}>
+              {isFr
+                ? "Besoin d'un surcroît d'analyses ou d'exécutions d'agents ? Achetez des crédits valables sans expiration."
+                : "Need extra analytical capacity or agent executions? Purchase non-expiring credit packs at any time."}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, maxWidth: 960, margin: "0 auto" }}>
+              <div style={{ padding: 24, borderRadius: 16, border: "1px solid var(--border)", background: "var(--card-bg, rgba(255,255,255,0.03))", textAlign: "left" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Starter Pack</span>
+                <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>6 500 {isFr ? "crédits IA" : "AI credits"}</h4>
+                <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$10 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Idéal pour compléter un mois actif." : "Great for topping up an active month."}</p>
+                <Link href="/billing" className="button" style={{ display: "block", textAlign: "center", border: "1px solid var(--border)", fontSize: 13, padding: "8px 16px" }}>
+                  {isFr ? "Recharger" : "Top up"}
+                </Link>
+              </div>
+              <div style={{ padding: 24, borderRadius: 16, border: "1px solid #38bdf8", background: "rgba(56, 189, 248, 0.04)", textAlign: "left", position: "relative" }}>
+                <span style={{ position: "absolute", top: -10, right: 20, background: "#38bdf8", color: "#0b1120", fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 9999 }}>{isFr ? "Populaire" : "Popular"}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Growth Pack</span>
+                <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>25 000 {isFr ? "crédits IA" : "AI credits"}</h4>
+                <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$35 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Pour les campagnes et automatisations intenses." : "For intensive campaigns and workflows."}</p>
+                <Link href="/billing" className="button button-primary" style={{ display: "block", textAlign: "center", fontSize: 13, padding: "8px 16px" }}>
+                  {isFr ? "Recharger" : "Top up"}
+                </Link>
+              </div>
+              <div style={{ padding: 24, borderRadius: 16, border: "1px solid var(--border)", background: "var(--card-bg, rgba(255,255,255,0.03))", textAlign: "left" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Scale Pack</span>
+                <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>65 000 {isFr ? "crédits IA" : "AI credits"}</h4>
+                <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$80 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Volume maximal avec tarif préférentiel." : "Maximum volume with preferential rate."}</p>
+                <Link href="/billing" className="button" style={{ display: "block", textAlign: "center", border: "1px solid var(--border)", fontSize: 13, padding: "8px 16px" }}>
+                  {isFr ? "Recharger" : "Top up"}
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </section>

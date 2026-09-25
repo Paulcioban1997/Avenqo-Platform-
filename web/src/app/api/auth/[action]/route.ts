@@ -90,7 +90,7 @@ export async function POST(
 
     // Défense en profondeur : si FastAPI a renvoyé les tokens en JSON, définir directement les cookies HttpOnly sur NextResponse
     const isSecure = process.env.NODE_ENV === "production" || process.env.ENVIRONMENT === "staging" || process.env.VERCEL_ENV !== "development";
-    if (upstream.status === 200 && (action === "login" || action === "refresh")) {
+    if (upstream.status === 200 && (action === "login" || action === "refresh" || action === "verify-email")) {
       try {
         const parsed = JSON.parse(responseBody);
         if (parsed.access_token) {

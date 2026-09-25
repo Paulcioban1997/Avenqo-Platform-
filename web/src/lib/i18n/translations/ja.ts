@@ -155,7 +155,7 @@ const ja: Translations = {
     kicker: "よくある質問",
     title: "知っておきたいすべてのこと。",
     subtitle: "他にご質問がありますか？私たちのチームが直接お答えします。",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqoは既存ツールの代わりになりますか？", answer: "Avenqoはお客様の環境と連携し、意思決定・レコメンデーション・自動化をひとつの体験に統合します。" },
       { question: "1つのモジュールから始められますか？", answer: "はい。優先事項から始めて、会社のペースに合わせて機能を追加できます。" },

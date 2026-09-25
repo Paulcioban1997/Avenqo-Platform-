@@ -156,7 +156,7 @@ const de: Translations = {
     kicker: "Häufig gestellte Fragen",
     title: "Alles, was Sie wissen müssen.",
     subtitle: "Noch eine Frage? Unser Team antwortet Ihnen direkt.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Ersetzt Avenqo meine aktuellen Tools?", answer: "Avenqo verbindet sich mit Ihrer Umgebung und vereint Entscheidungen, Empfehlungen und Automatisierungen in einer Erfahrung." },
       { question: "Kann ich mit einem einzigen Modul beginnen?", answer: "Ja. Beginnen Sie mit Ihrer obersten Priorität und fügen Sie im Tempo Ihres Unternehmens weitere Funktionen hinzu." },

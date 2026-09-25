@@ -156,7 +156,7 @@ const cs: Translations = {
     kicker: "Často kladené otázky",
     title: "Vše, co potřebujete vědět.",
     subtitle: "Máte jinou otázku? Náš tým vám odpoví přímo.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Nahrazuje Avenqo mé současné nástroje?", answer: "Avenqo se připojuje k vašemu prostředí a shromažďuje rozhodnutí, doporučení a automatizace do jednoho zážitku." },
       { question: "Mohu začít pouze s jedním modulem?", answer: "Ano. Začněte se svou hlavní prioritou a poté přidávejte funkce tempem vaší firmy." },

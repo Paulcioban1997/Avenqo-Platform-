@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 
 from backend.app.config.settings import get_settings
@@ -354,6 +354,35 @@ def authorize_shopify(
         authorization_url=result.authorization_url,
         expires_at=result.expires_at,
     )
+
+
+@router.get(
+    "/shopify/authorize",
+)
+def authorize_shopify_get(
+    shop: str | None = Query(None),
+    shop_domain: str | None = Query(None),
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+    registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
+):
+    target_shop = (shop or shop_domain or "").strip()
+    if not target_shop:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Le domaine de la boutique Shopify est requis")
+    _require_connector_launch_access(identity, registry, "shopify")
+    try:
+        result = service.begin_shopify_oauth(
+            _tenant(identity),
+            actor_user_id=identity.user.id,
+            shop_domain=target_shop,
+        )
+    except (CommerceConnectionError, ConnectorNotRegisteredError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return RedirectResponse(url=result.authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.post(

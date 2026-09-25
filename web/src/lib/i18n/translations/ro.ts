@@ -156,7 +156,7 @@ const ro: Translations = {
     kicker: "Întrebări frecvente",
     title: "Tot ce trebuie să știi.",
     subtitle: "Ai o altă întrebare? Echipa noastră îți răspunde direct.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo îmi înlocuiește instrumentele actuale?", answer: "Avenqo se conectează la mediul tău și reunește decizii, recomandări și automatizări într-o singură experiență." },
       { question: "Pot începe cu un singur modul?", answer: "Da. Începe cu prioritatea ta, apoi adaugă capabilități în ritmul companiei tale." },

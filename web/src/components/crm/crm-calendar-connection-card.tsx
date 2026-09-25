@@ -41,16 +41,15 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
     try {
       const headers = getAuthHeaders();
 
-      const res = await fetch("/api/v1/crm/summary", { headers });
+      const res = await fetch("/api/v1/crm/calendar/connection", { headers });
       if (res.ok) {
         const data = await res.json();
-        const conn = data.active_calendar_connection;
-        if (conn && conn.is_active) {
+        if (data.connected) {
           setGoogleStatus({
             connected: true,
-            provider: conn.provider,
-            account_email: conn.account_email,
-            last_sync_at: conn.last_sync_at,
+            provider: data.provider,
+            account_email: data.account_email,
+            last_sync_at: data.last_synced_at,
           });
         } else {
           setGoogleStatus({ connected: false });
@@ -72,11 +71,12 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
       const res = await fetch("/api/v1/crm/calendar/google/auth-url", { headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Google OAuth non configuré sur ce serveur.");
+        throw new Error(err.detail || "Google OAuth non configuré sur ce serveur (GOOGLE_CALENDAR_CLIENT_ID manquant).");
       }
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      const targetUrl = data.auth_url || data.url;
+      if (targetUrl) {
+        window.location.href = targetUrl;
       }
     } catch (err: any) {
       setError(err.message || "Erreur de connexion");

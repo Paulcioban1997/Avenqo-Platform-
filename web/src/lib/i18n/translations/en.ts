@@ -133,21 +133,21 @@ const en: Translations = {
     priceLabel: "Custom pricing",
     plans: [
       {
-        tier: "Demo",
+        tier: "Base",
         title: "To get started",
-        items: ["3 Avenqo modules (Retail, CRM, Accounting)", "Up to 5 users", "Built-in assistant", "Standard support"],
-        action: "Talk to an advisor",
+        items: ["3 Avenqo modules of your choice", "6,500 AI credits included / mo", "Up to 5 users", "Integrated AI Assistant", "Standard support"],
+        action: "Select Base",
       },
       {
         tier: "Professional",
         title: "To accelerate",
-        items: ["Up to 6 modules", "Up to 25 users", "Advanced automations", "Priority support"],
-        action: "Try for free",
+        items: ["Up to 6 modules of your choice", "25,000 AI credits included / mo", "Up to 25 users", "Advanced automations & Copilots", "Priority support"],
+        action: "Select Professional",
       },
       {
         tier: "Enterprise",
         title: "To orchestrate",
-        items: ["Unlimited modules", "Custom user counts", "Custom integrations", "Dedicated governance"],
+        items: ["All modules (unlimited)", "Custom AI credit volume", "Unlimited users", "Custom integrations & connectors", "Dedicated governance & SLA"],
         action: "Contact sales",
       },
     ],
@@ -156,7 +156,7 @@ const en: Translations = {
     kicker: "Frequently asked questions",
     title: "Everything you need to know.",
     subtitle: "Have another question? Our team will answer you directly.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Does Avenqo replace my current tools?", answer: "Avenqo connects to your environment and brings decisions, recommendations and automations into one experience." },
       { question: "Can I start with a single module?", answer: "Yes. Start with your top priority, then add capabilities at your company's pace." },

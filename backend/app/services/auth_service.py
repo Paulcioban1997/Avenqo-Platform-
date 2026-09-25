@@ -24,6 +24,7 @@ from backend.app.models import (
     AuthSession,
     BillingAccount,
     Company,
+    CompanyMembership,
     CompanyOnboarding,
     CompanyStatus,
     OnboardingStatus,
@@ -114,12 +115,20 @@ class AuthService:
             is_active=True,
             email_verified_at=None,
         )
-        self._session.add_all((company, user))
+        membership = CompanyMembership(
+            user_id=user.id,
+            company_id=company.id,
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        self._session.add_all((company, user, membership))
         self._session.flush()
+        plan_code = "base" if (request.plan_code or "").lower() in {"base", "demo"} else request.plan_code
         billing_account = BillingAccount(
             company_id=company.id,
-            plan_code=request.plan_code or "demo",
+            plan_code=plan_code,
             status="trialing",
+            cancel_at_period_end=False,
             current_period_end=datetime.now(timezone.utc) + timedelta(days=14),
         )
         self._session.add(billing_account)

@@ -156,7 +156,7 @@ const vi: Translations = {
     kicker: "Câu hỏi thường gặp",
     title: "Tất cả những gì bạn cần biết.",
     subtitle: "Câu hỏi khác? Đội ngũ của chúng tôi sẽ trả lời trực tiếp cho bạn.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo có thay thế các công cụ hiện tại của tôi không?", answer: "Avenqo kết nối với môi trường của bạn và tập hợp các quyết định, đề xuất và tự động hóa thành một trải nghiệm duy nhất." },
       { question: "Tôi có thể bắt đầu chỉ với một mô-đun không?", answer: "Có. Bắt đầu với ưu tiên chính của bạn, sau đó thêm các tính năng theo tốc độ của doanh nghiệp bạn." },

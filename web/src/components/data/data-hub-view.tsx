@@ -146,6 +146,7 @@ export function DataHubView() {
     for (const file of Array.from(files)) {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("module_code", "retail");
       const fileId = `${file.name}_${Date.now()}`;
       setUploadProgress((p) => ({ ...p, [fileId]: 0 }));
       try {
@@ -156,7 +157,12 @@ export function DataHubView() {
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({ message: "Erreur d'upload" }));
-          throw new Error(err.detail ?? err.message ?? `Erreur ${resp.status}`);
+          const errMsg = typeof err.detail === "string"
+            ? err.detail
+            : Array.isArray(err.detail)
+              ? err.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
+              : err.message ?? `Erreur ${resp.status}`;
+          throw new Error(errMsg);
         }
         setUploadProgress((p) => ({ ...p, [fileId]: 100 }));
         await fetchDatasets();

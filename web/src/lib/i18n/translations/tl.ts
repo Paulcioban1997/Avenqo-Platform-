@@ -156,7 +156,7 @@ const tl: Translations = {
     kicker: "Mga madalas itanong",
     title: "Lahat ng kailangan mong malaman.",
     subtitle: "May iba pang tanong? Direktang sasagutin ka ng aming team.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Papalitan ba ng Avenqo ang aking mga kasalukuyang tool?", answer: "Kumukonekta ang Avenqo sa iyong kapaligiran at pinagsasama-sama ang mga desisyon, rekomendasyon, at automation sa isang karanasan." },
       { question: "Maaari ba akong magsimula sa isang module lang?", answer: "Oo. Magsimula sa iyong pangunahing priyoridad, pagkatapos ay magdagdag ng kakayahan ayon sa bilis ng iyong negosyo." },

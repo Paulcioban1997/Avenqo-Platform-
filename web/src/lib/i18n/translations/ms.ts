@@ -156,7 +156,7 @@ const ms: Translations = {
     kicker: "Soalan lazim",
     title: "Semua yang anda perlu tahu.",
     subtitle: "Soalan lain? Pasukan kami akan menjawab anda secara terus.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Adakah Avenqo menggantikan alat semasa saya?", answer: "Avenqo bersambung dengan persekitaran anda dan menghimpunkan keputusan, cadangan dan automasi dalam satu pengalaman." },
       { question: "Bolehkah saya mula dengan hanya satu modul?", answer: "Ya. Mula dengan keutamaan utama anda, kemudian tambah keupayaan mengikut rentak perniagaan anda." },

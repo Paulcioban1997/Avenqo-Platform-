@@ -156,7 +156,7 @@ const sv: Translations = {
     kicker: "Vanliga frågor",
     title: "Allt du behöver veta.",
     subtitle: "Ytterligare en fråga? Vårt team svarar dig direkt.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Ersätter Avenqo mina nuvarande verktyg?", answer: "Avenqo ansluter till din miljö och samlar beslut, rekommendationer och automatiseringar i en enda upplevelse." },
       { question: "Kan jag börja med bara en modul?", answer: "Ja. Börja med din huvudprioritet och lägg sedan till funktioner i takt med ditt företag." },

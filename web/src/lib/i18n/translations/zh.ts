@@ -155,7 +155,7 @@ const zh: Translations = {
     kicker: "常见问题",
     title: "您需要了解的一切。",
     subtitle: "还有其他问题？我们的团队将直接为您解答。",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo 会取代我现有的工具吗？", answer: "Avenqo 会连接到您现有的环境，将决策、建议与自动化整合为统一体验。" },
       { question: "我可以只从一个模块开始吗？", answer: "可以。先从您的优先事项开始，再按企业节奏逐步添加功能。" },

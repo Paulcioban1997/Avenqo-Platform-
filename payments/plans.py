@@ -9,7 +9,8 @@ from modules.registry import BUSINESS_MODULE_REGISTRY
 class PlanCode(StrEnum):
     """Codes stables utilisés par Avenqo et les futurs adaptateurs de paiement."""
 
-    DEMO = "demo"
+    BASE = "base"
+    DEMO = "demo"  # Alias rétrocompatible pour migration transparente
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
     CUSTOM_ENTERPRISE = "custom_enterprise"
@@ -24,7 +25,7 @@ class SubscriptionPlan:
     selectable_modules: frozenset[str]
     max_selectable_modules: int | None = None
     requires_sales_contact: bool = False
-    monthly_price_usd: int | None = None
+    monthly_price_usd: float | None = None
     monthly_ai_credits: int | None = None
 
     def allows_module(self, module_code: str) -> bool:
@@ -46,11 +47,11 @@ ALL_MODULES = frozenset(MODULE_NAMES)
 
 PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
     SubscriptionPlan(
-        PlanCode.DEMO,
-        "Demo",
+        PlanCode.BASE,
+        "Base",
         ALL_MODULES,
         max_selectable_modules=3,
-        monthly_price_usd=28,
+        monthly_price_usd=29.99,
         monthly_ai_credits=6_500,
     ),
     SubscriptionPlan(
@@ -58,7 +59,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         "Professional",
         ALL_MODULES,
         max_selectable_modules=6,
-        monthly_price_usd=49,
+        monthly_price_usd=49.99,
         monthly_ai_credits=25_000,
     ),
     SubscriptionPlan(
@@ -71,6 +72,14 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
 
 INTERNAL_COMPATIBILITY_PLANS: tuple[SubscriptionPlan, ...] = (
     *PUBLIC_PLANS,
+    SubscriptionPlan(
+        PlanCode.DEMO,
+        "Base",
+        ALL_MODULES,
+        max_selectable_modules=3,
+        monthly_price_usd=29.99,
+        monthly_ai_credits=6_500,
+    ),
     SubscriptionPlan(
         PlanCode.CUSTOM_ENTERPRISE,
         "Custom Enterprise",
@@ -92,23 +101,17 @@ class AICreditPack:
 
 
 AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
-    AICreditPack("demo_extra", PlanCode.DEMO, credits=6_500, price_usd=10),
-    AICreditPack(
-        "professional_6500",
-        PlanCode.PROFESSIONAL,
-        credits=6_500,
-        price_usd=10,
-    ),
-    AICreditPack(
-        "professional_25000",
-        PlanCode.PROFESSIONAL,
-        credits=25_000,
-        price_usd=25,
-    ),
+    AICreditPack("credits_6500", PlanCode.BASE, credits=6_500, price_usd=10),
+    AICreditPack("credits_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=35),
+    AICreditPack("credits_65000", PlanCode.PROFESSIONAL, credits=65_000, price_usd=80),
+    # Rétrocompatibilité
+    AICreditPack("demo_extra", PlanCode.BASE, credits=6_500, price_usd=10),
+    AICreditPack("professional_6500", PlanCode.PROFESSIONAL, credits=6_500, price_usd=10),
+    AICreditPack("professional_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=35),
 )
 AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
 # Preserve delayed Checkout sessions created before the Phase 2 code rename.
-AI_CREDIT_PACKS_BY_CODE["professional_extra"] = AI_CREDIT_PACKS_BY_CODE["professional_25000"]
+AI_CREDIT_PACKS_BY_CODE["professional_extra"] = AI_CREDIT_PACKS_BY_CODE["credits_25000"]
 
 
 def get_plan(code: PlanCode | str) -> SubscriptionPlan:
@@ -142,20 +145,19 @@ class DataImportLimits:
 
 
 DATA_IMPORT_LIMITS_BY_PLAN: dict[PlanCode, DataImportLimits] = {
-    # 50 MB sur Demo permet de tester de vrais jeux de données métier (par ex.
-    # des classeurs XLSX de plusieurs centaines de milliers de lignes) tout en
-    # restant borné par le plafond technique global DATASET_MAX_UPLOAD_MB.
-    PlanCode.DEMO: DataImportLimits(max_datasets=5, max_file_mb=50),
-    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=50, max_file_mb=100),
-    PlanCode.ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
-    PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=500, max_file_mb=250),
+    PlanCode.BASE: DataImportLimits(max_datasets=25, max_file_mb=50),
+    PlanCode.DEMO: DataImportLimits(max_datasets=25, max_file_mb=50),
+    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=100, max_file_mb=100),
+    PlanCode.ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
+    PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
 }
 
 
 def data_import_limits_for(code: PlanCode | str) -> DataImportLimits:
-    """Retourne les limites d'import pour une offre ; retombe sur Demo si inconnue."""
+    """Retourne les limites d'import pour une offre ; retombe sur Base si inconnue."""
 
     try:
-        return DATA_IMPORT_LIMITS_BY_PLAN[PlanCode(code)]
+        norm = PlanCode(str(code).lower())
+        return DATA_IMPORT_LIMITS_BY_PLAN.get(norm, DATA_IMPORT_LIMITS_BY_PLAN[PlanCode.BASE])
     except (KeyError, ValueError):
-        return DATA_IMPORT_LIMITS_BY_PLAN[PlanCode.DEMO]
+        return DATA_IMPORT_LIMITS_BY_PLAN[PlanCode.BASE]

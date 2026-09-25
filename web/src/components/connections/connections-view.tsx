@@ -519,13 +519,32 @@ export function ConnectionsView() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const shop = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
-                        if (shop) {
-                          window.location.href = `/api/v1/connectors/shopify/authorize?shop=${encodeURIComponent(shop)}`;
+                        if (!shop) return;
+                        setActionLoading(true);
+                        try {
+                          const res = await fetch("/api/v1/connectors/shopify/authorize", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                            body: JSON.stringify({ shop_domain: shop.trim() }),
+                          });
+                          if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            throw new Error(err.detail || "Erreur lors de l'autorisation Shopify.");
+                          }
+                          const data = await res.json();
+                          if (data.authorization_url) {
+                            window.location.href = data.authorization_url;
+                          }
+                        } catch (err: any) {
+                          setAlertError(err.message || "Erreur de connexion Shopify.");
+                        } finally {
+                          setActionLoading(false);
                         }
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                      disabled={actionLoading}
+                      className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                     >
                       Connecter
                     </button>

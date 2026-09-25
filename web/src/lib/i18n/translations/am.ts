@@ -156,7 +156,7 @@ const am: Translations = {
     kicker: "በተደጋጋሚ የሚጠየቁ ጥያቄዎች",
     title: "ማወቅ የሚያስፈልግዎ ነገር ሁሉ።",
     subtitle: "ሌላ ጥያቄ? ቡድናችን በቀጥታ ይመልስልዎታል።",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo የአሁኑን መሳሪያዎቼን ይተካልን?", answer: "Avenqo ከአካባቢዎ ጋር ይገናኛል እና ውሳኔዎችን፣ ምክሮችን እና አውቶሜሽንን በአንድ ልምድ ውስጥ ያሰባስባል።" },
       { question: "በአንድ ሞጁል ብቻ መጀመር እችላለሁን?", answer: "አዎ። በዋና ቅድሚያዎ ይጀምሩ፣ ከዚያም በንግድዎ ፍጥነት ችሎታዎችን ይጨምሩ።" },

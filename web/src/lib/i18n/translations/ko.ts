@@ -155,7 +155,7 @@ const ko: Translations = {
     kicker: "자주 묻는 질문",
     title: "알아야 할 모든 것.",
     subtitle: "다른 질문이 있으신가요? 저희 팀이 직접 답변해 드립니다.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Avenqo가 기존 도구를 대체하나요?", answer: "Avenqo는 기존 환경과 연결되어 의사결정, 추천, 자동화를 하나의 경험으로 통합합니다." },
       { question: "하나의 모듈로만 시작할 수 있나요?", answer: "네. 우선순위부터 시작한 뒤 회사의 속도에 맞춰 기능을 추가할 수 있습니다." },

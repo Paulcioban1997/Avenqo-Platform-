@@ -156,7 +156,7 @@ const ha: Translations = {
     kicker: "Tambayoyin da ake yawan yi",
     title: "Duk abin da kuke bukatar sani.",
     subtitle: "Wata tambaya? Ƙungiyar mu za ta amsa muku kai tsaye.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Shin Avenqo yana maye gurbin kayan aikina na yanzu?", answer: "Avenqo yana haɗawa da yanayin ku kuma yana tattara shawarwari, shawarwarin, da atomatik a cikin gogewa ɗaya." },
       { question: "Zan iya farawa da module ɗaya kawai?", answer: "Eh. Fara da babban fifikon ku, sannan ƙara ikon a saurin kasuwancin ku." },

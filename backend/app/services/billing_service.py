@@ -55,9 +55,14 @@ class BillingService:
             BillingAccount.company_id == company_id,
         ))
         if account is None:
-            account = BillingAccount(company_id=company_id, plan_code="demo", status="inactive")
+            account = BillingAccount(company_id=company_id, plan_code="base", status="inactive")
             self._session.add(account)
             self._session.flush()
+        elif account.plan_code == "demo":
+            account.plan_code = "base"
+            if account.company and account.company.subscription_plan == "demo":
+                account.company.subscription_plan = "base"
+            self._session.commit()
         return account
 
     def create_checkout(self, company: Company, plan_code: str) -> str:

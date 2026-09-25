@@ -44,7 +44,7 @@ export default function PrivacyPage() {
               <ul style={{ listStyleType: "disc", paddingLeft: 24, marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                 <li><strong>Entité :</strong> PMC Solutions AI Inc.</li>
                 <li><strong>Responsable :</strong> Direction de la conformité et de la sécurité des données</li>
-                <li><strong>Courriel dédié :</strong> <a href="mailto:confidentialite@avenqo.ca" style={{ color: "#38bdf8" }}>confidentialite@avenqo.ca</a> (ou <a href="mailto:bonjour@avenqo.ca" style={{ color: "#38bdf8" }}>bonjour@avenqo.ca</a>)</li>
+                <li><strong>Courriel dédié :</strong> <a href="mailto:confidentialite@avenqo.ca" style={{ color: "#38bdf8" }}>confidentialite@avenqo.ca</a> (ou <a href="mailto:info@avenqo.ca" style={{ color: "#38bdf8" }}>info@avenqo.ca</a>)</li>
                 <li><strong>Adresse :</strong> Montréal, Québec, Canada</li>
               </ul>
             </div>

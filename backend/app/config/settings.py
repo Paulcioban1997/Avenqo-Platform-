@@ -140,16 +140,29 @@ class Settings(BaseSettings):
     avenqo_owner_notification_email: str | None = Field(default=None, alias="AVENQO_OWNER_NOTIFICATION_EMAIL")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
-    stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
-    stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
+    stripe_price_base: str | None = Field(default="price_1UHtTqGuYLaLvT3YZ6mlhdfr", alias="STRIPE_PRICE_BASE")
+    stripe_price_demo: str | None = Field(default="price_1UHtTqGuYLaLvT3YZ6mlhdfr", alias="STRIPE_PRICE_DEMO")
+    stripe_price_professional: str | None = Field(default="price_1UHtUmGuYLaLvT3YVLCMOEJD", alias="STRIPE_PRICE_PROFESSIONAL")
     stripe_prices_by_currency: dict[str, dict[str, str]] = Field(
         default_factory=dict,
         alias="STRIPE_PRICES_BY_CURRENCY",
     )
-    stripe_price_credit_demo: str | None = Field(default=None, alias="STRIPE_PRICE_CREDIT_DEMO")
+    stripe_price_credit_demo: str | None = Field(default="price_1UBFdiGuYLaLvT3YiqDDgvui", alias="STRIPE_PRICE_CREDIT_DEMO")
     stripe_price_credit_professional: str | None = Field(
-        default=None,
+        default="price_1UJYg8GuYLaLvT3YuE0LfyEn",
         alias="STRIPE_PRICE_CREDIT_PROFESSIONAL",
+    )
+    stripe_price_credit_6500: str | None = Field(
+        default="price_1UBFdiGuYLaLvT3YiqDDgvui",
+        alias="STRIPE_PRICE_CREDIT_6500",
+    )
+    stripe_price_credit_25000: str | None = Field(
+        default="price_1UJYg8GuYLaLvT3YuE0LfyEn",
+        alias="STRIPE_PRICE_CREDIT_25000",
+    )
+    stripe_price_credit_65000: str | None = Field(
+        default="price_1UJYg9GuYLaLvT3YMtSLDHen",
+        alias="STRIPE_PRICE_CREDIT_65000",
     )
     stripe_price_credit_professional_6500: str | None = Field(
         default=None,
@@ -488,43 +501,75 @@ class Settings(BaseSettings):
     def stripe_price_id(self, plan_code: str, currency_code: str | None = None) -> str | None:
         currency = (currency_code or "USD").strip().upper()
         normalized_plan = plan_code.strip().lower()
+        if normalized_plan == "demo":
+            normalized_plan = "base"
         localized = (
             self.stripe_prices_by_currency.get(currency, {})
             or self.stripe_prices_by_currency.get(currency.lower(), {})
         ).get(normalized_plan)
         if localized:
             return localized
+        base_price = self.stripe_price_base or self.stripe_price_demo
         return {
-            "demo": self.stripe_price_demo,
+            "base": base_price,
+            "demo": base_price,
             "professional": self.stripe_price_professional,
         }.get(normalized_plan)
 
     def stripe_plan_code(self, price_id: str) -> str | None:
+        base_price = self.stripe_price_base or self.stripe_price_demo
         prices = {
-            self.stripe_price_demo: "demo",
+            base_price: "base",
             self.stripe_price_professional: "professional",
         }
         for plans in self.stripe_prices_by_currency.values():
             for plan_code, configured_price_id in plans.items():
-                prices[configured_price_id] = plan_code
+                prices[configured_price_id] = "base" if plan_code == "demo" else plan_code
         return prices.get(price_id)
 
     def stripe_credit_price_id(self, pack_code: str) -> str | None:
         return {
-            "demo": self.stripe_price_credit_demo,
-            "demo_extra": self.stripe_price_credit_demo,
-            "professional": (
-                self.stripe_price_credit_professional_25000
+            "credits_6500": (
+                self.stripe_price_credit_6500
+                or self.stripe_price_credit_demo
+                or self.stripe_price_credit_professional_6500
+                or "price_1UBFdiGuYLaLvT3YiqDDgvui"
+            ),
+            "credits_25000": (
+                self.stripe_price_credit_25000
+                or self.stripe_price_credit_professional_25000
                 or self.stripe_price_credit_professional
+                or "price_1UJYg8GuYLaLvT3YuE0LfyEn"
+            ),
+            "credits_65000": (
+                self.stripe_price_credit_65000
+                or "price_1UJYg9GuYLaLvT3YMtSLDHen"
+            ),
+            "demo": self.stripe_price_credit_6500 or self.stripe_price_credit_demo or "price_1UBFdiGuYLaLvT3YiqDDgvui",
+            "demo_extra": self.stripe_price_credit_6500 or self.stripe_price_credit_demo or "price_1UBFdiGuYLaLvT3YiqDDgvui",
+            "professional": (
+                self.stripe_price_credit_25000
+                or self.stripe_price_credit_professional_25000
+                or self.stripe_price_credit_professional
+                or "price_1UJYg8GuYLaLvT3YuE0LfyEn"
             ),
             "professional_extra": (
-                self.stripe_price_credit_professional_25000
+                self.stripe_price_credit_25000
+                or self.stripe_price_credit_professional_25000
                 or self.stripe_price_credit_professional
+                or "price_1UJYg8GuYLaLvT3YuE0LfyEn"
             ),
-            "professional_6500": self.stripe_price_credit_professional_6500,
+            "professional_6500": (
+                self.stripe_price_credit_6500
+                or self.stripe_price_credit_professional_6500
+                or self.stripe_price_credit_demo
+                or "price_1UBFdiGuYLaLvT3YiqDDgvui"
+            ),
             "professional_25000": (
-                self.stripe_price_credit_professional_25000
+                self.stripe_price_credit_25000
+                or self.stripe_price_credit_professional_25000
                 or self.stripe_price_credit_professional
+                or "price_1UJYg8GuYLaLvT3YuE0LfyEn"
             ),
         }.get(pack_code)
 

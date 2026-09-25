@@ -156,7 +156,7 @@ const af: Translations = {
     kicker: "Gereelde vrae",
     title: "Alles wat jy moet weet.",
     subtitle: "Nog 'n vraag? Ons span sal jou direk antwoord.",
-    contactCta: "bonjour@avenqo.ca",
+    contactCta: "info@avenqo.ca",
     items: [
       { question: "Vervang Avenqo my huidige gereedskap?", answer: "Avenqo koppel aan jou omgewing en bring besluite, aanbevelings en outomatisering saam in een ervaring." },
       { question: "Kan ek met net een module begin?", answer: "Ja. Begin met jou hoofprioriteit en voeg dan vermoëns by teen die pas van jou besigheid." },

@@ -129,10 +129,10 @@ export function BillingView() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
-    plan_code: "demo",
+    plan_code: "base",
     status: "inactive",
-    plan_name: "Demo",
-    monthly_price_usd: 0,
+    plan_name: "Base",
+    monthly_price_usd: 29.99,
     billing_frequency: "monthly",
     currency: "USD",
   });
@@ -321,10 +321,32 @@ export function BillingView() {
       setActionError("Seuls les administrateurs de l'organisation peuvent modifier l'abonnement.");
       return;
     }
-    if (subscription.plan_code?.toLowerCase() === "demo") {
+    const code = (subscription.plan_code || "").toLowerCase();
+    if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
     } else {
       setIsEnterpriseModalOpen(true);
+    }
+  };
+
+  const handleSubscribeToBase = async () => {
+    setActionError(null);
+    try {
+      const res = await fetch("/api/v1/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ plan_code: "base" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+          return;
+        }
+      }
+      handleOpenStripePortal();
+    } catch {
+      handleOpenStripePortal();
     }
   };
 
@@ -534,7 +556,7 @@ export function BillingView() {
           <div>
             <div className="text-xs text-slate-400 dark:text-slate-500">Tarification</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
-              ${subscription.monthly_price_usd || 49}.00 {subscription.currency || "USD"}
+              ${(subscription.monthly_price_usd ?? 29.99).toFixed(2)} {subscription.currency || "USD"}
             </div>
             <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1 capitalize">
               Facturation {subscription.billing_frequency === "annual" ? "annuelle" : "mensuelle"}
@@ -620,8 +642,8 @@ export function BillingView() {
               {entitlements ? `${entitlements.active_modules?.length || 0} / ${entitlements.module_limit !== null ? entitlements.module_limit : "∞"}` : "Chargement..."}
             </span>
             <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-              {subscription.plan_code?.toLowerCase() === "demo"
-                ? "(Max 3 pour Demo)"
+              {subscription.plan_code?.toLowerCase() === "demo" || subscription.plan_code?.toLowerCase() === "base"
+                ? "(Max 3 pour Base)"
                 : subscription.plan_code?.toLowerCase() === "professional"
                 ? "(Max 6 pour Professional)"
                 : "(Sur-mesure Enterprise)"}
@@ -1141,7 +1163,7 @@ export function BillingView() {
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">Tarif officiel :</span>
-                <span className="text-base font-extrabold text-slate-900 dark:text-white">$49.00 USD / mois</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white">$49.99 USD / mois</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">Fréquence :</span>

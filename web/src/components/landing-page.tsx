@@ -53,17 +53,17 @@ export function LandingPage() {
 
   const planTiers = [
     {
-      tier: "Demo",
-      price: "$28 USD",
+      tier: "Base",
+      price: "$29.99 USD",
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "6,500 AI credits included" : "6 500 crédits IA inclus",
-      action: isEn ? "Choose Demo" : "Choisir Demo",
-      href: "/register?plan=demo",
+      action: isEn ? "Choose Base" : "Choisir Base",
+      href: "/register?plan=base",
       featured: false,
     },
     {
       tier: "Professional",
-      price: "$49 USD",
+      price: "$49.99 USD",
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "25,000 AI credits included" : "25 000 crédits IA inclus",
       action: isEn ? "Choose Professional" : "Choisir Professional",

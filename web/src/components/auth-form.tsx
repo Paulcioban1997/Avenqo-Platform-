@@ -97,9 +97,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         last_name: form.get("last_name"),
         email: email,
         password: password,
-        country: "Canada",
+        country: form.get("country") || "Canada",
         timezone: "America/Toronto",
         industry: form.get("industry") || "Commerce",
+        currency_code: form.get("currency_code") || "CAD",
+        company_size: form.get("company_size") || "1-10",
+        billing_email: form.get("company_email") || email,
+        plan_code: form.get("plan_code") || "base",
       };
     } else if (isForgot) {
       payload = { email: email };
@@ -179,7 +183,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       } else if (isReset) {
         setMessage(s.resetSuccess);
       } else if (isRegister) {
-        setMessage(data.message || "Compte créé. Vérifiez votre adresse email.");
+        setMessage(
+          data.message ||
+            (locale === "en"
+              ? "Your workspace has been created! Please check your email to activate your account."
+              : "Votre espace a été créé avec succès ! Veuillez vérifier votre boîte de réception pour activer votre compte.")
+        );
       }
     } catch (error) {
       setIsError(true);
@@ -281,19 +290,67 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <AuthField name="first_name" label={s.firstName} autoComplete="given-name" />
                     <AuthField name="last_name" label={s.lastName} autoComplete="family-name" />
                   </div>
-                  <AuthField name="company_name" label={s.organization} autoComplete="organization" />
-                  <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" />
-                  <label className="auth-field">
-                    <span>{s.industry}</span>
-                    <select name="industry" defaultValue="Commerce" required>
-                      <option value="Commerce">{locale === "en" ? "Commerce / Retail" : "Commerce"}</option>
-                      <option value="Services professionnels">{locale === "en" ? "Professional Services" : "Services professionnels"}</option>
-                      <option value="Technologie">{locale === "en" ? "Technology" : "Technologie"}</option>
-                      <option value="Finance">{locale === "en" ? "Finance" : "Finance"}</option>
-                      <option value="Immobilier">{locale === "en" ? "Real Estate" : "Immobilier"}</option>
-                      <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
-                    </select>
-                  </label>
+                  <AuthField
+                    name="company_name"
+                    label={locale === "en" ? "Workspace / Organization" : "Nom de l'espace / Organisation"}
+                    autoComplete="organization"
+                    placeholder="Acme Inc."
+                  />
+                  <div className="auth-field-row">
+                    <label className="auth-field">
+                      <span>{s.industry}</span>
+                      <select name="industry" defaultValue="Commerce" required>
+                        <option value="Commerce">{locale === "en" ? "Commerce / Retail" : "Commerce / Détail"}</option>
+                        <option value="Services professionnels">{locale === "en" ? "Professional Services" : "Services professionnels"}</option>
+                        <option value="Technologie">{locale === "en" ? "Technology / SaaS" : "Technologie / SaaS"}</option>
+                        <option value="Automobile">{locale === "en" ? "Automotive / Garage" : "Automobile / Garage"}</option>
+                        <option value="Santé">{locale === "en" ? "Healthcare / Clinic" : "Santé / Clinique"}</option>
+                        <option value="Finance">{locale === "en" ? "Finance / Accounting" : "Finance / Comptabilité"}</option>
+                        <option value="Immobilier">{locale === "en" ? "Real Estate" : "Immobilier"}</option>
+                        <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
+                      </select>
+                    </label>
+                    <label className="auth-field">
+                      <span>{locale === "en" ? "Team size" : "Taille de l'équipe"}</span>
+                      <select name="company_size" defaultValue="1-10" required>
+                        <option value="1-10">1-10 {locale === "en" ? "employees" : "employés"}</option>
+                        <option value="11-50">11-50 {locale === "en" ? "employees" : "employés"}</option>
+                        <option value="51-200">51-200 {locale === "en" ? "employees" : "employés"}</option>
+                        <option value="201+">201+ {locale === "en" ? "employees" : "employés"}</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="auth-field-row">
+                    <label className="auth-field">
+                      <span>{locale === "en" ? "Country" : "Pays"}</span>
+                      <select name="country" defaultValue="Canada" required>
+                        <option value="Canada">Canada</option>
+                        <option value="France">France</option>
+                        <option value="États-Unis">{locale === "en" ? "United States" : "États-Unis"}</option>
+                        <option value="Belgique">{locale === "en" ? "Belgium" : "Belgique"}</option>
+                        <option value="Suisse">{locale === "en" ? "Switzerland" : "Suisse"}</option>
+                        <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
+                      </select>
+                    </label>
+                    <label className="auth-field">
+                      <span>{locale === "en" ? "Currency" : "Devise"}</span>
+                      <select name="currency_code" defaultValue="CAD" required>
+                        <option value="CAD">CAD ($ CA)</option>
+                        <option value="USD">USD ($ US)</option>
+                        <option value="EUR">EUR (€)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="auth-field-row">
+                    <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" placeholder="facturation@entreprise.ca" />
+                    <label className="auth-field">
+                      <span>{locale === "en" ? "Formula / Plan" : "Formule d'abonnement"}</span>
+                      <select name="plan_code" defaultValue="base" required>
+                        <option value="base">{locale === "en" ? "Base ($29.99/mo - 6,500 credits)" : "Base (29.99 $/mois - 6 500 crédits)"}</option>
+                        <option value="professional">{locale === "en" ? "Professional ($49.99/mo - 25,000 credits)" : "Professional (49.99 $/mois - 25 000 crédits)"}</option>
+                      </select>
+                    </label>
+                  </div>
                 </>
               )}
 
@@ -394,7 +451,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                 </div>
               )}
 
-              {isSuccess && isReset && (
+              {isSuccess && (isReset || isRegister) && (
                 <Link
                   href="/login"
                   className="auth-submit"
@@ -404,7 +461,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                 </Link>
               )}
 
-              {(!isSuccess || isLogin || isRegister) && (
+              {(!isSuccess || isLogin) && (
                 <button className="auth-submit" type="submit" disabled={busy}>
                   {busy ? (
                     <LoaderCircle className="spin" size={18} />

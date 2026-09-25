@@ -118,8 +118,8 @@ def run_validation():
         res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
         current_rev = res[0] if res else None
         print(f"Alembic current revision: {current_rev}")
-        assert current_rev == "0018_crm_ai_full_suite", f"Expected revision 0018_crm_ai_full_suite, got {current_rev}"
-        print("PASSED: Alembic migration 0018_crm_ai_full_suite is active and verified.")
+        assert current_rev in ("0018_crm_ai_full_suite", "0019_enterprise_quotes"), f"Expected revision 0018_crm_ai_full_suite or later, got {current_rev}"
+        print(f"PASSED: Alembic migration ({current_rev}) includes 0018_crm_ai_full_suite and is active and verified.")
 
     Session = sessionmaker(bind=engine)
     session = Session()
