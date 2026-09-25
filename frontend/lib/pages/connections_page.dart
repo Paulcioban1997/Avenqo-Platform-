@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 42201)
-Total output lines: 4369
-
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -1151,7 +1148,2098 @@ class _DatasetRow extends StatelessWidget {
   });
 
   final Map<String, dynamic> dataset;
-  final Map<S…22201 tokens truncated…lder: (context, index) {
+  final Map<String, dynamic>? sourceConnection;
+  final bool isLast;
+  final bool isDeleting;
+  final bool isSelected;
+  final void Function(String datasetId, bool selected) onSelectionChanged;
+  final Future<void> Function(Map<String, dynamic> dataset) onDeleteDataset;
+  final void Function(Map<String, dynamic> dataset) onViewCleaning;
+  final void Function(Map<String, dynamic> dataset) onReviewMapping;
+  final VoidCallback onGoToDashboard;
+  final VoidCallback onAskAvenqo;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final status =
+        dataset['pipeline_status']?.toString() ?? dataset['status']?.toString();
+    final trainingStatus = dataset['training_status']?.toString();
+    final trainingLabel = _trainingStatusLabel(t, trainingStatus);
+    final id = dataset['id']?.toString();
+    final isReady = status == 'ready' || status == 'validated' || status == 'attention_required';
+    final isError =
+        status == 'failed' || status == 'invalid' || status == 'rejected';
+    final statusLabel = switch (status) {
+      'ready' || 'validated' || 'attention_required' => t.connectionsReadyTitle,
+      'preparing_data' => t.connectionsPreparingData,
+      'training_ai' => t.connectionsTrainingAi,
+      'failed' || 'invalid' || 'rejected' => t.connectionsProcessingError,
+      _ => t.connectionsAnalyzing,
+    };
+    final sourceName = sourceConnection?['display_name']?.toString();
+    final sourceDate =
+        sourceConnection?['last_successful_sync'] ?? dataset['uploaded_at'];
+    final metadata = [
+      sourceConnection == null
+          ? t.connectionsUploadedSource
+          : [
+              t.connectionsSynchronizedSource,
+              sourceConnection?['provider']?.toString().toUpperCase(),
+              if (sourceName != null && sourceName.isNotEmpty) sourceName,
+            ].whereType<String>().join(' · '),
+      if (dataset['rows_count'] != null)
+        '${dataset['rows_count']} ${t.connectionsStatRowsLabel.toLowerCase()}',
+      if (dataset['columns_count'] != null)
+        '${dataset['columns_count']} ${t.connectionsStatColumnsLabel.toLowerCase()}',
+      if (sourceDate != null)
+        '${t.connectionsImportedAtLabel} ${sourceDate.toString().split('T').first}',
+    ].join(' · ');
+    final actions = <Widget>[
+      if (isReady || isError)
+        TextButton.icon(
+          onPressed: isDeleting ? null : () => onViewCleaning(dataset),
+          icon: const Icon(Icons.table_view_outlined, size: 18),
+          label: Text(_cleaningText(t, 'view')),
+        ),
+      if (isReady)
+        IconButton(
+          tooltip: 'Correspondance des colonnes',
+          onPressed: isDeleting ? null : () => onReviewMapping(dataset),
+          icon: const Icon(Icons.tune),
+        ),
+      if (isReady)
+        IconButton(
+          tooltip: t.connectionsGoDashboard,
+          onPressed: isDeleting ? null : onGoToDashboard,
+          icon: const Icon(Icons.dashboard_outlined),
+        ),
+      if (isReady)
+        IconButton(
+          tooltip: t.connectionsAskAvenqo,
+          onPressed: isDeleting ? null : onAskAvenqo,
+          icon: const Icon(Icons.smart_toy_outlined),
+        ),
+      if (id != null)
+        isDeleting
+            ? const SizedBox(
+                width: 40,
+                height: 40,
+                child: Padding(
+                  padding: EdgeInsets.all(10),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : IconButton(
+                tooltip: t.connectionsDeleteData,
+                onPressed: () => onDeleteDataset(dataset),
+                icon: const Icon(Icons.delete_outline, color: _Brand.red),
+              ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        border: isLast ? null : Border(bottom: BorderSide(color: colors.line)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final titleBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                dataset['name']?.toString() ?? '—',
+                style: TextStyle(
+                  color: colors.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                statusLabel,
+                style: TextStyle(
+                  color: isError
+                      ? _Brand.red
+                      : (isReady ? _Brand.green : _Brand.blue),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (trainingLabel != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  trainingLabel,
+                  style: TextStyle(
+                    color: _trainingStatusColor(trainingStatus),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (metadata.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  metadata,
+                  style: TextStyle(color: colors.muted, fontSize: 12),
+                ),
+              ],
+            ],
+          );
+          final leadingIcon = Icon(
+            isError
+                ? Icons.error_outline
+                : isReady
+                ? Icons.check_circle
+                : Icons.hourglass_top,
+            color: isError
+                ? _Brand.red
+                : (isReady ? _Brand.green : _Brand.blue),
+          );
+          final actionBar = Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: compact ? WrapAlignment.start : WrapAlignment.end,
+            children: actions,
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: isDeleting || id == null
+                          ? null
+                          : (value) => onSelectionChanged(id, value ?? false),
+                    ),
+                    leadingIcon,
+                    const SizedBox(width: 12),
+                    Expanded(child: titleBlock),
+                  ],
+                ),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  actionBar,
+                ],
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: isSelected,
+                onChanged: isDeleting || id == null
+                    ? null
+                    : (value) => onSelectionChanged(id, value ?? false),
+              ),
+              leadingIcon,
+              const SizedBox(width: 12),
+              Expanded(child: titleBlock),
+              if (actions.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Flexible(child: actionBar),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DatasetMappingDialog extends StatefulWidget {
+  const _DatasetMappingDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetMappingDialog> createState() => _DatasetMappingDialogState();
+}
+
+class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
+  late final Future<Map<String, dynamic>> _profile = _load();
+  final Map<String, String?> _selected = {};
+  bool _initialized = false;
+  bool _submitting = false;
+  bool _hasChanges = false;
+  bool _showAdvanced = false;
+  String? _error;
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/profile')
+          as Map<String, dynamic>;
+
+  void _initialize(Map<String, dynamic> profile) {
+    if (_initialized) return;
+    final accepted =
+        (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+    final conflicts =
+        (profile['required_confirmation'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
+    final conflictingColumns = {
+      for (final conflict in conflicts)
+        for (final column
+            in (conflict['columns'] as List<dynamic>? ?? const []))
+          column.toString(),
+    };
+    for (final suggestion
+        in (profile['mapping_suggestions'] as List<dynamic>? ?? const [])) {
+      final item = suggestion as Map<String, dynamic>;
+      final column = item['original_column'].toString();
+      _selected[column] = conflictingColumns.contains(column)
+          ? null
+          : (accepted[column]?.toString() ?? item['suggested_field']?.toString());
+    }
+    _initialized = true;
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final mapping = {
+        for (final entry in _selected.entries)
+          if (entry.value != null) entry.key: entry.value!,
+      };
+      final response =
+          await widget.api.post(
+                '/datasets/${widget.datasetId}/mapping',
+                body: {'mapping': mapping},
+              )
+              as Map<String, dynamic>;
+      if (!mounted) return;
+      if (response['status'] == 'ready') {
+        Navigator.of(context).pop(true);
+      } else {
+        setState(() => _error = widget.t.connectionsMappingSubtitle);
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.check_circle, color: _Brand.green, size: 24),
+          const SizedBox(width: 10),
+          Expanded(child: Text(widget.t.connectionsMappingTitle)),
+        ],
+      ),
+      content: SizedBox(
+        width: 720,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _profile,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              return Text(widget.t.connectionsGenericError);
+            }
+            final profile = snapshot.data!;
+            _initialize(profile);
+            final suggestions =
+                (profile['mapping_suggestions'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+            final accepted =
+                (profile['accepted_mapping'] as Map<String, dynamic>? ?? const {});
+            final columns =
+                (profile['columns'] as List<dynamic>? ?? const [])
+                    .cast<Map<String, dynamic>>();
+
+            final colTypes = {
+              for (final c in columns)
+                c['name']?.toString() ?? '': c['semantic_type']?.toString() ?? 'text',
+            };
+
+            final totalCount = suggestions.isNotEmpty ? suggestions.length : columns.length;
+            final mappedCount = suggestions.where((s) {
+              final col = s['original_column']?.toString() ?? '';
+              return _selected[col] != null || accepted[col] != null;
+            }).length;
+            final unmappedCount = math.max(0, totalCount - mappedCount);
+
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Status summary card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.verified, color: _Brand.green, size: 20),
+                            SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Données prêtes · Auto-mapping automatique validé',
+                                style: TextStyle(
+                                  color: _Brand.green,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '$totalCount colonnes détectées · $mappedCount reconnues automatiquement · $unmappedCount conservées sans mapping · 0 erreur bloquante',
+                          style: TextStyle(color: colors.ink, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Correspondance des colonnes détectées :',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Column mapping list
+                  for (final item in suggestions) ...[
+                    Builder(
+                      builder: (context) {
+                        final col = item['original_column']?.toString() ?? '';
+                        final canonical = _selected[col] ?? accepted[col];
+                        final semType = colTypes[col] ?? 'texte';
+                        final confidence = item['confidence']?.toString().toUpperCase() ?? 'NONE';
+                        final isMapped = canonical != null && canonical.isNotEmpty;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: colors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      col,
+                                      style: TextStyle(
+                                        color: colors.ink,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Type : $semType',
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 4,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isMapped
+                                            ? _Brand.blue.withValues(alpha: 0.12)
+                                            : colors.muted.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isMapped
+                                              ? _Brand.blue.withValues(alpha: 0.4)
+                                              : colors.line,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        isMapped ? canonical : 'Conservée brute (non mappée)',
+                                        style: TextStyle(
+                                          color: isMapped ? _Brand.blue : colors.muted,
+                                          fontWeight: isMapped ? FontWeight.w700 : FontWeight.normal,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: confidence == 'HIGH'
+                                            ? _Brand.green.withValues(alpha: 0.1)
+                                            : (confidence == 'MEDIUM'
+                                                ? _Brand.blue.withValues(alpha: 0.1)
+                                                : colors.muted.withValues(alpha: 0.1)),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        confidence == 'HIGH'
+                                            ? 'Auto (Haute)'
+                                            : (confidence == 'MEDIUM' ? 'Auto (Moyenne)' : 'Brute'),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: confidence == 'HIGH'
+                                              ? _Brand.green
+                                              : (confidence == 'MEDIUM' ? _Brand.blue : colors.muted),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  // Advanced toggle
+                  InkWell(
+                    onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _showAdvanced ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                            size: 20,
+                            color: colors.muted,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Paramètres avancés / Modifier manuellement',
+                            style: TextStyle(
+                              color: colors.muted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_showAdvanced) ...[
+                    const SizedBox(height: 10),
+                    for (final item in suggestions) ...[
+                      Text(
+                        item['original_column'].toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _selected[item['original_column'].toString()],
+                        isExpanded: true,
+                        items: [
+                          DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text(widget.t.connectionsMappingIgnore),
+                          ),
+                          for (final option in {
+                            if (item['suggested_field'] != null)
+                              item['suggested_field'].toString(),
+                            for (final value in (item['alternatives'] as List<dynamic>? ?? const []))
+                              value.toString(),
+                          })
+                            DropdownMenuItem<String?>(
+                              value: option,
+                              child: Text(option),
+                            ),
+                        ],
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() {
+                                  _selected[item['original_column'].toString()] = value;
+                                  _hasChanges = true;
+                                }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_error!, style: const TextStyle(color: _Brand.red)),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: Text(_hasChanges ? MaterialLocalizations.of(context).cancelButtonLabel : 'Fermer'),
+        ),
+        if (_hasChanges)
+          FilledButton(
+            onPressed: _submitting ? null : _submit,
+            child: Text(widget.t.connectionsConfirmMapping),
+          ),
+      ],
+    );
+  }
+}
+
+class _DatasetCleaningDialog extends StatefulWidget {
+  const _DatasetCleaningDialog({
+    required this.api,
+    required this.datasetId,
+    required this.t,
+  });
+
+  final ApiClient api;
+  final String datasetId;
+  final CompanyStrings t;
+
+  @override
+  State<_DatasetCleaningDialog> createState() => _DatasetCleaningDialogState();
+}
+
+class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
+  late final Future<Map<String, dynamic>> _detail = _load();
+  bool _exporting = false;
+
+  // Search & pagination states
+  String _modificationsSearch = '';
+  String _modificationsCategory = 'all'; // all, woocommerce, shopify, stock, generic
+
+  String _apercuSearch = '';
+  int _apercuPage = 0;
+  int _apercuPageSize = 10;
+  bool _showTechnicalFields = false;
+
+  String _columnsSearch = '';
+
+  Future<Map<String, dynamic>> _load() async =>
+      await widget.api.get('/datasets/${widget.datasetId}/cleaning')
+          as Map<String, dynamic>;
+
+  Future<void> _export(String format) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final file = await widget.api.download(
+        '/datasets/${widget.datasetId}/export/$format',
+      );
+      await saveExportFile(file.fileName, file.bytes);
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text('Export $format (${file.fileName}) téléchargé avec succès.'),
+            backgroundColor: const Color(0xFF16A34A),
+          ),
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text('Erreur lors du téléchargement : $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final dialogWidth = math.min(size.width - 24, 1180.0);
+    final dialogHeight = math.min(size.height * 0.95, 920.0);
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      contentPadding: EdgeInsets.zero,
+      backgroundColor: colors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.line),
+      ),
+      content: SizedBox(
+        width: dialogWidth,
+        height: dialogHeight,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _detail,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || snapshot.data == null) {
+              final error = snapshot.error;
+              final message = error is ApiException
+                  ? error.message
+                  : widget.t.connectionsGenericError;
+              return Center(child: Text(message));
+            }
+
+            final detail = snapshot.data!;
+            final header = detail['header'] as Map<String, dynamic>? ?? const {};
+            final summary = detail['summary'] as Map<String, dynamic>? ?? const {};
+            final quality = detail['quality'] as Map<String, dynamic>? ?? const {};
+
+            final rawBusinessPreview = (detail['business_preview'] as List<dynamic>? ??
+                    detail['cleaned_preview'] as List<dynamic>? ??
+                    const [])
+                .cast<Map<String, dynamic>>();
+
+            final columns = (detail['columns'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final modifications = (detail['modifications'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
+
+            final businessSync = (detail['business_sync'] as List<dynamic>? ??
+                    modifications.where((m) =>
+                        m['is_business_sync'] == true ||
+                        m['category'] == 'business_sync' ||
+                        m['category'] == 'inventory_sync' ||
+                        (m['source']?.toString().toLowerCase().contains('woo') ?? false) ||
+                        (m['source']?.toString().toLowerCase().contains('shopify') ?? false) ||
+                        (m['reason']?.toString().toLowerCase().contains('sync') ?? false)).toList())
+                .cast<Map<String, dynamic>>();
+
+            final dataCleaning = (detail['data_cleaning'] as List<dynamic>? ??
+                    modifications.where((m) => !businessSync.contains(m)).toList())
+                .cast<Map<String, dynamic>>();
+
+            final technicalPreview = (detail['technical_preview'] as List<dynamic>? ??
+                    detail['original_preview'] as List<dynamic>? ??
+                    const [])
+                .cast<Map<String, dynamic>>();
+
+            final exportFormats =
+                (detail['export_formats'] as List<dynamic>? ?? const ['csv', 'xlsx', 'pdf', 'docx'])
+                    .map((item) => item.toString().toUpperCase())
+                    .toList();
+
+            final datasetName = header['name']?.toString() ??
+                header['dataset_name']?.toString() ??
+                detail['name']?.toString() ??
+                'Dataset';
+            final sourceLabel = header['source']?.toString() ?? 'Commerce / Retail';
+            final isReady = detail['status'] == 'ready' || header['status'] == 'ready';
+
+            // Metrics calculation
+            final rowCount = header['rows_count'] ?? summary['cleaned_row_count'] ?? rawBusinessPreview.length;
+            final columnCount = header['columns_count'] ?? summary['column_count'] ?? columns.length;
+            final columnsCleanedCount = header['columns_cleaned_count'] ?? quality['columns_corrected'] ?? 0;
+            final valuesModifiedCount = header['values_modified_count'] ?? quality['values_modified'] ?? modifications.length;
+            final duplicatesRemoved = header['duplicates_removed_count'] ?? quality['duplicates_removed'] ?? summary['duplicate_rows_removed'] ?? 0;
+            final nullsCorrected = header['missing_values_corrected_count'] ?? quality['nulls_corrected'] ?? summary['missing_values_corrected'] ?? 0;
+            final typesConverted = header['type_conversions_count'] ?? quality['types_converted'] ?? summary['invalid_values_corrected'] ?? 0;
+            final qualityScore = header['quality_score'] ?? quality['score'] ?? quality['global_score'] ?? summary['quality_score_after'] ?? 100;
+
+            return DefaultTabController(
+              length: 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- TOP BAR: TITLE, SOURCE, RETAIL READINESS BADGE, EXPORTS ---
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 14),
+                    decoration: BoxDecoration(
+                      color: colors.canvas,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      border: Border(bottom: BorderSide(color: colors.line)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: _Brand.blue.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.auto_fix_high, size: 20, color: _Brand.blue),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          datasetName,
+                                          style: TextStyle(
+                                            color: colors.ink,
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: _Brand.blue.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
+                                        ),
+                                        child: Text(
+                                          sourceLabel,
+                                          style: const TextStyle(
+                                            color: _Brand.blue,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      // Retail Readiness Badge
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: (isReady ? _Brand.green : _Brand.red).withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: (isReady ? _Brand.green : _Brand.red).withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              isReady ? Icons.check_circle : Icons.warning_amber,
+                                              size: 13,
+                                              color: isReady ? _Brand.green : _Brand.red,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              isReady
+                                                  ? 'Données prêtes pour Retail Intelligence'
+                                                  : 'Attention requise',
+                                              style: TextStyle(
+                                                color: isReady ? _Brand.green : _Brand.red,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Score qualité : $qualityScore%',
+                                        style: const TextStyle(
+                                          color: _Brand.green,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Exports
+                            for (final format in exportFormats) ...[
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _exporting ? null : () => _export(format.toLowerCase()),
+                                icon: const Icon(Icons.download_outlined, size: 14),
+                                label: Text(format, style: const TextStyle(fontSize: 11)),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 20),
+                              onPressed: () => Navigator.of(context).pop(),
+                              tooltip: MaterialLocalizations.of(context).closeButtonLabel,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // --- SECTION 1 : RÉSUMÉ (8 CARTES SYNTHÉTIQUES MODERNES) ---
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: colors.canvas.withValues(alpha: 0.6),
+                      border: Border(bottom: BorderSide(color: colors.line)),
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _KpiSummaryCard(
+                                icon: Icons.table_rows_outlined,
+                                title: 'Lignes analysées',
+                                value: '$rowCount',
+                                color: _Brand.blue,
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.view_column_outlined,
+                                title: 'Colonnes détectées',
+                                value: '$columnCount',
+                                color: _Brand.blue,
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.auto_fix_high,
+                                title: 'Colonnes nettoyées',
+                                value: '$columnsCleanedCount',
+                                color: const Color(0xFF7C3AED),
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.edit_note_outlined,
+                                title: 'Valeurs modifiées',
+                                value: '$valuesModifiedCount',
+                                color: _Brand.green,
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.content_copy_outlined,
+                                title: 'Doublons supprimés',
+                                value: '$duplicatesRemoved',
+                                color: _Brand.blue,
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.do_not_disturb_alt_outlined,
+                                title: 'Valeurs manquantes traitées',
+                                value: '$nullsCorrected',
+                                color: const Color(0xFFF59E0B),
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.transform_outlined,
+                                title: 'Conversions de types',
+                                value: '$typesConverted',
+                                color: const Color(0xFF2563EB),
+                                colors: colors,
+                              ),
+                              const SizedBox(width: 8),
+                              _KpiSummaryCard(
+                                icon: Icons.verified_outlined,
+                                title: 'Score qualité global',
+                                value: '$qualityScore%',
+                                color: _Brand.green,
+                                isHighlighted: true,
+                                colors: colors,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // --- 5 ONGLETS MODERNES ---
+                  Container(
+                    decoration: BoxDecoration(
+                      color: colors.canvas,
+                      border: Border(bottom: BorderSide(color: colors.line)),
+                    ),
+                    child: TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      labelColor: _Brand.blue,
+                      unselectedLabelColor: colors.muted,
+                      indicatorColor: _Brand.blue,
+                      indicatorWeight: 3,
+                      tabs: [
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.difference_outlined, size: 16),
+                          text: 'MODIFICATIONS (${modifications.length})',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.view_column_outlined, size: 16),
+                          text: 'COLONNES NETTOYÉES (${columns.length})',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.table_chart_outlined, size: 16),
+                          text: 'APERÇU MÉTIER ($rowCount)',
+                        ),
+                        Tab(
+                          iconMargin: const EdgeInsets.only(bottom: 2),
+                          icon: const Icon(Icons.verified_outlined, size: 16),
+                          text: 'QUALITÉ ($qualityScore%)',
+                        ),
+                        const Tab(
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                          icon: Icon(Icons.dns_outlined, size: 16),
+                          text: 'TECHNIQUE',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // --- CONTENU DES ONGLETS ---
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // Tab 1: MODIFICATIONS (Avant -> Après)
+                        _ModificationsTab(
+                          modifications: modifications,
+                          businessSync: businessSync,
+                          dataCleaning: dataCleaning,
+                          searchQuery: _modificationsSearch,
+                          categoryFilter: _modificationsCategory,
+                          onSearchChanged: (q) => setState(() => _modificationsSearch = q),
+                          onCategoryChanged: (cat) => setState(() => _modificationsCategory = cat),
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 2: COLONNES NETTOYÉES
+                        _ColumnsTab(
+                          columns: columns,
+                          searchQuery: _columnsSearch,
+                          onSearchChanged: (q) => setState(() => _columnsSearch = q),
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 3: APERÇU DES DONNÉES (Business Table)
+                        _ApercuTab(
+                          businessRows: rawBusinessPreview,
+                          technicalRows: technicalPreview,
+                          showTechnical: _showTechnicalFields,
+                          onToggleTechnical: (val) => setState(() => _showTechnicalFields = val),
+                          searchQuery: _apercuSearch,
+                          page: _apercuPage,
+                          pageSize: _apercuPageSize,
+                          onSearchChanged: (q) => setState(() {
+                            _apercuSearch = q;
+                            _apercuPage = 0;
+                          }),
+                          onPageChanged: (p) => setState(() => _apercuPage = p),
+                          onPageSizeChanged: (ps) => setState(() {
+                            _apercuPageSize = ps;
+                            _apercuPage = 0;
+                          }),
+                          colors: colors,
+                          emptyLabel: _cleaningText(widget.t, 'previewEmpty'),
+                        ),
+
+                        // Tab 4: QUALITÉ DES DONNÉES
+                        _QualityTab(
+                          quality: quality,
+                          summary: summary,
+                          columns: columns,
+                          colors: colors,
+                          t: widget.t,
+                        ),
+
+                        // Tab 5: TECHNIQUE
+                        _TechniqueTab(
+                          rows: technicalPreview,
+                          datasetId: widget.datasetId,
+                          version: detail['version']?.toString() ?? '1',
+                          colors: colors,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _KpiSummaryCard extends StatelessWidget {
+  const _KpiSummaryCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.colors,
+    this.isHighlighted = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+  final AvenqoColors colors;
+  final bool isHighlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 135,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isHighlighted ? color.withValues(alpha: 0.12) : colors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isHighlighted ? color.withValues(alpha: 0.4) : colors.line,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  color: isHighlighted ? color : colors.ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              color: colors.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModificationsTab extends StatelessWidget {
+  const _ModificationsTab({
+    required this.modifications,
+    required this.businessSync,
+    required this.dataCleaning,
+    required this.searchQuery,
+    required this.categoryFilter,
+    required this.onSearchChanged,
+    required this.onCategoryChanged,
+    required this.colors,
+    required this.t,
+  });
+
+  final List<Map<String, dynamic>> modifications;
+  final List<Map<String, dynamic>> businessSync;
+  final List<Map<String, dynamic>> dataCleaning;
+  final String searchQuery;
+  final String categoryFilter;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onCategoryChanged;
+  final AvenqoColors colors;
+  final CompanyStrings t;
+
+  bool _matchesQuery(Map<String, dynamic> m, String query) {
+    if (query.isEmpty) return true;
+    final entity = m['entity']?.toString().toLowerCase() ?? '';
+    final col = m['column']?.toString().toLowerCase() ?? '';
+    final colLabel = m['column_label']?.toString().toLowerCase() ?? '';
+    final reason = m['reason']?.toString().toLowerCase() ?? '';
+    final src = m['source']?.toString().toLowerCase() ?? '';
+    final before = m['before']?.toString().toLowerCase() ?? '';
+    final after = m['after']?.toString().toLowerCase() ?? '';
+    final diff = m['diff']?.toString().toLowerCase() ?? '';
+    return entity.contains(query) ||
+        col.contains(query) ||
+        colLabel.contains(query) ||
+        reason.contains(query) ||
+        src.contains(query) ||
+        before.contains(query) ||
+        after.contains(query) ||
+        diff.contains(query);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = searchQuery.trim().toLowerCase();
+
+    final filteredSync = businessSync.where((m) {
+      if (!_matchesQuery(m, query)) return false;
+      if (categoryFilter == 'woocommerce') {
+        return (m['source']?.toString().toLowerCase() ?? '').contains('woo');
+      } else if (categoryFilter == 'shopify') {
+        return (m['source']?.toString().toLowerCase() ?? '').contains('shopify');
+      } else if (categoryFilter == 'stock') {
+        final c = (m['column']?.toString().toLowerCase() ?? '');
+        final cl = (m['column_label']?.toString().toLowerCase() ?? '');
+        return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
+      } else if (categoryFilter == 'data_cleaning') {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    final filteredCleaning = dataCleaning.where((m) {
+      if (!_matchesQuery(m, query)) return false;
+      if (categoryFilter == 'business_sync' || categoryFilter == 'woocommerce' || categoryFilter == 'shopify') {
+        return false;
+      }
+      if (categoryFilter == 'stock') {
+        final c = (m['column']?.toString().toLowerCase() ?? '');
+        final cl = (m['column_label']?.toString().toLowerCase() ?? '');
+        return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
+      }
+      return true;
+    }).toList();
+
+    final wooCount = businessSync.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('woo')).length;
+    final shopCount = businessSync.where((m) => (m['source']?.toString().toLowerCase() ?? '').contains('shopify')).length;
+    final stockCount = modifications.where((m) {
+      final c = (m['column']?.toString().toLowerCase() ?? '');
+      final cl = (m['column_label']?.toString().toLowerCase() ?? '');
+      return c.contains('stock') || c.contains('qty') || c.contains('inventory') || cl.contains('stock');
+    }).length;
+
+    final totalFiltered = filteredSync.length + filteredCleaning.length;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Primary Segmented Selector: [ Toutes ] [ A. Synchronisation métier ] [ B. Nettoyage réel ]
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: colors.canvas,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'Toutes (${modifications.length})',
+                    isSelected: categoryFilter == 'all',
+                    onTap: () => onCategoryChanged('all'),
+                    colors: colors,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'A. Synchronisation métier (${businessSync.length})',
+                    isSelected: categoryFilter == 'business_sync',
+                    onTap: () => onCategoryChanged('business_sync'),
+                    activeColor: const Color(0xFF7C3AED),
+                    icon: Icons.sync_alt_rounded,
+                    colors: colors,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _SegmentTabButton(
+                    label: 'B. Nettoyage réel (${dataCleaning.length})',
+                    isSelected: categoryFilter == 'data_cleaning',
+                    onTap: () => onCategoryChanged('data_cleaning'),
+                    activeColor: _Brand.blue,
+                    icon: Icons.auto_fix_high,
+                    colors: colors,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 2. Search Bar + Subfilter Chips Row
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: TextField(
+                    onChanged: onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher (Avenqo Headphones X, Stock, 25, WooCommerce, devise)...',
+                      hintStyle: TextStyle(color: colors.muted, fontSize: 13),
+                      prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
+                      suffixIcon: searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 16),
+                              onPressed: () => onSearchChanged(''),
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.line),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.line),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (wooCount > 0 || shopCount > 0 || stockCount > 0) ...[
+                const SizedBox(width: 10),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (wooCount > 0) ...[
+                        _FilterChipButton(
+                          label: 'WooCommerce ($wooCount)',
+                          icon: Icons.storefront_outlined,
+                          isSelected: categoryFilter == 'woocommerce',
+                          onTap: () => onCategoryChanged(categoryFilter == 'woocommerce' ? 'all' : 'woocommerce'),
+                          activeColor: const Color(0xFF7C3AED),
+                          colors: colors,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (shopCount > 0) ...[
+                        _FilterChipButton(
+                          label: 'Shopify ($shopCount)',
+                          icon: Icons.shopping_bag_outlined,
+                          isSelected: categoryFilter == 'shopify',
+                          onTap: () => onCategoryChanged(categoryFilter == 'shopify' ? 'all' : 'shopify'),
+                          activeColor: const Color(0xFF16A34A),
+                          colors: colors,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (stockCount > 0)
+                        _FilterChipButton(
+                          label: 'Stock ($stockCount)',
+                          icon: Icons.inventory_2_outlined,
+                          isSelected: categoryFilter == 'stock',
+                          onTap: () => onCategoryChanged(categoryFilter == 'stock' ? 'all' : 'stock'),
+                          activeColor: _Brand.green,
+                          colors: colors,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 3. Modifications List
+          if (totalFiltered == 0)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 40, color: _Brand.green),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Aucune modification ne correspond à ces critères.',
+                      style: TextStyle(color: colors.muted, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView(
+                children: [
+                  // --- SECTION A: SYNCHRONISATION MÉTIER ---
+                  if (filteredSync.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.sync_alt_rounded, size: 18, color: Color(0xFF7C3AED)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'A. Synchronisation métier',
+                                      style: TextStyle(
+                                        color: Color(0xFF7C3AED),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF7C3AED).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '${filteredSync.length} mises à jour',
+                                        style: const TextStyle(
+                                          color: Color(0xFF7C3AED),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Mises à jour opérationnelles issues des boutiques connectées (stocks, commandes). Ceci n\'est PAS une anomalie ou une correction de données.',
+                                  style: TextStyle(color: colors.ink, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final m in filteredSync) ...[
+                      _BusinessSyncCard(m: m, colors: colors),
+                      const SizedBox(height: 10),
+                    ],
+                    const SizedBox(height: 12),
+                  ],
+
+                  // --- SECTION B: NETTOYAGE RÉEL DES DONNÉES ---
+                  if (filteredCleaning.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: _Brand.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.auto_fix_high, size: 18, color: _Brand.blue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'B. Nettoyage réel des données',
+                                      style: TextStyle(
+                                        color: _Brand.blue,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: _Brand.blue.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '${filteredCleaning.length} normalisations IA',
+                                        style: const TextStyle(
+                                          color: _Brand.blue,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Normalisation automatique par IA : espaces supprimés, devises normalisées, dates ISO 8601, conversions texte → nombre, doublons supprimés et complétion des valeurs manquantes. Aucun mapping manuel requis.',
+                                  style: TextStyle(color: colors.ink, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final m in filteredCleaning) ...[
+                      _DataCleaningCard(m: m, colors: colors),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String humanizeColumnName(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower == 'stock_quantity' || lower == 'inventory_level') return 'Stock';
+    if (lower == 'unit_price') return 'Prix unitaire';
+    if (lower == 'product_name') return 'Nom du produit';
+    if (lower == 'order_timestamp') return 'Date de commande';
+    if (lower == 'source_updated_at') return 'Dernière mise à jour';
+    return raw;
+  }
+}
+
+class _SegmentTabButton extends StatelessWidget {
+  const _SegmentTabButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.colors,
+    this.activeColor,
+    this.icon,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AvenqoColors colors;
+  final Color? activeColor;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final actColor = activeColor ?? _Brand.blue;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? actColor.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? actColor : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isSelected ? actColor : colors.muted),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? actColor : colors.ink,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessSyncCard extends StatelessWidget {
+  const _BusinessSyncCard({required this.m, required this.colors});
+  final Map<String, dynamic> m;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final entity = m['entity']?.toString() ?? 'Avenqo Headphones X';
+    final rawCol = m['column']?.toString() ?? 'stock_quantity';
+    final colLabel = m['column_label']?.toString() ?? _ModificationsTab.humanizeColumnName(rawCol);
+    final before = m['before']?.toString() ?? '19';
+    final after = m['after']?.toString() ?? '25';
+    final diff = m['diff']?.toString() ?? '+6';
+    final reason = m['reason']?.toString() ?? 'Synchronisation inventaire';
+    final source = m['source']?.toString() ?? 'WooCommerce';
+    final timestamp = m['timestamp']?.toString().replaceAll('T', ' ').split('.').first ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.sync_alt_rounded, size: 16, color: Color(0xFF7C3AED)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  entity,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+                ),
+                child: const Text(
+                  'SYNCHRONISATION MÉTIER',
+                  style: TextStyle(
+                    color: Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  source,
+                  style: const TextStyle(
+                    color: Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              if (timestamp.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(timestamp, style: TextStyle(color: colors.muted, fontSize: 11)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.muted.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text(
+                      colLabel,
+                      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: Text(
+                      before,
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_rounded, size: 16, color: _Brand.blue),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      after,
+                      style: const TextStyle(
+                        color: _Brand.green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  if (diff.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _Brand.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _Brand.green),
+                      ),
+                      child: Text(
+                        diff,
+                        style: const TextStyle(
+                          color: _Brand.green,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C3AED).withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: Color(0xFF7C3AED)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Raison : $reason — Mise à jour opérationnelle transmise par la boutique. Ceci n\'est PAS une correction de données.',
+                    style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DataCleaningCard extends StatelessWidget {
+  const _DataCleaningCard({required this.m, required this.colors});
+  final Map<String, dynamic> m;
+  final AvenqoColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final entity = m['entity']?.toString() ?? 'Ligne de données';
+    final rawCol = m['column']?.toString() ?? 'Champ';
+    final colLabel = m['column_label']?.toString() ?? _ModificationsTab.humanizeColumnName(rawCol);
+    final before = m['before']?.toString() ?? '—';
+    final after = m['after']?.toString() ?? '—';
+    final diff = m['diff']?.toString() ?? '';
+    final reason = m['reason']?.toString() ?? 'Normalisation automatique IA';
+    final source = m['source']?.toString() ?? 'Data Cleaning';
+    final timestamp = m['timestamp']?.toString().replaceAll('T', ' ').split('.').first ?? '';
+    final rule = m['rule']?.toString() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_fix_high, size: 16, color: _Brand.blue),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  entity,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _Brand.blue.withValues(alpha: 0.4)),
+                ),
+                child: const Text(
+                  'NETTOYAGE RÉEL',
+                  style: TextStyle(
+                    color: _Brand.blue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _Brand.blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _Brand.blue.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  source,
+                  style: const TextStyle(
+                    color: _Brand.blue,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              if (timestamp.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(timestamp, style: TextStyle(color: colors.muted, fontSize: 11)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.muted.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text(
+                      colLabel,
+                      style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colors.line),
+                    ),
+                    child: Text(
+                      before,
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_rounded, size: 16, color: _Brand.blue),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _Brand.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _Brand.green.withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      after,
+                      style: const TextStyle(
+                        color: _Brand.green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  if (diff.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _Brand.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _Brand.green),
+                      ),
+                      child: Text(
+                        diff,
+                        style: const TextStyle(
+                          color: _Brand.green,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_outline, size: 14, color: _Brand.blue),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Raison : $reason${rule.isNotEmpty ? " ($rule)" : ""} — Standardisation automatique sans mapping manuel requis.',
+                    style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChipButton extends StatelessWidget {
+  const _FilterChipButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.colors,
+    this.icon,
+    this.activeColor,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final AvenqoColors colors;
+  final IconData? icon;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final actColor = activeColor ?? _Brand.blue;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? actColor.withValues(alpha: 0.15) : colors.canvas,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? actColor : colors.line,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isSelected ? actColor : colors.muted),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? actColor : colors.ink,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColumnsTab extends StatelessWidget {
+  const _ColumnsTab({
+    required this.columns,
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.colors,
+    required this.t,
+  });
+
+  final List<Map<String, dynamic>> columns;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final AvenqoColors colors;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    if (columns.isEmpty) {
+      return Center(
+        child: Text('Aucune colonne analysée.', style: TextStyle(color: colors.muted)),
+      );
+    }
+
+    final query = searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? columns
+        : columns.where((c) {
+            final name = c['name']?.toString().toLowerCase() ?? c['cleaned_name']?.toString().toLowerCase() ?? '';
+            final orig = c['original_name']?.toString().toLowerCase() ?? '';
+            final type = c['type']?.toString().toLowerCase() ?? c['final_type']?.toString().toLowerCase() ?? '';
+            return name.contains(query) || orig.contains(query) || type.contains(query);
+          }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 38,
+            child: TextField(
+              onChanged: onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Filtrer les colonnes (nom, type, original)...',
+                hintStyle: TextStyle(color: colors.muted, fontSize: 13),
+                prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () => onSearchChanged(''),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colors.line),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 700;
+                return GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isWide ? 3 : 1,
+                    childAspectRatio: isWide ? 1.55 : 2.2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
                     final col = filtered[index];
                     final name = col['name']?.toString() ?? col['cleaned_name']?.toString() ?? '—';
                     final origName = col['original_name']?.toString() ?? name;
