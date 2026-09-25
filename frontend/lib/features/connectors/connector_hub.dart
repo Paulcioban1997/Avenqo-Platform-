@@ -16,6 +16,7 @@ class ConnectorHub extends StatefulWidget {
     required this.onSync,
     required this.onReauthorize,
     required this.onDisconnect,
+    this.onToggleSource,
     required this.onRefresh,
     required this.t,
   });
@@ -29,6 +30,8 @@ class ConnectorHub extends StatefulWidget {
   final Future<void> Function(Map<String, dynamic> connection) onSync;
   final Future<void> Function(Map<String, dynamic> connection) onReauthorize;
   final Future<void> Function(Map<String, dynamic> connection) onDisconnect;
+  final Future<void> Function(Map<String, dynamic> connection, bool enabled)?
+  onToggleSource;
   final VoidCallback onRefresh;
   final CompanyStrings t;
 
@@ -181,6 +184,12 @@ class _ConnectorHubState extends State<ConnectorHub> {
                         widget.onReauthorize(widget.connections[index]),
                     onDisconnect: () =>
                         widget.onDisconnect(widget.connections[index]),
+                    onToggleSource: widget.onToggleSource == null
+                        ? null
+                        : (enabled) => widget.onToggleSource!(
+                            widget.connections[index],
+                            enabled,
+                          ),
                     text: _text,
                   ),
               ],
@@ -454,6 +463,7 @@ class _ConnectionRow extends StatelessWidget {
     required this.onSync,
     required this.onReauthorize,
     required this.onDisconnect,
+    this.onToggleSource,
     required this.text,
   });
 
@@ -463,6 +473,7 @@ class _ConnectionRow extends StatelessWidget {
   final VoidCallback onSync;
   final VoidCallback onReauthorize;
   final VoidCallback onDisconnect;
+  final ValueChanged<bool>? onToggleSource;
   final String Function(String key) text;
 
   @override
@@ -489,6 +500,7 @@ class _ConnectionRow extends StatelessWidget {
       _ => null,
     };
     final active = (status == 'SYNCING' || status == 'PROCESSING' || busy) && !isStalled;
+    final retailEnabled = connection['retail_enabled'] == true;
     final canReauthorize =
         status == 'REAUTH_REQUIRED' &&
         connection['provider'] == 'woocommerce' &&
@@ -590,6 +602,13 @@ class _ConnectionRow extends StatelessWidget {
           final actions = Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Semantics(
+                label: connection['display_name']?.toString() ?? text('connection'),
+                child: Switch.adaptive(
+                  value: retailEnabled,
+                  onChanged: active ? null : onToggleSource,
+                ),
+              ),
               if (active)
                 const SizedBox(
                   width: 40,

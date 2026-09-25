@@ -60,12 +60,17 @@ _CRM_KEYWORDS = frozenset(
 _RETAIL_KEYWORDS = frozenset(
     {
         "sale", "sales", "vente", "ventes", "revenue", "revenu", "customer",
-        "customers", "client", "clients", "product", "products", "produit",
+        "customers", "client", "clients", "order", "orders", "commande", "commandes",
+        "product", "products", "produit",
         "produits", "inventory", "inventaire", "stock", "recommendation",
         "recommendations", "recommandation", "recommandations", "kpi", "trend",
         "trends", "tendance", "tendances", "anomaly", "anomalies", "anomalie",
         "forecast", "prevision", "demand", "demande", "churn", "performance",
     }
+)
+
+_BUSINESS_OVERVIEW_KEYWORDS = frozenset(
+    {"chiffre", "chiffres", "statistique", "statistiques", "bilan", "overview"}
 )
 
 
@@ -78,6 +83,7 @@ class CentralAIIntentRouter:
         has_accounting = bool(words & _ACCOUNTING_KEYWORDS)
         has_crm = bool(words & _CRM_KEYWORDS)
         has_retail = bool(words & _RETAIL_KEYWORDS)
+        has_business_overview = bool(words & _BUSINESS_OVERVIEW_KEYWORDS)
         has_cross = bool(words & _CROSS_AGENT_KEYWORDS)
 
         # Si la question est explicitement transversale ou croise au moins 2 domaines actifs
@@ -92,7 +98,7 @@ class CentralAIIntentRouter:
         for slug, keywords in _COMING_SOON_KEYWORDS.items():
             if words & keywords:
                 return self._registry.get(slug)
-        if has_retail:
+        if has_retail or (has_business_overview and not has_crm and not has_accounting):
             return self._registry.get("retail")
         return None
 

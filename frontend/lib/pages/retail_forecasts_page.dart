@@ -40,18 +40,16 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
   Future<_ForecastData> _fetch() async {
     final results = await Future.wait([
       widget.api.get('/sales/summary?period=last_30_days').catchError((_) => <String, dynamic>{}),
-      widget.api.get('/cross-agent/synthesis').catchError((_) => <String, dynamic>{}),
       widget.api.get('/recommendations').catchError((_) => <String, dynamic>{}),
     ]);
 
     final sales = (results[0] is Map) ? results[0] as Map<String, dynamic> : <String, dynamic>{};
-    final crossAgent = (results[1] is Map) ? results[1] as Map<String, dynamic> : <String, dynamic>{};
-    final recMap = (results[2] is Map) ? results[2] as Map<String, dynamic> : <String, dynamic>{};
+    final recMap = (results[1] is Map) ? results[1] as Map<String, dynamic> : <String, dynamic>{};
     final recs = (recMap['recommendations'] is List)
         ? (recMap['recommendations'] as List).cast<Map<String, dynamic>>()
         : <Map<String, dynamic>>[];
 
-    return _ForecastData(sales: sales, crossAgent: crossAgent, recommendations: recs);
+    return _ForecastData(sales: sales, recommendations: recs);
   }
 
   @override
@@ -82,21 +80,24 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
             );
           }
 
-          final data = snapshot.data ?? const _ForecastData(sales: {}, crossAgent: {}, recommendations: []);
+          final data = snapshot.data ?? const _ForecastData(sales: {}, recommendations: []);
           final sales = data.sales;
-          final cross = data.crossAgent;
+          final summary = sales['summary'] as Map<String, dynamic>? ?? {};
+          final forecastData = sales['forecast'] as Map<String, dynamic>?;
+          final projectedSales =
+              (forecastData?['forecasted_total'] as num?)?.toDouble();
+          final confidence = forecastData?['confidence']?.toString();
+          final forecastMethod = forecastData?['method']?.toString();
+          final forecastDescription = confidence != null
+              ? 'Confiance mesurée : $confidence'
+              : forecastMethod == 'historical_weekly_mean'
+                  ? 'Projection basée sur la moyenne des 4 dernières semaines observées'
+                  : 'Prévision indisponible : historique insuffisant';
+          final disclaimer = forecastData?['disclaimer']?.toString() ??
+              'Aucune prévision Retail n’est disponible sans un modèle actif pour ce tenant.';
 
-          final pillars = cross['pillars'] as Map<String, dynamic>? ?? {};
-          final acct = pillars['accounting'] as Map<String, dynamic>? ?? {};
-          final forecastProj = acct['forecast_projection'] as Map<String, dynamic>? ?? {};
-
-          final projectedBalance = (forecastProj['projected_final_balance'] as num?)?.toDouble() ?? 0.0;
-          final confidence = forecastProj['confidence']?.toString() ?? '85%';
-          final disclaimer = forecastProj['disclaimer']?.toString() ??
-              'Les prévisions sont des projections probabilistes calculées par l’IA et ne constituent pas une garantie de résultats financiers.';
-
-          final currentRevenue = (sales['revenue'] as num?)?.toDouble() ?? 0.0;
-          final ordersCount = sales['orders_count'] ?? 0;
+          final currentRevenue = (summary['revenue'] as num?)?.toDouble() ?? 0.0;
+          final ordersCount = summary['orders'] ?? 0;
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
@@ -172,7 +173,15 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                   final wide = constraints.maxWidth > 800;
                   final cards = [
                     _buildForecastMetric('Chiffre d’affaires actuel (30j)', _formatMoney(context, currentRevenue, 'CAD'), 'Donnée confirmée', colors, isActual: true),
-                    _buildForecastMetric('Trésorerie projetée (30j)', _formatMoney(context, projectedBalance, 'CAD'), 'Indice de confiance : $confidence', colors, isActual: false),
+                    _buildForecastMetric(
+                      'Ventes projetées',
+                      projectedSales == null
+                          ? '—'
+                          : _formatMoney(context, projectedSales, 'CAD'),
+                      forecastDescription,
+                      colors,
+                      isActual: false,
+                    ),
                     _buildForecastMetric('Commandes observées', '$ordersCount', 'Base de calcul validée', colors, isActual: true),
                   ];
 
@@ -304,9 +313,8 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
 }
 
 class _ForecastData {
-  const _ForecastData({required this.sales, required this.crossAgent, required this.recommendations});
+  const _ForecastData({required this.sales, required this.recommendations});
   final Map<String, dynamic> sales;
-  final Map<String, dynamic> crossAgent;
   final List<Map<String, dynamic>> recommendations;
 }
 

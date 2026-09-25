@@ -130,6 +130,62 @@ void main() {
     },
   );
 
+  testWidgets('dataset source switch persists enabled state through the API', (
+    tester,
+  ) async {
+    var enabled = false;
+    Map<String, dynamic> sourceState() => {
+      'source_type': 'dataset',
+      'source_id': '11111111-1111-1111-1111-111111111111',
+      'dataset_id': '11111111-1111-1111-1111-111111111111',
+      'connection_id': null,
+      'display_name': 'sales.csv',
+      'provider': null,
+      'status': 'ready',
+      'last_synchronized_at': '2026-08-20T10:00:00Z',
+      'active': false,
+      'enabled': enabled,
+    };
+    Map<String, dynamic>? mutation;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"11111111-1111-1111-1111-111111111111","name":"sales.csv","status":"ready","pipeline_status":"ready","rows_count":42,"columns_count":5,"uploaded_at":"2026-08-20T10:00:00Z"}]',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/retail/sources')) {
+        return http.Response(jsonEncode([sourceState()]), 200);
+      }
+      if (request.method == 'PUT' &&
+          request.url.path.endsWith('/retail/sources/enabled')) {
+        mutation = jsonDecode(request.body) as Map<String, dynamic>;
+        enabled = mutation!['enabled'] as bool;
+        return http.Response(jsonEncode(sourceState()), 200);
+      }
+      return http.Response('[]', 200);
+    });
+
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Données connectées'));
+    await tester.pumpAndSettle();
+
+    final sourceSwitch = find.byType(Switch);
+    expect(sourceSwitch, findsOneWidget);
+    await tester.tap(sourceSwitch);
+    await tester.pumpAndSettle();
+
+    expect(mutation, {
+      'source_type': 'dataset',
+      'source_id': '11111111-1111-1111-1111-111111111111',
+      'enabled': true,
+    });
+    expect(tester.widget<Switch>(sourceSwitch).value, isTrue);
+  });
+
   testWidgets('A ready dataset exposes its cleaning detail dialog', (
     tester,
   ) async {

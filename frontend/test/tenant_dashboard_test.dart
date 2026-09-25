@@ -204,6 +204,32 @@ void main() {
     expect(find.textContaining('timed out'), findsNothing);
   });
 
+  testWidgets('dashboard period selector sends the selected period to the API', (
+    tester,
+  ) async {
+    final requests = <Uri>[];
+    final auth = AuthController(
+      ApiClient(
+        tokenStore: _TokenStore(),
+        httpClient: MockClient((request) async {
+          requests.add(request.url);
+          return http.Response(
+            '{"status":"no_data","company":{"plan_code":"base","currency":"CAD"},"kpis":[],"priorities":[],"connections":{},"recent_activity":[]}',
+            200,
+          );
+        }),
+        baseUrl: 'https://avenqo.test/api/v1',
+      ),
+    );
+    await tester.pumpWidget(await _wrap(DashboardPage(auth: auth)));
+    await tester.pumpAndSettle();
+    expect(requests.single.queryParameters['period'], 'last_30_days');
+
+    await tester.tap(find.text('Last 7 days'));
+    await tester.pumpAndSettle();
+    expect(requests.last.queryParameters['period'], 'last_7_days');
+  });
+
   testWidgets('distinguishes authentication errors from retryable failures', (tester) async {
     await tester.pumpWidget(
       await _wrap(

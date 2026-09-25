@@ -418,7 +418,11 @@
     "stepOrgLabel": "Siapkan organisasi Anda",
     "stepDataLabel": "Hubungkan data Anda",
     "stepInsightsLabel": "Jelajahi wawasan",
-    "stepAskLabel": "Tanyakan pada Avenqo"
+    "stepAskLabel": "Tanyakan pada Avenqo",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Pusat Komando Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Ruang kosong",
       "invoiceUncollectible": "Tidak dapat dikoleksi",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Paket Professional",
+      "planEnterprise": "Paket perusahaan",
       "nextRenewal": "Pembaruan berikutnya: {date}",
       "downloadCsv": "Unduh CSV",
       "downloadXlsx": "Unduh XLSX",

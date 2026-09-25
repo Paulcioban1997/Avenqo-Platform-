@@ -418,7 +418,11 @@
     "stepOrgLabel": "Completa la configuración de tu empresa",
     "stepDataLabel": "Conecta o importa tus datos",
     "stepInsightsLabel": "Explora tus perspectivas",
-    "stepAskLabel": "Pregunta a Avenqo AI"
+    "stepAskLabel": "Pregunta a Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Centro de control Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Anulada",
       "invoiceUncollectible": "Incobrable",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Plan Profesional",
+      "planEnterprise": "Plan Empresarial",
       "nextRenewal": "Próxima renovación: {date}",
       "downloadCsv": "Descargar CSV",
       "downloadXlsx": "Descargar XLSX",

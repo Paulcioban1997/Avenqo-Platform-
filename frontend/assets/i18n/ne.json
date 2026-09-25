@@ -418,7 +418,11 @@
     "stepOrgLabel": "आफ्नो संस्था सेटअप गर्नुहोस्",
     "stepDataLabel": "आफ्नो डेटा जडान गर्नुहोस्",
     "stepInsightsLabel": "अन्तरदृष्टिहरू अन्वेषण गर्नुहोस्",
-    "stepAskLabel": "Avenqo लाई सोध्नुहोस्"
+    "stepAskLabel": "Avenqo लाई सोध्नुहोस्",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo कमाण्ड सेन्टर",
@@ -930,8 +934,8 @@
       "invoiceVoid": "????????????",
       "invoiceUncollectible": "??????????????? ???????????? ?????????????????????",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional योजना",
+      "planEnterprise": "उद्यम योजना",
       "nextRenewal": "???????????? ??????????????????: {date}",
       "downloadCsv": "CSV डाउनलोड",
       "downloadXlsx": "XLSX डाउनलोड",

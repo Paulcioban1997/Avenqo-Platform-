@@ -418,7 +418,11 @@
     "stepOrgLabel": "የኩባንያዎን ማዋቀር ያጠናቅቁ",
     "stepDataLabel": "መረጃዎን ያገናኙ ወይም ያስመጡ",
     "stepInsightsLabel": "ግንዛቤዎችዎን ያስሱ",
-    "stepAskLabel": "Avenqo AI ን ይጠይቁ"
+    "stepAskLabel": "Avenqo AI ን ይጠይቁ",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "የ Avenqo ትዕዛዝ ማዕከል",
@@ -930,8 +934,8 @@
       "invoiceVoid": "ባዶ",
       "invoiceUncollectible": "የማይሰበሰብ",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional ዕቅድ",
+      "planEnterprise": "የድርጅት ዕቅድ",
       "nextRenewal": "ቀጣይ እድሳት፡ {date}",
       "downloadCsv": "CSV አውርድ",
       "downloadXlsx": "XLSX አውርድ",

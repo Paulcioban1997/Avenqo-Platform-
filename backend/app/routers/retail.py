@@ -6,15 +6,27 @@ from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.dependencies.retail import get_retail_assistant
+from backend.app.dependencies.tenant_business import (
+    get_tenant_analytics_service,
+    get_tenant_customers_service,
+    get_tenant_products_service,
+    get_tenant_sales_service,
+)
+from backend.app.ai.tools.business.analytics import compute_customer_portfolio
 from backend.app.schemas.retail_assistant import RetailAssistantRequest, RetailAssistantResponse
 from backend.app.schemas.retail_sources import (
     RetailSourceResponse,
     RetailSourceSelectionRequest,
+    RetailSourceStateRequest,
 )
 from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
 )
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.tenant_customers_service import TenantCustomersService
+from backend.app.services.tenant_products_service import TenantProductsService
+from backend.app.services.tenant_sales_service import TenantSalesService
 from modules.entitlements import ModuleAccessDenied
 from modules.retailsense.assistant import RetailAssistantService
 from shared.ai_engine.contracts import TenantContext
@@ -44,6 +56,27 @@ def select_retail_source(
             tenant,
             source_type=request.source_type,
             source_id=request.source_id,
+        )
+    except RetailSourceNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Retail source not found",
+        ) from exc
+    return RetailSourceResponse.model_validate(source, from_attributes=True)
+
+
+@router.put("/sources/enabled", response_model=RetailSourceResponse)
+def set_retail_source_enabled(
+    request: RetailSourceStateRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> RetailSourceResponse:
+    try:
+        source = RetailSourceService(db).set_source_enabled(
+            tenant,
+            source_type=request.source_type,
+            source_id=request.source_id,
+            enabled=request.enabled,
         )
     except RetailSourceNotFound as exc:
         raise HTTPException(
@@ -97,53 +130,37 @@ def ask_retail_assistant(
 def retail_status(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
+    analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
 ):
-    """Retourne le statut réel de connexion e-commerce du tenant pour le module Retail."""
-    from backend.app.models.commerce_connection import CommerceConnection, CommerceConnectionStatus, NormalizedCommerceRecord
-    from sqlalchemy import select, func
+    """Report only tenant sources enabled for shared Retail analytics."""
+    from backend.app.services.tenant_products_service import TenantProductsService
 
-    connection = db.scalar(
-        select(CommerceConnection)
-        .where(
-            CommerceConnection.company_id == tenant.company_id,
-            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
-        )
-        .order_by(CommerceConnection.updated_at.desc())
+    sources = [source for source in RetailSourceService(db).list_sources(tenant) if source.enabled]
+    snapshot = analytics.load(tenant)
+    product_source = snapshot.source_for(frozenset({"product_id"})) or snapshot.source_for(
+        frozenset({"product_name"})
     )
-
-    product_count = db.scalar(
-        select(func.count(NormalizedCommerceRecord.id))
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-    ) or 0
-
-    order_count = db.scalar(
-        select(func.count(NormalizedCommerceRecord.id))
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["order", "orders"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-    ) or 0
-
-    customer_count = db.scalar(
-        select(func.count(NormalizedCommerceRecord.id))
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["customer", "customers"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-    ) or 0
+    order_source = snapshot.source_for(frozenset({"order_id"}))
+    customer_source = snapshot.source_for(frozenset({"customer_id"}))
+    product_count = len(TenantProductsService.portfolio(product_source)) if product_source else 0
+    order_count = (
+        len({str(row.get("order_id")) for row in snapshot._canonical_rows(order_source)
+             if row.get("order_id") is not None})
+        if order_source else 0
+    )
+    customer_count = (
+        len(compute_customer_portfolio(customer_source))
+        if customer_source else 0
+    )
+    connection_sources = [source for source in sources if source.source_type == "connector"]
+    connection = connection_sources[0] if len(connection_sources) == 1 else None
 
     return {
-        "is_connected": connection is not None,
+        "is_connected": bool(sources),
         "provider": connection.provider if connection else None,
-        "store_url": connection.external_account_id if connection else None,
-        "status": connection.status if connection else "DISCONNECTED",
-        "last_synced_at": connection.last_successful_sync.isoformat() if connection and connection.last_successful_sync else None,
+        "store_url": connection.display_name if connection else None,
+        "status": connection.status if connection else ("READY" if sources else "DISCONNECTED"),
+        "last_synced_at": connection.last_synchronized_at.isoformat() if connection and connection.last_synchronized_at else None,
         "records_count": (product_count + order_count + customer_count),
         "product_count": product_count,
         "order_count": order_count,
@@ -178,166 +195,122 @@ def _extract_product_fields(d: dict) -> tuple[str, str, float, int]:
 @router.get("/products")
 def list_retail_products(
     tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
+    service: TenantProductsService = Depends(get_tenant_products_service),
     limit: int = 100,
 ):
-    """Retourne la liste des produits normalisés synchronisés pour le tenant."""
-    from backend.app.models.commerce_connection import CommerceConnection, CommerceConnectionStatus, NormalizedCommerceRecord
-    from sqlalchemy import select
-
-    connection = db.scalar(
-        select(CommerceConnection)
-        .where(
-            CommerceConnection.company_id == tenant.company_id,
-            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
-        )
-        .order_by(CommerceConnection.updated_at.desc())
-    )
-    store_url = connection.external_account_id if connection else None
-
-    records = db.scalars(
-        select(NormalizedCommerceRecord)
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-        .order_by(NormalizedCommerceRecord.updated_at.desc())
-        .limit(limit)
-    ).all()
-
+    """Retourne le portefeuille produit consolidé depuis les sources activées."""
+    result = service.build(tenant, page=1, page_size=min(max(limit, 1), 500))
     products = []
-    for r in records:
-        d = r.normalized_data or {}
-        name, sku, price, stock = _extract_product_fields(d)
-        category = str(d.get("product_category") or d.get("category") or "Général")
-        stock_status = "instock" if stock > 0 else (d.get("stock_status") or "outofstock")
-
+    for item in result["items"]:
+        stock = item.get("stock_level")
         products.append({
-            "id": str(r.id),
-            "source_record_id": r.source_record_id,
-            "provider": r.provider,
-            "product_name": name,
-            "sku": sku,
-            "product_category": category,
-            "unit_price": price,
-            "stock_quantity": stock,
-            "stock_status": stock_status,
-            "store_url": store_url,
+            "id": str(item["product_id"]),
+            "source_record_id": str(item["product_id"]),
+            "provider": "dataset",
+            "product_name": item.get("name") or str(item["product_id"]),
+            "sku": str(item.get("sku") or item["product_id"]),
+            "product_category": item.get("category") or "Général",
+            "unit_price": float(item.get("average_price") or 0),
+            "stock_quantity": int(float(stock)) if stock is not None else 0,
+            "stock_status": "instock" if stock is not None and float(stock) > 0 else "unknown",
+            "store_url": None,
         })
 
     return {
         "products": products,
-        "total": len(products),
-        "store_url": store_url,
-        "provider": connection.provider if connection else None,
+        "total": result["pagination"]["total"],
+        "store_url": None,
+        "provider": None,
     }
 
 
 @router.get("/orders")
 def list_retail_orders(
     tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
+    analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
     limit: int = 100,
 ):
-    """Retourne la liste des commandes normalisées synchronisées pour le tenant."""
-    from backend.app.models.commerce_connection import NormalizedCommerceRecord
-    from sqlalchemy import select
+    """Retourne des commandes agrégées depuis les lignes des datasets activés."""
+    from backend.app.ai.tools.business.analytics import _reverse_mapping
 
-    records = db.scalars(
-        select(NormalizedCommerceRecord)
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["order", "orders"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-        .order_by(NormalizedCommerceRecord.updated_at.desc())
-        .limit(limit)
-    ).all()
-
+    snapshot = analytics.load(tenant)
+    source = snapshot.source_for(frozenset({"order_id"}))
     orders = []
-    for r in records:
-        d = r.normalized_data or {}
-        orders.append({
-            "id": str(r.id),
-            "source_record_id": r.source_record_id,
-            "order_number": str(d.get("order_number") or d.get("number") or d.get("id") or r.source_record_id),
-            "customer_name": str(d.get("customer_name") or (f"{d.get('billing', {}).get('first_name', '')} {d.get('billing', {}).get('last_name', '')}").strip() or "Client"),
-            "total_amount": float(d.get("total_amount") or d.get("total") or 0.0),
-            "currency": str(d.get("currency") or "CAD"),
-            "status": str(d.get("status") or "completed"),
-            "created_at": d.get("date_created") or d.get("created_at") or (r.created_at.isoformat() if r.created_at else None),
-        })
-
-    return {"orders": orders, "total": len(orders)}
+    if source is not None:
+        reverse = _reverse_mapping(source.canonical_columns)
+        grouped: dict[str, dict[str, object]] = {}
+        for row in source.rows:
+            raw_order_id = row.get(reverse.get("order_id", ""))
+            if raw_order_id is None or not str(raw_order_id).strip():
+                continue
+            order_id = str(raw_order_id).strip()
+            order = grouped.setdefault(order_id, {
+                "id": order_id,
+                "source_record_id": order_id,
+                "order_number": order_id,
+                "customer_name": str(row.get(reverse.get("customer_name", "")) or row.get(reverse.get("customer_id", "")) or "—"),
+                "total_amount": 0.0,
+                "currency": snapshot.currency,
+                "status": str(row.get(reverse.get("order_status", "")) or "completed"),
+                "created_at": row.get(reverse.get("order_timestamp", "")),
+            })
+            try:
+                order["total_amount"] = float(order["total_amount"]) + float(row.get(reverse.get("total_amount", "")) or 0)
+            except (TypeError, ValueError):
+                pass
+        orders = list(grouped.values())
+    orders.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    return {"orders": orders[:min(max(limit, 1), 500)], "total": len(orders)}
 
 
 @router.get("/customers")
 def list_retail_customers(
     tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
+    service: TenantCustomersService = Depends(get_tenant_customers_service),
     limit: int = 100,
 ):
-    """Retourne la liste des clients normalisés synchronisés pour le tenant."""
-    from backend.app.models.commerce_connection import NormalizedCommerceRecord
-    from sqlalchemy import select
+    """Retourne les clients consolidés depuis les datasets activés."""
+    result = service.build(tenant, page=1, page_size=min(max(limit, 1), 500))
+    customers = [
+        {
+            "id": str(item["customer_id"]),
+            "source_record_id": str(item["customer_id"]),
+            "name": str(item.get("name") or item["customer_id"]),
+            "email": str(item.get("email") or "—"),
+            "total_spent": float(item.get("total_value") or 0),
+            "orders_count": int(item.get("orders") or 0),
+        }
+        for item in result["items"]
+    ]
 
-    records = db.scalars(
-        select(NormalizedCommerceRecord)
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["customer", "customers"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-        .order_by(NormalizedCommerceRecord.updated_at.desc())
-        .limit(limit)
-    ).all()
-
-    customers = []
-    for r in records:
-        d = r.normalized_data or {}
-        name = str(d.get("name") or f"{d.get('first_name', '')} {d.get('last_name', '')}".strip() or "Client")
-        customers.append({
-            "id": str(r.id),
-            "source_record_id": r.source_record_id,
-            "name": name,
-            "email": str(d.get("email") or "—"),
-            "total_spent": float(d.get("total_spent") or 0.0),
-            "orders_count": int(d.get("orders_count") or 0),
-        })
-
-    return {"customers": customers, "total": len(customers)}
+    return {"customers": customers, "total": result["pagination"]["total"]}
 
 
 @router.get("/inventory")
 def list_retail_inventory(
     tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
+    products_service: TenantProductsService = Depends(get_tenant_products_service),
     limit: int = 100,
 ):
-    """Retourne l'inventaire avec détection des ruptures et des surstocks."""
-    from backend.app.models.commerce_connection import NormalizedCommerceRecord
-    from sqlalchemy import select
-
-    records = db.scalars(
-        select(NormalizedCommerceRecord)
-        .where(
-            NormalizedCommerceRecord.company_id == tenant.company_id,
-            NormalizedCommerceRecord.entity_type.in_(["product", "products"]),
-            NormalizedCommerceRecord.deleted.is_(False),
-        )
-        .order_by(NormalizedCommerceRecord.updated_at.desc())
-        .limit(limit)
-    ).all()
+    """Retourne l'inventaire disponible sur les produits des sources activées."""
+    product_result = products_service.build(
+        tenant, page=1, page_size=min(max(limit, 1), 500)
+    )
 
     items = []
     anomalies = []
-    for r in records:
-        d = r.normalized_data or {}
-        name, sku, price, stock = _extract_product_fields(d)
+    for product in product_result["items"]:
+        stock_value = product.get("stock_level")
+        if stock_value is None:
+            continue
+        name = str(product.get("name") or product["product_id"])
+        sku = str(product.get("sku") or product["product_id"])
+        price = float(product.get("unit_price") or 0)
+        stock = int(float(stock_value))
+        product_id = str(product["product_id"])
 
         item = {
-            "id": str(r.id),
+            "id": product_id,
             "product_name": name,
             "sku": sku,
             "stock_quantity": stock,
@@ -348,7 +321,7 @@ def list_retail_inventory(
 
         if stock <= 5:
             anomalies.append({
-                "id": f"crit-{r.id}",
+                "id": f"crit-{product_id}",
                 "product": name,
                 "sku": sku,
                 "currentStock": stock,
@@ -359,7 +332,7 @@ def list_retail_inventory(
             })
         elif stock > 200:
             anomalies.append({
-                "id": f"over-{r.id}",
+                "id": f"over-{product_id}",
                 "product": name,
                 "sku": sku,
                 "currentStock": stock,

@@ -418,7 +418,11 @@
     "stepOrgLabel": "Байгууллагаа тохируулах",
     "stepDataLabel": "Өгөгдлөө холбох",
     "stepInsightsLabel": "Ойлголтуудыг судлах",
-    "stepAskLabel": "Avenqo-с асуух"
+    "stepAskLabel": "Avenqo-с асуух",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo командын төв",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Хүчингүй",
       "invoiceUncollectible": "Цуглагдах боломжгүй",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional төлөвлөгөө",
+      "planEnterprise": "Байгууллагын төлөвлөгөө",
       "nextRenewal": "Дараагийн шинэчлэлт: {date}",
       "downloadCsv": "CSV татах",
       "downloadXlsx": "XLSX татах",

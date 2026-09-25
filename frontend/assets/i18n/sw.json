@@ -418,7 +418,11 @@
     "stepOrgLabel": "Kamilisha usanidi wa kampuni yako",
     "stepDataLabel": "Unganisha au leta data yako",
     "stepInsightsLabel": "Chunguza maarifa yako",
-    "stepAskLabel": "Uliza Avenqo AI"
+    "stepAskLabel": "Uliza Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Kituo cha Amri cha Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Utupu",
       "invoiceUncollectible": "Isiyoweza kukusanywa",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Mpango wa Professional",
+      "planEnterprise": "Mpango wa biashara",
       "nextRenewal": "Usasishaji unaofuata: {date}",
       "downloadCsv": "Pakua CSV",
       "downloadXlsx": "Pakua XLSX",

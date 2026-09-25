@@ -418,7 +418,11 @@
     "stepOrgLabel": "设置您的组织",
     "stepDataLabel": "连接您的数据",
     "stepInsightsLabel": "探索洞察",
-    "stepAskLabel": "询问Avenqo"
+    "stepAskLabel": "询问Avenqo",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo 指挥中心",
@@ -930,8 +934,8 @@
       "invoiceVoid": "??????",
       "invoiceUncollectible": "????????????",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional 方案",
+      "planEnterprise": "企业方案",
       "nextRenewal": "???????????????{date}",
       "downloadCsv": "下载 CSV",
       "downloadXlsx": "下载 XLSX",

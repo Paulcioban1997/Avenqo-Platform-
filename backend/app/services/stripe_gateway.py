@@ -43,6 +43,12 @@ class StripeGateway:
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
 
+    def _require_monthly_price(self, price_id: str) -> None:
+        price = stripe.Price.retrieve(price_id, api_key=self._api_key)
+        recurring = price.get("recurring") if hasattr(price, "get") else None
+        if not recurring or recurring.get("interval") != "month":
+            raise ValueError("Avenqo subscription prices must recur monthly")
+
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         customer = stripe.Customer.create(
             email=email,
@@ -60,6 +66,7 @@ class StripeGateway:
         success_url: str,
         cancel_url: str,
     ) -> str:
+        self._require_monthly_price(price_id)
         checkout = stripe.checkout.Session.create(
             mode="subscription",
             customer=customer_id,
@@ -120,6 +127,7 @@ class StripeGateway:
         return invoices
 
     def change_subscription(self, subscription_id: str, price_id: str) -> None:
+        self._require_monthly_price(price_id)
         subscription = stripe.Subscription.retrieve(subscription_id, api_key=self._api_key)
         stripe.Subscription.modify(
             subscription_id,

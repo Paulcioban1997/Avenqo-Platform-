@@ -58,6 +58,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   List<Map<String, dynamic>> _datasets = [];
   List<Map<String, dynamic>> _connectorCatalog = [];
   List<Map<String, dynamic>> _commerceConnections = [];
+  List<Map<String, dynamic>> _retailSources = [];
   bool _connectorCatalogUnavailable = false;
   String? _authorizingProvider;
   final Set<String> _busyConnectionIds = <String>{};
@@ -79,6 +80,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   Future<void> _loadDatasets() async {
     setState(() => _state = _ViewState.loading);
     final connectorFuture = _fetchConnectorData();
+    final retailSourcesFuture = _fetchRetailSources();
     try {
       try {
         await widget.api.post('/datasets/reconcile');
@@ -87,10 +89,15 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       }
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
       final connectorData = await connectorFuture;
+      final retailSources = await retailSourcesFuture;
       setState(() {
         _datasets = datasets.cast<Map<String, dynamic>>();
         _connectorCatalog = connectorData.catalog;
-        _commerceConnections = connectorData.connections;
+        _retailSources = retailSources;
+        _commerceConnections = _withRetailSourceStates(
+          connectorData.connections,
+          retailSources,
+        );
         _connectorCatalogUnavailable = connectorData.unavailable;
         _state = _ViewState.idle;
       });
@@ -136,6 +143,70 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     );
   }
 
+  Future<List<Map<String, dynamic>>> _fetchRetailSources() async {
+    try {
+      return _mapsFrom(await widget.api.get('/retail/sources'));
+    } on Object {
+      return [];
+    }
+  }
+
+  List<Map<String, dynamic>> _withRetailSourceStates(
+    List<Map<String, dynamic>> connections,
+    List<Map<String, dynamic>> sources,
+  ) => [
+    for (final connection in connections)
+      {
+        ...connection,
+        'retail_enabled': sources.any(
+          (source) =>
+              source['source_type'] == 'connector' &&
+              source['connection_id']?.toString() ==
+                  connection['id']?.toString() &&
+              source['enabled'] == true,
+        ),
+      },
+  ];
+
+  Future<void> _setRetailSourceEnabled({
+    required String sourceType,
+    required String sourceId,
+    required bool enabled,
+  }) async {
+    final key = '$sourceType:$sourceId';
+    if (_busyConnectionIds.contains(key)) return;
+    setState(() => _busyConnectionIds.add(key));
+    try {
+      final source = await widget.api.put(
+            '/retail/sources/enabled',
+            body: {
+              'source_type': sourceType,
+              'source_id': sourceId,
+              'enabled': enabled,
+            },
+          )
+          as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _retailSources = [
+          for (final item in _retailSources)
+            if (item['source_type'] != sourceType ||
+                item['source_id']?.toString() != sourceId)
+              item,
+          source,
+        ];
+        _commerceConnections = _withRetailSourceStates(
+          _commerceConnections,
+          _retailSources,
+        );
+      });
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    } finally {
+      if (mounted) setState(() => _busyConnectionIds.remove(key));
+    }
+  }
+
   Future<dynamic> _safeConnectorGet(String path) async {
     try {
       return await widget.api.get(path);
@@ -146,10 +217,15 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
   Future<void> _refreshConnectorData() async {
     final connectorData = await _fetchConnectorData();
+    final retailSources = await _fetchRetailSources();
     if (!mounted) return;
     setState(() {
       _connectorCatalog = connectorData.catalog;
-      _commerceConnections = connectorData.connections;
+      _retailSources = retailSources;
+      _commerceConnections = _withRetailSourceStates(
+        connectorData.connections,
+        retailSources,
+      );
       _connectorCatalogUnavailable = connectorData.unavailable;
     });
     _syncPolling();
@@ -162,8 +238,16 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     _refreshing = true;
     try {
       final datasets = await widget.api.get('/datasets') as List<dynamic>;
+      final retailSources = await _fetchRetailSources();
       if (mounted) {
-        setState(() => _datasets = datasets.cast<Map<String, dynamic>>());
+        setState(() {
+          _datasets = datasets.cast<Map<String, dynamic>>();
+          _retailSources = retailSources;
+          _commerceConnections = _withRetailSourceStates(
+            _commerceConnections,
+            retailSources,
+          );
+        });
         if (_commerceConnections.any(_connectionIsBusy)) {
           await _refreshConnectorData();
         }
@@ -682,13 +766,13 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     final colors = AvenqoColors.of(context);
     final t = AvenqoLocaleScope.translationsOf(context).company;
     return Container(
-      color: colors.canvas,
+          color: colors.surface,
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1120),
-            child: switch (_state) {
+                child: switch (_state) {
               _ViewState.loading => _CenteredSpinner(
                 label: t.connectionsLoading,
               ),
@@ -696,6 +780,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 datasets: _datasets,
                 connectorCatalog: _connectorCatalog,
                 commerceConnections: _commerceConnections,
+                retailSources: _retailSources,
                 busyConnectionIds: _busyConnectionIds,
                 authorizingProvider: _authorizingProvider,
                 connectorCatalogUnavailable: _connectorCatalogUnavailable,
@@ -703,6 +788,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 onSyncConnection: _syncConnection,
                 onReauthorizeConnection: _reauthorizeWooCommerce,
                 onDisconnectConnection: _disconnectConnection,
+                onToggleRetailSource: _setRetailSourceEnabled,
                 onRefreshConnectors: _refreshConnectorData,
                 deletingDatasetIds: _deletingDatasetIds,
                 selectedDatasetIds: _selectedDatasetIds,
@@ -856,6 +942,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.datasets,
     required this.connectorCatalog,
     required this.commerceConnections,
+    required this.retailSources,
     required this.busyConnectionIds,
     required this.authorizingProvider,
     required this.connectorCatalogUnavailable,
@@ -863,6 +950,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.onSyncConnection,
     required this.onReauthorizeConnection,
     required this.onDisconnectConnection,
+    required this.onToggleRetailSource,
     required this.onRefreshConnectors,
     required this.deletingDatasetIds,
     required this.selectedDatasetIds,
@@ -879,6 +967,7 @@ class _ConnectedDataView extends StatelessWidget {
   final List<Map<String, dynamic>> datasets;
   final List<Map<String, dynamic>> connectorCatalog;
   final List<Map<String, dynamic>> commerceConnections;
+  final List<Map<String, dynamic>> retailSources;
   final Set<String> busyConnectionIds;
   final String? authorizingProvider;
   final bool connectorCatalogUnavailable;
@@ -888,6 +977,11 @@ class _ConnectedDataView extends StatelessWidget {
   onReauthorizeConnection;
   final Future<void> Function(Map<String, dynamic> connection)
   onDisconnectConnection;
+  final Future<void> Function({
+    required String sourceType,
+    required String sourceId,
+    required bool enabled,
+  }) onToggleRetailSource;
   final VoidCallback onRefreshConnectors;
   final Set<String> deletingDatasetIds;
   final Set<String> selectedDatasetIds;
@@ -1082,16 +1176,40 @@ class _ConnectedDataView extends StatelessWidget {
                     ),
                   ),
                 for (var i = 0; i < datasets.length; i++)
-                  _DatasetRow(
-                    dataset: datasets[i],
-                    sourceConnection: commerceConnections
+                  Builder(
+                    builder: (context) {
+                      final sourceConnection = commerceConnections
                         .cast<Map<String, dynamic>?>()
                         .firstWhere(
                           (connection) =>
                               connection?['dataset_id']?.toString() ==
                               datasets[i]['id']?.toString(),
                           orElse: () => null,
-                        ),
+                            );
+                          final datasetId = datasets[i]['id']?.toString();
+                          final activeSource = retailSources.cast<Map<String, dynamic>?>().firstWhere(
+                            (source) => source != null &&
+                                (sourceConnection != null
+                                    ? source['source_type'] == 'connector' &&
+                                        source['connection_id']?.toString() ==
+                                            sourceConnection['id']?.toString()
+                                    : source['source_type'] == 'dataset' &&
+                                        source['dataset_id']?.toString() == datasetId),
+                            orElse: () => null,
+                          );
+                          final sourceType = sourceConnection == null ? 'dataset' : 'connector';
+                          final sourceId = sourceConnection?['id']?.toString() ?? datasetId;
+                          return _DatasetRow(
+                        dataset: datasets[i],
+                        sourceConnection: sourceConnection,
+                        sourceEnabled: activeSource?['enabled'] == true,
+                        onToggleSource: activeSource == null || sourceId == null
+                            ? null
+                            : (enabled) => onToggleRetailSource(
+                                sourceType: sourceType,
+                                sourceId: sourceId,
+                                enabled: enabled,
+                              ),
                     isLast: i == datasets.length - 1,
                     isDeleting: deletingDatasetIds.contains(
                       datasets[i]['id']?.toString(),
@@ -1107,6 +1225,8 @@ class _ConnectedDataView extends StatelessWidget {
                     onGoToDashboard: onGoToDashboard,
                     onAskAvenqo: onAskAvenqo,
                     t: t,
+                      );
+                    },
                   ),
               ],
             ),
@@ -1123,6 +1243,11 @@ class _ConnectedDataView extends StatelessWidget {
           onSync: onSyncConnection,
           onReauthorize: onReauthorizeConnection,
           onDisconnect: onDisconnectConnection,
+          onToggleSource: (connection, enabled) => onToggleRetailSource(
+            sourceType: 'connector',
+            sourceId: connection['id'].toString(),
+            enabled: enabled,
+          ),
           onRefresh: onRefreshConnectors,
           t: t,
         ),
@@ -1135,6 +1260,8 @@ class _DatasetRow extends StatelessWidget {
   const _DatasetRow({
     required this.dataset,
     required this.sourceConnection,
+    required this.sourceEnabled,
+    required this.onToggleSource,
     required this.isLast,
     required this.isDeleting,
     required this.isSelected,
@@ -1149,6 +1276,8 @@ class _DatasetRow extends StatelessWidget {
 
   final Map<String, dynamic> dataset;
   final Map<String, dynamic>? sourceConnection;
+  final bool sourceEnabled;
+  final ValueChanged<bool>? onToggleSource;
   final bool isLast;
   final bool isDeleting;
   final bool isSelected;
@@ -1197,6 +1326,14 @@ class _DatasetRow extends StatelessWidget {
         '${t.connectionsImportedAtLabel} ${sourceDate.toString().split('T').first}',
     ].join(' · ');
     final actions = <Widget>[
+      if (isReady && sourceConnection == null && onToggleSource != null)
+        Semantics(
+          label: dataset['name']?.toString(),
+          child: Switch.adaptive(
+            value: sourceEnabled,
+            onChanged: isDeleting ? null : onToggleSource,
+          ),
+        ),
       if (isReady || isError)
         TextButton.icon(
           onPressed: isDeleting ? null : () => onViewCleaning(dataset),
@@ -1950,11 +2087,14 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Row(
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 6,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: [
                                       // Retail Readiness Badge
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
                                           color: (isReady ? _Brand.green : _Brand.red).withValues(alpha: 0.12),
                                           borderRadius: BorderRadius.circular(6),
@@ -1984,7 +2124,6 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
                                       Text(
                                         'Score qualité : $qualityScore%',
                                         style: const TextStyle(

@@ -7,7 +7,7 @@ tenant (Phase 26/27). Aucun entraînement de modèle n'est déclenché ici.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -71,13 +71,22 @@ def filter_rows_by_date(
     if date_from is None and date_to is None:
         return rows
     filtered = []
+
+    def utc(value: datetime) -> datetime:
+        return (
+            value.replace(tzinfo=timezone.utc)
+            if value.tzinfo is None
+            else value.astimezone(timezone.utc)
+        )
+
     for row in rows:
         timestamp = parse_business_datetime(_value(row, reverse, "order_timestamp"))
         if timestamp is None:
             continue
-        if date_from is not None and timestamp < date_from:
+        timestamp = utc(timestamp)
+        if date_from is not None and timestamp < utc(date_from):
             continue
-        if date_to is not None and timestamp > date_to:
+        if date_to is not None and timestamp > utc(date_to):
             continue
         filtered.append(row)
     return tuple(filtered)
@@ -104,7 +113,7 @@ def compute_business_overview(prepared: PreparedCompanyDataset) -> dict[str, obj
         if timestamp is not None:
             timestamps.append(timestamp)
 
-    orders = len(order_ids) if order_ids else len(prepared.rows)
+    orders = len(order_ids)
     period = None
     if timestamps:
         period = min(timestamps).strftime("%Y-%m") if len(set(t.strftime("%Y-%m") for t in timestamps)) == 1 else f"{min(timestamps).strftime('%Y-%m-%d')} to {max(timestamps).strftime('%Y-%m-%d')}"

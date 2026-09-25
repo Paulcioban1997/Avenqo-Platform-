@@ -418,7 +418,11 @@
     "stepOrgLabel": "သင့်အဖွဲ့အစည်းကို တည်ဆောက်ရန်",
     "stepDataLabel": "သင့်ဒေတာကို ချိတ်ဆက်ရန်",
     "stepInsightsLabel": "ထိုးထွင်းသိမြင်မှုများကို လေ့လာရန်",
-    "stepAskLabel": "Avenqo ကို မေးရန်"
+    "stepAskLabel": "Avenqo ကို မေးရန်",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo ကွပ်ကဲရေးစင်တာ",
@@ -930,8 +934,8 @@
       "invoiceVoid": "ပျက်ပြယ်သည်။",
       "invoiceUncollectible": "မစုစည်းနိုင်သော",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional အစီအစဉ်",
+      "planEnterprise": "လုပ်ငန်းအစီအစဉ်",
       "nextRenewal": "နောက်တစ်ခု သက်တမ်းတိုးခြင်း- {date}",
       "downloadCsv": "CSV ဒေါင်းလုဒ်",
       "downloadXlsx": "XLSX ဒေါင်းလုဒ်",

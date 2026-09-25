@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
@@ -14,6 +14,7 @@ from backend.app.models import (
     DatasetRelationship,
     DatasetStatus,
     RetailActiveSource,
+    RetailSourceState,
 )
 from shared.ai_engine.contracts import TenantContext
 
@@ -33,6 +34,7 @@ class RetailSource:
     status: str
     last_synchronized_at: datetime | None
     active: bool
+    enabled: bool = False
 
     @property
     def id(self) -> UUID:
@@ -74,6 +76,14 @@ class RetailSourceService:
             if (dataset_id := self._connection_dataset_id(connection)) is not None
         }
         active = self._resolve_active(tenant, connections, datasets)
+        states = {
+            state.source_key: state.enabled
+            for state in self._session.scalars(
+                select(RetailSourceState).where(
+                    RetailSourceState.company_id == tenant.company_id
+                )
+            ).all()
+        }
         sources = [
             self._connection_source(connection, active)
             for connection in connections
@@ -83,7 +93,143 @@ class RetailSourceService:
             for dataset in datasets
             if dataset.id not in connector_dataset_ids
         )
-        return tuple(sources)
+        return tuple(
+            replace(
+                source,
+                enabled=states.get(
+                    self._source_key(source.source_type, source.source_id),
+                    bool(
+                        active
+                        and (
+                            active.source_type == "all"
+                            or (
+                                active.source_type == source.source_type
+                                and (
+                                    active.connection_id == source.connection_id
+                                    if source.source_type == "connector"
+                                    else active.dataset_id == source.dataset_id
+                                )
+                            )
+                        )
+                    ),
+                ),
+            )
+            for source in sources
+        )
+
+    def set_source_enabled(
+        self,
+        tenant: TenantContext,
+        *,
+        source_type: str,
+        source_id: UUID,
+        enabled: bool,
+    ) -> RetailSource:
+        from backend.app.core.cache import tenant_cache
+
+        source = next(
+            (
+                item
+                for item in self.list_sources(tenant)
+                if item.source_type == source_type and item.source_id == source_id
+            ),
+            None,
+        )
+        if source is None:
+            raise RetailSourceNotFound("Retail source not found")
+
+        states = list(
+            self._session.scalars(
+                select(RetailSourceState).where(
+                    RetailSourceState.company_id == tenant.company_id
+                )
+            ).all()
+        )
+        state_by_key = {item.source_key: item for item in states}
+        if not states:
+            active = self._session.scalar(
+                select(RetailActiveSource).where(
+                    RetailActiveSource.company_id == tenant.company_id
+                )
+            )
+            for existing_source in self.list_sources(tenant):
+                source_key = self._source_key(
+                    existing_source.source_type, existing_source.source_id
+                )
+                initially_enabled = bool(
+                    active
+                    and (
+                        active.source_type == "all"
+                        or existing_source.active
+                    )
+                )
+                state = RetailSourceState(
+                    company_id=tenant.company_id,
+                    source_key=source_key,
+                    dataset_id=existing_source.dataset_id,
+                    connection_id=existing_source.connection_id,
+                    enabled=initially_enabled,
+                )
+                self._session.add(state)
+                state_by_key[source_key] = state
+
+        key = self._source_key(source_type, source_id)
+        state = state_by_key.get(key)
+        if state is None:
+            state = RetailSourceState(
+                company_id=tenant.company_id,
+                source_key=key,
+                dataset_id=source.dataset_id,
+                connection_id=source.connection_id,
+                enabled=enabled,
+            )
+            self._session.add(state)
+        else:
+            state.enabled = enabled
+        self._session.commit()
+        tenant_cache.invalidate_tenant(tenant.company_id)
+        return next(
+            item
+            for item in self.list_sources(tenant)
+            if item.source_type == source_type and item.source_id == source_id
+        )
+
+    def enabled_dataset_ids(self, tenant: TenantContext) -> frozenset[UUID] | None:
+        states = tuple(
+            self._session.scalars(
+                select(RetailSourceState).where(
+                    RetailSourceState.company_id == tenant.company_id,
+                    RetailSourceState.enabled.is_(True),
+                )
+            ).all()
+        )
+        has_state = self._session.scalar(
+            select(RetailSourceState.id)
+            .where(RetailSourceState.company_id == tenant.company_id)
+            .limit(1)
+        )
+        if has_state is None:
+            return None
+        dataset_ids = {
+            state.dataset_id
+            for state in states
+            if state.dataset_id is not None and state.connection_id is None
+        }
+        connection_ids = {state.connection_id for state in states if state.connection_id is not None}
+        if connection_ids:
+            dataset_ids.update(
+                dataset_id
+                for connection in self._session.scalars(
+                    select(CommerceConnection).where(
+                        CommerceConnection.company_id == tenant.company_id,
+                        CommerceConnection.id.in_(connection_ids),
+                        CommerceConnection.status
+                        != CommerceConnectionStatus.DISCONNECTED.value,
+                    )
+                ).all()
+                if (dataset_id := self._connection_dataset_id(connection)) is not None
+            )
+        return frozenset(dataset_ids)
 
     def select_source(
         self,
@@ -328,6 +474,10 @@ class RetailSourceService:
         selection.connection_id = connection_id
         self._session.commit()
         return selection
+
+    @staticmethod
+    def _source_key(source_type: str, source_id: UUID) -> str:
+        return f"{source_type}:{source_id}"
 
     @staticmethod
     def _connection_dataset_id(connection: CommerceConnection) -> UUID | None:

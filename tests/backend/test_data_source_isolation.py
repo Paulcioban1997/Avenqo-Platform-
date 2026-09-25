@@ -271,7 +271,9 @@ def test_a_superstore_selected_serves_superstore_kpi_and_ai(isolation_env):
 
     # Verify KPI Sales
     analytics = TenantAnalyticsService(env.session, _PreparedIngestion(env.prepared))
-    sales = TenantSalesService(env.session, analytics, None).build(tenant)
+    sales = TenantSalesService(env.session, analytics, None).build(
+        tenant, period_key="all"
+    )
     assert sales["summary"]["revenue"] == 2297200.86
 
     # Verify AI Dataset Access
@@ -307,7 +309,9 @@ def test_b_shopify_selected_serves_shopify_only_no_superstore_leak(isolation_env
 
     # Verify KPI Sales: ONLY Shopify revenue, NOT Superstore
     analytics = TenantAnalyticsService(env.session, _PreparedIngestion(env.prepared))
-    sales = TenantSalesService(env.session, analytics, None).build(tenant)
+    sales = TenantSalesService(env.session, analytics, None).build(
+        tenant, period_key="all"
+    )
     assert sales["summary"]["revenue"] == 12500.0
     assert sales["summary"]["revenue"] != 2297200.86
 
@@ -347,7 +351,9 @@ def test_c_woocommerce_selected_serves_woocommerce_only_no_shopify_or_superstore
 
     # Verify KPI Sales
     analytics = TenantAnalyticsService(env.session, _PreparedIngestion(env.prepared))
-    sales = TenantSalesService(env.session, analytics, None).build(tenant)
+    sales = TenantSalesService(env.session, analytics, None).build(
+        tenant, period_key="all"
+    )
     assert sales["summary"]["revenue"] == 3400.0
 
     # Verify AI Commerce Tools: finds Wireless Headphones, NOT Silk Scarf
@@ -378,22 +384,22 @@ def test_d_switching_sources_leaves_zero_cross_contamination(isolation_env):
 
     # 1. Select Superstore (A)
     source_service.select_source(tenant, source_type="dataset", source_id=env.superstore.id)
-    res_a = sales_service.build(tenant)
+    res_a = sales_service.build(tenant, period_key="all")
     assert res_a["summary"]["revenue"] == 2297200.86
 
     # 2. Select Shopify (B)
     source_service.select_source(tenant, source_type="connector", source_id=env.shopify_conn.id)
-    res_b = sales_service.build(tenant)
+    res_b = sales_service.build(tenant, period_key="all")
     assert res_b["summary"]["revenue"] == 12500.0
 
     # 3. Select WooCommerce (C)
     source_service.select_source(tenant, source_type="connector", source_id=env.woo_conn.id)
-    res_c = sales_service.build(tenant)
+    res_c = sales_service.build(tenant, period_key="all")
     assert res_c["summary"]["revenue"] == 3400.0
 
     # 4. Back to Superstore (A)
     source_service.select_source(tenant, source_type="dataset", source_id=env.superstore.id)
-    res_a2 = sales_service.build(tenant)
+    res_a2 = sales_service.build(tenant, period_key="all")
     assert res_a2["summary"]["revenue"] == 2297200.86
 
 

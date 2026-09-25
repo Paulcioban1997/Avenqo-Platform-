@@ -50,7 +50,7 @@ def descriptor(tenant, dataset):
     except OSError:
         return None
     return {
-        "format": 3, "company": str(tenant.company_id), "dataset": str(dataset.id),
+        "format": 4, "company": str(tenant.company_id), "dataset": str(dataset.id),
         "version": version.version_number, "version_id": version.id,
         "artifact": str(path.resolve()), "checksum": version.checksum,
         "size": stat.st_size, "mtime": stat.st_mtime_ns,
@@ -149,36 +149,68 @@ def build(spec):
     start = end - timedelta(days=29) if end else None
     comparison_start = start - timedelta(days=30) if start else None
     comparison_end = start - timedelta(microseconds=1) if start else None
-    buckets = [{"revenue": Decimal(0), "orders": set(), "customers": set(), "rows": 0} for _ in range(2)]
+    now = datetime.now(timezone.utc)
+    quarter_start = datetime(
+        now.year,
+        ((now.month - 1) // 3) * 3 + 1,
+        1,
+        tzinfo=timezone.utc,
+    )
+    ranges = {
+        "all": (None, None),
+        "last_7_days": (now - timedelta(days=7), now),
+        "last_30_days": (now - timedelta(days=30), now),
+        "current_quarter": (quarter_start, now),
+        "source_current": (start, end),
+        "source_previous": (comparison_start, comparison_end),
+    }
+    buckets = {
+        name: {
+            "revenue": Decimal(0),
+            "orders": set(),
+            "customers": set(),
+            "rows": 0,
+        }
+        for name in ranges
+    }
     for row in rows(path):
-        index = 0
+        value = timestamp(row.get(date_col)) if date_col else None
         if end:
-            value = timestamp(row.get(date_col))
             if value is None:
                 continue
-            if start <= value <= end:
-                index = 0
-            elif comparison_start <= value <= comparison_end:
-                index = 1
-            else:
-                continue
-        bucket = buckets[index]
-        bucket["rows"] += 1
-        for field in ("orders", "customers"):
-            column = reverse.get("order_id" if field == "orders" else "customer_id")
-            value = row.get(column)
-            if value is not None and str(value).strip():
-                bucket[field].add(str(value).strip())
+        included = [
+            name
+            for name, (range_start, range_end) in ranges.items()
+            if range_start is None
+            or value is None
+            or range_start <= value <= range_end
+        ]
+        if value is None:
+            included = ["all", "source_current"]
         try:
-            value = row.get(reverse.get("total_amount"))
-            if value is None or value == "":
-                amount = Decimal(str(row.get(reverse.get("quantity")))) * Decimal(str(row.get(reverse.get("unit_price"))))
+            raw_amount = row.get(reverse.get("total_amount"))
+            if raw_amount is None or raw_amount == "":
+                amount = Decimal(str(row.get(reverse.get("quantity")))) * Decimal(
+                    str(row.get(reverse.get("unit_price")))
+                )
             else:
-                amount = Decimal(str(value))
-            if amount.is_finite():
-                bucket["revenue"] += amount
+                amount = Decimal(str(raw_amount))
+            if not amount.is_finite():
+                amount = Decimal(0)
         except (InvalidOperation, ValueError, TypeError):
-            pass
+            amount = Decimal(0)
+        order_column = reverse.get("order_id")
+        customer_column = reverse.get("customer_id")
+        order_value = row.get(order_column) if order_column else None
+        customer_value = row.get(customer_column) if customer_column else None
+        for bucket_name in included:
+            bucket = buckets[bucket_name]
+            bucket["rows"] += 1
+            bucket["revenue"] += amount
+            if order_value is not None and str(order_value).strip():
+                bucket["orders"].add(str(order_value).strip())
+            if customer_value is not None and str(customer_value).strip():
+                bucket["customers"].add(str(customer_value).strip())
     fields = set(reverse)
     revenue_ready = "total_amount" in fields or {"quantity", "unit_price"} <= fields
     available = {"revenue": revenue_ready, "orders": "order_id" in fields,
@@ -189,8 +221,13 @@ def build(spec):
                   "customers": len(bucket["customers"]),
                   "average_order_value": float(round(bucket["revenue"] / orders, 2)) if orders else 0.0}
         return {key: value for key, value in values.items() if available[key]}
-    payload = {"source": spec, "current": metrics(buckets[0]),
-               "previous": metrics(buckets[1]) if buckets[1]["rows"] else {},
+    payload = {"source": spec,
+               "period_metrics": {
+                   key: metrics(bucket) for key, bucket in buckets.items()
+               },
+               "current": metrics(buckets["source_current"]),
+               "previous": metrics(buckets["source_previous"])
+               if buckets["source_previous"]["rows"] else {},
                "period": {key: value.isoformat() if value else None for key, value in
                           dict(start=start, end=end, comparison_start=comparison_start, comparison_end=comparison_end).items()}}
     stat = path.stat()

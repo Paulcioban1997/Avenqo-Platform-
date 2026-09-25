@@ -418,7 +418,11 @@
     "stepOrgLabel": "Dokončete nastavení své společnosti",
     "stepDataLabel": "Připojte nebo importujte svá data",
     "stepInsightsLabel": "Prozkoumejte své poznatky",
-    "stepAskLabel": "Zeptat se Avenqo AI"
+    "stepAskLabel": "Zeptat se Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Řídicí centrum Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Neplatn??",
       "invoiceUncollectible": "Nevymahateln??",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Tarif Professional",
+      "planEnterprise": "Podnikový tarif",
       "nextRenewal": "Dal???? obnoven??: {date}",
       "downloadCsv": "Stáhnout CSV",
       "downloadXlsx": "Stáhnout XLSX",

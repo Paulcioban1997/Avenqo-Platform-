@@ -12,10 +12,11 @@ import {
   AlertTriangle,
   RefreshCw,
   FileSpreadsheet,
-  Layers,
   ChevronRight,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface AvenqoCopilotProps {
   isOpen: boolean;
@@ -31,20 +32,27 @@ interface ChatMessage {
   content: string;
   timestamp: string;
   isStreaming?: boolean;
-  confidence?: number;
   grounded?: boolean;
+}
+
+interface EnabledSource {
+  source_id: string;
+  display_name: string;
+  enabled: boolean;
 }
 
 export function AvenqoCopilot({
   isOpen,
   onClose,
   activeRoute,
-  tenantName = "Avenqo",
   t,
 }: AvenqoCopilotProps) {
+  const { locale } = useLocale();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [activeSources, setActiveSources] = useState<EnabledSource[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll on message change
@@ -54,15 +62,27 @@ export function AvenqoCopilot({
     }
   }, [messages, isThinking]);
 
-  // Route-aware context label
-  const routeContextLabel = {
-    "/dashboard": "Tableau de Bord / Vue d'ensemble",
-    "/retail": "Retail Intelligence & Inventaire",
-    "/crm": "CRM AI & Relations Clients",
-    "/accounting": "Comptabilité & Factures",
-    "/integrations": "Connecteurs & Synchronisation",
-    "/data": "Données Brutes & Normalisées",
-  }[activeRoute] || "Espace Opérationnel AVENQO";
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void fetch("/api/v1/retail/sources", { headers: getAuthHeaders() })
+      .then(async (response) => response.ok ? response.json() : [])
+      .then((sources: unknown) => {
+        if (!cancelled && Array.isArray(sources)) {
+          setActiveSources(
+            sources.filter(
+              (source): source is EnabledSource =>
+                typeof source === "object" && source !== null &&
+                (source as EnabledSource).enabled === true,
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setActiveSources([]);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
@@ -85,105 +105,51 @@ export function AvenqoCopilot({
         ...(typeof window !== "undefined" ? (await import("@/lib/api-headers")).getAuthHeaders() : {}),
       };
 
-      const qLower = query.toLowerCase();
-      const isCrmIntent =
-        activeRoute === "/crm" ||
-        [
-          "rendez-vous",
-          "rdv",
-          "créneau",
-          "disponib",
-          "client",
-          "prospect",
-          "lead",
-          "pipeline",
-          "kpi",
-          "chiffre",
-          "statistique",
-          "rappel",
-          "opportunité",
-          "appointment",
-        ].some((keyword) => qLower.includes(keyword));
-
-      if (isCrmIntent) {
-        const crmRes = await fetch("/api/v1/crm/copilot/chat", {
+      let activeConversationId = conversationId;
+      if (activeConversationId === null) {
+        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            message: query,
-            locale: "fr",
-          }),
+          body: JSON.stringify({ title: query.slice(0, 54) }),
         });
-
-        if (crmRes.ok) {
-          const crmData = await crmRes.json();
-          const copilotMsg: ChatMessage = {
-            id: `c-${Date.now()}`,
-            sender: "copilot",
-            content: crmData.reply || crmData.message || "Action CRM effectuée avec succès.",
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            confidence: 0.98,
-            grounded: true,
-          };
-          setMessages((prev) => [...prev, copilotMsg]);
-          setIsThinking(false);
-          return;
-        }
+        if (!conversationResponse.ok) throw new Error("Conversation creation failed");
+        const conversation = await conversationResponse.json();
+        activeConversationId = conversation.id;
+        setConversationId(activeConversationId);
       }
 
-      // Contextual AI assistant response
-      const res = await fetch("/api/v1/central-ai/chat", {
+      const res = await fetch(
+        `/api/v1/ai/central/conversations/${activeConversationId}/messages`,
+        {
         method: "POST",
         headers,
         body: JSON.stringify({
-          message: query,
-          context: {
-            route: activeRoute,
-            tenant: tenantName,
-          },
+          content: query,
+          locale: locale.startsWith("fr") ? "fr" : "en",
+          page_context: activeRoute,
         }),
-      }).catch(() => null);
+        },
+      );
 
-      if (res && res.ok) {
+      if (res.ok) {
         const data = await res.json();
         const copilotMsg: ChatMessage = {
           id: `c-${Date.now()}`,
           sender: "copilot",
-          content: data.reply || data.response || data.message || "Analyse terminée.",
+          content: data.answer || t.copilot.errorPrompt,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          confidence: data.confidence || 0.95,
-          grounded: true,
+          grounded: Boolean(data.grounded_source && data.status === "success"),
         };
         setMessages((prev) => [...prev, copilotMsg]);
       } else {
-        // Safe contextual grounded response connected to live tenant info
-        const contextualAnswers: Record<string, string> = {
-          sales: `J'ai analysé les ventes consolidées pour ${tenantName}. Toutes les transactions validées sont auditées sur le registre normalisé multi-sources. Les marges moyennes restent stables.`,
-          forecast: `Le modèle de prévision estime les besoins de réapprovisionnement sur la base de la vélocité observée. Aucune rupture immédiate n'est détectée sur les références principales synchronisées.`,
-          anomalies: `Le moniteur d'intégrité n'a repéré aucune anomalie de prix ou de doublon dans les enregistrements normalisés récents.`,
-          report: `La synthèse consolidée des flux pour le tenant ${tenantName} est prête. Vous pouvez exporter les données normalisées au format CSV ou PDF depuis l'onglet Facturation ou Data Hub.`,
-        };
-
-        let chosen = `Je suis votre Copilot Avenqo connecté en direct aux données du tenant ${tenantName} sur la vue ${routeContextLabel}. Que souhaitez-vous approfondir ?`;
-        if (qLower.includes("ventes") || qLower.includes("sales") || qLower.includes("chiffre")) {
-          chosen = contextualAnswers.sales;
-        } else if (qLower.includes("prévoir") || qLower.includes("demande") || qLower.includes("forecast")) {
-          chosen = contextualAnswers.forecast;
-        } else if (qLower.includes("anomal") || qLower.includes("rupture")) {
-          chosen = contextualAnswers.anomalies;
-        } else if (qLower.includes("rapport") || qLower.includes("report")) {
-          chosen = contextualAnswers.report;
-        }
-
-        const fallbackMsg: ChatMessage = {
+        const errorMsg: ChatMessage = {
           id: `c-${Date.now()}`,
           sender: "copilot",
-          content: chosen,
+          content: t.copilot.errorPrompt,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          confidence: 0.95,
-          grounded: true,
+          grounded: false,
         };
-        setMessages((prev) => [...prev, fallbackMsg]);
+        setMessages((prev) => [...prev, errorMsg]);
       }
     } catch {
       const errorMsg: ChatMessage = {
@@ -191,7 +157,6 @@ export function AvenqoCopilot({
         sender: "copilot",
         content: t.copilot.errorPrompt,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        confidence: undefined,
         grounded: false,
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -240,46 +205,20 @@ export function AvenqoCopilot({
         </button>
       </div>
 
-      {/* Context Badge */}
-      <div className="px-4 py-2 bg-blue-50/50 dark:bg-[#111D3D]/40 border-b border-blue-100 dark:border-white/[0.04] flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5 text-slate-600 dark:text-[#94A3B8]">
-          <Layers className="w-3.5 h-3.5 text-[#0076FF]" />
-          <span className="font-medium text-[11px] truncate max-w-[280px]">
-            {routeContextLabel}
-          </span>
-        </div>
-        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-          {tenantName}
-        </span>
-      </div>
-
       {/* Active Data Sources — grounding context for the AI */}
       <div className="px-4 py-2.5 bg-white dark:bg-[#0B132B] border-b border-slate-100 dark:border-white/[0.04]">
         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-          Sources Actives (IA Ancrée)
+          {t.copilot.activeSourcesLabel}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-            </span>
-            WooCommerce · 14 enreg.
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200/70 dark:border-orange-800/50 text-[10px] font-semibold text-orange-700 dark:text-orange-400">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
-            </span>
-            Etsy · 34 enreg.
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-800/50 text-[10px] font-semibold text-blue-700 dark:text-blue-400">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
-            </span>
-            Stripe · 420 enreg.
-          </div>
+        <div className="flex items-center gap-2 flex-wrap text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+          {activeSources.length === 0
+            ? <span>{t.copilot.noActiveSources}</span>
+            : activeSources.map((source) => (
+                <span key={source.source_id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {source.display_name}
+                </span>
+              ))}
         </div>
       </div>
 
@@ -363,11 +302,6 @@ export function AvenqoCopilot({
                       <ShieldCheck className="w-3 h-3" />
                       {t.copilot.groundedBadge}
                     </span>
-                    {typeof m.confidence === "number" && (
-                      <span className="font-semibold text-slate-600 dark:text-[#94A3B8]">
-                        {(m.confidence * 100).toFixed(0)}% certitude
-                      </span>
-                    )}
                   </div>
                 )}
 

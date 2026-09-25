@@ -418,7 +418,11 @@
     "stepOrgLabel": "Kammala saitin kamfaninka",
     "stepDataLabel": "Haɗa ko shigo da bayananka",
     "stepInsightsLabel": "Bincika fahimtarka",
-    "stepAskLabel": "Tambayi Avenqo AI"
+    "stepAskLabel": "Tambayi Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Cibiyar Umarni ta Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Babu komai",
       "invoiceUncollectible": "Ba za a iya tarawa ba",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Shirin Professional",
+      "planEnterprise": "Shirin kamfani",
       "nextRenewal": "Sabuntawa na gaba: {date}",
       "downloadCsv": "Sauke CSV",
       "downloadXlsx": "Sauke XLSX",

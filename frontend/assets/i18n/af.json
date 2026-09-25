@@ -418,7 +418,11 @@
     "stepOrgLabel": "Voltooi jou maatskappy-opstelling",
     "stepDataLabel": "Verbind of voer jou data in",
     "stepInsightsLabel": "Verken jou insigte",
-    "stepAskLabel": "Vra Avenqo AI"
+    "stepAskLabel": "Vra Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo-bevelsentrum",
@@ -930,8 +934,8 @@
       "invoiceVoid": "Nietig",
       "invoiceUncollectible": "Onversamelbaar",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional-plan",
+      "planEnterprise": "Ondernemingsplan",
       "nextRenewal": "Volgende hernuwing: {date}",
       "downloadCsv": "Laai CSV af",
       "downloadXlsx": "Laai XLSX af",

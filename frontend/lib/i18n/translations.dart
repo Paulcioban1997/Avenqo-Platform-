@@ -854,6 +854,10 @@ class DashboardHomeStrings {
     required this.connectDataTitle,
     required this.connectDataCta,
     required this.thisMonth,
+    required this.periodAll,
+    required this.period7Days,
+    required this.period30Days,
+    required this.periodQuarter,
     required this.salesLabel,
     required this.ordersLabel,
     required this.customersLabel,
@@ -893,6 +897,10 @@ class DashboardHomeStrings {
         connectDataTitle: json['connectDataTitle'] as String,
         connectDataCta: json['connectDataCta'] as String,
         thisMonth: json['thisMonth'] as String,
+        periodAll: json['periodAll'] as String? ?? 'All',
+        period7Days: json['period7Days'] as String? ?? 'Last 7 days',
+        period30Days: json['period30Days'] as String? ?? 'Last 30 days',
+        periodQuarter: json['periodQuarter'] as String? ?? 'This quarter',
         salesLabel: json['salesLabel'] as String,
         ordersLabel: json['ordersLabel'] as String,
         customersLabel: json['customersLabel'] as String,
@@ -976,6 +984,10 @@ class DashboardHomeStrings {
         'Connect your business data to unlock analytics, forecasts and Avenqo AI insights.',
     connectDataCta: 'Connect data',
     thisMonth: 'This month',
+    periodAll: 'All',
+    period7Days: 'Last 7 days',
+    period30Days: 'Last 30 days',
+    periodQuarter: 'This quarter',
     salesLabel: 'Revenue',
     ordersLabel: 'Orders',
     customersLabel: 'Active customers',
@@ -1017,6 +1029,10 @@ class DashboardHomeStrings {
   final String connectDataTitle;
   final String connectDataCta;
   final String thisMonth;
+  final String periodAll;
+  final String period7Days;
+  final String period30Days;
+  final String periodQuarter;
   final String salesLabel;
   final String ordersLabel;
   final String customersLabel;

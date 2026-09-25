@@ -418,7 +418,11 @@
     "stepOrgLabel": "ਆਪਣੀ ਸੰਸਥਾ ਸਥਾਪਿਤ ਕਰੋ",
     "stepDataLabel": "ਆਪਣਾ ਡਾਟਾ ਕਨੈਕਟ ਕਰੋ",
     "stepInsightsLabel": "ਜਾਣਕਾਰੀ ਦੀ ਖੋਜ ਕਰੋ",
-    "stepAskLabel": "Avenqo ਨੂੰ ਪੁੱਛੋ"
+    "stepAskLabel": "Avenqo ਨੂੰ ਪੁੱਛੋ",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo ਕਮਾਂਡ ਸੈਂਟਰ",
@@ -930,8 +934,8 @@
       "invoiceVoid": "????????????",
       "invoiceUncollectible": "????????? ???????????? ???????????? ?????? ????????????",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional ਯੋਜਨਾ",
+      "planEnterprise": "ਐਂਟਰਪ੍ਰਾਈਜ਼ ਯੋਜਨਾ",
       "nextRenewal": "???????????? ??????????????????: {date}",
       "downloadCsv": "CSV ਡਾਊਨਲੋਡ",
       "downloadXlsx": "XLSX ਡਾਊਨਲੋਡ",

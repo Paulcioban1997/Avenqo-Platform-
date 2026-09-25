@@ -48,6 +48,12 @@ interface DashboardPriority {
   source_capability: string;
 }
 
+interface DashboardTrendPoint {
+  period: string;
+  revenue: number;
+  orders: number;
+}
+
 export function DashboardView({
   tenantName = "",
   userName = "",
@@ -55,11 +61,12 @@ export function DashboardView({
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
 
-  const [dateRange, setDateRange] = useState<"7d" | "30d" | "quarter" | "custom">("30d");
+  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "quarter">("30d");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [kpis, setKpis] = useState<Record<string, DashboardKPI>>({});
   const [priorities, setPriorities] = useState<DashboardPriority[]>([]);
+  const [trendPoints, setTrendPoints] = useState<DashboardTrendPoint[]>([]);
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
   const [userFirstName, setUserFirstName] = useState<string>(userName);
@@ -78,9 +85,16 @@ export function DashboardView({
     setError(null);
     try {
       const headers = getAuthHeaders();
-      const [res, meRes] = await Promise.all([
-        fetch("/api/v1/dashboard", { headers }),
+      const periodKey = {
+        all: "all",
+        "7d": "last_7_days",
+        "30d": "last_30_days",
+        quarter: "current_quarter",
+      }[dateRange];
+      const [res, meRes, salesRes] = await Promise.all([
+        fetch(`/api/v1/dashboard?period=${periodKey}`, { headers }),
         fetch("/api/v1/auth/me", { headers }),
+        fetch(`/api/v1/sales/summary?period=${periodKey}`, { headers }).catch(() => null),
       ]);
 
       if (meRes.ok) {
@@ -106,15 +120,24 @@ export function DashboardView({
         if (Array.isArray(data.priorities)) {
           setPriorities(data.priorities);
         }
+        if (salesRes?.ok) {
+          const salesData = await salesRes.json();
+          const points = salesData.trend?.points;
+          setTrendPoints(Array.isArray(points) ? points : []);
+        } else {
+          setTrendPoints([]);
+        }
       } else {
         // Empty state when unauthenticated or tenant has no calculated records
         setKpis({});
         setPriorities([]);
+        setTrendPoints([]);
       }
     } catch {
       // Network or gateway unreached: keep empty state with zero fake data
       setKpis({});
       setPriorities([]);
+      setTrendPoints([]);
     } finally {
       setIsLoading(false);
     }
@@ -126,6 +149,12 @@ export function DashboardView({
 
   // Unified chart timeline points derived strictly from actual data availability
   const hasData = Object.keys(kpis).length > 0 && Object.values(kpis).some((k) => k.available);
+  const periodLabel = {
+    all: t.dashboard.dateRangeAll,
+    "7d": t.dashboard.dateRange7d,
+    "30d": t.dashboard.dateRange30d,
+    quarter: t.dashboard.dateRangeQuarter,
+  }[dateRange];
 
   // Format currency helper
   const formatMoney = (val: number | null | undefined) => {
@@ -160,6 +189,16 @@ export function DashboardView({
         {/* Date Range Picker Controls */}
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
+            <button
+              onClick={() => setDateRange("all")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                dateRange === "all"
+                  ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                  : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              {t.dashboard.dateRangeAll}
+            </button>
             <button
               onClick={() => setDateRange("7d")}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
@@ -220,9 +259,8 @@ export function DashboardView({
               title={t.dashboard.revenue}
               value={kpis.revenue?.available ? formatMoney(kpis.revenue.value) : "—"}
               delta={kpis.revenue?.change_percent ?? null}
-              period={t.dashboard.dateRange30d}
+              period={periodLabel}
               icon={<DollarSign className="w-4 h-4" />}
-              sparklineData={kpis.revenue?.available ? [32, 45, 54, 48, 62, 78, 85] : undefined}
               badge="Live"
             />
 
@@ -231,9 +269,8 @@ export function DashboardView({
               title={t.dashboard.orders}
               value={kpis.orders?.available ? (kpis.orders.value ?? 0).toLocaleString() : "—"}
               delta={kpis.orders?.change_percent ?? null}
-              period={t.dashboard.dateRange30d}
+              period={periodLabel}
               icon={<ShoppingCart className="w-4 h-4" />}
-              sparklineData={kpis.orders?.available ? [12, 19, 15, 24, 28, 35, 42] : undefined}
             />
 
             {/* Clients / Customers */}
@@ -241,9 +278,8 @@ export function DashboardView({
               title={t.dashboard.customers}
               value={kpis.customers?.available ? (kpis.customers.value ?? 0).toLocaleString() : "—"}
               delta={kpis.customers?.change_percent ?? null}
-              period={t.dashboard.dateRange30d}
+              period={periodLabel}
               icon={<Users className="w-4 h-4" />}
-              sparklineData={kpis.customers?.available ? [4, 8, 12, 14, 18, 22, 29] : undefined}
             />
 
             {/* Panier moyen / AOV */}
@@ -251,7 +287,7 @@ export function DashboardView({
               title={t.dashboard.aov}
               value={kpis.aov?.available ? formatMoney(kpis.aov.value) : "—"}
               delta={kpis.aov?.change_percent ?? null}
-              period={t.dashboard.dateRange30d}
+              period={periodLabel}
               icon={<TrendingUp className="w-4 h-4" />}
             />
 
@@ -260,7 +296,7 @@ export function DashboardView({
               title={t.dashboard.conversionRate}
               value={kpis.conversion_rate?.available ? `${(kpis.conversion_rate.value ?? 0).toFixed(1)}%` : "—"}
               delta={kpis.conversion_rate?.change_percent ?? null}
-              period={t.dashboard.dateRange30d}
+              period={periodLabel}
               icon={<Percent className="w-4 h-4" />}
             />
           </>
@@ -296,44 +332,42 @@ export function DashboardView({
             {/* Interactive SVG Chart or Empty State */}
             {isLoading ? (
               <ChartSkeleton height={240} />
-            ) : hasData ? (
+            ) : hasData && trendPoints.length > 0 ? (
               <div className="relative pt-4">
                 <div className="h-60 w-full flex items-end justify-between gap-3 pt-4">
-                  {[
-                    { day: "S1", rev: 35, ord: 40 },
-                    { day: "S2", rev: 48, ord: 55 },
-                    { day: "S3", rev: 62, ord: 58 },
-                    { day: "S4", rev: 78, ord: 72 },
-                    { day: "S5", rev: 70, ord: 68 },
-                    { day: "S6", rev: 88, ord: 82 },
-                    { day: "S7", rev: 95, ord: 90 },
-                  ].map((p, idx) => (
+                  {trendPoints.map((point, idx) => {
+                    const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
+                    const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
+                    const revenueHeight = (point.revenue / maxRevenue) * 100;
+                    const ordersHeight = (point.orders / maxOrders) * 100;
+                    return (
                     <div
-                      key={idx}
+                      key={point.period}
                       onMouseEnter={() => setHoveredTrendIdx(idx)}
                       onMouseLeave={() => setHoveredTrendIdx(null)}
                       className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
                     >
                       {hoveredTrendIdx === idx && (
                         <div className="absolute top-0 px-2.5 py-1 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px] font-bold shadow-md animate-in fade-in">
-                          Indice: {p.rev}% (Ventes) / {p.ord}% (Commandes)
+                          {point.period}: {formatMoney(point.revenue)} / {point.orders.toLocaleString()} {t.dashboard.orders.toLowerCase()}
                         </div>
                       )}
                       <div className="w-full max-w-[28px] flex items-end gap-1 h-full justify-center">
                         <div
                           className="w-1/2 rounded-t-md bg-[#0076FF] group-hover:bg-[#158bff] transition-all duration-300"
-                          style={{ height: `${p.rev}%` }}
+                          style={{ height: `${revenueHeight}%` }}
                         />
                         <div
                           className="w-1/2 rounded-t-md bg-[#00D4FF] group-hover:bg-cyan-300 transition-all duration-300"
-                          style={{ height: `${p.ord}%` }}
+                          style={{ height: `${ordersHeight}%` }}
                         />
                       </div>
                       <span className="mt-2 text-[11px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white">
-                        {p.day}
+                        {point.period}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -360,29 +394,9 @@ export function DashboardView({
                 </div>
               </div>
 
-              {hasData ? (
-                <div className="space-y-3 pt-2">
-                  {[
-                    { label: "Audio & Électronique", pct: 45, color: "bg-[#0076FF]" },
-                    { label: "Accessoires & Câbles", pct: 30, color: "bg-[#00D4FF]" },
-                    { label: "Périphériques Bureau", pct: 25, color: "bg-indigo-500" },
-                  ].map((cat, i) => (
-                    <div key={i} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs font-medium">
-                        <span className="text-slate-600 dark:text-[#94A3B8]">{cat.label}</span>
-                        <span className="text-slate-900 dark:text-[#F4F7FB] font-bold">{cat.pct}%</span>
-                      </div>
-                      <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden">
-                        <div className={`h-full rounded-full ${cat.color}`} style={{ width: `${cat.pct}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                  Données de catégories indisponibles
-                </div>
-              )}
+              <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+                Données de catégories indisponibles
+              </div>
             </AvenqoCard>
 
             {/* Regional Distribution */}
@@ -396,27 +410,9 @@ export function DashboardView({
                 </div>
               </div>
 
-              {hasData ? (
-                <div className="space-y-3 pt-2">
-                  {[
-                    { region: "Québec (QC, CA)", share: "52 %", status: "Principal" },
-                    { region: "Ontario (ON, CA)", share: "34 %", status: "En croissance" },
-                    { region: "International & USA", share: "14 %", status: "Actif" },
-                  ].map((r, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] text-xs">
-                      <div>
-                        <div className="font-semibold text-slate-900 dark:text-[#F4F7FB]">{r.region}</div>
-                        <div className="text-[10px] text-slate-400">{r.status}</div>
-                      </div>
-                      <span className="font-bold text-[#0076FF] dark:text-[#00D4FF]">{r.share}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                  Données géographiques indisponibles
-                </div>
-              )}
+              <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+                Données géographiques indisponibles
+              </div>
             </AvenqoCard>
           </div>
         </div>
@@ -499,7 +495,7 @@ export function DashboardView({
                 <span>Raisonnement certifié</span>
               </div>
               <span className="text-[11px] font-semibold text-slate-600 dark:text-[#F4F7FB]">
-                Confiance 95%
+                {periodLabel}
               </span>
             </div>
           </AvenqoCard>

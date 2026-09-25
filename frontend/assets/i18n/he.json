@@ -418,7 +418,11 @@
     "stepOrgLabel": "השלימו את הגדרת החברה שלכם",
     "stepDataLabel": "חברו או ייבאו את הנתונים שלכם",
     "stepInsightsLabel": "חקרו את התובנות שלכם",
-    "stepAskLabel": "שאלו את Avenqo AI"
+    "stepAskLabel": "שאלו את Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "מרכז פיקוד של Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "בָּטֵל",
       "invoiceUncollectible": "לא ניתן לאיסוף",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "תוכנית Professional",
+      "planEnterprise": "תוכנית ארגונית",
       "nextRenewal": "החידוש הבא: {date}",
       "downloadCsv": "הורדת CSV",
       "downloadXlsx": "הורדת XLSX",

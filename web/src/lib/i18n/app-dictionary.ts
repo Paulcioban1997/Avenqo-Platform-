@@ -76,6 +76,8 @@ export type AppTranslations = {
     sendButton: string;
     confidenceLabel: string;
     groundedBadge: string;
+    activeSourcesLabel: string;
+    noActiveSources: string;
     disclaimer: string;
     emptyPrompt: string;
     errorPrompt: string;
@@ -85,6 +87,7 @@ export type AppTranslations = {
     greetingMorning: string;
     greetingAfternoon: string;
     greetingEvening: string;
+    dateRangeAll: string;
     dateRange7d: string;
     dateRange30d: string;
     dateRangeQuarter: string;
@@ -242,16 +245,16 @@ export type AppTranslations = {
 const frApp: AppTranslations = {
   brand: {
     name: "AVENQO",
-    tagline: "AI FOR A SMARTER FUTURE",
+    tagline: "L'IA POUR UN AVENIR PLUS INTELLIGENT",
   },
   navigation: {
     dashboard: "Tableau de bord",
-    retailAi: "Retail AI",
-    crmAi: "CRM AI",
-    accountingAi: "Comptabilité AI",
-    marketingAi: "Marketing AI",
-    voiceAi: "Voice AI",
-    ocrAi: "OCR AI",
+    retailAi: "Retail IA",
+    crmAi: "CRM IA",
+    accountingAi: "Comptabilité IA",
+    marketingAi: "Marketing IA",
+    voiceAi: "Voice IA",
+    ocrAi: "OCR IA",
     chatbotsAi: "Chatbots IA",
     automations: "Automations",
     agentsAi: "Agents IA",
@@ -315,6 +318,8 @@ const frApp: AppTranslations = {
     sendButton: "Envoyer",
     confidenceLabel: "Indice de certitude statistique",
     groundedBadge: "Grounding certifié sur données normalisées",
+    activeSourcesLabel: "Sources actives",
+    noActiveSources: "Aucune source activée",
     disclaimer: "Les suggestions IA reposent sur les données réelles consolidées. Vérifiez avant toute décision réglementaire.",
     emptyPrompt: "Sélectionnez une action rapide ou saisissez une question pour obtenir une analyse instantanée de vos flux.",
     errorPrompt: "Impossible de contacter l'agent Copilot. Veuillez vérifier votre connexion ou vos crédits d'API.",
@@ -324,6 +329,7 @@ const frApp: AppTranslations = {
     greetingMorning: "Bonjour",
     greetingAfternoon: "Bon après-midi",
     greetingEvening: "Bonsoir",
+    dateRangeAll: "Tout",
     dateRange7d: "7 derniers jours",
     dateRange30d: "30 derniers jours",
     dateRangeQuarter: "Ce trimestre",
@@ -337,9 +343,9 @@ const frApp: AppTranslations = {
     trendSubtitle: "Évolution temporelle consolidée multi-sources",
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
-    aiInsightTitle: "Avenqo AI Insight",
+    aiInsightTitle: "Insight IA Avenqo",
     aiInsightEmpty: "Aucun flux de données disponible pour générer une analyse.",
-    aiInsightInsufficient: "Données insuffisantes pour analyse. Veuillez synchroniser un connecteur e-commerce.",
+    aiInsightInsufficient: "Données insuffisantes. Activez un jeu de données ou une source connectée.",
     aiInsightConfidence: "Niveau de confiance IA",
     recommendationAction: "Appliquer la recommandation",
   },
@@ -388,8 +394,8 @@ const frApp: AppTranslations = {
     noLogs: "Aucune synchronisation récente enregistrée.",
   },
   crm: {
-    title: "CRM AI & Planification Intelligente",
-    headerTitle: "CRM AI & Relations Clients",
+    title: "CRM IA & Planification Intelligente",
+    headerTitle: "CRM IA & Relations Clients",
     headerSubtitle: "Planification intelligente, gestion des clients 360° et synchronisation multi-calendriers",
     newAppointment: "Nouveau rendez-vous",
     searchPlaceholder: "Rechercher un client, un rendez-vous, une note...",
@@ -554,6 +560,8 @@ const enApp: AppTranslations = {
     sendButton: "Send",
     confidenceLabel: "Statistical confidence score",
     groundedBadge: "Grounded on normalized ledger",
+    activeSourcesLabel: "Active sources",
+    noActiveSources: "No enabled sources",
     disclaimer: "AI insights rely on consolidated actual records. Always verify before making compliance commitments.",
     emptyPrompt: "Select a quick prompt or type a question to get instant intelligence from your real business data.",
     errorPrompt: "Unable to reach Copilot agent. Please check your network connection or API credits.",
@@ -563,6 +571,7 @@ const enApp: AppTranslations = {
     greetingMorning: "Good morning",
     greetingAfternoon: "Good afternoon",
     greetingEvening: "Good evening",
+    dateRangeAll: "All",
     dateRange7d: "Last 7 days",
     dateRange30d: "Last 30 days",
     dateRangeQuarter: "This quarter",
@@ -578,7 +587,7 @@ const enApp: AppTranslations = {
     regionalSalesTitle: "Regional sales distribution",
     aiInsightTitle: "Avenqo AI Insight",
     aiInsightEmpty: "No data stream available to produce insights.",
-    aiInsightInsufficient: "Insufficient data for analysis. Please connect an e-commerce integration.",
+    aiInsightInsufficient: "Insufficient data. Enable a dataset or connected source to continue.",
     aiInsightConfidence: "AI Confidence Level",
     recommendationAction: "Apply recommendation",
   },

@@ -418,7 +418,11 @@
     "stepOrgLabel": "회사 설정 완료",
     "stepDataLabel": "데이터 연결 또는 가져오기",
     "stepInsightsLabel": "인사이트 탐색",
-    "stepAskLabel": "Avenqo AI에게 질문하기"
+    "stepAskLabel": "Avenqo AI에게 질문하기",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo 커맨드 센터",
@@ -930,8 +934,8 @@
       "invoiceVoid": "??????",
       "invoiceUncollectible": "?????? ??????",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional 요금제",
+      "planEnterprise": "기업 요금제",
       "nextRenewal": "?????? ??????: {date}",
       "downloadCsv": "CSV 다운로드",
       "downloadXlsx": "XLSX 다운로드",

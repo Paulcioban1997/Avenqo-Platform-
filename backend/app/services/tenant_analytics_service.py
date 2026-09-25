@@ -73,10 +73,11 @@ class TenantAnalyticsSnapshot:
             for anchor, composed in candidates
             if required_fields <= set(composed.canonical_columns.values())
         ]
+        if not usable:
+            return None
         selected = max(
             usable,
             key=lambda pair: (
-                len(required_fields & set(pair[0].canonical_columns.values())),
                 sum(
                     required <= set(pair[1].canonical_columns.values())
                     for required in BUSINESS_METRIC_FIELDS.values()
@@ -84,9 +85,48 @@ class TenantAnalyticsSnapshot:
                 len(pair[1].canonical_columns),
                 len(pair[1].rows),
             ),
-            default=None,
+        )[1]
+        compatible = [
+            composed
+            for _, composed in usable
+            if set(required_fields) <= set(composed.canonical_columns.values())
+        ]
+        candidate_ids = {item.dataset_id for item in compatible}
+        related_candidates = any(
+            relationship.left_dataset_id in candidate_ids
+            and relationship.right_dataset_id in candidate_ids
+            for relationship in self.relationships
         )
-        return selected[1] if selected is not None else None
+        if len(compatible) == 1 or related_candidates:
+            return selected
+
+        canonical_fields = set().union(
+            *(set(item.canonical_columns.values()) for item in compatible)
+        )
+        reconciled_rows: list[dict[str, object]] = []
+        seen_rows: set[tuple[tuple[str, str], ...]] = set()
+        for item in compatible:
+            for row in self._canonical_rows(item):
+                normalized = {field: row.get(field) for field in canonical_fields}
+                fingerprint = tuple(
+                    sorted((field, repr(value)) for field, value in normalized.items())
+                )
+                if fingerprint in seen_rows:
+                    continue
+                seen_rows.add(fingerprint)
+                reconciled_rows.append(normalized)
+        return PreparedCompanyDataset(
+            company_id=selected.company_id,
+            dataset_id=selected.dataset_id,
+            version=selected.version,
+            canonical_columns={field: field for field in canonical_fields},
+            rows=tuple(reconciled_rows),
+            profile=selected.profile,
+            mapping=selected.mapping,
+            cleaning_report=selected.cleaning_report,
+            quality=selected.quality,
+            capability_readiness=selected.capability_readiness,
+        )
 
     @staticmethod
     def _with_derived_revenue(
@@ -265,25 +305,36 @@ class TenantAnalyticsService:
                 .order_by(Dataset.uploaded_at.desc())
             ).all()
         )
+        tenant_datasets = datasets
         active_source = RetailSourceService(self._session).active_selection(tenant)
         active_source_provider = None
         if active_source is not None and active_source.connection_id is not None:
             connection = self._session.get(CommerceConnection, active_source.connection_id)
             active_source_provider = connection.provider if connection is not None else None
-        if active_source is not None and active_source.source_type != "all":
-            datasets = tuple(
+        source_datasets = datasets
+        enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
+        if enabled_dataset_ids is not None:
+            source_datasets = tuple(
+                dataset for dataset in datasets if dataset.id in enabled_dataset_ids
+            )
+        elif active_source is not None and active_source.source_type != "all":
+            source_datasets = tuple(
                 dataset
                 for dataset in datasets
                 if dataset.id == active_source.dataset_id
             )
-        statuses = tuple(_pipeline_status(dataset) for dataset in datasets)
+            datasets = source_datasets
+        statuses = tuple(_pipeline_status(dataset) for dataset in tenant_datasets)
         training_statuses = tuple(
             status
-            for dataset in datasets
+            for dataset in tenant_datasets
             if (status := _training_status(dataset)) not in {None, "not_applicable"}
         )
+        source_statuses = tuple(
+            _pipeline_status(dataset) for dataset in source_datasets
+        )
         prepared, deferred_dataset_ids, summaries, retail_states = self._prepared_ready_datasets(
-            tenant, datasets, max_prepared_rows=max_prepared_rows
+            tenant, source_datasets, max_prepared_rows=max_prepared_rows
         )
         prepared_ids = {item.dataset_id for item in prepared}
         relationships = tuple(
@@ -308,10 +359,14 @@ class TenantAnalyticsService:
                 )
             ).all()
         ) if prepared_ids else ()
-        status = self._status(datasets, statuses, prepared, deferred_dataset_ids)
+        status = self._status(
+            tenant_datasets, statuses, prepared, deferred_dataset_ids
+        )
+        if enabled_dataset_ids == frozenset() and not retail_states:
+            status = "no_data"
         if retail_states:
             if summaries or prepared:
-                status = "partial_ready" if deferred_dataset_ids or any(s != "ready" for s in statuses) else "ready"
+                status = "partial_ready" if deferred_dataset_ids or any(s != "ready" for s in source_statuses) else "ready"
             else:
                 status = "source_unavailable" if "SOURCE_UNAVAILABLE" in retail_states else "processing"
         snapshot = TenantAnalyticsSnapshot(

@@ -41,23 +41,29 @@ async def message(
     from backend.app.services.retail_source_service import RetailSourceService
     active_source_name = None
     active_source_id_str = None
+    source_service = RetailSourceService(db)
     if request.active_source_id and request.source_type:
         try:
             from uuid import UUID as PyUUID
-            src = RetailSourceService(db).select_source(
+            src = source_service.select_source(
                 tenant, source_type=request.source_type, source_id=PyUUID(request.active_source_id)
             )
-            active_source_name = src.display_name
-            active_source_id_str = str(src.source_id)
+            if src.enabled:
+                active_source_name = src.display_name
+                active_source_id_str = str(src.source_id)
         except Exception:
             pass
 
     if not active_source_name:
-        sources = RetailSourceService(db).list_sources(tenant)
-        active_src = next((s for s in sources if s.active), None)
-        if active_src:
-            active_source_name = active_src.display_name
-            active_source_id_str = str(active_src.source_id)
+        enabled_sources = [
+            source for source in source_service.list_sources(tenant) if source.enabled
+        ]
+        if enabled_sources:
+            active_source_name = ", ".join(
+                source.display_name for source in enabled_sources
+            )
+            if len(enabled_sources) == 1:
+                active_source_id_str = str(enabled_sources[0].source_id)
 
     try:
         result = await service.execute(

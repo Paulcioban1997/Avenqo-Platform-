@@ -69,8 +69,12 @@ class DashboardData {
 typedef DashboardDataLoader =
     Future<DashboardData> Function(AuthController auth);
 
-Future<DashboardData> _defaultDashboardLoader(AuthController auth) async {
-  final payload = await auth.api.get('/dashboard') as Map<String, dynamic>;
+Future<DashboardData> _defaultDashboardLoader(
+  AuthController auth, {
+  String periodKey = 'last_30_days',
+}) async {
+  final payload = await auth.api.get('/dashboard?period=$periodKey')
+      as Map<String, dynamic>;
   return DashboardData.fromJson(payload);
 }
 
@@ -94,25 +98,38 @@ class DashboardPage extends StatefulWidget {
     required this.auth,
     this.companyNameOverride,
     this.readOnly = false,
-    DashboardDataLoader? loader,
-  }) : loader = loader ?? _defaultDashboardLoader;
+    this.loader,
+  });
 
   final AuthController auth;
   final String? companyNameOverride;
   final bool readOnly;
-  final DashboardDataLoader loader;
+  final DashboardDataLoader? loader;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  late Future<DashboardData> _future = widget.loader(widget.auth);
+  String _periodKey = 'last_30_days';
+  late Future<DashboardData> _future = _loadDashboard();
+
+  Future<DashboardData> _loadDashboard() => widget.loader != null
+      ? widget.loader!(widget.auth)
+      : _defaultDashboardLoader(widget.auth, periodKey: _periodKey);
 
   void _retry() {
-    final next = widget.loader(widget.auth);
+    final next = _loadDashboard();
     setState(() {
       _future = next;
+    });
+  }
+
+  void _selectPeriod(String periodKey) {
+    if (periodKey == _periodKey) return;
+    setState(() {
+      _periodKey = periodKey;
+      _future = _loadDashboard();
     });
   }
 
@@ -122,6 +139,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final assistantT = AvenqoLocaleScope.translationsOf(context).assistant;
     final authT = AvenqoLocaleScope.translationsOf(context).auth;
     final companyT = AvenqoLocaleScope.translationsOf(context).company;
+    final periodT = AvenqoLocaleScope.translationsOf(context).dashboardHome;
     final colors = AvenqoColors.of(context);
     final company = widget.auth.company ?? const <String, dynamic>{};
     final user = widget.auth.user ?? const <String, dynamic>{};
@@ -234,6 +252,34 @@ class _DashboardPageState extends State<DashboardPage> {
                   },
                 ),
               ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                      value: 'all',
+                      label: Text(periodT.periodAll),
+                    ),
+                    ButtonSegment(
+                      value: 'last_7_days',
+                      label: Text(periodT.period7Days),
+                    ),
+                    ButtonSegment(
+                      value: 'last_30_days',
+                      label: Text(periodT.period30Days),
+                    ),
+                    ButtonSegment(
+                      value: 'current_quarter',
+                      label: Text(periodT.periodQuarter),
+                    ),
+                  ],
+                  selected: {_periodKey},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      _selectPeriod(selection.first),
+                ),
+              ),
               const SizedBox(height: 20),
               if (loading)
                 const Padding(
@@ -287,7 +333,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 )
               else ...[
                 Text(
-                  t.thisMonth,
+                  switch (_periodKey) {
+                    'all' => periodT.periodAll,
+                    'last_7_days' => periodT.period7Days,
+                    'last_30_days' => periodT.period30Days,
+                    'current_quarter' => periodT.periodQuarter,
+                    _ => periodT.period30Days,
+                  },
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 18,

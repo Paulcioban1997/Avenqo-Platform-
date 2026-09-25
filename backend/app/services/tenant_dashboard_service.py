@@ -41,13 +41,27 @@ class TenantDashboardService:
         self._analytics = analytics
         self._recommendations = recommendations
 
-    def build(self, tenant: TenantContext) -> dict[str, Any]:
+    def build(self, tenant: TenantContext, period_key: str | None = None) -> dict[str, Any]:
         snapshot = self._analytics.load_for_dashboard(tenant)
-        period = self._period(snapshot.prepared)
-        if snapshot.retail_summaries:
-            period = {key: datetime.fromisoformat(value) if value else None for key, value in snapshot.retail_summaries[0]["period"].items()}
+        period = self._period(snapshot.prepared, period_key)
+        if period_key == "all" and snapshot.retail_summaries:
+            cached_periods = [
+                summary.get("period", {}) for summary in snapshot.retail_summaries
+            ]
+            starts = [
+                datetime.fromisoformat(value)
+                for item in cached_periods
+                if (value := item.get("start"))
+            ]
+            ends = [
+                datetime.fromisoformat(value)
+                for item in cached_periods
+                if (value := item.get("end"))
+            ]
+            period["start"] = min(starts) if starts else None
+            period["end"] = max(ends) if ends else None
         kpis = [
-            self._kpi(key, snapshot, snapshot.currency, period)
+            self._kpi(key, snapshot, snapshot.currency, period, period_key)
             for key in BUSINESS_METRIC_FIELDS
         ]
         recommendations = self._recommendations.build_from_snapshot(tenant, snapshot)[
@@ -78,7 +92,7 @@ class TenantDashboardService:
                 for item in recommendations[:3]
             ],
             "connections": {
-                "total": len(snapshot.datasets),
+                "total": len(snapshot.statuses),
                 "ready": snapshot.statuses.count("ready"),
                 "analyzing": snapshot.statuses.count("analyzing"),
                 "preparing_data": snapshot.training_statuses.count("preparing_data"),
@@ -111,15 +125,26 @@ class TenantDashboardService:
         snapshot: TenantAnalyticsSnapshot,
         currency: str,
         period: dict[str, datetime | None],
+        period_key: str | None,
     ) -> DashboardKPI:
+        summary_key = period_key or "last_30_days"
         for summary in snapshot.retail_summaries:
-            if key in summary["current"]:
-                current = summary["current"][key]
-                previous = summary["previous"].get(key)
-                absolute = current - previous if previous is not None else None
-                change = round(absolute / previous * 100, 2) if previous not in {None, 0} else None
-                return DashboardKPI(key, "AVAILABLE", current, previous, absolute, change,
-                                    currency if key in {"revenue", "average_order_value"} else None, True)
+            metrics = summary.get("period_metrics", {}).get(summary_key)
+            if metrics is None and summary_key == "last_30_days":
+                metrics = summary.get("current")
+            if metrics is not None and key in metrics:
+                current = metrics[key]
+                monetary = key in {"revenue", "average_order_value"}
+                return DashboardKPI(
+                    key,
+                    "AVAILABLE",
+                    current,
+                    None,
+                    None,
+                    None,
+                    currency if monetary else None,
+                    True,
+                )
         required = BUSINESS_METRIC_FIELDS[key]
         source = snapshot.source_for(required)
         if source is None:
@@ -140,7 +165,7 @@ class TenantDashboardService:
                 False,
             )
 
-        current_rows, previous_rows = self._period_rows(source, period)
+        current_rows, previous_rows = self._period_rows(source, period, period_key)
         current = compute_business_overview(self._with_rows(source, current_rows))[key]
         previous = (
             compute_business_overview(self._with_rows(source, previous_rows))[key]
@@ -162,52 +187,131 @@ class TenantDashboardService:
         )
 
     @staticmethod
-    def _period(prepared: tuple[PreparedCompanyDataset, ...]) -> dict[str, datetime | None]:
-        timestamps: list[datetime] = []
+    def _period(
+        prepared: tuple[PreparedCompanyDataset, ...], period_key: str | None
+    ) -> dict[str, datetime | None]:
+        if period_key is None:
+            timestamps: list[datetime] = []
+            for dataset in prepared:
+                date_column = next(
+                    (source for source, canonical in dataset.canonical_columns.items()
+                     if canonical == "order_timestamp"),
+                    None,
+                )
+                if date_column is None:
+                    continue
+                for row in dataset.rows:
+                    timestamp = parse_business_datetime(row.get(date_column))
+                    if timestamp is not None:
+                        timestamps.append(
+                            timestamp.replace(tzinfo=timezone.utc)
+                            if timestamp.tzinfo is None
+                            else timestamp.astimezone(timezone.utc)
+                        )
+            if not timestamps:
+                return {"start": None, "end": None, "comparison_start": None, "comparison_end": None}
+            end = max(timestamps)
+            start = end - timedelta(days=29)
+            return {
+                "start": start,
+                "end": end,
+                "comparison_start": start - timedelta(days=30),
+                "comparison_end": start - timedelta(microseconds=1),
+            }
+        now = datetime.now(timezone.utc)
+        if period_key == "all":
+            timestamps = TenantDashboardService._timestamps(prepared)
+            return {
+                "start": min(timestamps) if timestamps else None,
+                "end": max(timestamps) if timestamps else None,
+                "comparison_start": None,
+                "comparison_end": None,
+            }
+        if period_key == "last_7_days":
+            start = now - timedelta(days=7)
+            comparison_start = start - timedelta(days=7)
+            comparison_end = start - timedelta(microseconds=1)
+        elif period_key == "last_30_days":
+            start = now - timedelta(days=30)
+            comparison_start = start - timedelta(days=30)
+            comparison_end = start - timedelta(microseconds=1)
+        elif period_key == "current_quarter":
+            quarter_month = ((now.month - 1) // 3) * 3 + 1
+            start = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+            previous_quarter_month = ((quarter_month - 4) % 12) + 1
+            previous_quarter_year = now.year - (1 if quarter_month == 1 else 0)
+            comparison_start = datetime(
+                previous_quarter_year, previous_quarter_month, 1, tzinfo=timezone.utc
+            )
+            comparison_end = start - timedelta(microseconds=1)
+        else:
+            raise ValueError("Unsupported dashboard period")
+        return {
+            "start": start,
+            "end": now,
+            "comparison_start": comparison_start,
+            "comparison_end": comparison_end,
+        }
+
+    @staticmethod
+    def _timestamps(
+        prepared: tuple[PreparedCompanyDataset, ...],
+    ) -> list[datetime]:
+        timestamps = []
         for dataset in prepared:
-            reverse = {canonical: source for source, canonical in dataset.canonical_columns.items()}
-            date_column = reverse.get("order_timestamp")
+            date_column = next(
+                (source for source, canonical in dataset.canonical_columns.items()
+                 if canonical == "order_timestamp"),
+                None,
+            )
             if date_column is None:
                 continue
             for row in dataset.rows:
                 timestamp = parse_business_datetime(row.get(date_column))
                 if timestamp is not None:
-                    timestamps.append(timestamp)
-        if not timestamps:
-            return {"start": None, "end": None, "comparison_start": None, "comparison_end": None}
-        end = max(timestamps)
-        start = end - timedelta(days=29)
-        return {
-            "start": start,
-            "end": end,
-            "comparison_start": start - timedelta(days=30),
-            "comparison_end": start - timedelta(microseconds=1),
-        }
+                    timestamps.append(
+                        timestamp.replace(tzinfo=timezone.utc)
+                        if timestamp.tzinfo is None
+                        else timestamp.astimezone(timezone.utc)
+                    )
+        return timestamps
 
     @staticmethod
     def _period_rows(
-        prepared: PreparedCompanyDataset, period: dict[str, datetime | None]
+        prepared: PreparedCompanyDataset,
+        period: dict[str, datetime | None],
+        period_key: str | None,
     ) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
-        if period["start"] is None:
+        if period_key == "all":
+            return prepared.rows, ()
+        if period_key is None and period["start"] is None:
             return prepared.rows, ()
         reverse = {canonical: source for source, canonical in prepared.canonical_columns.items()}
         date_column = reverse.get("order_timestamp")
         if date_column is None:
-            return prepared.rows, ()
+            return (), ()
 
         def between(row: dict[str, object], start: datetime, end: datetime) -> bool:
             timestamp = parse_business_datetime(row.get(date_column))
             if timestamp is None:
                 return False
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            else:
+                timestamp = timestamp.astimezone(timezone.utc)
             return start <= timestamp <= end
 
+        comparison_start = period["comparison_start"]
+        comparison_end = period["comparison_end"]
         return (
             tuple(row for row in prepared.rows if between(row, period["start"], period["end"])),
             tuple(
                 row
                 for row in prepared.rows
-                if between(row, period["comparison_start"], period["comparison_end"])
-            ),
+                if comparison_start is not None
+                and comparison_end is not None
+                and between(row, comparison_start, comparison_end)
+            ) if comparison_start is not None and comparison_end is not None else (),
         )
 
     @staticmethod

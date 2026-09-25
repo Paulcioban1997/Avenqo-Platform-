@@ -47,27 +47,27 @@
       },
       {
         "key": "crm",
-        "label": "CRM AI"
+        "label": "CRM IA"
       },
       {
         "key": "ocr",
-        "label": "OCR AI"
+        "label": "OCR IA"
       },
       {
         "key": "voice",
-        "label": "Voice AI"
+        "label": "Voice IA"
       },
       {
         "key": "media",
-        "label": "Media AI"
+        "label": "Media IA"
       },
       {
         "key": "accounting",
-        "label": "Accounting AI"
+        "label": "Accounting IA"
       },
       {
         "key": "legal",
-        "label": "Legal AI"
+        "label": "Legal IA"
       }
     ]
   },
@@ -106,32 +106,32 @@
         "available": true
       },
       {
-        "name": "CRM AI",
+        "name": "CRM IA",
         "description": "Priorisez les relations, opportunités et prochaines actions.",
         "available": true
       },
       {
-        "name": "OCR AI",
+        "name": "OCR IA",
         "description": "Transformez les documents entrants en opérations structurées.",
         "available": false
       },
       {
-        "name": "Voice AI",
+        "name": "Voice IA",
         "description": "Automatisez les échanges vocaux sans perdre le contexte client.",
         "available": false
       },
       {
-        "name": "Media AI",
+        "name": "Media IA",
         "description": "Produisez et organisez vos contenus depuis un espace unique.",
         "available": false
       },
       {
-        "name": "Accounting AI",
+        "name": "Accounting IA",
         "description": "Accélérez le suivi financier et la préparation comptable.",
         "available": true
       },
       {
-        "name": "Legal AI",
+        "name": "Legal IA",
         "description": "Analysez et sécurisez vos documents contractuels.",
         "available": false
       }
@@ -387,7 +387,7 @@
     "hello": "Bonjour",
     "subtitleForCompany": "Voici ce qui mérite votre attention chez {company}.",
     "askAvenqo": "Que souhaitez-vous comprendre aujourd’hui ?",
-    "connectDataTitle": "Connectez vos données pour débloquer analyses, prévisions et recommandations Avenqo AI.",
+    "connectDataTitle": "Connectez vos données pour débloquer analyses, prévisions et recommandations Avenqo IA.",
     "connectDataCta": "Connecter mes données",
     "thisMonth": "Ce mois-ci",
     "salesLabel": "Chiffre d’affaires",
@@ -413,7 +413,7 @@
     "stepOrgLabel": "Complétez la configuration de votre entreprise",
     "stepDataLabel": "Connectez ou importez vos données",
     "stepInsightsLabel": "Explorez vos analyses",
-    "stepAskLabel": "Posez une question à Avenqo AI",
+    "stepAskLabel": "Posez une question à Avenqo IA",
     "revenueDeclineTitle": "Examiner la baisse récente du chiffre d’affaires",
     "revenueGrowthTitle": "Consolider la croissance récente du chiffre d’affaires",
     "revenueChangedExplanation": "Le chiffre d’affaires a évolué de manière significative par rapport à la période précédente équivalente.",
@@ -481,7 +481,7 @@
     "aiUsageTitle": "Usage IA",
     "aiUsageSubtitle": "Requêtes IA logiques et disponibilité des fournisseurs sur toutes les entreprises.",
     "aiUsageError": "L'usage IA est temporairement indisponible.",
-    "aiRequestsCurrentPeriod": "Requêtes Avenqo AI (période en cours)",
+    "aiRequestsCurrentPeriod": "Requêtes Avenqo IA (période en cours)",
     "providersLabel": "Fournisseurs",
     "noCostBreakdownMessage": "Le détail des tokens et du coût estimé par fournisseur nécessite un endpoint d'agrégation d'usage dédié qui n'existe pas encore côté backend. Non inventé ici.",
     "providersTitle": "Fournisseurs",
@@ -536,7 +536,7 @@
   "company": {
     "navOverviewLabel": "Vue d’ensemble",
     "navOverviewDescription": "Les indicateurs essentiels de votre activité.",
-    "navAssistantLabel": "AI Assistant",
+    "navAssistantLabel": "IA Assistant",
     "navAssistantDescription": "Posez vos questions et passez à l’action.",
     "navSalesLabel": "Ventes",
     "navSalesDescription": "Suivez le chiffre d’affaires et les tendances.",
@@ -579,7 +579,7 @@
     "connectionsStatColumnsLabel": "Colonnes",
     "connectionsStatUpdatedLabel": "Dernière mise à jour",
     "connectionsGoDashboard": "Aller au tableau de bord",
-    "connectionsAskAvenqo": "Demander à Avenqo AI",
+    "connectionsAskAvenqo": "Demander à Avenqo IA",
     "connectionsImportAnother": "Importer un autre dataset",
     "connectionsRetry": "Réessayer",
     "connectionsGenericError": "Une erreur inattendue est survenue.",
@@ -846,13 +846,13 @@
     "marketingDescription": "Préparez vos campagnes, vos audiences et vos actions de croissance mesurables.",
     "crmName": "IA CRM",
     "crmDescription": "Priorisez les relations, opportunités et prochaines actions.",
-    "hrName": "HR AI",
+    "hrName": "HR IA",
     "hrDescription": "Soutenez les opérations liées aux ressources humaines, les informations sur la main-d'œuvre et les flux de travail des employés.",
     "accountingName": "IA comptable",
     "accountingDescription": "Accélérez le suivi financier et la préparation comptable.",
     "ocrName": "OCR IA",
     "ocrDescription": "Transformez les documents entrants en opérations structurées.",
-    "voiceName": "Voice AI",
+    "voiceName": "Voice IA",
     "voiceDescription": "Automatisez les échanges vocaux sans perdre le contexte client.",
     "mediaName": "IA multimédia",
     "mediaDescription": "Produisez et organisez vos contenus depuis un espace unique.",
@@ -930,8 +930,8 @@
       "invoiceVoid": "Annulée",
       "invoiceUncollectible": "Irrécouvrable",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Offre Professional",
+      "planEnterprise": "Offre Entreprise",
       "nextRenewal": "Prochain renouvellement : {date}",
       "downloadCsv": "Télécharger le CSV",
       "downloadXlsx": "Télécharger le XLSX",

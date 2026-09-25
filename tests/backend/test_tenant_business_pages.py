@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -203,6 +203,63 @@ def _phase4d_services(session, prepared):
     products = TenantProductsService(analytics)
     recommendations = TenantRecommendationsService(analytics, products, predictions)
     return products, recommendations, predictions
+
+
+def test_retail_sales_period_does_not_relabel_historical_dataset_as_recent(
+    business_environment,
+):
+    session, company, _, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [
+            {
+                "date": "2020-01-01",
+                "sale": "OLD-ORDER",
+                "client": "OLD-CUSTOMER",
+                "amount": 100,
+                "churned": 0,
+            }
+        ],
+    )
+    sales, _, _ = _services(session, prepared)
+
+    recent = sales.build(TenantContext(company.id), period_key="last_30_days")
+    all_time = sales.build(TenantContext(company.id), period_key="all")
+
+    assert recent["summary"]["revenue"] == 0
+    assert recent["summary"]["orders"] == 0
+    assert all_time["summary"]["revenue"] == 100
+    assert all_time["summary"]["orders"] == 1
+
+
+def test_retail_forecast_uses_real_dataset_history_without_fake_confidence(
+    business_environment,
+):
+    session, company, _, dataset, prepared = business_environment
+    now = datetime.now(timezone.utc)
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [
+            {
+                "date": (now - timedelta(days=days)).isoformat(),
+                "sale": f"ORDER-{days}",
+                "client": f"CUSTOMER-{days}",
+                "amount": float(100 - days),
+                "churned": 0,
+            }
+            for days in (49, 42, 35, 28, 21, 14, 7, 0)
+        ],
+    )
+    sales, _, _ = _services(session, prepared)
+
+    result = sales.build(TenantContext(company.id), period_key="last_30_days")
+
+    assert result["forecast"]["method"] == "historical_weekly_mean"
+    assert len(result["forecast"]["points"]) == 4
+    assert result["forecast"]["forecasted_total"] > 0
+    assert "confidence" not in result["forecast"]
 
 
 @pytest.mark.asyncio
@@ -412,6 +469,17 @@ def _product_prepared(company, dataset):
 
 def test_sales_real_period_trend_currency_and_tenant_isolation(business_environment):
     session, company_a, company_b, _dataset_a, prepared = business_environment
+    now = datetime.now(timezone.utc)
+    prepared[_dataset_a.id] = _prepared(
+        company_a,
+        _dataset_a,
+        [
+            {"date": (now - timedelta(days=40)).isoformat(), "sale": "OLD", "client": "C0", "amount": 50},
+            {"date": (now - timedelta(days=10)).isoformat(), "sale": "O1", "client": "C1", "amount": 100},
+            {"date": (now - timedelta(days=5)).isoformat(), "sale": "O2", "client": "C1", "amount": 25},
+            {"date": (now - timedelta(days=1)).isoformat(), "sale": "O3", "client": "C2", "amount": 50},
+        ],
+    )
     sales, _customers, _predictions = _services(session, prepared)
 
     result_a = sales.build(TenantContext(company_a.id), period_key="last_30_days")
@@ -435,12 +503,15 @@ def test_sales_real_period_trend_currency_and_tenant_isolation(business_environm
 
 def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
+    now = datetime.now(timezone.utc)
+    previous_date = now - timedelta(days=35)
+    current_date = now - timedelta(days=5)
     prepared[dataset.id] = _prepared(
         company,
         dataset,
         [
-            {"date": "07/20/2026", "sale": "O1", "client": "C1", "amount": 100},
-            {"date": "08/20/2026", "sale": "O2", "client": "C2", "amount": 200},
+            {"date": previous_date.strftime("%m/%d/%Y"), "sale": "O1", "client": "C1", "amount": 100},
+            {"date": current_date.strftime("%m/%d/%Y"), "sale": "O2", "client": "C2", "amount": 200},
         ],
     )
     sales, _customers, _predictions = _services(session, prepared)
@@ -452,7 +523,7 @@ def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
     assert result["summary"]["previous_revenue"] == 100
     assert result["summary"]["revenue_change_percent"] == 100
     assert result["trend"]["points"] == [
-        {"period": "2026-08-20", "revenue": 200.0, "orders": 1, "change_percent": None}
+        {"period": current_date.strftime("%Y-%m-%d"), "revenue": 200.0, "orders": 1, "change_percent": None}
     ]
 
 

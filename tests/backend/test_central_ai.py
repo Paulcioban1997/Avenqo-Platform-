@@ -352,6 +352,27 @@ async def test_intent_router_does_not_silently_send_unrelated_work_to_retail() -
 
 
 @pytest.mark.parametrize(
+    ("query", "expected_agent"),
+    [
+        ("donne des chiffres", "retail"),
+        ("combien de commandes ?", "retail"),
+        ("mes clients", "retail"),
+        ("mes rendez-vous ce mois", "crm"),
+        ("mes contacts CRM", "crm"),
+    ],
+)
+async def test_business_and_crm_metrics_route_to_distinct_agents(
+    query: str, expected_agent: str
+) -> None:
+    router = CentralAIIntentRouter(build_default_assistant_registry())
+
+    selected = router.select(query)
+
+    assert selected is not None
+    assert selected.slug == expected_agent
+
+
+@pytest.mark.parametrize(
     "query",
     [
         "Which buyers seem likely to stop shopping with us?",

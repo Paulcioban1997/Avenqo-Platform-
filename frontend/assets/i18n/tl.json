@@ -418,7 +418,11 @@
     "stepOrgLabel": "I-setup ang iyong organisasyon",
     "stepDataLabel": "Ikonekta ang iyong datos",
     "stepInsightsLabel": "Galugarin ang mga insight",
-    "stepAskLabel": "Tanungin si Avenqo"
+    "stepAskLabel": "Tanungin si Avenqo",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Command Center ng Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "walang bisa",
       "invoiceUncollectible": "Hindi makolekta",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Planong Professional",
+      "planEnterprise": "Planong pang-enterprise",
       "nextRenewal": "Susunod na pag-renew: {date}",
       "downloadCsv": "I-download ang CSV",
       "downloadXlsx": "I-download ang XLSX",

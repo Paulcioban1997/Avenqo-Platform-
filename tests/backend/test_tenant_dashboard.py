@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -222,6 +222,63 @@ def test_dashboard_compares_non_iso_csv_dates_and_restores_recommendations(tmp_p
     assert dashboard["priorities"][0]["evidence"]["change_percent"] == 100
 
 
+def test_dashboard_periods_filter_rows_and_compute_aov_from_distinct_orders(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-periods.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Period Tenant", "CAD")
+        dataset = _dataset(session, company, "sales.csv")
+        now = datetime.now(timezone.utc)
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": (now - timedelta(days=90)).isoformat(), "sale": "OLD", "client": "C0", "amount": 400},
+                {"date": (now - timedelta(days=20)).isoformat(), "sale": "MID", "client": "C1", "amount": 200},
+                {"date": (now - timedelta(days=3)).isoformat(), "sale": "RECENT", "client": "C2", "amount": 100},
+                {"date": (now - timedelta(days=2)).isoformat(), "sale": "RECENT", "client": "C2", "amount": 50},
+            ],
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+
+        seven_days = service.build(TenantContext(company.id), "last_7_days")
+        thirty_days = service.build(TenantContext(company.id), "last_30_days")
+        all_time = service.build(TenantContext(company.id), "all")
+
+    metrics = lambda result: {item["key"]: item for item in result["kpis"]}
+    assert metrics(seven_days)["revenue"]["value"] == 150
+    assert metrics(seven_days)["orders"]["value"] == 1
+    assert metrics(seven_days)["average_order_value"]["value"] == 150
+    assert metrics(thirty_days)["revenue"]["value"] == 350
+    assert metrics(thirty_days)["orders"]["value"] == 2
+    assert metrics(thirty_days)["average_order_value"]["value"] == 175
+    assert metrics(all_time)["revenue"]["value"] == 750
+    assert metrics(all_time)["orders"]["value"] == 3
+
+
+def test_dashboard_empty_current_period_does_not_show_historical_totals(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-empty-period.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Historical Tenant", "CAD")
+        dataset = _dataset(session, company, "historic-sales.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [{"date": "2020-01-01", "sale": "OLD", "client": "C0", "amount": 999}],
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+
+        dashboard = service.build(TenantContext(company.id), "last_7_days")
+
+    kpis = {item["key"]: item for item in dashboard["kpis"]}
+    assert kpis["revenue"]["value"] == 0
+    assert kpis["orders"]["value"] == 0
+    assert kpis["average_order_value"]["value"] == 0
+
+
 def test_dashboard_endpoint_is_tenant_derived_and_subscription_gated(tmp_path) -> None:
     engine = create_engine(
         f"sqlite:///{tmp_path / 'dashboard-api.db'}",
@@ -367,8 +424,8 @@ def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:
 
     captured = []
 
-    def build(resolved):
-        captured.append(resolved)
+    def build(resolved, period_key):
+        captured.append((resolved, period_key))
         return {
             "status": "no_data",
             "generated_at": datetime.now(timezone.utc),
@@ -404,7 +461,9 @@ def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:
     app.dependency_overrides[get_tenant_context] = lambda: tenant
     app.dependency_overrides[get_tenant_dashboard_service] = lambda: SimpleNamespace(build=build)
     with TestClient(app) as client:
-        response = client.get(f"/api/v1/dashboard?company_id={uuid4()}")
+        response = client.get(
+            f"/api/v1/dashboard?company_id={uuid4()}&period=last_7_days"
+        )
 
     assert response.status_code == 200
-    assert captured == [tenant]
+    assert captured == [(tenant, "last_7_days")]

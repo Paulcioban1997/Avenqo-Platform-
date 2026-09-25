@@ -418,7 +418,11 @@
     "stepOrgLabel": "أكمل إعداد شركتك",
     "stepDataLabel": "اربط أو استورد بياناتك",
     "stepInsightsLabel": "استكشف رؤاك",
-    "stepAskLabel": "اسأل Avenqo AI"
+    "stepAskLabel": "اسأل Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "مركز قيادة Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "فارغ",
       "invoiceUncollectible": "غير قابل للتحصيل",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "خطة Professional",
+      "planEnterprise": "خطة المؤسسات",
       "nextRenewal": "التجديد التالي: {date}",
       "downloadCsv": "تنزيل CSV",
       "downloadXlsx": "تنزيل XLSX",

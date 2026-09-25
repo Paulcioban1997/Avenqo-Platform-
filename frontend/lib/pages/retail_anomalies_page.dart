@@ -38,27 +38,21 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
 
   Future<_AnomaliesData> _fetch() async {
     final results = await Future.wait([
-      widget.api.get('/accounting/anomalies').catchError((_) => <String, dynamic>{}),
-      widget.api.get('/products/summary?performance=declining').catchError((_) => <String, dynamic>{}),
-      widget.api.get('/crm/contacts/high-risk?limit=10').catchError((_) => <dynamic>[]),
+      widget.api.get('/products/summary?performance=weak').catchError((_) => <String, dynamic>{}),
     ]);
 
-    final acctAnomalies = (results[0] is Map) ? results[0] as Map<String, dynamic> : <String, dynamic>{};
-    final prodSummary = (results[1] is Map) ? results[1] as Map<String, dynamic> : <String, dynamic>{};
-    final highRisk = (results[2] is List) ? (results[2] as List).cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
+    final prodSummary = (results[0] is Map) ? results[0] as Map<String, dynamic> : <String, dynamic>{};
 
-    final financialAnomalies = (acctAnomalies['anomalies'] is List)
-        ? (acctAnomalies['anomalies'] as List).cast<Map<String, dynamic>>()
-        : <Map<String, dynamic>>[];
-
-    final decliningProducts = (prodSummary['declining_products'] is List)
+    final decliningProducts = (prodSummary['items'] is List)
+        ? (prodSummary['items'] as List).cast<Map<String, dynamic>>()
+        : (prodSummary['declining_products'] is List)
         ? (prodSummary['declining_products'] as List).cast<Map<String, dynamic>>()
         : (prodSummary['products'] is List ? (prodSummary['products'] as List).cast<Map<String, dynamic>>() : <Map<String, dynamic>>[]);
 
     return _AnomaliesData(
-      financialAnomalies: financialAnomalies,
+      financialAnomalies: const [],
       decliningProducts: decliningProducts,
-      highRiskCustomers: highRisk,
+      highRiskCustomers: const [],
     );
   }
 
@@ -191,7 +185,9 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
                     colors: colors,
                     title: '${c['name']} (${c['company_name'] ?? 'Client'})',
                     category: 'Client B2B / B2C',
-                    badgeLabel: 'Risque d’attrition ${(c['churn_risk_score'] as num? ?? 0.8) * 100}%',
+                    badgeLabel: c['churn_risk_score'] is num
+                      ? 'Risque d’attrition ${((c['churn_risk_score'] as num) * 100).toStringAsFixed(1)}%'
+                      : 'Risque d’attrition non calculé',
                     severityColor: _Brand.rose,
                     amount: _formatMoney(context, (c['customer_lifetime_value'] as num?)?.toDouble() ?? 0.0, 'CAD'),
                     date: c['churn_reason']?.toString() ?? 'Chute brutale de fréquence d’achat',

@@ -418,7 +418,11 @@
     "stepOrgLabel": "დაასრულეთ თქვენი კომპანიის მორგება",
     "stepDataLabel": "დააკავშირეთ ან შემოიტანეთ თქვენი მონაცემები",
     "stepInsightsLabel": "გამოიკვლიეთ თქვენი ინსაითები",
-    "stepAskLabel": "ჰკითხეთ Avenqo AI-ს"
+    "stepAskLabel": "ჰკითხეთ Avenqo AI-ს",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo-ს სამართავი ცენტრი",
@@ -930,8 +934,8 @@
       "invoiceVoid": "ბათილად",
       "invoiceUncollectible": "შეუგროვებელი",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Professional გეგმა",
+      "planEnterprise": "საწარმოს გეგმა",
       "nextRenewal": "შემდეგი განახლება: {date}",
       "downloadCsv": "CSV-ის ჩამოტვირთვა",
       "downloadXlsx": "XLSX-ის ჩამოტვირთვა",

@@ -46,7 +46,12 @@ def test_large_exact_current_artifact_cache_and_dashboard(large, monkeypatch):
     payload = cache.build(spec)
     assert payload["current"] == {"revenue": 12000.3, "orders": 30000,
                                    "customers": 40002, "average_order_value": 0.4}
-    assert payload["previous"] == {"revenue": 10.0, "orders": 1, "customers": 1, "average_order_value": 10.0}
+    assert payload["period_metrics"]["all"] == {
+        "revenue": 12010.3,
+        "orders": 30001,
+        "customers": 40003,
+        "average_order_value": 0.4,
+    }
     monkeypatch.setattr(cache, "rows", lambda *_: pytest.fail("Source read in dashboard hot path"))
     service, _ = _dashboard_service(session, {})  # Fails if prepared ingestion is called.
     for _ in range(2):
@@ -54,6 +59,10 @@ def test_large_exact_current_artifact_cache_and_dashboard(large, monkeypatch):
         assert {k["key"]: k["value"] for k in dashboard["kpis"]} == payload["current"]
         serialized = TenantDashboardResponse.model_validate(dashboard).model_dump()
         assert all(k["state"] == "AVAILABLE" for k in serialized["kpis"])
+    seven_day = service.build(tenant, "last_7_days")
+    thirty_day = service.build(tenant, "last_30_days")
+    assert {k["key"]: k["value"] for k in seven_day["kpis"]}["revenue"] == 0
+    assert {k["key"]: k["value"] for k in thirty_day["kpis"]}["revenue"] == 12000.3
     dataset.source = "a completely unrelated source"
     assert cache.read_or_schedule(tenant, dataset) == ("AVAILABLE", payload)
 

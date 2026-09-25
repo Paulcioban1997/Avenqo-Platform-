@@ -206,7 +206,7 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
-def test_country_currency_selects_demo_price_and_webhook_plan(
+def test_country_currency_selects_base_price_and_webhook_plan(
     billing_environment,
 ) -> None:
     client, _, notifier = billing_environment
@@ -227,7 +227,7 @@ def test_country_currency_selects_demo_price_and_webhook_plan(
 
     assert checkout.status_code == 200
     assert checkout.json()["url"].endswith("price_demo_eur")
-    assert get_settings().stripe_plan_code("price_demo_eur") == "demo"
+    assert get_settings().stripe_plan_code("price_demo_eur") == "base"
 
 
 def subscription_event(
@@ -307,9 +307,9 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert plans.status_code == 200
     catalog = plans.json()
     assert [plan["code"] for plan in catalog] == [
-        "demo", "professional", "enterprise"
+        "base", "professional", "enterprise"
     ]
-    assert [plan["monthly_price_usd"] for plan in catalog] == [28, 49, None]
+    assert [plan["monthly_price_usd"] for plan in catalog] == [29.99, 49.99, None]
     assert [plan["requires_sales_contact"] for plan in catalog] == [False, False, True]
 
     # Un nouveau tenant peut ouvrir le portail : le Customer Stripe est créé à la demande.
@@ -412,6 +412,7 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     packs = client.get("/api/v1/billing/credit-packs", headers=headers)
     assert packs.status_code == 200
     assert packs.json() == [
+        {"code": "credits_6500", "credits": 6500, "price_usd": 10},
         {"code": "demo_extra", "credits": 6500, "price_usd": 10},
     ]
     assert "price_id" not in packs.text
@@ -437,7 +438,7 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     checkout = client.post(
         "/api/v1/billing/credit-packs/checkout",
         json={
-            "pack_code": "demo_extra",
+            "pack_code": "credits_6500",
             "company_id": "00000000-0000-0000-0000-000000000000",
             "credits": 999_999_999,
             "price_usd": 1,
@@ -456,12 +457,12 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
             "avenqo_kind": "ai_credit_pack",
             "avenqo_company_id": company_id,
             "avenqo_credit_purchase_id": purchase_id,
-            "avenqo_credit_pack": "demo_extra",
-            "avenqo_plan_code": "demo",
+            "avenqo_credit_pack": "credits_6500",
+            "avenqo_plan_code": "base",
             "avenqo_credits": "6500",
         },
-        "success_url": "http://localhost:8080/billing?credits=success",
-        "cancel_url": "http://localhost:8080/billing?credits=cancelled",
+        "success_url": "http://localhost:3000/billing?credits=success",
+        "cancel_url": "http://localhost:3000/billing?credits=cancelled",
         "mode": "payment",
     }
 
@@ -525,7 +526,7 @@ def test_active_demo_account_controls_wallet_when_company_plan_is_stale(
     subscription = client.get("/api/v1/billing/subscription", headers=headers)
     balance = client.get("/api/v1/billing/ai-credits", headers=headers)
 
-    assert subscription.json()["plan_code"] == "demo"
+    assert subscription.json()["plan_code"] == "base"
     assert subscription.json()["status"] == "active"
     payload = balance.json()
     assert payload["monthly_allocation"] == payload["monthly_included"] == 6500
@@ -735,6 +736,8 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     ).status_code == 200
 
     assert client.get("/api/v1/billing/credit-packs", headers=headers).json() == [
+        {"code": "credits_25000", "credits": 25000, "price_usd": 35},
+        {"code": "credits_65000", "credits": 65000, "price_usd": 80},
         {"code": "professional_6500", "credits": 6500, "price_usd": 10},
         {"code": "professional_25000", "credits": 25000, "price_usd": 25},
     ]
@@ -1102,6 +1105,10 @@ def test_stripe_subscription_checkout_uses_price_and_adaptive_pricing(
         "backend.app.services.stripe_gateway.stripe.checkout.Session.create",
         create_session,
     )
+    monkeypatch.setattr(
+        "backend.app.services.stripe_gateway.stripe.Price.retrieve",
+        lambda *_args, **_kwargs: {"recurring": {"interval": "month"}},
+    )
 
     url = StripeGateway("sk_test").create_checkout(
         "cus_company_1",
@@ -1118,6 +1125,24 @@ def test_stripe_subscription_checkout_uses_price_and_adaptive_pricing(
     assert captured["subscription_data"] == {
         "metadata": {"avenqo_company_id": "company-1"},
     }
+
+
+def test_stripe_subscription_checkout_rejects_non_monthly_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.stripe_gateway.stripe.Price.retrieve",
+        lambda *_args, **_kwargs: {"recurring": {"interval": "year"}},
+    )
+
+    with pytest.raises(ValueError, match="must recur monthly"):
+        StripeGateway("sk_test").create_checkout(
+            "cus_company_1",
+            "price_yearly",
+            "company-1",
+            "https://app.test/success",
+            "https://app.test/cancel",
+        )
 
 def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> None:
     client, provider, notifier = billing_environment
@@ -1246,10 +1271,14 @@ def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> N
     ).status_code == 400
 
 
-@pytest.mark.parametrize("plan_code", ["demo", "professional"])
+@pytest.mark.parametrize(
+    ("plan_code", "expected_plan"),
+    [("demo", "base"), ("professional", "professional")],
+)
 def test_subscription_invoice_uses_stripe_plan_and_currency(
     billing_environment,
     plan_code: str,
+    expected_plan: str,
 ) -> None:
     client, provider, notifier = billing_environment
     login = create_owner(
@@ -1276,7 +1305,7 @@ def test_subscription_invoice_uses_stripe_plan_and_currency(
         "/api/v1/billing/invoices",
         headers=auth_headers(login),
     ).json()[0]
-    assert invoice["plan_code"] == plan_code
+    assert invoice["plan_code"] == expected_plan
     assert invoice["currency"] == "cad"
     assert invoice["amount_paid"] == 6700
 

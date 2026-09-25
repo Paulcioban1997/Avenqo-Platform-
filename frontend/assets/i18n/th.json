@@ -418,7 +418,11 @@
     "stepOrgLabel": "ตั้งค่าองค์กรของคุณ",
     "stepDataLabel": "เชื่อมต่อข้อมูลของคุณ",
     "stepInsightsLabel": "สำรวจข้อมูลเชิงลึก",
-    "stepAskLabel": "ถาม Avenqo"
+    "stepAskLabel": "ถาม Avenqo",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "ศูนย์ควบคุม Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "เป็นโมฆะ",
       "invoiceUncollectible": "ไม่สามารถสะสมได้",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "แผน Professional",
+      "planEnterprise": "แผนองค์กร",
       "nextRenewal": "การต่ออายุครั้งถัดไป: {date}",
       "downloadCsv": "ดาวน์โหลด CSV",
       "downloadXlsx": "ดาวน์โหลด XLSX",

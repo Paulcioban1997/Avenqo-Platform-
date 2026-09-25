@@ -18,6 +18,12 @@ from backend.app.models import (
     DatasetStatus,
     Mapping,
 )
+from backend.app.routers.retail import (
+    list_retail_customers,
+    list_retail_inventory,
+    list_retail_orders,
+    list_retail_products,
+)
 from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
@@ -177,6 +183,163 @@ def test_uploaded_source_selection_persists(source_environment):
     assert selected.active is True
     assert selected.dataset_id == uploaded.id
     assert next(source for source in reloaded if source.active).source_id == uploaded.id
+
+
+def test_source_enabled_state_persists_and_is_tenant_scoped(source_environment):
+    session, company, other_company, uploaded, shopify_dataset, _, prepared = source_environment
+    tenant = TenantContext(company.id)
+    service = RetailSourceService(session)
+
+    disabled = service.set_source_enabled(
+        tenant,
+        source_type="dataset",
+        source_id=uploaded.id,
+        enabled=False,
+    )
+    assert disabled.enabled is False
+
+    persisted = next(
+        source
+        for source in RetailSourceService(session).list_sources(tenant)
+        if source.source_id == uploaded.id
+    )
+    assert persisted.enabled is False
+    assert RetailSourceService(session).list_sources(TenantContext(other_company.id)) == ()
+    with pytest.raises(RetailSourceNotFound):
+        service.set_source_enabled(
+            TenantContext(other_company.id),
+            source_type="dataset",
+            source_id=uploaded.id,
+            enabled=True,
+        )
+
+    snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant)
+    assert {dataset.dataset_id for dataset in snapshot.prepared} == {shopify_dataset.id}
+
+    enabled = service.set_source_enabled(
+        tenant,
+        source_type="dataset",
+        source_id=uploaded.id,
+        enabled=True,
+    )
+    assert enabled.enabled is True
+    reloaded = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant)
+    assert {dataset.dataset_id for dataset in reloaded.prepared} == {
+        uploaded.id,
+        shopify_dataset.id,
+    }
+
+
+def test_enabled_sources_reconcile_and_deduplicate_identical_rows(source_environment):
+    session, company, _, uploaded, shopify_dataset, connection, prepared = source_environment
+    tenant = TenantContext(company.id)
+    RetailSourceService(session).select_source(
+        tenant,
+        source_type="all",
+        source_id=connection.id,
+    )
+    repeated = _prepared(company, shopify_dataset, "SUPER", 999)
+    prepared[shopify_dataset.id] = repeated
+    snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant)
+
+    source = snapshot.source_for(frozenset({"total_amount", "order_id"}))
+
+    assert source is not None
+    assert len(source.rows) == 1
+    assert source.rows[0]["order_id"] == "SUPER-ORDER"
+    assert source.rows[0]["total_amount"] == 999
+
+
+def test_disconnected_enabled_connector_does_not_activate_its_dataset(source_environment):
+    session, company, _, _, shopify_dataset, connection, _ = source_environment
+    tenant = TenantContext(company.id)
+    service = RetailSourceService(session)
+    service.set_source_enabled(
+        tenant,
+        source_type="connector",
+        source_id=connection.id,
+        enabled=True,
+    )
+    connection.status = CommerceConnectionStatus.DISCONNECTED.value
+    session.commit()
+
+    enabled_ids = service.enabled_dataset_ids(tenant)
+    sources = service.list_sources(tenant)
+
+    assert shopify_dataset.id not in enabled_ids
+    assert all(source.source_id != connection.id for source in sources)
+
+
+def test_web_retail_facade_reads_enabled_uploaded_dataset(source_environment):
+    session, company, _, uploaded, _, connection, prepared = source_environment
+    tenant = TenantContext(company.id)
+    source_service = RetailSourceService(session)
+    source_service.set_source_enabled(
+        tenant,
+        source_type="connector",
+        source_id=connection.id,
+        enabled=False,
+    )
+    source_service.set_source_enabled(
+        tenant,
+        source_type="dataset",
+        source_id=uploaded.id,
+        enabled=True,
+    )
+    prepared[uploaded.id] = _prepared(company, uploaded, "SUPER", 999)
+    dataset = prepared[uploaded.id]
+    prepared[uploaded.id] = type(dataset)(
+        **{
+            "company_id": dataset.company_id,
+            "dataset_id": dataset.dataset_id,
+            "version": dataset.version,
+            "canonical_columns": {
+                "date": "order_timestamp",
+                "order": "order_id",
+                "customer": "customer_id",
+                "product": "product_id",
+                "name": "product_name",
+                "category": "product_category",
+                "quantity": "quantity",
+                "amount": "total_amount",
+                "stock": "inventory_level",
+            },
+            "rows": (
+                {
+                    "date": "2026-09-01",
+                    "order": "WEB-ORDER-1",
+                    "customer": "WEB-CUSTOMER-1",
+                    "product": "WEB-PRODUCT-1",
+                    "name": "Uploaded Product",
+                    "category": "Retail",
+                    "quantity": 2,
+                    "amount": 20,
+                    "stock": 4,
+                },
+            ),
+            "profile": dataset.profile,
+            "mapping": dataset.mapping,
+            "cleaning_report": dataset.cleaning_report,
+            "quality": dataset.quality,
+            "capability_readiness": dataset.capability_readiness,
+        }
+    )
+    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared))
+    products_service = TenantProductsService(analytics)
+    customers_service = TenantCustomersService(analytics, _UnusedPredictions())
+
+    products = list_retail_products(tenant, products_service)
+    orders = list_retail_orders(tenant, analytics)
+    customers = list_retail_customers(tenant, customers_service)
+    inventory = list_retail_inventory(tenant, products_service)
+
+    assert products["total"] == 1
+    assert products["products"][0]["product_name"] == "Uploaded Product"
+    assert orders["total"] == 1
+    assert orders["orders"][0]["order_number"] == "WEB-ORDER-1"
+    assert customers["total"] == 1
+    assert customers["customers"][0]["name"] == "WEB-CUSTOMER-1"
+    assert inventory["inventory"][0]["stock_quantity"] == 4
 
 
 def test_shopify_active_source_filters_all_retail_services(source_environment):

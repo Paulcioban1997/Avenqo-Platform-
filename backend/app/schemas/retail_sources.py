@@ -14,8 +14,15 @@ class RetailSourceResponse(BaseModel):
     status: str
     last_synchronized_at: datetime | None
     active: bool
+    enabled: bool = False
 
 
 class RetailSourceSelectionRequest(BaseModel):
     source_type: str
     source_id: UUID
+
+
+class RetailSourceStateRequest(BaseModel):
+    source_type: str
+    source_id: UUID
+    enabled: bool

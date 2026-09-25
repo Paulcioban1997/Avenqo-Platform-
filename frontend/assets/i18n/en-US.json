@@ -418,7 +418,11 @@
     "revenueGrowthTitle": "Build on recent revenue growth",
     "revenueChangedExplanation": "Revenue changed materially from the previous equivalent period.",
     "datasetImportedActivity": "Dataset imported",
-    "modelActivatedActivity": "Intelligence capability activated"
+    "modelActivatedActivity": "Intelligence capability activated",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Avenqo Command Center",

@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -16,9 +17,10 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 def get_dashboard(
     tenant: TenantContext = Depends(get_tenant_context),
     service: TenantDashboardService = Depends(get_tenant_dashboard_service),
+    period: Literal["all", "last_7_days", "last_30_days", "current_quarter"] = "last_30_days",
 ) -> TenantDashboardResponse:
     try:
-        return TenantDashboardResponse.model_validate(service.build(tenant))
+        return TenantDashboardResponse.model_validate(service.build(tenant, period))
     except Exception as exc:
         logger.exception("Tenant dashboard generation failed")
         raise HTTPException(

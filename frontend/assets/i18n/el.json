@@ -418,7 +418,11 @@
     "stepOrgLabel": "Ολοκληρώστε τη ρύθμιση της εταιρείας σας",
     "stepDataLabel": "Συνδέστε ή εισαγάγετε τα δεδομένα σας",
     "stepInsightsLabel": "Εξερευνήστε τις πληροφορίες σας",
-    "stepAskLabel": "Ρωτήστε το Avenqo AI"
+    "stepAskLabel": "Ρωτήστε το Avenqo AI",
+    "periodAll": "All",
+    "period7Days": "Last 7 days",
+    "period30Days": "Last 30 days",
+    "periodQuarter": "This quarter"
   },
   "admin": {
     "commandCenterTitle": "Κέντρο Ελέγχου Avenqo",
@@ -930,8 +934,8 @@
       "invoiceVoid": "????????????????",
       "invoiceUncollectible": "??????????????????",
       "planDemo": "Demo",
-      "planProfessional": "Professional",
-      "planEnterprise": "Enterprise",
+      "planProfessional": "Πλάνο Professional",
+      "planEnterprise": "Εταιρικό πρόγραμμα",
       "nextRenewal": "?????????????? ????????????????: {date}",
       "downloadCsv": "Λήψη CSV",
       "downloadXlsx": "Λήψη XLSX",

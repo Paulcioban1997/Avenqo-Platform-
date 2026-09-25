@@ -118,10 +118,11 @@ class ModuleEntitlementService:
     def activate_module(self, tenant: TenantContext, module_key: str) -> CompanyEntitlements:
         # Acquire atomic transaction-scoped advisory lock on tenant's company_id
         # strictly serializes concurrent activations for this company without locking any tables or rows
-        self._session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-            {"lock_key": f"module_quota:{tenant.company_id}"}
-        )
+        if self._session.get_bind().dialect.name == "postgresql":
+            self._session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"module_quota:{tenant.company_id}"},
+            )
         state = self._state(tenant, module_key)
         if state == ModuleEntitlementState.ACTIVE:
             return self.summary(tenant)
