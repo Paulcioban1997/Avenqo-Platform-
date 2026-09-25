@@ -2111,14 +2111,17 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                               color: isReady ? _Brand.green : _Brand.red,
                                             ),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              isReady
-                                                  ? 'Données prêtes pour Retail Intelligence'
-                                                  : 'Attention requise',
-                                              style: TextStyle(
-                                                color: isReady ? _Brand.green : _Brand.red,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
+                                            Flexible(
+                                              child: Text(
+                                                isReady
+                                                    ? 'Données prêtes pour Retail Intelligence'
+                                                    : 'Attention requise',
+                                                softWrap: true,
+                                                style: TextStyle(
+                                                  color: isReady ? _Brand.green : _Brand.red,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
                                               ),
                                             ),
                                           ],

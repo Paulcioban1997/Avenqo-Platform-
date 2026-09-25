@@ -218,9 +218,8 @@ void main() {
     await tester.tap(find.text('Voir les données nettoyées'));
     await tester.pumpAndSettle();
 
-    // The new dialog uses 6 tabs: APERÇU, COLONNES, MODIFICATIONS, ENTITÉS MÉTIER, QUALITÉ, TECHNIQUE.
-    expect(find.text('APERÇU'), findsOneWidget);
-    expect(find.text('ENTITÉS MÉTIER', skipOffstage: false), findsOneWidget);
+    // The dialog uses five tabs and includes the cleaned business-data preview.
+    expect(find.text('APERÇU MÉTIER (2)'), findsOneWidget);
     expect(find.text('QUALITÉ (98%)', skipOffstage: false), findsOneWidget);
 
     // Export buttons are visible in the header (CSV and XLSX, not DOCX).
@@ -288,7 +287,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // The new non-blocking dialog opens directly with tabs — no "Action requise" or manual confirmation.
-      expect(find.text('APERÇU'), findsOneWidget);
+      expect(find.text('APERÇU MÉTIER (2)'), findsOneWidget);
       // Export buttons are available in the new tabbed cleaning dialog.
       expect(find.text('CSV'), findsOneWidget);
       expect(find.text('DOCX'), findsOneWidget);
