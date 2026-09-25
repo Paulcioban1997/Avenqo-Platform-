@@ -170,13 +170,7 @@ class AuthService:
             logger.exception("Owner notification failed for company %s", company.id)
         return company, user, verification_email_sent
 
-    def login(self, email: str, password: str) -> AuthResult:
-        user = self._session.scalar(select(User).where(User.email == email.strip().lower()))
-        if user is None or not user.is_active or not verify_password(password, user.password_hash):
-            raise AuthenticationError("Email ou mot de passe incorrect")
-        if user.email_verified_at is None:
-            raise AuthenticationError("L'adresse email doit être vérifiée")
-
+    def create_auth_session(self, user: User) -> AuthResult:
         now = datetime.now(timezone.utc)
         refresh_token = generate_token()
         refresh_expires_at = now + timedelta(days=get_settings().auth_refresh_days)
@@ -202,6 +196,17 @@ class AuthService:
             refresh_expires_at=refresh_expires_at,
             user=user,
         )
+
+    _create_auth_session = create_auth_session
+
+    def login(self, email: str, password: str) -> AuthResult:
+        user = self._session.scalar(select(User).where(User.email == email.strip().lower()))
+        if user is None or not user.is_active or not verify_password(password, user.password_hash):
+            raise AuthenticationError("Email ou mot de passe incorrect")
+        if user.email_verified_at is None:
+            raise AuthenticationError("L'adresse email doit être vérifiée")
+
+        return self.create_auth_session(user)
 
     def authenticate(self, access_token: str) -> tuple[AuthSession, User]:
         try:

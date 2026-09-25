@@ -10,7 +10,7 @@ class PlanResponse(BaseModel):
     code: str
     name: str
     requires_sales_contact: bool
-    monthly_price_usd: int | None
+    monthly_price_usd: float | int | None
 
 
 class CheckoutRequest(BaseModel):
@@ -28,7 +28,7 @@ class RedirectResponse(BaseModel):
 class CreditPackResponse(BaseModel):
     code: str
     credits: int
-    price_usd: int
+    price_usd: float | int
 
 
 class CreditPackCheckoutRequest(BaseModel):
@@ -62,7 +62,7 @@ class SubscriptionResponse(BaseModel):
     current_period_end: datetime | None
     cancel_at_period_end: bool
     plan_name: str | None = None
-    monthly_price_usd: int | None = None
+    monthly_price_usd: float | int | None = None
     billing_frequency: str | None = "monthly"
     currency: str | None = "USD"
     company_name: str | None = None
