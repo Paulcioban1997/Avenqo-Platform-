@@ -11,6 +11,7 @@ from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
     Dataset,
+    DatasetRelationship,
     DatasetStatus,
     RetailActiveSource,
 )
@@ -192,7 +193,19 @@ class RetailSourceService:
                     CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
                 ).limit(1)
             )
+            has_relationships = self._session.scalar(
+                select(DatasetRelationship.id).where(
+                    DatasetRelationship.company_id == tenant.company_id
+                ).limit(1)
+            ) is not None
             if not existing_conns and datasets:
+                if has_relationships:
+                    return self._store_selection(
+                        tenant,
+                        source_type="all",
+                        dataset_id=None,
+                        connection_id=None,
+                    )
                 return self._store_selection(
                     tenant,
                     source_type="dataset",
@@ -263,6 +276,18 @@ class RetailSourceService:
             )
         # Zero silent fallback to datasets if commerce connections exist
         if not connections and datasets:
+            has_relationships = self._session.scalar(
+                select(DatasetRelationship.id).where(
+                    DatasetRelationship.company_id == tenant.company_id
+                ).limit(1)
+            ) is not None
+            if has_relationships:
+                return self._store_selection(
+                    tenant,
+                    source_type="all",
+                    dataset_id=None,
+                    connection_id=None,
+                )
             return self._store_selection(
                 tenant,
                 source_type="dataset",

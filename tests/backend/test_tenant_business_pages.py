@@ -49,8 +49,8 @@ class _PreparedIngestion:
         self._prepared_by_id = prepared_by_id
 
     def get_prepared_dataset(self, tenant, dataset_id):
-        prepared = self._prepared_by_id[dataset_id]
-        if prepared.company_id != tenant.company_id:
+        prepared = self._prepared_by_id.get(dataset_id)
+        if prepared is None or prepared.company_id != tenant.company_id:
             raise LookupError("Dataset not found")
         return prepared
 
@@ -210,6 +210,8 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     business_environment,
 ):
     session, company, company_b, _dataset_a, prepared = business_environment
+    session.delete(_dataset_a)
+    session.commit()
     prepared.clear()
     customers_data = _dataset(session, company, "party-records.csv")
     orders = _dataset(session, company, "commerce-events.csv")
@@ -352,6 +354,8 @@ def test_line_quantity_and_unit_price_derive_real_zero_revenue(
     business_environment,
 ):
     session, company, _company_b, _dataset_a, prepared = business_environment
+    session.delete(_dataset_a)
+    session.commit()
     prepared.clear()
     lines = _dataset(session, company, "line-values.csv")
     prepared[lines.id] = _prepared(
