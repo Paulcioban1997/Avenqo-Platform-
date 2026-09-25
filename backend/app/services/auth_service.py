@@ -115,13 +115,15 @@ class AuthService:
             is_active=True,
             email_verified_at=None,
         )
+        self._session.add_all((company, user))
+        self._session.flush()
         membership = CompanyMembership(
             user_id=user.id,
             company_id=company.id,
             role=UserRole.OWNER,
             is_active=True,
         )
-        self._session.add_all((company, user, membership))
+        self._session.add(membership)
         self._session.flush()
         plan_code = "base" if (request.plan_code or "").lower() in {"base", "demo"} else request.plan_code
         billing_account = BillingAccount(
