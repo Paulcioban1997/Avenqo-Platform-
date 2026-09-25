@@ -78,7 +78,7 @@ const appDestinations = <AppDestination>[
   AppDestination(
     path: '/crm',
     label: 'CRM AI',
-    description: 'Leads, opportunités, pipeline et score de conversion.',
+    description: 'Leads, opportunités, parcours commercial et score de conversion.',
     icon: Icons.hub_outlined,
   ),
   AppDestination(
@@ -126,7 +126,7 @@ const appDestinations = <AppDestination>[
   ),
   AppDestination(
     path: '/support',
-    label: 'Aide',
+    label: 'Avenqo Support',
     description: "Besoin d'aide pour utiliser Avenqo ? Posez votre question ici.",
     icon: Icons.help_outline,
     sectionBreakBefore: true,
