@@ -114,6 +114,27 @@ def test_new_demo_company_can_import_data_with_zero_company_modules(
     assert len(datasets.json()) == 1
 
 
+def test_base_plan_can_import_without_active_stripe_subscription(core_import_environment) -> None:
+    """Data ingestion belongs to the Base platform tier, not the AI execution gate."""
+    client, notifier, _ = core_import_environment
+    email = "base-upload@core-import-demo.ca"
+    assert client.post(
+        "/api/v1/auth/register",
+        json=registration_payload(email=email, company_name="Base Upload Co"),
+    ).status_code == 201
+    session = verify_and_login(client, notifier, email)
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+
+    response = client.post(
+        "/api/v1/datasets/upload",
+        data={"module_code": "retail"},
+        files={"file": ("base.csv", _csv("base-user"), "text/csv")},
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    assert client.get("/api/v1/datasets", headers=headers).json()[0]["id"] == response.json()["dataset_id"]
+
+
 def test_new_demo_company_dataset_is_tenant_isolated(core_import_environment) -> None:
     client, notifier, session_factory = core_import_environment
 

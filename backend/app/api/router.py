@@ -80,16 +80,13 @@ api_router.include_router(
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )
-api_router.include_router(
-	datasets_router,
-	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
-)
-api_router.include_router(
-	dataset_archives_router,
-	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
-)
+# Dataset ingestion and management are core platform capabilities available
+# on every paid tier. The routes still require an authenticated tenant and
+# enforce company scoping; only paid AI/business execution uses the subscription
+# gate below. In particular, an active subscription must not block Base users
+# from uploading their own data.
+api_router.include_router(datasets_router, prefix="/api/v1")
+api_router.include_router(dataset_archives_router, prefix="/api/v1")
 api_router.include_router(onboarding_router, prefix="/api/v1")
 api_router.include_router(
 	modules_router,

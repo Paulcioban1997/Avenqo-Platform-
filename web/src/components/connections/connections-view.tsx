@@ -144,7 +144,7 @@ export function ConnectionsView() {
 
   // File Upload Handlers
   const handleFiles = async (files: FileList | File[]) => {
-    const validExtensions = [".csv", ".xls", ".xlsx", ".json", ".pdf", ".doc", ".docx", ".parquet"];
+    const validExtensions = [".csv", ".xls", ".xlsx", ".json", ".pdf", ".txt", ".parquet"];
     const fileList = Array.from(files);
 
     if (fileList.length === 0) return;
@@ -152,7 +152,7 @@ export function ConnectionsView() {
     for (const file of fileList) {
       const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
       if (!validExtensions.includes(ext)) {
-        setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, XLS, XLSX, JSON, PDF, DOC, DOCX, Parquet.`);
+        setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, XLS, XLSX, PDF, JSON, TXT et Parquet.`);
         return;
       }
       if (file.size > 50 * 1024 * 1024) {
@@ -182,7 +182,18 @@ export function ConnectionsView() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.detail || `Erreur lors de l'import de ${file.name}`);
+          const detail = typeof errData?.detail === "string"
+            ? errData.detail
+            : typeof errData?.error?.message === "string"
+              ? errData.error.message
+              : `Erreur lors de l'import de ${file.name}`;
+          console.error("[Avenqo dataset upload] request failed", {
+            fileName: file.name,
+            status: res.status,
+            statusText: res.statusText,
+            detail,
+          });
+          throw new Error(`${detail} (HTTP ${res.status})`);
         }
       }
 

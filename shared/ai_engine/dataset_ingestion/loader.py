@@ -1,6 +1,6 @@
 """Chargement universel de fichiers de données d'entreprise (Phase 26).
 
-Supporte CSV, XLSX, JSON et Parquet via une seule abstraction
+Supporte CSV, XLS, XLSX, PDF, JSON, TXT et Parquet via une seule abstraction
 `CompanyDatasetLoader`, avec validation stricte avant tout parsing coûteux.
 """
 
@@ -23,7 +23,9 @@ from shared.ai_engine.dataset_ingestion.exceptions import (
     UnsupportedDatasetFormat,
 )
 
-SUPPORTED_EXTENSIONS: tuple[str, ...] = (".csv", ".xlsx", ".json", ".parquet")
+SUPPORTED_EXTENSIONS: tuple[str, ...] = (
+    ".csv", ".xls", ".xlsx", ".pdf", ".json", ".txt", ".parquet",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +60,12 @@ class CompanyDatasetLoader:
 
         if extension == ".csv":
             rows = self._load_csv(content)
-        elif extension == ".xlsx":
-            rows = self._load_excel(content)
+        elif extension in {".xls", ".xlsx"}:
+            rows = self._load_excel(content, extension)
+        elif extension == ".pdf":
+            rows = self._load_pdf(content)
+        elif extension == ".txt":
+            rows = self._load_txt(content)
         elif extension == ".json":
             rows = self._load_json(content)
         else:
@@ -85,16 +91,53 @@ class CompanyDatasetLoader:
             raise EmptyDataset("Le CSV doit contenir un en-tête et au moins une ligne.")
         return rows
 
-    def _load_excel(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_excel(self, content: bytes, extension: str) -> list[dict[str, Any]]:
         try:
             import pandas as pd
 
-            frame = pd.read_excel(BytesIO(content), engine="openpyxl")
+            engine = "xlrd" if extension == ".xls" else "openpyxl"
+            frame = pd.read_excel(BytesIO(content), engine=engine)
         except EmptyDataset:
             raise
         except Exception as exc:  # pragma: no cover - dépend de la lib externe
-            raise DatasetParseError(f"XLSX invalide ou illisible : {exc}") from exc
+            raise DatasetParseError(f"{extension.upper()[1:]} invalide ou illisible : {exc}") from exc
         return self._frame_to_rows(frame)
+
+    def _load_pdf(self, content: bytes) -> list[dict[str, Any]]:
+        try:
+            from pypdf import PdfReader
+
+            reader = PdfReader(BytesIO(content), strict=True)
+            rows = []
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = page.extract_text() or ""
+                for line in text.splitlines():
+                    line = line.strip()
+                    if line:
+                        rows.append({"page": page_number, "text": line})
+        except Exception as exc:  # pragma: no cover - dépend de la lib externe
+            raise DatasetParseError(f"PDF invalide ou illisible : {exc}") from exc
+        return rows
+
+    def _load_txt(self, content: bytes) -> list[dict[str, Any]]:
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise InvalidDatasetFile("TXT invalide ou encodage non supporté.") from exc
+
+        lines = [line for line in text.splitlines() if line.strip()]
+        if not lines:
+            return []
+        # Treat delimited text as a table when a stable delimiter and header
+        # exist. Plain prose remains importable as one text value per row.
+        try:
+            dialect = csv.Sniffer().sniff("\n".join(lines[:20]), delimiters=",;\t|")
+            rows = list(csv.DictReader(lines, dialect=dialect))
+            if rows and rows[0] is not None and rows[0].keys() != {None}:
+                return rows
+        except csv.Error:
+            pass
+        return [{"text": line} for line in lines]
 
     def _load_json(self, content: bytes) -> list[dict[str, Any]]:
         try:

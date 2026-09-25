@@ -294,11 +294,31 @@ async def upload_company_dataset(
             await file.read(),
         )
     except ModuleAccessDenied as exc:
+        logger.warning(
+            "dataset_upload_denied tenant_id=%s filename=%r reason=module_entitlement detail=%s",
+            tenant.company_id, file.filename, exc,
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DataImportQuotaExceeded as exc:
+        logger.warning(
+            "dataset_upload_denied tenant_id=%s filename=%r reason=import_quota detail=%s",
+            tenant.company_id, file.filename, exc,
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DatasetIngestionError as exc:
+        logger.warning(
+            "dataset_upload_rejected tenant_id=%s filename=%r reason=file_validation detail=%s",
+            tenant.company_id, file.filename, exc,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        # Preserve the traceback and tenant/request context for production
+        # diagnosis. Never log uploaded contents or auth tokens.
+        logger.exception(
+            "dataset_upload_failed tenant_id=%s filename=%r",
+            tenant.company_id, file.filename,
+        )
+        raise
 
     current_version = next((v for v in dataset.versions if v.is_current), dataset.versions[-1])
     return CompanyDatasetUploadResponse(

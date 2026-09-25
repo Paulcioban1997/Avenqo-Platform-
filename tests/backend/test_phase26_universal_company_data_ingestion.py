@@ -317,7 +317,7 @@ def test_upload_parquet_creates_dataset(phase26_environment) -> None:
 
 def test_upload_unsupported_format_rejected(phase26_environment) -> None:
     client, _, _ = phase26_environment
-    response = _upload(client, "dataset.txt", b"hello world", content_type="text/plain")
+    response = _upload(client, "dataset.docx", b"hello world", content_type="application/octet-stream")
     assert response.status_code == 400
 
 
@@ -1178,4 +1178,3 @@ def test_training_handoff_returns_prepared_dataset(phase26_environment) -> None:
     assert prepared.canonical_columns
     assert len(prepared.rows) > 0
     assert prepared.quality.status.value in {"excellent", "good", "warning"}
-

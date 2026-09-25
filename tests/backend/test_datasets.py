@@ -191,7 +191,7 @@ def test_dataset_routes_hide_other_tenants(dataset_environment) -> None:
     assert client.get(f"/api/v1/datasets/{dataset_id}").status_code == 404
 
 
-def test_dataset_routes_block_inactive_subscription(dataset_environment) -> None:
+def test_dataset_routes_remain_available_without_active_subscription(dataset_environment) -> None:
     client, session_factory, tenants, _ = dataset_environment
     with session_factory() as session:
         account = session.scalar(
@@ -205,8 +205,8 @@ def test_dataset_routes_block_inactive_subscription(dataset_environment) -> None
 
     response = client.get("/api/v1/datasets")
 
-    assert response.status_code == 402
-    assert response.json()["error"]["message"] == "Un abonnement actif est requis"
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_dataset_lookup_and_delete_convert_path_id_to_uuid(
