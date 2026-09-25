@@ -301,12 +301,10 @@ def list_retail_inventory(
     anomalies = []
     for product in product_result["items"]:
         stock_value = product.get("stock_level")
-        if stock_value is None:
-            continue
         name = str(product.get("name") or product["product_id"])
         sku = str(product.get("sku") or product["product_id"])
         price = float(product.get("unit_price") or 0)
-        stock = int(float(stock_value))
+        stock = int(float(stock_value)) if stock_value is not None else None
         product_id = str(product["product_id"])
 
         item = {
@@ -315,11 +313,16 @@ def list_retail_inventory(
             "sku": sku,
             "stock_quantity": stock,
             "unit_price": price,
-            "status": "critical" if stock <= 5 else ("warning" if stock <= 15 else "normal"),
+            "status": (
+                "unknown" if stock is None
+                else "critical" if stock <= 5
+                else "warning" if stock <= 15
+                else "normal"
+            ),
         }
         items.append(item)
 
-        if stock <= 5:
+        if stock is not None and stock <= 5:
             anomalies.append({
                 "id": f"crit-{product_id}",
                 "product": name,
@@ -330,7 +333,7 @@ def list_retail_inventory(
                 "severity": "critical",
                 "message": f"Rupture imminente : seulement {stock} unités restantes en stock.",
             })
-        elif stock > 200:
+        elif stock is not None and stock > 200:
             anomalies.append({
                 "id": f"over-{product_id}",
                 "product": name,

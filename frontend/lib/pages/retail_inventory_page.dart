@@ -94,9 +94,14 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
           var totalUnits = 0;
           var lowStockCount = 0;
           var outOfStockCount = 0;
+          var unknownStockCount = 0;
 
           for (final p in allProducts) {
-            final stock = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['quantity'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt() ?? 0;
+            final stock = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt();
+            if (stock == null) {
+              unknownStockCount++;
+              continue;
+            }
             totalUnits += stock;
             if (stock <= 0) {
               outOfStockCount++;
@@ -112,9 +117,9 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
             final matchesSearch = _searchQuery.isEmpty || name.contains(_searchQuery) || category.contains(_searchQuery);
             if (!matchesSearch) return false;
 
-            final stock = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['quantity'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt() ?? 0;
-            if (_filter == 'low') return stock > 0 && stock <= 10;
-            if (_filter == 'out') return stock <= 0;
+            final stock = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt();
+            if (_filter == 'low') return stock != null && stock > 0 && stock <= 10;
+            if (_filter == 'out') return stock != null && stock <= 0;
             return true;
           }).toList();
 
@@ -193,7 +198,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth > 800;
                   final cards = [
-                    _buildMetricCard('Unités en stock total', '$totalUnits', Icons.warehouse_outlined, _Brand.blue, colors),
+                    _buildMetricCard('Unités en stock total', unknownStockCount > 0 ? '—' : '$totalUnits', Icons.warehouse_outlined, _Brand.blue, colors),
                     _buildMetricCard('Stocks faibles (≤ 10)', '$lowStockCount', Icons.warning_amber_rounded, _Brand.amber, colors, isAlert: lowStockCount > 0),
                     _buildMetricCard('Ruptures de stock', '$outOfStockCount', Icons.remove_shopping_cart_outlined, _Brand.rose, colors, isAlert: outOfStockCount > 0),
                     _buildMetricCard('Dernière synchro', lastSync.length > 16 ? lastSync.substring(0, 16).replaceAll('T', ' ') : lastSync, Icons.schedule, _Brand.emerald, colors),
@@ -285,12 +290,14 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                                   DataCell(
                                     Builder(
                                       builder: (context) {
-                                        final s = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['quantity'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt() ?? 0;
+                                        final s = (p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt();
                                         return Text(
-                                          '$s',
+                                          s?.toString() ?? '—',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            color: (s <= 0)
+                                            color: s == null
+                                                ? colors.muted
+                                                : (s <= 0)
                                                 ? _Brand.rose
                                                 : ((s <= 10) ? _Brand.amber : colors.ink),
                                           ),
@@ -299,7 +306,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                                     ),
                                   ),
                                   DataCell(Text(_formatMoney(context, (p['price'] as num?)?.toDouble() ?? (p['average_price'] as num?)?.toDouble() ?? 0.0, 'CAD'))),
-                                  DataCell(_buildStockBadge((p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['quantity'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt() ?? 0)),
+                                  DataCell(_buildStockBadge((p['stock_level'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? (p['inventory_level'] as num?)?.toInt())),
                                   DataCell(
                                     TextButton(
                                       onPressed: () => context.go('/retail/products?product_id=${p['product_id'] ?? p['id']}'),
@@ -354,7 +361,15 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
     );
   }
 
-  Widget _buildStockBadge(num stock) {
+  Widget _buildStockBadge(num? stock) {
+    final colors = AvenqoColors.of(context);
+    if (stock == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: colors.muted.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+        child: Text('Inconnu', style: TextStyle(color: colors.muted, fontSize: 11, fontWeight: FontWeight.bold)),
+      );
+    }
     final qty = stock.toInt();
     if (qty <= 0) {
       return Container(
