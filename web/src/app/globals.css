@@ -21,6 +21,8 @@
   --muted: #5c6472;
   --line: #e5e8ed;
   --soft: #f5f7fa;
+  --font-geist-sans: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --font-manrope: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
 }
 
 .dark {
