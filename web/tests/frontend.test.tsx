@@ -7,6 +7,8 @@ import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-context";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
+import { LOCALES } from "@/lib/i18n/locales";
+import { getTranslations } from "@/lib/i18n/dictionary";
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
@@ -128,6 +130,31 @@ describe("locale persistence", () => {
 
     const third = render(<LocaleProvider><LocaleProbe /></LocaleProvider>);
     await waitFor(() => expect(third.getByRole("button")).toHaveTextContent("fr"));
+  });
+
+  it.each(LOCALES)("persists the platform locale $code through provider recreation", async ({ code }) => {
+    window.localStorage.setItem("avenqo-locale", code);
+    const view = render(<LocaleProvider><LocaleProbe /></LocaleProvider>);
+    await waitFor(() => expect(view.getByRole("button")).toHaveTextContent(code));
+    view.unmount();
+
+    const recreated = render(<LocaleProvider><LocaleProbe /></LocaleProvider>);
+    await waitFor(() => expect(recreated.getByRole("button")).toHaveTextContent(code));
+    recreated.unmount();
+  });
+});
+
+describe("44-locale translation catalog", () => {
+  it("loads a complete non-empty catalog for every registered platform locale", () => {
+    expect(LOCALES).toHaveLength(44);
+    for (const definition of LOCALES) {
+      const translations = getTranslations(definition.code);
+      expect(translations.common.login, definition.code).toBeTruthy();
+      expect(translations.nav.docs, definition.code).toBeTruthy();
+      expect(translations.dashboard.greeting, definition.code).toBeTruthy();
+      expect(translations.pricing.title, definition.code).toBeTruthy();
+      expect(["ltr", "rtl"], definition.code).toContain(definition.direction);
+    }
   });
 });
 
