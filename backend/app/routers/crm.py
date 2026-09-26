@@ -687,16 +687,15 @@ async def crm_copilot_chat(
         clients = service.list_clients(tenant.company_id, limit=1)
         client = clients[0] if clients else None
         if not client:
-            client = service.create_client(
-                tenant.company_id,
-                {
-                    "first_name": "Jean",
-                    "last_name": "Tremblay",
-                    "email": "jean.tremblay@avenqo-guest.ca",
-                    "phone": "514-555-0199",
-                },
-                actor_name="Avenqo Copilot",
-            )
+            return {
+                "reply": (
+                    "Please provide or select an existing customer before booking."
+                    if req.locale == "en"
+                    else "Veuillez fournir ou sélectionner un client existant avant de réserver."
+                ),
+                "status": "customer_required",
+                "action": "appointment_not_created",
+            }
 
         apt, err = await service.create_appointment(
             tenant.company_id,
