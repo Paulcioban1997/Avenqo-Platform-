@@ -244,6 +244,101 @@ def test_appointment_crud_and_conflict_detection(db_session):
     assert updated_app.status == "completed"
 
 
+def test_customer_deduplication_reuses_normalized_email_or_phone(db_session):
+    company = _create_company(db_session, "tenant-customer-dedup")
+    crm_svc = CRMAppService(db_session)
+
+    first = crm_svc.create_client(
+        company.id,
+        {
+            "first_name": "John",
+            "last_name": "Smith",
+            "email": " JOHN.SMITH@example.com ",
+            "phone": "+1 (514) 555-0100",
+        },
+    )
+    by_email = crm_svc.create_client(
+        company.id,
+        {
+            "first_name": "John",
+            "last_name": "Different",
+            "email": "john.smith@example.com",
+            "phone": "514-555-0199",
+        },
+    )
+    by_phone = crm_svc.create_client(
+        company.id,
+        {
+            "first_name": "Another",
+            "last_name": "Name",
+            "email": "another@example.com",
+            "phone": "15145550100",
+        },
+    )
+
+    assert by_email.id == first.id
+    assert by_phone.id == first.id
+    assert len(crm_svc.list_clients(company.id)) == 1
+
+
+def test_appointment_idempotency_returns_one_record_and_is_tenant_scoped(db_session):
+    company_a = _create_company(db_session, "tenant-idempotent-a")
+    company_b = _create_company(db_session, "tenant-idempotent-b")
+    crm_svc = CRMAppService(db_session)
+    client_a = crm_svc.create_client(company_a.id, {
+        "first_name": "Alex", "last_name": "A", "email": "alex-a@example.com",
+    })
+    client_b = crm_svc.create_client(company_b.id, {
+        "first_name": "Alex", "last_name": "B", "email": "alex-b@example.com",
+    })
+    start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
+    payload = {
+        "client_id": client_a.id,
+        "title": "Consultation",
+        "start_time": start,
+        "duration_minutes": 30,
+        "idempotency_key": "booking-operation-1",
+    }
+
+    first, first_error = asyncio.run(crm_svc.create_appointment(company_a.id, payload))
+    replay, replay_error = asyncio.run(crm_svc.create_appointment(company_a.id, payload))
+    other_tenant, other_error = asyncio.run(
+        crm_svc.create_appointment(
+            company_b.id,
+            {**payload, "client_id": client_b.id},
+        )
+    )
+
+    assert first_error is None and replay_error is None
+    assert first is not None and replay is not None
+    assert replay.id == first.id
+    assert other_error is None and other_tenant is not None
+    assert other_tenant.id != first.id
+    assert db_session.query(CRMAppointment).filter_by(company_id=company_a.id).count() == 1
+    assert db_session.query(CRMAppointment).filter_by(company_id=company_b.id).count() == 1
+
+
+def test_appointment_search_filters_client_and_title(db_session):
+    company = _create_company(db_session, "tenant-appointment-search")
+    crm_svc = CRMAppService(db_session)
+    client = crm_svc.create_client(company.id, {
+        "first_name": "Sarah", "last_name": "Martin", "email": "sarah@example.com",
+    })
+    start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
+    appointment, error = asyncio.run(crm_svc.create_appointment(company.id, {
+        "client_id": client.id,
+        "title": "Physiothérapie",
+        "start_time": start,
+        "duration_minutes": 30,
+    }))
+
+    assert error is None and appointment is not None
+    results = crm_svc.list_appointments(company.id, search="Sarah", limit=10)
+    assert len(results) == 1
+    assert results[0]["client_name"] == "Sarah Martin"
+    assert crm_svc.list_appointments(company.id, search="inconnu", limit=10) == []
+
+
 def test_create_appointment_accepts_null_industry_data(db_session):
     company = _create_company(db_session, "tenant-null-industry")
     crm_svc = CRMAppService(db_session)

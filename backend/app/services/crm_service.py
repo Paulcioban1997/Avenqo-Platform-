@@ -155,12 +155,18 @@ class CRMService:
         ).first()
 
     def create_client(self, company_id: UUID, data: dict[str, Any], actor_name: str = "Utilisateur") -> CRMClient:
+        email = str(data.get("email") or "").strip().lower() or None
+        phone = self._normalize_phone(data.get("phone"))
+        existing = self._find_existing_client(company_id, email=email, phone=phone)
+        if existing:
+            return existing
+
         client = CRMClient(
             company_id=company_id,
             first_name=data["first_name"].strip(),
             last_name=data["last_name"].strip(),
-            email=data["email"].strip().lower(),
-            phone=data.get("phone", "").strip() or None,
+            email=email or "",
+            phone=phone,
             company_name=data.get("company_name"),
             industry_type=data.get("industry_type", "general"),
             industry_metadata=data.get("industry_metadata", {}),
@@ -180,6 +186,30 @@ class CRMService:
         )
         self._session.commit()
         return client
+
+    @staticmethod
+    def _normalize_phone(phone: Any) -> str | None:
+        digits = "".join(character for character in str(phone or "") if character.isdigit())
+        return digits or None
+
+    def _find_existing_client(
+        self,
+        company_id: UUID,
+        *,
+        email: str | None = None,
+        phone: str | None = None,
+    ) -> CRMClient | None:
+        query = select(CRMClient).where(
+            CRMClient.company_id == company_id,
+            CRMClient.is_deleted.is_(False),
+        )
+        candidates = list(self._session.scalars(query).all())
+        for client in candidates:
+            if email and client.email and client.email.strip().lower() == email:
+                return client
+            if phone and self._normalize_phone(client.phone) == phone:
+                return client
+        return None
 
     def update_client(self, company_id: UUID, client_id: UUID, data: dict[str, Any], actor_name: str = "Utilisateur") -> CRMClient | None:
         client = self.get_client(company_id, client_id)
@@ -317,6 +347,8 @@ class CRMService:
         status: str | None = None,
         employee_id: UUID | None = None,
         client_id: UUID | None = None,
+        search: str | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         query = select(CRMAppointment).where(
             CRMAppointment.company_id == company_id,
@@ -334,6 +366,8 @@ class CRMService:
             query = query.where(CRMAppointment.client_id == client_id)
 
         query = query.order_by(CRMAppointment.start_time.asc())
+        if limit is not None:
+            query = query.limit(min(max(limit, 1), 500))
         apts = list(self._session.scalars(query).all())
 
         results = []
@@ -341,6 +375,20 @@ class CRMService:
             client = self._session.get(CRMClient, a.client_id)
             service = self._session.get(CRMServiceModel, a.service_id) if a.service_id else None
             employee = self._session.get(CRMEmployee, a.employee_id) if a.employee_id else None
+
+            if search:
+                needle = search.strip().lower()
+                searchable = " ".join(
+                    value.lower()
+                    for value in (
+                        a.title,
+                        a.notes or "",
+                        client.full_name if client else "",
+                        service.name if service else "",
+                    )
+                )
+                if needle not in searchable:
+                    continue
 
             results.append({
                 "id": str(a.id),
@@ -379,6 +427,18 @@ class CRMService:
         duration = data.get("duration_minutes", 60)
         end_time = data.get("end_time") or (start_time + timedelta(minutes=duration))
         employee_id = data.get("employee_id")
+
+        idempotency_key = str(data.get("idempotency_key") or "").strip() or None
+        if idempotency_key:
+            existing = self._session.scalar(
+                select(CRMAppointment).where(
+                    CRMAppointment.company_id == company_id,
+                    CRMAppointment.idempotency_key == idempotency_key,
+                    CRMAppointment.is_deleted.is_(False),
+                )
+            )
+            if existing:
+                return existing, None
 
         self._lock_appointment_writes(company_id)
 
@@ -423,6 +483,7 @@ class CRMService:
             currency=data.get("currency", "CAD"),
             notes=data.get("notes"),
             industry_data=(raw_industry_data if isinstance(raw_industry_data, dict) else {}),
+            idempotency_key=idempotency_key,
         )
         self._session.add(appointment)
         self._session.flush()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -301,9 +301,18 @@ class CRMAppointment(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="CAD")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     industry_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     calendar_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)  # google, outlook
     external_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "idempotency_key",
+            name="uq_crm_appointments_company_idempotency",
+        ),
+    )
 
 
 class CRMNote(TimestampMixin, Base):

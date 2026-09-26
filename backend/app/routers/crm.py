@@ -7,7 +7,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -96,6 +96,7 @@ class CreateAppointmentRequest(BaseModel):
     price: float = 0.0
     notes: str | None = None
     industry_data: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, max_length=255)
 
 
 class UpdateAppointmentRequest(BaseModel):
@@ -301,10 +302,14 @@ def list_appointments(
 @router.post("/appointments", status_code=status.HTTP_201_CREATED)
 async def create_appointment(
     payload: CreateAppointmentRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    apt, error = await service.create_appointment(tenant.company_id, payload.model_dump())
+    data = payload.model_dump()
+    if idempotency_key and not data.get("idempotency_key"):
+        data["idempotency_key"] = idempotency_key
+    apt, error = await service.create_appointment(tenant.company_id, data)
     if error:
         raise HTTPException(status_code=400, detail=error)
     return {

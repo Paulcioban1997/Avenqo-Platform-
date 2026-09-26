@@ -67,6 +67,7 @@ class CreateAppointmentArgs(ToolArguments):
     duration_minutes: int = Field(default=60, description="Durée en minutes.")
     service_name: str | None = Field(default=None, description="Nom de la prestation.")
     notes: str | None = Field(default=None, description="Notes ou spécifications (ex: Véhicule, Plaque d'immatriculation).")
+    idempotency_key: str | None = Field(default=None, description="Clé stable de l'opération pour éviter les doublons lors d'une nouvelle tentative.")
 
 
 class UpdateAppointmentArgs(ToolArguments):
@@ -378,14 +379,9 @@ class CreateAppointmentTool(AITool):
             if matches:
                 client = matches[0]
             else:
-                # Auto-create new client on the fly if non-existent
-                parts = arguments.client_name_or_id.strip().split(maxsplit=1)
-                first = parts[0]
-                last = parts[1] if len(parts) > 1 else "Client"
-                client = self._crm.create_client(
-                    context.tenant.company_id,
-                    {"first_name": first, "last_name": last, "email": f"{first.lower()}.{last.lower()}@avenqo-guest.ca"},
-                    actor_name="IA Copilot",
+                return ToolResult(
+                    success=False,
+                    data={"error": "Client introuvable. Demandez les coordonnées du client avant de créer un rendez-vous."},
                 )
 
         if not client:
@@ -397,6 +393,7 @@ class CreateAppointmentTool(AITool):
             "start_time": start_dt,
             "duration_minutes": arguments.duration_minutes,
             "notes": arguments.notes,
+            "idempotency_key": arguments.idempotency_key or f"copilot:{context.request_id}",
         }
         apt, err = await self._crm.create_appointment(
             context.tenant.company_id, apt_data, actor_name="IA Copilot"

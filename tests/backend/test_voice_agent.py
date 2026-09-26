@@ -164,6 +164,35 @@ def test_unconfirmed_voice_booking_does_not_create_appointment(tmp_path) -> None
         engine.dispose()
 
 
+def test_retried_voice_booking_action_creates_one_appointment(tmp_path) -> None:
+    engine, session, company, config, _, service = _voice_database(tmp_path)
+    starts_at = (datetime.now(ZoneInfo("America/Toronto")) + timedelta(days=2)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    ).isoformat()
+    arguments = {
+        "confirmed": True,
+        "caller_name": "Alex Client",
+        "caller_phone": "+15145550123",
+        "service_name": "Consultation",
+        "starts_at": starts_at,
+    }
+    try:
+        first = asyncio.run(service.execute_tool(
+            config, "retell-retry-call", "same-booking-action", "book_appointment", arguments
+        ))
+        replay = asyncio.run(service.execute_tool(
+            config, "retell-retry-call", "same-booking-action", "book_appointment", arguments
+        ))
+        assert first["success"] is True
+        assert replay == first
+        assert session.scalar(select(func.count()).select_from(CRMAppointment).where(
+            CRMAppointment.company_id == company.id,
+        )) == 1
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_one_hundred_parallel_confirmed_calls_cannot_double_book(tmp_path) -> None:
     engine, session, company, config, _, service = _voice_database(tmp_path)
     start_time = (datetime.now(ZoneInfo("America/Toronto")) + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0).isoformat()

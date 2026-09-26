@@ -271,7 +271,12 @@ class VoiceOrchestrator:
             self.db.commit()
 
             try:
-                result = await self._dispatch_tool(config, call, tool_name, arguments)
+                result = await self._dispatch_tool(
+                    config,
+                    call,
+                    tool_name,
+                    {**arguments, "_action_id": action_id},
+                )
             except (ValueError, LookupError, PermissionError) as exc:
                 result = {"success": False, "error": str(exc)}
             action = self.db.scalar(
@@ -469,6 +474,7 @@ class VoiceOrchestrator:
                 "currency": crm_service.currency,
                 "status": "confirmed",
                 "notes": "Réservé via l'agent vocal Avenqo.",
+                "idempotency_key": f"voice:{config.company_id}:{call.id}:{args.get('_action_id') or call.id}",
             },
             actor_name="Avenqo Voice",
         )
