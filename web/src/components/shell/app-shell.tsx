@@ -38,6 +38,8 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { CommandPalette } from "./command-palette";
 import { AvenqoCopilot } from "./avenqo-copilot";
+import { CreditMeter } from "./credit-meter";
+import { creditBalanceViewModel } from "@/lib/credit-balance";
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -80,9 +82,6 @@ export function AppShell({ children }: AppShellProps) {
   // Dynamic AI credit meter state
   const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
   const [aiCreditsLimit, setAiCreditsLimit] = useState<number | null>(null);
-  const creditPercent = aiCreditsRemaining !== null && aiCreditsLimit
-    ? Math.min(100, Math.round((aiCreditsRemaining / aiCreditsLimit) * 100))
-    : 0;
 
   useEffect(() => {
     const refreshCredits = async () => {
@@ -93,8 +92,9 @@ export function AppShell({ children }: AppShellProps) {
       });
       if (!response.ok) return;
       const balance = await response.json();
-      setAiCreditsRemaining(balance.monthly_remaining ?? balance.total_remaining ?? null);
-      setAiCreditsLimit(balance.monthly_included ?? balance.monthly_allocation ?? null);
+      const view = creditBalanceViewModel(balance);
+      setAiCreditsRemaining(view.remaining);
+      setAiCreditsLimit(view.limit);
     };
     const handleCreditsUpdated = () => { void refreshCredits(); };
     window.addEventListener("avenqo:ai-credits-updated", handleCreditsUpdated);
@@ -550,34 +550,12 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Bottom of Sidebar: AI Credits Gauge + User Profile */}
           <div className="p-3 border-t border-slate-200/80 dark:border-white/[0.08] space-y-3 bg-slate-50/50 dark:bg-[#060B13]/40">
-            {/* AI Credits Consumption Meter */}
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] shadow-2xs">
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-[#F4F7FB]">
-                  <Sparkles className="w-3.5 h-3.5 text-[#0076FF]" />
-                  <span>{t.shell.aiCredits}</span>
-                </div>
-                <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-                  {creditPercent}%
-                </span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden mb-1.5">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#0076FF] to-[#00D4FF] transition-all duration-300"
-                  style={{ width: `${creditPercent}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-                <span>
-                  {aiCreditsRemaining === null || aiCreditsLimit === null
-                    ? "—"
-                    : `${aiCreditsRemaining.toLocaleString()} / ${aiCreditsLimit.toLocaleString()}`}
-                </span>
-                <Link href="/pricing" className="text-[#0076FF] hover:underline font-medium">
-                  {t.shell.upgradePlan}
-                </Link>
-              </div>
-            </div>
+            <CreditMeter
+              remaining={aiCreditsRemaining}
+              limit={aiCreditsLimit}
+              label={t.shell.aiCredits}
+              upgradeLabel={t.shell.upgradePlan}
+            />
 
             {/* User Profile */}
             <div className="flex items-center justify-between px-2 py-1.5">

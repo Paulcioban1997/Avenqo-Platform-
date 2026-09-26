@@ -27,6 +27,7 @@ import {
   Shield,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
@@ -473,10 +474,11 @@ export function BillingView() {
     }
   };
 
-  const monthlyAlloc = credits.monthly_allocation ?? credits.monthly_included ?? null;
-  const monthlyRem = credits.monthly_remaining ?? null;
-  const monthlyUsed = credits.monthly_used ?? null;
-  const totalAvail = credits.total_available ?? credits.total_remaining ?? null;
+  const creditView = creditBalanceViewModel(credits);
+  const monthlyAlloc = creditView.limit;
+  const monthlyRem = creditView.remaining;
+  const monthlyUsed = creditView.used;
+  const totalAvail = credits.total_available ?? creditView.remaining;
   const progressPercent = monthlyAlloc && monthlyUsed !== null
     ? Math.min(100, Math.round((monthlyUsed / monthlyAlloc) * 100))
     : 0;
