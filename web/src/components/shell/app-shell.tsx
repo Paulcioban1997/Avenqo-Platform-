@@ -78,10 +78,10 @@ export function AppShell({ children }: AppShellProps) {
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(2);
 
   // Dynamic AI credit meter state
-  const [aiCreditsUsed, setAiCreditsUsed] = useState<number | null>(null);
+  const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
   const [aiCreditsLimit, setAiCreditsLimit] = useState<number | null>(null);
-  const creditPercent = aiCreditsUsed !== null && aiCreditsLimit
-    ? Math.min(100, Math.round((aiCreditsUsed / aiCreditsLimit) * 100))
+  const creditPercent = aiCreditsRemaining !== null && aiCreditsLimit
+    ? Math.min(100, Math.round((aiCreditsRemaining / aiCreditsLimit) * 100))
     : 0;
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function AppShell({ children }: AppShellProps) {
       });
       if (!response.ok) return;
       const balance = await response.json();
-      setAiCreditsUsed(balance.monthly_used ?? null);
+      setAiCreditsRemaining(balance.monthly_remaining ?? balance.total_remaining ?? null);
       setAiCreditsLimit(balance.monthly_included ?? balance.monthly_allocation ?? null);
     };
     const handleCreditsUpdated = () => { void refreshCredits(); };
@@ -569,9 +569,9 @@ export function AppShell({ children }: AppShellProps) {
               </div>
               <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
                 <span>
-                  {aiCreditsUsed === null || aiCreditsLimit === null
+                  {aiCreditsRemaining === null || aiCreditsLimit === null
                     ? "—"
-                    : `${aiCreditsUsed.toLocaleString()} / ${aiCreditsLimit.toLocaleString()}`}
+                    : `${aiCreditsRemaining.toLocaleString()} / ${aiCreditsLimit.toLocaleString()}`}
                 </span>
                 <Link href="/pricing" className="text-[#0076FF] hover:underline font-medium">
                   {t.shell.upgradePlan}
@@ -636,7 +636,7 @@ export function AppShell({ children }: AppShellProps) {
           }`}
         >
           <LayoutDashboard size={18} />
-          <span>Dashboard</span>
+          <span>{t.navigation.dashboard}</span>
         </Link>
         <Link
           href="/retail"
@@ -645,7 +645,7 @@ export function AppShell({ children }: AppShellProps) {
           }`}
         >
           <ShoppingBag size={18} />
-          <span>Retail AI</span>
+          <span>{t.navigation.retailAi}</span>
         </Link>
         <button
           onClick={() => setIsCopilotOpen(true)}
@@ -654,7 +654,7 @@ export function AppShell({ children }: AppShellProps) {
           <div className="p-1.5 rounded-full bg-blue-50 dark:bg-[#172652] shadow-2xs">
             <Sparkles size={16} />
           </div>
-          <span>Copilot</span>
+          <span>{t.shell.copilotButton}</span>
         </button>
         <Link
           href="/integrations"
@@ -663,7 +663,7 @@ export function AppShell({ children }: AppShellProps) {
           }`}
         >
           <Plug size={18} />
-          <span>Connecteurs</span>
+          <span>{t.navigation.connections}</span>
         </Link>
         <button
           onClick={() => setIsSidebarOpen(true)}
