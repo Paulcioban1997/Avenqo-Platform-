@@ -220,9 +220,9 @@
     "priceLabel": "Harga sesuai permintaan",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Coba Avenqo dengan data Anda",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Akses terbatas waktu",
           "Data demo atau data Anda sendiri",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Untuk perusahaan yang ingin berkembang",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Semua modul inti",
           "Jumlah pengguna yang dapat diskalakan",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Pertanyaan yang sering diajukan",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Draf",
       "invoiceVoid": "Ruang kosong",
       "invoiceUncollectible": "Tidak dapat dikoleksi",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Paket Professional",
       "planEnterprise": "Paket perusahaan",
       "nextRenewal": "Pembaruan berikutnya: {date}",

@@ -1,0 +1,123 @@
+"""HTTP contracts for tenant-configured voice agents and Retell tools."""
+
+from __future__ import annotations
+
+from datetime import date, datetime, time as datetime_time
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class VoiceServiceConfig(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    duration_minutes: int = Field(ge=5, le=480)
+    price: float = Field(default=0, ge=0)
+    currency: str = Field(default="CAD", min_length=3, max_length=3)
+    crm_service_id: UUID | None = None
+
+
+class VoiceConfigRequest(BaseModel):
+    business_name: str = Field(min_length=1, max_length=255)
+    timezone_name: str = Field(default="America/Toronto", min_length=1, max_length=80)
+    opening_hours: dict[str, Any] = Field(default_factory=dict)
+    services: list[VoiceServiceConfig] = Field(min_length=1, max_length=100)
+    transfer_phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    telnyx_phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    preferred_language: str = Field(default="fr", pattern=r"^(fr|en)$")
+    retell_agent_id: str = Field(min_length=1, max_length=128)
+    retell_sip_uri: str = Field(pattern=r"^sips?:[^\s]+$")
+    enabled: bool = False
+
+    @field_validator("opening_hours")
+    @classmethod
+    def validate_opening_hours(cls, value: dict[str, Any]) -> dict[str, Any]:
+        valid_days = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+        if not set(value).issubset(valid_days):
+            raise ValueError("Opening-hours keys must be weekday names in English")
+        for day, hours in value.items():
+            if not isinstance(hours, dict) or not {"open", "close"}.issubset(hours):
+                raise ValueError(f"Opening hours for {day} must contain open and close times")
+            opened = datetime_time.fromisoformat(str(hours["open"]))
+            closed = datetime_time.fromisoformat(str(hours["close"]))
+            if opened >= closed:
+                raise ValueError(f"Opening time must precede closing time for {day}")
+        return value
+
+
+class VoiceConfigResponse(BaseModel):
+    id: UUID
+    business_name: str
+    timezone_name: str
+    opening_hours: dict[str, Any]
+    services: list[dict[str, Any]]
+    transfer_phone: str | None
+    telnyx_phone_number: str
+    preferred_language: str
+    greeting_message: str
+    retell_agent_id: str
+    retell_sip_uri: str
+    voice_api_key_last4: str
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceConfigCreatedResponse(VoiceConfigResponse):
+    voice_api_key: str
+
+
+class VoiceToolRequest(BaseModel):
+    call_id: str = Field(min_length=1, max_length=255)
+    action_id: str = Field(min_length=1, max_length=255)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class VoiceToolResponse(BaseModel):
+    success: bool
+    result: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class CheckAvailabilityArguments(BaseModel):
+    date: date
+    service_name: str = Field(min_length=1, max_length=200)
+
+
+class BookAppointmentArguments(BaseModel):
+    confirmed: bool = False
+    caller_name: str = Field(min_length=1, max_length=255)
+    caller_phone: str = Field(min_length=8, max_length=40)
+    service_name: str = Field(min_length=1, max_length=200)
+    starts_at: datetime
+
+
+class RescheduleAppointmentArguments(BaseModel):
+    confirmed: bool = False
+    appointment_id: UUID
+    starts_at: datetime
+
+
+class CancelAppointmentArguments(BaseModel):
+    confirmed: bool = False
+    appointment_id: UUID
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class TransferArguments(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class BusinessInfoArguments(BaseModel):
+    pass
+
+
+class TakeMessageArguments(BaseModel):
+    caller_name: str = Field(min_length=1, max_length=255)
+    caller_phone: str = Field(min_length=8, max_length=40)
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class RetellWebhookEnvelope(BaseModel):
+    event: str
+    call: dict[str, Any]

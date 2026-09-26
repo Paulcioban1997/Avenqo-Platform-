@@ -60,8 +60,10 @@ interface SubscriptionInfo {
   cancel_at_period_end?: boolean;
   plan_name?: string;
   monthly_price_usd?: number;
+  monthly_price?: number | null;
   billing_frequency?: string;
   currency?: string;
+  stripe_subscription_linked?: boolean;
   company_name?: string;
   payment_method?: PaymentMethodSummary | null;
 }
@@ -132,19 +134,12 @@ export function BillingView() {
     plan_code: "base",
     status: "inactive",
     plan_name: "Base",
-    monthly_price_usd: 29.99,
     billing_frequency: "monthly",
-    currency: "USD",
+    currency: "CAD",
+    stripe_subscription_linked: false,
   });
 
-  const [credits, setCredits] = useState<AICreditBalance>({
-    billing_period: "2026-09",
-    monthly_allocation: 6500,
-    monthly_remaining: 6500,
-    monthly_used: 0,
-    purchased_total_available: 0,
-    total_available: 6500,
-  });
+  const [credits, setCredits] = useState<AICreditBalance>({});
 
   const [breakdownPeriod, setBreakdownPeriod] = useState<string>("billing_period");
   const [breakdownItems, setBreakdownItems] = useState<AICreditBreakdownItem[]>([]);
@@ -264,6 +259,21 @@ export function BillingView() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const refreshCreditBalance = async () => {
+      try {
+        const response = await fetch("/api/v1/billing/ai-credits", {
+          headers: getAuthHeaders(),
+        });
+        if (response.ok) setCredits(await response.json());
+      } catch {
+        // Keep the last backend balance while temporarily offline.
+      }
+    };
+    window.addEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
+    return () => window.removeEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
+  }, []);
 
   useEffect(() => {
     loadBreakdown(breakdownPeriod);
@@ -463,12 +473,13 @@ export function BillingView() {
     }
   };
 
-  const monthlyAlloc = credits.monthly_allocation ?? credits.monthly_included ?? 6500;
-  const monthlyRem = credits.monthly_remaining ?? monthlyAlloc;
-  const monthlyUsed = credits.monthly_used ?? Math.max(0, monthlyAlloc - monthlyRem);
-  const purchasedRem = credits.purchased_total_available ?? credits.purchased_remaining ?? 0;
-  const totalAvail = credits.total_available ?? credits.total_remaining ?? (monthlyRem + purchasedRem);
-  const progressPercent = monthlyAlloc > 0 ? Math.min(100, Math.round((monthlyUsed / monthlyAlloc) * 100)) : 0;
+  const monthlyAlloc = credits.monthly_allocation ?? credits.monthly_included ?? null;
+  const monthlyRem = credits.monthly_remaining ?? null;
+  const monthlyUsed = credits.monthly_used ?? null;
+  const totalAvail = credits.total_available ?? credits.total_remaining ?? null;
+  const progressPercent = monthlyAlloc && monthlyUsed !== null
+    ? Math.min(100, Math.round((monthlyUsed / monthlyAlloc) * 100))
+    : 0;
 
   const totalHistoryPages = Math.ceil(historyTotal / historyPageSize) || 1;
 
@@ -545,7 +556,7 @@ export function BillingView() {
           <div>
             <div className="text-xs text-slate-400 dark:text-slate-500">Formule & Organisation</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
-              {subscription.plan_name || "Avenqo Professional"}
+              {subscription.plan_name || "Base"}
             </div>
             <div className="text-xs text-slate-500 dark:text-[#94A3B8] flex items-center gap-1 mt-1">
               <Building2 size={13} className="text-[#0076FF]" />
@@ -556,10 +567,14 @@ export function BillingView() {
           <div>
             <div className="text-xs text-slate-400 dark:text-slate-500">Tarification</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
-              ${(subscription.monthly_price_usd ?? 29.99).toFixed(2)} {subscription.currency || "USD"}
+              {subscription.plan_code === "enterprise"
+                ? "Sur devis"
+                : subscription.monthly_price !== null && subscription.monthly_price !== undefined
+                  ? new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(subscription.monthly_price)
+                  : "—"}
             </div>
             <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1 capitalize">
-              Facturation {subscription.billing_frequency === "annual" ? "annuelle" : "mensuelle"}
+              {subscription.plan_code === "enterprise" ? "" : "/ mois"}
             </div>
           </div>
 
@@ -568,13 +583,13 @@ export function BillingView() {
             <div className="text-sm font-bold text-slate-800 dark:text-[#F4F7FB] mt-1 flex items-center gap-1.5">
               <Calendar size={14} className="text-slate-400" />
               <span>
-                {subscription.current_period_end
+                {subscription.stripe_subscription_linked && subscription.current_period_end
                   ? new Date(subscription.current_period_end).toLocaleDateString(locale, {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
                     })
-                  : "Fin de période courante"}
+                  : t.shell.stripeNotLinked}
               </span>
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
@@ -694,7 +709,7 @@ export function BillingView() {
                 <span>Limite de 3 modules atteinte pour la formule Base</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                Passez à la formule Professional ($49.99 USD/mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
+                Passez à la formule Professional ({new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
               </p>
             </div>
             <button
@@ -768,7 +783,7 @@ export function BillingView() {
               Allocation mensuelle
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
-              {monthlyAlloc.toLocaleString()}
+              {monthlyAlloc?.toLocaleString() ?? "—"}
             </div>
           </div>
 
@@ -777,7 +792,7 @@ export function BillingView() {
               Crédits utilisés
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
-              {monthlyUsed.toLocaleString()}
+              {monthlyUsed?.toLocaleString() ?? "—"}
             </div>
           </div>
 
@@ -786,7 +801,7 @@ export function BillingView() {
               Crédits restants
             </div>
             <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1.5">
-              {monthlyRem.toLocaleString()}
+              {monthlyRem?.toLocaleString() ?? "—"}
             </div>
           </div>
 
@@ -795,7 +810,7 @@ export function BillingView() {
               Total disponible
             </div>
             <div className="text-xl font-extrabold text-[#0076FF] dark:text-[#00D4FF] mt-1.5">
-              {totalAvail.toLocaleString()}
+              {totalAvail?.toLocaleString() ?? "—"}
             </div>
           </div>
         </div>
@@ -810,7 +825,7 @@ export function BillingView() {
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 mt-2">
             <span>
-              {monthlyUsed.toLocaleString()} / {monthlyAlloc.toLocaleString()} utilisés
+              {monthlyUsed?.toLocaleString() ?? "—"} / {monthlyAlloc?.toLocaleString() ?? "—"} utilisés
             </span>
             <span className="font-bold text-slate-700 dark:text-slate-300">{progressPercent} %</span>
           </div>
@@ -1135,7 +1150,7 @@ export function BillingView() {
         </div>
       </div>
 
-      {/* MODAL 1: DEMO -> PROFESSIONAL UPGRADE */}
+      {/* MODAL 1: BASE -> PROFESSIONAL UPGRADE */}
       {isUpgradeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white dark:bg-[#0B132B] rounded-3xl border border-slate-200 dark:border-white/[0.1] max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative">
@@ -1163,7 +1178,7 @@ export function BillingView() {
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">Tarif officiel :</span>
-                <span className="text-base font-extrabold text-slate-900 dark:text-white">$49.99 USD / mois</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white">{new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">Fréquence :</span>
@@ -1274,7 +1289,16 @@ export function BillingView() {
                     Modules Métiers souhaités
                   </label>
                   <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08]">
-                    {["retail", "crm", "accounting", "marketing", "voice", "ocr", "automations", "agents"].map((mod) => (
+                    {([
+                      ["retail", t.navigation.retailAi],
+                      ["crm", t.navigation.crmAi],
+                      ["accounting", t.navigation.accountingAi],
+                      ["marketing", t.navigation.marketingAi],
+                      ["voice", t.navigation.voiceAi],
+                      ["ocr", t.navigation.ocrAi],
+                      ["automations", t.navigation.automations],
+                      ["agents", t.navigation.agentsAi],
+                    ] as const).map(([mod, label]) => (
                       <label key={mod} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
@@ -1290,7 +1314,7 @@ export function BillingView() {
                           }}
                           className="rounded border-slate-300 text-[#0076FF] focus:ring-[#0076FF]"
                         />
-                        <span className="capitalize text-slate-700 dark:text-slate-300">{mod} AI</span>
+                        <span className="text-slate-700 dark:text-slate-300">{label}</span>
                       </label>
                     ))}
                   </div>

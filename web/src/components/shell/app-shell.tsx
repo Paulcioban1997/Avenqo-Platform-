@@ -78,11 +78,27 @@ export function AppShell({ children }: AppShellProps) {
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(2);
 
   // Dynamic AI credit meter state
-  const [aiCreditsUsed, setAiCreditsUsed] = useState<number>(0);
-  const [aiCreditsLimit, setAiCreditsLimit] = useState<number>(6500);
-  const creditPercent = Math.min(100, Math.round((aiCreditsUsed / (aiCreditsLimit || 1)) * 100));
+  const [aiCreditsUsed, setAiCreditsUsed] = useState<number | null>(null);
+  const [aiCreditsLimit, setAiCreditsLimit] = useState<number | null>(null);
+  const creditPercent = aiCreditsUsed !== null && aiCreditsLimit
+    ? Math.min(100, Math.round((aiCreditsUsed / aiCreditsLimit) * 100))
+    : 0;
 
   useEffect(() => {
+    const refreshCredits = async () => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
+      if (!token) return;
+      const response = await fetch("/api/v1/billing/ai-credits", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const balance = await response.json();
+      setAiCreditsUsed(balance.monthly_used ?? null);
+      setAiCreditsLimit(balance.monthly_included ?? balance.monthly_allocation ?? null);
+    };
+    const handleCreditsUpdated = () => { void refreshCredits(); };
+    window.addEventListener("avenqo:ai-credits-updated", handleCreditsUpdated);
+    const refreshTimer = window.setInterval(handleCreditsUpdated, 30000);
     async function loadIdentity() {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
@@ -98,20 +114,12 @@ export function AppShell({ children }: AppShellProps) {
             setOrganizations(data.organizations);
           }
         }
-        const [credRes, connRes] = await Promise.all([
-          fetch("/api/v1/billing/ai-credits", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => null),
+        const [connRes] = await Promise.all([
           fetch("/api/v1/connectors/connections", {
             headers: { Authorization: `Bearer ${token}` },
           }).catch(() => null),
         ]);
-
-        if (credRes && credRes.ok) {
-          const credData = await credRes.json();
-          setAiCreditsUsed(credData.monthly_used || 0);
-          setAiCreditsLimit(credData.monthly_allocation || credData.total_available || 6500);
-        }
+        void refreshCredits();
 
         if (connRes && connRes.ok) {
           const conns = await connRes.json();
@@ -125,6 +133,10 @@ export function AppShell({ children }: AppShellProps) {
       } catch {}
     }
     loadIdentity();
+    return () => {
+      window.removeEventListener("avenqo:ai-credits-updated", handleCreditsUpdated);
+      window.clearInterval(refreshTimer);
+    };
   }, []);
 
   const handleSwitchTenant = async (org: OrganizationItem) => {
@@ -176,10 +188,10 @@ export function AppShell({ children }: AppShellProps) {
   ];
 
   const aiModules = [
-    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, badge: "AI" },
-    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, badge: "AI" },
-    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, badge: "AI" },
-    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, badge: "AI" },
+    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone },
+    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2 },
+    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan },
+    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare },
     { href: "/automations", label: t.navigation.automations, icon: Zap },
     { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: "Pro" },
   ];
@@ -556,7 +568,11 @@ export function AppShell({ children }: AppShellProps) {
                 />
               </div>
               <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-                <span>{aiCreditsUsed.toLocaleString()} / {aiCreditsLimit.toLocaleString()}</span>
+                <span>
+                  {aiCreditsUsed === null || aiCreditsLimit === null
+                    ? "—"
+                    : `${aiCreditsUsed.toLocaleString()} / ${aiCreditsLimit.toLocaleString()}`}
+                </span>
                 <Link href="/pricing" className="text-[#0076FF] hover:underline font-medium">
                   {t.shell.upgradePlan}
                 </Link>

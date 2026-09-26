@@ -220,9 +220,9 @@
     "priceLabel": "السعر عند الطلب",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "جرّب Avenqo مع بياناتك",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "وصول محدود لمدة زمنية",
           "بيانات تجريبية أو بياناتك الخاصة",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "للشركات التي تريد التوسع",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "جميع الوحدات الأساسية",
           "عدد مستخدمين قابل للتوسع",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "الأسئلة الشائعة",
@@ -933,7 +933,7 @@
       "invoiceDraft": "مسودة",
       "invoiceVoid": "فارغ",
       "invoiceUncollectible": "غير قابل للتحصيل",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "خطة Professional",
       "planEnterprise": "خطة المؤسسات",
       "nextRenewal": "التجديد التالي: {date}",

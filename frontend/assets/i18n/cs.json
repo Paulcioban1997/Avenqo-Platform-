@@ -220,9 +220,9 @@
     "priceLabel": "Cena bude upřesněna",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Chcete-li objevit Avenqo",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Přístup k Retail Intelligence",
           "Vestavěný asistent Avenqo",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Pro firmy, které chtějí jít dál",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Kompletní Retail Intelligence",
           "Pokročilé automatizace",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Často kladené otázky",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Koncept",
       "invoiceVoid": "Neplatn??",
       "invoiceUncollectible": "Nevymahateln??",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Tarif Professional",
       "planEnterprise": "Podnikový tarif",
       "nextRenewal": "Dal???? obnoven??: {date}",

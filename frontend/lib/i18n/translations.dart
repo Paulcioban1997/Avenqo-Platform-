@@ -311,6 +311,7 @@ class Phase4eStrings {
       'cancelConfirm': 'Schedule cancellation',
       'keepSubscription': 'Keep subscription',
       'effectiveEnd': 'Access ends on {date}',
+      'stripeNotLinked': 'Stripe subscription not linked',
       'invoicePeriod': '{start} to {end}',
       'viewInvoice': 'View invoices',
       'downloadPdf': 'Download PDF',
@@ -327,7 +328,7 @@ class Phase4eStrings {
       'invoiceDraft': 'Draft',
       'invoiceVoid': 'Void',
       'invoiceUncollectible': 'Uncollectible',
-      'planDemo': 'Demo',
+      'planDemo': 'Base',
       'planProfessional': 'Professional',
       'planEnterprise': 'Enterprise',
     },
@@ -379,7 +380,7 @@ class Phase4eStrings {
   });
 
   String planName(String plan) => switch (plan) {
-    'demo' => 'Demo',
+    'demo' || 'base' => billingValue('planDemo'),
     'professional' => 'Professional',
     'enterprise' || 'custom_enterprise' => 'Enterprise',
     _ => billingValue('statusUnknown'),

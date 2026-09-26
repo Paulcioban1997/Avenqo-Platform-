@@ -220,9 +220,9 @@
     "priceLabel": "מחיר לפי בקשה",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "נסו את Avenqo עם הנתונים שלכם",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "גישה מוגבלת בזמן",
           "נתוני דמו או נתונים שלכם",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "לחברות שרוצות לצמוח",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "כל המודולים המרכזיים",
           "מספר משתמשים ניתן להרחבה",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "שאלות נפוצות",
@@ -933,7 +933,7 @@
       "invoiceDraft": "טְיוּטָה",
       "invoiceVoid": "בָּטֵל",
       "invoiceUncollectible": "לא ניתן לאיסוף",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "תוכנית Professional",
       "planEnterprise": "תוכנית ארגונית",
       "nextRenewal": "החידוש הבא: {date}",

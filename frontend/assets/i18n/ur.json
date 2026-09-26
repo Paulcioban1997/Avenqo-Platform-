@@ -220,9 +220,9 @@
     "priceLabel": "درخواست پر قیمت",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "اپنے ڈیٹا کے ساتھ Avenqo آزمائیں",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "وقت کے ساتھ محدود رسائی",
           "ڈیمو یا اپنا ڈیٹا",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "ترقی چاہنے والی کمپنیوں کے لیے",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "تمام بنیادی ماڈیولز",
           "قابل توسیع صارف کی تعداد",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "اکثر پوچھے گئے سوالات",
@@ -933,7 +933,7 @@
       "invoiceDraft": "??????????",
       "invoiceVoid": "?????? ??????????",
       "invoiceUncollectible": "?????? ???????? ?????? ???? ????????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional منصوبہ",
       "planEnterprise": "کاروباری منصوبہ",
       "nextRenewal": "???????? ??????????: {date}",

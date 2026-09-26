@@ -61,6 +61,18 @@ interface CommerceConnectionItem {
   sync_inventory?: boolean;
 }
 
+interface RetailSourceItem {
+  source_type: "dataset" | "connector";
+  source_id: string;
+  dataset_id?: string | null;
+  connection_id?: string | null;
+  display_name: string;
+  provider?: string | null;
+  status: string;
+  enabled: boolean;
+  active?: boolean;
+}
+
 interface SyncLogItem {
   id: string;
   timestamp: string;
@@ -89,6 +101,7 @@ export function ConnectionsView() {
 
   // Connectors
   const [connections, setConnections] = useState<CommerceConnectionItem[]>([]);
+  const [retailSources, setRetailSources] = useState<RetailSourceItem[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncLogItem[]>([]);
 
   // Preview & Delete Modals
@@ -105,10 +118,11 @@ export function ConnectionsView() {
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [dsRes, connRes, syncRes] = await Promise.all([
+      const [dsRes, connRes, syncRes, sourceRes] = await Promise.all([
         fetch("/api/v1/datasets", { headers }).catch(() => null),
         fetch("/api/v1/connectors/connections", { headers }).catch(() => null),
         fetch("/api/v1/connectors/sync/history?limit=10", { headers }).catch(() => null),
+        fetch("/api/v1/retail/sources", { headers }).catch(() => null),
       ]);
 
       if (dsRes && dsRes.ok) {
@@ -131,12 +145,65 @@ export function ConnectionsView() {
           setSyncHistory(sData);
         }
       }
+      if (sourceRes && sourceRes.ok) {
+        const sourceData = await sourceRes.json();
+        if (Array.isArray(sourceData)) setRetailSources(sourceData);
+      }
     } catch {
       // keep existing state
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const setRetailSourceEnabled = async (source: RetailSourceItem, enabled: boolean) => {
+    setActionLoading(true);
+    setAlertError(null);
+    try {
+      const response = await fetch("/api/v1/retail/sources/enabled", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({
+          source_type: source.source_type,
+          source_id: source.source_id,
+          enabled,
+        }),
+      });
+      if (!response.ok) throw new Error("Impossible d'actualiser cette source.");
+      const persisted = (await response.json()) as RetailSourceItem;
+      setRetailSources((items) => items.map((item) =>
+        item.source_type === persisted.source_type && item.source_id === persisted.source_id
+          ? persisted
+          : item,
+      ));
+    } catch (error) {
+      setAlertError(error instanceof Error ? error.message : "Impossible d'actualiser cette source.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const selectRetailSource = async (source: RetailSourceItem) => {
+    setActionLoading(true);
+    setAlertError(null);
+    try {
+      const response = await fetch("/api/v1/retail/sources/active", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ source_type: source.source_type, source_id: source.source_id }),
+      });
+      if (!response.ok) throw new Error("Impossible de sélectionner cette source.");
+      const selected = (await response.json()) as RetailSourceItem;
+      setRetailSources((items) => items.map((item) => ({
+        ...item,
+        active: item.source_type === selected.source_type && item.source_id === selected.source_id,
+      })));
+    } catch (error) {
+      setAlertError(error instanceof Error ? error.message : "Impossible de sélectionner cette source.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -394,6 +461,66 @@ export function ConnectionsView() {
           </button>
         </div>
       )}
+
+      {/* Active tenant-owned Retail sources; state is read from and written to the API. */}
+      <section className="p-5 bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4" aria-labelledby="active-retail-sources">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 id="active-retail-sources" className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">{t.integrations.activeSources}</h2>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">{t.integrations.activeSourcesDescription}</p>
+          </div>
+          <button onClick={loadData} disabled={loading} aria-label="Actualiser les sources" className="p-2 text-slate-500 hover:text-[#0076FF] disabled:opacity-50">
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+        {retailSources.filter((source) => source.source_type === "dataset").length === 0 ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">{t.integrations.noUploadedRetailSources}</p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+            {retailSources.filter((source) => source.source_type === "dataset").map((source) => {
+              const dataset = datasets.find((item) => item.id === (source.dataset_id || source.source_id));
+              return (
+                <div key={`dataset:${source.source_id}`} className="flex items-center justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                      <Database size={15} className="shrink-0 text-[#0076FF]" />
+                      <span className="truncate">{dataset?.name || source.display_name}</span>
+                      <span className={`shrink-0 text-[10px] font-bold ${source.enabled ? "text-emerald-600" : "text-slate-400"}`}>
+                        {source.enabled ? t.integrations.sourceOn : t.integrations.sourceOff}
+                      </span>
+                    </div>
+                    <div className="ml-[23px] mt-1 text-[11px] text-slate-500">{t.integrations.uploadedRetailSource} · {source.status}</div>
+                  </div>
+                  {source.enabled && (source.active ? (
+                    <span className="shrink-0 text-[10px] font-bold text-[#0076FF]">{t.integrations.currentRetailSource}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => void selectRetailSource(source)}
+                      className="shrink-0 text-xs font-semibold text-[#0076FF] hover:underline disabled:opacity-50"
+                    >
+                      {t.integrations.selectSource}
+                    </button>
+                  ))}
+                  <label className="flex shrink-0 items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                    <span>{source.enabled ? t.integrations.sourceEnabled : t.integrations.sourceDisabled}</span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label={`Activer ${dataset?.name || source.display_name}`}
+                      checked={source.enabled}
+                      disabled={actionLoading || source.status !== "ready"}
+                      onChange={(event) => void setRetailSourceEnabled(source, event.target.checked)}
+                      className="h-4 w-4 accent-[#087CF0]"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Section A: Files from computer (Dropzone & Multi-upload) */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
@@ -706,18 +833,22 @@ export function ConnectionsView() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {connections.map((conn) => (
-              <div
+              (() => {
+                const source = retailSources.find((item) =>
+                  item.source_type === "connector" && item.connection_id === conn.id,
+                );
+                const connected = ["ready", "connected", "active", "completed"].includes(conn.status.toLowerCase());
+                return <div
                 key={conn.id}
                 className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06] space-y-3"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-xs text-slate-900 dark:text-white capitalize flex items-center gap-2">
                     <Store size={14} className="text-[#0076FF]" />
                     <span>{conn.provider} — {conn.store_name || conn.store_url || "Boutique"}</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span>Connecté</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${connected ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-200 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300"}`}>
+                    {connected ? t.integrations.statusConnected : conn.status}
                   </span>
                 </div>
 
@@ -726,11 +857,25 @@ export function ConnectionsView() {
                     Dernière synchro: {conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString(locale) : "Récente"}
                   </div>
                   <div className="text-right font-semibold text-slate-700 dark:text-slate-300">
-                    {conn.records_count || 0} enregistrements
+                    {conn.records_count || 0} {t.integrations.recordsCount}
                   </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
+                  {source && (
+                    <label className="mr-auto flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span>{source.enabled ? t.integrations.sourceEnabled : t.integrations.sourceDisabled}</span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        aria-label={`Activer ${conn.provider} ${conn.store_name || conn.store_url || ""}`}
+                        checked={source.enabled}
+                        disabled={actionLoading || !connected}
+                        onChange={(event) => void setRetailSourceEnabled(source, event.target.checked)}
+                        className="h-4 w-4 accent-[#087CF0]"
+                      />
+                    </label>
+                  )}
                   <button
                     onClick={() => handleTriggerSync(conn.id)}
                     disabled={actionLoading}
@@ -740,7 +885,8 @@ export function ConnectionsView() {
                     <span>Synchroniser</span>
                   </button>
                 </div>
-              </div>
+              </div>;
+              })()
             ))}
           </div>
         )}

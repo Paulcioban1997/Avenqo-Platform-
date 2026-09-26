@@ -220,9 +220,9 @@
     "priceLabel": "문의 시 가격 안내",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "귀사의 데이터로 Avenqo를 체험해보세요",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "기간 제한 액세스",
           "데모 또는 자체 데이터",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "성장을 원하는 기업을 위한 플랜",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "모든 핵심 모듈",
           "확장 가능한 사용자 수",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "자주 묻는 질문",
@@ -933,7 +933,7 @@
       "invoiceDraft": "??????",
       "invoiceVoid": "??????",
       "invoiceUncollectible": "?????? ??????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional 요금제",
       "planEnterprise": "기업 요금제",
       "nextRenewal": "?????? ??????: {date}",

@@ -173,7 +173,9 @@ void main() {
     await tester.tap(find.text('Données connectées'));
     await tester.pumpAndSettle();
 
-    final sourceSwitch = find.byType(Switch);
+    final sourceSwitch = find.byKey(
+      const ValueKey('active-source-dataset-11111111-1111-1111-1111-111111111111'),
+    );
     expect(sourceSwitch, findsOneWidget);
     await tester.tap(sourceSwitch);
     await tester.pumpAndSettle();
@@ -184,6 +186,70 @@ void main() {
       'enabled': true,
     });
     expect(tester.widget<Switch>(sourceSwitch).value, isTrue);
+  });
+
+  testWidgets('active sources let the user select another enabled dataset', (
+    tester,
+  ) async {
+    const firstId = '11111111-1111-1111-1111-111111111111';
+    const secondId = '22222222-2222-2222-2222-222222222222';
+    var activeId = firstId;
+    Map<String, dynamic> source(String id, String name) => {
+      'source_type': 'dataset',
+      'source_id': id,
+      'dataset_id': id,
+      'connection_id': null,
+      'display_name': name,
+      'provider': null,
+      'status': 'ready',
+      'active': activeId == id,
+      'enabled': true,
+    };
+    Map<String, dynamic>? selection;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' && request.url.path.endsWith('/datasets')) {
+        return http.Response(
+          '[{"id":"$firstId","name":"sales-a.csv","status":"ready","pipeline_status":"ready"},{"id":"$secondId","name":"sales-b.csv","status":"ready","pipeline_status":"ready"}]',
+          200,
+        );
+      }
+      if (request.method == 'GET' && request.url.path.endsWith('/retail/sources')) {
+        return http.Response(jsonEncode([source(firstId, 'sales-a.csv'), source(secondId, 'sales-b.csv')]), 200);
+      }
+      if (request.method == 'PUT' && request.url.path.endsWith('/retail/sources/active')) {
+        selection = jsonDecode(request.body) as Map<String, dynamic>;
+        activeId = selection!['source_id'] as String;
+        return http.Response(jsonEncode(source(activeId, 'sales-b.csv')), 200);
+      }
+      return http.Response('[]', 200);
+    });
+
+    await tester.pumpWidget(
+      await _wrapWithLocale(ConnectionsPage(api: _api(client))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('active-retail-sources-section')), findsOneWidget);
+    expect(find.text('sales-a.csv'), findsOneWidget);
+    expect(find.text('sales-b.csv'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('select-source-dataset:$secondId')));
+    await tester.pumpAndSettle();
+
+    expect(selection, {'source_type': 'dataset', 'source_id': secondId});
+    expect(tester.widget<Switch>(find.byKey(const ValueKey('active-source-dataset-$firstId'))).value, isTrue);
+    expect(tester.widget<Switch>(find.byKey(const ValueKey('active-source-dataset-$secondId'))).value, isTrue);
+    expect(
+      tester.widget<IconButton>(
+        find.byKey(const ValueKey('select-source-dataset:$secondId')),
+      ).icon is Icon,
+      isTrue,
+    );
+    expect(
+      (tester.widget<IconButton>(
+        find.byKey(const ValueKey('select-source-dataset:$secondId')),
+      ).icon as Icon).icon,
+      Icons.radio_button_checked,
+    );
   });
 
   testWidgets('A ready dataset exposes its cleaning detail dialog', (

@@ -220,9 +220,9 @@
     "priceLabel": "Хүсэлтээр үнэ",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Өөрийн өгөгдлөөрөө Avenqo-г туршиж үзээрэй",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Хугацаагаар хязгаарлагдсан хандалт",
           "Демо эсвэл өөрийн өгөгдөл",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Өсөхийг хүсдэг компаниудад",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Бүх үндсэн модуль",
           "Өргөтгөх боломжтой хэрэглэгчийн тоо",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Түгээмэл асуулт хариулт",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Ноорог",
       "invoiceVoid": "Хүчингүй",
       "invoiceUncollectible": "Цуглагдах боломжгүй",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional төлөвлөгөө",
       "planEnterprise": "Байгууллагын төлөвлөгөө",
       "nextRenewal": "Дараагийн шинэчлэлт: {date}",

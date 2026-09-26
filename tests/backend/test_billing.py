@@ -1,4 +1,5 @@
 ﻿from collections.abc import Generator
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,6 +23,7 @@ from backend.app.models import (
     TenantAICreditBalance,
     TenantAICreditLedgerEntry,
 )
+from backend.app.routers.billing import subscription_response
 from backend.app.ai.usage.service import AIUsageService
 from backend.app.services.stripe_gateway import CreditCheckoutSession, StripeGateway
 from backend.app.services.account_notifications import AccountNotificationService
@@ -67,6 +69,27 @@ class RecordingEmailTransport:
             "text_body": text_body,
             "html_body": html_body,
         })
+
+
+def test_subscription_response_hides_unlinked_period_and_uses_tenant_currency() -> None:
+    stale_period_end = datetime(2027, 9, 18, tzinfo=timezone.utc)
+    account = SimpleNamespace(
+        plan_code="base",
+        status="active",
+        stripe_subscription_id=None,
+        current_period_end=stale_period_end,
+        cancel_at_period_end=False,
+    )
+    company = SimpleNamespace(name="Produits_Ero", currency_code="CAD")
+
+    response = subscription_response(account, company)
+
+    assert response.plan_name == "Base"
+    assert response.monthly_price == 29.99
+    assert response.currency == "CAD"
+    assert response.stripe_subscription_linked is False
+    assert response.current_period_end is None
+    assert response.payment_method is None
 
 
 class FakeStripeProvider:

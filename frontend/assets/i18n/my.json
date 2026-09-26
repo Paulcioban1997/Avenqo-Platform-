@@ -220,9 +220,9 @@
     "priceLabel": "တောင်းဆိုမှုအလိုက် စျေးနှုန်း",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "သင့်ဒေတာဖြင့် Avenqo ကို စမ်းသုံးကြည့်ပါ",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "အချိန်ကန့်သတ် အသုံးပြုခွင့်",
           "သရုပ်ပြ သို့မဟုတ် ကိုယ်ပိုင်ဒေတာ",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "ကြီးထွားလိုသော ကုမ္ပဏီများအတွက်",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "အဓိကမော်ဂျူးအားလုံး",
           "တိုးချဲ့နိုင်သော အသုံးပြုသူဦးရေ",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "မကြာခဏမေးလေ့ရှိသော မေးခွန်းများ",
@@ -933,7 +933,7 @@
       "invoiceDraft": "အကြမ်း",
       "invoiceVoid": "ပျက်ပြယ်သည်။",
       "invoiceUncollectible": "မစုစည်းနိုင်သော",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional အစီအစဉ်",
       "planEnterprise": "လုပ်ငန်းအစီအစဉ်",
       "nextRenewal": "နောက်တစ်ခု သက်တမ်းတိုးခြင်း- {date}",

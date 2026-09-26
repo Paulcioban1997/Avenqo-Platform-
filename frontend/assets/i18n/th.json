@@ -220,9 +220,9 @@
     "priceLabel": "ราคาตามคำขอ",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "ลองใช้ Avenqo กับข้อมูลของคุณ",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "การเข้าถึงแบบจำกัดเวลา",
           "ข้อมูลสาธิตหรือข้อมูลของคุณเอง",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "สำหรับบริษัทที่ต้องการเติบโต",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "โมดูลหลักทั้งหมด",
           "จำนวนผู้ใช้ที่ปรับขนาดได้",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "คำถามที่พบบ่อย",
@@ -933,7 +933,7 @@
       "invoiceDraft": "ร่าง",
       "invoiceVoid": "เป็นโมฆะ",
       "invoiceUncollectible": "ไม่สามารถสะสมได้",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "แผน Professional",
       "planEnterprise": "แผนองค์กร",
       "nextRenewal": "การต่ออายุครั้งถัดไป: {date}",

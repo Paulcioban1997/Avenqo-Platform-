@@ -228,7 +228,9 @@ class _CompanyIdentityCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                '${planCode[0].toUpperCase()}${planCode.substring(1)}',
+                planCode.toLowerCase() == 'demo'
+                  ? 'Base'
+                  : '${planCode[0].toUpperCase()}${planCode.substring(1)}',
                 style: const TextStyle(color: _Brand.blue, fontWeight: FontWeight.w700, fontSize: 11),
               ),
             ),

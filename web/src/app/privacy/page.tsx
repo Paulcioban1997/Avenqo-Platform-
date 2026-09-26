@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
+import { SiteFooter } from "@/components/site-footer";
 import { Header } from "@/components/header";
 
 export const metadata: Metadata = {
@@ -114,39 +114,7 @@ export default function PrivacyPage() {
       </section>
 
       {/* Full Footer */}
-      <footer style={{ marginTop: "auto" }}>
-        <div className="page-shell footer-grid">
-          <div className="footer-brand">
-            <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} />
-            <p>Plateforme d&apos;intelligence d&apos;affaires par PMC Solutions AI</p>
-          </div>
-          <div>
-            <strong>Plateforme</strong>
-            <Link href="/#fonctionnalites">Fonctionnalités</Link>
-            <Link href="/#modules">Modules</Link>
-            <Link href="/pricing">Tarifs</Link>
-            <Link href="/#fonctionnement">Fonctionnement</Link>
-          </div>
-          <div>
-            <strong>Entreprise</strong>
-            <Link href="/#entreprise">Entreprise</Link>
-            <Link href="/contact">Contact & Démo</Link>
-            <Link href="/#securite">Sécurité</Link>
-            <Link href="/pricing">Tarifs</Link>
-          </div>
-          <div>
-            <strong>Ressources</strong>
-            <Link href="/docs">Documentation</Link>
-            <Link href="/#faq">FAQ</Link>
-            <Link href="/privacy">Confidentialité</Link>
-            <Link href="/terms">Conditions</Link>
-          </div>
-        </div>
-        <div className="page-shell footer-bottom">
-          <span>© 2026 PMC Solutions AI Inc. Tous droits réservés.</span>
-          <a href="https://avenqo.ca">avenqo.ca</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

@@ -240,7 +240,7 @@ class _BillingPageState extends State<BillingPage> {
         final data = snapshot.data;
         final subscription = data?.subscription;
         final invoices = data?.invoices ?? const [];
-        final planCode = subscription?['plan_code']?.toString() ?? 'demo';
+        final planCode = subscription?['plan_code']?.toString() ?? 'base';
         final billingStatus =
             subscription?['status']?.toString().toLowerCase() ?? 'inactive';
         final localeCode = intlLocaleCode(AvenqoLocaleScope.of(context).code);
@@ -258,6 +258,7 @@ class _BillingPageState extends State<BillingPage> {
         // self-service peuvent déclencher Checkout. Enterprise et toute future
         // offre commerciale restent donc protégées même si leur code change.
         final isSelfServicePlan = const {
+          'base',
           'demo',
           'professional',
         }.contains(planCode);
@@ -351,6 +352,11 @@ class _BillingPageState extends State<BillingPage> {
                     DateFormat.yMMMd(localeCode).format(currentPeriodEnd.toLocal()),
                   ),
                 ),
+              ],
+              if (const {'active', 'trialing'}.contains(billingStatus) &&
+                  currentPeriodEnd == null) ...[
+                const SizedBox(height: 8),
+                Text('Stripe · ${t.connectorHub['disconnected'] ?? billingStatus}'),
               ],
               const SizedBox(height: 20),
               _CreditWallet(

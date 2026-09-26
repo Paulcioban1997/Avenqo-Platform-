@@ -220,9 +220,9 @@
     "priceLabel": "ფასი მოთხოვნით",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "სცადეთ Avenqo თქვენი მონაცემებით",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "შეზღუდული დროით წვდომა",
           "სადემონსტრაციო ან საკუთარი მონაცემები",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "იმ კომპანიებისთვის, ვინც სურს გაფართოება",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "ყველა ძირითადი მოდული",
           "მასშტაბირებადი მომხმარებელთა რაოდენობა",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "ხშირად დასმული კითხვები",
@@ -933,7 +933,7 @@
       "invoiceDraft": "პროექტი",
       "invoiceVoid": "ბათილად",
       "invoiceUncollectible": "შეუგროვებელი",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional გეგმა",
       "planEnterprise": "საწარმოს გეგმა",
       "nextRenewal": "შემდეგი განახლება: {date}",

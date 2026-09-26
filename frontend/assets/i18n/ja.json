@@ -220,9 +220,9 @@
     "priceLabel": "お問い合わせください",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "ご自身のデータでAvenqoを試す",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "期間限定アクセス",
           "デモデータまたは独自データ",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "成長を目指す企業向け",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "すべてのコアモジュール",
           "拡張可能なユーザー数",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "よくある質問",
@@ -933,7 +933,7 @@
       "invoiceDraft": "????????????",
       "invoiceVoid": "??????",
       "invoiceUncollectible": "????????????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional プラン",
       "planEnterprise": "法人プラン",
       "nextRenewal": "???????????????{date}",

@@ -208,6 +208,13 @@ class Settings(BaseSettings):
         default=False,
         alias="WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST",
     )
+    telnyx_api_key: str | None = Field(default=None, alias="TELNYX_API_KEY")
+    telnyx_public_key: str | None = Field(default=None, alias="TELNYX_PUBLIC_KEY")
+    telnyx_messaging_profile_id: str | None = Field(default=None, alias="TELNYX_MESSAGING_PROFILE_ID")
+    retell_api_key: str | None = Field(default=None, alias="RETELL_API_KEY")
+    retell_api_base_url: str = Field(default="https://api.retellai.com", alias="RETELL_API_BASE_URL")
+    retell_sip_domain: str = Field(default="sip.retellai.com", alias="RETELL_SIP_DOMAIN")
+    telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")
     google_calendar_redirect_uri: str | None = Field(default=None, alias="GOOGLE_CALENDAR_REDIRECT_URI")
@@ -260,6 +267,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
     rate_limit_auth_per_minute: int = Field(default=10, ge=1, alias="RATE_LIMIT_AUTH_PER_MINUTE")
     rate_limit_ai_per_minute: int = Field(default=30, ge=1, alias="RATE_LIMIT_AI_PER_MINUTE")
+    rate_limit_webhook_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_WEBHOOK_PER_MINUTE")
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")

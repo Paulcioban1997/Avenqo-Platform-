@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { Header } from "@/components/header";
+import { SiteFooter } from "@/components/site-footer";
 
 export const metadata: Metadata = {
   title: "Conditions d'utilisation",
@@ -54,7 +54,7 @@ export default function TermsPage() {
               <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: 8 }}>3. Forfaits, période d&apos;essai et facturation</h2>
               <ul style={{ listStyleType: "disc", paddingLeft: 24, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                 <li><strong>Période d&apos;essai gratuit :</strong> Sauf disposition contractuelle contraire, l&apos;inscription inclut un essai d&apos;évaluation de 14 jours avec crédits IA initiaux, sans obligation d&apos;enregistrement de carte de crédit.</li>
-                <li><strong>Tarification des abonnements :</strong> Les offres récurrentes (Demo à $28 USD/mois pour 3 modules et 6 500 crédits IA ; Professional à $49 USD/mois pour 6 modules et 25 000 crédits IA) sont facturées d&apos;avance mensuellement via le processeur de paiement Stripe. Les conversions bancaires vers d&apos;autres devises (notamment CAD) sont gérées automatiquement par l&apos;institution financière de l&apos;acheteur.</li>
+                <li><strong>Tarification des abonnements :</strong> Les offres récurrentes (Base à 29,99 $ USD/mois pour 3 modules et 6 500 crédits IA ; Professional à 49,99 $ USD/mois pour 6 modules et 25 000 crédits IA) sont facturées d&apos;avance mensuellement via le processeur de paiement Stripe. Les conversions bancaires vers d&apos;autres devises (notamment CAD) sont gérées automatiquement par l&apos;institution financière de l&apos;acheteur.</li>
                 <li><strong>Formule Entreprise :</strong> Les déploiements Enterprise font l&apos;objet d&apos;un bon de commande dédié précisant le périmètre des modules, les quotas de crédits IA et les niveaux de service personnalisés.</li>
                 <li><strong>Recharges de crédits IA :</strong> L&apos;utilisation des agents IA est régie par un solde de crédits. Des recharges peuvent être ajoutées au forfait en cours de cycle.</li>
               </ul>
@@ -90,40 +90,7 @@ export default function TermsPage() {
         </div>
       </section>
 
-      {/* Full Footer */}
-      <footer style={{ marginTop: "auto" }}>
-        <div className="page-shell footer-grid">
-          <div className="footer-brand">
-            <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} />
-            <p>Plateforme d&apos;intelligence d&apos;affaires par PMC Solutions AI</p>
-          </div>
-          <div>
-            <strong>Plateforme</strong>
-            <Link href="/#fonctionnalites">Fonctionnalités</Link>
-            <Link href="/#modules">Modules</Link>
-            <Link href="/pricing">Tarifs</Link>
-            <Link href="/#fonctionnement">Fonctionnement</Link>
-          </div>
-          <div>
-            <strong>Entreprise</strong>
-            <Link href="/#entreprise">Entreprise</Link>
-            <Link href="/contact">Contact & Démo</Link>
-            <Link href="/#securite">Sécurité</Link>
-            <Link href="/pricing">Tarifs</Link>
-          </div>
-          <div>
-            <strong>Ressources</strong>
-            <Link href="/docs">Documentation</Link>
-            <Link href="/#faq">FAQ</Link>
-            <Link href="/privacy">Confidentialité</Link>
-            <Link href="/terms">Conditions</Link>
-          </div>
-        </div>
-        <div className="page-shell footer-bottom">
-          <span>© 2026 PMC Solutions AI Inc. Tous droits réservés.</span>
-          <a href="https://avenqo.ca">avenqo.ca</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

@@ -60,7 +60,8 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
     price = plan_obj.monthly_price_usd if plan_obj else 49
     comp_name = company.name if company else None
-    pm = PaymentMethodSummary() if account.status in {"active", "trialing"} else None
+    stripe_linked = bool(account.stripe_subscription_id)
+    pm = PaymentMethodSummary() if stripe_linked and account.status in {"active", "trialing"} else None
     return SubscriptionResponse(
         plan_code=account.plan_code,
         status=(
@@ -68,12 +69,14 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
             if account.cancel_at_period_end and account.status in {"active", "trialing"}
             else account.status
         ),
-        current_period_end=account.current_period_end,
+        current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
         monthly_price_usd=price,
+        monthly_price=price,
         billing_frequency="monthly",
-        currency="USD",
+        currency=(company.currency_code or "USD").upper() if company else "USD",
+        stripe_subscription_linked=stripe_linked,
         company_name=comp_name,
         payment_method=pm,
     )
@@ -99,6 +102,8 @@ def plans() -> list[PlanResponse]:
         name=plan.name,
         requires_sales_contact=plan.requires_sales_contact,
         monthly_price_usd=plan.monthly_price_usd,
+        monthly_price=plan.monthly_price_usd,
+        currency="CAD",
     ) for plan in PLANS]
 
 
@@ -121,8 +126,10 @@ def subscription(
             cancel_at_period_end=False,
             plan_name=plan_obj.name if plan_obj else identity.user.company.subscription_plan.capitalize(),
             monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else 0,
+            monthly_price=plan_obj.monthly_price_usd if plan_obj else 0,
             billing_frequency="monthly",
-            currency="USD",
+            currency=(identity.user.company.currency_code or "USD").upper(),
+            stripe_subscription_linked=False,
             company_name=identity.user.company.name,
             payment_method=None,
         )

@@ -346,6 +346,22 @@ class _DashboardPageState extends State<DashboardPage> {
                     color: colors.ink,
                   ),
                 ),
+                if (!loading && _periodKey != 'all' &&
+                    ((data.kpis.cast<Map<String, dynamic>?>().firstWhere(
+                              (item) => item?['key'] == 'orders',
+                              orElse: () => null,
+                            )?['value'] as num?) ?? 0) == 0) ...[
+                  const SizedBox(height: 8),
+                  _DashboardMessage(
+                    icon: Icons.info_outline,
+                    message: '${companyT.analyticsUnavailable} · ${switch (_periodKey) {
+                      'last_7_days' => periodT.period7Days,
+                      'last_30_days' => periodT.period30Days,
+                      'current_quarter' => periodT.periodQuarter,
+                      _ => periodT.period30Days,
+                    }}',
+                  ),
+                ],
                 const SizedBox(height: 12),
                 GridView.count(
                   crossAxisCount: wide

@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Header } from "@/components/header";
-import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
+import { SiteFooter } from "@/components/site-footer";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { BookOpen, Shield, Cpu, Layers, Database, ArrowRight, CheckCircle2, HelpCircle } from "lucide-react";
 
 export default function DocsPage() {
   const { locale } = useLocale();
   const isEn = locale === "en";
-  const t = useTranslations();
 
   const sections = [
     {
@@ -37,8 +36,8 @@ export default function DocsPage() {
       icon: Cpu,
       title: isEn ? "4. AI Credits & Usage Quotas" : "4. Crédits IA & Quotas d'utilisation",
       desc: isEn
-        ? "Every subscription tier includes an AI credit allowance (6,500 credits for Demo, 25,000 credits for Professional, custom for Enterprise). Credits power model inference, predictive forecasting, and autonomous workflow actions."
-        : "Chaque formule comprend un volume mensuel de crédits IA (6 500 crédits en Demo, 25 000 crédits en Professional, sur mesure en Enterprise). Ces crédits alimentent l'inférence des modèles, les prédictions et les actions automatisées.",
+        ? "Every subscription tier includes an AI credit allowance (6,500 credits for Base, 25,000 credits for Professional, custom for Enterprise). Credits power model inference, predictive forecasting, and autonomous workflow actions."
+        : "Chaque formule comprend un volume mensuel de crédits IA (6 500 crédits en Base, 25 000 crédits en Professional, sur mesure en Enterprise). Ces crédits alimentent l'inférence des modèles, les prédictions et les actions automatisées.",
     },
     {
       icon: Shield,
@@ -135,40 +134,7 @@ export default function DocsPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer style={{ marginTop: "auto" }}>
-        <div className="page-shell footer-grid">
-          <div className="footer-brand">
-            <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} />
-            <p>{t.footer.tagline}</p>
-          </div>
-          <div>
-            <strong>{t.footer.platformTitle}</strong>
-            <Link href="/#fonctionnalites">{t.nav.features}</Link>
-            <Link href="/#modules">{t.nav.modules}</Link>
-            <Link href="/pricing">{t.nav.pricing}</Link>
-            <Link href="/#fonctionnement">{isEn ? "How it works" : "Fonctionnement"}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.companyTitle}</strong>
-            <Link href="/#entreprise">{t.nav.enterprise}</Link>
-            <Link href="/contact">{isEn ? "Contact & Demo" : "Contact & Démo"}</Link>
-            <Link href="/#securite">{isEn ? "Security" : "Sécurité"}</Link>
-            <Link href="/pricing">{t.nav.pricing}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.resourcesTitle}</strong>
-            <Link href="/docs">{t.nav.docs}</Link>
-            <Link href="/#faq">FAQ</Link>
-            <Link href="/privacy">{isEn ? "Privacy Policy" : "Confidentialité"}</Link>
-            <Link href="/terms">{isEn ? "Terms of Service" : "Conditions"}</Link>
-          </div>
-        </div>
-        <div className="page-shell footer-bottom">
-          <span>{t.footer.copyright}</span>
-          <a href="https://avenqo.ca">avenqo.ca</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

@@ -220,9 +220,9 @@
     "priceLabel": "قیمت بر اساس درخواست",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Avenqo را با داده‌های خود امتحان کنید",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "دسترسی محدود زمانی",
           "داده‌های نمایشی یا داده‌های خودتان",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "برای شرکت‌هایی که می‌خواهند رشد کنند",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "همه ماژول‌های اصلی",
           "تعداد کاربران مقیاس‌پذیر",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "سوالات متداول",
@@ -933,7 +933,7 @@
       "invoiceDraft": "پیش نویس",
       "invoiceVoid": "باطل",
       "invoiceUncollectible": "غیر قابل جمع آوری",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "طرح Professional",
       "planEnterprise": "طرح سازمانی",
       "nextRenewal": "تمدید بعدی: {date}",

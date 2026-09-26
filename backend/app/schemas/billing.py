@@ -11,6 +11,8 @@ class PlanResponse(BaseModel):
     name: str
     requires_sales_contact: bool
     monthly_price_usd: float | int | None
+    monthly_price: float | int | None = None
+    currency: str = "CAD"
 
 
 class CheckoutRequest(BaseModel):
@@ -63,8 +65,10 @@ class SubscriptionResponse(BaseModel):
     cancel_at_period_end: bool
     plan_name: str | None = None
     monthly_price_usd: float | int | None = None
+    monthly_price: float | int | None = None
     billing_frequency: str | None = "monthly"
     currency: str | None = "USD"
+    stripe_subscription_linked: bool = False
     company_name: str | None = None
     payment_method: PaymentMethodSummary | None = None
 

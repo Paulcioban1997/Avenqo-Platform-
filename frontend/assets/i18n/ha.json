@@ -220,9 +220,9 @@
     "priceLabel": "Farashi bisa buƙata",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Gwada Avenqo tare da bayananku",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Shiga na ɗan lokaci",
           "Bayanan gwaji ko naku",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Don kamfanonin da suke son girma",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Duk manyan modules",
           "Adadin masu amfani mai iya girma",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Tambayoyin da ake yawan yi",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Daftarin aiki",
       "invoiceVoid": "Babu komai",
       "invoiceUncollectible": "Ba za a iya tarawa ba",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Shirin Professional",
       "planEnterprise": "Shirin kamfani",
       "nextRenewal": "Sabuntawa na gaba: {date}",

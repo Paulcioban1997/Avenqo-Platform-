@@ -220,9 +220,9 @@
     "priceLabel": "តម្លៃតាមការស្នើសុំ",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "សាកល្បង Avenqo ជាមួយទិន្នន័យរបស់អ្នក",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "ការចូលប្រើមានកំណត់ពេលវេលា",
           "ទិន្នន័យសាកល្បង ឬផ្ទាល់ខ្លួន",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "សម្រាប់ក្រុមហ៊ុនដែលចង់រីកចម្រើន",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "ម៉ូឌុលស្នូលទាំងអស់",
           "ចំនួនអ្នកប្រើប្រាស់អាចពង្រីកបាន",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "សំណួរដែលសួរញឹកញាប់",
@@ -933,7 +933,7 @@
       "invoiceDraft": "សេចក្តីព្រាង",
       "invoiceVoid": "មោឃៈ",
       "invoiceUncollectible": "មិនអាចប្រមូលបាន។",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "គម្រោង Professional",
       "planEnterprise": "គម្រោងសហគ្រាស",
       "nextRenewal": "ការបន្តបន្ទាប់៖ {date}",

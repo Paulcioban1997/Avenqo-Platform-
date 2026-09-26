@@ -220,9 +220,9 @@
     "priceLabel": "Precio por confirmar",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Para descubrir Avenqo",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Acceso a Retail Intelligence",
           "Asistente Avenqo integrado",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Para empresas que quieren ir más lejos",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Retail Intelligence completo",
           "Automatizaciones avanzadas",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Preguntas frecuentes",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Borrador",
       "invoiceVoid": "Anulada",
       "invoiceUncollectible": "Incobrable",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Plan Profesional",
       "planEnterprise": "Plan Empresarial",
       "nextRenewal": "Próxima renovación: {date}",

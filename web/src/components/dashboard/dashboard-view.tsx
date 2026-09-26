@@ -303,6 +303,12 @@ export function DashboardView({
         )}
       </div>
 
+      {!isLoading && dateRange !== "all" && (kpis.orders?.value ?? 0) === 0 && (
+        <div role="status" className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          {t.dashboard.noTransactionsForPeriod.replace("{period}", periodLabel)}
+        </div>
+      )}
+
       {/* Main Charts & Avenqo AI Insight Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Combined Trend Chart */}
@@ -372,10 +378,8 @@ export function DashboardView({
               </div>
             ) : (
               <EmptyState
-                title="Aucune transaction à afficher"
-                description="Synchronisez un connecteur e-commerce (WooCommerce, Shopify) pour tracer la courbe consolidée de vos ventes réelles."
-                actionLabel="Gérer les intégrations"
-                onAction={() => (window.location.href = "/integrations")}
+                title={t.dashboard.noTransactionsForPeriod.replace("{period}", periodLabel)}
+                description={t.dashboard.aiInsightInsufficient}
                 className="py-10"
               />
             )}

@@ -220,9 +220,9 @@
     "priceLabel": "Preț de confirmat",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Pentru a descoperi Avenqo",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Acces la Retail Intelligence",
           "Asistent Avenqo integrat",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Pentru companii care vor să meargă mai departe",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Retail Intelligence complet",
           "Automatizări avansate",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Întrebări frecvente",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Ciornă",
       "invoiceVoid": "Anulată",
       "invoiceUncollectible": "Neîncasabilă",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Plan Professional",
       "planEnterprise": "Plan Enterprise",
       "nextRenewal": "Următoarea reînnoire: {date}",

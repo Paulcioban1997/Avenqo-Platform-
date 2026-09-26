@@ -133,6 +133,7 @@ export function AvenqoCopilot({
 
       if (res.ok) {
         const data = await res.json();
+        window.dispatchEvent(new Event("avenqo:ai-credits-updated"));
         const copilotMsg: ChatMessage = {
           id: `c-${Date.now()}`,
           sender: "copilot",
@@ -186,7 +187,7 @@ export function AvenqoCopilot({
                 {t.copilot.title}
               </h2>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-[#0076FF]/15 dark:text-[#00D4FF] border border-blue-200 dark:border-[#0076FF]/30">
-                AI v2.4
+                v2.4
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#94A3B8] flex items-center gap-1">

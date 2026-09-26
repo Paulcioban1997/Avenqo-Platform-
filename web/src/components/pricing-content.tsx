@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, ShieldCheck, Zap, Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
+import { SiteFooter } from "@/components/site-footer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
 
 export function PricingContent() {
@@ -40,7 +40,7 @@ export function PricingContent() {
       credits: isFr ? "Crédits IA sur mesure" : "Custom AI credit volume",
       creditExtra: isFr ? "Tous modules illimités • SLA dédié" : "All unlimited modules • Dedicated SLA",
       actionHref: "/contact",
-      actionText: isFr ? "Contacter les ventes" : "Contact sales",
+      actionText: isFr ? "Demander un devis" : "Request a quote",
       featured: false,
     },
   ];
@@ -204,39 +204,7 @@ export function PricingContent() {
         </div>
       </section>
 
-      <footer>
-        <div className="page-shell footer-grid">
-          <div className="footer-brand">
-            <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} />
-            <p>{t.footer.tagline}</p>
-          </div>
-          <div>
-            <strong>{t.footer.platformTitle}</strong>
-            <Link href="/#fonctionnalites">{t.nav.features}</Link>
-            <Link href="/#modules">{t.nav.modules}</Link>
-            <Link href="/pricing">{t.nav.pricing}</Link>
-            <Link href="/#fonctionnement">{isFr ? "Fonctionnement" : "How it works"}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.companyTitle}</strong>
-            <Link href="/#entreprise">{t.nav.enterprise}</Link>
-            <Link href="/contact">{isFr ? "Contact & Démo" : "Contact & Demo"}</Link>
-            <Link href="/#securite">{isFr ? "Sécurité" : "Security"}</Link>
-            <Link href="/pricing">{t.nav.pricing}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.resourcesTitle}</strong>
-            <Link href="/docs">{t.nav.docs}</Link>
-            <Link href="/#faq">FAQ</Link>
-            <Link href="/privacy">{isFr ? "Confidentialité" : "Privacy Policy"}</Link>
-            <Link href="/terms">{isFr ? "Conditions" : "Terms of Service"}</Link>
-          </div>
-        </div>
-        <div className="page-shell footer-bottom">
-          <span>{t.footer.copyright}</span>
-          <a href="https://avenqo.ca">avenqo.ca</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

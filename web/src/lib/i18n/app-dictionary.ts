@@ -42,6 +42,7 @@ export type AppTranslations = {
     signOut: string;
     company: string;
     role: string;
+    stripeNotLinked: string;
     collapseSidebar: string;
     expandSidebar: string;
   };
@@ -92,6 +93,7 @@ export type AppTranslations = {
     dateRange30d: string;
     dateRangeQuarter: string;
     dateRangeCustom: string;
+    noTransactionsForPeriod: string;
     revenue: string;
     orders: string;
     customers: string;
@@ -147,6 +149,16 @@ export type AppTranslations = {
     statusSyncing: string;
     statusNeedsAttention: string;
     statusDisconnected: string;
+    activeSources: string;
+    activeSourcesDescription: string;
+    uploadedRetailSource: string;
+    sourceEnabled: string;
+    sourceDisabled: string;
+    sourceOn: string;
+    sourceOff: string;
+    selectSource: string;
+    currentRetailSource: string;
+    noUploadedRetailSources: string;
     drawerTitle: string;
     drawerLogsTitle: string;
     noLogs: string;
@@ -284,6 +296,7 @@ const frApp: AppTranslations = {
     signOut: "Déconnexion",
     company: "Entreprise",
     role: "Rôle",
+    stripeNotLinked: "Abonnement Stripe non lié",
     collapseSidebar: "Réduire le menu",
     expandSidebar: "Agrandir le menu",
   },
@@ -334,6 +347,7 @@ const frApp: AppTranslations = {
     dateRange30d: "30 derniers jours",
     dateRangeQuarter: "Ce trimestre",
     dateRangeCustom: "Plage personnalisée",
+    noTransactionsForPeriod: "Aucune transaction dans la période sélectionnée : {period}.",
     revenue: "Chiffre d'affaires",
     orders: "Commandes",
     customers: "Clients actifs",
@@ -389,6 +403,16 @@ const frApp: AppTranslations = {
     statusSyncing: "En cours",
     statusNeedsAttention: "Attention requise",
     statusDisconnected: "Déconnecté",
+    activeSources: "Sources de données actives",
+    activeSourcesDescription: "Fichiers importés et boutiques qui alimentent Retail. Désactiver une source ne la supprime pas.",
+    uploadedRetailSource: "Fichier importé",
+    sourceEnabled: "Activée",
+    sourceDisabled: "Désactivée",
+    sourceOn: "Connecté · ON",
+    sourceOff: "Connecté · OFF",
+    selectSource: "Utiliser cette source",
+    currentRetailSource: "Source courante",
+    noUploadedRetailSources: "Aucun fichier de vente prêt n’est connecté à Retail.",
     drawerTitle: "Configuration & Synchronisation Manuelle",
     drawerLogsTitle: "Journal d'audit de synchronisation",
     noLogs: "Aucune synchronisation récente enregistrée.",
@@ -526,6 +550,7 @@ const enApp: AppTranslations = {
     signOut: "Sign out",
     company: "Company",
     role: "Role",
+    stripeNotLinked: "Stripe subscription not linked",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Expand sidebar",
   },
@@ -576,6 +601,7 @@ const enApp: AppTranslations = {
     dateRange30d: "Last 30 days",
     dateRangeQuarter: "This quarter",
     dateRangeCustom: "Custom range",
+    noTransactionsForPeriod: "No transactions in the selected period: {period}.",
     revenue: "Gross Revenue",
     orders: "Total Orders",
     customers: "Active Customers",
@@ -631,6 +657,16 @@ const enApp: AppTranslations = {
     statusSyncing: "Syncing",
     statusNeedsAttention: "Needs Attention",
     statusDisconnected: "Disconnected",
+    activeSources: "Active data sources",
+    activeSourcesDescription: "Uploaded files and stores powering Retail. Turning a source off does not delete it.",
+    uploadedRetailSource: "Uploaded file",
+    sourceEnabled: "Enabled",
+    sourceDisabled: "Disabled",
+    sourceOn: "Connected · ON",
+    sourceOff: "Connected · OFF",
+    selectSource: "Use this source",
+    currentRetailSource: "Current source",
+    noUploadedRetailSources: "No ready sales files are connected to Retail.",
     drawerTitle: "Manual Sync & Connector Settings",
     drawerLogsTitle: "Sync Audit Log",
     noLogs: "No recent synchronization entries recorded.",

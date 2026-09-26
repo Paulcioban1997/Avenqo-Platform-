@@ -220,9 +220,9 @@
     "priceLabel": "ਬੇਨਤੀ 'ਤੇ ਕੀਮਤ",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "ਆਪਣੇ ਡਾਟੇ ਨਾਲ Avenqo ਅਜ਼ਮਾਓ",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "ਸਮਾਂ-ਸੀਮਿਤ ਪਹੁੰਚ",
           "ਡੈਮੋ ਜਾਂ ਆਪਣਾ ਡਾਟਾ",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "ਵਿਕਾਸ ਚਾਹੁੰਦੀਆਂ ਕੰਪਨੀਆਂ ਲਈ",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "ਸਾਰੇ ਮੁੱਖ ਮੋਡਿਊਲ",
           "ਸਕੇਲੇਬਲ ਉਪਭੋਗਤਾ ਗਿਣਤੀ",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "ਅਕਸਰ ਪੁੱਛੇ ਜਾਣ ਵਾਲੇ ਸਵਾਲ",
@@ -933,7 +933,7 @@
       "invoiceDraft": "???????????????",
       "invoiceVoid": "????????????",
       "invoiceUncollectible": "????????? ???????????? ???????????? ?????? ????????????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional ਯੋਜਨਾ",
       "planEnterprise": "ਐਂਟਰਪ੍ਰਾਈਜ਼ ਯੋਜਨਾ",
       "nextRenewal": "???????????? ??????????????????: {date}",

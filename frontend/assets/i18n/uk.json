@@ -220,9 +220,9 @@
     "priceLabel": "Ціна уточнюється",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Щоб ознайомитися з Avenqo",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Доступ до Retail Intelligence",
           "Вбудований асистент Avenqo",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Для компаній, які хочуть більшого",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Повний Retail Intelligence",
           "Розширені автоматизації",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Часті запитання",
@@ -933,7 +933,7 @@
       "invoiceDraft": "????????????????",
       "invoiceVoid": "??????????????????",
       "invoiceUncollectible": "????????????????????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "План Professional",
       "planEnterprise": "Корпоративний план",
       "nextRenewal": "???????????????? ????????????????????: {date}",

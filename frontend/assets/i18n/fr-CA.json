@@ -220,11 +220,11 @@
     "priceLabel": "Tarification à confirmer",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Pour découvrir Avenqo",
-        "priceLabel": "$28 USD / mois",
+        "priceLabel": "29,99 CAD / mois",
         "items": [
-          "Accès à Retail Intelligence",
+          "Accès à Retail IA",
           "Assistant Avenqo intégré",
           "Espace sécurisé"
         ],
@@ -235,9 +235,9 @@
       {
         "tier": "Professional",
         "title": "Pour les entreprises qui veulent aller plus loin",
-        "priceLabel": "$49 USD / mois",
+        "priceLabel": "49,99 CAD / mois",
         "items": [
-          "Retail Intelligence complet",
+          "Retail IA complet",
           "Automatisations avancées",
           "Accompagnement prioritaire"
         ],
@@ -259,7 +259,7 @@
         "creditExtra": "Packs et limites de crédits personnalisés selon le contrat"
       }
     ],
-    "monthlyPrice": "${price} USD / mois"
+    "monthlyPrice": "{price} CAD / mois"
   },
   "faq": {
     "kicker": "Questions fréquentes",
@@ -540,7 +540,7 @@
   "company": {
     "navOverviewLabel": "Vue d’ensemble",
     "navOverviewDescription": "Les indicateurs essentiels de votre activité.",
-    "navAssistantLabel": "IA Assistant",
+    "navAssistantLabel": "Assistant IA",
     "navAssistantDescription": "Posez vos questions et passez à l’action.",
     "navSalesLabel": "Ventes",
     "navSalesDescription": "Suivez le chiffre d’affaires et les tendances.",
@@ -844,15 +844,15 @@
     "adminSubtitle": "Capacités de la plateforme et leur disponibilité actuelle.",
     "availableCount": "Agents disponibles",
     "comingSoonCount": "Agents à venir",
-    "retailName": "Intelligence de vente au détail",
+    "retailName": "Retail IA",
     "retailDescription": "Pilotez ventes, produits et fidélisation depuis une vue unifiée.",
-    "marketingName": "IA marketing",
+    "marketingName": "Marketing IA",
     "marketingDescription": "Préparez vos campagnes, vos audiences et vos actions de croissance mesurables.",
-    "crmName": "IA CRM",
+    "crmName": "CRM IA",
     "crmDescription": "Priorisez les relations, opportunités et prochaines actions.",
     "hrName": "HR IA",
     "hrDescription": "Soutenez les opérations liées aux ressources humaines, les informations sur la main-d'œuvre et les flux de travail des employés.",
-    "accountingName": "IA comptable",
+    "accountingName": "Comptabilité IA",
     "accountingDescription": "Accélérez le suivi financier et la préparation comptable.",
     "ocrName": "OCR IA",
     "ocrDescription": "Transformez les documents entrants en opérations structurées.",
@@ -933,7 +933,7 @@
       "invoiceDraft": "Brouillon",
       "invoiceVoid": "Annulée",
       "invoiceUncollectible": "Irrécouvrable",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Offre Professional",
       "planEnterprise": "Offre Entreprise",
       "nextRenewal": "Prochain renouvellement : {date}",

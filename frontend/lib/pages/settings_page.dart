@@ -64,7 +64,11 @@ class SettingsPage extends StatelessWidget {
                   _InfoRow(label: t.settingsNameLabel, value: company['name']?.toString() ?? '—', colors: colors),
                   _InfoRow(
                     label: t.settingsPlanLabel,
-                    value: planCode == null ? '—' : '${planCode[0].toUpperCase()}${planCode.substring(1)}',
+                    value: planCode == null
+                      ? '—'
+                      : planCode.toLowerCase() == 'demo'
+                        ? 'Base'
+                        : '${planCode[0].toUpperCase()}${planCode.substring(1)}',
                     colors: colors,
                   ),
                   const SizedBox(height: 12),

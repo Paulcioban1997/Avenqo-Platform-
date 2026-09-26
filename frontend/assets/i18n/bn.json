@@ -220,9 +220,9 @@
     "priceLabel": "অনুরোধে মূল্য",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "আপনার ডেটা দিয়ে Avenqo চেষ্টা করুন",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "সময়-সীমিত অ্যাক্সেস",
           "ডেমো বা নিজস্ব ডেটা",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "বৃদ্ধি করতে চাওয়া কোম্পানিগুলোর জন্য",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "সমস্ত মূল মডিউল",
           "স্কেলযোগ্য ব্যবহারকারী সংখ্যা",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "প্রায়শই জিজ্ঞাসিত প্রশ্ন",
@@ -933,7 +933,7 @@
       "invoiceDraft": "???????????????",
       "invoiceVoid": "???????????????",
       "invoiceUncollectible": "????????????????????????????????? ?????????",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Professional প্ল্যান",
       "planEnterprise": "এন্টারপ্রাইজ প্ল্যান",
       "nextRenewal": "????????????????????? ??????????????????: {date}",

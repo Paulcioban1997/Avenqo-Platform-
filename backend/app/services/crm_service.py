@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.models.crm import (
@@ -380,6 +380,8 @@ class CRMService:
         end_time = data.get("end_time") or (start_time + timedelta(minutes=duration))
         employee_id = data.get("employee_id")
 
+        self._lock_appointment_writes(company_id)
+
         if check_conflicts:
             has_conflict, reason = self._availability.check_conflict(
                 company_id, start_time, end_time, employee_id
@@ -442,6 +444,14 @@ class CRMService:
         self._session.commit()
         return appointment, None
 
+    def _lock_appointment_writes(self, company_id: UUID) -> None:
+        """Serialize tenant appointment changes across Postgres app workers."""
+        if self._session.get_bind().dialect.name == "postgresql":
+            self._session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"crm_appointments:{company_id}"},
+            )
+
     async def update_appointment(
         self,
         company_id: UUID,
@@ -450,6 +460,7 @@ class CRMService:
         actor_name: str = "Utilisateur",
         check_conflicts: bool = True,
     ) -> tuple[CRMAppointment | None, str | None]:
+        self._lock_appointment_writes(company_id)
         apt = self._session.scalars(
             select(CRMAppointment).where(
                 CRMAppointment.id == appointment_id,

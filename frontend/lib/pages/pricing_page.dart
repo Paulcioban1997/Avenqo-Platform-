@@ -260,7 +260,17 @@ class _PricingContent extends StatelessWidget {
                   final cards = [
                     for (var index = 0; index < pricing.plans.length; index++)
                       _PlanCard(
-                        plan: pricing.plans[index],
+                        plan: index == 0 && pricing.plans[index].tier.toLowerCase() == 'demo'
+                            ? PricingPlan(
+                                tier: 'Base',
+                                title: pricing.plans[index].title,
+                                priceLabel: pricing.plans[index].priceLabel,
+                                creditAllowance: pricing.plans[index].creditAllowance,
+                                creditExtra: pricing.plans[index].creditExtra,
+                                items: pricing.plans[index].items,
+                                action: pricing.plans[index].action,
+                              )
+                            : pricing.plans[index],
                         price: _livePrice(
                           context,
                           index,
@@ -340,15 +350,18 @@ class _PricingContent extends StatelessWidget {
     }
     if (index < livePlans.length && livePlans[index] is Map) {
       final plan = livePlans[index] as Map;
-      final price = plan['monthly_price_usd'];
+      final price = plan['monthly_price'];
       if (price != null) {
-        return monthlyPrice.replaceFirst('{price}', '$price');
+        final currency = plan['currency']?.toString() ?? 'CAD';
+        return language == 'fr'
+            ? '${(price as num).toStringAsFixed(2).replaceAll('.', ',')} $currency / mois'
+            : '$currency ${(price as num).toStringAsFixed(2)} / month';
       }
     }
     if (index == 0) {
-      return language == 'fr' ? '28 USD / mois' : (language == 'ro' ? '28 USD / lună' : '\$28 USD / month');
+      return language == 'fr' ? '29,99 CAD / mois' : (language == 'ro' ? '29,99 CAD / lună' : 'CAD 29.99 / month');
     }
-    return language == 'fr' ? '49 USD / mois' : (language == 'ro' ? '49 USD / lună' : '\$49 USD / month');
+    return language == 'fr' ? '49,99 CAD / mois' : (language == 'ro' ? '49,99 CAD / lună' : 'CAD 49.99 / month');
   }
 
   List<String> _planFeatures(BuildContext context, int index) {
@@ -359,7 +372,7 @@ class _PricingContent extends StatelessWidget {
           '3 agents/modules Avenqo',
           '6 500 crédits IA / mois',
           'Jusqu\'à 5 utilisateurs',
-          'AI Assistant',
+          'Assistant Avenqo IA',
           'Connexions standards',
           'Support standard',
         ],

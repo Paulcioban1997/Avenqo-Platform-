@@ -220,9 +220,9 @@
     "priceLabel": "Giá theo yêu cầu",
     "plans": [
       {
-        "tier": "Demo",
+        "tier": "Base",
         "title": "Dùng thử Avenqo với dữ liệu của bạn",
-        "priceLabel": "$28 USD / month",
+        "priceLabel": "CAD 29.99 / month",
         "items": [
           "Truy cập giới hạn thời gian",
           "Dữ liệu demo hoặc dữ liệu riêng",
@@ -235,7 +235,7 @@
       {
         "tier": "Professional",
         "title": "Dành cho các công ty muốn phát triển",
-        "priceLabel": "$49 USD / month",
+        "priceLabel": "CAD 49.99 / month",
         "items": [
           "Tất cả các mô-đun cốt lõi",
           "Số lượng người dùng có thể mở rộng",
@@ -259,7 +259,7 @@
         "creditExtra": "Custom credit packs/limits according to contract"
       }
     ],
-    "monthlyPrice": "${price} USD / month"
+    "monthlyPrice": "CAD {price} / month"
   },
   "faq": {
     "kicker": "Câu hỏi thường gặp",
@@ -933,7 +933,7 @@
       "invoiceDraft": "B???n nh??p",
       "invoiceVoid": "B??? h???y",
       "invoiceUncollectible": "Kh??ng thu ???????c",
-      "planDemo": "Demo",
+      "planDemo": "Base",
       "planProfessional": "Gói Professional",
       "planEnterprise": "Gói doanh nghiệp",
       "nextRenewal": "Gia h???n ti???p theo: {date}",

@@ -207,6 +207,31 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
   }
 
+  Future<void> _selectRetailSource({
+    required String sourceType,
+    required String sourceId,
+  }) async {
+    try {
+      final selected = await widget.api.put(
+        '/retail/sources/active',
+        body: {'source_type': sourceType, 'source_id': sourceId},
+      ) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _retailSources = [
+          for (final source in _retailSources)
+            {
+              ...source,
+              'active': source['source_type'] == selected['source_type'] &&
+                  source['source_id']?.toString() == selected['source_id']?.toString(),
+            },
+        ];
+      });
+    } on ApiException catch (error) {
+      _showConnectorError(error.message);
+    }
+  }
+
   Future<dynamic> _safeConnectorGet(String path) async {
     try {
       return await widget.api.get(path);
@@ -789,6 +814,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                 onReauthorizeConnection: _reauthorizeWooCommerce,
                 onDisconnectConnection: _disconnectConnection,
                 onToggleRetailSource: _setRetailSourceEnabled,
+                onSelectRetailSource: _selectRetailSource,
                 onRefreshConnectors: _refreshConnectorData,
                 deletingDatasetIds: _deletingDatasetIds,
                 selectedDatasetIds: _selectedDatasetIds,
@@ -880,6 +906,137 @@ String? _trainingStatusLabel(CompanyStrings t, String? status) =>
       _ => null,
     };
 
+class _ActiveRetailSourcesSection extends StatelessWidget {
+  const _ActiveRetailSourcesSection({
+    required this.datasets,
+    required this.connections,
+    required this.sources,
+    required this.busySourceKeys,
+    required this.onToggle,
+    required this.onSelect,
+    required this.t,
+  });
+
+  final List<Map<String, dynamic>> datasets;
+  final List<Map<String, dynamic>> connections;
+  final List<Map<String, dynamic>> sources;
+  final Set<String> busySourceKeys;
+  final Future<void> Function({
+    required String sourceType,
+    required String sourceId,
+    required bool enabled,
+  }) onToggle;
+  final Future<void> Function({
+    required String sourceType,
+    required String sourceId,
+  }) onSelect;
+  final CompanyStrings t;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AvenqoColors.of(context);
+    return Material(
+      key: const ValueKey('active-retail-sources-section'),
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.line),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              t.connectorHub['title'] ?? t.connectionsConnectedDataTitle,
+              style: TextStyle(color: colors.ink, fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            for (var index = 0; index < sources.length; index++)
+              Builder(builder: (context) {
+                final source = sources[index];
+                final sourceType = source['source_type']?.toString() ?? '';
+                final sourceId = source['source_id']?.toString() ?? '';
+                final isDataset = sourceType == 'dataset';
+                final dataset = isDataset
+                    ? datasets.cast<Map<String, dynamic>?>().firstWhere(
+                        (item) => item?['id']?.toString() == sourceId,
+                        orElse: () => null,
+                      )
+                    : null;
+                final connection = !isDataset
+                    ? connections.cast<Map<String, dynamic>?>().firstWhere(
+                        (item) => item?['id']?.toString() == sourceId,
+                        orElse: () => null,
+                      )
+                    : null;
+                final enabled = source['enabled'] == true;
+                final selected = source['active'] == true;
+                final sourceKey = '$sourceType:$sourceId';
+                final busyKey = '$sourceType:$sourceId';
+                final name = dataset?['name']?.toString() ??
+                    connection?['display_name']?.toString() ??
+                    source['display_name']?.toString() ??
+                    '—';
+                final connected = source['status']?.toString().toLowerCase() != 'disconnected';
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: index == sources.length - 1
+                        ? null
+                        : Border(bottom: BorderSide(color: colors.line)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(isDataset ? Icons.dataset_outlined : Icons.store_outlined,
+                          size: 19, color: connected ? _Brand.green : colors.muted),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${isDataset ? t.connectionsUploadedSource : source['provider'] ?? t.connectionsSynchronizedSource} · ${connected ? t.connectorHub['connected'] : source['status']} · ${enabled ? 'ON' : 'OFF'}',
+                              style: TextStyle(color: enabled ? _Brand.green : colors.muted, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (enabled)
+                        IconButton(
+                          key: ValueKey('select-source-$sourceKey'),
+                          tooltip: selected
+                              ? (t.connectorHub['connected'] ?? t.connectionsReadyTitle)
+                              : (t.connectorHub['connect'] ?? t.connectionsAskAvenqo),
+                          onPressed: selected || busySourceKeys.contains(busyKey)
+                              ? null
+                              : () => onSelect(sourceType: sourceType, sourceId: sourceId),
+                          icon: Icon(
+                            selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                            color: selected ? _Brand.blue : colors.muted,
+                          ),
+                        ),
+                      Switch.adaptive(
+                        key: ValueKey('active-source-$sourceType-$sourceId'),
+                        value: enabled,
+                        onChanged: !connected || busySourceKeys.contains(busyKey)
+                            ? null
+                            : (value) => onToggle(sourceType: sourceType, sourceId: sourceId, enabled: value),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Color _trainingStatusColor(String? status) => switch (status) {
   'training_failed' => _Brand.red,
   _ => _Brand.blue,
@@ -951,6 +1108,7 @@ class _ConnectedDataView extends StatelessWidget {
     required this.onReauthorizeConnection,
     required this.onDisconnectConnection,
     required this.onToggleRetailSource,
+    required this.onSelectRetailSource,
     required this.onRefreshConnectors,
     required this.deletingDatasetIds,
     required this.selectedDatasetIds,
@@ -982,6 +1140,10 @@ class _ConnectedDataView extends StatelessWidget {
     required String sourceId,
     required bool enabled,
   }) onToggleRetailSource;
+  final Future<void> Function({
+    required String sourceType,
+    required String sourceId,
+  }) onSelectRetailSource;
   final VoidCallback onRefreshConnectors;
   final Set<String> deletingDatasetIds;
   final Set<String> selectedDatasetIds;
@@ -1047,6 +1209,18 @@ class _ConnectedDataView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (retailSources.isNotEmpty) ...[
+          _ActiveRetailSourcesSection(
+            datasets: datasets,
+            connections: commerceConnections,
+            sources: retailSources,
+            busySourceKeys: busyConnectionIds,
+            onToggle: onToggleRetailSource,
+            onSelect: onSelectRetailSource,
+            t: t,
+          ),
+          const SizedBox(height: 16),
+        ],
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(32),

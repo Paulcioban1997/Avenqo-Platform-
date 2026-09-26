@@ -257,6 +257,42 @@ def test_dashboard_periods_filter_rows_and_compute_aov_from_distinct_orders(tmp_
     assert metrics(all_time)["orders"]["value"] == 3
 
 
+def test_dashboard_seven_day_month_quarter_and_all_time_totals_are_distinct(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-period-buckets.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    quarter_month = ((now.month - 1) // 3) * 3 + 1
+    quarter_start = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    quarter_only_date = quarter_start + timedelta(days=1)
+    assert (now - quarter_only_date).days > 30
+    with factory() as session:
+        company = _company(session, "Distinct period tenant", "CAD")
+        dataset = _dataset(session, company, "dated-sales.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": (now - timedelta(days=2)).isoformat(), "sale": "RECENT", "client": "C1", "amount": 100},
+                {"date": (now - timedelta(days=20)).isoformat(), "sale": "MONTH", "client": "C2", "amount": 200},
+                {"date": quarter_only_date.isoformat(), "sale": "QUARTER", "client": "C3", "amount": 300},
+                {"date": (quarter_start - timedelta(days=1)).isoformat(), "sale": "ALL", "client": "C4", "amount": 400},
+            ],
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+        seven = service.build(TenantContext(company.id), "last_7_days")
+        thirty = service.build(TenantContext(company.id), "last_30_days")
+        quarter = service.build(TenantContext(company.id), "current_quarter")
+        all_time = service.build(TenantContext(company.id), "all")
+
+    revenue = lambda result: next(item["value"] for item in result["kpis"] if item["key"] == "revenue")
+    assert revenue(seven) == 100
+    assert revenue(thirty) == 300
+    assert revenue(quarter) == 600
+    assert revenue(all_time) == 1000
+    assert len({revenue(seven), revenue(thirty), revenue(quarter), revenue(all_time)}) == 4
+
+
 def test_dashboard_empty_current_period_does_not_show_historical_totals(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-empty-period.db'}")
     Base.metadata.create_all(engine)

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DashboardPreview } from "@/components/dashboard-preview";
 import { Header } from "@/components/header";
+import { SiteFooter } from "@/components/site-footer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
 
 const moduleIcons = [
@@ -41,9 +42,6 @@ const MODULE_SLUGS = [
   "chat",
 ];
 
-const PLATFORM_LINK_HREFS = ["#fonctionnalites", "#modules", "/pricing", "#fonctionnement"];
-const COMPANY_LINK_HREFS = ["#entreprise", "/contact", "#securite", "/pricing"];
-const RESOURCES_LINK_HREFS = ["/docs", "#faq", "/privacy", "/terms"];
 
 export function LandingPage() {
   const t = useTranslations();
@@ -75,7 +73,7 @@ export function LandingPage() {
       price: isEn ? "Custom quote" : "Sur mesure",
       period: isEn ? "Tailored plan" : "Devis personnalisé",
       credits: isEn ? "Custom AI credit volume" : "Crédits IA sur mesure",
-      action: isEn ? "Contact Sales" : "Contacter les ventes",
+      action: isEn ? "Request a quote" : "Demander un devis",
       href: "/contact",
       featured: false,
     },
@@ -109,7 +107,7 @@ export function LandingPage() {
           <div className="feature-grid">
             <motion.article className="feature-large assistant-feature" id="demonstration" {...fadeUp}>
               <div className="feature-label"><Bot size={18} /> {t.features.assistantLabel}</div><h3>{t.features.assistantTitle}</h3><p>{t.features.assistantText}</p>
-              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/register">{t.features.demoAction1}</Link><Link href="#modules">{t.features.demoAction2}</Link></div></div>
+              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/register">{t.features.demoAction1}</Link><Link href="#demonstration">{isEn ? "View the analysis" : "Voir l'analyse"}</Link></div></div>
             </motion.article>
             <motion.article className="feature-small dark-feature" {...fadeUp} whileHover={{ y: -4 }}><Zap size={24} /><h3>{t.features.actionsTitle}</h3><p>{t.features.actionsText}</p><div className="action-line"><span>{t.features.actionsPriority}</span><strong>{t.features.actionsLine}</strong><ArrowRight size={17} /></div></motion.article>
             <motion.article className="feature-small" id="securite" {...fadeUp} whileHover={{ y: -4 }}><ShieldCheck size={24} /><h3>{t.features.securityTitle}</h3><p>{t.features.securityText}</p><div className="security-list"><span><Check /> {t.features.securityItem1}</span><span><Check /> {t.features.securityItem2}</span><span><Check /> {t.features.securityItem3}</span></div></motion.article>
@@ -241,19 +239,10 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer>
-        <div className="page-shell footer-grid">
-          <div className="footer-brand"><Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} /><p>{t.footer.tagline}</p></div>
-          <FooterColumn title={t.footer.platformTitle} links={t.footer.platformLinks} hrefs={PLATFORM_LINK_HREFS} />
-          <FooterColumn title={t.footer.companyTitle} links={t.footer.companyLinks} hrefs={COMPANY_LINK_HREFS} />
-          <FooterColumn title={t.footer.resourcesTitle} links={t.footer.resourcesLinks} hrefs={RESOURCES_LINK_HREFS} />
-        </div>
-        <div className="page-shell footer-bottom"><span>{t.footer.copyright}</span><a href="https://avenqo.ca">avenqo.ca</a></div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
-
 function PriceCard({
   tier,
   title,
@@ -310,6 +299,3 @@ function PriceCard({
   );
 }
 
-function FooterColumn({ title, links, hrefs }: { title: string; links: string[]; hrefs: string[] }) {
-  return <div><strong>{title}</strong>{links.map((link, index) => <Link href={hrefs[index] ?? "/contact"} key={link}>{link}</Link>)}</div>;
-}
