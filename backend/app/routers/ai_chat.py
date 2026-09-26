@@ -18,12 +18,57 @@ from backend.app.database import get_db
 from backend.app.dependencies.ai_chat import get_chat_service, get_conversation_service
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.dependencies.tenant_business import (
+    get_tenant_customers_service,
+    get_tenant_sales_service,
+)
+from backend.app.services.retail_source_service import RetailSourceService
+from backend.app.services.tenant_customers_service import TenantCustomersService
+from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.schemas.ai_chat import ChatMessageResponse, ConversationDetailResponse, ConversationResponse, CreateConversationRequest, MessageResponse, SendMessageRequest, SourceResponse
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
 router = APIRouter(prefix="/ai/chat", tags=["ai-chat"])
 logger = logging.getLogger("avenqo.ai.router")
+
+
+def _retail_trusted_context(
+    tenant: TenantContext,
+    db: Session,
+    sales: TenantSalesService,
+    customers: TenantCustomersService,
+) -> str:
+    """Expose backend-computed Retail facts to Copilot without LLM inference."""
+
+    try:
+        active_source = next(
+            (
+                source
+                for source in RetailSourceService(db).list_sources(tenant)
+                if source.active and source.enabled
+            ),
+            None,
+        )
+        if active_source is None:
+            return ""
+        sales_data = sales.build(tenant, period_key="all")
+        summary = sales_data.get("summary") or {}
+        customer_data = customers.build(tenant, page=1, page_size=1)
+        customer_total = customer_data.get("pagination", {}).get("total", 0)
+        return (
+            "Retail facts computed server-side from the active tenant source:\n"
+            f"source={active_source.display_name}\n"
+            f"source_type={active_source.source_type}\n"
+            f"currency={sales_data.get('currency')}\n"
+            f"revenue={summary.get('revenue')}\n"
+            f"orders={summary.get('orders')}\n"
+            f"customers={customer_total}\n"
+            f"average_order_value={summary.get('average_order_value')}"
+        )
+    except Exception:
+        logger.exception("Unable to build trusted Retail context for Copilot")
+        return ""
 
 
 def response(item) -> ConversationResponse:
@@ -71,6 +116,8 @@ async def message(
     service: ChatService = Depends(get_chat_service),
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
+    sales_service: TenantSalesService = Depends(get_tenant_sales_service),
+    customers_service: TenantCustomersService = Depends(get_tenant_customers_service),
 ):
     if tenant.company_id != identity.user.company_id:
         logger.error(
@@ -86,6 +133,12 @@ async def message(
         identity.user.company_id,
         tenant.company_id,
     )
+    trusted_context = _retail_trusted_context(
+        tenant,
+        db,
+        sales_service,
+        customers_service,
+    )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
     company = identity.user.company
@@ -99,6 +152,7 @@ async def message(
             plan_code=company.subscription_plan,
             capabilities=capabilities,
             request_id=str(uuid4()),
+            trusted_context=trusted_context,
             user_language=company.preferred_language or "fr",
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
@@ -128,6 +182,8 @@ async def stream(
     service: ChatService = Depends(get_chat_service),
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
+    sales_service: TenantSalesService = Depends(get_tenant_sales_service),
+    customers_service: TenantCustomersService = Depends(get_tenant_customers_service),
 ):
     if tenant.company_id != identity.user.company_id:
         logger.error(
@@ -142,6 +198,12 @@ async def stream(
         identity.user.id,
         identity.user.company_id,
         tenant.company_id,
+    )
+    trusted_context = _retail_trusted_context(
+        tenant,
+        db,
+        sales_service,
+        customers_service,
     )
     permissions = frozenset(permissions_for(identity.user.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
@@ -161,6 +223,7 @@ async def stream(
                 plan_code=company.subscription_plan,
                 capabilities=capabilities,
                 request_id=str(uuid4()),
+                trusted_context=trusted_context,
                 is_cancelled=is_cancelled,
                 user_language=company.preferred_language or "fr",
                 company_country=company.country or "",
