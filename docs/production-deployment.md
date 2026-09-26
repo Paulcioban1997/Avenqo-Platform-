@@ -110,6 +110,32 @@ flutter build web --release \
 Le résultat (`frontend/build/web`) est un ensemble de fichiers statiques —
 servir derrière un CDN/reverse proxy avec HTTPS obligatoire.
 
+## 5 bis. Site public Next.js (Vercel)
+
+Le site public est un projet Vercel distinct du projet Flutter :
+
+- dépôt GitHub : `Paulcioban1997/Avenqo-Platform-` ;
+- branche de production : `main` ;
+- répertoire racine Vercel : `web` ;
+- framework : Next.js ;
+- domaine de production : `avenqo.ca` (et `www.avenqo.ca`).
+
+Le projet Flutter conserve son propre répertoire racine et son domaine
+`app.avenqo.ca`. Une modification du dépôt doit être contrôlée sur les deux
+projets Vercel séparément : un statut Vercel vert pour l'application Flutter
+ne prouve pas que le site Next.js est déployé.
+
+Vérifications minimales après un déploiement du site public :
+
+```bash
+curl -I https://avenqo.ca/
+curl -I https://avenqo.ca/signup
+curl -I https://avenqo.ca/login
+```
+
+`/signup` peut rediriger définitivement vers `/register`, mais cette chaîne
+doit terminer sur une page d'inscription HTTP 200, jamais sur une 404.
+
 ## 6. Rate limiting — revue finale (remédiation)
 
 Le limiteur (`backend/app/core/rate_limit.py`) est une fenêtre glissante
@@ -126,6 +152,11 @@ avec `hit()`/`reset()`) et injecté via `set_rate_limiter()`.
   via `set_rate_limiter(...)`, sans modifier les routes existantes.
 - Aucune installation de Redis (ou autre infrastructure) n'a été ajoutée dans
   cette remédiation — non requise pour un lancement mono-instance.
+- Les routes sensibles sont protégées : inscription, connexion, renvoi et
+  réinitialisation de mot de passe, AI/Copilot, checkout, administration,
+  webhooks Voice Telnyx/Retell et outils Voice. Les limites restent
+  configurables via `RATE_LIMIT_*` et désactivables uniquement par
+  configuration explicite d'un environnement de test.
 
 ## 7. Observabilité
 
