@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import base64
+import hashlib
+import hmac
+import json
 import re
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +37,37 @@ from backend.app.services.crm_service import CRMService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/crm", tags=["crm"])
+
+
+def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
+    payload = {
+        "tenant_id": str(tenant_id),
+        "user_id": str(user_id),
+        "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+    signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
+    try:
+        encoded, signature = state.split(".", 1)
+        expected = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("invalid signature")
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if int(payload["expires_at"]) < int(datetime.now(timezone.utc).timestamp()):
+            raise ValueError("expired state")
+        return payload
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="État OAuth Google invalide ou expiré.") from exc
+
+
+def _google_redirect_uri(settings) -> str:
+    return settings.google_calendar_redirect_uri or (
+        "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
+    )
 
 
 def _get_crm_service(db: Session = Depends(get_db)) -> CRMService:
@@ -533,6 +569,7 @@ def get_calendar_connection(
         "connected": conn.sync_status == "connected",
         "provider": conn.provider,
         "account_email": conn.account_email,
+        "calendar_id": conn.calendar_id,
         "sync_status": conn.sync_status,
         "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None,
     }
@@ -541,14 +578,19 @@ def get_calendar_connection(
 @router.get("/calendar/google/auth-url")
 def get_google_calendar_auth_url(
     tenant: TenantContext = Depends(get_tenant_context),
+    identity=Depends(get_current_identity),
 ) -> dict[str, str]:
     settings = get_settings()
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=settings.google_calendar_redirect_uri or f"{settings.frontend_url.rstrip('/')}/crm/calendar/callback",
+        redirect_uri=_google_redirect_uri(settings),
     )
-    state = f"tenant:{tenant.company_id}"
+    state = _google_oauth_state(
+        tenant.company_id,
+        identity.user.id,
+        settings.auth_jwt_secret,
+    )
     auth_url = provider.get_auth_url(state)
     return {"auth_url": auth_url}
 
@@ -557,22 +599,23 @@ def get_google_calendar_auth_url(
 async def google_calendar_callback(
     code: str = Query(...),
     state: str = Query(...),
-    tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> RedirectResponse:
     settings = get_settings()
+    state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
+    tenant_id = UUID(state_data["tenant_id"])
     cipher = get_connector_secret_cipher()
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=settings.google_calendar_redirect_uri or f"{settings.frontend_url.rstrip('/')}/crm/calendar/callback",
+        redirect_uri=_google_redirect_uri(settings),
     )
     tokens = await provider.exchange_code(code)
     encrypted_creds = cipher.encrypt(tokens)
     email = tokens.get("account_email") or "compte-google@avenqo.ca"
 
     conn = db.scalars(
-        select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == tenant.company_id)
+        select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == tenant_id)
     ).first()
     if conn:
         conn.provider = "google"
@@ -582,7 +625,7 @@ async def google_calendar_callback(
         conn.last_synced_at = datetime.now(timezone.utc)
     else:
         conn = CRMCalendarConnection(
-            company_id=tenant.company_id,
+            company_id=tenant_id,
             provider="google",
             account_email=email,
             calendar_id="primary",
@@ -593,7 +636,64 @@ async def google_calendar_callback(
         db.add(conn)
 
     db.commit()
-    return {"status": "success", "account_email": email}
+    return RedirectResponse(
+        url=f"{settings.frontend_url.rstrip('/')}/crm?google_calendar=connected",
+        status_code=303,
+    )
+
+
+@router.get("/calendar/google/calendars")
+async def list_google_calendars(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    conn = db.scalars(
+        select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == tenant.company_id,
+            CRMCalendarConnection.provider == "google",
+            CRMCalendarConnection.sync_status == "connected",
+        )
+    ).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
+    try:
+        credentials = get_connector_secret_cipher().decrypt(conn.encrypted_credentials)
+        calendars = await GoogleCalendarProvider(
+            client_id=get_settings().google_calendar_client_id,
+            client_secret=get_settings().google_calendar_client_secret,
+            redirect_uri=get_settings().google_calendar_redirect_uri,
+        ).list_calendars(credentials)
+        return {"selected_calendar_id": conn.calendar_id, "calendars": calendars}
+    except Exception as exc:
+        conn.sync_status = "error"
+        conn.sync_error = "Impossible de lire les calendriers Google."
+        db.commit()
+        raise HTTPException(status_code=502, detail="Calendriers Google indisponibles.") from exc
+
+
+class GoogleCalendarSelectionRequest(BaseModel):
+    calendar_id: str = Field(min_length=1, max_length=255)
+
+
+@router.put("/calendar/google/selection")
+def select_google_calendar(
+    payload: GoogleCalendarSelectionRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    conn = db.scalars(
+        select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == tenant.company_id,
+            CRMCalendarConnection.provider == "google",
+            CRMCalendarConnection.sync_status == "connected",
+        )
+    ).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
+    conn.calendar_id = payload.calendar_id
+    conn.last_synced_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "selected", "calendar_id": conn.calendar_id}
 
 
 @router.post("/calendar/disconnect")

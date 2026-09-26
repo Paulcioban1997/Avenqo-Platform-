@@ -96,6 +96,35 @@ class GoogleCalendarProvider(CalendarProvider):
     async def _fetch_user_email(self, access_token: str) -> str:
         if not access_token:
             return ""
+
+    async def list_calendars(self, credentials: dict[str, Any]) -> list[dict[str, Any]]:
+        """Return calendars visible to the connected Google account."""
+        req = urllib.request.Request(
+            f"{GOOGLE_CALENDAR_BASE_URL}/users/me/calendarList",
+            headers=self._auth_headers(credentials),
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return [
+                    {
+                        "id": item.get("id"),
+                        "summary": item.get("summary"),
+                        "description": item.get("description"),
+                        "time_zone": item.get("timeZone"),
+                        "primary": bool(item.get("primary")),
+                        "access_role": item.get("accessRole"),
+                    }
+                    for item in data.get("items", [])
+                    if item.get("id") and item.get("summary")
+                ]
+        except urllib.error.HTTPError as exc:
+            raise CalendarProviderError(
+                f"Google Calendar API error ({exc.code}): {exc.read().decode('utf-8')}"
+            ) from exc
+        except Exception as exc:
+            raise CalendarProviderError(f"Erreur réseau Google Calendar: {exc}") from exc
         req = urllib.request.Request(
             "https://www.googleapis.com/oauth2/v2/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},

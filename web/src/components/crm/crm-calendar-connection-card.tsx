@@ -20,6 +20,14 @@ interface ConnectionStatus {
   account_email?: string | null;
   last_sync_at?: string | null;
   scopes?: string[];
+  calendar_id?: string | null;
+}
+
+interface GoogleCalendarOption {
+  id: string;
+  summary: string;
+  primary?: boolean;
+  time_zone?: string | null;
 }
 
 interface CRMCalendarConnectionCardProps {
@@ -31,6 +39,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
   const [isLoading, setIsLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<GoogleCalendarOption[]>([]);
 
   useEffect(() => {
     fetchConnectionStatus();
@@ -50,6 +59,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
             provider: data.provider,
             account_email: data.account_email,
             last_sync_at: data.last_synced_at,
+            calendar_id: data.calendar_id,
           });
         } else {
           setGoogleStatus({ connected: false });
@@ -60,6 +70,26 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadCalendars = async () => {
+    const res = await fetch("/api/v1/crm/calendar/google/calendars", { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    setCalendars(data.calendars || []);
+  };
+
+  useEffect(() => {
+    if (googleStatus.connected) void loadCalendars();
+  }, [googleStatus.connected]);
+
+  const handleCalendarSelection = async (calendarId: string) => {
+    const res = await fetch("/api/v1/crm/calendar/google/selection", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ calendar_id: calendarId }),
+    });
+    if (res.ok) setGoogleStatus((current) => ({ ...current, calendar_id: calendarId }));
   };
 
   const handleConnectGoogle = async () => {
@@ -157,6 +187,22 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                     <span>Dernière synchro:</span>
                     <span>{new Date(googleStatus.last_sync_at).toLocaleString("fr-CA")}</span>
                   </div>
+                )}
+                {calendars.length > 0 && (
+                  <label className="flex items-center justify-between gap-3 text-xs text-slate-400">
+                    <span>Calendrier utilisé:</span>
+                    <select
+                      value={googleStatus.calendar_id || ""}
+                      onChange={(event) => void handleCalendarSelection(event.target.value)}
+                      className="max-w-[200px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    >
+                      {calendars.map((calendar) => (
+                        <option key={calendar.id} value={calendar.id}>
+                          {calendar.summary}{calendar.primary ? " (principal)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
               </div>
             )}
