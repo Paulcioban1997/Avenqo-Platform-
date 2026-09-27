@@ -167,6 +167,7 @@ def business_environment(tmp_path):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     with factory() as session:
+        now = datetime.now(timezone.utc)
         company_a = _company(session, "Alpha", "CAD")
         company_b = _company(session, "Beta", "EUR")
         dataset_a = _dataset(session, company_a)
@@ -178,7 +179,7 @@ def business_environment(tmp_path):
             {"date": "2026-08-28", "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
         ]
         rows_b = [
-            {"date": "2026-08-28", "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
+            {"date": (now - timedelta(days=1)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
         ]
         prepared = {
             dataset_a.id: _prepared(company_a, dataset_a, rows_a),
