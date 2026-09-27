@@ -400,10 +400,37 @@ async def cancel_appointment(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    success = await service.cancel_appointment(tenant.company_id, appointment_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Rendez-vous introuvable.")
-    return {"id": str(appointment_id), "status": "cancelled"}
+    result = await service.cancel_appointment_detailed(tenant.company_id, appointment_id)
+    if result.appointment is None:
+        raise HTTPException(status_code=404, detail=result.error or "Rendez-vous introuvable.")
+    response = {
+        "id": str(appointment_id),
+        "status": "cancelled",
+        "calendar_sync": result.calendar_sync,
+    }
+    if result.error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={**response, "error": result.error},
+        )
+    return response
+
+
+@router.delete("/appointments/{appointment_id}")
+async def delete_appointment(
+    appointment_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+) -> dict[str, Any]:
+    result = await service.delete_appointment(tenant.company_id, appointment_id)
+    if result.appointment is None:
+        raise HTTPException(status_code=404, detail=result.error or "Rendez-vous introuvable.")
+    if result.error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"id": str(appointment_id), "calendar_sync": result.calendar_sync, "error": result.error},
+        )
+    return {"id": str(appointment_id), "status": "deleted", "calendar_sync": result.calendar_sync}
 
 
 @router.get("/availability/slots")

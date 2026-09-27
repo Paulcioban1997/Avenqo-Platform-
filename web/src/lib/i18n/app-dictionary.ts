@@ -251,6 +251,12 @@ export type AppTranslations = {
       modify: string;
       reschedule: string;
       cancel: string;
+      deletePermanent: string;
+      confirmCancel: string;
+      confirmDelete: string;
+      cancelSuccess: string;
+      deleteSuccess: string;
+      mutationError: string;
       markCompleted: string;
       save: string;
       close: string;
@@ -513,6 +519,12 @@ const frApp: AppTranslations = {
       modify: "Modifier",
       reschedule: "Déplacer / Reporter",
       cancel: "Annuler le rendez-vous",
+      deletePermanent: "Supprimer définitivement",
+      confirmCancel: "Voulez-vous vraiment annuler ce rendez-vous ?",
+      confirmDelete: "Voulez-vous vraiment supprimer définitivement ce rendez-vous ? Cette action est irréversible.",
+      cancelSuccess: "Rendez-vous annulé.",
+      deleteSuccess: "Rendez-vous supprimé définitivement.",
+      mutationError: "L'opération n'a pas pu être terminée.",
       markCompleted: "Marquer comme terminé",
       save: "Enregistrer",
       close: "Fermer",
@@ -775,6 +787,12 @@ const enApp: AppTranslations = {
       modify: "Modify",
       reschedule: "Reschedule",
       cancel: "Cancel Appointment",
+      deletePermanent: "Delete permanently",
+      confirmCancel: "Are you sure you want to cancel this appointment?",
+      confirmDelete: "Are you sure you want to permanently delete this appointment? This action cannot be undone.",
+      cancelSuccess: "Appointment cancelled.",
+      deleteSuccess: "Appointment permanently deleted.",
+      mutationError: "The operation could not be completed.",
       markCompleted: "Mark as Completed",
       save: "Save",
       close: "Close",

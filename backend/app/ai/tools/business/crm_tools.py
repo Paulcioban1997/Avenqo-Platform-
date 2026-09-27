@@ -62,6 +62,7 @@ class ListAvailableSlotsArgs(ToolArguments):
 
 class CreateAppointmentArgs(ToolArguments):
     client_name_or_id: str = Field(description="Nom ou UUID du client.")
+    client_email: str | None = Field(default=None, description="Adresse courriel exacte du client si connue.")
     start_time: str = Field(description="Date et heure de début au format ISO (ex: 2026-09-20T14:30:00Z).")
     title: str = Field(description="Intitulé ou motif du rendez-vous (ex: Changement de pneus, Consultation).")
     duration_minutes: int = Field(default=60, description="Durée en minutes.")
@@ -369,23 +370,20 @@ class CreateAppointmentTool(AITool):
         except ValueError:
             return ToolResult(success=False, data={"error": "Format de date/heure invalide."})
 
-        # Resolve client by UUID or by search
-        client = None
+        # Resolve only tenant-scoped exact identity or one unique CRM match.
         try:
             cid = UUID(arguments.client_name_or_id)
             client = self._crm.get_client(context.tenant.company_id, cid)
+            resolution_error = None if client else "Client introuvable."
         except ValueError:
-            matches = self._crm.list_clients(context.tenant.company_id, search=arguments.client_name_or_id, limit=1)
-            if matches:
-                client = matches[0]
-            else:
-                return ToolResult(
-                    success=False,
-                    data={"error": "Client introuvable. Demandez les coordonnées du client avant de créer un rendez-vous."},
-                )
+            client, resolution_error = self._crm.resolve_client_for_appointment(
+                context.tenant.company_id,
+                arguments.client_name_or_id,
+                email=arguments.client_email,
+            )
 
         if not client:
-            return ToolResult(success=False, data={"error": "Impossible de déterminer le client pour ce rendez-vous."})
+            return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
 
         apt_data = {
             "client_id": client.id,

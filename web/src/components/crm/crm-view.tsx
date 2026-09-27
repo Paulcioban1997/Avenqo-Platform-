@@ -72,6 +72,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [companyName, setCompanyName] = useState<string>("");
   const [isMobileCopilotOpen, setIsMobileCopilotOpen] = useState(false);
+  const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Drawers and Modals
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentItem | null>(null);
@@ -154,22 +155,49 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   };
 
   const handleStatusChange = async (id: string, newStatus: string) => {
-    await fetch(`/api/v1/crm/appointments/${id}/status`, {
-      method: "PATCH",
+    const response = await fetch(
+      newStatus === "cancelled"
+        ? `/api/v1/crm/appointments/${id}/cancel`
+        : `/api/v1/crm/appointments/${id}`,
+      {
+      method: newStatus === "cancelled" ? "POST" : "PUT",
       headers: {
         "Content-Type": "application/json",
         ...getAuthHeaders(),
       },
-      body: JSON.stringify({ status: newStatus }),
+      body: newStatus === "cancelled" ? undefined : JSON.stringify({ status: newStatus }),
     });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(typeof error?.detail === "string" ? error.detail : t.crm.actions.mutationError);
+    }
     // Refresh without full page reload
-    loadCRMData();
+    await loadCRMData();
     if (selectedAppointment && selectedAppointment.id === id) {
       setSelectedAppointment({
         ...selectedAppointment,
         status: newStatus as any,
       });
     }
+    setActionNotice({
+      type: "success",
+      text: newStatus === "cancelled" ? t.crm.actions.cancelSuccess : t.crm.actions.markCompleted,
+    });
+  };
+
+  const handleDeleteAppointment = async (id: string) => {
+    const response = await fetch(`/api/v1/crm/appointments/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(typeof error?.detail === "string" ? error.detail : t.crm.actions.mutationError);
+    }
+    await loadCRMData();
+    setSelectedAppointment(null);
+    setIsDrawerOpen(false);
+    setActionNotice({ type: "success", text: t.crm.actions.deleteSuccess });
   };
 
   const handleRescheduleClick = (appointment: AppointmentItem) => {
@@ -255,6 +283,15 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
             </button>
           </div>
         </div>
+
+        {actionNotice && (
+          <div
+            role="status"
+            className={`rounded-xl border px-4 py-3 text-sm ${actionNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}
+          >
+            {actionNotice.text}
+          </div>
+        )}
 
         {/* CRM SUB-NAVIGATION TABS (Item 4) */}
         <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto scrollbar-none">
@@ -355,6 +392,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onStatusChange={handleStatusChange}
+        onDelete={handleDeleteAppointment}
         onRescheduleClick={handleRescheduleClick}
         t={t}
       />

@@ -339,6 +339,55 @@ def test_appointment_search_filters_client_and_title(db_session):
     assert crm_svc.list_appointments(company.id, search="inconnu", limit=10) == []
 
 
+def test_cancel_is_idempotent_and_preserves_history(db_session):
+    company = _create_company(db_session, "tenant-cancel")
+    crm_svc = CRMAppService(db_session)
+    client = crm_svc.create_client(company.id, {
+        "first_name": "Paul", "last_name": "Martin", "email": "paul@example.com",
+    })
+    appointment, error = asyncio.run(crm_svc.create_appointment(company.id, {
+        "client_id": client.id,
+        "title": "Consultation",
+        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "duration_minutes": 30,
+    }))
+    assert error is None and appointment is not None
+
+    first = asyncio.run(crm_svc.cancel_appointment_detailed(company.id, appointment.id))
+    second = asyncio.run(crm_svc.cancel_appointment_detailed(company.id, appointment.id))
+
+    assert first.appointment is not None
+    assert first.appointment.status == "cancelled"
+    assert second.calendar_sync == "already_cancelled"
+    assert db_session.query(CRMAppointment).filter_by(id=appointment.id).one().is_deleted is False
+
+
+def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):
+    company_a = _create_company(db_session, "tenant-delete-a")
+    company_b = _create_company(db_session, "tenant-delete-b")
+    crm_svc = CRMAppService(db_session)
+    client_a = crm_svc.create_client(company_a.id, {
+        "first_name": "Delete", "last_name": "Me", "email": "delete@example.com",
+    })
+    appointment, error = asyncio.run(crm_svc.create_appointment(company_a.id, {
+        "client_id": client_a.id,
+        "title": "Delete test",
+        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "duration_minutes": 30,
+    }))
+    assert error is None and appointment is not None
+
+    forbidden = asyncio.run(crm_svc.delete_appointment(company_b.id, appointment.id))
+    deleted = asyncio.run(crm_svc.delete_appointment(company_a.id, appointment.id))
+    replay = asyncio.run(crm_svc.delete_appointment(company_a.id, appointment.id))
+
+    assert forbidden.appointment is None
+    assert deleted.appointment is not None and deleted.calendar_sync == "deleted"
+    assert replay.appointment is None
+    stored = db_session.query(CRMAppointment).filter_by(id=appointment.id).one()
+    assert stored.is_deleted is True
+
+
 def test_create_appointment_accepts_null_industry_data(db_session):
     company = _create_company(db_session, "tenant-null-industry")
     crm_svc = CRMAppService(db_session)

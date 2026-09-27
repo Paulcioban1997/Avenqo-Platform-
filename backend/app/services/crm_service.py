@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
+from dataclasses import dataclass
+import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -28,6 +30,15 @@ from backend.app.services.calendar.base import CalendarEventData
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class AppointmentMutationResult:
+    appointment: CRMAppointment | None
+    calendar_sync: str
+    error: str | None = None
 
 
 class CRMService:
@@ -153,6 +164,44 @@ class CRMService:
                 CRMClient.is_deleted.is_(False),
             )
         ).first()
+
+    def resolve_client_for_appointment(
+        self,
+        company_id: UUID,
+        identifier: str,
+        *,
+        email: str | None = None,
+        phone: str | None = None,
+    ) -> tuple[CRMClient | None, str | None]:
+        """Resolve only an exact ID/email/phone or one unique CRM name match."""
+        normalized_email = (email or identifier).strip().lower()
+        if "@" in normalized_email:
+            client = self._session.scalars(
+                select(CRMClient).where(
+                    CRMClient.company_id == company_id,
+                    CRMClient.email == normalized_email,
+                    CRMClient.is_deleted.is_(False),
+                )
+            ).first()
+            if client:
+                return client, None
+
+        normalized_phone = self._normalize_phone(phone or identifier)
+        if normalized_phone:
+            candidates = [
+                client
+                for client in self.list_clients(company_id, limit=500)
+                if self._normalize_phone(client.phone) == normalized_phone
+            ]
+            if len(candidates) == 1:
+                return candidates[0], None
+
+        candidates = self.list_clients(company_id, search=identifier, limit=20)
+        if len(candidates) == 1:
+            return candidates[0], None
+        if len(candidates) > 1:
+            return None, "Plusieurs clients correspondent. Demandez l'adresse courriel ou le téléphone."
+        return None, "Client introuvable. Demandez l'adresse courriel réelle avant de créer le rendez-vous."
 
     def create_client(self, company_id: UUID, data: dict[str, Any], actor_name: str = "Utilisateur") -> CRMClient:
         email = str(data.get("email") or "").strip().lower() or None
@@ -581,20 +630,38 @@ class CRMService:
         appointment_id: UUID,
         actor_name: str = "Utilisateur",
     ) -> bool:
+        result = await self.cancel_appointment_detailed(company_id, appointment_id, actor_name)
+        return result.appointment is not None
+
+    async def cancel_appointment_detailed(
+        self,
+        company_id: UUID,
+        appointment_id: UUID,
+        actor_name: str = "Utilisateur",
+    ) -> AppointmentMutationResult:
+        self._lock_appointment_writes(company_id)
         apt = self._session.scalars(
             select(CRMAppointment).where(
                 CRMAppointment.id == appointment_id,
                 CRMAppointment.company_id == company_id,
+                CRMAppointment.is_deleted.is_(False),
             )
         ).first()
         if not apt:
-            return False
+            return AppointmentMutationResult(None, "not_found", "Rendez-vous introuvable.")
+
+        if apt.status == "cancelled" and not apt.external_event_id:
+            return AppointmentMutationResult(apt, "already_cancelled")
 
         apt.status = "cancelled"
 
         client = self.get_client(company_id, apt.client_id)
+        calendar_sync = "not_configured"
+        sync_error = None
         if client:
-            await self._sync_to_external_calendar(company_id, apt, client, action="delete")
+            calendar_sync, sync_error = await self._sync_to_external_calendar(
+                company_id, apt, client, action="delete"
+            )
 
         self._log_activity(
             company_id,
@@ -602,10 +669,48 @@ class CRMService:
             entity_id=apt.id,
             action="cancel",
             actor_name=actor_name,
-            details={"status": "cancelled"},
+            details={"status": "cancelled", "calendar_sync": calendar_sync},
         )
         self._session.commit()
-        return True
+        return AppointmentMutationResult(apt, calendar_sync, sync_error)
+
+    async def delete_appointment(
+        self,
+        company_id: UUID,
+        appointment_id: UUID,
+        actor_name: str = "Utilisateur",
+    ) -> AppointmentMutationResult:
+        self._lock_appointment_writes(company_id)
+        apt = self._session.scalars(
+            select(CRMAppointment).where(
+                CRMAppointment.id == appointment_id,
+                CRMAppointment.company_id == company_id,
+                CRMAppointment.is_deleted.is_(False),
+            )
+        ).first()
+        if not apt:
+            return AppointmentMutationResult(None, "not_found", "Rendez-vous introuvable.")
+
+        client = self.get_client(company_id, apt.client_id)
+        if client:
+            calendar_sync, sync_error = await self._sync_to_external_calendar(
+                company_id, apt, client, action="delete"
+            )
+            if sync_error:
+                return AppointmentMutationResult(apt, calendar_sync, sync_error)
+
+        apt.is_deleted = True
+        apt.status = "cancelled"
+        self._log_activity(
+            company_id,
+            entity_type="appointment",
+            entity_id=apt.id,
+            action="delete",
+            actor_name=actor_name,
+            details={"permanent": True, "calendar_sync": "deleted"},
+        )
+        self._session.commit()
+        return AppointmentMutationResult(apt, "deleted")
 
     # --- External Calendar Sync Helper ---
 
@@ -615,7 +720,7 @@ class CRMService:
         appointment: CRMAppointment,
         client: CRMClient,
         action: str = "create",
-    ) -> None:
+    ) -> tuple[str, str | None]:
         """Synchronizes appointment action with connected Google Calendar if active."""
         conn = self._session.scalars(
             select(CRMCalendarConnection).where(
@@ -625,7 +730,7 @@ class CRMService:
         ).first()
 
         if not conn or not self._cipher:
-            return
+            return "not_configured", None
 
         try:
             creds = self._cipher.decrypt(conn.encrypted_credentials)
@@ -643,13 +748,23 @@ class CRMService:
                     ext_id = await provider.create_event(creds, event_data, conn.calendar_id)
                     appointment.calendar_provider = "google"
                     appointment.external_event_id = ext_id
+                    return "synced", None
                 elif action == "update" and appointment.external_event_id:
                     await provider.update_event(creds, appointment.external_event_id, event_data, conn.calendar_id)
+                    return "synced", None
                 elif action == "delete" and appointment.external_event_id:
-                    await provider.delete_event(creds, appointment.external_event_id, conn.calendar_id)
+                    deleted = await provider.delete_event(creds, appointment.external_event_id, conn.calendar_id)
+                    if not deleted:
+                        return "failed", "Google Calendar n'a pas confirmé la suppression de l'événement."
                     appointment.external_event_id = None
-        except Exception:
-            pass  # Avoid aborting CRM operations if external sync temporarily errors
+                    return "synced", None
+                return "skipped", None
+        except Exception as exc:
+            logger.warning(
+                "CRM calendar synchronization failed",
+                extra={"company_id": str(company_id), "appointment_id": str(appointment.id), "action": action},
+            )
+            return "failed", f"Synchronisation Google Calendar impossible: {exc}"
 
     # --- Services & Employees ---
 

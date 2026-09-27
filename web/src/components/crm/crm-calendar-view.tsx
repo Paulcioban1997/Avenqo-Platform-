@@ -59,6 +59,7 @@ export function CRMCalendarView({
       if (selectedServiceId !== "all" && app.service_id !== selectedServiceId) return false;
       if (selectedEmployeeId !== "all" && app.employee_id !== selectedEmployeeId) return false;
       if (selectedStatus !== "all" && app.status !== selectedStatus) return false;
+      if (selectedStatus === "all" && app.status === "cancelled") return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const clientMatch = app.client_name?.toLowerCase().includes(q);

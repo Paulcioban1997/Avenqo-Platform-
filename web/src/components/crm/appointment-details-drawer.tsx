@@ -49,6 +49,7 @@ interface AppointmentDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onStatusChange: (id: string, newStatus: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   onRescheduleClick: (appointment: AppointmentItem) => void;
   t: AppTranslations;
 }
@@ -58,10 +59,13 @@ export function AppointmentDetailsDrawer({
   isOpen,
   onClose,
   onStatusChange,
+  onDelete,
   onRescheduleClick,
   t,
 }: AppointmentDetailsDrawerProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"cancel" | "delete" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!isOpen || !appointment) return null;
 
@@ -78,8 +82,29 @@ export function AppointmentDetailsDrawer({
 
   const handleStatus = async (status: string) => {
     setIsUpdating(true);
+    setActionError(null);
     try {
       await onStatusChange(appointment.id, status);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t.crm.actions.mutationError);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmedAction = async () => {
+    if (!pendingAction) return;
+    setIsUpdating(true);
+    setActionError(null);
+    try {
+      if (pendingAction === "delete") {
+        await onDelete(appointment.id);
+      } else {
+        await onStatusChange(appointment.id, "cancelled");
+      }
+      setPendingAction(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t.crm.actions.mutationError);
     } finally {
       setIsUpdating(false);
     }
@@ -116,6 +141,11 @@ export function AppointmentDetailsDrawer({
 
           {/* Body Content */}
           <div className="p-6 overflow-y-auto flex-1 space-y-6 text-sm">
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {actionError}
+              </div>
+            )}
             {/* Calendar & Time */}
             <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06]">
               <Calendar className="w-4 h-4 text-[#0076FF] mt-0.5" />
@@ -248,16 +278,55 @@ export function AppointmentDetailsDrawer({
             {appointment.status !== "cancelled" && (
               <button
                 disabled={isUpdating}
-                onClick={() => handleStatus("cancelled")}
+                onClick={() => setPendingAction("cancel")}
                 className="w-full py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
               >
                 <XCircle className="w-3.5 h-3.5" />
                 {t.crm.actions.cancel}
               </button>
             )}
+            <button
+              disabled={isUpdating}
+              onClick={() => setPendingAction("delete")}
+              className="w-full py-2 px-3 rounded-xl border border-red-300 dark:border-red-900/60 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold transition-colors"
+            >
+              {t.crm.actions.deletePermanent}
+            </button>
           </div>
         </div>
       </div>
+
+      {pendingAction && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-950/60" onClick={() => setPendingAction(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-white/[0.08] p-5 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {pendingAction === "delete" ? t.crm.actions.deletePermanent : t.crm.actions.cancel}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              {pendingAction === "delete" ? t.crm.actions.confirmDelete : t.crm.actions.confirmCancel}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => setPendingAction(null)}
+                className="rounded-xl border border-slate-200 dark:border-white/[0.12] px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200"
+              >
+                {t.crm.actions.close}
+              </button>
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => void handleConfirmedAction()}
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {pendingAction === "delete" ? t.crm.actions.deletePermanent : t.crm.actions.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
