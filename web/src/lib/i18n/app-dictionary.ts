@@ -1,4 +1,5 @@
 import type { LocaleCode } from "./types";
+import { APP_LOCALE_WORDS } from "./app-locale-overrides";
 
 export type AppTranslations = {
   brand: {
@@ -898,11 +899,44 @@ const esApp: AppTranslations = {
 };
 
 export function getAppTranslations(locale: LocaleCode | string): AppTranslations {
-  if (locale === "fr" || locale === "fr-FR") {
-    return frApp;
-  }
-  if (locale === "es") {
-    return esApp;
-  }
-  return enApp;
+  const base = locale === "fr" || locale === "fr-FR"
+    ? frApp
+    : locale === "es"
+      ? esApp
+      : enApp;
+  const words = APP_LOCALE_WORDS[locale as LocaleCode] ?? APP_LOCALE_WORDS.en;
+  return {
+    ...base,
+    navigation: {
+      ...base.navigation,
+      dashboard: words.dashboard,
+      retailAi: words.retail,
+      crmAi: words.crm,
+      accountingAi: words.accounting,
+      integrations: words.integrations,
+      settings: words.settings,
+    },
+    crm: {
+      ...base.crm,
+      title: `${words.crm} ${words.overview}`,
+      tabs: {
+        ...base.crm.tabs,
+        overview: words.overview,
+        clients: words.clients,
+        appointments: words.appointments,
+      },
+      kpis: {
+        ...base.crm.kpis,
+        activeClients: words.activeClients,
+        appointmentsThisMonth: words.appointmentsThisMonth,
+        revenueGenerated: words.revenueGenerated,
+      },
+      status: {
+        ...base.crm.status,
+      },
+      appointmentStatuses: {
+        ...base.crm.appointmentStatuses,
+      },
+    },
+  };
 }
