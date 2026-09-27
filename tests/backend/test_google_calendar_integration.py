@@ -5,12 +5,22 @@ import base64
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-from backend.app.routers.crm import _google_oauth_state, _verify_google_oauth_state
+from backend.app.api.router import api_router
+from backend.app.core.security import hash_token
+from backend.app.models import Base, CommerceOAuthState
+from backend.app.routers.crm import (
+    _google_oauth_state,
+    _verify_google_oauth_state,
+    google_calendar_callback,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 
 
@@ -46,6 +56,88 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
 
     with pytest.raises(Exception):
         _verify_google_oauth_state(f"{state}tampered", "test-secret")
+
+
+def test_callback_route_is_public_but_crm_routes_remain_protected() -> None:
+    callback = next(
+        route for route in api_router.routes
+        if getattr(route, "path", None) == "/api/v1/crm/calendar/google/callback"
+    )
+    kpis = next(
+        route for route in api_router.routes
+        if getattr(route, "path", None) == "/api/v1/crm/kpis"
+    )
+    callback_dependencies = {dependency.call.__name__ for dependency in callback.dependant.dependencies}
+    protected_dependencies = {dependency.call.__name__ for dependency in kpis.dependant.dependencies}
+    assert "get_current_identity" not in callback_dependencies
+    assert "require_active_subscription" not in callback_dependencies
+    assert "require_active_subscription" in protected_dependencies
+
+
+def test_callback_without_jwt_consumes_valid_state_and_rejects_replay(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'oauth.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    tenant_id = UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff")
+    user_id = UUID("25fe88b0-2b65-4269-924c-013520773dbd")
+    secret = "test-secret"
+    state = _google_oauth_state(tenant_id, user_id, secret)
+    now = datetime.now(timezone.utc)
+
+    class FakeProvider:
+        async def exchange_code(self, code: str):
+            assert code == "google-code"
+            return {"access_token": "runtime-token", "account_email": "owner@example.com"}
+
+    class FakeCipher:
+        def encrypt(self, payload):
+            return "encrypted-runtime-token"
+
+    monkeypatch.setattr(
+        "backend.app.routers.crm.get_settings",
+        lambda: SimpleNamespace(
+            auth_jwt_secret=secret,
+            google_calendar_client_id="client-id",
+            google_calendar_client_secret="server-only-secret",
+            google_calendar_redirect_uri="https://api.example.test/callback",
+            frontend_url="https://avenqo.ca",
+        ),
+    )
+    monkeypatch.setattr("backend.app.routers.crm.GoogleCalendarProvider", lambda **kwargs: FakeProvider())
+    monkeypatch.setattr("backend.app.routers.crm.get_connector_secret_cipher", lambda: FakeCipher())
+
+    with factory() as db:
+        db.add(
+            CommerceOAuthState(
+                company_id=tenant_id,
+                actor_user_id=user_id,
+                provider="google_calendar",
+                external_account_id="google_calendar",
+                state_hash=hash_token(state),
+                expires_at=now + timedelta(minutes=10),
+            )
+        )
+        db.commit()
+        response = asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+        assert response.status_code == 303
+        with pytest.raises(Exception, match="déjà utilisé"):
+            asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+
+
+def test_callback_rejects_expired_and_cross_tenant_persisted_states(tmp_path) -> None:
+    secret = "test-secret"
+    state = _google_oauth_state(
+        UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"),
+        UUID("25fe88b0-2b65-4269-924c-013520773dbd"),
+        secret,
+    )
+    payload = _verify_google_oauth_state(state, secret)
+    expired = _encode_oauth_state(
+        {**payload, "expires_at": int(datetime.now(timezone.utc).timestamp()) - 1},
+        secret,
+    )
+    with pytest.raises(Exception):
+        _verify_google_oauth_state(expired, secret)
 
 
 def test_google_auth_url_uses_offline_calendar_scopes() -> None:

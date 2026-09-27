@@ -40,6 +40,7 @@ from backend.app.services.crm_service import CRMService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/crm", tags=["crm"])
+google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
 
 
 def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
@@ -77,6 +78,10 @@ def _google_redirect_uri(settings) -> str:
     return settings.google_calendar_redirect_uri or (
         "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
     )
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _get_crm_service(db: Session = Depends(get_db)) -> CRMService:
@@ -638,7 +643,7 @@ def get_google_calendar_auth_url(
     return {"auth_url": auth_url}
 
 
-@router.get("/calendar/google/callback")
+@google_oauth_callback_router.get("/calendar/google/callback")
 async def google_calendar_callback(
     code: str = Query(...),
     state: str = Query(...),
@@ -660,7 +665,7 @@ async def google_calendar_callback(
     )
     if (
         oauth_state is None
-        or oauth_state.expires_at <= now
+        or _as_utc(oauth_state.expires_at) <= now
         or oauth_state.company_id != tenant_id
         or oauth_state.actor_user_id != user_id
     ):

@@ -11,7 +11,10 @@ from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
 from backend.app.routers.central_ai import router as central_ai_router
 from backend.app.routers.commerce import router as commerce_router
-from backend.app.routers.crm import router as crm_router
+from backend.app.routers.crm import (
+	google_oauth_callback_router,
+	router as crm_router,
+)
 from backend.app.routers.cross_agent import router as cross_agent_router
 from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.dataset_archives import router as dataset_archives_router
@@ -114,6 +117,9 @@ api_router.include_router(
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )
+# Google redirects here without an Avenqo JWT/cookie. The callback authenticates
+# the transaction with its signed, tenant-bound OAuth state instead.
+api_router.include_router(google_oauth_callback_router, prefix="/api/v1")
 api_router.include_router(voice_router, prefix="/api/v1")
 api_router.include_router(
 	accounting_router,
