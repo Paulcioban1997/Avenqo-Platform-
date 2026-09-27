@@ -480,6 +480,14 @@ def test_sales_real_period_trend_currency_and_tenant_isolation(business_environm
             {"date": (now - timedelta(days=1)).isoformat(), "sale": "O3", "client": "C2", "amount": 50},
         ],
     )
+    dataset_b_id = next(
+        dataset_id for dataset_id, artifact in prepared.items() if artifact.company_id == company_b.id
+    )
+    prepared[dataset_b_id] = _prepared(
+        company_b,
+        SimpleNamespace(id=dataset_b_id),
+        [{"date": (now - timedelta(days=2)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999}],
+    )
     sales, _customers, _predictions = _services(session, prepared)
 
     result_a = sales.build(TenantContext(company_a.id), period_key="last_30_days")
