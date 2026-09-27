@@ -179,7 +179,7 @@ def business_environment(tmp_path):
             {"date": "2026-08-28", "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
         ]
         rows_b = [
-            {"date": (now - timedelta(days=1)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
+            {"date": (now - timedelta(days=1)).strftime("%Y-%m-%d"), "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
         ]
         prepared = {
             dataset_a.id: _prepared(company_a, dataset_a, rows_a),
