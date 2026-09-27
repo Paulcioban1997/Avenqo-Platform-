@@ -430,14 +430,22 @@ export function IntegrationsHubView() {
   const handleDisconnect = async (connector: ConnectorItem) => {
     setIsDisconnecting(true);
     try {
-      const activeConn = rawConnections.find((c) => c.provider.toLowerCase() === connector.id);
-      if (activeConn) {
-        await fetch(`/api/v1/connectors/connections/${activeConn.id}`, {
-          method: "DELETE",
+      if (connector.id === "google_calendar") {
+        const res = await fetch("/api/v1/crm/calendar/disconnect", {
+          method: "POST",
           headers: getAuthHeaders(),
         });
+        if (!res.ok) throw new Error("Google Calendar disconnect failed");
+      } else {
+        const activeConn = rawConnections.find((c) => c.provider.toLowerCase() === connector.id);
+        if (activeConn) {
+          await fetch(`/api/v1/connectors/connections/${activeConn.id}`, {
+            method: "DELETE",
+            headers: getAuthHeaders(),
+          });
+        }
       }
-      setSyncSuccessToast(`Connecteur ${connector.name} déconnecté et données supprimées.`);
+      setSyncSuccessToast(`Connecteur ${connector.name} déconnecté.`);
       await loadConnections();
       setSelectedConnector(null);
       setDisconnectTarget(null);
@@ -446,6 +454,26 @@ export function IntegrationsHubView() {
       // Optimistic
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const handleConnectGoogleCalendar = async () => {
+    try {
+      const res = await fetch("/api/v1/crm/calendar/google/auth-url", {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Google OAuth non configuré." }));
+        throw new Error(err.detail || "Google OAuth non configuré.");
+      }
+      const data = await res.json();
+      const authUrl = data.auth_url || data.url;
+      if (!authUrl) {
+        throw new Error("URL d'authentification Google absente.");
+      }
+      window.location.href = authUrl;
+    } catch (error: any) {
+      setFormError(error.message || "Impossible de démarrer l'authentification Google.");
     }
   };
 
@@ -542,6 +570,17 @@ export function IntegrationsHubView() {
       canDisconnect: false,
     },
     {
+      id: "google_calendar",
+      name: t.integrations.googleCalendar,
+      category: "crm",
+      categoryLabel: t.integrations.categoryCrm,
+      description: t.integrations.googleCalendarDescription,
+      iconBg: "bg-blue-600",
+      logoLetter: "G",
+      supportsSync: true,
+      canDisconnect: true,
+    },
+    {
       id: "klaviyo",
       name: "Klaviyo",
       category: "crm",
@@ -588,11 +627,14 @@ export function IntegrationsHubView() {
   ];
 
   const connectors: ConnectorItem[] = baseCatalog.map((item) => {
-    const activeConn = rawConnections.find(
-      (c) =>
-        c.provider.toLowerCase() === item.id.toLowerCase() &&
+    const activeConn = rawConnections.find((c) => {
+      const provider = c.provider.toLowerCase();
+      return (
+        (provider === item.id.toLowerCase() ||
+          (item.id === "google_calendar" && provider === "google")) &&
         c.status !== "DISCONNECTED"
-    );
+      );
+    });
 
     if (activeConn) {
       const isOk =
@@ -640,11 +682,14 @@ export function IntegrationsHubView() {
 
   // Current active connection for the selected connector
   const currentActiveConn = selectedConnector
-    ? rawConnections.find(
-        (c) =>
-          c.provider.toLowerCase() === selectedConnector.id.toLowerCase() &&
+    ? rawConnections.find((c) => {
+        const provider = c.provider.toLowerCase();
+        return (
+          (provider === selectedConnector.id.toLowerCase() ||
+            (selectedConnector.id === "google_calendar" && provider === "google")) &&
           c.status !== "DISCONNECTED"
-      )
+        );
+      })
     : null;
 
   return (
@@ -1186,7 +1231,32 @@ export function IntegrationsHubView() {
                   )}
 
                   {/* Generic fallback form for other connectors */}
-                  {selectedConnector.id !== "woocommerce" && selectedConnector.id !== "shopify" && (
+                  {selectedConnector.id === "google_calendar" && (
+                    <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-blue-50/60 dark:bg-[#172652]/40 text-xs text-slate-700 dark:text-slate-200 space-y-3">
+                      <p>
+                        Synchronisez vos rendez-vous Avenqo avec Google Calendar en temps réel.
+                      </p>
+                      <div className="flex items-center justify-end gap-2.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedConnector(null)}
+                          className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleConnectGoogleCalendar()}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>{t.integrations.googleCalendarConnect}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedConnector.id !== "woocommerce" && selectedConnector.id !== "shopify" && selectedConnector.id !== "google_calendar" && (
                     <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-xs text-slate-600 dark:text-slate-400 space-y-3">
                       <p>
                         Pour activer le connecteur <strong>{selectedConnector.name}</strong>, vous

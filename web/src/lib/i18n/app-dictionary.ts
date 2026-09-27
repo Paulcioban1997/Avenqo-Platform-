@@ -162,6 +162,14 @@ export type AppTranslations = {
     drawerTitle: string;
     drawerLogsTitle: string;
     noLogs: string;
+    googleCalendar: string;
+    googleCalendarDescription: string;
+    googleCalendarConnect: string;
+    googleCalendarManage: string;
+    googleCalendarDisconnect: string;
+    googleCalendarConnected: string;
+    googleCalendarDisconnected: string;
+    googleCalendarConnecting: string;
   };
   crm: {
     title: string;
@@ -416,6 +424,14 @@ const frApp: AppTranslations = {
     drawerTitle: "Configuration & Synchronisation Manuelle",
     drawerLogsTitle: "Journal d'audit de synchronisation",
     noLogs: "Aucune synchronisation récente enregistrée.",
+    googleCalendar: "Google Calendar",
+    googleCalendarDescription: "Synchronisez vos rendez-vous Avenqo avec Google Calendar en temps réel.",
+    googleCalendarConnect: "Connecter",
+    googleCalendarManage: "Gérer",
+    googleCalendarDisconnect: "Déconnecter",
+    googleCalendarConnected: "Connecté",
+    googleCalendarDisconnected: "Déconnecté",
+    googleCalendarConnecting: "Connexion...",
   },
   crm: {
     title: "CRM IA & Planification Intelligente",
@@ -670,6 +686,14 @@ const enApp: AppTranslations = {
     drawerTitle: "Manual Sync & Connector Settings",
     drawerLogsTitle: "Sync Audit Log",
     noLogs: "No recent synchronization entries recorded.",
+    googleCalendar: "Google Calendar",
+    googleCalendarDescription: "Synchronize your Avenqo appointments with Google Calendar in real time.",
+    googleCalendarConnect: "Connect",
+    googleCalendarManage: "Manage",
+    googleCalendarDisconnect: "Disconnect",
+    googleCalendarConnected: "Connected",
+    googleCalendarDisconnected: "Disconnected",
+    googleCalendarConnecting: "Connecting...",
   },
   crm: {
     title: "CRM AI & Intelligent Scheduling",
