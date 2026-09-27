@@ -37,6 +37,7 @@ from backend.app.ai.tools.business.crm_tools import (
 from backend.app.models.base import Base
 from backend.app.models.company import Company
 from backend.app.models.crm import (
+    CRMCalendarConnection,
     CRMClient,
     CRMService,
     CRMEmployee,
@@ -316,6 +317,71 @@ def test_appointment_idempotency_returns_one_record_and_is_tenant_scoped(db_sess
     assert other_tenant.id != first.id
     assert db_session.query(CRMAppointment).filter_by(company_id=company_a.id).count() == 1
     assert db_session.query(CRMAppointment).filter_by(company_id=company_b.id).count() == 1
+
+
+def test_customer_resolution_is_exact_and_never_uses_test_mailbox(db_session):
+    company = _create_company(db_session, "tenant-customer-resolution")
+    crm_svc = CRMAppService(db_session)
+    alice = crm_svc.create_client(company.id, {
+        "first_name": "Alice", "last_name": "Smith", "email": "alice@example.com",
+    })
+    bob = crm_svc.create_client(company.id, {
+        "first_name": "Bob", "last_name": "Smith", "email": "bob@example.com",
+    })
+    test_client = crm_svc.create_client(company.id, {
+        "first_name": "Avenqo", "last_name": "CRM Test", "email": "crm_test_client@avenqo.ca",
+    })
+
+    resolved_alice, error = crm_svc.resolve_client_for_appointment(company.id, "alice@example.com")
+    resolved_bob, phone_error = crm_svc.resolve_client_for_appointment(company.id, "Bob")
+    ambiguous, ambiguous_error = crm_svc.resolve_client_for_appointment(company.id, "Smith")
+
+    assert resolved_alice is alice and error is None
+    assert resolved_bob is bob and phone_error is None
+    assert ambiguous is None and ambiguous_error is not None
+    assert crm_svc.is_valid_customer_email(test_client.email) is False
+
+
+def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-attendee-identity")
+    captured: list[str | None] = []
+
+    class FakeCipher:
+        def decrypt(self, value):
+            return {"access_token": "runtime-only"}
+
+    class FakeProvider:
+        async def create_event(self, credentials, event, calendar_id):
+            captured.append(event.attendee_email)
+            return f"event-{len(captured)}"
+
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda: FakeProvider())
+    crm_svc = CRMAppService(db_session, FakeCipher())
+    alice = crm_svc.create_client(company.id, {
+        "first_name": "Alice", "last_name": "Example", "email": "alice@example.com",
+    })
+    no_email = crm_svc.create_client(company.id, {
+        "first_name": "No", "last_name": "Email", "email": "",
+    })
+    db_session.add(CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="organizer@avenqo.ca",
+        encrypted_credentials="encrypted",
+        sync_status="connected",
+    ))
+    db_session.commit()
+    start = datetime.now(timezone.utc) + timedelta(days=2)
+    first, first_error = asyncio.run(crm_svc.create_appointment(
+        company.id, {"client_id": alice.id, "title": "Alice booking", "start_time": start},
+    ))
+    second, second_error = asyncio.run(crm_svc.create_appointment(
+        company.id, {"client_id": no_email.id, "title": "No email booking", "start_time": start + timedelta(hours=2)},
+    ))
+
+    assert first_error is None and second_error is None
+    assert first is not None and second is not None
+    assert captured == ["alice@example.com", None]
 
 
 def test_appointment_search_filters_client_and_title(db_session):

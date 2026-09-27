@@ -886,15 +886,60 @@ async def crm_copilot_chat(
                 "conflict_reason": conflict_reason,
             }
 
-        # Resolve or create client
-        clients = service.list_clients(tenant.company_id, limit=1)
-        client = clients[0] if clients else None
+        email_match = re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", msg)
+        phone_match = re.search(r"(?:\+?\d[\d\s().-]{7,}\d)", msg)
+        id_match = re.search(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            msg,
+        )
+        name_match = re.search(
+            r"(?:pour|for)\s+(.+?)(?=\s+(?:demain|tomorrow|aujourd'hui|today|à|at|avec|with|\d{1,2}[h:])\b|$)",
+            msg,
+        )
+        if ("mon adresse courriel" in msg or "my real email" in msg) and not email_match:
+            client = None
+            resolution_error = "J'ai besoin du courriel ou du numéro de téléphone du client pour identifier le bon dossier."
+        else:
+            requested_identifier = (
+                email_match.group(0)
+                if email_match
+                else phone_match.group(0)
+                if phone_match
+                else id_match.group(0)
+                if id_match
+                else name_match.group(1).strip()
+                if name_match
+                else ""
+            )
+            if not requested_identifier:
+                client = None
+                resolution_error = "J'ai besoin du courriel ou du numéro de téléphone du client pour identifier le bon dossier."
+            else:
+                try:
+                    client_id = UUID(requested_identifier)
+                    client = service.get_client(tenant.company_id, client_id)
+                    resolution_error = None if client else "Client introuvable dans ce tenant."
+                except ValueError:
+                    client, resolution_error = service.resolve_client_for_appointment(
+                        tenant.company_id,
+                        requested_identifier,
+                        email=email_match.group(0) if email_match else None,
+                        phone=phone_match.group(0) if phone_match else None,
+                    )
         if not client:
             return {
+                "reply": resolution_error
+                if req.locale != "en"
+                else "I need the customer's email address or phone number to identify the correct record.",
+                "status": "customer_required",
+                "action": "appointment_not_created",
+            }
+        if not service.is_valid_customer_email(client.email):
+            return {
                 "reply": (
-                    "Please provide or select an existing customer before booking."
+                    "I need the customer's real email address before booking."
                     if req.locale == "en"
-                    else "Veuillez fournir ou sélectionner un client existant avant de réserver."
+                    else "J'ai besoin du courriel réel du client avant de réserver."
                 ),
                 "status": "customer_required",
                 "action": "appointment_not_created",

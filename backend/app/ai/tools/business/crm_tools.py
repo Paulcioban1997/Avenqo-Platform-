@@ -384,6 +384,11 @@ class CreateAppointmentTool(AITool):
 
         if not client:
             return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
+        if not self._crm.is_valid_customer_email(client.email):
+            return ToolResult(
+                success=False,
+                data={"error": "J'ai besoin du courriel du client pour identifier le bon dossier et envoyer l'invitation."},
+            )
 
         apt_data = {
             "client_id": client.id,

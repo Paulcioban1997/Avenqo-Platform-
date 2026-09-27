@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from dataclasses import dataclass
 import logging
+import re
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -174,20 +175,27 @@ class CRMService:
         phone: str | None = None,
     ) -> tuple[CRMClient | None, str | None]:
         """Resolve only an exact ID/email/phone or one unique CRM name match."""
-        normalized_email = (email or identifier).strip().lower()
-        if "@" in normalized_email:
+        explicit_email = (email or "").strip().lower()
+        identifier_email = identifier.strip().lower() if "@" in identifier else ""
+        normalized_email = explicit_email or identifier_email
+        if normalized_email:
+            if not self.is_valid_customer_email(normalized_email):
+                return None, "L'adresse courriel du client est invalide."
             client = self._session.scalars(
                 select(CRMClient).where(
                     CRMClient.company_id == company_id,
-                    CRMClient.email == normalized_email,
+                    func.lower(CRMClient.email) == normalized_email,
                     CRMClient.is_deleted.is_(False),
                 )
             ).first()
             if client:
                 return client, None
+            return None, "Aucun client ne correspond à cette adresse courriel. Demandez le bon dossier client."
 
-        normalized_phone = self._normalize_phone(phone or identifier)
-        if normalized_phone:
+        explicit_phone = (phone or "").strip()
+        identifier_phone = identifier.strip() if self._normalize_phone(identifier) else ""
+        normalized_phone = self._normalize_phone(explicit_phone or identifier_phone)
+        if explicit_phone or identifier_phone:
             candidates = [
                 client
                 for client in self.list_clients(company_id, limit=500)
@@ -195,6 +203,7 @@ class CRMService:
             ]
             if len(candidates) == 1:
                 return candidates[0], None
+            return None, "Aucun client unique ne correspond à ce numéro de téléphone."
 
         candidates = self.list_clients(company_id, search=identifier, limit=20)
         if len(candidates) == 1:
@@ -240,6 +249,13 @@ class CRMService:
     def _normalize_phone(phone: Any) -> str | None:
         digits = "".join(character for character in str(phone or "") if character.isdigit())
         return digits or None
+
+    @staticmethod
+    def is_valid_customer_email(email: str | None) -> bool:
+        normalized = email.strip().lower() if email else ""
+        if normalized == "crm_test_client@avenqo.ca":
+            return False
+        return bool(normalized and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized))
 
     def _find_existing_client(
         self,
@@ -741,7 +757,11 @@ class CRMService:
                     start_time=appointment.start_time,
                     end_time=appointment.end_time,
                     description=appointment.notes,
-                    attendee_email=client.email,
+                    attendee_email=(
+                        client.email.strip().lower()
+                        if self.is_valid_customer_email(client.email)
+                        else None
+                    ),
                     client_name=client.full_name,
                 )
                 if action == "create":
