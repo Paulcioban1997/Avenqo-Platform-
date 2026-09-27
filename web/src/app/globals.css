@@ -2,6 +2,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  --font-geist-sans: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-manrope: "Avenir Next", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --canvas: #f8fafc;
   --surface: #ffffff;
   --surface-raised: #f1f5f9;

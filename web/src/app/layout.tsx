@@ -1,18 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Manrope } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n/locale-context";
 import { StructuredData } from "@/components/structured-data";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const manrope = Manrope({
-  variable: "--font-manrope",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://avenqo.ca"),
@@ -97,10 +86,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="fr"
-      className={`${geistSans.variable} ${manrope.variable} h-full antialiased`}
-    >
+    <html lang="fr" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <StructuredData />
         <LocaleProvider>{children}</LocaleProvider>
