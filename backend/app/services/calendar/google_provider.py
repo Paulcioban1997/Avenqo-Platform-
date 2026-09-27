@@ -96,6 +96,17 @@ class GoogleCalendarProvider(CalendarProvider):
     async def _fetch_user_email(self, access_token: str) -> str:
         if not access_token:
             return ""
+        req = urllib.request.Request(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                info = json.loads(resp.read().decode("utf-8"))
+                return info.get("email", "")
+        except Exception:
+            return ""
 
     async def list_calendars(self, credentials: dict[str, Any]) -> list[dict[str, Any]]:
         """Return calendars visible to the connected Google account."""
@@ -125,17 +136,6 @@ class GoogleCalendarProvider(CalendarProvider):
             ) from exc
         except Exception as exc:
             raise CalendarProviderError(f"Erreur réseau Google Calendar: {exc}") from exc
-        req = urllib.request.Request(
-            "https://www.googleapis.com/oauth2/v2/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-            method="GET",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                info = json.loads(resp.read().decode("utf-8"))
-                return info.get("email", "")
-        except Exception:
-            return ""
 
     async def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
         """Refreshes expired access token using stored refresh token."""

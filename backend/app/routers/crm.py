@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.core.security import hash_token
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_current_identity, get_tenant_context
 from backend.app.dependencies.commerce import get_connector_secret_cipher
@@ -28,6 +30,7 @@ from backend.app.models.crm import (
     CRMLead,
     CRMOpportunity,
 )
+from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
@@ -43,6 +46,8 @@ def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id),
+        "provider": "google_calendar",
+        "nonce": secrets.token_urlsafe(24),
         "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
     }
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
@@ -57,6 +62,10 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
         if not hmac.compare_digest(signature, expected):
             raise ValueError("invalid signature")
         payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if payload.get("provider") != "google_calendar":
+            raise ValueError("unexpected provider")
+        if not payload.get("tenant_id") or not payload.get("user_id") or not payload.get("nonce"):
+            raise ValueError("missing oauth context")
         if int(payload["expires_at"]) < int(datetime.now(timezone.utc).timestamp()):
             raise ValueError("expired state")
         return payload
@@ -579,8 +588,20 @@ def get_calendar_connection(
 def get_google_calendar_auth_url(
     tenant: TenantContext = Depends(get_tenant_context),
     identity=Depends(get_current_identity),
+    db: Session = Depends(get_db),
 ) -> dict[str, str]:
     settings = get_settings()
+    if not all(
+        (
+            settings.google_calendar_client_id,
+            settings.google_calendar_client_secret,
+            settings.google_calendar_redirect_uri,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth non configuré sur ce serveur.",
+        )
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
@@ -591,6 +612,28 @@ def get_google_calendar_auth_url(
         identity.user.id,
         settings.auth_jwt_secret,
     )
+    now = datetime.now(timezone.utc)
+    previous_states = db.scalars(
+        select(CommerceOAuthState).where(
+            CommerceOAuthState.company_id == tenant.company_id,
+            CommerceOAuthState.actor_user_id == identity.user.id,
+            CommerceOAuthState.provider == "google_calendar",
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+    ).all()
+    for previous_state in previous_states:
+        previous_state.consumed_at = now
+    db.add(
+        CommerceOAuthState(
+            company_id=tenant.company_id,
+            actor_user_id=identity.user.id,
+            provider="google_calendar",
+            external_account_id="google_calendar",
+            state_hash=hash_token(state),
+            expires_at=now + timedelta(minutes=10),
+        )
+    )
+    db.commit()
     auth_url = provider.get_auth_url(state)
     return {"auth_url": auth_url}
 
@@ -604,6 +647,28 @@ async def google_calendar_callback(
     settings = get_settings()
     state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
     tenant_id = UUID(state_data["tenant_id"])
+    user_id = UUID(state_data["user_id"])
+    now = datetime.now(timezone.utc)
+    oauth_state = db.scalar(
+        select(CommerceOAuthState)
+        .where(
+            CommerceOAuthState.provider == "google_calendar",
+            CommerceOAuthState.state_hash == hash_token(state),
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if (
+        oauth_state is None
+        or oauth_state.expires_at <= now
+        or oauth_state.company_id != tenant_id
+        or oauth_state.actor_user_id != user_id
+    ):
+        raise HTTPException(status_code=400, detail="État OAuth Google invalide ou déjà utilisé.")
+    oauth_state.consumed_at = now
+    db.add(oauth_state)
+    db.commit()
+
     cipher = get_connector_secret_cipher()
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
@@ -615,29 +680,35 @@ async def google_calendar_callback(
     email = tokens.get("account_email") or "compte-google@avenqo.ca"
 
     conn = db.scalars(
-        select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == tenant_id)
+        select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == tenant_id,
+            CRMCalendarConnection.provider == "google",
+        )
     ).first()
     if conn:
         conn.provider = "google"
+        conn.user_id = user_id
         conn.account_email = email
         conn.encrypted_credentials = encrypted_creds
         conn.sync_status = "connected"
-        conn.last_synced_at = datetime.now(timezone.utc)
+        conn.last_synced_at = now
+        conn.sync_error = None
     else:
         conn = CRMCalendarConnection(
             company_id=tenant_id,
+            user_id=user_id,
             provider="google",
             account_email=email,
             calendar_id="primary",
             encrypted_credentials=encrypted_creds,
             sync_status="connected",
-            last_synced_at=datetime.now(timezone.utc),
+            last_synced_at=now,
         )
         db.add(conn)
 
     db.commit()
     return RedirectResponse(
-        url=f"{settings.frontend_url.rstrip('/')}/crm?google_calendar=connected",
+        url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
         status_code=303,
     )
 

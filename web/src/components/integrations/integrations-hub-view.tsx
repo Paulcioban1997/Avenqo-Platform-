@@ -463,8 +463,13 @@ export function IntegrationsHubView() {
         headers: getAuthHeaders(),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Google OAuth non configuré." }));
-        throw new Error(err.detail || "Google OAuth non configuré.");
+        const err = await res.json().catch(() => ({}));
+        const fallback = res.status === 401
+          ? "Votre session Avenqo a expiré. Reconnectez-vous."
+          : res.status === 503
+            ? "Google OAuth non configuré sur ce serveur."
+            : "Impossible de démarrer Google OAuth.";
+        throw new Error(err.detail || fallback);
       }
       const data = await res.json();
       const authUrl = data.auth_url || data.url;

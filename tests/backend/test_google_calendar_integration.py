@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -9,6 +12,14 @@ import pytest
 
 from backend.app.routers.crm import _google_oauth_state, _verify_google_oauth_state
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
+
+
+def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("utf-8").rstrip("=")
+    signature = hmac.new(secret.encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
 
 
 def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
@@ -20,6 +31,18 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
     payload = _verify_google_oauth_state(state, "test-secret")
     assert payload["tenant_id"] == "9c97cb94-e9f9-46fb-afd4-8a1d21019cff"
     assert payload["user_id"] == "25fe88b0-2b65-4269-924c-013520773dbd"
+    assert payload["provider"] == "google_calendar"
+    assert payload["nonce"]
+
+    mismatched_provider = _encode_oauth_state(
+        {
+            **payload,
+            "provider": "not_google_calendar",
+        },
+        "test-secret",
+    )
+    with pytest.raises(Exception):
+        _verify_google_oauth_state(mismatched_provider, "test-secret")
 
     with pytest.raises(Exception):
         _verify_google_oauth_state(f"{state}tampered", "test-secret")
@@ -38,6 +61,22 @@ def test_google_auth_url_uses_offline_calendar_scopes() -> None:
     assert "calendar.events" in url
     assert "calendar.readonly" in url
     assert "server-only-secret" not in url
+
+
+def test_google_provider_fetches_account_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"email":"owner@example.com"}'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: FakeResponse())
+    email = asyncio.run(GoogleCalendarProvider()._fetch_user_email("access-token"))
+    assert email == "owner@example.com"
 
 
 def test_google_calendar_list_response_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:

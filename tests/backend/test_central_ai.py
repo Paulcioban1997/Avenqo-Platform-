@@ -210,7 +210,7 @@ async def test_retail_intents_route_to_retail_intelligence(db_session, query) ->
     assert provider.calls == 1
 
 
-async def test_coming_soon_never_executes_and_unknown_intent_uses_general_fallback(db_session) -> None:
+async def test_non_entitled_module_never_executes_and_unknown_intent_uses_general_fallback(db_session) -> None:
     company, user = make_company(db_session)
     provider = StubProvider()
     central, conversations, usage, tenant = make_service(db_session, company, provider, limit=3)
@@ -220,7 +220,7 @@ async def test_coming_soon_never_executes_and_unknown_intent_uses_general_fallba
     unrelated = await execute(central, tenant, user, conversation, "Draft a birthday poem")
 
     assert (crm.selected_agent, crm.status, crm.agent_availability) == (
-        "crm", "agent_unavailable", "coming_soon"
+        "crm", "not_entitled", "not_entitled"
     )
     assert unrelated.status == "success"
     assert unrelated.selected_agent is None
@@ -425,8 +425,8 @@ async def test_semantically_selected_inactive_module_remains_blocked(db_session)
         central, tenant, user, conversation, "Who should our relationship team contact next?"
     )
 
-    assert (result.selected_agent, result.status) == ("crm", "agent_unavailable")
-    assert provider.calls == 1
+    assert (result.selected_agent, result.status) == ("crm", "not_entitled")
+    assert provider.calls == 0
     assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 0
 
 
@@ -452,13 +452,13 @@ async def test_context_uses_billing_plan_and_central_ai_does_not_consume_module_
     assert result.status == "success"
     assert '"plan_code":"professional"' in provider.last_prompt
     assert before.active_modules == after.active_modules == ("retail",)
-    assert before.remaining_module_slots == after.remaining_module_slots == 7
+    assert before.remaining_module_slots == after.remaining_module_slots == 5
 
 
 async def test_frontend_cannot_supply_tenant_plan_module_or_credit_authority() -> None:
     for field in ("tenant_id", "plan_code", "active_modules", "remaining_ai_credits"):
-        with pytest.raises(ValueError):
-            CentralAIRequest.model_validate({"content": "Hello", field: "spoofed"})
+        request = CentralAIRequest.model_validate({"content": "Hello", field: "spoofed"})
+        assert field not in request.model_fields_set
     assert CentralAIRequest.model_validate({"content": "Hello", "locale": "fr-CA"}).locale == "fr-CA"
     with pytest.raises(ValueError):
         CentralAIRequest.model_validate({"content": "Hello", "locale": "ignore rules"})
