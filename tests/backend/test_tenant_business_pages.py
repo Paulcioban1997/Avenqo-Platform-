@@ -470,6 +470,7 @@ def _product_prepared(company, dataset):
 def test_sales_real_period_trend_currency_and_tenant_isolation(business_environment):
     session, company_a, company_b, _dataset_a, prepared = business_environment
     now = datetime.now(timezone.utc)
+    dataset_b = session.query(Dataset).filter(Dataset.company_id == company_b.id).one()
     prepared[_dataset_a.id] = _prepared(
         company_a,
         _dataset_a,
@@ -479,6 +480,11 @@ def test_sales_real_period_trend_currency_and_tenant_isolation(business_environm
             {"date": (now - timedelta(days=5)).isoformat(), "sale": "O2", "client": "C1", "amount": 25},
             {"date": (now - timedelta(days=1)).isoformat(), "sale": "O3", "client": "C2", "amount": 50},
         ],
+    )
+    prepared[dataset_b.id] = _prepared(
+        company_b,
+        dataset_b,
+        [{"date": (now - timedelta(days=2)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999}],
     )
     sales, _customers, _predictions = _services(session, prepared)
 
