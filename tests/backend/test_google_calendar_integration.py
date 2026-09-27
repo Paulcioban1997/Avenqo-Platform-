@@ -118,6 +118,21 @@ def test_callback_without_jwt_consumes_valid_state_and_rejects_replay(monkeypatc
             )
         )
         db.commit()
+        cross_tenant_state = _google_oauth_state(tenant_id, user_id, secret)
+        cross_tenant_db = SimpleNamespace(
+            scalar=lambda query: SimpleNamespace(
+                company_id=UUID("00000000-0000-0000-0000-000000000002"),
+                actor_user_id=user_id,
+                expires_at=now + timedelta(minutes=10),
+            ),
+        )
+        with pytest.raises(Exception, match="invalide"):
+            asyncio.run(
+                google_calendar_callback(
+                    code="google-code", state=cross_tenant_state, db=cross_tenant_db
+                )
+            )
+
         response = asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
         assert response.status_code == 303
         with pytest.raises(Exception, match="déjà utilisé"):
