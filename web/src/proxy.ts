@@ -35,7 +35,7 @@ export function proxy(request: NextRequest) {
   // Injecter le token dans les headers Authorization pour les API proxy
   const isApiRoute = pathname.startsWith("/api/v1/") || pathname.startsWith("/api/auth/");
   if (isApiRoute) {
-    if (token && !request.headers.get("authorization")) {
+    if (token) {
       const requestHeaders = new Headers(request.headers);
       requestHeaders.set("authorization", `Bearer ${token}`);
       return NextResponse.next({ request: { headers: requestHeaders } });

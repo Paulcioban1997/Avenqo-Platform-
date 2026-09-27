@@ -26,6 +26,17 @@ interface ClientOption {
   phone?: string | null;
 }
 
+async function readApiError(response: Response): Promise<{ message: string; requestId?: string }> {
+  const data = await response.json().catch(() => ({}));
+  const rawMessage = data.detail || data.error?.message || data.message;
+  const message = typeof rawMessage === "string"
+    ? rawMessage
+    : response.status === 401
+      ? "Votre session a expiré. Reconnectez-vous."
+      : "La requête CRM n'a pas pu être traitée.";
+  return { message, requestId: data.request_id };
+}
+
 interface ServiceOption {
   id: string;
   name: string;
@@ -154,6 +165,9 @@ export function NewAppointmentModal({
       if (cRes.ok) {
         const cData = await cRes.json();
         setClients(Array.isArray(cData) ? cData : (cData.items || []));
+      } else {
+        const details = await readApiError(cRes);
+        throw new Error(details.message);
       }
       if (sRes.ok) {
         const sData = await sRes.json();
@@ -163,8 +177,8 @@ export function NewAppointmentModal({
         const eData = await eRes.json();
         setEmployees(eData || []);
       }
-    } catch {
-      // Silently continue
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.crm.actions.mutationError);
     } finally {
       setIsLoadingMeta(false);
     }
@@ -219,11 +233,21 @@ export function NewAppointmentModal({
           }),
         });
         if (!clientRes.ok) {
-          const errData = await clientRes.json().catch(() => ({}));
-          throw new Error(errData.detail || "Erreur lors de la création du client.");
+          const details = await readApiError(clientRes);
+          throw new Error(details.message);
         }
         const newC = await clientRes.json();
         finalClientId = newC.id;
+        const createdClient: ClientOption = {
+          id: newC.id,
+          first_name: newC.first_name || newClientFirst,
+          last_name: newC.last_name || newClientLast,
+          email: (newC.email ?? newClientEmail) || null,
+          phone: (newC.phone ?? newClientPhone) || null,
+        };
+        setClients((current) => [createdClient, ...current.filter((client) => client.id !== createdClient.id)]);
+        setClientId(createdClient.id);
+        setIsCreatingClient(false);
       }
 
       if (!finalClientId) {
@@ -275,11 +299,11 @@ export function NewAppointmentModal({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (res.status === 409) {
-          setConflictWarning(data.detail || "Conflit d'horaire détecté.");
+          setConflictWarning(data.detail || data.error?.message || "Conflit d'horaire détecté.");
           setIsSubmitting(false);
           return;
         }
-        throw new Error(data.detail || "Erreur lors de l'enregistrement du rendez-vous.");
+        throw new Error(data.detail || data.error?.message || "Erreur lors de l'enregistrement du rendez-vous.");
       }
 
       onSuccess();

@@ -114,7 +114,7 @@ class CreateLeadRequest(BaseModel):
 class CreateClientRequest(BaseModel):
     first_name: str
     last_name: str
-    email: str
+    email: str | None = None
     phone: str | None = None
     company_name: str | None = None
     industry_type: str = "general"
@@ -270,7 +270,15 @@ def create_client(
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
     client = service.create_client(tenant.company_id, payload.model_dump())
-    return {"id": str(client.id), "full_name": client.full_name, "email": client.email}
+    return {
+        "id": str(client.id),
+        "full_name": client.full_name,
+        "first_name": client.first_name,
+        "last_name": client.last_name,
+        "email": client.email,
+        "phone": client.phone,
+        "company_name": client.company_name,
+    }
 
 
 @router.get("/clients/{client_id}")
