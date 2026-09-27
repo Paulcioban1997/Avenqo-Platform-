@@ -370,6 +370,8 @@ class Settings(BaseSettings):
     def normalize_database_url(cls, value: object) -> object:
         if isinstance(value, str) and value.startswith("postgres://"):
             return value.replace("postgres://", "postgresql://", 1)
+        if isinstance(value, str) and value.strip().lower() == "sqlite:///:memory:":
+            return "sqlite://"
         return value
 
     @model_validator(mode="after")
