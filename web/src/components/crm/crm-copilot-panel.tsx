@@ -49,12 +49,18 @@ export function CRMCopilotPanel({
   isFloating = false,
 }: CRMCopilotPanelProps) {
   const { locale } = useLocale();
+  const isSpanish = locale === "es";
+  const isEnglish = locale.startsWith("en");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome-1",
       sender: "copilot",
-      content: `Bonjour ${userName} ! Je suis votre Copilot Avenqo en direct. Comment puis-je vous aider aujourd'hui ?`,
+      content: isSpanish
+        ? `¡Hola ${userName}! Soy tu Copilot Avenqo. ¿Cómo puedo ayudarte hoy?`
+        : isEnglish
+          ? `Hello ${userName}! I am your Avenqo Copilot. How can I help you today?`
+          : `Bonjour ${userName} ! Je suis votre Copilot Avenqo en direct. Comment puis-je vous aider aujourd'hui ?`,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
@@ -94,14 +100,32 @@ export function CRMCopilotPanel({
     recognition.start();
   };
 
-  const suggestedActions = [
-    { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes.", icon: Calendar },
-    { label: "Trouver un créneau libre", query: "Trouve-moi un créneau libre aujourd'hui", icon: Clock },
-    { label: "Rechercher un client", query: "Rechercher un client", icon: Search },
-    { label: "Envoyer des rappels", query: "Envoyer des rappels de rendez-vous", icon: Bell },
-    { label: "Voir mes rendez-vous aujourd'hui", query: "Voir mes rendez-vous aujourd'hui", icon: Calendar },
-    { label: "Générer un rapport", query: "Générer un rapport de performance CRM", icon: BarChart3 },
-  ];
+  const suggestedActions = isSpanish
+    ? [
+        { label: "Crear una cita", query: "Crea una cita para mañana a las 14:30", icon: Calendar },
+        { label: "Encontrar una franja libre", query: "Encuentra una franja libre hoy", icon: Clock },
+        { label: "Buscar un cliente", query: "Buscar un cliente", icon: Search },
+        { label: "Enviar recordatorios", query: "Enviar recordatorios de citas", icon: Bell },
+        { label: "Ver mis citas de hoy", query: "Ver mis citas de hoy", icon: Calendar },
+        { label: "Generar un informe", query: "Generar un informe de rendimiento CRM", icon: BarChart3 },
+      ]
+    : isEnglish
+      ? [
+          { label: "Create an appointment", query: "Create an appointment tomorrow at 2:30 PM", icon: Calendar },
+          { label: "Find an available slot", query: "Find an available slot today", icon: Clock },
+          { label: "Search for a customer", query: "Search for a customer", icon: Search },
+          { label: "Send reminders", query: "Send appointment reminders", icon: Bell },
+          { label: "View today's appointments", query: "View my appointments today", icon: Calendar },
+          { label: "Generate a report", query: "Generate a CRM performance report", icon: BarChart3 },
+        ]
+      : [
+          { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes.", icon: Calendar },
+          { label: "Trouver un créneau libre", query: "Trouve-moi un créneau libre aujourd'hui", icon: Clock },
+          { label: "Rechercher un client", query: "Rechercher un client", icon: Search },
+          { label: "Envoyer des rappels", query: "Envoyer des rappels de rendez-vous", icon: Bell },
+          { label: "Voir mes rendez-vous aujourd'hui", query: "Voir mes rendez-vous aujourd'hui", icon: Calendar },
+          { label: "Générer un rapport", query: "Générer un rapport de performance CRM", icon: BarChart3 },
+          ];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -287,7 +311,7 @@ export function CRMCopilotPanel({
         {isThinking && (
           <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 p-2 text-[11px] animate-pulse">
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0076FF]" />
-            <span>Vérification des disponibilités & exécution...</span>
+            <span>{isSpanish ? "Verificando disponibilidad y ejecutando..." : isEnglish ? "Checking availability and executing..." : "Vérification des disponibilités & exécution..."}</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -306,7 +330,7 @@ export function CRMCopilotPanel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Posez-moi une question ou donnez une commande..."
+            placeholder={isSpanish ? "Haz una pregunta o escribe un comando..." : isEnglish ? "Ask a question or enter a command..." : "Posez-moi une question ou donnez une commande..."}
             disabled={isThinking}
             className="w-full pl-3 pr-10 py-2.5 text-xs rounded-xl bg-white dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#0076FF] transition"
           />

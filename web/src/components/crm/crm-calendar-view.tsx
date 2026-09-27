@@ -20,6 +20,7 @@ import {
   CalendarRange,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda" | "list" | "kanban";
@@ -47,6 +48,8 @@ export function CRMCalendarView({
   isLoading = false,
   t,
 }: CRMCalendarViewProps) {
+  const { locale } = useLocale();
+  const isSpanish = locale === "es";
   const [viewMode, setViewMode] = useState<CalendarMode>("week");
   const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("all");
@@ -248,7 +251,7 @@ export function CRMCalendarView({
             onChange={(e) => setSelectedServiceId(e.target.value)}
             className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#0076FF]"
           >
-            <option value="all">Tous les services</option>
+            <option value="all">{isSpanish ? "Todos los servicios" : locale.startsWith("en") ? "All services" : "Tous les services"}</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -262,7 +265,7 @@ export function CRMCalendarView({
             onChange={(e) => setSelectedEmployeeId(e.target.value)}
             className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#0076FF]"
           >
-            <option value="all">Tous les employés</option>
+            <option value="all">{isSpanish ? "Todos los profesionales" : locale.startsWith("en") ? "All staff" : "Tous les employés"}</option>
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.first_name} {emp.last_name}
@@ -276,7 +279,7 @@ export function CRMCalendarView({
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#0076FF]"
           >
-            <option value="all">Tous les statuts</option>
+            <option value="all">{isSpanish ? "Todos los estados" : locale.startsWith("en") ? "All statuses" : "Tous les statuts"}</option>
             <option value="confirmed">{t.crm.status.confirmed}</option>
             <option value="pending">{t.crm.status.pending}</option>
             <option value="completed">{t.crm.status.completed}</option>
@@ -292,7 +295,7 @@ export function CRMCalendarView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filtrer client, service, titre..."
+            placeholder={isSpanish ? "Filtrar cliente, servicio, título..." : locale.startsWith("en") ? "Filter client, service, title..." : "Filtrer client, service, titre..."}
             className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#0076FF]"
           />
         </div>
@@ -305,7 +308,7 @@ export function CRMCalendarView({
             <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 shadow-md border border-slate-200 dark:border-slate-700">
               <div className="w-4 h-4 border-2 border-[#0076FF] border-t-transparent rounded-full animate-spin" />
               <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Chargement des rendez-vous...
+                {isSpanish ? "Cargando citas..." : locale.startsWith("en") ? "Loading appointments..." : "Chargement des rendez-vous..."}
               </span>
             </div>
           </div>
@@ -349,7 +352,7 @@ export function CRMCalendarView({
                   <div className="flex-1 p-2 space-y-2 bg-slate-50/30 dark:bg-slate-900/10">
                     {dayApps.length === 0 ? (
                       <div className="h-full flex items-center justify-center py-8">
-                        <span className="text-[11px] text-slate-400 italic">Aucun RDV</span>
+                        <span className="text-[11px] text-slate-400 italic">{isSpanish ? "Sin citas" : locale.startsWith("en") ? "No appointments" : "Aucun RDV"}</span>
                       </div>
                     ) : (
                       dayApps.map((app) => {
