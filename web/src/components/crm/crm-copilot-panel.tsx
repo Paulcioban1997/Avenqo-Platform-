@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import {
   Send,
+  Mic,
   Sparkles,
   Calendar,
   Clock,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
 
 interface Message {
   id: string;
@@ -46,6 +48,7 @@ export function CRMCopilotPanel({
   onClose,
   isFloating = false,
 }: CRMCopilotPanelProps) {
+  const { locale } = useLocale();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -56,7 +59,40 @@ export function CRMCopilotPanel({
     },
   ]);
   const [isThinking, setIsThinking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const toggleDictation = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setMessages((prev) => [...prev, {
+        id: `c-${Date.now()}`,
+        sender: "copilot",
+        content: locale.startsWith("fr") ? "La dictée vocale n'est pas disponible dans ce navigateur." : "Voice dictation is not available in this browser.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        status: "error",
+      }]);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = locale;
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript;
+      if (transcript) setInput((current) => `${current}${current ? " " : ""}${transcript}`);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   const suggestedActions = [
     { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes.", icon: Calendar },
@@ -95,7 +131,7 @@ export function CRMCopilotPanel({
         },
         body: JSON.stringify({
           message: query,
-          locale: "fr",
+          locale,
         }),
       });
 
@@ -274,6 +310,16 @@ export function CRMCopilotPanel({
             disabled={isThinking}
             className="w-full pl-3 pr-10 py-2.5 text-xs rounded-xl bg-white dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#0076FF] transition"
           />
+          <button
+            type="button"
+            onClick={toggleDictation}
+            disabled={isThinking}
+            className={`absolute right-10 p-1.5 rounded-lg transition ${isListening ? "bg-red-500 text-white animate-pulse" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.08]"}`}
+            title={isListening ? "Arrêter la dictée" : "Dicter une commande"}
+            aria-label={isListening ? "Arrêter la dictée" : "Dicter une commande"}
+          >
+            <Mic className="w-3.5 h-3.5" />
+          </button>
           <button
             type="submit"
             disabled={!input.trim() || isThinking}

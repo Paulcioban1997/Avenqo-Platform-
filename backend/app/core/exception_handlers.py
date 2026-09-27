@@ -46,6 +46,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         }
         for error in exc.errors()
     ]
+    language = request.headers.get("accept-language", "").lower()
+    message = (
+        "Échec de validation : "
+        if language.startswith("fr")
+        else "Request validation failed: "
+    ) + "; ".join(f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}" for item in details)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         headers={"Content-Type": "application/json; charset=utf-8"},
@@ -53,7 +59,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "success": False,
             "error": {
                 "code": "VALIDATION_ERROR",
-                "message": "Request validation failed",
+                "message": message,
                 "details": details,
             },
             "request_id": getattr(request.state, "request_id", None),

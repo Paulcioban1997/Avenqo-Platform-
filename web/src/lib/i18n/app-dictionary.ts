@@ -804,9 +804,105 @@ const enApp: AppTranslations = {
   },
 };
 
+const esApp: AppTranslations = {
+  ...enApp,
+  navigation: {
+    ...enApp.navigation,
+    dashboard: "Panel",
+    crmAi: "CRM IA",
+    accountingAi: "Contabilidad IA",
+    integrations: "Integraciones",
+    settings: "Configuración",
+  },
+  crm: {
+    ...enApp.crm,
+    title: "CRM IA y agenda inteligente",
+    headerTitle: "CRM IA y operaciones de clientes",
+    headerSubtitle: "Agenda inteligente, perfiles 360 y sincronización de calendarios",
+    newAppointment: "Nueva cita",
+    tabs: {
+      ...enApp.crm.tabs,
+      overview: "Resumen",
+      clients: "Clientes",
+      appointments: "Citas",
+      pipelines: "Embudo y oportunidades",
+      automations: "Automatizaciones",
+      campaigns: "Campañas",
+      reports: "Informes",
+      connections: "Conexiones de calendario",
+    },
+    kpis: {
+      ...enApp.crm.kpis,
+      activeClients: "Clientes activos",
+      appointmentsThisMonth: "Citas este mes",
+      attendanceRate: "Tasa de asistencia",
+      revenueGenerated: "Ingresos generados",
+    },
+    calendar: {
+      ...enApp.crm.calendar,
+      today: "Hoy",
+      day: "Día",
+      week: "Semana",
+      month: "Mes",
+      agenda: "Agenda",
+      list: "Lista",
+      connected: "Conectado",
+      disconnected: "Desconectado",
+      connectGoogle: "Conectar Google Calendar",
+      disconnect: "Desconectar",
+    },
+    appointmentStatuses: {
+      confirmed: "Confirmada",
+      pending: "Pendiente",
+      completed: "Completada",
+      cancelled: "Cancelada",
+      noShow: "No presentada",
+    },
+    status: {
+      confirmed: "Confirmada",
+      pending: "Pendiente",
+      completed: "Completada",
+      cancelled: "Cancelada",
+      noShow: "No presentada",
+    },
+    filters: {
+      service: "Servicio",
+      employee: "Profesional",
+      status: "Estado de la cita",
+    },
+    modal: {
+      ...enApp.crm.modal,
+      newAppointmentTitle: "Nueva cita",
+      editAppointmentTitle: "Editar cita",
+      subtitle: "Agenda inteligente y sincronización con Google Calendar",
+      dateRequired: "La fecha y la hora son obligatorias.",
+      clientRequired: "Selecciona un cliente.",
+    },
+    clients: { client: "Cliente" },
+    actions: {
+      ...enApp.crm.actions,
+      modify: "Modificar",
+      reschedule: "Reprogramar",
+      cancel: "Cancelar cita",
+      deletePermanent: "Eliminar definitivamente",
+      confirmCancel: "¿Quieres cancelar esta cita?",
+      confirmDelete: "¿Quieres eliminar definitivamente esta cita? Esta acción no se puede deshacer.",
+      cancelSuccess: "Cita cancelada.",
+      deleteSuccess: "Cita eliminada definitivamente.",
+      mutationError: "No se pudo completar la operación.",
+      markCompleted: "Marcar como completada",
+      save: "Guardar",
+      close: "Cerrar",
+    },
+  },
+};
+
 export function getAppTranslations(locale: LocaleCode | string): AppTranslations {
   if (locale === "fr" || locale === "fr-FR") {
     return frApp;
+  }
+  if (locale === "es") {
+    return esApp;
   }
   return enApp;
 }

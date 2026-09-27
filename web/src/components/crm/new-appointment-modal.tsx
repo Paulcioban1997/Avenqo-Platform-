@@ -11,7 +11,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Plus,
-  Car,
   FileText,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
@@ -28,7 +27,10 @@ interface ClientOption {
 
 async function readApiError(response: Response): Promise<{ message: string; requestId?: string }> {
   const data = await response.json().catch(() => ({}));
-  const rawMessage = data.detail || data.error?.message || data.message;
+  const validationDetails = Array.isArray(data.error?.details)
+    ? data.error.details.map((item: { loc?: unknown[]; msg?: string }) => item.msg ? `${(item.loc || []).join(".")}: ${item.msg}` : "").filter(Boolean).join("; ")
+    : "";
+  const rawMessage = data.detail || validationDetails || data.error?.message || data.message;
   const message = typeof rawMessage === "string"
     ? rawMessage
     : response.status === 401
@@ -88,11 +90,6 @@ export function NewAppointmentModal({
   const [price, setPrice] = useState<number>(0);
   const [notes, setNotes] = useState("");
 
-  // Industry specific (e.g. Garage)
-  const [vehicleMake, setVehicleMake] = useState("");
-  const [vehicleModel, setVehicleModel] = useState("");
-  const [vehiclePlate, setVehiclePlate] = useState("");
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
@@ -122,11 +119,6 @@ export function NewAppointmentModal({
       const min = String(dt.getMinutes()).padStart(2, "0");
       setStartTime(`${hh}:${min}`);
 
-      if (initialAppointment.industry_data?.vehicle) {
-        setVehicleMake(initialAppointment.industry_data.vehicle.make || "");
-        setVehicleModel(initialAppointment.industry_data.vehicle.model || "");
-        setVehiclePlate(initialAppointment.industry_data.vehicle.plate || "");
-      }
     } else {
       // Default to today
       const today = new Date();
@@ -143,9 +135,6 @@ export function NewAppointmentModal({
       setDurationMinutes(60);
       setPrice(0);
       setIsCreatingClient(false);
-      setVehicleMake("");
-      setVehicleModel("");
-      setVehiclePlate("");
     }
     setError(null);
     setConflictWarning(null);
@@ -260,15 +249,6 @@ export function NewAppointmentModal({
       const endDt = new Date(new Date(startIso).getTime() + durationMinutes * 60000);
       const endIso = endDt.toISOString();
 
-      const industryData: Record<string, any> = {};
-      if (vehicleMake || vehicleModel || vehiclePlate) {
-        industryData.vehicle = {
-          make: vehicleMake,
-          model: vehicleModel,
-          plate: vehiclePlate,
-        };
-      }
-
       const payload = {
         client_id: finalClientId,
         service_id: serviceId || null,
@@ -279,7 +259,7 @@ export function NewAppointmentModal({
         duration_minutes: durationMinutes,
         price,
         notes: notes || null,
-        industry_data: Object.keys(industryData).length > 0 ? industryData : null,
+        industry_data: {},
       };
 
       let url = "/api/v1/crm/appointments";
@@ -549,46 +529,6 @@ export function NewAppointmentModal({
               onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
               className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
             />
-          </div>
-
-          {/* Industry Data (Garage / Vehicle) */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 space-y-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-              <Car className="w-4 h-4 text-slate-500" />
-              <span>Détails spécifiques (Optionnel - ex: Véhicule atelier)</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2.5">
-              <div>
-                <label className="text-[10px] text-slate-400">Marque</label>
-                <input
-                  type="text"
-                  placeholder="Toyota"
-                  value={vehicleMake}
-                  onChange={(e) => setVehicleMake(e.target.value)}
-                  className="w-full mt-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400">Modèle</label>
-                <input
-                  type="text"
-                  placeholder="RAV4 2022"
-                  value={vehicleModel}
-                  onChange={(e) => setVehicleModel(e.target.value)}
-                  className="w-full mt-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400">Immatriculation</label>
-                <input
-                  type="text"
-                  placeholder="ABC 123"
-                  value={vehiclePlate}
-                  onChange={(e) => setVehiclePlate(e.target.value)}
-                  className="w-full mt-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
-                />
-              </div>
-            </div>
           </div>
 
           {/* Notes */}
