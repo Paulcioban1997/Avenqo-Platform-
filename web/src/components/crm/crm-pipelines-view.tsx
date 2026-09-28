@@ -322,7 +322,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                   onClick={() => setIsNewOppOpen(false)}
                   className="px-4 py-2 text-slate-600 dark:text-slate-400 font-medium hover:text-slate-900 dark:hover:text-white"
                 >
-                  Annuler
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
