@@ -59,6 +59,9 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final retail = translations.phase4d;
+    final company = translations.company;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -76,9 +79,9 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
-                  Text('Erreur lors du chargement des anomalies', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
+                  Text(translations.auth.genericError, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Réessayer')),
+                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: Text(company.connectionsRetry)),
                 ],
               ),
             );
@@ -97,12 +100,12 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Détection des Anomalies', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
+                      Text(retail.performanceLabel, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
                       const SizedBox(height: 4),
-                      Text('Identification automatique des ruptures de tendance, dépenses atypiques et baisses de régime.', style: TextStyle(fontSize: 14, color: colors.muted)),
+                      Text(retail.productConcentrationExplanation, style: TextStyle(fontSize: 14, color: colors.muted)),
                     ],
                   ),
-                  IconButton(onPressed: _reload, tooltip: 'Actualiser', icon: const Icon(Icons.refresh)),
+                  IconButton(onPressed: _reload, tooltip: company.connectionsRetry, icon: const Icon(Icons.refresh)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -134,7 +137,7 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
               const SizedBox(height: 28),
 
               // Section 1: Financial / Operational Anomalies
-              Text('Anomalies Opérationnelles & Financières', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
+              Text(retail.businessImpactLabel, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
               const SizedBox(height: 12),
               if (data.financialAnomalies.isEmpty)
                 _buildEmptyNotice('Aucune dépense ou écriture atypique détectée.', colors)
@@ -154,7 +157,7 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
               const SizedBox(height: 28),
 
               // Section 2: Products Declining or Atypical
-              Text('Produits en Baisse de Performance Atypique', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
+              Text(retail.productDeclineTitle, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
               const SizedBox(height: 12),
               if (data.decliningProducts.isEmpty)
                 _buildEmptyNotice('Aucun produit n’affiche de chute anormale de ventes.', colors)
@@ -174,7 +177,7 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
               const SizedBox(height: 28),
 
               // Section 3: Customer Abnormalities
-              Text('Comportements Clients & Risques Churn Inhabituels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
+              Text(retail.customerEvidence, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
               const SizedBox(height: 12),
               if (data.highRiskCustomers.isEmpty)
                 _buildEmptyNotice('Aucun comportement d’abandon anormal détecté.', colors)
