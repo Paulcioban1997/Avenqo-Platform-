@@ -186,7 +186,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                         border: Border.all(color: colors.line),
                       ),
                       child: Text(
-                        '${company.connectionsUploadedSource} : $syncProvider',
+                        'Source : $syncProvider',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colors.ink),
                       ),
                     ),
@@ -203,7 +203,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                     _buildMetricCard(company.connectionsStatRowsLabel, unknownStockCount > 0 ? '—' : '$totalUnits', Icons.warehouse_outlined, _Brand.blue, colors),
                     _buildMetricCard(company.customerRiskMedium, '$lowStockCount', Icons.warning_amber_rounded, _Brand.amber, colors, isAlert: lowStockCount > 0),
                     _buildMetricCard(company.customerRiskCritical, '$outOfStockCount', Icons.remove_shopping_cart_outlined, _Brand.rose, colors, isAlert: outOfStockCount > 0),
-                    _buildMetricCard(company.connectionsStatUpdatedLabel, lastSync.length > 16 ? lastSync.substring(0, 16).replaceAll('T', ' ') : lastSync, Icons.schedule, _Brand.emerald, colors),
+                    _buildMetricCard(company.connectionsImportedAtLabel, lastSync.length > 16 ? lastSync.substring(0, 16).replaceAll('T', ' ') : lastSync, Icons.schedule, _Brand.emerald, colors),
                   ];
 
                   if (!wide) {
@@ -263,7 +263,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Center(
-                          child: Text(company.connectionsNoDataTitle, style: TextStyle(color: colors.muted)),
+                          child: Text(company.customersNotCalculated, style: TextStyle(color: colors.muted)),
                         ),
                       )
                     : ClipRRect(
@@ -271,7 +271,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                         child: AvenqoDataTable(
                           semanticLabel: company.businessProductsTitle,
                           columns: [
-                            DataColumn(label: Text(company.businessProductsTitle)),
+                            DataColumn(label: Text(company.navProductsLabel)),
                             DataColumn(label: Text(company.customersSegment)),
                             DataColumn(label: Text(company.connectionsStatRowsLabel), numeric: true),
                             DataColumn(label: Text(company.customersAverageValue), numeric: true),
@@ -284,7 +284,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                                 cells: [
                                   DataCell(
                                     Text(
-                                      p['name']?.toString() ?? p['title']?.toString() ?? company.businessProductsTitle,
+                                      p['name']?.toString() ?? p['title']?.toString() ?? company.navProductsLabel,
                                       style: TextStyle(fontWeight: FontWeight.bold, color: colors.ink),
                                     ),
                                   ),
@@ -312,7 +312,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                                   DataCell(
                                     TextButton(
                                       onPressed: () => context.go('/retail/products?product_id=${p['product_id'] ?? p['id']}'),
-                                      child: Text(company.connectionsGoDashboard),
+                                      child: Text(company.connectionsStatUpdatedLabel),
                                     ),
                                   ),
                                 ],
