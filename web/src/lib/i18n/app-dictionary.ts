@@ -7,7 +7,9 @@ export type AppTranslations = {
   common: {
     close: string;
     cancel: string;
+    errorTitle: string;
     insufficientData: string;
+    retry: string;
   };
   brand: {
     name: string;
@@ -301,7 +303,9 @@ const frApp: AppTranslations = {
   common: {
     close: "Fermer",
     cancel: "Annuler",
+    errorTitle: "Une erreur inattendue est survenue.",
     insufficientData: "Données insuffisantes pour afficher cette analyse.",
+    retry: "Réessayer",
   },
   brand: {
     name: "AVENQO",
@@ -595,7 +599,9 @@ const enApp: AppTranslations = {
   common: {
     close: "Close",
     cancel: "Cancel",
+    errorTitle: "An unexpected error occurred.",
     insufficientData: "This analysis is not available with your current data.",
+    retry: "Retry",
   },
   brand: {
     name: "AVENQO",
@@ -1008,7 +1014,9 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       ...base.common,
       close: connector.close,
       cancel: connector.cancel,
+      errorTitle: company.connectionsGenericError,
       insufficientData: company.analyticsUnavailable,
+      retry: company.connectionsRetry,
     },
     navigation: {
       ...base.navigation,

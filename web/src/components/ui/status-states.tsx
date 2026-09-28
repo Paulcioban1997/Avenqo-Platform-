@@ -3,6 +3,8 @@
 import React from "react";
 import { Sparkles, CheckCircle2, AlertCircle, Inbox, RefreshCw } from "lucide-react";
 import { Button } from "./button";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
 export interface EmptyStateProps {
   icon?: React.ReactNode;
@@ -87,12 +89,15 @@ export interface ErrorStateProps {
 }
 
 export function ErrorState({
-  title = "Une erreur est survenue",
+  title,
   error,
   onRetry,
-  retryLabel = "Réessayer",
+  retryLabel,
   className = "",
 }: ErrorStateProps) {
+  const { locale } = useLocale();
+  const common = getAppTranslations(locale).common;
+
   return (
     <div
       className={`flex flex-col items-center justify-center p-8 md:p-10 text-center rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/30 dark:bg-rose-950/20 ${className}`}
@@ -100,7 +105,7 @@ export function ErrorState({
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 mb-4 shadow-xs">
         <AlertCircle className="w-7 h-7" />
       </div>
-      <h3 className="text-base font-semibold text-rose-950 dark:text-rose-100">{title}</h3>
+      <h3 className="text-base font-semibold text-rose-950 dark:text-rose-100">{title ?? common.errorTitle}</h3>
       <p className="mt-1 text-sm text-rose-700/80 dark:text-rose-400/80 max-w-sm">{error}</p>
       {onRetry && (
         <div className="mt-5">
@@ -110,7 +115,7 @@ export function ErrorState({
             onClick={onRetry}
             leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
           >
-            {retryLabel}
+            {retryLabel ?? common.retry}
           </Button>
         </div>
       )}
