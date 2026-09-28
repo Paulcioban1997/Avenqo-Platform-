@@ -255,8 +255,13 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                               Text(rec['explanation']?.toString() ?? '', style: TextStyle(color: colors.muted, fontSize: 13, height: 1.35)),
                               if (rec['suggested_action'] != null) ...[
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Action suggérée : ${rec['suggested_action']}',
+                                Text.rich(
+                                  TextSpan(
+                                    text: '${retail.suggestedActionLabel} : ',
+                                    children: [
+                                      TextSpan(text: '${rec['suggested_action']}'),
+                                    ],
+                                  ),
                                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: _Brand.blue),
                                 ),
                               ],
