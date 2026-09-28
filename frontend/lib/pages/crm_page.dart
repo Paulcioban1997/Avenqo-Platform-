@@ -595,17 +595,17 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                           const SizedBox(height: 4),
                           Text(email, style: TextStyle(color: colors.muted, fontSize: 12)),
                           const SizedBox(height: 6),
-                          Text('Signaux : $factors', style: TextStyle(color: colors.ink, fontSize: 12)),
+                          Text('${AvenqoLocaleScope.translationsOf(context).company.settingsSubtitle}: $factors', style: TextStyle(color: colors.ink, fontSize: 12)),
                         ],
                       ),
                     ),
                     FilledButton.tonal(
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Plan d\'action de rétention déclenché pour $name.')),
+                          SnackBar(content: Text(AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsTitle)),
                         );
                       },
-                      child: const Text('Action de rétention'),
+                      child: Text(AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsTitle),
                     ),
                   ],
                 ),
@@ -625,11 +625,11 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
   ) {
     final stages = ['discovery', 'proposal', 'negotiation', 'closed_won', 'closed_lost'];
     final stageLabels = {
-      'discovery': 'Découverte',
-      'proposal': 'Proposition',
-      'negotiation': 'Négociation',
-      'closed_won': 'Gagnée',
-      'closed_lost': 'Perdue',
+            'discovery': AvenqoLocaleScope.translationsOf(context).company.navOverviewLabel,
+          'proposal': AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsTitle,
+          'negotiation': AvenqoLocaleScope.translationsOf(context).company.businessSalesTitle,
+          'closed_won': AvenqoLocaleScope.translationsOf(context).company.customerRiskLow,
+          'closed_lost': AvenqoLocaleScope.translationsOf(context).company.customerRiskCritical,
     };
 
     return Padding(
@@ -774,19 +774,19 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
             const Icon(Icons.auto_awesome, color: _Brand.purple, size: 24),
             const SizedBox(width: 10),
             Text(
-              'Recommandations et Prochaines Meilleures Actions IA (Next Best Actions)',
+              AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsTitle,
               style: TextStyle(color: colors.ink, fontWeight: FontWeight.w800, fontSize: 17),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Text(
-          'Généré par le moteur d\'intelligence croisée Avenqo à partir de l\'historique des ventes et des interactions.',
+          AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsDescription,
           style: TextStyle(color: colors.muted, fontSize: 13),
         ),
         const SizedBox(height: 24),
         if (list.isEmpty)
-          _buildEmptyCard(colors, 'Toutes les actions prioritaires ont été exécutées. Aucun retard détecté.')
+          _buildEmptyCard(colors, AvenqoLocaleScope.translationsOf(context).company.connectionsNoDataTitle)
         else
           ...list.map((item) {
             final title = item is Map ? item['title'] ?? item['action'] ?? 'Action recommandée' : item.toString();
@@ -827,7 +827,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                                   color: _Brand.blue.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(999),
                                 ),
-                                child: Text('Priorité : $priority', style: const TextStyle(fontSize: 11, color: _Brand.blue, fontWeight: FontWeight.bold)),
+                                child: Text('${AvenqoLocaleScope.translationsOf(context).company.settingsPlanLabel}: $priority', style: const TextStyle(fontSize: 11, color: _Brand.blue, fontWeight: FontWeight.bold)),
                               ),
                             ],
                           ),
