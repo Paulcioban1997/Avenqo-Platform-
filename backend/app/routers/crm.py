@@ -26,6 +26,7 @@ from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.models.crm import (
     CRMActivity,
     CRMCalendarConnection,
+    CRMCustomFieldDefinition,
     CRMContact,
     CRMLead,
     CRMOpportunity,
@@ -122,6 +123,16 @@ class CreateClientRequest(BaseModel):
     industry_metadata: dict[str, Any] = Field(default_factory=dict)
     status: str = "active"
     tags: list[str] = Field(default_factory=list)
+
+
+class CRMCustomFieldDefinitionRequest(BaseModel):
+    entity_type: str = Field(default="appointment", min_length=1, max_length=50)
+    field_key: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1, max_length=200)
+    field_type: str = Field(default="text", pattern=r"^(text|textarea|number|currency|date|datetime|boolean|select|multi_select|phone|email)$")
+    required: bool = False
+    options: list[str] = Field(default_factory=list)
+    industry_template: str | None = Field(default=None, max_length=80)
 
 
 class UpdateClientRequest(BaseModel):
@@ -347,6 +358,52 @@ def get_client_360(
 
 
 # --- Appointment & Calendar Endpoints ---
+
+@router.get("/custom-fields")
+def list_custom_field_definitions(
+    entity_type: str = Query(default="appointment", max_length=50),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    fields = db.scalars(
+        select(CRMCustomFieldDefinition).where(
+            CRMCustomFieldDefinition.company_id == tenant.company_id,
+            CRMCustomFieldDefinition.entity_type == entity_type,
+            CRMCustomFieldDefinition.is_active.is_(True),
+        ).order_by(CRMCustomFieldDefinition.created_at.asc())
+    ).all()
+    return [
+        {
+            "id": str(field.id),
+            "entity_type": field.entity_type,
+            "field_key": field.field_key,
+            "label": field.label,
+            "field_type": field.field_type,
+            "required": field.required,
+            "options": field.options,
+            "industry_template": field.industry_template,
+        }
+        for field in fields
+    ]
+
+
+@router.post("/custom-fields", status_code=status.HTTP_201_CREATED)
+def create_custom_field_definition(
+    payload: CRMCustomFieldDefinitionRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    existing = db.scalar(select(CRMCustomFieldDefinition).where(
+        CRMCustomFieldDefinition.company_id == tenant.company_id,
+        CRMCustomFieldDefinition.entity_type == payload.entity_type,
+        CRMCustomFieldDefinition.field_key == payload.field_key,
+    ))
+    if existing:
+        raise HTTPException(status_code=409, detail="Ce champ personnalisé existe déjà.")
+    field = CRMCustomFieldDefinition(company_id=tenant.company_id, **payload.model_dump())
+    db.add(field)
+    db.commit()
+    return {"id": str(field.id), **payload.model_dump()}
 
 @router.get("/appointments")
 def list_appointments(

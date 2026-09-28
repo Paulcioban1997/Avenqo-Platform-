@@ -38,6 +38,7 @@ from backend.app.models.base import Base
 from backend.app.models.company import Company
 from backend.app.models.crm import (
     CRMCalendarConnection,
+    CRMCustomFieldDefinition,
     CRMCommunication,
     CRMClient,
     CRMService,
@@ -281,6 +282,22 @@ def test_customer_deduplication_reuses_normalized_email_or_phone(db_session):
     assert by_email.id == first.id
     assert by_phone.id == first.id
     assert len(crm_svc.list_clients(company.id)) == 1
+
+
+def test_custom_fields_are_tenant_scoped_and_unique(db_session):
+    company_a = _create_company(db_session, "tenant-custom-fields-a")
+    company_b = _create_company(db_session, "tenant-custom-fields-b")
+    field = CRMCustomFieldDefinition(
+        company_id=company_a.id,
+        entity_type="appointment",
+        field_key="practitioner",
+        label="Practitioner",
+        field_type="text",
+    )
+    db_session.add(field)
+    db_session.commit()
+    assert db_session.query(CRMCustomFieldDefinition).filter_by(company_id=company_a.id).count() == 1
+    assert db_session.query(CRMCustomFieldDefinition).filter_by(company_id=company_b.id).count() == 0
 
 
 def test_appointment_idempotency_returns_one_record_and_is_tenant_scoped(db_session):

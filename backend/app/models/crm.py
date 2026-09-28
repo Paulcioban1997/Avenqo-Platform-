@@ -234,6 +234,28 @@ class CRMService(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
 
 
+class CRMCustomFieldDefinition(TimestampMixin, Base):
+    """Tenant-configured appointment/customer field definition."""
+
+    __tablename__ = "crm_custom_field_definitions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "entity_type", "field_key", name="uq_crm_custom_field_tenant_entity_key"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, default="appointment")
+    field_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(30), nullable=False, default="text")
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    options: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    industry_template: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+
+
 class CRMEmployee(TimestampMixin, Base):
     """Professionnel, technicien ou praticien assurant les rendez-vous."""
 
