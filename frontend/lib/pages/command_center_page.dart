@@ -513,6 +513,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
     List<Map<String, dynamic>> overdueInvoices,
   ) {
     final totalAlerts = (lowStockCount > 0 ? 1 : 0) + highRiskContacts.length + overdueInvoices.length;
+    final companyStrings = AvenqoLocaleScope.translationsOf(context).company;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -529,7 +530,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               Icon(Icons.warning_amber_rounded, size: 20, color: totalAlerts > 0 ? _Brand.rose : _Brand.emerald),
               const SizedBox(width: 8),
               Text(
-                'Ce qui demande votre attention',
+                companyStrings.navAlertsLabel,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink),
               ),
               const Spacer(),
@@ -540,7 +541,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '$totalAlerts alerte${totalAlerts > 1 ? 's' : ''}',
+                  '$totalAlerts ${companyStrings.navAlertsLabel}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
