@@ -70,6 +70,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final locale = AvenqoLocaleScope.of(context).code;
+    final translations = AvenqoLocaleScope.translationsOf(context);
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -88,14 +89,14 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
                   Text(
-                    'Erreur lors du chargement des données CRM',
+                    translations.auth.genericError,
                     style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: _reload,
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Réessayer'),
+                    label: Text(translations.company.connectionsRetry),
                   ),
                 ],
               ),
@@ -423,7 +424,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                 width: 260,
                 child: TextField(
                   decoration: InputDecoration(
-                    hintText: 'Rechercher nom, email, société...',
+                    hintText: AvenqoLocaleScope.translationsOf(context).company.customersSearch,
                     prefixIcon: const Icon(Icons.search, size: 18),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -435,30 +436,30 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                   onChanged: (val) => setState(() => _searchQuery = val),
                 ),
               ),
-              _buildFilterChip('all', 'Tous (${data.leads.length})'),
-              _buildFilterChip('new', 'Nouveaux'),
-              _buildFilterChip('qualified', 'Qualifiés'),
-              _buildFilterChip('contacted', 'Contactés'),
-              _buildFilterChip('converted', 'Convertis'),
+              _buildFilterChip('all', '${AvenqoLocaleScope.translationsOf(context).company.connectorHub['all'] ?? ''} (${data.leads.length})'),
+              _buildFilterChip('new', AvenqoLocaleScope.translationsOf(context).company.customerSegmentNew),
+              _buildFilterChip('qualified', AvenqoLocaleScope.translationsOf(context).company.customerSegmentHighValue),
+              _buildFilterChip('contacted', AvenqoLocaleScope.translationsOf(context).company.customerSegmentRegular),
+              _buildFilterChip('converted', AvenqoLocaleScope.translationsOf(context).company.customerSegmentLoyal),
             ],
           ),
           const SizedBox(height: 16),
           Expanded(
             child: filtered.isEmpty
-                ? _buildEmptyCard(colors, 'Aucun prospect correspondant aux filtres.')
+                ? _buildEmptyCard(colors, AvenqoLocaleScope.translationsOf(context).company.connectionsNoDataTitle)
                 : ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: AvenqoDataTable(
-                      semanticLabel: 'Tableau des prospects CRM',
+                      semanticLabel: AvenqoLocaleScope.translationsOf(context).company.navCustomersLabel,
                       minWidth: 950,
-                      columns: const [
-                        DataColumn(label: Text('Prospect / Entreprise')),
-                        DataColumn(label: Text('Contact')),
-                        DataColumn(label: Text('Statut')),
-                        DataColumn(label: Text('Score IA')),
-                        DataColumn(label: Text('Probabilité')),
-                        DataColumn(label: Text('Valeur estimée')),
-                        DataColumn(label: Text('Prochaine étape')),
+                      columns: [
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customerSegmentHighValue)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersSearch)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.employeesColumnStatus)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).dashboardHome.planLabel)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersRisk)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersValue)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.connectionsGoDashboard)),
                       ],
                       rows: filtered.map((lead) {
                         final fullName = lead['full_name'] ?? '${lead['first_name'] ?? ''} ${lead['last_name'] ?? ''}'.trim();
