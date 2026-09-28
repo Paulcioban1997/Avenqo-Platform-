@@ -103,6 +103,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final translations = AvenqoLocaleScope.translationsOf(context);
     final companyName = widget.auth.company?['name'] as String? ?? 'Avenqo';
 
     return Scaffold(
@@ -122,14 +123,14 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
                   Text(
-                    'Erreur de synchronisation avec le Command Center',
+                    translations.admin.overviewError,
                     style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: _reload,
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Réessayer'),
+                    label: Text(translations.company.connectionsRetry),
                   ),
                 ],
               ),
@@ -195,13 +196,13 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.hub_outlined, size: 14, color: _Brand.blue),
                               SizedBox(width: 6),
                               Text(
-                                'COMMAND CENTER GLOBAL',
+                                translations.admin.commandCenterTitle,
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
@@ -216,7 +217,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Tableau de bord — $companyName',
+                      '${translations.admin.overviewTitle} — $companyName',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
@@ -226,7 +227,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Synthèse stratégique unifiée en temps réel (${agentStrings.value('retailName')} ↔ ${agentStrings.value('crmName')} ↔ ${agentStrings.value('accountingName')}).',
+                      translations.admin.overviewSubtitle,
                       style: TextStyle(fontSize: 14, color: colors.muted),
                     ),
                   ],
@@ -431,7 +432,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   border: Border.all(color: colors.line),
                 ),
                 child: Text(
-                  'APIs réelles connectées',
+                  AvenqoLocaleScope.translationsOf(context).admin.providerHealth,
                   style: TextStyle(fontSize: 11, color: colors.muted, fontWeight: FontWeight.w600),
                 ),
               ),
