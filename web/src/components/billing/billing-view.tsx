@@ -831,7 +831,9 @@ export function BillingView() {
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 mt-2">
             <span>
-              {monthlyUsed?.toLocaleString() ?? "—"} / {monthlyAlloc?.toLocaleString() ?? "—"} utilisés
+              {billingTranslations.monthlyProgress
+                .replace("{used}", monthlyUsed?.toLocaleString(locale) ?? "—")
+                .replace("{included}", monthlyAlloc?.toLocaleString(locale) ?? "—")}
             </span>
             <span className="font-bold text-slate-700 dark:text-slate-300">{progressPercent} %</span>
           </div>
@@ -960,7 +962,9 @@ export function BillingView() {
             {totalHistoryPages > 1 && (
               <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/[0.06] text-xs text-slate-500">
                 <span>
-                  Page {historyPage + 1} sur {totalHistoryPages}
+                  {t.common.paginationPage
+                    .replace("{page}", (historyPage + 1).toString())
+                    .replace("{total}", totalHistoryPages.toString())}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -1009,7 +1013,7 @@ export function BillingView() {
                   <Zap size={15} className="text-[#0076FF]" />
                 </div>
                 <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-                  {pack.credits.toLocaleString()} crédits
+                  {pack.credits.toLocaleString(locale)} {billingTranslations.creditsUnit}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
                   ${pack.price_usd || ((pack.price_cents || 0) / 100)} USD

@@ -12,6 +12,7 @@ export type AppTranslations = {
     errorTitle: string;
     insufficientData: string;
     noPreview: string;
+    paginationPage: string;
     retry: string;
   };
   brand: {
@@ -318,6 +319,7 @@ const frApp: AppTranslations = {
     errorTitle: "Une erreur inattendue est survenue.",
     insufficientData: "Données insuffisantes pour afficher cette analyse.",
     noPreview: "Aucun aperçu n’est disponible pour le moment.",
+    paginationPage: "Page {page} sur {total}",
     retry: "Réessayer",
   },
   brand: {
@@ -624,6 +626,7 @@ const enApp: AppTranslations = {
     errorTitle: "An unexpected error occurred.",
     insufficientData: "This analysis is not available with your current data.",
     noPreview: "No preview is available yet.",
+    paginationPage: "Page {page} of {total}",
     retry: "Retry",
   },
   brand: {

@@ -105,6 +105,7 @@ type AppCommonWords = {
   deletePermanently: string;
   downloadCsv: string;
   noPreview: string;
+  paginationPage: string;
 };
 
 const enCommon: AppCommonWords = {
@@ -113,6 +114,7 @@ const enCommon: AppCommonWords = {
   deletePermanently: "Delete permanently",
   downloadCsv: "Download CSV",
   noPreview: "No preview is available yet.",
+  paginationPage: "Page {page} of {total}",
 };
 
 const frCommon: AppCommonWords = {
@@ -121,6 +123,7 @@ const frCommon: AppCommonWords = {
   deletePermanently: "Supprimer définitivement",
   downloadCsv: "Télécharger le CSV",
   noPreview: "Aucun aperçu disponible pour le moment.",
+  paginationPage: "Page {page} sur {total}",
 };
 
 const esCommon: AppCommonWords = {
@@ -129,6 +132,7 @@ const esCommon: AppCommonWords = {
   deletePermanently: "Eliminar permanentemente",
   downloadCsv: "Descargar CSV",
   noPreview: "Aún no hay una vista previa disponible.",
+  paginationPage: "Página {page} de {total}",
 };
 
 const ptCommon: AppCommonWords = {
@@ -137,6 +141,7 @@ const ptCommon: AppCommonWords = {
   deletePermanently: "Excluir permanentemente",
   downloadCsv: "Baixar CSV",
   noPreview: "Ainda não há uma pré-visualização disponível.",
+  paginationPage: "Página {page} de {total}",
 };
 
 export const APP_COMMON_WORDS: Record<LocaleCode, AppCommonWords> = {
@@ -146,42 +151,42 @@ export const APP_COMMON_WORDS: Record<LocaleCode, AppCommonWords> = {
   "fr-FR": frCommon,
   es: esCommon,
   pt: ptCommon,
-  ro: { close: "Închide", cancel: "Anulează", deletePermanently: "Șterge definitiv", downloadCsv: "Descarcă CSV", noPreview: "Nu există încă o previzualizare disponibilă." },
-  de: { close: "Schließen", cancel: "Abbrechen", deletePermanently: "Endgültig löschen", downloadCsv: "CSV herunterladen", noPreview: "Noch keine Vorschau verfügbar." },
-  it: { close: "Chiudi", cancel: "Annulla", deletePermanently: "Elimina definitivamente", downloadCsv: "Scarica CSV", noPreview: "Nessuna anteprima disponibile al momento." },
-  nl: { close: "Sluiten", cancel: "Annuleren", deletePermanently: "Definitief verwijderen", downloadCsv: "CSV downloaden", noPreview: "Er is nog geen voorbeeld beschikbaar." },
-  pl: { close: "Zamknij", cancel: "Anuluj", deletePermanently: "Usuń trwale", downloadCsv: "Pobierz CSV", noPreview: "Podgląd jest obecnie niedostępny." },
-  ru: { close: "Закрыть", cancel: "Отмена", deletePermanently: "Удалить безвозвратно", downloadCsv: "Скачать CSV", noPreview: "Предварительный просмотр пока недоступен." },
-  uk: { close: "Закрити", cancel: "Скасувати", deletePermanently: "Видалити назавжди", downloadCsv: "Завантажити CSV", noPreview: "Попередній перегляд поки недоступний." },
-  el: { close: "Κλείσιμο", cancel: "Ακύρωση", deletePermanently: "Οριστική διαγραφή", downloadCsv: "Λήψη CSV", noPreview: "Δεν υπάρχει ακόμη διαθέσιμη προεπισκόπηση." },
-  sv: { close: "Stäng", cancel: "Avbryt", deletePermanently: "Ta bort permanent", downloadCsv: "Ladda ned CSV", noPreview: "Ingen förhandsvisning tillgänglig ännu." },
-  tr: { close: "Kapat", cancel: "İptal", deletePermanently: "Kalıcı olarak sil", downloadCsv: "CSV indir", noPreview: "Henüz önizleme yok." },
-  cs: { close: "Zavřít", cancel: "Zrušit", deletePermanently: "Trvale odstranit", downloadCsv: "Stáhnout CSV", noPreview: "Náhled zatím není k dispozici." },
-  ka: { close: "დახურვა", cancel: "გაუქმება", deletePermanently: "სამუდამოდ წაშლა", downloadCsv: "CSV-ის ჩამოტვირთვა", noPreview: "წინასწარი გადახედვა ჯერ მიუწვდომელია." },
-  hy: { close: "Փակել", cancel: "Չեղարկել", deletePermanently: "Մշտապես ջնջել", downloadCsv: "Ներբեռնել CSV", noPreview: "Նախադիտումն առայժմ հասանելի չէ։" },
-  ar: { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "لا تتوفر معاينة حتى الآن." },
-  "ar-EG": { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "مفيش معاينة متاحة لسه." },
-  he: { close: "סגירה", cancel: "ביטול", deletePermanently: "מחיקה לצמיתות", downloadCsv: "הורדת CSV", noPreview: "אין עדיין תצוגה מקדימה זמינה." },
-  fa: { close: "بستن", cancel: "لغو", deletePermanently: "حذف دائمی", downloadCsv: "دانلود CSV", noPreview: "پیش‌نمایشی در دسترس نیست." },
-  sw: { close: "Funga", cancel: "Ghairi", deletePermanently: "Futa kabisa", downloadCsv: "Pakua CSV", noPreview: "Hakuna onyesho la kukagua bado." },
-  am: { close: "ዝጋ", cancel: "ይቅር", deletePermanently: "በቋሚነት ሰርዝ", downloadCsv: "CSV አውርድ", noPreview: "ቅድመ እይታ እስካሁን የለም።" },
-  af: { close: "Maak toe", cancel: "Kanselleer", deletePermanently: "Permanent uitvee", downloadCsv: "Laai CSV af", noPreview: "Geen voorskou beskikbaar nie." },
-  ha: { close: "Rufe", cancel: "Soke", deletePermanently: "Share har abada", downloadCsv: "Sauke CSV", noPreview: "Babu samfoti da ake da shi tukuna." },
-  zh: { close: "关闭", cancel: "取消", deletePermanently: "永久删除", downloadCsv: "下载 CSV", noPreview: "暂无预览。" },
-  ja: { close: "閉じる", cancel: "キャンセル", deletePermanently: "完全に削除", downloadCsv: "CSVをダウンロード", noPreview: "プレビューはまだありません。" },
-  ko: { close: "닫기", cancel: "취소", deletePermanently: "영구 삭제", downloadCsv: "CSV 다운로드", noPreview: "아직 미리보기가 없습니다." },
-  hi: { close: "बंद करें", cancel: "रद्द करें", deletePermanently: "स्थायी रूप से हटाएँ", downloadCsv: "CSV डाउनलोड करें", noPreview: "अभी कोई पूर्वावलोकन उपलब्ध नहीं है।" },
-  bn: { close: "বন্ধ করুন", cancel: "বাতিল করুন", deletePermanently: "স্থায়ীভাবে মুছুন", downloadCsv: "CSV ডাউনলোড করুন", noPreview: "এখনও কোনো প্রিভিউ উপলভ্য নেই।" },
-  ur: { close: "بند کریں", cancel: "منسوخ کریں", deletePermanently: "مستقل طور پر حذف کریں", downloadCsv: "CSV ڈاؤن لوڈ کریں", noPreview: "ابھی کوئی پیش منظر دستیاب نہیں ہے۔" },
-  ta: { close: "மூடு", cancel: "ரத்துசெய்", deletePermanently: "நிரந்தரமாக நீக்கு", downloadCsv: "CSV பதிவிறக்கு", noPreview: "முன்னோட்டம் இன்னும் இல்லை." },
-  pa: { close: "ਬੰਦ ਕਰੋ", cancel: "ਰੱਦ ਕਰੋ", deletePermanently: "ਪੱਕੇ ਤੌਰ 'ਤੇ ਮਿਟਾਓ", downloadCsv: "CSV ਡਾਊਨਲੋਡ ਕਰੋ", noPreview: "ਹਾਲੇ ਕੋਈ ਝਲਕ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।" },
-  ne: { close: "बन्द गर्नुहोस्", cancel: "रद्द गर्नुहोस्", deletePermanently: "स्थायी रूपमा मेटाउनुहोस्", downloadCsv: "CSV डाउनलोड गर्नुहोस्", noPreview: "अहिले पूर्वावलोकन उपलब्ध छैन।" },
-  vi: { close: "Đóng", cancel: "Hủy", deletePermanently: "Xóa vĩnh viễn", downloadCsv: "Tải CSV xuống", noPreview: "Chưa có bản xem trước." },
-  th: { close: "ปิด", cancel: "ยกเลิก", deletePermanently: "ลบถาวร", downloadCsv: "ดาวน์โหลด CSV", noPreview: "ยังไม่มีตัวอย่างให้ดู" },
-  id: { close: "Tutup", cancel: "Batal", deletePermanently: "Hapus permanen", downloadCsv: "Unduh CSV", noPreview: "Pratinjau belum tersedia." },
-  ms: { close: "Tutup", cancel: "Batal", deletePermanently: "Padam secara kekal", downloadCsv: "Muat turun CSV", noPreview: "Pratonton belum tersedia." },
-  tl: { close: "Isara", cancel: "Kanselahin", deletePermanently: "Permanenteng tanggalin", downloadCsv: "I-download ang CSV", noPreview: "Wala pang preview na magagamit." },
-  my: { close: "ပိတ်ရန်", cancel: "မလုပ်တော့ပါ", deletePermanently: "အပြီးတိုင် ဖျက်ရန်", downloadCsv: "CSV ဒေါင်းလုဒ်လုပ်ရန်", noPreview: "အစမ်းကြည့်ရှုမှု မရှိသေးပါ။" },
-  km: { close: "បិទ", cancel: "បោះបង់", deletePermanently: "លុបជាអចិន្ត្រៃយ៍", downloadCsv: "ទាញយក CSV", noPreview: "មិនទាន់មានការមើលជាមុនទេ។" },
-  mn: { close: "Хаах", cancel: "Цуцлах", deletePermanently: "Бүрмөсөн устгах", downloadCsv: "CSV татах", noPreview: "Урьдчилан харах боломж хараахан алга." },
+  ro: { close: "Închide", cancel: "Anulează", deletePermanently: "Șterge definitiv", downloadCsv: "Descarcă CSV", noPreview: "Nu există încă o previzualizare disponibilă.", paginationPage: "Pagina {page} din {total}" },
+  de: { close: "Schließen", cancel: "Abbrechen", deletePermanently: "Endgültig löschen", downloadCsv: "CSV herunterladen", noPreview: "Noch keine Vorschau verfügbar.", paginationPage: "Seite {page} von {total}" },
+  it: { close: "Chiudi", cancel: "Annulla", deletePermanently: "Elimina definitivamente", downloadCsv: "Scarica CSV", noPreview: "Nessuna anteprima disponibile al momento.", paginationPage: "Pagina {page} di {total}" },
+  nl: { close: "Sluiten", cancel: "Annuleren", deletePermanently: "Definitief verwijderen", downloadCsv: "CSV downloaden", noPreview: "Er is nog geen voorbeeld beschikbaar.", paginationPage: "Pagina {page} van {total}" },
+  pl: { close: "Zamknij", cancel: "Anuluj", deletePermanently: "Usuń trwale", downloadCsv: "Pobierz CSV", noPreview: "Podgląd jest obecnie niedostępny.", paginationPage: "Strona {page} z {total}" },
+  ru: { close: "Закрыть", cancel: "Отмена", deletePermanently: "Удалить безвозвратно", downloadCsv: "Скачать CSV", noPreview: "Предварительный просмотр пока недоступен.", paginationPage: "Страница {page} из {total}" },
+  uk: { close: "Закрити", cancel: "Скасувати", deletePermanently: "Видалити назавжди", downloadCsv: "Завантажити CSV", noPreview: "Попередній перегляд поки недоступний.", paginationPage: "Сторінка {page} з {total}" },
+  el: { close: "Κλείσιμο", cancel: "Ακύρωση", deletePermanently: "Οριστική διαγραφή", downloadCsv: "Λήψη CSV", noPreview: "Δεν υπάρχει ακόμη διαθέσιμη προεπισκόπηση.", paginationPage: "Σελίδα {page} από {total}" },
+  sv: { close: "Stäng", cancel: "Avbryt", deletePermanently: "Ta bort permanent", downloadCsv: "Ladda ned CSV", noPreview: "Ingen förhandsvisning tillgänglig ännu.", paginationPage: "Sida {page} av {total}" },
+  tr: { close: "Kapat", cancel: "İptal", deletePermanently: "Kalıcı olarak sil", downloadCsv: "CSV indir", noPreview: "Henüz önizleme yok.", paginationPage: "{total} sayfadan {page}. sayfa" },
+  cs: { close: "Zavřít", cancel: "Zrušit", deletePermanently: "Trvale odstranit", downloadCsv: "Stáhnout CSV", noPreview: "Náhled zatím není k dispozici.", paginationPage: "Stránka {page} z {total}" },
+  ka: { close: "დახურვა", cancel: "გაუქმება", deletePermanently: "სამუდამოდ წაშლა", downloadCsv: "CSV-ის ჩამოტვირთვა", noPreview: "წინასწარი გადახედვა ჯერ მიუწვდომელია.", paginationPage: "გვერდი {page} / {total}" },
+  hy: { close: "Փակել", cancel: "Չեղարկել", deletePermanently: "Մշտապես ջնջել", downloadCsv: "Ներբեռնել CSV", noPreview: "Նախադիտումն առայժմ հասանելի չէ։", paginationPage: "Էջ {page}՝ {total}-ից" },
+  ar: { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "لا تتوفر معاينة حتى الآن.", paginationPage: "الصفحة {page} من {total}" },
+  "ar-EG": { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "مفيش معاينة متاحة لسه.", paginationPage: "الصفحة {page} من {total}" },
+  he: { close: "סגירה", cancel: "ביטול", deletePermanently: "מחיקה לצמיתות", downloadCsv: "הורדת CSV", noPreview: "אין עדיין תצוגה מקדימה זמינה.", paginationPage: "עמוד {page} מתוך {total}" },
+  fa: { close: "بستن", cancel: "لغو", deletePermanently: "حذف دائمی", downloadCsv: "دانلود CSV", noPreview: "پیش‌نمایشی در دسترس نیست.", paginationPage: "صفحه {page} از {total}" },
+  sw: { close: "Funga", cancel: "Ghairi", deletePermanently: "Futa kabisa", downloadCsv: "Pakua CSV", noPreview: "Hakuna onyesho la kukagua bado.", paginationPage: "Ukurasa {page} kati ya {total}" },
+  am: { close: "ዝጋ", cancel: "ይቅር", deletePermanently: "በቋሚነት ሰርዝ", downloadCsv: "CSV አውርድ", noPreview: "ቅድመ እይታ እስካሁን የለም።", paginationPage: "ገጽ {page} ከ {total}" },
+  af: { close: "Maak toe", cancel: "Kanselleer", deletePermanently: "Permanent uitvee", downloadCsv: "Laai CSV af", noPreview: "Geen voorskou beskikbaar nie.", paginationPage: "Bladsy {page} van {total}" },
+  ha: { close: "Rufe", cancel: "Soke", deletePermanently: "Share har abada", downloadCsv: "Sauke CSV", noPreview: "Babu samfoti da ake da shi tukuna.", paginationPage: "Shafi {page} cikin {total}" },
+  zh: { close: "关闭", cancel: "取消", deletePermanently: "永久删除", downloadCsv: "下载 CSV", noPreview: "暂无预览。", paginationPage: "第 {page} 页，共 {total} 页" },
+  ja: { close: "閉じる", cancel: "キャンセル", deletePermanently: "完全に削除", downloadCsv: "CSVをダウンロード", noPreview: "プレビューはまだありません。", paginationPage: "全 {total} ページ中 {page} ページ" },
+  ko: { close: "닫기", cancel: "취소", deletePermanently: "영구 삭제", downloadCsv: "CSV 다운로드", noPreview: "아직 미리보기가 없습니다.", paginationPage: "전체 {total}페이지 중 {page}페이지" },
+  hi: { close: "बंद करें", cancel: "रद्द करें", deletePermanently: "स्थायी रूप से हटाएँ", downloadCsv: "CSV डाउनलोड करें", noPreview: "अभी कोई पूर्वावलोकन उपलब्ध नहीं है।", paginationPage: "कुल {total} में से पृष्ठ {page}" },
+  bn: { close: "বন্ধ করুন", cancel: "বাতিল করুন", deletePermanently: "স্থায়ীভাবে মুছুন", downloadCsv: "CSV ডাউনলোড করুন", noPreview: "এখনও কোনো প্রিভিউ উপলভ্য নেই।", paginationPage: "মোট {total}টির মধ্যে পৃষ্ঠা {page}" },
+  ur: { close: "بند کریں", cancel: "منسوخ کریں", deletePermanently: "مستقل طور پر حذف کریں", downloadCsv: "CSV ڈاؤن لوڈ کریں", noPreview: "ابھی کوئی پیش منظر دستیاب نہیں ہے۔", paginationPage: "کل {total} میں سے صفحہ {page}" },
+  ta: { close: "மூடு", cancel: "ரத்துசெய்", deletePermanently: "நிரந்தரமாக நீக்கு", downloadCsv: "CSV பதிவிறக்கு", noPreview: "முன்னோட்டம் இன்னும் இல்லை.", paginationPage: "மொத்தம் {total} இல் பக்கம் {page}" },
+  pa: { close: "ਬੰਦ ਕਰੋ", cancel: "ਰੱਦ ਕਰੋ", deletePermanently: "ਪੱਕੇ ਤੌਰ 'ਤੇ ਮਿਟਾਓ", downloadCsv: "CSV ਡਾਊਨਲੋਡ ਕਰੋ", noPreview: "ਹਾਲੇ ਕੋਈ ਝਲਕ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।", paginationPage: "ਕੁੱਲ {total} ਵਿੱਚੋਂ ਪੰਨਾ {page}" },
+  ne: { close: "बन्द गर्नुहोस्", cancel: "रद्द गर्नुहोस्", deletePermanently: "स्थायी रूपमा मेटाउनुहोस्", downloadCsv: "CSV डाउनलोड गर्नुहोस्", noPreview: "अहिले पूर्वावलोकन उपलब्ध छैन।", paginationPage: "कुल {total} मध्ये पृष्ठ {page}" },
+  vi: { close: "Đóng", cancel: "Hủy", deletePermanently: "Xóa vĩnh viễn", downloadCsv: "Tải CSV xuống", noPreview: "Chưa có bản xem trước.", paginationPage: "Trang {page} / {total}" },
+  th: { close: "ปิด", cancel: "ยกเลิก", deletePermanently: "ลบถาวร", downloadCsv: "ดาวน์โหลด CSV", noPreview: "ยังไม่มีตัวอย่างให้ดู", paginationPage: "หน้า {page} จาก {total}" },
+  id: { close: "Tutup", cancel: "Batal", deletePermanently: "Hapus permanen", downloadCsv: "Unduh CSV", noPreview: "Pratinjau belum tersedia.", paginationPage: "Halaman {page} dari {total}" },
+  ms: { close: "Tutup", cancel: "Batal", deletePermanently: "Padam secara kekal", downloadCsv: "Muat turun CSV", noPreview: "Pratonton belum tersedia.", paginationPage: "Halaman {page} daripada {total}" },
+  tl: { close: "Isara", cancel: "Kanselahin", deletePermanently: "Permanenteng tanggalin", downloadCsv: "I-download ang CSV", noPreview: "Wala pang preview na magagamit.", paginationPage: "Pahina {page} sa {total}" },
+  my: { close: "ပိတ်ရန်", cancel: "မလုပ်တော့ပါ", deletePermanently: "အပြီးတိုင် ဖျက်ရန်", downloadCsv: "CSV ဒေါင်းလုဒ်လုပ်ရန်", noPreview: "အစမ်းကြည့်ရှုမှု မရှိသေးပါ။", paginationPage: "စာမျက်နှာ {page} / {total}" },
+  km: { close: "បិទ", cancel: "បោះបង់", deletePermanently: "លុបជាអចិន្ត្រៃយ៍", downloadCsv: "ទាញយក CSV", noPreview: "មិនទាន់មានការមើលជាមុនទេ។", paginationPage: "ទំព័រ {page} នៃ {total}" },
+  mn: { close: "Хаах", cancel: "Цуцлах", deletePermanently: "Бүрмөсөн устгах", downloadCsv: "CSV татах", noPreview: "Урьдчилан харах боломж хараахан алга.", paginationPage: "Нийт {total}-аас {page}-р хуудас" },
 };
