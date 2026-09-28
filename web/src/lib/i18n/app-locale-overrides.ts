@@ -13,6 +13,25 @@ export type AppLocaleWords = {
   activeClients: string;
   appointmentsThisMonth: string;
   revenueGenerated: string;
+  newAppointment?: string;
+  attendanceRate?: string;
+  calendar?: {
+    today: string;
+    day: string;
+    week: string;
+    month: string;
+    agenda: string;
+    kanban: string;
+    list: string;
+    allServices: string;
+    allEmployees: string;
+    allStatuses: string;
+    searchPlaceholder: string;
+    loadingAppointments: string;
+    noAppointments: string;
+    previous: string;
+    next: string;
+  };
 };
 
 const en: AppLocaleWords = {
@@ -28,7 +47,19 @@ export const APP_LOCALE_WORDS: Record<LocaleCode, AppLocaleWords> = {
   "fr-FR": { dashboard: "Tableau de bord", retail: "Retail IA", crm: "CRM IA", accounting: "Comptabilité IA", integrations: "Intégrations", settings: "Paramètres", overview: "Aperçu", clients: "Clients", appointments: "Rendez-vous", activeClients: "Clients actifs", appointmentsThisMonth: "Rendez-vous ce mois", revenueGenerated: "Revenus générés" },
   es: { dashboard: "Panel", retail: "Retail IA", crm: "CRM IA", accounting: "Contabilidad IA", integrations: "Integraciones", settings: "Configuración", overview: "Resumen", clients: "Clientes", appointments: "Citas", activeClients: "Clientes activos", appointmentsThisMonth: "Citas este mes", revenueGenerated: "Ingresos generados" },
   pt: { dashboard: "Painel", retail: "Retail IA", crm: "CRM IA", accounting: "Contabilidade IA", integrations: "Integrações", settings: "Configurações", overview: "Visão geral", clients: "Clientes", appointments: "Agendamentos", activeClients: "Clientes ativos", appointmentsThisMonth: "Agendamentos este mês", revenueGenerated: "Receita gerada" },
-  ro: { dashboard: "Tablou de bord", retail: "Retail AI", crm: "CRM AI", accounting: "Contabilitate AI", integrations: "Integrări", settings: "Setări", overview: "Prezentare", clients: "Clienți", appointments: "Programări", activeClients: "Clienți activi", appointmentsThisMonth: "Programări luna aceasta", revenueGenerated: "Venituri generate" },
+  ro: {
+    dashboard: "Tablou de bord", retail: "Retail AI", crm: "CRM AI", accounting: "Contabilitate AI",
+    integrations: "Integrări", settings: "Setări", overview: "Prezentare", clients: "Clienți",
+    appointments: "Programări", activeClients: "Clienți activi", appointmentsThisMonth: "Programări luna aceasta",
+    revenueGenerated: "Venituri generate", newAppointment: "Programare nouă", attendanceRate: "Rata de prezență",
+    calendar: {
+      today: "Astăzi", day: "Zi", week: "Săptămână", month: "Lună", agenda: "Agendă",
+      kanban: "Kanban", list: "Listă", allServices: "Toate serviciile", allEmployees: "Toți angajații",
+      allStatuses: "Toate stările", searchPlaceholder: "Filtrează clientul, serviciul sau titlul...",
+      loadingAppointments: "Se încarcă programările...", noAppointments: "Nicio programare",
+      previous: "Anterior", next: "Următor",
+    },
+  },
   de: { dashboard: "Dashboard", retail: "Retail KI", crm: "CRM KI", accounting: "Buchhaltung KI", integrations: "Integrationen", settings: "Einstellungen", overview: "Übersicht", clients: "Kunden", appointments: "Termine", activeClients: "Aktive Kunden", appointmentsThisMonth: "Termine diesen Monat", revenueGenerated: "Generierter Umsatz" },
   it: { dashboard: "Dashboard", retail: "Retail IA", crm: "CRM IA", accounting: "Contabilità IA", integrations: "Integrazioni", settings: "Impostazioni", overview: "Panoramica", clients: "Clienti", appointments: "Appuntamenti", activeClients: "Clienti attivi", appointmentsThisMonth: "Appuntamenti questo mese", revenueGenerated: "Ricavi generati" },
   nl: { dashboard: "Dashboard", retail: "Retail AI", crm: "CRM AI", accounting: "Boekhouding AI", integrations: "Integraties", settings: "Instellingen", overview: "Overzicht", clients: "Klanten", appointments: "Afspraken", activeClients: "Actieve klanten", appointmentsThisMonth: "Afspraken deze maand", revenueGenerated: "Gegenereerde omzet" },

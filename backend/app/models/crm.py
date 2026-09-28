@@ -335,6 +335,12 @@ class CRMAppointment(TimestampMixin, Base):
             "idempotency_key",
             name="uq_crm_appointments_company_idempotency",
         ),
+        UniqueConstraint(
+            "company_id",
+            "calendar_provider",
+            "external_event_id",
+            name="uq_crm_appointments_company_calendar_event",
+        ),
     )
 
 

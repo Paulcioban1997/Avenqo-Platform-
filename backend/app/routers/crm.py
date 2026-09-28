@@ -815,6 +815,10 @@ async def google_calendar_callback(
         db.add(conn)
 
     db.commit()
+    try:
+        await CRMService(db, cipher).sync_from_google(tenant_id)
+    except Exception:
+        pass
     return RedirectResponse(
         url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
         status_code=303,
@@ -848,6 +852,17 @@ async def list_google_calendars(
         conn.sync_error = "Impossible de lire les calendriers Google."
         db.commit()
         raise HTTPException(status_code=502, detail="Calendriers Google indisponibles.") from exc
+
+
+@router.post("/calendar/google/sync")
+async def sync_google_calendar(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+) -> dict[str, int]:
+    try:
+        return await service.sync_from_google(tenant.company_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Synchronisation Google Calendar indisponible.") from exc
 
 
 class GoogleCalendarSelectionRequest(BaseModel):

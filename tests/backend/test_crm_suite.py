@@ -402,6 +402,70 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     assert captured == ["alice@example.com", None]
 
 
+def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-google-inbound")
+    alice = CRMAppService(db_session).create_client(company.id, {
+        "first_name": "Alice", "last_name": "Example", "email": "alice@example.com",
+    })
+    CRMAppService(db_session).create_client(company.id, {
+        "first_name": "Bob", "last_name": "Example", "email": "bob@example.com",
+    })
+    db_session.add(CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="organizer@example.com",
+        encrypted_credentials="encrypted",
+        sync_status="connected",
+    ))
+    db_session.commit()
+
+    class FakeCipher:
+        def decrypt(self, value):
+            return {"access_token": "runtime-only", "refresh_token": "refresh-only"}
+
+        def encrypt(self, value):
+            return "encrypted-refreshed"
+
+    events = [{
+        "id": "google-event-1",
+        "status": "confirmed",
+        "summary": "Physiotherapy",
+        "description": "Imported from Google",
+        "start": {"dateTime": "2026-10-01T08:30:00-04:00"},
+        "end": {"dateTime": "2026-10-01T09:00:00-04:00"},
+        "attendees": [{"email": "alice@example.com"}],
+    }]
+
+    class FakeProvider:
+        def __init__(self, *args):
+            pass
+
+        async def list_events(self, *args):
+            return events
+
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", FakeProvider)
+    service = CRMAppService(db_session, FakeCipher())
+
+    first = asyncio.run(service.sync_from_google(company.id))
+    second = asyncio.run(service.sync_from_google(company.id))
+    appointments = list(db_session.query(CRMAppointment).filter_by(company_id=company.id).all())
+
+    assert first["created"] == 1
+    assert second["created"] == 0
+    assert second["updated"] == 1
+    assert len(appointments) == 1
+    assert appointments[0].client_id == alice.id
+    assert appointments[0].external_event_id == "google-event-1"
+
+    events[0]["status"] = "cancelled"
+    cancelled = asyncio.run(service.sync_from_google(company.id))
+    db_session.refresh(appointments[0])
+
+    assert cancelled["cancelled"] == 1
+    assert appointments[0].status == "cancelled"
+    assert appointments[0].is_deleted is False
+
+
 def test_appointment_search_filters_client_and_title(db_session):
     company = _create_company(db_session, "tenant-appointment-search")
     crm_svc = CRMAppService(db_session)

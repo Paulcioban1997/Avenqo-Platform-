@@ -47,4 +47,20 @@ describe("Avenqo canonical localization", () => {
       }
     }
   });
+
+  it("keeps the Romanian CRM calendar surface fully localized", () => {
+    const app = getAppTranslations("ro");
+    expect(app.crm.newAppointment).toBe("Programare nouă");
+    expect(app.crm.kpis.attendanceRate).toBe("Rata de prezență");
+    expect(app.crm.calendar).toMatchObject({
+      today: "Astăzi",
+      week: "Săptămână",
+      month: "Lună",
+      list: "Listă",
+      allServices: "Toate serviciile",
+      allEmployees: "Toți angajații",
+      allStatuses: "Toate stările",
+      noAppointments: "Nicio programare",
+    });
+  });
 });

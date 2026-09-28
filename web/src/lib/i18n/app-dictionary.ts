@@ -219,6 +219,14 @@ export type AppTranslations = {
       disconnected: string;
       connectGoogle: string;
       disconnect: string;
+      allServices: string;
+      allEmployees: string;
+      allStatuses: string;
+      filterPlaceholder: string;
+      loadingAppointments: string;
+      noAppointments: string;
+      previous: string;
+      next: string;
     };
     appointmentStatuses: {
       confirmed: string;
@@ -487,6 +495,14 @@ const frApp: AppTranslations = {
       disconnected: "Non connecté",
       connectGoogle: "Connecter Google Calendar",
       disconnect: "Déconnecter",
+      allServices: "Tous les services",
+      allEmployees: "Tous les employés",
+      allStatuses: "Tous les statuts",
+      filterPlaceholder: "Filtrer client, service, titre...",
+      loadingAppointments: "Chargement des rendez-vous...",
+      noAppointments: "Aucun rendez-vous",
+      previous: "Précédent",
+      next: "Suivant",
     },
     appointmentStatuses: {
       confirmed: "Confirmé",
@@ -755,6 +771,14 @@ const enApp: AppTranslations = {
       disconnected: "Disconnected",
       connectGoogle: "Connect Google Calendar",
       disconnect: "Disconnect",
+      allServices: "All services",
+      allEmployees: "All staff",
+      allStatuses: "All statuses",
+      filterPlaceholder: "Filter client, service, title...",
+      loadingAppointments: "Loading appointments...",
+      noAppointments: "No appointments",
+      previous: "Previous",
+      next: "Next",
     },
     appointmentStatuses: {
       confirmed: "Confirmed",
@@ -852,6 +876,14 @@ const esApp: AppTranslations = {
       disconnected: "Desconectado",
       connectGoogle: "Conectar Google Calendar",
       disconnect: "Desconectar",
+      allServices: "Todos los servicios",
+      allEmployees: "Todos los profesionales",
+      allStatuses: "Todos los estados",
+      filterPlaceholder: "Filtrar cliente, servicio o título...",
+      loadingAppointments: "Cargando citas...",
+      noAppointments: "Sin citas",
+      previous: "Anterior",
+      next: "Siguiente",
     },
     appointmentStatuses: {
       confirmed: "Confirmada",
@@ -923,6 +955,11 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     crm: {
       ...base.crm,
       title: `${words.crm} ${words.overview}`,
+      newAppointment: words.newAppointment ?? base.crm.newAppointment,
+      header: {
+        ...base.crm.header,
+        newAppointment: words.newAppointment ?? base.crm.header.newAppointment,
+      },
       tabs: {
         ...base.crm.tabs,
         overview: words.overview,
@@ -933,8 +970,35 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
         ...base.crm.kpis,
         activeClients: words.activeClients,
         appointmentsThisMonth: words.appointmentsThisMonth,
+        attendanceRate: words.attendanceRate ?? base.crm.kpis.attendanceRate,
         revenueGenerated: words.revenueGenerated,
       },
+      calendarModes: words.calendar ? {
+        day: words.calendar.day,
+        week: words.calendar.week,
+        month: words.calendar.month,
+        agenda: words.calendar.agenda,
+        kanban: words.calendar.kanban,
+        list: words.calendar.list,
+      } : base.crm.calendarModes,
+      calendar: words.calendar ? {
+        ...base.crm.calendar,
+        today: words.calendar.today,
+        day: words.calendar.day,
+        week: words.calendar.week,
+        month: words.calendar.month,
+        agenda: words.calendar.agenda,
+        kanban: words.calendar.kanban,
+        list: words.calendar.list,
+        allServices: words.calendar.allServices,
+        allEmployees: words.calendar.allEmployees,
+        allStatuses: words.calendar.allStatuses,
+        filterPlaceholder: words.calendar.searchPlaceholder,
+        loadingAppointments: words.calendar.loadingAppointments,
+        noAppointments: words.calendar.noAppointments,
+        previous: words.calendar.previous,
+        next: words.calendar.next,
+      } : base.crm.calendar,
       status: {
         ...base.crm.status,
       },

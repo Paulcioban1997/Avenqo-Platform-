@@ -80,7 +80,12 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
   };
 
   useEffect(() => {
-    if (googleStatus.connected) void loadCalendars();
+    if (!googleStatus.connected) return;
+    void loadCalendars();
+    void fetch("/api/v1/crm/calendar/google/sync", {
+      method: "POST",
+      headers: getAuthHeaders(),
+    }).then(() => fetchConnectionStatus());
   }, [googleStatus.connected]);
 
   const handleCalendarSelection = async (calendarId: string) => {

@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
+from backend.app.config.settings import get_settings
 from backend.app.models.crm import (
     CRMActivity,
     CRMActivityLog,
@@ -27,7 +28,7 @@ from backend.app.models.crm import (
     CRMPipelineStage,
     CRMService as CRMServiceModel,
 )
-from backend.app.services.calendar.base import CalendarEventData
+from backend.app.services.calendar.base import CalendarEventData, CalendarProviderError
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
@@ -741,6 +742,153 @@ class CRMService:
         return AppointmentMutationResult(apt, "deleted")
 
     # --- External Calendar Sync Helper ---
+
+    @staticmethod
+    def _google_event_datetime(event: dict[str, Any], field: str) -> datetime | None:
+        value = (event.get(field) or {}).get("dateTime")
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+    async def sync_from_google(
+        self,
+        company_id: UUID,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
+        """Reconcile Google events into tenant CRM records without inventing clients."""
+        conn = self._session.scalar(
+            select(CRMCalendarConnection).where(
+                CRMCalendarConnection.company_id == company_id,
+                CRMCalendarConnection.provider == "google",
+                CRMCalendarConnection.sync_status.in_(("connected", "syncing", "error")),
+            )
+        )
+        if conn is None or self._cipher is None:
+            raise CalendarProviderError("Google Calendar non connecté.")
+
+        now = datetime.now(timezone.utc)
+        start_time = start_time or now - timedelta(days=30)
+        end_time = end_time or now + timedelta(days=365)
+        settings = get_settings()
+        provider = GoogleCalendarProvider(
+            settings.google_calendar_client_id,
+            settings.google_calendar_client_secret,
+            settings.google_calendar_redirect_uri,
+        )
+        credentials = self._cipher.decrypt(conn.encrypted_credentials)
+        conn.sync_status = "syncing"
+        self._session.commit()
+        try:
+            try:
+                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+            except CalendarProviderError as exc:
+                refresh_token = credentials.get("refresh_token")
+                if "401" not in str(exc) or not refresh_token:
+                    raise
+                refreshed = await provider.refresh_access_token(str(refresh_token))
+                credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
+                conn.encrypted_credentials = self._cipher.encrypt(credentials)
+                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+
+            stats = {"fetched": len(events), "created": 0, "updated": 0, "cancelled": 0, "skipped": 0}
+            self._lock_appointment_writes(company_id)
+            for event in events:
+                event_id = str(event.get("id") or "").strip()
+                if not event_id:
+                    stats["skipped"] += 1
+                    continue
+                existing = self._session.scalar(
+                    select(CRMAppointment).where(
+                        CRMAppointment.company_id == company_id,
+                        CRMAppointment.calendar_provider == "google",
+                        CRMAppointment.external_event_id == event_id,
+                    )
+                )
+                cancelled = event.get("status") == "cancelled"
+                if existing is not None:
+                    if existing.is_deleted:
+                        stats["skipped"] += 1
+                        continue
+                    if cancelled:
+                        if existing.status != "cancelled":
+                            existing.status = "cancelled"
+                            stats["cancelled"] += 1
+                        continue
+                    start = self._google_event_datetime(event, "start")
+                    end = self._google_event_datetime(event, "end")
+                    if start is None or end is None or end <= start:
+                        stats["skipped"] += 1
+                        continue
+                    existing.title = str(event.get("summary") or existing.title)
+                    existing.start_time = start
+                    existing.end_time = end
+                    existing.duration_minutes = max(int((end - start).total_seconds() // 60), 1)
+                    existing.notes = event.get("description") or existing.notes
+                    existing.status = "confirmed"
+                    stats["updated"] += 1
+                    continue
+                if cancelled:
+                    stats["skipped"] += 1
+                    continue
+                start = self._google_event_datetime(event, "start")
+                end = self._google_event_datetime(event, "end")
+                if start is None or end is None or end <= start:
+                    stats["skipped"] += 1
+                    continue
+                attendee_emails = {
+                    str(attendee.get("email") or "").strip().lower()
+                    for attendee in event.get("attendees") or []
+                    if attendee.get("email")
+                }
+                clients = list(
+                    self._session.scalars(
+                        select(CRMClient).where(
+                            CRMClient.company_id == company_id,
+                            CRMClient.is_deleted.is_(False),
+                            func.lower(CRMClient.email).in_(attendee_emails),
+                        )
+                    ).all()
+                ) if attendee_emails else []
+                unique_clients = {client.id: client for client in clients}
+                if len(unique_clients) != 1:
+                    stats["skipped"] += 1
+                    continue
+                client = next(iter(unique_clients.values()))
+                self._session.add(CRMAppointment(
+                    company_id=company_id,
+                    client_id=client.id,
+                    title=str(event.get("summary") or "Rendez-vous Google Calendar"),
+                    start_time=start,
+                    end_time=end,
+                    duration_minutes=max(int((end - start).total_seconds() // 60), 1),
+                    status="confirmed",
+                    notes=event.get("description"),
+                    industry_data={},
+                    idempotency_key=f"google:{event_id}",
+                    calendar_provider="google",
+                    external_event_id=event_id,
+                ))
+                client.appointments_count += 1
+                stats["created"] += 1
+            conn.sync_status = "connected"
+            conn.sync_error = None
+            conn.last_synced_at = now
+            self._session.commit()
+            return stats
+        except Exception as exc:
+            self._session.rollback()
+            conn = self._session.get(CRMCalendarConnection, conn.id)
+            if conn is not None:
+                conn.sync_status = "error"
+                conn.sync_error = "Synchronisation Google Calendar impossible."
+                self._session.commit()
+            raise CalendarProviderError("Synchronisation Google Calendar impossible.") from exc
 
     async def _sync_to_external_calendar(
         self,
