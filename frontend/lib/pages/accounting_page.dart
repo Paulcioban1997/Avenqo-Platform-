@@ -72,6 +72,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final locale = AvenqoLocaleScope.of(context).code;
+    final translations = AvenqoLocaleScope.translationsOf(context);
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -90,14 +91,14 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
                   Text(
-                    'Erreur lors du chargement des données comptables',
+                    translations.auth.genericError,
                     style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: _reload,
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Réessayer'),
+                    label: Text(translations.company.connectionsRetry),
                   ),
                 ],
               ),
@@ -120,13 +121,13 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                   labelColor: _Brand.blue,
                   unselectedLabelColor: colors.muted,
                   indicatorColor: _Brand.blue,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.account_balance_wallet_outlined, size: 18), text: 'Vue financière'),
-                    Tab(icon: Icon(Icons.pie_chart_outline, size: 18), text: 'Marges & Rentabilité'),
-                    Tab(icon: Icon(Icons.receipt_long_outlined, size: 18), text: 'Factures & Impayés'),
-                    Tab(icon: Icon(Icons.warning_amber_rounded, size: 18), text: 'Anomalies de dépenses'),
-                    Tab(icon: Icon(Icons.insights, size: 18), text: 'Prévisions Cash-Flow (IA)'),
-                    Tab(icon: Icon(Icons.list_alt_outlined, size: 18), text: 'Journal des transactions'),
+                  tabs: [
+                    Tab(icon: const Icon(Icons.account_balance_wallet_outlined, size: 18), text: translations.company.navOverviewLabel),
+                    Tab(icon: const Icon(Icons.pie_chart_outline, size: 18), text: translations.company.businessProductsTitle),
+                    Tab(icon: const Icon(Icons.receipt_long_outlined, size: 18), text: translations.company.billingInvoicesTitle),
+                    Tab(icon: const Icon(Icons.warning_amber_rounded, size: 18), text: translations.company.navAlertsLabel),
+                    Tab(icon: const Icon(Icons.insights, size: 18), text: translations.company.salesForecastTitle),
+                    Tab(icon: const Icon(Icons.list_alt_outlined, size: 18), text: translations.company.businessReportsTitle),
                   ],
                 ),
               ),
