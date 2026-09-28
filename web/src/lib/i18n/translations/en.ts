@@ -3,9 +3,9 @@ import type { Translations } from "../types";
 const en: Translations = {
   common: {
     login: "Log in",
-    tryFree: "Try for free",
+    tryFree: "Get started",
     watchDemo: "Watch a demo",
-    noCreditCard: "No credit card",
+    noCreditCard: "Choose a plan to get started",
     guidedSetup: "Guided setup",
     isolatedData: "Isolated data",
   },
@@ -168,7 +168,7 @@ const en: Translations = {
   finalCta: {
     label: "Your next step",
     title: "Run your business differently.",
-    tryFree: "Try for free",
+    tryFree: "Get started",
     scheduleDemo: "Schedule a demo",
   },
   footer: {

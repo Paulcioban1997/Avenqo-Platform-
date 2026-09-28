@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const vi: Translations = {
   common: {
     login: "Đăng nhập",
-    tryFree: "Dùng thử miễn phí",
+    tryFree: "Tạo không gian của bạn",
     watchDemo: "Xem demo",
     noCreditCard: "Không cần thẻ tín dụng",
     guidedSetup: "Thiết lập có hướng dẫn",
@@ -168,7 +168,7 @@ const vi: Translations = {
   finalCta: {
     label: "Bước tiếp theo của bạn",
     title: "Điều hành doanh nghiệp của bạn theo cách khác.",
-    tryFree: "Dùng thử miễn phí",
+    tryFree: "Tạo không gian của bạn",
     scheduleDemo: "Lên lịch demo",
   },
   footer: {

@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ha: Translations = {
   common: {
     login: "Shiga",
-    tryFree: "Gwada kyauta",
+    tryFree: "Ƙirƙiri sararin ku",
     watchDemo: "Duba nunin",
     noCreditCard: "Ba a bukatar katin kiredit",
     guidedSetup: "Saitin da ake jagoranta",
@@ -168,7 +168,7 @@ const ha: Translations = {
   finalCta: {
     label: "Matakinku na gaba",
     title: "Gudanar da kasuwancinku daban.",
-    tryFree: "Gwada kyauta",
+    tryFree: "Ƙirƙiri sararin ku",
     scheduleDemo: "Tsara nunin",
   },
   footer: {

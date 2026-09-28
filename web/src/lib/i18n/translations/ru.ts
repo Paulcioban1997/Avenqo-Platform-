@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ru: Translations = {
   common: {
     login: "Войти",
-    tryFree: "Попробовать бесплатно",
+    tryFree: "Создать своё пространство",
     watchDemo: "Смотреть демо",
     noCreditCard: "Без банковской карты",
     guidedSetup: "Настройка с сопровождением",
@@ -168,7 +168,7 @@ const ru: Translations = {
   finalCta: {
     label: "Ваш следующий шаг",
     title: "Управляйте бизнесом по-другому.",
-    tryFree: "Попробовать бесплатно",
+    tryFree: "Создать своё пространство",
     scheduleDemo: "Запланировать демо",
   },
   footer: {

@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ka: Translations = {
   common: {
     login: "შესვლა",
-    tryFree: "უფასოდ სცადეთ",
+    tryFree: "შექმენით თქვენი სივრცე",
     watchDemo: "დემოს ნახვა",
     noCreditCard: "საკრედიტო ბარათი არ არის საჭირო",
     guidedSetup: "მართული დაყენება",
@@ -168,7 +168,7 @@ const ka: Translations = {
   finalCta: {
     label: "თქვენი შემდეგი ნაბიჯი",
     title: "მართეთ თქვენი ბიზნესი განსხვავებულად.",
-    tryFree: "უფასოდ სცადეთ",
+    tryFree: "შექმენით თქვენი სივრცე",
     scheduleDemo: "დანიშნეთ დემო",
   },
   footer: {

@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ta: Translations = {
   common: {
     login: "உள்நுழைக",
-    tryFree: "இலவசமாக முயற்சிக்கவும்",
+    tryFree: "உங்கள் பணியிடத்தை உருவாக்குங்கள்",
     watchDemo: "டெமோவைப் பார்க்கவும்",
     noCreditCard: "கிரெடிட் கார்டு தேவையில்லை",
     guidedSetup: "வழிகாட்டப்பட்ட அமைப்பு",
@@ -168,7 +168,7 @@ const ta: Translations = {
   finalCta: {
     label: "உங்கள் அடுத்த படி",
     title: "உங்கள் வணிகத்தை வித்தியாசமாக நிர்வகிக்கவும்.",
-    tryFree: "இலவசமாக முயற்சிக்கவும்",
+    tryFree: "உங்கள் பணியிடத்தை உருவாக்குங்கள்",
     scheduleDemo: "டெமோவை திட்டமிடுங்கள்",
   },
   footer: {

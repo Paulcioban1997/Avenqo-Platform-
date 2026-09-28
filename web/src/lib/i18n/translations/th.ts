@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const th: Translations = {
   common: {
     login: "เข้าสู่ระบบ",
-    tryFree: "ทดลองใช้ฟรี",
+    tryFree: "สร้างพื้นที่ของคุณ",
     watchDemo: "ดูตัวอย่างสาธิต",
     noCreditCard: "ไม่ต้องใช้บัตรเครดิต",
     guidedSetup: "การตั้งค่าแบบมีคำแนะนำ",
@@ -168,7 +168,7 @@ const th: Translations = {
   finalCta: {
     label: "ขั้นตอนถัดไปของคุณ",
     title: "บริหารธุรกิจของคุณในแบบที่แตกต่าง",
-    tryFree: "ทดลองใช้ฟรี",
+    tryFree: "สร้างพื้นที่ของคุณ",
     scheduleDemo: "กำหนดเวลาสาธิต",
   },
   footer: {

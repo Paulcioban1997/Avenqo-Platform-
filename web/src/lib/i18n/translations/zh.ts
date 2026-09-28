@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const zh: Translations = {
   common: {
     login: "登录",
-    tryFree: "免费试用",
+    tryFree: "创建您的空间",
     watchDemo: "观看演示",
     noCreditCard: "无需信用卡",
     guidedSetup: "引导式设置",
@@ -167,7 +167,7 @@ const zh: Translations = {
   finalCta: {
     label: "您的下一步",
     title: "以不同的方式运营您的企业。",
-    tryFree: "免费试用",
+    tryFree: "创建您的空间",
     scheduleDemo: "预约演示",
   },
   footer: {

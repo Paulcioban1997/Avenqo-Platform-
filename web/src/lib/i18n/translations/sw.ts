@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const sw: Translations = {
   common: {
     login: "Ingia",
-    tryFree: "Jaribu bila malipo",
+    tryFree: "Unda nafasi yako",
     watchDemo: "Angalia onyesho",
     noCreditCard: "Hakuna kadi ya mkopo",
     guidedSetup: "Usanidi wa uongozwa",
@@ -168,7 +168,7 @@ const sw: Translations = {
   finalCta: {
     label: "Hatua yako inayofuata",
     title: "Simamia biashara yako tofauti.",
-    tryFree: "Jaribu bila malipo",
+    tryFree: "Unda nafasi yako",
     scheduleDemo: "Panga onyesho",
   },
   footer: {

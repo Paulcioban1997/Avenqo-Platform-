@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const id: Translations = {
   common: {
     login: "Masuk",
-    tryFree: "Coba gratis",
+    tryFree: "Buat ruang Anda",
     watchDemo: "Tonton demo",
     noCreditCard: "Tanpa kartu kredit",
     guidedSetup: "Pengaturan terpandu",
@@ -168,7 +168,7 @@ const id: Translations = {
   finalCta: {
     label: "Langkah Anda berikutnya",
     title: "Kelola bisnis Anda secara berbeda.",
-    tryFree: "Coba gratis",
+    tryFree: "Buat ruang Anda",
     scheduleDemo: "Jadwalkan demo",
   },
   footer: {

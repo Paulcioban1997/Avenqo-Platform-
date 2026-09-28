@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ja: Translations = {
   common: {
     login: "ログイン",
-    tryFree: "無料で試す",
+    tryFree: "ワークスペースを作成",
     watchDemo: "デモを見る",
     noCreditCard: "クレジットカード不要",
     guidedSetup: "ガイド付きセットアップ",
@@ -167,7 +167,7 @@ const ja: Translations = {
   finalCta: {
     label: "次のステップへ",
     title: "会社の運営を、これまでとは違う形に。",
-    tryFree: "無料で試す",
+    tryFree: "ワークスペースを作成",
     scheduleDemo: "デモを予約する",
   },
   footer: {

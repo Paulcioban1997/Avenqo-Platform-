@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const el: Translations = {
   common: {
     login: "Σύνδεση",
-    tryFree: "Δοκιμάστε δωρεάν",
+    tryFree: "Δημιουργήστε τον χώρο σας",
     watchDemo: "Δείτε μια επίδειξη",
     noCreditCard: "Χωρίς πιστωτική κάρτα",
     guidedSetup: "Καθοδηγούμενη ρύθμιση",
@@ -168,7 +168,7 @@ const el: Translations = {
   finalCta: {
     label: "Το επόμενο βήμα σας",
     title: "Διαχειριστείτε την επιχείρησή σας διαφορετικά.",
-    tryFree: "Δοκιμάστε δωρεάν",
+    tryFree: "Δημιουργήστε τον χώρο σας",
     scheduleDemo: "Προγραμματίστε μια επίδειξη",
   },
   footer: {

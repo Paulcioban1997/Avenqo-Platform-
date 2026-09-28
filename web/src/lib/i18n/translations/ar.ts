@@ -4,7 +4,7 @@ import type { Translations } from "../types";
 const ar: Translations = {
   common: {
     login: "تسجيل الدخول",
-    tryFree: "جرّب مجانًا",
+    tryFree: "أنشئ مساحتك",
     watchDemo: "شاهد عرضًا توضيحيًا",
     noCreditCard: "بدون بطاقة ائتمان",
     guidedSetup: "إعداد موجّه",
@@ -169,7 +169,7 @@ const ar: Translations = {
   finalCta: {
     label: "خطوتك التالية",
     title: "شغّل شركتك بطريقة مختلفة.",
-    tryFree: "جرّب مجانًا",
+    tryFree: "أنشئ مساحتك",
     scheduleDemo: "حدد موعدًا لعرض توضيحي",
   },
   footer: {

@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const fa: Translations = {
   common: {
     login: "ورود",
-    tryFree: "رایگان امتحان کنید",
+    tryFree: "فضای خود را بسازید",
     watchDemo: "دیدن دمو",
     noCreditCard: "بدون کارت اعتباری",
     guidedSetup: "راه‌اندازی هدایت‌شده",
@@ -168,7 +168,7 @@ const fa: Translations = {
   finalCta: {
     label: "قدم بعدی شما",
     title: "کسب‌وکار خود را متفاوت مدیریت کنید.",
-    tryFree: "رایگان امتحان کنید",
+    tryFree: "فضای خود را بسازید",
     scheduleDemo: "زمان‌بندی دمو",
   },
   footer: {

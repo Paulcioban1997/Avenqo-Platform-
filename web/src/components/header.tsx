@@ -29,7 +29,7 @@ export function Header() {
         <div className="header-actions">
           <RegionLanguageSelector />
           <Link href="/login">{t.common.login}</Link>
-          <Link className="header-cta" href="/register">{t.common.tryFree} <ArrowRight size={14} /></Link>
+          <Link className="header-cta" href="/signup">{t.common.tryFree} <ArrowRight size={14} /></Link>
         </div>
         <button className="menu-button" onClick={() => setOpen(!open)} aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}>{open ? <X /> : <Menu />}</button>
       </div>
@@ -38,7 +38,7 @@ export function Header() {
           {links.map(([label, href]) => <Link href={href} key={label} onClick={() => setOpen(false)}>{label}</Link>)}
           <RegionLanguageSelector />
           <Link href="/login">{t.common.login}</Link>
-          <Link className="header-cta" href="/register">{t.common.tryFree}</Link>
+          <Link className="header-cta" href="/signup">{t.common.tryFree}</Link>
         </div>
       )}
     </header>

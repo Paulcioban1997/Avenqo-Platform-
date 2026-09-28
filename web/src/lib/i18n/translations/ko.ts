@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ko: Translations = {
   common: {
     login: "로그인",
-    tryFree: "무료로 체험하기",
+    tryFree: "공간 만들기",
     watchDemo: "데모 보기",
     noCreditCard: "신용카드 불필요",
     guidedSetup: "안내에 따른 설정",
@@ -167,7 +167,7 @@ const ko: Translations = {
   finalCta: {
     label: "다음 단계",
     title: "비즈니스 운영 방식을 바꿔보세요.",
-    tryFree: "무료로 체험하기",
+    tryFree: "공간 만들기",
     scheduleDemo: "데모 예약하기",
   },
   footer: {

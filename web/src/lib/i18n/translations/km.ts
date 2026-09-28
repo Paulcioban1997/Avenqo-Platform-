@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const km: Translations = {
   common: {
     login: "ចូលប្រើ",
-    tryFree: "សាកល្បងឥតគិតថ្លៃ",
+    tryFree: "បង្កើតកន្លែងធ្វើការរបស់អ្នក",
     watchDemo: "មើលការបង្ហាញ",
     noCreditCard: "មិនត្រូវការកាតឥណទាន",
     guidedSetup: "ការដំឡើងដែលមានការណែនាំ",
@@ -168,7 +168,7 @@ const km: Translations = {
   finalCta: {
     label: "ជំហានបន្ទាប់របស់អ្នក",
     title: "គ្រប់គ្រងអាជីវកម្មរបស់អ្នកតាមរបៀបផ្សេង។",
-    tryFree: "សាកល្បងឥតគិតថ្លៃ",
+    tryFree: "បង្កើតកន្លែងធ្វើការរបស់អ្នក",
     scheduleDemo: "កំណត់ពេលបង្ហាញ",
   },
   footer: {

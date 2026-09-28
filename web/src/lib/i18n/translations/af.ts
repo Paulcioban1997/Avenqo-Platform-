@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const af: Translations = {
   common: {
     login: "Meld aan",
-    tryFree: "Probeer gratis",
+    tryFree: "Skep jou ruimte",
     watchDemo: "Kyk 'n demo",
     noCreditCard: "Geen kredietkaart nodig nie",
     guidedSetup: "Begeleide opstelling",
@@ -168,7 +168,7 @@ const af: Translations = {
   finalCta: {
     label: "Jou volgende stap",
     title: "Bestuur jou besigheid anders.",
-    tryFree: "Probeer gratis",
+    tryFree: "Skep jou ruimte",
     scheduleDemo: "Skeduleer 'n demo",
   },
   footer: {

@@ -19,7 +19,7 @@ export function PricingContent() {
       period: isFr ? "USD / mois" : "USD / month",
       credits: isFr ? "6 500 crédits IA inclus / mois" : "6,500 AI credits included / mo",
       creditExtra: isFr ? "3 modules au choix • Jusqu'à 5 utilisateurs" : "3 modules of choice • Up to 5 users",
-      actionHref: "/register?plan=base",
+      actionHref: "/signup?plan=base",
       actionText: isFr ? "Choisir Base" : "Select Base",
       featured: false,
     },
@@ -29,7 +29,7 @@ export function PricingContent() {
       period: isFr ? "USD / mois" : "USD / month",
       credits: isFr ? "25 000 crédits IA inclus / mois" : "25,000 AI credits included / mo",
       creditExtra: isFr ? "Jusqu'à 6 modules • Jusqu'à 25 utilisateurs" : "Up to 6 modules • Up to 25 users",
-      actionHref: "/register?plan=professional",
+      actionHref: "/signup?plan=professional",
       actionText: isFr ? "Choisir Professional" : "Select Professional",
       featured: true,
     },
@@ -194,7 +194,7 @@ export function PricingContent() {
             <h2>{t.finalCta.title}</h2>
           </div>
           <div>
-            <Link className="button white-button" href="/register">
+                <Link className="button white-button" href="/signup">
               {t.finalCta.tryFree} <ArrowRight size={17} />
             </Link>
             <Link className="text-link" href="/contact">

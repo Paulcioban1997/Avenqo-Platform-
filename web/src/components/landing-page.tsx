@@ -56,7 +56,7 @@ export function LandingPage() {
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "6,500 AI credits included" : "6 500 crédits IA inclus",
       action: isEn ? "Choose Base" : "Choisir Base",
-      href: "/register?plan=base",
+      href: "/signup?plan=base",
       featured: false,
     },
     {
@@ -65,7 +65,7 @@ export function LandingPage() {
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "25,000 AI credits included" : "25 000 crédits IA inclus",
       action: isEn ? "Choose Professional" : "Choisir Professional",
-      href: "/register?plan=professional",
+      href: "/signup?plan=professional",
       featured: true,
     },
     {
@@ -89,10 +89,10 @@ export function LandingPage() {
             <h1>{t.hero.titleLine1}<br /><span>{t.hero.titleLine2}</span></h1>
             <p>{t.hero.subtitle}</p>
             <div className="hero-actions">
-              <Link className="button button-primary" href="/register">{t.common.tryFree} <ArrowRight size={17} /></Link>
+              <Link className="button button-primary" href="/signup">{t.common.tryFree} <ArrowRight size={17} /></Link>
               <Link className="button button-secondary" href="#demonstration"><Play size={16} /> {t.common.watchDemo}</Link>
             </div>
-            <div className="hero-proof"><span><Check size={14} /> {t.common.noCreditCard}</span><span><Check size={14} /> {t.common.guidedSetup}</span><span><ShieldCheck size={14} /> {t.common.isolatedData}</span></div>
+            <div className="hero-proof"><span><Check size={14} /> {t.common.guidedSetup}</span><span><ShieldCheck size={14} /> {t.common.isolatedData}</span></div>
           </motion.div>
           <motion.div className="hero-product" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.12, ease: "easeOut" }}>
             <DashboardPreview />
@@ -107,7 +107,7 @@ export function LandingPage() {
           <div className="feature-grid">
             <motion.article className="feature-large assistant-feature" id="demonstration" {...fadeUp}>
               <div className="feature-label"><Bot size={18} /> {t.features.assistantLabel}</div><h3>{t.features.assistantTitle}</h3><p>{t.features.assistantText}</p>
-              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/register">{t.features.demoAction1}</Link><Link href="#demonstration">{isEn ? "View the analysis" : "Voir l'analyse"}</Link></div></div>
+              <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/signup">{t.features.demoAction1}</Link><Link href="#demonstration">{isEn ? "View the analysis" : "Voir l'analyse"}</Link></div></div>
             </motion.article>
             <motion.article className="feature-small dark-feature" {...fadeUp} whileHover={{ y: -4 }}><Zap size={24} /><h3>{t.features.actionsTitle}</h3><p>{t.features.actionsText}</p><div className="action-line"><span>{t.features.actionsPriority}</span><strong>{t.features.actionsLine}</strong><ArrowRight size={17} /></div></motion.article>
             <motion.article className="feature-small" id="securite" {...fadeUp} whileHover={{ y: -4 }}><ShieldCheck size={24} /><h3>{t.features.securityTitle}</h3><p>{t.features.securityText}</p><div className="security-list"><span><Check /> {t.features.securityItem1}</span><span><Check /> {t.features.securityItem2}</span><span><Check /> {t.features.securityItem3}</span></div></motion.article>
@@ -151,7 +151,7 @@ export function LandingPage() {
               </motion.article>
             ))}
           </div>
-          <div className="steps-cta"><span>{t.steps.ctaLabel}</span><Link href="/register">{t.steps.ctaButton} <ArrowRight size={16} /></Link></div>
+          <div className="steps-cta"><span>{t.steps.ctaLabel}</span><Link href="/signup">{t.steps.ctaButton} <ArrowRight size={16} /></Link></div>
         </div>
       </section>
 
@@ -216,8 +216,8 @@ export function LandingPage() {
           <div style={{ textAlign: "center", marginTop: 32, fontSize: "0.9rem", color: "var(--muted)" }}>
             <p>
               {isEn
-                ? "✨ All plans include a 14-day free trial. No credit card required to explore. AI evaluation credits included."
-                : "✨ Tous les forfaits incluent un essai gratuit de 14 jours. Aucune carte de crédit requise. Crédits d'évaluation IA inclus."}
+                ? "✨ Choose a plan and create your Avenqo workspace. AI credits are included according to the selected plan."
+                : "✨ Choisissez une offre et créez votre espace Avenqo. Les crédits IA dépendent de l'offre choisie."}
             </p>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function LandingPage() {
       <section className="final-cta" id="contact">
         <div className="page-shell final-cta-inner">
           <div><span>{t.finalCta.label}</span><h2>{t.finalCta.title}</h2></div>
-          <div><Link className="button white-button" href="/register">{t.finalCta.tryFree} <ArrowRight size={17} /></Link><Link className="text-link" href="/contact">{t.finalCta.scheduleDemo}</Link></div>
+          <div><Link className="button white-button" href="/signup">{t.finalCta.tryFree} <ArrowRight size={17} /></Link><Link className="text-link" href="/contact">{t.finalCta.scheduleDemo}</Link></div>
         </div>
       </section>
 

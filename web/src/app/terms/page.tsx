@@ -53,7 +53,7 @@ export default function TermsPage() {
             <div>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: 8 }}>3. Forfaits, période d&apos;essai et facturation</h2>
               <ul style={{ listStyleType: "disc", paddingLeft: 24, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                <li><strong>Période d&apos;essai gratuit :</strong> Sauf disposition contractuelle contraire, l&apos;inscription inclut un essai d&apos;évaluation de 14 jours avec crédits IA initiaux, sans obligation d&apos;enregistrement de carte de crédit.</li>
+                <li><strong>Abonnement :</strong> Les fonctionnalités et crédits IA disponibles dépendent de l&apos;offre sélectionnée et de la configuration de facturation applicable.</li>
                 <li><strong>Tarification des abonnements :</strong> Les offres récurrentes (Base à 29,99 $ USD/mois pour 3 modules et 6 500 crédits IA ; Professional à 49,99 $ USD/mois pour 6 modules et 25 000 crédits IA) sont facturées d&apos;avance mensuellement via le processeur de paiement Stripe. Les conversions bancaires vers d&apos;autres devises (notamment CAD) sont gérées automatiquement par l&apos;institution financière de l&apos;acheteur.</li>
                 <li><strong>Formule Entreprise :</strong> Les déploiements Enterprise font l&apos;objet d&apos;un bon de commande dédié précisant le périmètre des modules, les quotas de crédits IA et les niveaux de service personnalisés.</li>
                 <li><strong>Recharges de crédits IA :</strong> L&apos;utilisation des agents IA est régie par un solde de crédits. Des recharges peuvent être ajoutées au forfait en cours de cycle.</li>

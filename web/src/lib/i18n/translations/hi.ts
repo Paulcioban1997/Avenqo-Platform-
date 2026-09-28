@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const hi: Translations = {
   common: {
     login: "लॉग इन करें",
-    tryFree: "मुफ़्त में आज़माएं",
+    tryFree: "अपना कार्यक्षेत्र बनाएं",
     watchDemo: "डेमो देखें",
     noCreditCard: "क्रेडिट कार्ड की आवश्यकता नहीं",
     guidedSetup: "निर्देशित सेटअप",
@@ -168,7 +168,7 @@ const hi: Translations = {
   finalCta: {
     label: "आपका अगला कदम",
     title: "अपने व्यवसाय को अलग तरीके से प्रबंधित करें।",
-    tryFree: "मुफ़्त में आज़माएं",
+    tryFree: "अपना कार्यक्षेत्र बनाएं",
     scheduleDemo: "एक डेमो शेड्यूल करें",
   },
   footer: {

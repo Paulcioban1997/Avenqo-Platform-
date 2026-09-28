@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const tl: Translations = {
   common: {
     login: "Mag-log in",
-    tryFree: "Subukan nang libre",
+    tryFree: "Gawin ang iyong workspace",
     watchDemo: "Panoorin ang demo",
     noCreditCard: "Walang kailangang credit card",
     guidedSetup: "Ginagabayang setup",
@@ -168,7 +168,7 @@ const tl: Translations = {
   finalCta: {
     label: "Ang iyong susunod na hakbang",
     title: "Pamahalaan ang iyong negosyo sa ibang paraan.",
-    tryFree: "Subukan nang libre",
+    tryFree: "Gawin ang iyong workspace",
     scheduleDemo: "Mag-iskedyul ng demo",
   },
   footer: {

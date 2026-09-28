@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const es: Translations = {
   common: {
     login: "Iniciar sesión",
-    tryFree: "Probar gratis",
+    tryFree: "Crear tu espacio",
     watchDemo: "Ver una demostración",
     noCreditCard: "Sin tarjeta de crédito",
     guidedSetup: "Configuración guiada",
@@ -142,7 +142,7 @@ const es: Translations = {
         tier: "Professional",
         title: "Para acelerar",
         items: ["Hasta  6 módulos", "Hasta 25 usuarios", "Automatizaciones avanzadas", "Soporte prioritario"],
-        action: "Probar gratis",
+        action: "Elegir Professional",
       },
       {
         tier: "Enterprise",
@@ -168,7 +168,7 @@ const es: Translations = {
   finalCta: {
     label: "Tu próximo paso",
     title: "Haz que tu empresa funcione de otra manera.",
-    tryFree: "Probar gratis",
+    tryFree: "Crear tu espacio",
     scheduleDemo: "Planificar una demostración",
   },
   footer: {

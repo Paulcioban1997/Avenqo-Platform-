@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const my: Translations = {
   common: {
     login: "လော့ဂ်အင်ဝင်ရန်",
-    tryFree: "အခမဲ့စမ်းကြည့်ပါ",
+    tryFree: "သင့်အလုပ်နေရာကို ဖန်တီးပါ",
     watchDemo: "ဒီမိုကြည့်ရှုရန်",
     noCreditCard: "ခရက်ဒစ်ကတ်မလို",
     guidedSetup: "လမ်းညွှန်ထားသော စနစ်ထည့်သွင်းခြင်း",
@@ -168,7 +168,7 @@ const my: Translations = {
   finalCta: {
     label: "သင့်နောက်တစ်ဆင့်",
     title: "သင့်စီးပွားရေးလုပ်ငန်းကို မတူညီသောနည်းလမ်းဖြင့် စီမံပါ။",
-    tryFree: "အခမဲ့စမ်းကြည့်ပါ",
+    tryFree: "သင့်အလုပ်နေရာကို ဖန်တီးပါ",
     scheduleDemo: "ဒီမိုအချိန်ဇယားဆွဲပါ",
   },
   footer: {

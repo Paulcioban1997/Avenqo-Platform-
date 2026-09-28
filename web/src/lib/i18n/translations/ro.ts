@@ -3,7 +3,7 @@ import type { Translations } from "../types";
 const ro: Translations = {
   common: {
     login: "Conectare",
-    tryFree: "Încearcă gratuit",
+    tryFree: "Creează-ți spațiul",
     watchDemo: "Vezi o demonstrație",
     noCreditCard: "Fără card de credit",
     guidedSetup: "Configurare ghidată",
@@ -142,7 +142,7 @@ const ro: Translations = {
         tier: "Professional",
         title: "Pentru accelerare",
         items: ["Până la  6 module", "Până la 25 de utilizatori", "Automatizări avansate", "Suport prioritar"],
-        action: "Încearcă gratuit",
+        action: "Creează-ți spațiul",
       },
       {
         tier: "Enterprise",
@@ -168,7 +168,7 @@ const ro: Translations = {
   finalCta: {
     label: "Următorul tău pas",
     title: "Fă-ți compania să funcționeze altfel.",
-    tryFree: "Încearcă gratuit",
+    tryFree: "Creează-ți spațiul",
     scheduleDemo: "Programează o demonstrație",
   },
   footer: {
