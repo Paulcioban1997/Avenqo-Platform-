@@ -7,8 +7,11 @@ export type AppTranslations = {
   common: {
     close: string;
     cancel: string;
+    deletePermanently: string;
+    downloadCsv: string;
     errorTitle: string;
     insufficientData: string;
+    noPreview: string;
     retry: string;
   };
   brand: {
@@ -310,8 +313,11 @@ const frApp: AppTranslations = {
   common: {
     close: "Fermer",
     cancel: "Annuler",
+    deletePermanently: "Supprimer définitivement",
+    downloadCsv: "Télécharger le CSV",
     errorTitle: "Une erreur inattendue est survenue.",
     insufficientData: "Données insuffisantes pour afficher cette analyse.",
+    noPreview: "Aucun aperçu n’est disponible pour le moment.",
     retry: "Réessayer",
   },
   brand: {
@@ -613,8 +619,11 @@ const enApp: AppTranslations = {
   common: {
     close: "Close",
     cancel: "Cancel",
+    deletePermanently: "Delete permanently",
+    downloadCsv: "Download CSV",
     errorTitle: "An unexpected error occurred.",
     insufficientData: "This analysis is not available with your current data.",
+    noPreview: "No preview is available yet.",
     retry: "Retry",
   },
   brand: {
@@ -1044,8 +1053,11 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       ...base.common,
       close: connector.close,
       cancel: connector.cancel,
+      deletePermanently: company.connectionsDeletePermanently,
+      downloadCsv: application.phase4e.billing.downloadCsv,
       errorTitle: company.connectionsGenericError,
       insufficientData: company.analyticsUnavailable,
+      noPreview: company.connectionsCleaning.previewEmpty,
       retry: company.connectionsRetry,
     },
     navigation: {

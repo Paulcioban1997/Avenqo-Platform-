@@ -335,13 +335,13 @@ export function DataHubView() {
           </div>
           <div className="data-hub-detail-actions">
             <button className="data-hub-action-btn" onClick={() => handleExport(selectedDataset)}>
-              <Download size={15} /> {t.integrations.syncNow}
+              <Download size={15} /> {t.common.downloadCsv}
             </button>
             <button
               className="data-hub-action-btn danger"
               onClick={() => setDeleteConfirm(selectedDataset.id)}
             >
-              <Trash2 size={15} /> {t.integrations.sourceDisabled}
+              <Trash2 size={15} /> {t.common.deletePermanently}
             </button>
           </div>
         </div>
@@ -402,7 +402,7 @@ export function DataHubView() {
                       <button
                         className="data-hub-row-delete"
                         onClick={() => handleDeleteRow(rowIdx)}
-                        title="Supprimer la ligne"
+                        title={t.common.deletePermanently}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -413,9 +413,7 @@ export function DataHubView() {
             </table>
           </div>
         ) : (
-          <div className="data-hub-empty-detail">
-            Aucune donnée disponible pour ce dataset.
-          </div>
+          <div className="data-hub-empty-detail">{t.common.noPreview}</div>
         )}
 
         {/* Delete dataset confirm */}
@@ -425,9 +423,9 @@ export function DataHubView() {
               <h3>{t.integrations.drawerTitle}</h3>
               <p>{t.integrations.noLogs}</p>
               <div className="data-hub-confirm-actions">
-                <button onClick={() => setDeleteConfirm(null)}>{t.crm.actions.close}</button>
+                <button onClick={() => setDeleteConfirm(null)}>{t.common.cancel}</button>
                 <button className="danger" onClick={() => handleDeleteDataset(deleteConfirm)}>
-                  Supprimer
+                  {t.common.deletePermanently}
                 </button>
               </div>
             </div>
@@ -570,7 +568,7 @@ export function DataHubView() {
                     <Download size={15} />
                   </button>
                   <button
-                    title="Supprimer"
+                    title={t.common.deletePermanently}
                     className="danger"
                     onClick={() => setDeleteConfirm(ds.id)}
                   >
@@ -595,9 +593,9 @@ export function DataHubView() {
             <h3>{t.integrations.drawerTitle}</h3>
             <p>{t.integrations.noLogs}</p>
             <div className="data-hub-confirm-actions">
-              <button onClick={() => setDeleteConfirm(null)}>{t.crm.actions.close}</button>
+              <button onClick={() => setDeleteConfirm(null)}>{t.common.cancel}</button>
               <button className="danger" onClick={() => handleDeleteDataset(deleteConfirm)}>
-                Supprimer
+                {t.common.deletePermanently}
               </button>
             </div>
           </div>
