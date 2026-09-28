@@ -32,6 +32,18 @@ def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
     return f"{encoded}.{signature}"
 
 
+def _iter_api_routes():
+    for route in api_router.routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield route
+            continue
+        effective_route_contexts = getattr(route, "effective_route_contexts", None)
+        if effective_route_contexts is None:
+            continue
+        yield from effective_route_contexts()
+
+
 def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
     state = _google_oauth_state(
         "9c97cb94-e9f9-46fb-afd4-8a1d21019cff",
@@ -60,11 +72,11 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
 
 def test_callback_route_is_public_but_crm_routes_remain_protected() -> None:
     callback = next(
-        route for route in api_router.routes
+        route for route in _iter_api_routes()
         if getattr(route, "path", None) == "/api/v1/crm/calendar/google/callback"
     )
     kpis = next(
-        route for route in api_router.routes
+        route for route in _iter_api_routes()
         if getattr(route, "path", None) == "/api/v1/crm/kpis"
     )
     callback_dependencies = {dependency.call.__name__ for dependency in callback.dependant.dependencies}
