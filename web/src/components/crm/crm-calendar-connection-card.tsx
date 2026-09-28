@@ -106,7 +106,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
       const res = await fetch("/api/v1/crm/calendar/google/auth-url", { headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Google OAuth non configuré sur ce serveur (GOOGLE_CALENDAR_CLIENT_ID manquant).");
+        throw new Error(err.detail || t.integrations.googleCalendarConnecting);
       }
       const data = await res.json();
       const targetUrl = data.auth_url || data.url;
@@ -158,7 +158,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                     Google Calendar
                   </h4>
-                  <span className="text-xs text-slate-400">Synchronisation bidirectionnelle</span>
+                  <span className="text-xs text-slate-400">{t.integrations.googleCalendarDescription}</span>
                 </div>
               </div>
 
@@ -182,20 +182,20 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
             {googleStatus.connected && (
               <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Compte associé:</span>
+                  <span className="text-slate-400">{t.shell.company}:</span>
                   <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
                     {googleStatus.account_email || "Google Workspace"}
                   </span>
                 </div>
                 {googleStatus.last_sync_at && (
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Dernière synchro:</span>
+                    <span>{t.integrations.lastSynced}:</span>
                     <span>{new Date(googleStatus.last_sync_at).toLocaleString("fr-CA")}</span>
                   </div>
                 )}
                 {calendars.length > 0 && (
                   <label className="flex items-center justify-between gap-3 text-xs text-slate-400">
-                    <span>Calendrier utilisé:</span>
+                    <span>{t.integrations.googleCalendar}:</span>
                     <select
                       value={googleStatus.calendar_id || ""}
                       onChange={(event) => void handleCalendarSelection(event.target.value)}
@@ -216,7 +216,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>OAuth 2.0 Officiel</span>
+              <span>{t.integrations.googleCalendarConnected}</span>
             </div>
 
             {googleStatus.connected ? (
@@ -236,7 +236,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>
-                  {isConnecting ? "Connexion..." : t.crm.calendar.connectGoogle || "Connecter Google"}
+                  {isConnecting ? t.integrations.googleCalendarConnecting : t.crm.calendar.connectGoogle}
                 </span>
               </button>
             )}
@@ -255,12 +255,12 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                     Microsoft Outlook / 365
                   </h4>
-                  <span className="text-xs text-slate-400">Connecteur Graph API</span>
+                  <span className="text-xs text-slate-400">{t.integrations.categoryAutomation}</span>
                 </div>
               </div>
 
               <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500">
-                Architecture prête
+                {t.integrations.googleCalendarDisconnected}
               </span>
             </div>
 
@@ -270,12 +270,12 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
           </div>
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <span className="text-[11px] text-slate-400">Prêt pour activation</span>
+            <span className="text-[11px] text-slate-400">{t.integrations.statusDisconnected}</span>
             <button
               disabled
               className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
             >
-              Bientôt disponible
+              {t.integrations.googleCalendarDisconnected}
             </button>
           </div>
         </div>
