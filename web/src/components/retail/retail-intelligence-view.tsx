@@ -473,7 +473,7 @@ export function RetailIntelligenceView({
           ) : (
             <AvenqoCard variant="default" className="p-8">
               <EmptyState
-                title="Aucun produit synchronisé"
+                title={retail.noData}
                 description="Connectez votre boutique en ligne (WooCommerce, Shopify...) ou importez vos données pour charger vos produits réels dans Avenqo."
                 actionLabel="Connecter ou importer ma boutique"
                 onAction={() => {
@@ -536,7 +536,7 @@ export function RetailIntelligenceView({
           ) : (
             <AvenqoCard variant="default" className="p-8">
               <EmptyState
-                title="Aucune commande synchronisée"
+                title={retail.noData}
                 description="Connectez votre boutique en ligne pour importer vos ventes et calculer vos prévisions d'encaissements."
                 actionLabel="Connecter ma boutique"
                 onAction={() => {
@@ -566,7 +566,7 @@ export function RetailIntelligenceView({
                   <thead>
                     <tr className="bg-slate-50/80 dark:bg-[#060B13]/60 border-b border-slate-200/80 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 font-semibold">
                       <th className="py-3 px-4">{retail.customers}</th>
-                      <th className="py-3 px-4">Email</th>
+                      <th className="py-3 px-4">{retail.email}</th>
                       <th className="py-3 px-4 text-right">{retail.customers}</th>
                       <th className="py-3 px-4 text-center">{retail.sales}</th>
                     </tr>
@@ -593,7 +593,7 @@ export function RetailIntelligenceView({
           ) : (
             <AvenqoCard variant="default" className="p-8">
               <EmptyState
-                title="Aucun profil client réconcilié"
+                title={retail.noData}
                 description="Connectez vos flux e-commerce pour générer la vue 360° et la segmentation RFM prédictive."
                 actionLabel="Connecter ma boutique"
                 onAction={() => {
@@ -669,7 +669,7 @@ export function RetailIntelligenceView({
           ) : (
             <AvenqoCard variant="default" className="p-8">
               <EmptyState
-                title="Aucun inventaire détecté"
+                title={retail.noData}
                 description="Synchronisez votre boutique WooCommerce ou Shopify pour activer le suivi en direct des stocks."
                 actionLabel="Connecter ma boutique"
                 onAction={() => {

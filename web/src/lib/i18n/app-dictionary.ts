@@ -128,6 +128,8 @@ export type AppTranslations = {
     sales: string;
     products: string;
     customers: string;
+    noData: string;
+    email: string;
     inventory: string;
     forecasts: string;
     anomalies: string;
@@ -415,6 +417,8 @@ const frApp: AppTranslations = {
     sales: "Ventes",
     products: "Produits",
     customers: "Clients",
+    noData: "Aucune donnée connectée",
+    email: "E-mail",
     inventory: "Inventaire",
     forecasts: "Prévisions",
     anomalies: "Anomalies",
@@ -702,6 +706,8 @@ const enApp: AppTranslations = {
     sales: "Sales",
     products: "Products",
     customers: "Customers",
+    noData: "No data connected yet",
+    email: "Email",
     inventory: "Inventory",
     forecasts: "Forecasts",
     anomalies: "Anomalies",
@@ -1110,6 +1116,8 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       sales: company.navSalesLabel,
       products: company.navProductsLabel,
       customers: company.navCustomersLabel,
+      noData: dashboardHome.connectionsEmpty,
+      email: company.employeesColumnEmail,
       recommendations: company.navRecommendationsLabel,
       forecastDisclaimer: retailItem?.description ?? base.retail.forecastDisclaimer,
     },
