@@ -85,11 +85,7 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     const refreshCredits = async () => {
-      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
-      if (!token) return;
-      const response = await fetch("/api/v1/billing/ai-credits", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch("/api/v1/billing/ai-credits");
       if (!response.ok) return;
       const balance = await response.json();
       const view = creditBalanceViewModel(balance);
@@ -101,11 +97,7 @@ export function AppShell({ children }: AppShellProps) {
     const refreshTimer = window.setInterval(handleCreditsUpdated, 30000);
     async function loadIdentity() {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
-        if (!token) return;
-        const res = await fetch("/api/v1/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/v1/auth/me");
         if (res.ok) {
           const data = await res.json();
           setCurrentUser(data.user);
@@ -115,9 +107,7 @@ export function AppShell({ children }: AppShellProps) {
           }
         }
         const [connRes] = await Promise.all([
-          fetch("/api/v1/connectors/connections", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => null),
+          fetch("/api/v1/connectors/connections").catch(() => null),
         ]);
         void refreshCredits();
 
@@ -141,21 +131,12 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleSwitchTenant = async (org: OrganizationItem) => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
       const res = await fetch("/api/v1/auth/switch-tenant", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_id: org.id }),
       });
       if (res.ok) {
-        const data = await res.json();
-        if (data.access_token) {
-          localStorage.setItem("avenqo_token", data.access_token);
-          localStorage.setItem("avenqo_access_token", data.access_token);
-        }
         setActiveTenant(org.name);
         setIsTenantMenuOpen(false);
         window.location.reload();
@@ -165,13 +146,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleSignOut = async () => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token") : null;
-      if (token) {
-        await fetch("/api/v1/auth/logout", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
+      await fetch("/api/v1/auth/logout", { method: "POST" });
     } catch {}
     localStorage.removeItem("avenqo_token");
     localStorage.removeItem("avenqo_access_token");

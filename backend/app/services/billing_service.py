@@ -128,7 +128,10 @@ class BillingService:
     def list_invoices(self, company_id: UUID) -> list[BillingInvoice]:
         return list(self._session.scalars(
             select(BillingInvoice)
-            .where(BillingInvoice.company_id == company_id)
+            .where(
+                BillingInvoice.company_id == company_id,
+                BillingInvoice.stripe_invoice_id.not_like("in_seed_%"),
+            )
             .order_by(BillingInvoice.issued_at.desc())
         ))
 

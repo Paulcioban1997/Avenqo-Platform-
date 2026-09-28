@@ -1,9 +1,5 @@
 export function getAuthHeaders(): HeadersInit {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token");
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  return headers;
+  // Authentication is carried by the canonical HttpOnly cookie and injected by
+  // the Next.js proxy. Never let a stale localStorage token override it.
+  return {};
 }

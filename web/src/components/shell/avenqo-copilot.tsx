@@ -122,10 +122,13 @@ export function AvenqoCopilot({
         `/api/v1/ai/central/conversations/${activeConversationId}/messages`,
         {
         method: "POST",
-        headers,
+        headers: {
+          ...headers,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
         body: JSON.stringify({
           content: query,
-          locale: locale.startsWith("fr") ? "fr" : "en",
+          locale,
           page_context: activeRoute,
         }),
         },

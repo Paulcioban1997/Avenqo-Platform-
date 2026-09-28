@@ -61,7 +61,6 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
     price = plan_obj.monthly_price_usd if plan_obj else 49
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
-    pm = PaymentMethodSummary() if stripe_linked and account.status in {"active", "trialing"} else None
     return SubscriptionResponse(
         plan_code=account.plan_code,
         status=(
@@ -78,7 +77,7 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
         currency=(company.currency_code or "USD").upper() if company else "USD",
         stripe_subscription_linked=stripe_linked,
         company_name=comp_name,
-        payment_method=pm,
+        payment_method=None,
     )
 
 

@@ -1,7 +1,7 @@
 from dataclasses import asdict
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError, ConversationNotFoundError
@@ -29,12 +29,15 @@ router = APIRouter(prefix="/ai/central", tags=["central-ai"])
 async def message(
     conversation_id: UUID,
     request: CentralAIRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     service: CentralAIService = Depends(get_central_ai_service),
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
 ) -> CentralAIResponse:
+    if idempotency_key is not None and (not idempotency_key.strip() or len(idempotency_key) > 100):
+        raise HTTPException(status_code=422, detail="Idempotency-Key invalide")
     if tenant.company_id != identity.user.company_id:
         raise HTTPException(status_code=403, detail="Contexte tenant invalide")
     company = identity.user.company
@@ -73,7 +76,7 @@ async def message(
             request.content,
             permissions=frozenset(permissions_for(identity.user.role)),
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
-            request_id=str(uuid4()),
+            request_id=idempotency_key.strip() if idempotency_key else str(uuid4()),
             user_language=request.locale or company.preferred_language or "fr",
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",

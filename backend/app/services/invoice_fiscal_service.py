@@ -451,7 +451,10 @@ class InvoiceFiscalService:
         end: datetime | None,
         fiscal_year: int | None,
     ) -> list:
-        filters = [BillingInvoice.company_id == company_id]
+        filters = [
+            BillingInvoice.company_id == company_id,
+            BillingInvoice.stripe_invoice_id.not_like("in_seed_%"),
+        ]
         if fiscal_year is not None:
             start = datetime(fiscal_year, 1, 1, tzinfo=timezone.utc)
             end = datetime(fiscal_year + 1, 1, 1, tzinfo=timezone.utc)

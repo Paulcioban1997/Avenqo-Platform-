@@ -29,16 +29,7 @@ export default function AdminPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const token = typeof window !== "undefined"
-          ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token")
-          : null;
-        if (!token) {
-          setLoading(false);
-          return;
-        }
-        const res = await fetch("/api/v1/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/v1/auth/me");
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);

@@ -72,12 +72,8 @@ export function SettingsView() {
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const getHeaders = useCallback(() => {
-    const token = typeof window !== "undefined"
-      ? localStorage.getItem("avenqo_token") || localStorage.getItem("avenqo_access_token")
-      : null;
     return {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   }, []);
 

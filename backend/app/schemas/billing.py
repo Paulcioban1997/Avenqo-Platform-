@@ -52,10 +52,10 @@ class AICreditBalanceResponse(BaseModel):
 
 
 class PaymentMethodSummary(BaseModel):
-    brand: str | None = "visa"
-    last4: str | None = "4242"
-    exp_month: int | None = 9
-    exp_year: int | None = 2028
+    brand: str | None = None
+    last4: str | None = None
+    exp_month: int | None = None
+    exp_year: int | None = None
 
 
 class SubscriptionResponse(BaseModel):
