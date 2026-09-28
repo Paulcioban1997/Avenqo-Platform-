@@ -556,7 +556,7 @@ export function NewAppointmentModal({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
             >
-              Annuler
+              {t.common.cancel}
             </button>
             <button
               type="submit"
