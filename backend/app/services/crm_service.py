@@ -558,7 +558,7 @@ class CRMService:
 
         # External Calendar Sync (Google Calendar)
         await self._sync_to_external_calendar(company_id, appointment, client, action="create")
-        CRMNotificationService(self._session).record_appointment_event(
+        await CRMNotificationService(self._session).record_appointment_event(
             company_id, appointment, client, "created"
         )
 
@@ -634,7 +634,7 @@ class CRMService:
         client = self.get_client(company_id, apt.client_id)
         if client:
             await self._sync_to_external_calendar(company_id, apt, client, action="update")
-            CRMNotificationService(self._session).record_appointment_event(
+            await CRMNotificationService(self._session).record_appointment_event(
                 company_id, apt, client, "updated"
             )
 
@@ -687,7 +687,7 @@ class CRMService:
             calendar_sync, sync_error = await self._sync_to_external_calendar(
                 company_id, apt, client, action="delete"
             )
-            CRMNotificationService(self._session).record_appointment_event(
+            await CRMNotificationService(self._session).record_appointment_event(
                 company_id, apt, client, "cancelled"
             )
 

@@ -28,6 +28,7 @@ class AccountNotifier(Protocol):
 
     def send_new_company(self, company: object, user: object, request: object) -> None: ...
     def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None: ...
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None: ...
 
 
 class EmailTransport(Protocol):
@@ -56,6 +57,9 @@ class LoggingAccountNotifier:
 
     def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
         logger.info("Notification de facture Avenqo demandée invoice_id=%s", invoice.id)
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        logger.info("Notification transactionnelle demandée subject=%s", subject)
 
 
 class AccountNotificationService:
@@ -143,6 +147,9 @@ class AccountNotificationService:
             labels["subject"].replace("{number}", invoice.number or invoice.stripe_invoice_id),
             body,
         )
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        self._send(recipient, subject, body)
 
     @staticmethod
     def _invoice_labels(locale: str) -> dict[str, str]:

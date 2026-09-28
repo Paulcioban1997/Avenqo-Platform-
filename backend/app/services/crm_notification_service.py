@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models.crm import CRMAppointment, CRMClient, CRMCommunication
 
 
@@ -17,7 +18,7 @@ class CRMNotificationService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def record_appointment_event(
+    async def record_appointment_event(
         self,
         company_id: UUID,
         appointment: CRMAppointment,
@@ -26,7 +27,7 @@ class CRMNotificationService:
     ) -> None:
         settings = get_settings()
         email_status = "queued" if settings.email_delivery_configured else "blocked_external_configuration"
-        self._record(
+        await self._record(
             company_id,
             appointment,
             client,
@@ -36,7 +37,7 @@ class CRMNotificationService:
             status=email_status,
         )
         sms_status = "queued" if settings.telnyx_api_key else "blocked_external_configuration"
-        self._record(
+        await self._record(
             company_id,
             appointment,
             client,
@@ -46,7 +47,7 @@ class CRMNotificationService:
             status=sms_status,
         )
 
-    def _record(
+    async def _record(
         self,
         company_id: UUID,
         appointment: CRMAppointment,
@@ -58,6 +59,19 @@ class CRMNotificationService:
         status: str,
     ) -> None:
         if not recipient:
+            status = "blocked_external_configuration"
+        elif channel == "email" and status == "queued":
+            try:
+                get_account_notifier().send_transactional(
+                    recipient,
+                    f"Avenqo — rendez-vous {event}",
+                    f"Votre rendez-vous {event} est associé au dossier Avenqo {appointment.id}.",
+                )
+                status = "sent"
+            except Exception:
+                status = "failed"
+        elif channel == "sms":
+            # No CRM tenant sender identity is configured here; never invent one.
             status = "blocked_external_configuration"
         subject = f"appointment:{appointment.id}:{event}:{channel}"
         existing = self._session.scalar(
