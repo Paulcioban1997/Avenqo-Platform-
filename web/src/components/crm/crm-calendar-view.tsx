@@ -411,7 +411,7 @@ export function CRMCalendarView({
             }).length === 0 ? (
               <div className="text-center py-16">
                 <CalendarIcon className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                <p className="text-sm text-slate-500">Aucun rendez-vous pour cette journée.</p>
+                <p className="text-sm text-slate-500">{t.crm.calendar.noAppointments}</p>
                 <button
                   onClick={onNewAppointmentClick}
                   className="mt-3 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-[#0076FF] text-white hover:bg-blue-600 transition"
@@ -593,19 +593,19 @@ export function CRMCalendarView({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-4 font-semibold">Date & Heure</th>
-                    <th className="py-3 px-4 font-semibold">Client</th>
-                    <th className="py-3 px-4 font-semibold">Service / Objet</th>
-                    <th className="py-3 px-4 font-semibold">Employé</th>
-                    <th className="py-3 px-4 font-semibold">Statut</th>
-                    <th className="py-3 px-4 font-semibold text-right">Tarif</th>
+                    <th className="py-3 px-4 font-semibold">{t.crm.calendar.today}</th>
+                    <th className="py-3 px-4 font-semibold">{t.crm.clients.client}</th>
+                    <th className="py-3 px-4 font-semibold">{t.crm.filters.service}</th>
+                    <th className="py-3 px-4 font-semibold">{t.crm.filters.employee}</th>
+                    <th className="py-3 px-4 font-semibold">{t.crm.filters.status}</th>
+                    <th className="py-3 px-4 font-semibold text-right">{t.crm.kpis.revenueGenerated}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredAppointments.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400 italic">
-                        Aucun rendez-vous ne correspond aux critères sélectionnés.
+                        {t.crm.calendar.noAppointments}
                       </td>
                     </tr>
                   ) : (
