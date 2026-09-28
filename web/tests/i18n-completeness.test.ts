@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LOCALES } from "../src/lib/i18n/locales";
@@ -28,6 +28,27 @@ function readPath(value: unknown, path: string): unknown {
   }, value);
 }
 
+function stringLeaves(value: unknown, prefix = ""): Map<string, string> {
+  const leaves = new Map<string, string>();
+  if (typeof value === "string") {
+    leaves.set(prefix, value);
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      for (const [path, text] of stringLeaves(item, `${prefix}[${index}]`)) leaves.set(path, text);
+    });
+  } else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      for (const [leafPath, text] of stringLeaves(item, path)) leaves.set(leafPath, text);
+    }
+  }
+  return leaves;
+}
+
+function placeholders(value: string): string[] {
+  return [...value.matchAll(/\{[A-Za-z0-9_]+\}/g)].map((match) => match[0]).sort();
+}
+
 describe("Avenqo canonical localization", () => {
   it("keeps all 44 supported locales and public catalogs aligned", () => {
     expect(LOCALES).toHaveLength(44);
@@ -37,6 +58,41 @@ describe("Avenqo canonical localization", () => {
       expect(TRANSLATIONS[locale.code], locale.code).toBeDefined();
       expect(APP_LOCALE_WORDS[locale.code], locale.code).toBeDefined();
     }
+  });
+
+  it("reports 44/44 complete application catalogs with valid placeholders", () => {
+    const catalogRoot = resolve(process.cwd(), "../frontend/assets/i18n");
+    const english = JSON.parse(readFileSync(resolve(catalogRoot, "en.json"), "utf8"));
+    const requiredSections = ["common", "auth", "company", "dashboardHome", "assistant", "admin"];
+    const requiredLeaves = stringLeaves(
+      Object.fromEntries(requiredSections.map((section) => [section, english[section]])),
+    );
+
+    let passed = 0;
+    const errors: string[] = [];
+    for (const locale of LOCALES) {
+      const path = resolve(catalogRoot, `${locale.code}.json`);
+      if (!existsSync(path)) {
+        errors.push(`${locale.code}:catalog_missing`);
+        continue;
+      }
+      const catalog = JSON.parse(readFileSync(path, "utf8"));
+      const leaves = stringLeaves(
+        Object.fromEntries(requiredSections.map((section) => [section, catalog[section]])),
+      );
+      for (const [leafPath, englishValue] of requiredLeaves) {
+        const localized = leaves.get(leafPath);
+        if (!localized?.trim()) {
+          errors.push(`${locale.code}:${leafPath}:missing`);
+        } else if (JSON.stringify(placeholders(localized)) !== JSON.stringify(placeholders(englishValue))) {
+          errors.push(`${locale.code}:${leafPath}:invalid_placeholders`);
+        }
+      }
+      if (!errors.some((error) => error.startsWith(`${locale.code}:`))) passed += 1;
+    }
+    expect(errors, errors.slice(0, 100).join("\n")).toEqual([]);
+    expect(`${passed}/44 PASS`).toBe("44/44 PASS");
+    console.log("44/44 PASS");
   });
 
   it("provides visible application values for every locale", () => {

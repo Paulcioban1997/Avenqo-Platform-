@@ -34,6 +34,10 @@ jobs:
         working-directory: web
         run: npx tsc --noEmit
 
+      - name: Run web and 44-locale tests
+        working-directory: web
+        run: npm test -- --run
+
       - name: Build production bundle
         working-directory: web
         run: npm run build
@@ -62,7 +66,7 @@ jobs:
 
       - name: Run backend validation suite
         run: |
-          python -m pytest tests/backend/test_sales_date_regressions.py tests/backend/test_product_portfolio_scaling.py tests/backend/test_tenant_business_pages.py -q
+          python -m pytest tests/backend/test_sales_date_regressions.py tests/backend/test_product_portfolio_scaling.py tests/backend/test_tenant_business_pages.py tests/backend/test_crm_suite.py tests/backend/test_google_calendar_integration.py -q
         env:
           PYTHONPATH: .
           ENVIRONMENT: test

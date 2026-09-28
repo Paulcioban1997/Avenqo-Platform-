@@ -418,7 +418,11 @@
     "stepOrgLabel": "Completa la configuración de tu empresa",
     "stepDataLabel": "Conecta o importa tus datos",
     "stepInsightsLabel": "Explora tus perspectivas",
-    "stepAskLabel": "Pregunta a Avenqo AI"
+    "stepAskLabel": "Pregunta a Avenqo AI",
+    "periodAll": "Todo el período",
+    "period7Days": "Últimos 7 días",
+    "period30Days": "Últimos 30 días",
+    "periodQuarter": "Este trimestre"
   },
   "admin": {
     "commandCenterTitle": "Centro de control Avenqo",
