@@ -174,10 +174,10 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             className="text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#0076FF]"
           >
             <option value="all">{t.crm.calendar.allStatuses}</option>
-            <option value="active">{t.crm.status.confirmed}</option>
+            <option value="active">{t.crm.clients.active}</option>
             <option value="lead">{t.crm.clients.client}</option>
             <option value="inactive">{t.crm.status.cancelled}</option>
-            <option value="vip">{t.crm.status.completed}</option>
+            <option value="vip">{t.crm.clients.vip}</option>
           </select>
 
           <button
@@ -197,7 +197,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <th className="py-3 px-4 font-semibold">{t.crm.clients.client}</th>
-                <th className="py-3 px-4 font-semibold">{t.crm.searchPlaceholder}</th>
+                <th className="py-3 px-4 font-semibold">{t.crm.clients.email}</th>
                 <th className="py-3 px-4 font-semibold">{t.crm.filters.status}</th>
                 <th className="py-3 px-4 font-semibold">{t.crm.tabs.appointments}</th>
                 <th className="py-3 px-4 font-semibold text-right">{t.crm.kpis.revenueGenerated}</th>
@@ -469,7 +469,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                    Prénom *
+                    {t.crm.clients.firstName} *
                   </label>
                   <input
                     type="text"
@@ -481,7 +481,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                 </div>
                 <div>
                   <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                    Nom *
+                    {t.crm.clients.lastName} *
                   </label>
                   <input
                     type="text"
@@ -508,7 +508,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Courriel
+                  {t.crm.clients.email}
                 </label>
                 <input
                   type="email"
@@ -521,7 +521,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Entreprise
+                  {t.crm.clients.company}
                 </label>
                 <input
                   type="text"
@@ -534,16 +534,16 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Statut
+                  {t.crm.clients.status}
                 </label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                 >
-                  <option value="active">Actif</option>
+                  <option value="active">{t.crm.clients.active}</option>
                   <option value="lead">Prospect / Lead</option>
-                  <option value="vip">VIP</option>
+                  <option value="vip">{t.crm.clients.vip}</option>
                   <option value="inactive">Inactif</option>
                 </select>
               </div>

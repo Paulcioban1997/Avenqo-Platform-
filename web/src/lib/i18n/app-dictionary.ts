@@ -277,6 +277,13 @@ export type AppTranslations = {
     };
     clients: {
       client: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      company: string;
+      status: string;
+      active: string;
+      vip: string;
     };
     actions: {
       modify: string;
@@ -573,6 +580,13 @@ const frApp: AppTranslations = {
     },
     clients: {
       client: "Client",
+      firstName: "Prénom",
+      lastName: "Nom",
+      email: "E-mail",
+      company: "Entreprise",
+      status: "Statut",
+      active: "Clients actifs",
+      vip: "VIP",
     },
     actions: {
       modify: "Modifier",
@@ -869,6 +883,13 @@ const enApp: AppTranslations = {
     },
     clients: {
       client: "Client",
+      firstName: "First name",
+      lastName: "Last name",
+      email: "Email",
+      company: "Company",
+      status: "Status",
+      active: "Active customers",
+      vip: "VIP",
     },
     actions: {
       modify: "Modify",
@@ -973,7 +994,16 @@ const esApp: AppTranslations = {
       dateRequired: "La fecha y la hora son obligatorias.",
       clientRequired: "Selecciona un cliente.",
     },
-    clients: { client: "Cliente" },
+    clients: {
+      client: "Cliente",
+      firstName: "Nombre",
+      lastName: "Apellido",
+      email: "Correo electrónico",
+      company: "Empresa",
+      status: "Estado",
+      active: "Clientes activos",
+      vip: "VIP",
+    },
     actions: {
       ...enApp.crm.actions,
       modify: "Modificar",
@@ -1113,6 +1143,16 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
         previous: words.calendar.previous,
         next: words.calendar.next,
       } : base.crm.calendar,
+      clients: {
+        ...base.crm.clients,
+        firstName: application.auth.firstName,
+        lastName: application.auth.lastName,
+        email: application.auth.email,
+        company: company.settingsCompanySection,
+        status: company.employeesColumnStatus,
+        active: company.customersActive,
+        vip: company.customerSegmentVip,
+      },
       status: {
         ...base.crm.status,
       },
