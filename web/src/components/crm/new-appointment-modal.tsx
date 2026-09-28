@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
 
 interface ClientOption {
@@ -68,6 +69,7 @@ export function NewAppointmentModal({
   initialAppointment,
   t,
 }: NewAppointmentModalProps) {
+  const { locale } = useLocale();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
@@ -219,6 +221,7 @@ export function NewAppointmentModal({
             last_name: newClientLast,
             phone: newClientPhone || null,
             email: newClientEmail || null,
+            preferred_language: locale,
           }),
         });
         if (!clientRes.ok) {

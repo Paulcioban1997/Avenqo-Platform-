@@ -28,6 +28,7 @@ export interface ClientItem {
   last_name: string;
   email?: string | null;
   phone?: string | null;
+  preferred_language?: string;
   company_name?: string | null;
   status: string;
   total_revenue?: number;
@@ -362,6 +363,10 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                     <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                       <Mail className="w-3.5 h-3.5 text-slate-400" />
                       <span>{selectedClient.email || "Non renseigné"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      <span className="w-3.5 text-center text-slate-400">🌐</span>
+                      <span>{selectedClient.preferred_language || "fr"}</span>
                     </div>
                     {selectedClient.company_name && (
                       <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
