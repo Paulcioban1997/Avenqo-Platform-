@@ -760,7 +760,7 @@ export function IntegrationsHubView() {
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-            Configurez vos boutiques en ligne, collez vos clés d'API et synchronisez vos données réelles.
+            {connector.providerDescription}
           </p>
         </div>
 
@@ -968,7 +968,7 @@ export function IntegrationsHubView() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
                         <CheckCircle2 size={16} className="text-emerald-600" />
-                        <span>Boutique Connectée et Opérationnelle</span>
+                        <span>{connector.connected}</span>
                       </div>
                       <button
                         type="button"
@@ -1005,7 +1005,7 @@ export function IntegrationsHubView() {
                               : "text-slate-400"
                           }
                         />
-                        <span>Statut du Connecteur</span>
+                        <span>{connector.connection}</span>
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-[#94A3B8] mt-0.5">
                         {connectorActiveState[selectedConnector.id] ?? true
@@ -1039,7 +1039,7 @@ export function IntegrationsHubView() {
                       <div>
                         <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-1.5">
                           <Sliders size={14} className="text-[#0076FF]" />
-                          <span>Sélection des Données à Synchroniser</span>
+                          <span>{connector.capabilities}</span>
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
                           Choisissez vous-même les flux de données à importer dans Avenqo.
@@ -1104,7 +1104,7 @@ export function IntegrationsHubView() {
                   <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#111D3D]">
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                        Synchronisation Manuelle
+                        {connector.sync}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
                         Forcer la réconciliation et l'import immédiat des données.
@@ -1141,7 +1141,7 @@ export function IntegrationsHubView() {
                     <form onSubmit={handleConnectWooCommerce} className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          URL de votre boutique WooCommerce *
+                          {connector.wooStoreUrl} *
                         </label>
                         <div className="relative">
                           <Globe className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1150,7 +1150,7 @@ export function IntegrationsHubView() {
                             required
                             value={wooStoreUrl}
                             onChange={(e) => setWooStoreUrl(e.target.value)}
-                            placeholder="https://votre-boutique-woocommerce.ca"
+                            placeholder={connector.wooStoreUrlHint}
                             className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#111D3D] text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 outline-none focus:border-[#0076FF] transition-colors"
                           />
                         </div>
@@ -1161,7 +1161,7 @@ export function IntegrationsHubView() {
 
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Clé Client (Consumer Key) *
+                          {connector.wooConsumerKey} *
                         </label>
                         <div className="relative">
                           <Key className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1178,7 +1178,7 @@ export function IntegrationsHubView() {
 
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Clé Secrète (Consumer Secret) *
+                          {connector.wooConsumerSecret} *
                         </label>
                         <div className="relative">
                           <Key className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1210,7 +1210,7 @@ export function IntegrationsHubView() {
                             onClick={() => setShowConfigForm(false)}
                             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                           >
-                            Annuler
+                            {connector.cancel}
                           </button>
                         )}
                         <button
@@ -1219,7 +1219,7 @@ export function IntegrationsHubView() {
                           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isSubmittingManual ? "animate-spin" : ""}`} />
-                          <span>{isSubmittingManual ? "Connexion & Importation..." : "Importer & Connecter ma boutique"}</span>
+                            <span>{isSubmittingManual ? connector.connecting : connector.wooConnectManual}</span>
                         </button>
                       </div>
                     </form>
@@ -1239,7 +1239,7 @@ export function IntegrationsHubView() {
                             required
                             value={shopifyDomain}
                             onChange={(e) => setShopifyDomain(e.target.value)}
-                            placeholder="ma-boutique.myshopify.com"
+                            placeholder={connector.shopDomainHint}
                             className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#111D3D] text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 outline-none focus:border-[#0076FF] transition-colors"
                           />
                         </div>
@@ -1269,7 +1269,7 @@ export function IntegrationsHubView() {
                             onClick={() => setShowConfigForm(false)}
                             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                           >
-                            Annuler
+                            {connector.cancel}
                           </button>
                         )}
                         <button
@@ -1278,7 +1278,7 @@ export function IntegrationsHubView() {
                           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isSubmittingManual ? "animate-spin" : ""}`} />
-                          <span>{isSubmittingManual ? "Importation..." : "Importer la boutique Shopify"}</span>
+                            <span>{isSubmittingManual ? connector.connecting : connector.connect}</span>
                         </button>
                       </div>
                     </form>
@@ -1288,7 +1288,7 @@ export function IntegrationsHubView() {
                   {selectedConnector.id === "google_calendar" && (
                     <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-blue-50/60 dark:bg-[#172652]/40 text-xs text-slate-700 dark:text-slate-200 space-y-3">
                       <p>
-                        Synchronisez vos rendez-vous Avenqo avec Google Calendar en temps réel.
+                        {t.integrations.googleCalendarDescription}
                       </p>
                       <div className="flex items-center justify-end gap-2.5 pt-1">
                         <button
@@ -1296,7 +1296,7 @@ export function IntegrationsHubView() {
                           onClick={() => setSelectedConnector(null)}
                           className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                         >
-                          Annuler
+                          {connector.cancel}
                         </button>
                         <button
                           type="button"
@@ -1366,7 +1366,7 @@ export function IntegrationsHubView() {
                     ))
                   ) : (
                     <div className="p-3 text-center text-slate-400 font-sans text-xs">
-                      Aucun historique de synchronisation pour l'instant.
+                      {connector.neverSynced}
                     </div>
                   )}
                 </div>
@@ -1385,7 +1385,7 @@ export function IntegrationsHubView() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Déconnecter &amp; Supprimer</span>
+                  <span>{connector.disconnect}</span>
                 </button>
               )}
               <button
@@ -1393,7 +1393,7 @@ export function IntegrationsHubView() {
                 onClick={() => setSelectedConnector(null)}
                 className="ml-auto px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors cursor-pointer"
               >
-                Fermer
+                {connector.close}
               </button>
             </div>
           </div>
@@ -1423,7 +1423,7 @@ export function IntegrationsHubView() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-rose-900 dark:text-rose-200">
-                  Déconnecter {disconnectTarget.name}
+                  {connector.disconnect} {disconnectTarget.name}
                 </h3>
                 <p className="text-[11px] text-rose-700/80 dark:text-rose-400/80 mt-0.5">
                   Action irréversible — les enregistrements normalisés seront supprimés.
@@ -1459,7 +1459,7 @@ export function IntegrationsHubView() {
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors"
               >
-                Annuler
+                {connector.cancel}
               </button>
               <button
                 type="button"
