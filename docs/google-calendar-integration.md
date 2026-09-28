@@ -32,8 +32,12 @@ The redirect URI must match exactly in Google Cloud. No Google secret belongs in
 - `GET /api/v1/crm/calendar/connection` reports the tenant-scoped state.
 - `GET /api/v1/crm/calendar/google/auth-url` creates a signed, expiring tenant/user-bound OAuth state.
 - `GET /api/v1/crm/calendar/google/calendars` lists calendars visible to the connected account without exposing tokens.
+- `POST /api/v1/crm/calendar/google/sync` reconciles timed Google events into tenant CRM appointments.
 - `PUT /api/v1/crm/calendar/google/selection` selects the tenant's calendar ID.
 - CRM create/update/reschedule/cancel calls reuse the stored external event ID. Google failures do not roll back the internal CRM appointment.
+- Inbound reconciliation updates existing external IDs, reflects cancellations, and creates a CRM appointment only when exactly one tenant client matches a non-organizer attendee email.
+- The connected Google account, all-day events, unmatched events, ambiguous client matches, and soft-deleted appointments are never imported as new appointments.
+- The CRM calendar loads inbound reconciliation before reading appointments; OAuth callback also performs an initial reconciliation.
 - Free/busy checks use the selected Google calendar when credentials are connected.
 
-Real event creation/update/cancellation remains unverified until a Google account completes the one-time authorization above.
+Production verification on 2026-09-27 read the connected tenant calendar, reconciled two existing linked events without creating duplicates, and preserved the three active CRM appointments.
