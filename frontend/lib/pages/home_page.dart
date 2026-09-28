@@ -350,8 +350,8 @@ class _Hero extends StatelessWidget {
           children: [
             const _EyebrowDot(),
             const SizedBox(width: 9),
-            const Text(
-              'AVENQO PLATFORM',
+            Text(
+              t.hero.eyebrow,
               style: TextStyle(
                 color: _Brand.blueDark,
                 fontSize: 12,
@@ -373,7 +373,7 @@ class _Hero extends StatelessWidget {
             children: [
               const TextSpan(text: 'AVENQO\n'),
               TextSpan(
-                text: 'Une plateforme IA tout-en-un pour propulser votre entreprise.',
+                text: '${t.hero.titleLine1}\n${t.hero.titleLine2}',
                 style: TextStyle(color: colors.ink),
               ),
             ],
@@ -383,7 +383,7 @@ class _Hero extends StatelessWidget {
         SizedBox(
           width: 540,
           child: Text(
-            'Automatisez. Analysez. Prédisez. Développez.\nAvenqo connecte vos données et vos agents IA dans une seule plateforme.',
+            t.hero.subtitle,
             style: TextStyle(color: colors.muted, fontSize: 16, height: 1.6),
           ),
         ),
@@ -400,7 +400,7 @@ class _Hero extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
               ),
               icon: const Icon(Icons.arrow_forward, size: 17),
-              label: const Text('Commencer maintenant', style: TextStyle(fontWeight: FontWeight.w700)),
+              label: Text(t.common.tryFree, style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
             OutlinedButton.icon(
               onPressed: _contactByEmail,
@@ -410,7 +410,7 @@ class _Hero extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               ),
               icon: const Icon(Icons.play_arrow, size: 16),
-              label: const Text('Voir la démo', style: TextStyle(fontWeight: FontWeight.w600)),
+              label: Text(t.common.watchDemo, style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -418,11 +418,23 @@ class _Hero extends StatelessWidget {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: const [
-            _AgentStatusBadge(label: 'Retail Intelligence — Disponible maintenant', isAvailable: true),
-            _AgentStatusBadge(label: 'CRM AI — Disponible', isAvailable: true),
-            _AgentStatusBadge(label: 'Accounting AI — Disponible', isAvailable: true),
-            _AgentStatusBadge(label: 'Autres agents — Bientôt disponible', isAvailable: false),
+          children: [
+            _AgentStatusBadge(
+              label: '${t.agents.value('retailName')} — ${t.modulesSection.availableNow}',
+              isAvailable: true,
+            ),
+            _AgentStatusBadge(
+              label: '${t.agents.value('crmName')} — ${t.modulesSection.availableNow}',
+              isAvailable: true,
+            ),
+            _AgentStatusBadge(
+              label: '${t.agents.value('accountingName')} — ${t.modulesSection.availableNow}',
+              isAvailable: true,
+            ),
+            _AgentStatusBadge(
+              label: '${t.agents.value('comingSoonCount')} — ${t.modulesSection.comingSoon}',
+              isAvailable: false,
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -1328,8 +1340,8 @@ class _ModuleCard extends StatelessWidget {
                     color: const Color(0xFF10B981).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
-                    'Disponible',
+                  child: Text(
+                    availableNowLabel,
                     style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
