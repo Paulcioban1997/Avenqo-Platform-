@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -46,6 +47,8 @@ from backend.app.models.crm import (
     CRMAppointment,
 )
 from backend.app.services.crm_service import CRMService as CRMAppService
+from backend.app.services.crm_notification_service import CRMNotificationService
+from backend.app.services.crm_recipient_policy import evaluate_crm_recipient, is_test_email, is_test_phone
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
@@ -341,16 +344,16 @@ def test_customer_resolution_is_exact_and_never_uses_test_mailbox(db_session):
     company = _create_company(db_session, "tenant-customer-resolution")
     crm_svc = CRMAppService(db_session)
     alice = crm_svc.create_client(company.id, {
-        "first_name": "Alice", "last_name": "Smith", "email": "alice@example.com",
+        "first_name": "Alice", "last_name": "Smith", "email": "alice@customer.ca",
     })
     bob = crm_svc.create_client(company.id, {
-        "first_name": "Bob", "last_name": "Smith", "email": "bob@example.com",
+        "first_name": "Bob", "last_name": "Smith", "email": "bob@customer.ca",
     })
     test_client = crm_svc.create_client(company.id, {
         "first_name": "Avenqo", "last_name": "CRM Test", "email": "crm_test_client@avenqo.ca",
     })
 
-    resolved_alice, error = crm_svc.resolve_client_for_appointment(company.id, "alice@example.com")
+    resolved_alice, error = crm_svc.resolve_client_for_appointment(company.id, "alice@customer.ca")
     resolved_bob, phone_error = crm_svc.resolve_client_for_appointment(company.id, "Bob")
     ambiguous, ambiguous_error = crm_svc.resolve_client_for_appointment(company.id, "Smith")
 
@@ -358,6 +361,109 @@ def test_customer_resolution_is_exact_and_never_uses_test_mailbox(db_session):
     assert resolved_bob is bob and phone_error is None
     assert ambiguous is None and ambiguous_error is not None
     assert crm_svc.is_valid_customer_email(test_client.email) is False
+
+
+def test_crm_notifications_block_seed_recipients_before_transport(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-notification-safety")
+    service = CRMAppService(db_session)
+    test_client = service.create_client(company.id, {
+        "first_name": "Avenqo", "last_name": "CRM Test",
+        "email": "crm_test_client@avenqo.ca", "phone": "+15145550199",
+    })
+    appointment = CRMAppointment(
+        company_id=company.id,
+        client_id=test_client.id,
+        title="Safety test",
+        start_time=datetime.now(timezone.utc) + timedelta(days=1),
+        end_time=datetime.now(timezone.utc) + timedelta(days=1, minutes=30),
+        duration_minutes=30,
+        industry_data={},
+    )
+    db_session.add(appointment)
+    db_session.commit()
+
+    sent = []
+
+    class RecordingNotifier:
+        def send_transactional(self, recipient, subject, body):
+            sent.append(recipient)
+
+    monkeypatch.setattr(
+        "backend.app.services.crm_notification_service.get_account_notifier",
+        lambda: RecordingNotifier(),
+    )
+    notifications = CRMNotificationService(db_session)
+    asyncio.run(notifications._record(
+        company.id, appointment, test_client,
+        channel="email", event="created", recipient=test_client.email, status="queued",
+    ))
+    asyncio.run(notifications._record(
+        company.id, appointment, test_client,
+        channel="sms", event="created", recipient=test_client.phone, status="queued",
+    ))
+    db_session.commit()
+
+    communications = db_session.query(CRMCommunication).filter_by(client_id=test_client.id).all()
+    assert sent == []
+    assert {item.status for item in communications} == {"blocked_test_recipient"}
+
+
+def test_crm_notifications_send_once_only_to_valid_tenant_contact(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-notification-real")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {
+        "first_name": "Marie", "last_name": "Tremblay",
+        "email": "marie@customer.ca", "phone": "+15141234567",
+    })
+    appointment = CRMAppointment(
+        company_id=company.id,
+        client_id=client.id,
+        title="Consultation",
+        start_time=datetime.now(timezone.utc) + timedelta(days=1),
+        end_time=datetime.now(timezone.utc) + timedelta(days=1, minutes=30),
+        duration_minutes=30,
+        industry_data={},
+    )
+    db_session.add(appointment)
+    db_session.commit()
+    sent = []
+
+    class RecordingNotifier:
+        def send_transactional(self, recipient, subject, body):
+            sent.append(recipient)
+
+    monkeypatch.setattr(
+        "backend.app.services.crm_notification_service.get_account_notifier",
+        lambda: RecordingNotifier(),
+    )
+    notifications = CRMNotificationService(db_session)
+    for _ in range(2):
+        asyncio.run(notifications._record(
+            company.id, appointment, client,
+            channel="email", event="created", recipient=client.email, status="queued",
+        ))
+        db_session.commit()
+
+    assert sent == ["marie@customer.ca"]
+    assert db_session.query(CRMCommunication).filter_by(client_id=client.id).count() == 1
+    assert evaluate_crm_recipient(client, company.id, "email").allowed is True
+
+
+@pytest.mark.parametrize("email", [
+    "crm_test_client@avenqo.ca",
+    "test@example.com",
+    "alice@example.org",
+    "demo@production-test.ca",
+    "seed@avenqo-e2e.ca",
+    "fake.user@customer.ca",
+])
+def test_crm_recipient_policy_blocks_seed_and_reserved_emails(email):
+    assert is_test_email(email) is True
+
+
+@pytest.mark.parametrize("phone", [None, "", "+15145550199", "+12125550100", "1111111111"])
+def test_crm_recipient_policy_blocks_missing_and_fictional_phones(phone):
+    assert is_test_phone(phone) is True
 
 
 def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(db_session, monkeypatch):
@@ -376,7 +482,7 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda: FakeProvider())
     crm_svc = CRMAppService(db_session, FakeCipher())
     alice = crm_svc.create_client(company.id, {
-        "first_name": "Alice", "last_name": "Example", "email": "alice@example.com",
+        "first_name": "Alice", "last_name": "Example", "email": "alice@customer.ca",
     })
     no_email = crm_svc.create_client(company.id, {
         "first_name": "No", "last_name": "Email", "email": "",
@@ -399,16 +505,16 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
 
     assert first_error is None and second_error is None
     assert first is not None and second is not None
-    assert captured == ["alice@example.com", None]
+    assert captured == ["alice@customer.ca", None]
 
 
 def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
     company = _create_company(db_session, "tenant-google-inbound")
     alice = CRMAppService(db_session).create_client(company.id, {
-        "first_name": "Alice", "last_name": "Example", "email": "alice@example.com",
+        "first_name": "Alice", "last_name": "Example", "email": "alice@customer.ca",
     })
     CRMAppService(db_session).create_client(company.id, {
-        "first_name": "Bob", "last_name": "Example", "email": "bob@example.com",
+        "first_name": "Bob", "last_name": "Example", "email": "bob@customer.ca",
     })
     db_session.add(CRMCalendarConnection(
         company_id=company.id,
@@ -433,7 +539,7 @@ def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellati
         "description": "Imported from Google",
         "start": {"dateTime": "2026-10-01T08:30:00-04:00"},
         "end": {"dateTime": "2026-10-01T09:00:00-04:00"},
-        "attendees": [{"email": "alice@example.com"}],
+        "attendees": [{"email": "alice@customer.ca"}],
     }, {
         "id": "google-organizer-only",
         "status": "confirmed",
@@ -495,11 +601,15 @@ def test_appointment_search_filters_client_and_title(db_session):
     assert crm_svc.list_appointments(company.id, search="inconnu", limit=10) == []
 
 
-def test_cancel_is_idempotent_and_preserves_history(db_session):
+def test_cancel_is_idempotent_and_preserves_history(db_session, monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.services.crm_notification_service.get_settings",
+        lambda: SimpleNamespace(email_delivery_configured=False, telnyx_api_key=None),
+    )
     company = _create_company(db_session, "tenant-cancel")
     crm_svc = CRMAppService(db_session)
     client = crm_svc.create_client(company.id, {
-        "first_name": "Paul", "last_name": "Martin", "email": "paul@example.com",
+        "first_name": "Paul", "last_name": "Martin", "email": "paul@customer.ca",
     })
     appointment, error = asyncio.run(crm_svc.create_appointment(company.id, {
         "client_id": client.id,
@@ -518,7 +628,10 @@ def test_cancel_is_idempotent_and_preserves_history(db_session):
     assert db_session.query(CRMAppointment).filter_by(id=appointment.id).one().is_deleted is False
     communications = db_session.query(CRMCommunication).filter_by(appointment_id=appointment.id).all()
     assert {communication.channel for communication in communications} == {"email", "sms"}
-    assert all(communication.status == "blocked_external_configuration" for communication in communications)
+    assert {communication.status for communication in communications} == {
+        "blocked_external_configuration",
+        "blocked_invalid_recipient",
+    }
 
 
 def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):

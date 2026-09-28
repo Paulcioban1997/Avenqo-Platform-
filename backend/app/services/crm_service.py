@@ -33,6 +33,7 @@ from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.crm_notification_service import CRMNotificationService
+from backend.app.services.crm_recipient_policy import is_test_email
 
 logger = logging.getLogger(__name__)
 
@@ -256,10 +257,7 @@ class CRMService:
 
     @staticmethod
     def is_valid_customer_email(email: str | None) -> bool:
-        normalized = email.strip().lower() if email else ""
-        if normalized == "crm_test_client@avenqo.ca":
-            return False
-        return bool(normalized and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized))
+        return not is_test_email(email)
 
     def _find_existing_client(
         self,

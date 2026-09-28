@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import get_settings
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models.crm import CRMAppointment, CRMClient, CRMCommunication
+from backend.app.services.crm_recipient_policy import evaluate_crm_recipient
 
 
 class CRMNotificationService:
@@ -58,21 +59,6 @@ class CRMNotificationService:
         recipient: str | None,
         status: str,
     ) -> None:
-        if not recipient:
-            status = "blocked_external_configuration"
-        elif channel == "email" and status == "queued":
-            try:
-                get_account_notifier().send_transactional(
-                    recipient,
-                    f"Avenqo — rendez-vous {event}",
-                    f"Votre rendez-vous {event} est associé au dossier Avenqo {appointment.id}.",
-                )
-                status = "sent"
-            except Exception:
-                status = "failed"
-        elif channel == "sms":
-            # No CRM tenant sender identity is configured here; never invent one.
-            status = "blocked_external_configuration"
         subject = f"appointment:{appointment.id}:{event}:{channel}"
         existing = self._session.scalar(
             select(CRMCommunication).where(
@@ -84,6 +70,29 @@ class CRMNotificationService:
         )
         if existing is not None:
             return
+
+        if appointment.company_id != company_id or appointment.client_id != client.id:
+            status = "blocked_invalid_recipient"
+        elif not recipient:
+            status = "blocked_invalid_recipient"
+        else:
+            decision = evaluate_crm_recipient(client, company_id, channel)
+            if not decision.allowed:
+                status = decision.status
+
+        if channel == "email" and status == "queued":
+            try:
+                get_account_notifier().send_transactional(
+                    recipient,
+                    f"Avenqo — rendez-vous {event}",
+                    f"Votre rendez-vous {event} est associé au dossier Avenqo {appointment.id}.",
+                )
+                status = "sent"
+            except Exception:
+                status = "failed"
+        elif channel == "sms" and status == "queued":
+            # No CRM tenant sender identity is configured here; never invent one.
+            status = "blocked_external_configuration"
         content = f"Notification {event} pour le rendez-vous {appointment.id}."
         self._session.add(
             CRMCommunication(
