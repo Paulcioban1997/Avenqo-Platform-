@@ -1,5 +1,6 @@
 import type { LocaleCode } from "./types";
 import { APP_LOCALE_WORDS } from "./app-locale-overrides";
+import { getTranslations } from "./dictionary";
 
 export type AppTranslations = {
   brand: {
@@ -905,6 +906,9 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       ? esApp
       : enApp;
   const words = APP_LOCALE_WORDS[locale as LocaleCode] ?? APP_LOCALE_WORDS.en;
+  const catalog = getTranslations(locale as LocaleCode);
+  const retailItems = Object.fromEntries(catalog.modulesSection.items.map((item) => [item.name.toLowerCase(), item]));
+  const retailItem = Object.values(retailItems).find((item) => item.name.toLowerCase().includes("retail"));
   return {
     ...base,
     navigation: {
@@ -937,6 +941,23 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       appointmentStatuses: {
         ...base.crm.appointmentStatuses,
       },
+    },
+    dashboard: {
+      ...base.dashboard,
+      greetingMorning: catalog.dashboard.greeting,
+      greetingAfternoon: catalog.dashboard.greeting,
+      greetingEvening: catalog.dashboard.greeting,
+      revenue: catalog.dashboard.salesLabel,
+      customers: catalog.dashboard.activeClientsLabel,
+      recommendationAction: catalog.dashboard.recommendationAction,
+    },
+    retail: {
+      ...base.retail,
+      overview: catalog.nav.features,
+      sales: catalog.dashboard.salesLabel,
+      customers: catalog.dashboard.activeClientsLabel,
+      recommendations: catalog.dashboard.recommendationLabel,
+      forecastDisclaimer: retailItem?.description ?? base.retail.forecastDisclaimer,
     },
   };
 }
