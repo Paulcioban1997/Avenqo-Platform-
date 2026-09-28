@@ -72,18 +72,19 @@ class TenantDashboardService:
             BUSINESS_METRIC_FIELDS["revenue"] | BUSINESS_METRIC_FIELDS["orders"]
         )
         granularity = "day" if period_key == "last_7_days" else "week" if period_key == "last_30_days" else "month"
+        cached_trend_points = [
+            point
+            for summary in snapshot.retail_summaries
+            for point in (summary.get("period_trends", {}).get(period_key or "last_30_days") or [])
+        ]
         trend = compute_sales_trend(
             trend_source,
             date_from=None if period_key == "all" else period["start"],
             date_to=None if period_key == "all" else period["end"],
             granularity=granularity,
-        ) if trend_source is not None else {
-            "points": [
-                point
-                for summary in snapshot.retail_summaries
-                for point in (summary.get("period_trends", {}).get(period_key or "last_30_days") or [])
-            ]
-        }
+        ) if trend_source is not None else {"points": []}
+        if not trend.get("points") and cached_trend_points:
+            trend = {"points": cached_trend_points}
         return {
             "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
