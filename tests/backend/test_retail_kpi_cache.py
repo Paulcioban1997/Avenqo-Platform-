@@ -55,6 +55,7 @@ def test_large_exact_current_artifact_cache_and_dashboard(large, monkeypatch):
         "customers": 40003,
         "average_order_value": 0.4,
     }
+    assert payload["period_trends"]["all"]
     monkeypatch.setattr(cache, "rows", lambda *_: pytest.fail("Source read in dashboard hot path"))
     service, _ = _dashboard_service(session, {})  # Fails if prepared ingestion is called.
     for _ in range(2):

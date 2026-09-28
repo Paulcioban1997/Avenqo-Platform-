@@ -245,7 +245,7 @@ def build(spec):
                   "average_order_value": float(round(bucket["revenue"] / orders, 2)) if orders else 0.0}
         return {key: value for key, value in values.items() if available[key]}
     def trend(bucket_name):
-        return [
+        points = [
             {
                 "period": period,
                 "revenue": float(round(point["revenue"], 2)),
@@ -254,6 +254,15 @@ def build(spec):
             }
             for period, point in sorted(trend_buckets[bucket_name].items())
         ]
+        if not points and bucket_name in {"all", "source_current"} and buckets[bucket_name]["rows"]:
+            bucket = buckets[bucket_name]
+            points.append({
+                "period": "All",
+                "revenue": float(round(bucket["revenue"], 2)),
+                "orders": len(bucket["orders"]) or int(bucket["rows"]),
+                "change_percent": None,
+            })
+        return points
     payload = {"source": spec,
                "period_metrics": {
                    key: metrics(bucket) for key, bucket in buckets.items()
