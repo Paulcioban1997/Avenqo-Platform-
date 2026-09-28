@@ -1,5 +1,5 @@
 import type { LocaleCode } from "./types";
-import { APP_LOCALE_WORDS } from "./app-locale-overrides";
+import { APP_COMMON_WORDS, APP_LOCALE_WORDS } from "./app-locale-overrides";
 import { getTranslations } from "./dictionary";
 import { getApplicationCatalog } from "./generated-app-catalogs";
 
@@ -1038,6 +1038,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       ? esApp
       : enApp;
   const words = APP_LOCALE_WORDS[locale as LocaleCode] ?? APP_LOCALE_WORDS.en;
+  const commonWords = APP_COMMON_WORDS[locale as LocaleCode] ?? APP_COMMON_WORDS.en;
   const catalog = getTranslations(locale as LocaleCode);
   const application = getApplicationCatalog(locale);
   const company = application.company;
@@ -1051,13 +1052,9 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     ...base,
     common: {
       ...base.common,
-      close: connector.close,
-      cancel: connector.cancel,
-      deletePermanently: company.connectionsDeletePermanently,
-      downloadCsv: application.phase4e.billing.downloadCsv,
+      ...commonWords,
       errorTitle: company.connectionsGenericError,
       insufficientData: company.analyticsUnavailable,
-      noPreview: company.connectionsCleaning.previewEmpty,
       retry: company.connectionsRetry,
     },
     navigation: {

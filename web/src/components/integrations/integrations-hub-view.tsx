@@ -1210,7 +1210,7 @@ export function IntegrationsHubView() {
                             onClick={() => setShowConfigForm(false)}
                             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                           >
-                            {connector.cancel}
+                            {t.common.cancel}
                           </button>
                         )}
                         <button
@@ -1269,7 +1269,7 @@ export function IntegrationsHubView() {
                             onClick={() => setShowConfigForm(false)}
                             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                           >
-                            {connector.cancel}
+                            {t.common.cancel}
                           </button>
                         )}
                         <button
@@ -1296,7 +1296,7 @@ export function IntegrationsHubView() {
                           onClick={() => setSelectedConnector(null)}
                           className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                         >
-                          {connector.cancel}
+                          {t.common.cancel}
                         </button>
                         <button
                           type="button"
@@ -1393,7 +1393,7 @@ export function IntegrationsHubView() {
                 onClick={() => setSelectedConnector(null)}
                 className="ml-auto px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors cursor-pointer"
               >
-                {connector.close}
+                {t.common.close}
               </button>
             </div>
           </div>
@@ -1459,7 +1459,7 @@ export function IntegrationsHubView() {
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-800 dark:text-[#F4F7FB] text-xs font-semibold hover:bg-slate-300 dark:hover:bg-white/[0.12] transition-colors"
               >
-                {connector.cancel}
+                {t.common.cancel}
               </button>
               <button
                 type="button"
