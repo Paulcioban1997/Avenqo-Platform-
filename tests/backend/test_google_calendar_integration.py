@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import UUID
@@ -30,6 +31,16 @@ def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
     ).decode("utf-8").rstrip("=")
     signature = hmac.new(secret.encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{encoded}.{signature}"
+
+
+def _effective_route_contexts() -> Iterator[object]:
+    for route in api_router.routes:
+        effective_route_contexts = getattr(route, "effective_route_contexts", None)
+        if callable(effective_route_contexts):
+            yield from effective_route_contexts()
+            continue
+        if getattr(route, "dependant", None) is not None:
+            yield route
 
 
 def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
@@ -59,14 +70,13 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
 
 
 def test_callback_route_is_public_but_crm_routes_remain_protected() -> None:
-    callback = next(
-        route for route in api_router.routes
-        if getattr(route, "path", None) == "/api/v1/crm/calendar/google/callback"
-    )
-    kpis = next(
-        route for route in api_router.routes
-        if getattr(route, "path", None) == "/api/v1/crm/kpis"
-    )
+    effective_routes = {
+        getattr(route, "path", None): route
+        for route in _effective_route_contexts()
+        if getattr(route, "path", None)
+    }
+    callback = effective_routes["/api/v1/crm/calendar/google/callback"]
+    kpis = effective_routes["/api/v1/crm/kpis"]
     callback_dependencies = {dependency.call.__name__ for dependency in callback.dependant.dependencies}
     protected_dependencies = {dependency.call.__name__ for dependency in kpis.dependant.dependencies}
     assert "get_current_identity" not in callback_dependencies
