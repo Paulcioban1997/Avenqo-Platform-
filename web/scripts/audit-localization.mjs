@@ -55,6 +55,7 @@ function scanFlutter() {
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/\b(?:Text|Tooltip|InputDecoration)\s*\(\s*["']([^"']+)["']/gu)) {
       if (/^\s*\$\{|AvenqoLocaleScope|translationsOf\(|(?:^|\W)t\.|creditsT\b|connectorHub\b/u.test(match[1])) continue;
+      if (/^\$activeCount\s*\/\s*\$\{limit\s*\?\?$/u.test(match[1].trim())) continue;
       if (keep(match[1])) candidates.push({ file: relative(repository, file), value: match[1].trim() });
     }
   }
