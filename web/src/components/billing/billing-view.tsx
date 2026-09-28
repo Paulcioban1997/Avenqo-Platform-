@@ -844,19 +844,19 @@ export function BillingView() {
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
               <Layers size={18} className="text-[#0076FF]" />
-              <span>Utilisation des crédits</span>
+              <span>{billingTranslations.aiUsage}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-              Répartition granulaire de la consommation par module d'intelligence artificielle.
+              {billingTranslations.creditsSubtitle}
             </p>
           </div>
 
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-[11px] font-medium">
             {[
-              { id: "today", label: "Aujourd'hui" },
-              { id: "7d", label: "7 jours" },
-              { id: "30d", label: "30 jours" },
-              { id: "billing_period", label: "Période courante" },
+              { id: "today", label: t.crm.calendar.today },
+              { id: "7d", label: t.dashboard.dateRange7d },
+              { id: "30d", label: t.dashboard.dateRange30d },
+              { id: "billing_period", label: billingTranslations.billingPeriod },
             ].map((p) => (
               <button
                 key={p.id}
@@ -875,7 +875,7 @@ export function BillingView() {
 
         {breakdownItems.length === 0 || totalBreakdownUsed === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500 rounded-xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06]">
-            Aucune utilisation de crédits enregistrée pour cette période. Vos analyses retail et interactions CRM alimenteront ce graphique.
+            {billingTranslations.noCompanies}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
@@ -889,7 +889,7 @@ export function BillingView() {
                     {item.module}
                   </span>
                   <span className="text-xs font-bold text-[#0076FF] dark:text-[#00D4FF]">
-                    {item.credits_used.toLocaleString()} crédits
+                    {item.credits_used.toLocaleString()} {billingTranslations.creditsUnit}
                   </span>
                 </div>
                 <div className="mt-3">
@@ -900,7 +900,7 @@ export function BillingView() {
                     />
                   </div>
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">
-                    {item.percentage}% du total
+                    {item.percentage}% {billingTranslations.totalRemaining}
                   </div>
                 </div>
               </div>
@@ -914,31 +914,31 @@ export function BillingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              Historique d'utilisation
+              {billingTranslations.billingPeriod}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              Journal immuable de chaque opération IA effectuée par les collaborateurs de votre organisation.
+              {billingTranslations.creditsSubtitle}
             </p>
           </div>
           <div className="text-xs text-slate-400">
-            {historyTotal} opération(s) enregistrée(s)
+            {historyTotal} {billingTranslations.creditsUnit}
           </div>
         </div>
 
         {historyItems.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500 rounded-xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06]">
-            Aucune opération IA dans l'historique récent.
+            {billingTranslations.noCompanies}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Module</th>
-                  <th className="py-3 px-4">Opération</th>
-                  <th className="py-3 px-4">Crédits utilisés</th>
-                  <th className="py-3 px-4">Utilisateur</th>
+                  <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
+                  <th className="py-3 px-4">{billingTranslations.company}</th>
+                  <th className="py-3 px-4">{billingTranslations.aiUsage}</th>
+                  <th className="py-3 px-4">{billingTranslations.monthlyProgress}</th>
+                  <th className="py-3 px-4">{billingTranslations.company}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -988,10 +988,10 @@ export function BillingView() {
       <div className="space-y-3">
         <div>
           <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-            Ajouter des crédits IA
+            {billingTranslations.packsTitle}
           </h2>
           <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-            Packs de recharge instantanée sans engagement, traités en toute sécurité par Stripe.
+            {billingTranslations.packsSubtitle}
           </p>
         </div>
 
@@ -1020,7 +1020,7 @@ export function BillingView() {
                 onClick={() => handleBuyCredits(pack.code)}
                 className="mt-4 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#111D3D] dark:hover:bg-[#172652] text-xs font-semibold text-slate-800 dark:text-[#F4F7FB] transition-colors cursor-pointer"
               >
-                Acheter ce pack
+                {billingTranslations.purchase}
               </button>
             </div>
           ))}
@@ -1032,10 +1032,10 @@ export function BillingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              Factures certifiées
+              {invoiceTranslations.officialInvoice}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              Consultez et téléchargez vos factures officielles Avenqo / PMC Solutions AI au format PDF conforme.
+              {invoiceTranslations.viewInvoice}
             </p>
           </div>
 
@@ -1049,20 +1049,20 @@ export function BillingView() {
         <div className="rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] overflow-hidden shadow-xs">
           {invoices.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500">
-              Aucune facture émise pour le moment. Vos reçus certifiés apparaîtront automatiquement dès votre premier cycle de facturation.
+              {invoiceTranslations.noInvoices}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                    <th className="py-3 px-4">N° Facture</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Période</th>
-                    <th className="py-3 px-4">Plan</th>
-                    <th className="py-3 px-4">Montant</th>
-                    <th className="py-3 px-4">Statut</th>
-                    <th className="py-3 px-4 text-right">Télécharger</th>
+                    <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
+                    <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
+                    <th className="py-3 px-4">{invoiceTranslations.invoicePeriod}</th>
+                    <th className="py-3 px-4">{billingTranslations.plan}</th>
+                    <th className="py-3 px-4">{invoiceTranslations.total}</th>
+                    <th className="py-3 px-4">{t.crm.filters.status}</th>
+                    <th className="py-3 px-4 text-right">{invoiceTranslations.downloadPdf}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
