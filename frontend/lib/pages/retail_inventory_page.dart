@@ -62,6 +62,8 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final company = translations.company;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -79,9 +81,9 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
-                  Text('Erreur lors du chargement de l’inventaire', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
+                  Text(translations.auth.genericError, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Réessayer')),
+                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: Text(company.connectionsRetry)),
                 ],
               ),
             );
@@ -138,19 +140,19 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Inventaire & Stocks', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
+                      Text(company.businessProductsTitle, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
                       const SizedBox(height: 4),
-                      Text('Suivi des niveaux de stock, ruptures et alertes de réapprovisionnement en temps réel.', style: TextStyle(fontSize: 14, color: colors.muted)),
+                      Text(company.businessProductsDescription, style: TextStyle(fontSize: 14, color: colors.muted)),
                     ],
                   ),
                   Row(
                     children: [
-                      IconButton(onPressed: _reload, tooltip: 'Actualiser', icon: const Icon(Icons.refresh)),
+                        IconButton(onPressed: _reload, tooltip: company.connectionsRetry, icon: const Icon(Icons.refresh)),
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
                         onPressed: () => context.go('/connections'),
                         icon: const Icon(Icons.sync_alt, size: 16),
-                        label: const Text('Gérer les flux'),
+                        label: Text(company.connectionsSynchronizedSource),
                       ),
                     ],
                   ),
@@ -172,7 +174,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Architecture de synchronisation : Les variations de stock proviennent du flux métier direct (business_sync). Le nettoyage structurel (data_cleaning) opère de manière strictement indépendante.',
+                        company.connectionsConnectedDataTitle,
                         style: TextStyle(fontSize: 13, color: colors.ink, height: 1.35),
                       ),
                     ),
@@ -238,10 +240,10 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                   ),
                   const SizedBox(width: 12),
                   SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'all', label: Text('Tous')),
-                      ButtonSegment(value: 'low', label: Text('Faible stock')),
-                      ButtonSegment(value: 'out', label: Text('Rupture')),
+                    segments: [
+                      ButtonSegment(value: 'all', label: Text(company.connectorHub['all'] ?? '')),
+                      ButtonSegment(value: 'low', label: Text(company.customerRiskMedium)),
+                      ButtonSegment(value: 'out', label: Text(company.customerRiskCritical)),
                     ],
                     selected: {_filter},
                     onSelectionChanged: (set) => setState(() => _filter = set.first),
@@ -363,11 +365,12 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
 
   Widget _buildStockBadge(num? stock) {
     final colors = AvenqoColors.of(context);
+    final company = AvenqoLocaleScope.translationsOf(context).company;
     if (stock == null) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(color: colors.muted.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-        child: Text('Inconnu', style: TextStyle(color: colors.muted, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: Text(company.connectorHub['unavailable'] ?? '', style: TextStyle(color: colors.muted, fontSize: 11, fontWeight: FontWeight.bold)),
       );
     }
     final qty = stock.toInt();
@@ -375,20 +378,20 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(color: _Brand.rose.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-        child: const Text('Rupture', style: TextStyle(color: _Brand.rose, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: Text(company.customerRiskCritical, style: const TextStyle(color: _Brand.rose, fontSize: 11, fontWeight: FontWeight.bold)),
       );
     }
     if (qty <= 10) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(color: _Brand.amber.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-        child: const Text('Stock faible', style: TextStyle(color: _Brand.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: Text(company.customerRiskMedium, style: const TextStyle(color: _Brand.amber, fontSize: 11, fontWeight: FontWeight.bold)),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: _Brand.emerald.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-      child: const Text('En stock', style: TextStyle(color: _Brand.emerald, fontSize: 11, fontWeight: FontWeight.bold)),
+      child: Text(company.connectorHub['ready'] ?? '', style: const TextStyle(color: _Brand.emerald, fontSize: 11, fontWeight: FontWeight.bold)),
     );
   }
 }
