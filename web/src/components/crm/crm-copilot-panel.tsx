@@ -51,6 +51,7 @@ export function CRMCopilotPanel({
   const { locale } = useLocale();
   const isSpanish = locale === "es";
   const isEnglish = locale.startsWith("en");
+  const isRomanian = locale.startsWith("ro");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -58,6 +59,8 @@ export function CRMCopilotPanel({
       sender: "copilot",
       content: isSpanish
         ? `¡Hola ${userName}! Soy tu Copilot Avenqo. ¿Cómo puedo ayudarte hoy?`
+        : isRomanian
+          ? `Bună, ${userName}! Sunt Copilotul tău Avenqo. Cum te pot ajuta astăzi?`
         : isEnglish
           ? `Hello ${userName}! I am your Avenqo Copilot. How can I help you today?`
           : `Bonjour ${userName} ! Je suis votre Copilot Avenqo en direct. Comment puis-je vous aider aujourd'hui ?`,
@@ -79,7 +82,7 @@ export function CRMCopilotPanel({
       setMessages((prev) => [...prev, {
         id: `c-${Date.now()}`,
         sender: "copilot",
-        content: locale.startsWith("fr") ? "La dictée vocale n'est pas disponible dans ce navigateur." : "Voice dictation is not available in this browser.",
+        content: isRomanian ? "Dictarea vocală nu este disponibilă în acest browser." : locale.startsWith("fr") ? "La dictée vocale n'est pas disponible dans ce navigateur." : "Voice dictation is not available in this browser.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         status: "error",
       }]);
@@ -109,7 +112,16 @@ export function CRMCopilotPanel({
         { label: "Ver mis citas de hoy", query: "Ver mis citas de hoy", icon: Calendar },
         { label: "Generar un informe", query: "Generar un informe de rendimiento CRM", icon: BarChart3 },
       ]
-    : isEnglish
+    : isRomanian
+      ? [
+          { label: "Creează o programare", query: "Creează o programare mâine la 14:30", icon: Calendar },
+          { label: "Găsește un interval liber", query: "Găsește un interval liber astăzi", icon: Clock },
+          { label: "Caută un client", query: "Caută un client", icon: Search },
+          { label: "Trimite mementouri", query: "Trimite mementouri pentru programări", icon: Bell },
+          { label: "Programările de astăzi", query: "Arată programările mele de astăzi", icon: Calendar },
+          { label: "Generează un raport", query: "Generează un raport de performanță CRM", icon: BarChart3 },
+        ]
+      : isEnglish
       ? [
           { label: "Create an appointment", query: "Create an appointment tomorrow at 2:30 PM", icon: Calendar },
           { label: "Find an available slot", query: "Find an available slot today", icon: Clock },
@@ -164,7 +176,7 @@ export function CRMCopilotPanel({
         const copilotMsg: Message = {
           id: `c-${Date.now()}`,
           sender: "copilot",
-          content: data.reply || "Traitement terminé.",
+          content: data.reply || (isRomanian ? "Procesare finalizată." : isEnglish ? "Processing complete." : "Traitement terminé."),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           status: data.status,
           action: data.action,
@@ -180,7 +192,7 @@ export function CRMCopilotPanel({
         const copilotMsg: Message = {
           id: `c-${Date.now()}`,
           sender: "copilot",
-          content: "Une erreur est survenue lors de la communication avec le service CRM AI. Veuillez réessayer.",
+          content: isRomanian ? "A apărut o eroare la comunicarea cu serviciul CRM AI. Încearcă din nou." : isEnglish ? "An error occurred while contacting the CRM AI service. Please try again." : "Une erreur est survenue lors de la communication avec le service CRM AI. Veuillez réessayer.",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           status: "error",
         };
@@ -190,7 +202,7 @@ export function CRMCopilotPanel({
       const copilotMsg: Message = {
         id: `c-${Date.now()}`,
         sender: "copilot",
-        content: "Impossible de joindre le serveur CRM. Vérifiez votre connexion.",
+        content: isRomanian ? "Serverul CRM nu poate fi contactat. Verifică conexiunea." : isEnglish ? "Unable to reach the CRM server. Check your connection." : "Impossible de joindre le serveur CRM. Vérifiez votre connexion.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         status: "error",
       };
@@ -311,7 +323,7 @@ export function CRMCopilotPanel({
         {isThinking && (
           <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 p-2 text-[11px] animate-pulse">
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0076FF]" />
-            <span>{isSpanish ? "Verificando disponibilidad y ejecutando..." : isEnglish ? "Checking availability and executing..." : "Vérification des disponibilités & exécution..."}</span>
+            <span>{isSpanish ? "Verificando disponibilidad y ejecutando..." : isRomanian ? "Se verifică disponibilitatea și se execută..." : isEnglish ? "Checking availability and executing..." : "Vérification des disponibilités & exécution..."}</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -330,7 +342,7 @@ export function CRMCopilotPanel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isSpanish ? "Haz una pregunta o escribe un comando..." : isEnglish ? "Ask a question or enter a command..." : "Posez-moi une question ou donnez une commande..."}
+            placeholder={isSpanish ? "Haz una pregunta o escribe un comando..." : isRomanian ? "Pune o întrebare sau introdu o comandă..." : isEnglish ? "Ask a question or enter a command..." : "Posez-moi une question ou donnez une commande..."}
             disabled={isThinking}
             className="w-full pl-3 pr-10 py-2.5 text-xs rounded-xl bg-white dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#0076FF] transition"
           />
@@ -339,8 +351,8 @@ export function CRMCopilotPanel({
             onClick={toggleDictation}
             disabled={isThinking}
             className={`absolute right-10 p-1.5 rounded-lg transition ${isListening ? "bg-red-500 text-white animate-pulse" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.08]"}`}
-            title={isListening ? "Arrêter la dictée" : "Dicter une commande"}
-            aria-label={isListening ? "Arrêter la dictée" : "Dicter une commande"}
+            title={isListening ? (isRomanian ? "Oprește dictarea" : isEnglish ? "Stop dictation" : "Arrêter la dictée") : (isRomanian ? "Dictează o comandă" : isEnglish ? "Dictate a command" : "Dicter une commande")}
+            aria-label={isListening ? (isRomanian ? "Oprește dictarea" : isEnglish ? "Stop dictation" : "Arrêter la dictée") : (isRomanian ? "Dictează o comandă" : isEnglish ? "Dictate a command" : "Dicter une commande")}
           >
             <Mic className="w-3.5 h-3.5" />
           </button>
