@@ -253,12 +253,12 @@ export function CRMCopilotPanel({
           </div>
           <div>
             <div className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5">
-              <span>Avenqo Copilot</span>
+              <span>{t.copilot.title}</span>
               <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />
             </div>
             <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
-              <span>En ligne</span>
+              <span>{t.copilot.statusActive}</span>
             </div>
           </div>
         </div>
@@ -278,7 +278,7 @@ export function CRMCopilotPanel({
         {/* SUGGESTED ACTIONS PILLS */}
         <div className="space-y-1.5 pb-2">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
-            Actions suggérées
+            {t.commandPalette.actionsGroup}
           </div>
           <div className="grid grid-cols-1 gap-1.5">
             {suggestedActions.map((act, idx) => {
@@ -321,13 +321,13 @@ export function CRMCopilotPanel({
               {m.action === "appointment_created" && (
                 <div className="mt-2.5 p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-[10px] font-bold">Calendrier CRM & Google mis à jour</span>
+                  <span className="text-[10px] font-bold">{t.integrations.googleCalendarConnected}</span>
                 </div>
               )}
               {m.status === "conflict" && (
                 <div className="mt-2.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center gap-2">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-[10px] font-bold">Conflit détecté • Création annulée</span>
+                  <span className="text-[10px] font-bold">{t.crm.actions.mutationError}</span>
                 </div>
               )}
             </div>
@@ -375,13 +375,13 @@ export function CRMCopilotPanel({
             type="submit"
             disabled={!input.trim() || isThinking}
             className="absolute right-1.5 p-1.5 rounded-lg bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white disabled:opacity-40 hover:opacity-90 transition shadow-xs"
-            title="Envoyer la commande"
+            title={t.copilot.sendButton}
           >
             <Send className="w-3.5 h-3.5" />
           </button>
         </form>
         <div className="mt-1.5 text-center text-[9px] text-slate-400 dark:text-slate-500">
-          Connecté aux 11 outils CRM Avenqo & Google Calendar
+          {t.copilot.activeSourcesLabel}
         </div>
       </div>
     </aside>
