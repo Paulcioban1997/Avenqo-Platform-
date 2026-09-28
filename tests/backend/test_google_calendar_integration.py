@@ -43,6 +43,11 @@ def _effective_route_contexts() -> Iterator[object]:
             yield route
 
 
+def _route_has_method(route: object, method: str) -> bool:
+    methods = getattr(route, "methods", None)
+    return methods is None or method in methods
+
+
 def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
     state = _google_oauth_state(
         "9c97cb94-e9f9-46fb-afd4-8a1d21019cff",
@@ -70,13 +75,18 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
 
 
 def test_callback_route_is_public_but_crm_routes_remain_protected() -> None:
-    effective_routes = {
-        getattr(route, "path", None): route
+    callback = next(
+        route
         for route in _effective_route_contexts()
-        if getattr(route, "path", None)
-    }
-    callback = effective_routes["/api/v1/crm/calendar/google/callback"]
-    kpis = effective_routes["/api/v1/crm/kpis"]
+        if getattr(route, "path", None) == "/api/v1/crm/calendar/google/callback"
+        and _route_has_method(route, "GET")
+    )
+    kpis = next(
+        route
+        for route in _effective_route_contexts()
+        if getattr(route, "path", None) == "/api/v1/crm/kpis"
+        and _route_has_method(route, "GET")
+    )
     callback_dependencies = {dependency.call.__name__ for dependency in callback.dependant.dependencies}
     protected_dependencies = {dependency.call.__name__ for dependency in kpis.dependant.dependencies}
     assert "get_current_identity" not in callback_dependencies
