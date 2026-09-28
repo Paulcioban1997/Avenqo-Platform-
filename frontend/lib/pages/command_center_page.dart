@@ -279,7 +279,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               final wide = constraints.maxWidth > 900;
               final retailCard = _buildPillarCard(
                 context,
-                title: 'Retail Intelligence',
+                title: agentStrings.value('retailName'),
                 icon: Icons.storefront_outlined,
                 color: _Brand.blue,
                 route: '/retail',
@@ -702,8 +702,8 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   color: _Brand.purple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Text(
-                  'Moteur Cross-Agent Avenqo',
+                  child: Text(
+                    AvenqoLocaleScope.translationsOf(context).admin.providerHealth,
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _Brand.purple),
                 ),
               ),
@@ -713,7 +713,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
 
           // Strategic Insights
           if (insights.isNotEmpty) ...[
-            Text('Recommandations & Corrélations Stratégiques :', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colors.muted)),
+            Text(AvenqoLocaleScope.translationsOf(context).admin.overviewSubtitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colors.muted)),
             const SizedBox(height: 8),
             for (final ins in insights)
               Padding(
@@ -752,8 +752,8 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Exposition Financière & Risque Churn Croisé',
+                        Text(
+                          AvenqoLocaleScope.translationsOf(context).company.customerRiskHigh,
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _Brand.rose),
                         ),
                         const SizedBox(height: 2),
@@ -767,7 +767,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   TextButton.icon(
                     onPressed: () => context.go('/assistant'),
                     icon: const Icon(Icons.psychology_outlined, size: 16),
-                    label: const Text('Analyser avec l’IA'),
+                    label: Text(AvenqoLocaleScope.translationsOf(context).assistant.avenqoAi),
                   ),
                 ],
               ),
@@ -851,7 +851,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
             width: double.infinity,
             child: OutlinedButton(
               onPressed: () => context.go(route),
-              child: Text('Accéder à $title'),
+              child: Text('${AvenqoLocaleScope.translationsOf(context).company.connectionsGoDashboard} $title'),
             ),
           ),
         ],
@@ -877,15 +877,15 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                 children: [
                   const Icon(Icons.sync_alt, size: 18, color: _Brand.blue),
                   const SizedBox(width: 8),
-                  Text('Connexions actives', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.ink)),
+                  Text(AvenqoLocaleScope.translationsOf(context).company.navConnectionsLabel, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.ink)),
                 ],
               ),
-              TextButton(onPressed: () => context.go('/connections'), child: const Text('Gérer')),
+              TextButton(onPressed: () => context.go('/connections'), child: Text(AvenqoLocaleScope.translationsOf(context).company.settingsManageSubscription)),
             ],
           ),
           const SizedBox(height: 12),
           if (connections.isEmpty)
-            Text('Aucune connexion externe enregistrée.', style: TextStyle(color: colors.muted, fontSize: 13))
+            Text(AvenqoLocaleScope.translationsOf(context).dashboardHome.connectionsEmpty, style: TextStyle(color: colors.muted, fontSize: 13))
           else
             for (final c in connections)
               Container(
@@ -913,7 +913,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colors.ink),
                           ),
                           Text(
-                            'Fournisseur : ${c['provider']} • Statut : ${c['status']}',
+                            '${AvenqoLocaleScope.translationsOf(context).company.connectorHub['connection'] ?? ''}: ${c['provider']} • ${AvenqoLocaleScope.translationsOf(context).company.billingStatusPrefix}: ${c['status']}',
                             style: TextStyle(fontSize: 11, color: colors.muted),
                           ),
                         ],
@@ -957,12 +957,12 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
             children: [
               const Icon(Icons.history_outlined, size: 18, color: _Brand.blue),
               const SizedBox(width: 8),
-              Text('Activité récente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.ink)),
+              Text(AvenqoLocaleScope.translationsOf(context).dashboardHome.activityTitle, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.ink)),
             ],
           ),
           const SizedBox(height: 12),
           if (activity.isEmpty)
-            Text('Aucune activité récente enregistrée.', style: TextStyle(color: colors.muted, fontSize: 13))
+            Text(AvenqoLocaleScope.translationsOf(context).dashboardHome.activityEmpty, style: TextStyle(color: colors.muted, fontSize: 13))
           else
             for (final act in activity.take(4))
               Padding(
