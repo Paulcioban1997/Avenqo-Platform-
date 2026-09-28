@@ -72,7 +72,6 @@ jobs:
   frontend-flutter:
     name: Frontend App (Flutter)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,8 +87,8 @@ jobs:
 
       - name: Static analysis
         working-directory: frontend
-        run: flutter analyze || true
+        run: flutter analyze
 
       - name: Run Flutter tests
         working-directory: frontend
-        run: flutter test || true
+        run: flutter test
