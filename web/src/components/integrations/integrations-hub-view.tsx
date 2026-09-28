@@ -336,7 +336,7 @@ export function IntegrationsHubView() {
       };
       setSyncLogs((prev) => [newLog, ...prev]);
     } catch (err: any) {
-      setFormError(err.message || connector.launchFailed);
+      setFormError(err.message || t.integrations.statusNeedsAttention);
     } finally {
       setIsSubmittingManual(false);
     }
@@ -389,7 +389,7 @@ export function IntegrationsHubView() {
       };
       setSyncLogs((prev) => [newLog, ...prev]);
     } catch (err: any) {
-      setFormError(err.message || "Erreur lors de la connexion.");
+      setFormError(err.message || t.integrations.statusNeedsAttention);
     } finally {
       setIsSubmittingManual(false);
     }
@@ -444,7 +444,7 @@ export function IntegrationsHubView() {
       };
       setSyncLogs((prev) => [successLog, ...prev]);
     } catch (err: any) {
-      setFormError(err.message);
+      setFormError(err.message || t.integrations.statusNeedsAttention);
       const errLog: SyncLogItem = {
         id: `log-e-${Date.now()}`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
@@ -476,7 +476,7 @@ export function IntegrationsHubView() {
           });
         }
       }
-      setSyncSuccessToast(`Connecteur ${connector.name} déconnecté.`);
+      setSyncSuccessToast(`${connector.name}: ${t.integrations.statusDisconnected}.`);
       await loadConnections();
       setSelectedConnector(null);
       setDisconnectTarget(null);
@@ -509,7 +509,7 @@ export function IntegrationsHubView() {
       }
       window.location.href = authUrl;
     } catch (error: any) {
-      setFormError(error.message || "Impossible de démarrer l'authentification Google.");
+      setFormError(error.message || connector.launchFailed);
     }
   };
 
@@ -772,7 +772,7 @@ export function IntegrationsHubView() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingConnections ? "animate-spin text-[#0076FF]" : ""}`} />
-            <span>Actualiser</span>
+            <span>{connector.refresh}</span>
           </button>
         </div>
       </div>
@@ -826,7 +826,7 @@ export function IntegrationsHubView() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher une boutique..."
+            placeholder={connector.searchHint}
             className="w-full bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 outline-none focus:border-[#0076FF]"
           />
         </div>
@@ -883,16 +883,16 @@ export function IntegrationsHubView() {
                   <span>{c.lastSynced}</span>
                 </span>
               ) : (
-                <span className="italic">Non connecté</span>
+                <span className="italic">{connector.disconnected}</span>
               )}
 
               {typeof c.recordCount === "number" && c.recordCount > 0 ? (
                 <span className="font-semibold text-slate-700 dark:text-[#F4F7FB]">
-                  {c.recordCount.toLocaleString()} enregistrements
+                  {c.recordCount.toLocaleString()} {connector.records}
                 </span>
               ) : (
                 <span className="text-[#0076FF] font-semibold group-hover:underline flex items-center gap-1">
-                  <span>Configurer</span>
+                  <span>{connector.connect}</span>
                   <ArrowRight size={11} />
                 </span>
               )}
