@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:avenqo/app/destinations.dart';
+import 'package:avenqo/i18n/locale_scope.dart';
 
 class DynamicPage extends StatelessWidget {
   const DynamicPage({super.key, required this.destination});
@@ -8,6 +9,8 @@ class DynamicPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final comingSoon = AvenqoLocaleScope.translationsOf(context).agents.value('agentComingSoon');
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -26,10 +29,9 @@ class DynamicPage extends StatelessWidget {
               children: [
                 Icon(destination.icon, size: 32),
                 const SizedBox(width: 16),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Cette route est prête dans l’architecture Flutter. '
-                    'Ses données seront activées dans la phase métier correspondante.',
+                    comingSoon,
                   ),
                 ),
               ],
