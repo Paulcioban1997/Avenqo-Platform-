@@ -77,6 +77,7 @@ class CRMService:
             select(func.count(CRMAppointment.id)).where(
                 CRMAppointment.company_id == company_id,
                 CRMAppointment.is_deleted.is_(False),
+                CRMAppointment.status != "cancelled",
                 CRMAppointment.start_time >= start_of_month,
                 CRMAppointment.start_time < start_of_next_month,
             )
@@ -890,6 +891,63 @@ class CRMService:
                 conn.sync_error = "Synchronisation Google Calendar impossible."
                 self._session.commit()
             raise CalendarProviderError("Synchronisation Google Calendar impossible.") from exc
+
+    async def list_google_events(
+        self,
+        company_id: UUID,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Return sanitized tenant calendar events without persisting unmatched events."""
+        conn = self._session.scalar(
+            select(CRMCalendarConnection).where(
+                CRMCalendarConnection.company_id == company_id,
+                CRMCalendarConnection.provider == "google",
+                CRMCalendarConnection.sync_status == "connected",
+            )
+        )
+        if conn is None or self._cipher is None:
+            return []
+        settings = get_settings()
+        provider = GoogleCalendarProvider(
+            settings.google_calendar_client_id,
+            settings.google_calendar_client_secret,
+            settings.google_calendar_redirect_uri,
+        )
+        credentials = self._cipher.decrypt(conn.encrypted_credentials)
+        try:
+            try:
+                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+            except CalendarProviderError as exc:
+                refresh_token = credentials.get("refresh_token")
+                if "401" not in str(exc) or not refresh_token:
+                    raise
+                refreshed = await provider.refresh_access_token(str(refresh_token))
+                credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
+                conn.encrypted_credentials = self._cipher.encrypt(credentials)
+                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+            conn.last_synced_at = datetime.now(timezone.utc)
+            self._session.commit()
+        except Exception as exc:
+            self._session.rollback()
+            raise CalendarProviderError("Lecture Google Calendar impossible.") from exc
+
+        sanitized: list[dict[str, Any]] = []
+        for event in events:
+            start = self._google_event_datetime(event, "start")
+            end = self._google_event_datetime(event, "end")
+            if not event.get("id") or start is None or end is None or event.get("status") == "cancelled":
+                continue
+            sanitized.append({
+                "external_event_id": str(event["id"]),
+                "title": str(event.get("summary") or "Google Calendar"),
+                "start_time": start.isoformat(),
+                "end_time": end.isoformat(),
+                "duration_minutes": max(int((end - start).total_seconds() // 60), 1),
+                "location": event.get("location"),
+            })
+        return sanitized
 
     async def _sync_to_external_calendar(
         self,

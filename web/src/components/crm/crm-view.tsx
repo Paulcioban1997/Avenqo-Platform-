@@ -90,12 +90,13 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         headers,
       }).catch(() => null);
 
-      const [kpiRes, appRes, srvRes, empRes, sumRes] = await Promise.all([
+      const [kpiRes, appRes, srvRes, empRes, sumRes, googleRes] = await Promise.all([
         fetch("/api/v1/crm/kpis", { headers }),
         fetch("/api/v1/crm/appointments?limit=250", { headers }),
         fetch("/api/v1/crm/services", { headers }),
         fetch("/api/v1/crm/employees", { headers }),
         fetch("/api/v1/crm/summary", { headers }),
+        fetch("/api/v1/crm/calendar/google/events", { headers }).catch(() => null),
       ]);
 
       if (kpiRes.ok) {
@@ -104,7 +105,30 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
       }
       if (appRes.ok) {
         const aData = await appRes.json();
-        setAppointments(aData || []);
+        const crmAppointments: AppointmentItem[] = aData || [];
+        const linkedEventIds = new Set(
+          crmAppointments.map((appointment) => appointment.external_event_id).filter(Boolean),
+        );
+        const googleData = googleRes && googleRes.ok ? await googleRes.json() : { events: [] };
+        const externalEvents: AppointmentItem[] = (googleData.events || [])
+          .filter((event: { external_event_id: string }) => !linkedEventIds.has(event.external_event_id))
+          .map((event: { external_event_id: string; title: string; start_time: string; end_time: string; duration_minutes: number; location?: string | null }) => ({
+            id: `google:${event.external_event_id}`,
+            client_id: "",
+            client_name: "Google Calendar",
+            title: event.title,
+            start_time: event.start_time,
+            end_time: event.end_time,
+            duration_minutes: event.duration_minutes,
+            status: "confirmed" as const,
+            price: 0,
+            currency: "CAD",
+            notes: event.location || null,
+            calendar_provider: "google",
+            external_event_id: event.external_event_id,
+            external_only: true,
+          }));
+        setAppointments([...crmAppointments, ...externalEvents]);
       }
       if (srvRes.ok) {
         const sData = await srvRes.json();

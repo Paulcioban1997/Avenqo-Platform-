@@ -865,6 +865,25 @@ async def sync_google_calendar(
         raise HTTPException(status_code=502, detail="Synchronisation Google Calendar indisponible.") from exc
 
 
+@router.get("/calendar/google/events")
+async def get_google_calendar_events(
+    start: datetime | None = None,
+    end: datetime | None = None,
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+) -> dict[str, list[dict[str, Any]]]:
+    now = datetime.now(timezone.utc)
+    try:
+        events = await service.list_google_events(
+            tenant.company_id,
+            start_time=start or now - timedelta(days=1),
+            end_time=end or now + timedelta(days=365),
+        )
+        return {"events": events}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Événements Google Calendar indisponibles.") from exc
+
+
 class GoogleCalendarSelectionRequest(BaseModel):
     calendar_id: str = Field(min_length=1, max_length=255)
 

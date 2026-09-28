@@ -42,6 +42,7 @@ export interface AppointmentItem {
   industry_data?: Record<string, any>;
   calendar_provider?: string | null;
   external_event_id?: string | null;
+  external_only?: boolean;
 }
 
 interface AppointmentDetailsDrawerProps {
@@ -254,7 +255,7 @@ export function AppointmentDetailsDrawer({
           </div>
 
           {/* Footer Action Buttons */}
-          <div className="p-6 border-t border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#0B132B] space-y-2.5">
+          {!appointment.external_only && <div className="p-6 border-t border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#0B132B] space-y-2.5">
             <div className="grid grid-cols-2 gap-2">
               <button
                 disabled={isUpdating}
@@ -292,7 +293,7 @@ export function AppointmentDetailsDrawer({
             >
               {t.crm.actions.deletePermanent}
             </button>
-          </div>
+          </div>}
         </div>
       </div>
 
