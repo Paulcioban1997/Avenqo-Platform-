@@ -434,6 +434,13 @@ def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellati
         "start": {"dateTime": "2026-10-01T08:30:00-04:00"},
         "end": {"dateTime": "2026-10-01T09:00:00-04:00"},
         "attendees": [{"email": "alice@example.com"}],
+    }, {
+        "id": "google-organizer-only",
+        "status": "confirmed",
+        "summary": "Personal event",
+        "start": {"dateTime": "2026-10-02T08:30:00-04:00"},
+        "end": {"dateTime": "2026-10-02T09:00:00-04:00"},
+        "attendees": [{"email": "organizer@example.com"}],
     }]
 
     class FakeProvider:
@@ -451,6 +458,7 @@ def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellati
     appointments = list(db_session.query(CRMAppointment).filter_by(company_id=company.id).all())
 
     assert first["created"] == 1
+    assert first["skipped"] == 1
     assert second["created"] == 0
     assert second["updated"] == 1
     assert len(appointments) == 1

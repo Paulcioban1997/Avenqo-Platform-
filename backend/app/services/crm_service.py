@@ -846,6 +846,7 @@ class CRMService:
                     for attendee in event.get("attendees") or []
                     if attendee.get("email")
                 }
+                attendee_emails.discard(conn.account_email.strip().lower())
                 clients = list(
                     self._session.scalars(
                         select(CRMClient).where(
