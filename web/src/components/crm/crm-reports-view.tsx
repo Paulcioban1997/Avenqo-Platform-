@@ -57,17 +57,17 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-[#0B132B] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-            {t.crm.tabs.reports || "Rapports & Performance CRM"}
+            {t.crm.tabs.reports}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Indicateurs consolidés en temps réel sur le registre certifié de votre entreprise.
+            {t.crm.headerSubtitle}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={fetchReportData}
             className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-            title="Rafraîchir"
+            title={t.integrations.syncNow}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
           </button>
@@ -78,46 +78,46 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Clients actifs</span>
+            <span>{t.crm.kpis.activeClients}</span>
             <Users className="w-4 h-4 text-[#0076FF]" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {kpis.active_clients}
           </div>
-          <div className="text-[10px] text-slate-400">Base clients enregistrée</div>
+          <div className="text-[10px] text-slate-400">{t.crm.tabs.clients}</div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Rendez-vous ce mois</span>
+            <span>{t.crm.kpis.appointmentsThisMonth}</span>
             <CalendarCheck className="w-4 h-4 text-[#00D4FF]" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {kpis.appointments_this_month}
           </div>
-          <div className="text-[10px] text-slate-400">Planifications confirmées</div>
+          <div className="text-[10px] text-slate-400">{t.crm.status.confirmed}</div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Taux de présence</span>
+            <span>{t.crm.kpis.attendanceRate}</span>
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {kpis.attendance_rate_percent.toFixed(1)} %
           </div>
-          <div className="text-[10px] text-slate-400">Ratio de présence réelle</div>
+          <div className="text-[10px] text-slate-400">{t.crm.kpis.attendanceRate}</div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Revenus générés</span>
+            <span>{t.crm.kpis.revenueGenerated}</span>
             <DollarSign className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {formattedRevenue}
           </div>
-          <div className="text-[10px] text-slate-400">Chiffre d'affaires validé</div>
+          <div className="text-[10px] text-slate-400">{t.crm.kpis.revenueGenerated}</div>
         </div>
       </div>
 
@@ -126,24 +126,24 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
         <div className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-[#0076FF]" />
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            Répartition de l'activité commerciale
+            {t.crm.headerSubtitle}
           </h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
-            <div className="text-xs text-slate-400">Prospects & Leads</div>
+            <div className="text-xs text-slate-400">{t.crm.tabs.clients}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
               {summary?.total_leads ?? 0}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
-            <div className="text-xs text-slate-400">Valeur totale du pipeline</div>
+            <div className="text-xs text-slate-400">{t.crm.kpis.revenueGenerated}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
               {summary?.total_pipeline_value ?? 0} {kpis.currency}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
-            <div className="text-xs text-slate-400">Tâches de suivi en attente</div>
+            <div className="text-xs text-slate-400">{t.crm.actions.modify}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
               {summary?.pending_tasks_count ?? 0}
             </div>
