@@ -359,29 +359,29 @@ export function NewAppointmentModal({
             {isCreatingClient ? (
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] text-slate-500">Prénom *</label>
+                  <label className="text-[11px] text-slate-500">{t.crm.clients.client} *</label>
                   <input
                     type="text"
                     required
                     value={newClientFirst}
                     onChange={(e) => setNewClientFirst(e.target.value)}
-                    placeholder="Marc"
+                    placeholder={t.crm.clients.client}
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">Nom *</label>
+                  <label className="text-[11px] text-slate-500">{t.crm.filters.employee} *</label>
                   <input
                     type="text"
                     required
                     value={newClientLast}
                     onChange={(e) => setNewClientLast(e.target.value)}
-                    placeholder="Tremblay"
+                    placeholder={t.crm.filters.employee}
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">Téléphone</label>
+                  <label className="text-[11px] text-slate-500">{t.crm.filters.employee}</label>
                   <input
                     type="tel"
                     value={newClientPhone}
@@ -391,7 +391,7 @@ export function NewAppointmentModal({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">Courriel</label>
+                  <label className="text-[11px] text-slate-500">{t.crm.searchPlaceholder}</label>
                   <input
                     type="email"
                     value={newClientEmail}
@@ -408,7 +408,7 @@ export function NewAppointmentModal({
                 required
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
               >
-                <option value="">Sélectionnez un client...</option>
+                <option value="">{t.crm.clients.client}</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.first_name} {c.last_name} {c.phone ? `(${c.phone})` : ""}
@@ -430,7 +430,7 @@ export function NewAppointmentModal({
                 onChange={(e) => handleServiceChange(e.target.value)}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
               >
-                <option value="">Aucun service prédéfini</option>
+                <option value="">{t.crm.filters.service}</option>
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.duration_minutes} min — {s.price} $)
@@ -449,7 +449,7 @@ export function NewAppointmentModal({
                 onChange={(e) => setEmployeeId(e.target.value)}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
               >
-                <option value="">Non assigné / Tout employé</option>
+                <option value="">{t.crm.filters.employee}</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.first_name} {emp.last_name}
@@ -469,7 +469,7 @@ export function NewAppointmentModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Changement de pneus d'hiver / Consultation"
+              placeholder={t.crm.modal.subtitle}
               className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
             />
           </div>
@@ -544,7 +544,7 @@ export function NewAppointmentModal({
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Instructions pour le technicien, demandes particulières..."
+              placeholder={t.crm.modal.subtitle}
               className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
             />
           </div>
@@ -566,7 +566,7 @@ export function NewAppointmentModal({
               {isSubmitting ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Enregistrement...</span>
+                  <span>{t.crm.actions.save}</span>
                 </>
               ) : (
                 <>
