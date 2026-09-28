@@ -540,8 +540,11 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   color: totalAlerts > 0 ? _Brand.rose.withValues(alpha: 0.1) : _Brand.emerald.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  '$totalAlerts ${companyStrings.navAlertsLabel}',
+                child: Text.rich(
+                  TextSpan(
+                    text: '$totalAlerts ',
+                    children: [TextSpan(text: companyStrings.navAlertsLabel)],
+                  ),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
