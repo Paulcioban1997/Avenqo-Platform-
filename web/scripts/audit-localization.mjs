@@ -4,7 +4,11 @@ import { join, relative, resolve } from "node:path";
 const repository = resolve(import.meta.dirname, "../..");
 const technicalLiteral = /^(https?:\/\/|\/api\/|\/|#[0-9A-Fa-f]{3,8}$|[a-z0-9_./:-]+$)/;
 const brandOrProtocol = /^(Avenqo|Stripe|Shopify|WooCommerce|Google Calendar|OpenAI|OAuth|REST|API|CSV|XLSX|JSON|PDF|DOCX|Parquet|CAD|USD|SMTP|Twilio|SKU|LTV)$/i;
-const excludedFiles = new Set(["design-system"]);
+const exactTechnicalExclusions = new Map([
+  ["web/src/app/privacy/page.tsx", "Legal/privacy text requires approved legal wording."],
+  ["web/src/app/terms/page.tsx", "Legal/terms text requires approved legal wording."],
+  ["web/src/app/design-system/page.tsx", "Internal design-system showcase, not production application UI."],
+]);
 
 function filesUnder(root, extensions) {
   const result = [];
@@ -27,7 +31,8 @@ function scanWeb() {
   const candidates = [];
   for (const file of filesUnder(root, new Set(["ts", "tsx"]))) {
     const normalizedFile = file.replaceAll("\\", "/");
-    if (normalizedFile.includes("/lib/i18n/") || normalizedFile.includes("/design-system/")) continue;
+    const relativeFile = relative(repository, file).replaceAll("\\", "/");
+    if (normalizedFile.includes("/lib/i18n/") || exactTechnicalExclusions.has(relativeFile)) continue;
     const source = readFileSync(file, "utf8");
     const patterns = [
       />\s*([A-Za-zÀ-ÿ][^<{\n]*?)\s*</gu,
@@ -67,7 +72,12 @@ function scanBackend() {
   return candidates;
 }
 
-const report = { web: scanWeb(), flutter: scanFlutter(), backend: scanBackend() };
+const report = {
+  exclusions: Object.fromEntries(exactTechnicalExclusions),
+  web: scanWeb(),
+  flutter: scanFlutter(),
+  backend: scanBackend(),
+};
 const unresolved = report.web.length + report.flutter.length + report.backend.length;
 console.log(JSON.stringify({ ...report, unresolved }, null, 2));
 if (unresolved > 0) process.exitCode = 1;
