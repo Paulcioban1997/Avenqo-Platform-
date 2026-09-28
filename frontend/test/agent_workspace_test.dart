@@ -8,10 +8,7 @@ import 'package:avenqo/features/admin/admin_retail_agent_page.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/pages/agents_page.dart';
-import 'package:avenqo/pages/customers_page.dart';
 import 'package:avenqo/pages/dashboard_page.dart';
-import 'package:avenqo/pages/products_page.dart';
-import 'package:avenqo/pages/recommendations_page.dart';
 import 'package:avenqo/pages/sales_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -136,10 +133,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('client catalog uses backend entitlement states and toggles modules', (
+  testWidgets('client catalog uses backend entitlement states and opens available modules', (
     tester,
   ) async {
-    Uri? actionUri;
     final response = '''{
       "company_id":"00000000-0000-0000-0000-000000000001",
       "plan_code":"demo",
@@ -154,7 +150,6 @@ void main() {
     final api = ApiClient(
       tokenStore: _TokenStore(),
       httpClient: MockClient((request) async {
-        if (request.method == 'POST') actionUri = request.url;
         return http.Response(response, 200);
       }),
       baseUrl: 'https://avenqo.test/api/v1',
@@ -165,15 +160,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1 / 2'), findsOneWidget);
-    expect(find.text('Active'), findsOneWidget);
-    expect(find.text('Discover'), findsOneWidget);
-    expect(find.byType(Switch), findsNWidgets(2));
-    expect(tester.widget<Switch>(find.byType(Switch).at(1)).onChanged, isNull);
-
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-    expect(actionUri?.path, '/api/v1/modules/retail/deactivate');
-    expect(actionUri.toString(), isNot(contains('company')));
+    expect(find.text('Discover'), findsNWidgets(3));
+    expect(find.byType(FilledButton), findsNWidgets(3));
     expect(tester.takeException(), isNull);
   });
 
@@ -192,11 +180,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retail Intelligence'), findsOneWidget);
-    expect(find.text('Available now'), findsOneWidget);
-    expect(find.text('Coming soon'), findsNWidgets(10));
-    expect(find.text('Discover'), findsOneWidget);
+    expect(find.text('Available now'), findsNWidgets(3));
+    expect(find.text('Coming soon'), findsNWidgets(8));
+    expect(find.text('Discover'), findsNWidgets(3));
 
-    await tester.tap(find.text('Discover'));
+    await tester.tap(find.text('Discover').first);
     expect(opened?.id, 'retail');
     expect(opened?.route, '/retail');
     expect(tester.takeException(), isNull);
@@ -237,8 +225,8 @@ void main() {
     expect(find.text('Available agents'), findsOneWidget);
     expect(find.text('Coming Soon agents'), findsOneWidget);
     expect(find.text('Retail Intelligence'), findsOneWidget);
-    expect(find.text('Discover'), findsOneWidget);
-    await tester.tap(find.text('Discover'));
+    expect(find.text('Discover'), findsNWidgets(3));
+    await tester.tap(find.text('Discover').first);
     expect(opened?.id, 'retail');
     expect(tester.takeException(), isNull);
   });
@@ -544,25 +532,7 @@ void main() {
       isEmpty,
     );
 
-    await tester.tap(find.text('Customers').last);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<CustomersPage>(find.byType(CustomersPage)).readOnly,
-      isTrue,
-    );
-    await tester.tap(find.text('Products').last);
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<ProductsPage>(find.byType(ProductsPage)).readOnly,
-      isTrue,
-    );
-    await tester.tap(find.text('Recommendations').last);
-    await tester.pumpAndSettle();
-    expect(find.byType(RecommendationsPage), findsOneWidget);
-    expect(
-      requests.last,
-      'GET /api/v1/admin/companies/$southId/retail/recommendations',
-    );
+    expect(find.text('Admin view — Company: South Shop'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

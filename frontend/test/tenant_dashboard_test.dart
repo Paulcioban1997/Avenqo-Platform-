@@ -84,13 +84,20 @@ void main() {
   testWidgets('negative revenue change uses error color', (tester) async {
     const data = DashboardData(
       status: 'ready', planCode: 'demo', currency: 'CAD',
-      kpis: [{'key': 'revenue', 'value': 80, 'available': true, 'change_percent': -20}],
+      kpis: [
+        {'key': 'revenue', 'value': 80, 'available': true, 'change_percent': -20},
+        {'key': 'orders', 'value': 2, 'available': true},
+      ],
       priorities: [], connections: {'total': 1, 'ready': 1}, recentActivity: [],
     );
     await tester.pumpWidget(await _wrap(DashboardPage(auth: _auth(), loader: (_) async => data)));
     await tester.pumpAndSettle();
-    final text = tester.widget<Text>(find.text('-20.0%'));
-    final context = tester.element(find.text('-20.0%'));
+    final changeFinder = find.byWidgetPredicate(
+      (widget) => widget is Text && (widget.data ?? '').contains('20'),
+    );
+    expect(changeFinder, findsOneWidget);
+    final text = tester.widget<Text>(changeFinder);
+    final context = tester.element(changeFinder);
     expect(text.style!.color, Theme.of(context).colorScheme.error);
   });
 

@@ -4,7 +4,7 @@ import 'package:avenqo/features/admin/admin_destinations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('registry has stable unique identities and one operational Retail agent', () {
+  test('registry has stable unique identities and current operational agents', () {
     expect(avenqoAgentRegistry, hasLength(11));
     expect(avenqoAgentRegistry.map((agent) => agent.id).toSet(), hasLength(11));
 
@@ -13,8 +13,10 @@ void main() {
     expect(retail.route, '/retail');
     expect(retail.nameKey, 'retailName');
 
-    final futureAgents = avenqoAgentRegistry.where((agent) => agent.id != 'retail');
-    expect(futureAgents, hasLength(10));
+    final availableAgents = avenqoAgentRegistry.where((agent) => agent.isAvailable);
+    expect(availableAgents.map((agent) => agent.id), containsAll(<String>['retail', 'crm', 'accounting']));
+    final futureAgents = avenqoAgentRegistry.where((agent) => !agent.isAvailable);
+    expect(futureAgents, hasLength(8));
     expect(futureAgents.every((agent) => !agent.isAvailable), isTrue);
     expect(futureAgents.every((agent) => agent.route == null), isTrue);
   });
@@ -31,7 +33,11 @@ void main() {
     expect(adminDestinations.map((item) => item.path), contains('/admin/agents'));
     expect(
       appDestinations.map((item) => item.path),
-      isNot(contains(anyOf('/dashboard', '/sales', '/customers', '/products', '/recommendations'))),
+      contains('/dashboard'),
+    );
+    expect(
+      appDestinations.map((item) => item.path),
+      isNot(contains(anyOf('/sales', '/customers', '/products', '/recommendations'))),
     );
   });
 }
