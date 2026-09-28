@@ -4,6 +4,9 @@ import { getTranslations } from "./dictionary";
 import { getApplicationCatalog } from "./generated-app-catalogs";
 
 export type AppTranslations = {
+  common: {
+    close: string;
+  };
   brand: {
     name: string;
     tagline: string;
@@ -287,6 +290,9 @@ export type AppTranslations = {
 };
 
 const frApp: AppTranslations = {
+  common: {
+    close: "Fermer",
+  },
   brand: {
     name: "AVENQO",
     tagline: "L'IA POUR UN AVENIR PLUS INTELLIGENT",
@@ -570,6 +576,9 @@ const frApp: AppTranslations = {
 };
 
 const enApp: AppTranslations = {
+  common: {
+    close: "Close",
+  },
   brand: {
     name: "AVENQO",
     tagline: "AI FOR A SMARTER FUTURE",
@@ -971,6 +980,10 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
   const retailItem = Object.values(retailItems).find((item) => item.name.toLowerCase().includes("retail"));
   return {
     ...base,
+    common: {
+      ...base.common,
+      close: connector.close,
+    },
     navigation: {
       ...base.navigation,
       dashboard: usesWebProductTerms ? base.navigation.dashboard : company.navOverviewLabel,

@@ -2,6 +2,8 @@
 
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
 export interface ModalProps {
   isOpen: boolean;
@@ -22,6 +24,9 @@ export function Modal({
   size = "md",
   className = "",
 }: ModalProps) {
+  const { locale } = useLocale();
+  const closeLabel = getAppTranslations(locale).common.close;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -77,7 +82,7 @@ export function Modal({
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-            aria-label="Fermer"
+            aria-label={closeLabel}
           >
             <X className="w-5 h-5" />
           </button>
