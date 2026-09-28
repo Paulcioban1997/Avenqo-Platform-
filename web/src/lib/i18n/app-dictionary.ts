@@ -6,6 +6,7 @@ import { getApplicationCatalog } from "./generated-app-catalogs";
 export type AppTranslations = {
   common: {
     close: string;
+    cancel: string;
     insufficientData: string;
   };
   brand: {
@@ -299,6 +300,7 @@ export type AppTranslations = {
 const frApp: AppTranslations = {
   common: {
     close: "Fermer",
+    cancel: "Annuler",
     insufficientData: "Données insuffisantes pour afficher cette analyse.",
   },
   brand: {
@@ -592,6 +594,7 @@ const frApp: AppTranslations = {
 const enApp: AppTranslations = {
   common: {
     close: "Close",
+    cancel: "Cancel",
     insufficientData: "This analysis is not available with your current data.",
   },
   brand: {
@@ -1004,6 +1007,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     common: {
       ...base.common,
       close: connector.close,
+      cancel: connector.cancel,
       insufficientData: company.analyticsUnavailable,
     },
     navigation: {
