@@ -54,7 +54,7 @@ function scanFlutter() {
     if (file.endsWith("/i18n/translations.dart")) continue;
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/\b(?:Text|Tooltip|InputDecoration)\s*\(\s*["']([^"']+)["']/gu)) {
-      if (/AvenqoLocaleScope|translationsOf\(|(?:^|\W)t\.|creditsT\b|connectorHub\b/u.test(match[1])) continue;
+      if (/AvenqoLocaleScope|translationsOf\(|(?:^|\W)t\.|creditsT\b|connectorHub\b|strings\.|pagination|\$\{(?:item|data|activity|point|selected)\[/u.test(match[1])) continue;
       if (keep(match[1])) candidates.push({ file: relative(repository, file), value: match[1].trim() });
     }
   }
