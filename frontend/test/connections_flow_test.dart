@@ -286,7 +286,10 @@ void main() {
 
     // The dialog uses five tabs and includes the cleaned business-data preview.
     expect(find.text('APERÇU MÉTIER (2)'), findsOneWidget);
-    expect(find.text('QUALITÉ (98%)', skipOffstage: false), findsOneWidget);
+    expect(
+      find.textContaining('Qualité du nettoyage (98', skipOffstage: false),
+      findsOneWidget,
+    );
 
     // Export buttons are visible in the header (CSV and XLSX, not DOCX).
     expect(find.text('CSV'), findsOneWidget);

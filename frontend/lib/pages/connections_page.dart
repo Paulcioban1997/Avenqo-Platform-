@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:avenqo/app/avenqo_colors.dart';
 import 'package:avenqo/core/api_client.dart';
@@ -22,6 +23,13 @@ class _Brand {
   static const blue = Color(0xFF087CF0);
   static const green = Color(0xFF1B9E5A);
   static const red = Color(0xFFD1414B);
+}
+
+String _formatPercent(BuildContext context, dynamic value) {
+  final numeric = value is num ? value.toDouble() : double.tryParse(value.toString());
+  if (numeric == null) return '—';
+  final locale = AvenqoLocaleScope.of(context).code;
+  return NumberFormat.percentPattern(locale).format(numeric / 100);
 }
 
 const _defaultModuleCode = 'retail';
@@ -2302,7 +2310,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                         ),
                                       ),
                                       Text(
-                                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} : $qualityScore%',
+                                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} : ${_formatPercent(context, qualityScore)}',
                                         style: const TextStyle(
                                           color: _Brand.green,
                                           fontWeight: FontWeight.w700,
@@ -2411,7 +2419,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                               _KpiSummaryCard(
                                 icon: Icons.verified_outlined,
                                 title: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} global',
-                                value: '$qualityScore%',
+                                value: _formatPercent(context, qualityScore),
                                 color: _Brand.green,
                                 isHighlighted: true,
                                 colors: colors,
@@ -2455,7 +2463,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                         Tab(
                           iconMargin: const EdgeInsets.only(bottom: 2),
                           icon: const Icon(Icons.verified_outlined, size: 16),
-                          text: 'QUALITÉ ($qualityScore%)',
+                          text: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} (${_formatPercent(context, qualityScore)})',
                         ),
                         const Tab(
                           iconMargin: EdgeInsets.only(bottom: 2),
@@ -3655,7 +3663,7 @@ class _ColumnsTab extends StatelessWidget {
                                 style: TextStyle(color: colors.muted, fontSize: 11),
                               ),
                               Text(
-                                '$qualityScore%',
+                                _formatPercent(context, qualityScore),
                                 style: const TextStyle(
                                   color: _Brand.green,
                                   fontWeight: FontWeight.w700,
@@ -4030,7 +4038,7 @@ class _QualityTab extends StatelessWidget {
                   ),
                   child: Center(
                     child: Text(
-                      '$globalScore%',
+                      _formatPercent(context, globalScore),
                       style: const TextStyle(
                         color: _Brand.green,
                         fontWeight: FontWeight.w900,
@@ -4045,7 +4053,7 @@ class _QualityTab extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} global : $globalScore%',
+                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} global : ${_formatPercent(context, globalScore)}',
                         style: TextStyle(
                           color: colors.ink,
                           fontWeight: FontWeight.w800,
