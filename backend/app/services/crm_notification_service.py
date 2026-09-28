@@ -81,6 +81,18 @@ class CRMNotificationService:
                 status = decision.status
 
         if channel == "email" and status == "queued":
+            communication = CRMCommunication(
+                company_id=company_id,
+                client_id=client.id,
+                appointment_id=appointment.id,
+                channel=channel,
+                direction="outbound",
+                subject=subject,
+                content=f"Notification {event} pour le rendez-vous {appointment.id}.",
+                status="sending",
+            )
+            self._session.add(communication)
+            self._session.commit()
             try:
                 get_account_notifier().send_transactional(
                     recipient,
@@ -90,6 +102,9 @@ class CRMNotificationService:
                 status = "sent"
             except Exception:
                 status = "failed"
+            communication.status = status
+            self._session.commit()
+            return
         elif channel == "sms" and status == "queued":
             # No CRM tenant sender identity is configured here; never invent one.
             status = "blocked_external_configuration"

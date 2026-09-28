@@ -33,7 +33,7 @@ from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.crm_notification_service import CRMNotificationService
-from backend.app.services.crm_recipient_policy import is_test_email
+from backend.app.services.crm_recipient_policy import evaluate_crm_recipient, is_test_email
 
 logger = logging.getLogger(__name__)
 
@@ -851,6 +851,8 @@ class CRMService:
                         select(CRMClient).where(
                             CRMClient.company_id == company_id,
                             CRMClient.is_deleted.is_(False),
+                            CRMClient.is_synthetic.is_(False),
+                            CRMClient.communications_enabled.is_(True),
                             func.lower(CRMClient.email).in_(attendee_emails),
                         )
                     ).all()
@@ -976,7 +978,7 @@ class CRMService:
                     description=appointment.notes,
                     attendee_email=(
                         client.email.strip().lower()
-                        if self.is_valid_customer_email(client.email)
+                        if evaluate_crm_recipient(client, company_id, "email").allowed
                         else None
                     ),
                     client_name=client.full_name,

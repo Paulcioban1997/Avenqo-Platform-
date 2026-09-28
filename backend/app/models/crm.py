@@ -177,6 +177,8 @@ class CRMClient(TimestampMixin, Base):
     total_revenue: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     attendance_rate: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)  # Pourcentage
     appointments_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    communications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 
     @property
@@ -421,6 +423,15 @@ class CRMCommunication(TimestampMixin, Base):
     """Historique des communications (SMS, Email, Appels) avec les clients."""
 
     __tablename__ = "crm_communications"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "appointment_id",
+            "channel",
+            "subject",
+            name="uq_crm_communication_delivery",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[UUID] = mapped_column(

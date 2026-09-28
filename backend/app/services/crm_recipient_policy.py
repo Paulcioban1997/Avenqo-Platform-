@@ -71,6 +71,10 @@ def evaluate_crm_recipient(client: Any, company_id: UUID, channel: str) -> Recip
         return RecipientDecision(False, "blocked_invalid_recipient", "tenant_or_deleted_contact")
     if str(getattr(client, "status", "")).casefold() == "archived":
         return RecipientDecision(False, "blocked_invalid_recipient", "archived_contact")
+    if bool(getattr(client, "is_synthetic", False)):
+        return RecipientDecision(False, "blocked_test_recipient", "synthetic_contact")
+    if not bool(getattr(client, "communications_enabled", True)):
+        return RecipientDecision(False, "blocked_invalid_recipient", "communications_disabled")
     if is_test_contact(client):
         return RecipientDecision(False, "blocked_test_recipient", "test_contact_identity")
     if channel == "email" and is_test_email(getattr(client, "email", None)):
