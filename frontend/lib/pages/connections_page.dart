@@ -1516,7 +1516,7 @@ class _DatasetRow extends StatelessWidget {
         ),
       if (isReady)
         IconButton(
-          tooltip: 'Correspondance des colonnes',
+          tooltip: AvenqoLocaleScope.translationsOf(context).company.connectionsMappingTitle,
           onPressed: isDeleting ? null : () => onReviewMapping(dataset),
           icon: const Icon(Icons.tune),
         ),
@@ -1810,13 +1810,13 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Icon(Icons.verified, color: _Brand.green, size: 20),
                             SizedBox(width: 8),
                             Flexible(
                               child: Text(
-                                'Données prêtes · Auto-mapping automatique validé',
+                                '${AvenqoLocaleScope.translationsOf(context).company.connectionsReadyTitle} · ${AvenqoLocaleScope.translationsOf(context).company.connectionsConfirmMapping}',
                                 style: TextStyle(
                                   color: _Brand.green,
                                   fontWeight: FontWeight.w800,
@@ -1836,7 +1836,7 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Correspondance des colonnes détectées :',
+                    AvenqoLocaleScope.translationsOf(context).company.connectionsMappingTitle,
                     style: TextStyle(
                       color: colors.ink,
                       fontWeight: FontWeight.w700,
@@ -2288,7 +2288,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                             Flexible(
                                               child: Text(
                                                 isReady
-                                                    ? 'Données prêtes pour Retail Intelligence'
+                                                    ? AvenqoLocaleScope.translationsOf(context).company.connectionsReadyTitle
                                                     : 'Attention requise',
                                                 softWrap: true,
                                                 style: TextStyle(
@@ -2710,7 +2710,7 @@ class _ModificationsTab extends StatelessWidget {
               children: [
                 Expanded(
                   child: _SegmentTabButton(
-                    label: 'Toutes (${modifications.length})',
+                    label: '${AvenqoLocaleScope.translationsOf(context).company.connectorHub['all'] ?? ''} (${modifications.length})',
                     isSelected: categoryFilter == 'all',
                     onTap: () => onCategoryChanged('all'),
                     colors: colors,
@@ -2719,7 +2719,7 @@ class _ModificationsTab extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: _SegmentTabButton(
-                    label: 'A. Synchronisation métier (${businessSync.length})',
+                    label: '${AvenqoLocaleScope.translationsOf(context).company.connectorHub['commerceSources'] ?? ''} (${businessSync.length})',
                     isSelected: categoryFilter == 'business_sync',
                     onTap: () => onCategoryChanged('business_sync'),
                     activeColor: const Color(0xFF7C3AED),
@@ -2730,7 +2730,7 @@ class _ModificationsTab extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: _SegmentTabButton(
-                    label: 'B. Nettoyage réel (${dataCleaning.length})',
+                    label: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['summary'] ?? ''} (${dataCleaning.length})',
                     isSelected: categoryFilter == 'data_cleaning',
                     onTap: () => onCategoryChanged('data_cleaning'),
                     activeColor: _Brand.blue,
@@ -2829,7 +2829,7 @@ class _ModificationsTab extends StatelessWidget {
                     Icon(Icons.check_circle_outline, size: 40, color: _Brand.green),
                     const SizedBox(height: 8),
                     Text(
-                      'Aucune modification ne correspond à ces critères.',
+                      AvenqoLocaleScope.translationsOf(context).company.connectionsNoDataTitle,
                       style: TextStyle(color: colors.muted, fontSize: 14),
                     ),
                   ],
@@ -2860,8 +2860,8 @@ class _ModificationsTab extends StatelessWidget {
                               children: [
                                 Row(
                                   children: [
-                                    const Text(
-                                      'A. Synchronisation métier',
+                                    Text(
+                                      AvenqoLocaleScope.translationsOf(context).company.connectorHub['commerceSources'] ?? '',
                                       style: TextStyle(
                                         color: Color(0xFF7C3AED),
                                         fontWeight: FontWeight.w800,
@@ -2876,7 +2876,7 @@ class _ModificationsTab extends StatelessWidget {
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        '${filteredSync.length} mises à jour',
+                                        AvenqoLocaleScope.translationsOf(context).company.connectionsSelectedCount.replaceFirst('{n}', '${filteredSync.length}'),
                                         style: const TextStyle(
                                           color: Color(0xFF7C3AED),
                                           fontWeight: FontWeight.w700,
@@ -2888,7 +2888,7 @@ class _ModificationsTab extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Mises à jour opérationnelles issues des boutiques connectées (stocks, commandes). Ceci n\'est PAS une anomalie ou une correction de données.',
+                                  AvenqoLocaleScope.translationsOf(context).company.connectionsSynchronizedSource,
                                   style: TextStyle(color: colors.ink, fontSize: 11),
                                 ),
                               ],
@@ -2924,8 +2924,8 @@ class _ModificationsTab extends StatelessWidget {
                               children: [
                                 Row(
                                   children: [
-                                    const Text(
-                                      'B. Nettoyage réel des données',
+                                    Text(
+                                      AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['summary'] ?? '',
                                       style: TextStyle(
                                         color: _Brand.blue,
                                         fontWeight: FontWeight.w800,
@@ -2940,7 +2940,7 @@ class _ModificationsTab extends StatelessWidget {
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        '${filteredCleaning.length} normalisations IA',
+                                        AvenqoLocaleScope.translationsOf(context).company.connectionsSelectedCount.replaceFirst('{n}', '${filteredCleaning.length}'),
                                         style: const TextStyle(
                                           color: _Brand.blue,
                                           fontWeight: FontWeight.w700,
@@ -2952,7 +2952,7 @@ class _ModificationsTab extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Normalisation automatique par IA : espaces supprimés, devises normalisées, dates ISO 8601, conversions texte → nombre, doublons supprimés et complétion des valeurs manquantes. Aucun mapping manuel requis.',
+                                  AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['summary'] ?? '',
                                   style: TextStyle(color: colors.ink, fontSize: 11),
                                 ),
                               ],
@@ -3096,8 +3096,8 @@ class _BusinessSyncCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
                 ),
-                child: const Text(
-                  'SYNCHRONISATION MÉTIER',
+                child: Text(
+                  AvenqoLocaleScope.translationsOf(context).company.connectorHub['commerceSources'] ?? '',
                   style: TextStyle(
                     color: Color(0xFF7C3AED),
                     fontWeight: FontWeight.w800,
@@ -3285,8 +3285,8 @@ class _DataCleaningCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: _Brand.blue.withValues(alpha: 0.4)),
                 ),
-                child: const Text(
-                  'NETTOYAGE RÉEL',
+                child: Text(
+                  AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['summary'] ?? '',
                   style: TextStyle(
                     color: _Brand.blue,
                     fontWeight: FontWeight.w800,
@@ -3594,7 +3594,7 @@ class _ColumnsTab extends StatelessWidget {
                                     ),
                                     if (origName != name)
                                       Text(
-                                        'Original: "$origName"',
+                                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['before']}: "$origName"',
                                         style: TextStyle(color: colors.muted, fontSize: 10),
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -3620,27 +3620,27 @@ class _ColumnsTab extends StatelessWidget {
                           ),
                           const Divider(height: 12),
                           _CardRow(
-                            label: 'Type :',
+                            label: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['inferredType']}:',
                             value: originalType == finalType ? finalType : '$originalType → $finalType',
                             colors: colors,
                           ),
                           const SizedBox(height: 2),
                           _CardRow(
-                            label: 'Valeurs corrigées :',
+                            label: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['invalidCorrected']}:',
                             value: '$modifiedCount',
                             valueColor: modifiedCount > 0 ? _Brand.green : null,
                             colors: colors,
                           ),
                           const SizedBox(height: 2),
                           _CardRow(
-                            label: 'Valeurs nulles :',
+                            label: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['missingValues']}:',
                             value: '$nullsAfter${nullsBefore != nullsAfter ? " (avant: $nullsBefore)" : ""}',
                             colors: colors,
                           ),
                           if (sampleMods.isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Text(
-                              'Exemple : ${sampleMods.first["before"]} → ${sampleMods.first["after"]}',
+                              '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['preview']}: ${sampleMods.first["before"]} → ${sampleMods.first["after"]}',
                               style: TextStyle(color: _Brand.green, fontSize: 10, fontWeight: FontWeight.w600),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -3651,7 +3651,7 @@ class _ColumnsTab extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Qualité :',
+                                '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']}:',
                                 style: TextStyle(color: colors.muted, fontSize: 11),
                               ),
                               Text(
@@ -3871,7 +3871,7 @@ class _ApercuTab extends StatelessWidget {
                   color: showTechnical ? _Brand.blue : colors.muted,
                 ),
                 label: Text(
-                  'Afficher les champs techniques',
+                  AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['notAvailable'] ?? '',
                   style: TextStyle(
                     fontSize: 12,
                     color: showTechnical ? _Brand.blue : colors.muted,
@@ -4054,7 +4054,7 @@ class _QualityTab extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Nettoyage et normalisation appliqués avec succès. Les données sont 100% prêtes pour Retail Intelligence.',
+                        AvenqoLocaleScope.translationsOf(context).company.connectionsReadyTitle,
                         style: TextStyle(color: colors.muted, fontSize: 13),
                       ),
                     ],
@@ -4066,7 +4066,7 @@ class _QualityTab extends StatelessWidget {
           const SizedBox(height: 20),
 
           Text(
-            'Règles et conformité des données',
+            AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['summary'] ?? '',
             style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 15),
           ),
           const SizedBox(height: 10),
@@ -4094,7 +4094,7 @@ class _QualityTab extends StatelessWidget {
           const SizedBox(height: 20),
 
           Text(
-            'Indicateurs détaillés',
+            AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['view'] ?? '',
             style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 15),
           ),
           const SizedBox(height: 12),
@@ -4255,7 +4255,7 @@ class _TechniqueTab extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Identifiants techniques (UUIDs, tenant_id, company_id, source_connection_id, hash) et snapshots bruts pour inspection avancée.',
+                    AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['preview'] ?? '',
                     style: TextStyle(color: colors.muted, fontSize: 12),
                   ),
                 ),
