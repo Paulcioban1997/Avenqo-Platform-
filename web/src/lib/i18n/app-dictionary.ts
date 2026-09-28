@@ -144,6 +144,10 @@ export type AppTranslations = {
     freshness: string;
     demandForecastTitle: string;
     forecastDisclaimer: string;
+    forecastDescription: string;
+    anomalyDescription: string;
+    noAnomaliesMessage: string;
+    recommendationsDescription: string;
     overstockAlert: string;
     stockoutRiskAlert: string;
   };
@@ -433,6 +437,10 @@ const frApp: AppTranslations = {
     freshness: "Fraîcheur",
     demandForecastTitle: "Prévisions de Demande & Réapprovisionnement",
     forecastDisclaimer: "Modèle prédictif basé sur l'historique de ventes. Ne constitue pas une garantie contractuelle de vente.",
+    forecastDescription: "Les tendances, comparaisons et prévisions de ventes apparaîtront ici.",
+    anomalyDescription: "Les variations importantes et les risques seront signalés avec une action recommandée.",
+    noAnomaliesMessage: "Surveillez les changements qui demandent votre attention.",
+    recommendationsDescription: "Avenqo classera les opportunités selon leur impact potentiel sur votre activité.",
     overstockAlert: "Alerte Surstock Détecté",
     stockoutRiskAlert: "Risque de Rupture Imminente",
   },
@@ -722,6 +730,10 @@ const enApp: AppTranslations = {
     freshness: "Freshness",
     demandForecastTitle: "Demand Forecast & Replenishment Planning",
     forecastDisclaimer: "Predictive model based on historical sales velocity. Does not constitute a contractual sales guarantee.",
+    forecastDescription: "Your sales trends, comparisons and forecasts will appear here.",
+    anomalyDescription: "Important changes and risks will be flagged with a recommended action.",
+    noAnomaliesMessage: "Watch for changes that need your attention.",
+    recommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
     overstockAlert: "Excess Inventory Detected",
     stockoutRiskAlert: "Imminent Stockout Risk",
   },
@@ -1119,6 +1131,11 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       noData: dashboardHome.connectionsEmpty,
       email: company.employeesColumnEmail,
       recommendations: company.navRecommendationsLabel,
+      demandForecastTitle: company.salesForecastTitle,
+      forecastDescription: company.businessSalesDescription,
+      anomalyDescription: company.businessAlertsDescription,
+      noAnomaliesMessage: company.navAlertsDescription,
+      recommendationsDescription: company.businessRecommendationsDescription,
       forecastDisclaimer: retailItem?.description ?? base.retail.forecastDisclaimer,
     },
   };

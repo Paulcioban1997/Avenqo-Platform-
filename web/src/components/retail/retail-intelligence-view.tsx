@@ -694,7 +694,7 @@ export function RetailIntelligenceView({
                   </h3>
                 </div>
                 <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-                  Projection prédictive sur 30 jours basée sur la vélocité et la saisonnalité observée.
+                  {retail.forecastDescription}
                 </p>
               </div>
               <StatusBadge status="active" label="Modèle Arima-Ensemble v2" size="sm" />
@@ -743,10 +743,10 @@ export function RetailIntelligenceView({
           <AvenqoCard variant="default" className="p-6">
             <div className="pb-4 mb-4 border-b border-slate-100 dark:border-white/[0.06]">
               <h3 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
-                Alertes d'Anomalies de Stock &amp; Logistique
+                {retail.anomalies}
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-                Détection automatique de ruptures de stock potentielles et de surstocks dormants.
+                {retail.anomalyDescription}
               </p>
             </div>
 
@@ -795,14 +795,14 @@ export function RetailIntelligenceView({
                         onClick={() => setActiveTab("products")}
                         className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.1] font-semibold text-xs text-slate-800 dark:text-[#F4F7FB] hover:bg-slate-50 dark:hover:bg-[#172652] transition-colors"
                       >
-                        Voir le produit
+                        {retail.products}
                       </button>
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  Aucune anomalie critique détectée dans votre inventaire.
+                  {retail.noAnomaliesMessage}
                 </div>
               )}
             </div>
@@ -815,10 +815,10 @@ export function RetailIntelligenceView({
         <AvenqoCard variant="default" className="p-6 space-y-4">
           <div className="pb-3 border-b border-slate-100 dark:border-white/[0.06]">
             <h3 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
-              Recommandations Stratégiques IA
+              {retail.recommendations}
             </h3>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              Suggestions automatiques pour optimiser la rotation des stocks et le réapprovisionnement.
+              {retail.recommendationsDescription}
             </p>
           </div>
 
