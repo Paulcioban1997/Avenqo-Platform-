@@ -85,6 +85,19 @@ class TenantDashboardService:
         ) if trend_source is not None else {"points": []}
         if not trend.get("points") and cached_trend_points:
             trend = {"points": cached_trend_points}
+        if not trend.get("points") and period_key == "all":
+            values = {item.key: item.value for item in kpis}
+            revenue = float(values.get("revenue") or 0)
+            orders = int(values.get("orders") or 0)
+            if revenue or orders:
+                trend = {
+                    "points": [{
+                        "period": "All",
+                        "revenue": revenue,
+                        "orders": orders,
+                        "change_percent": None,
+                    }]
+                }
         return {
             "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
