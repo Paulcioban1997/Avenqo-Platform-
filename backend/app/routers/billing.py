@@ -64,7 +64,9 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
     return SubscriptionResponse(
         plan_code=account.plan_code,
         status=(
-            "canceling_at_period_end"
+            "inactive"
+            if not stripe_linked
+            else "canceling_at_period_end"
             if account.cancel_at_period_end and account.status in {"active", "trialing"}
             else account.status
         ),
