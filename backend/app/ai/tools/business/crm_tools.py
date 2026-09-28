@@ -76,11 +76,13 @@ class UpdateAppointmentArgs(ToolArguments):
     new_start_time: str | None = Field(default=None, description="Nouvelle date et heure au format ISO.")
     new_duration_minutes: int | None = Field(default=None, description="Nouvelle durée en minutes.")
     notes: str | None = Field(default=None, description="Notes mises à jour.")
+    confirmed: bool = Field(default=False, description="Vrai uniquement après confirmation explicite de l'utilisateur.")
 
 
 class CancelAppointmentArgs(ToolArguments):
     appointment_id: str = Field(description="UUID du rendez-vous à annuler.")
     reason: str | None = Field(default=None, description="Raison de l'annulation.")
+    confirmed: bool = Field(default=False, description="Vrai uniquement après confirmation explicite de l'utilisateur.")
 
 
 # --- Tools ---
@@ -432,6 +434,11 @@ class UpdateAppointmentTool(AITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: UpdateAppointmentArgs) -> ToolResult:
+        if not arguments.confirmed:
+            return ToolResult(
+                success=False,
+                data={"confirmation_required": True, "error": "Confirmez explicitement le rendez-vous et la nouvelle date/heure avant le déplacement."},
+            )
         try:
             aid = UUID(arguments.appointment_id)
         except ValueError:
@@ -477,6 +484,11 @@ class CancelAppointmentTool(AITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CancelAppointmentArgs) -> ToolResult:
+        if not arguments.confirmed:
+            return ToolResult(
+                success=False,
+                data={"confirmation_required": True, "error": "Confirmez explicitement le rendez-vous avant l'annulation."},
+            )
         try:
             aid = UUID(arguments.appointment_id)
         except ValueError:

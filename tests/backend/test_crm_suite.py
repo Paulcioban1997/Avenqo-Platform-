@@ -34,6 +34,10 @@ from backend.app.ai.tools.business.crm_tools import (
     CreateAppointmentArgs,
     GetCRMMetricsTool,
     CRMGenericArgs,
+    UpdateAppointmentTool,
+    UpdateAppointmentArgs,
+    CancelAppointmentTool,
+    CancelAppointmentArgs,
 )
 from backend.app.models.base import Base
 from backend.app.models.company import Company
@@ -464,6 +468,45 @@ def test_crm_recipient_policy_blocks_seed_and_reserved_emails(email):
 @pytest.mark.parametrize("phone", [None, "", "+15145550199", "+12125550100", "1111111111"])
 def test_crm_recipient_policy_blocks_missing_and_fictional_phones(phone):
     assert is_test_phone(phone) is True
+
+
+def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
+    company = _create_company(db_session, "tenant-tool-confirmation")
+    client = CRMAppService(db_session).create_client(company.id, {
+        "first_name": "Marie", "last_name": "Tremblay", "email": "marie@customer.ca",
+    })
+    appointment, error = asyncio.run(CRMAppService(db_session).create_appointment(company.id, {
+        "client_id": client.id,
+        "title": "Consultation",
+        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+    }))
+    assert error is None and appointment is not None
+    original_start = appointment.start_time
+    context = ToolExecutionContext(
+        tenant=TenantContext(company_id=company.id),
+        user_id=uuid4(),
+        permissions=frozenset({"ai:use"}),
+        request_id="confirmation-required",
+    )
+
+    update = asyncio.run(UpdateAppointmentTool(db_session).run(
+        context,
+        UpdateAppointmentArgs(
+            appointment_id=str(appointment.id),
+            new_start_time=(original_start + timedelta(days=1)).isoformat(),
+        ),
+    ))
+    cancel = asyncio.run(CancelAppointmentTool(db_session).run(
+        context,
+        CancelAppointmentArgs(appointment_id=str(appointment.id)),
+    ))
+    db_session.refresh(appointment)
+
+    assert update.success is False and update.data["confirmation_required"] is True
+    assert cancel.success is False and cancel.data["confirmation_required"] is True
+    refreshed_start = appointment.start_time.replace(tzinfo=timezone.utc) if appointment.start_time.tzinfo is None else appointment.start_time
+    assert refreshed_start == original_start
+    assert appointment.status == "confirmed"
 
 
 def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(db_session, monkeypatch):
