@@ -292,7 +292,10 @@ class _RetailAnomaliesPageState extends State<RetailAnomaliesPage> {
               OutlinedButton(
                 onPressed: onAction,
                 style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: const Size(0, 30)),
-                child: const Text('Examiner', style: TextStyle(fontSize: 12)),
+                child: Text(
+                  AvenqoLocaleScope.translationsOf(context).phase4d.reviewProductPerformance,
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
             ],
           ),
