@@ -38,6 +38,7 @@ from backend.app.models.base import Base
 from backend.app.models.company import Company
 from backend.app.models.crm import (
     CRMCalendarConnection,
+    CRMCommunication,
     CRMClient,
     CRMService,
     CRMEmployee,
@@ -426,6 +427,9 @@ def test_cancel_is_idempotent_and_preserves_history(db_session):
     assert first.appointment.status == "cancelled"
     assert second.calendar_sync == "already_cancelled"
     assert db_session.query(CRMAppointment).filter_by(id=appointment.id).one().is_deleted is False
+    communications = db_session.query(CRMCommunication).filter_by(appointment_id=appointment.id).all()
+    assert {communication.channel for communication in communications} == {"email", "sms"}
+    assert all(communication.status == "blocked_external_configuration" for communication in communications)
 
 
 def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):

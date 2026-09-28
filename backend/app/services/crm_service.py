@@ -31,6 +31,7 @@ from backend.app.services.calendar.base import CalendarEventData
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import CRMAvailabilityService
+from backend.app.services.crm_notification_service import CRMNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -557,6 +558,9 @@ class CRMService:
 
         # External Calendar Sync (Google Calendar)
         await self._sync_to_external_calendar(company_id, appointment, client, action="create")
+        CRMNotificationService(self._session).record_appointment_event(
+            company_id, appointment, client, "created"
+        )
 
         # Increment client appointment count
         client.appointments_count += 1
@@ -630,6 +634,9 @@ class CRMService:
         client = self.get_client(company_id, apt.client_id)
         if client:
             await self._sync_to_external_calendar(company_id, apt, client, action="update")
+            CRMNotificationService(self._session).record_appointment_event(
+                company_id, apt, client, "updated"
+            )
 
         self._log_activity(
             company_id,
@@ -679,6 +686,9 @@ class CRMService:
         if client:
             calendar_sync, sync_error = await self._sync_to_external_calendar(
                 company_id, apt, client, action="delete"
+            )
+            CRMNotificationService(self._session).record_appointment_event(
+                company_id, apt, client, "cancelled"
             )
 
         self._log_activity(
