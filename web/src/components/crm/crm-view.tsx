@@ -85,6 +85,10 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
     setIsLoading(true);
     try {
       const headers = getAuthHeaders();
+      await fetch("/api/v1/crm/calendar/google/sync", {
+        method: "POST",
+        headers,
+      }).catch(() => null);
 
       const [kpiRes, appRes, srvRes, empRes, sumRes] = await Promise.all([
         fetch("/api/v1/crm/kpis", { headers }),
