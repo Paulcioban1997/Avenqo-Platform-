@@ -191,7 +191,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Comptabilité consolidée, marges réelles, détection d\'anomalies et prévisions de trésorerie.',
+                  AvenqoLocaleScope.translationsOf(context).company.businessReportsDescription,
                   style: TextStyle(color: colors.muted, fontSize: 13),
                 ),
               ],
@@ -221,7 +221,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
           Icon(Icons.verified, size: 12, color: _Brand.emerald),
           SizedBox(width: 4),
           Text(
-            'DONNÉES CONFIRMÉES',
+            'Confirmed data',
             style: TextStyle(
               color: _Brand.emerald,
               fontSize: 10,
@@ -248,7 +248,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
           Icon(Icons.auto_awesome, size: 12, color: _Brand.purple),
           SizedBox(width: 4),
           Text(
-            'PRÉVISION IA',
+            'AI forecast',
             style: TextStyle(
               color: _Brand.purple,
               fontSize: 10,
@@ -275,7 +275,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
           Icon(Icons.info_outline, size: 12, color: _Brand.amber),
           SizedBox(width: 4),
           Text(
-            'DONNÉES DE DÉMONSTRATION',
+            'Demo data',
             style: TextStyle(
               color: _Brand.amber,
               fontSize: 10,
@@ -322,7 +322,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Distinction comptable : les montants affichés ci-dessous proviennent exclusivement de vos écritures confirmées. Les projections et estimations sont systématiquement étiquetées « Prévision IA ».',
+                  AvenqoLocaleScope.translationsOf(context).company.settingsSubtitle,
                   style: TextStyle(color: colors.muted, fontSize: 13),
                 ),
               ),
@@ -763,7 +763,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                   const Icon(Icons.auto_awesome, color: _Brand.purple, size: 22),
                   const SizedBox(width: 10),
                   Text(
-                    'PRÉVISION IA — PROJECTION DE TRÉSORERIE ($horizon JOURS)',
+                    '${AvenqoLocaleScope.translationsOf(context).company.salesForecastTitle} ($horizon JOURS)',
                     style: const TextStyle(
                       color: _Brand.purple,
                       fontWeight: FontWeight.w800,
@@ -775,7 +775,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
               ),
               const SizedBox(height: 8),
               Text(
-                'IMPORTANT : Les valeurs ci-dessous sont des estimations prédictives calculées par intelligence artificielle basées sur les tendances des encaissements et décaissements historiques. Elles ne constituent pas des écritures comptables confirmées.',
+                AvenqoLocaleScope.translationsOf(context).company.settingsSubtitle,
                 style: TextStyle(color: colors.ink, fontSize: 13, height: 1.5),
               ),
             ],
@@ -789,7 +789,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
             Expanded(
               child: _buildMetricCard(
                 colors: colors,
-                title: 'Flux Net Estimé IA (30j)',
+                title: AvenqoLocaleScope.translationsOf(context).company.salesForecastTitle,
                 value: formatMoney(netCash, locale: locale, currencyCode: currency),
                 subtitle: 'Solde projeté en fin de période',
                 icon: Icons.waterfall_chart,
@@ -817,7 +817,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         Text(AvenqoLocaleScope.translationsOf(context).company.salesForecastTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
         if (projections.isEmpty)
-          _buildEmptyCard(colors, 'Données historiques insuffisantes pour générer les projections prédictives.')
+          _buildEmptyCard(colors, AvenqoLocaleScope.translationsOf(context).company.connectionsNoDataTitle)
         else
           ...projections.take(15).map((p) {
             final date = p['date']?.toString().split('T').first ?? '—';
@@ -850,14 +850,14 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'Flux net : ${formatMoney(flow, locale: locale, currencyCode: currency)}',
+                          '${AvenqoLocaleScope.translationsOf(context).company.businessDefaultTitle}: ${formatMoney(flow, locale: locale, currencyCode: currency)}',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: flow >= 0 ? _Brand.emerald : _Brand.rose,
                           ),
                         ),
                         Text(
-                          'Cumul projeté : ${formatMoney(cumulative, locale: locale, currencyCode: currency)}',
+                          '${AvenqoLocaleScope.translationsOf(context).company.salesForecastTitle}: ${formatMoney(cumulative, locale: locale, currencyCode: currency)}',
                           style: TextStyle(color: colors.muted, fontSize: 11),
                         ),
                       ],
@@ -907,12 +907,12 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                       semanticLabel: 'Tableau des écritures comptables',
                       minWidth: 900,
                       columns: [
-                        DataColumn(label: Text('Date')),
-                        DataColumn(label: Text('Type')),
-                        DataColumn(label: Text('Catégorie')),
-                        DataColumn(label: Text('Description')),
-                        DataColumn(label: Text('Montant')),
-                        DataColumn(label: Text('Statut')),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.settingsThemeSystem)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingStatusPrefix)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersSegment)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.businessReportsTitle)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingPlanPrefix)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingStatusPrefix)),
                       ],
                       rows: data.transactions.map((tx) {
                         final date = tx['date']?.toString().split('T').first ?? '—';
