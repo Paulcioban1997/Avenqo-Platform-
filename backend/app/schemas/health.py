@@ -8,3 +8,4 @@ class HealthResponse(BaseModel):
     application: str
     version: str
     environment: str
+    git_sha: str = "unknown"

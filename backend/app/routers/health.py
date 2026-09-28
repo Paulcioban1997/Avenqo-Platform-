@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -14,6 +15,15 @@ from backend.app.services.artifact_storage_health import artifact_storage_health
 router = APIRouter()
 
 
+def _git_sha() -> str:
+    return (
+        os.getenv("GIT_SHA")
+        or os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("VERCEL_GIT_COMMIT_SHA")
+        or "unknown"
+    )
+
+
 @router.get("/health", response_model=HealthResponse)
 def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     """Renvoie l'état du service, sans toucher DB/fournisseurs IA/Stripe."""
@@ -22,6 +32,7 @@ def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
         application=settings.app_name,
         version=settings.app_version,
         environment=settings.environment,
+        git_sha=_git_sha(),
     )
 
 
@@ -72,5 +83,6 @@ def ready(
         ai_providers=dict(health_registry.snapshot()),
         stripe_configured=bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
         migrations=migrations_status,
+        git_sha=_git_sha(),
     )
 

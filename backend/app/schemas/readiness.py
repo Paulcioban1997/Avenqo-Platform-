@@ -14,3 +14,4 @@ class ReadinessResponse(BaseModel):
     ai_providers: dict[str, str]
     stripe_configured: bool
     migrations: str = "ok"
+    git_sha: str = "unknown"
