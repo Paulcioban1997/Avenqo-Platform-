@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import ts from "typescript";
 
 const repository = resolve(import.meta.dirname, "../..");
 const technicalLiteral = /^(https?:\/\/|\/api\/|\/|#[0-9A-Fa-f]{3,8}$|[a-z0-9_./:-]+$)/;
@@ -34,15 +35,25 @@ function scanWeb() {
     const relativeFile = relative(repository, file).replaceAll("\\", "/");
     if (normalizedFile.includes("/lib/i18n/") || exactTechnicalExclusions.has(relativeFile)) continue;
     const source = readFileSync(file, "utf8");
-    const patterns = [
-      />\s*([A-Za-zÀ-ÿ][^<{\n]*?)\s*</gu,
-      /(?:placeholder|title|aria-label|alt)\s*=\s*["']([^"']+)["']/gu,
-    ];
-    for (const pattern of patterns) {
-      for (const match of source.matchAll(pattern)) {
-        if (keep(match[1])) candidates.push({ file: relative(repository, file), value: match[1].trim() });
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const addCandidate = (value) => {
+      const text = value.replace(/\s+/gu, " ").trim();
+      if (keep(text)) candidates.push({ file: relative(repository, file), value: text });
+    };
+    const visit = (node) => {
+      if (ts.isJsxText(node)) addCandidate(node.getText(sourceFile));
+      if (ts.isJsxAttribute(node) && ["placeholder", "title", "aria-label", "alt"].includes(node.name.getText(sourceFile))) {
+        const initializer = node.initializer;
+        if (initializer && ts.isStringLiteral(initializer)) addCandidate(initializer.text);
+        if (initializer && ts.isJsxExpression(initializer) && initializer.expression) {
+          if (ts.isStringLiteral(initializer.expression) || ts.isNoSubstitutionTemplateLiteral(initializer.expression)) {
+            addCandidate(initializer.expression.text);
+          }
+        }
       }
-    }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
   }
   return candidates;
 }
