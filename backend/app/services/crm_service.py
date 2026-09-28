@@ -225,6 +225,7 @@ class CRMService:
             last_name=data["last_name"].strip(),
             email=email or "",
             phone=phone,
+            preferred_language=data.get("preferred_language", "fr"),
             company_name=data.get("company_name"),
             industry_type=data.get("industry_type", "general"),
             industry_metadata=data.get("industry_metadata", {}),
@@ -281,7 +282,7 @@ class CRMService:
         if not client:
             return None
 
-        for field in ["first_name", "last_name", "email", "phone", "company_name", "industry_type", "status"]:
+        for field in ["first_name", "last_name", "email", "phone", "preferred_language", "company_name", "industry_type", "status"]:
             if field in data and data[field] is not None:
                 setattr(client, field, data[field])
         if "industry_metadata" in data:
@@ -353,6 +354,7 @@ class CRMService:
                 "last_name": client.last_name,
                 "email": client.email,
                 "phone": client.phone,
+                "preferred_language": client.preferred_language,
                 "company_name": client.company_name,
                 "industry_type": client.industry_type,
                 "industry_metadata": client.industry_metadata,
