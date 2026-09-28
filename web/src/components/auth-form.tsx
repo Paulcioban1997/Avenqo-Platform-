@@ -48,6 +48,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
   const { locale } = useLocale();
   const s = getAuthStrings(locale);
+  const regionNames = new Intl.DisplayNames([locale], { type: "region" });
+  const currencyExample = (currency: string) =>
+    new Intl.NumberFormat(locale, { style: "currency", currency }).format(0);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -320,20 +323,20 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <label className="auth-field">
                       <span>{locale === "en" ? "Country" : "Pays"}</span>
                       <select name="country" defaultValue="Canada" required>
-                        <option value="Canada">Canada</option>
-                        <option value="France">France</option>
-                        <option value="États-Unis">{locale === "en" ? "United States" : "États-Unis"}</option>
-                        <option value="Belgique">{locale === "en" ? "Belgium" : "Belgique"}</option>
-                        <option value="Suisse">{locale === "en" ? "Switzerland" : "Suisse"}</option>
+                        <option value="Canada">{regionNames.of("CA") ?? "Canada"}</option>
+                        <option value="France">{regionNames.of("FR") ?? "France"}</option>
+                        <option value="États-Unis">{regionNames.of("US") ?? "États-Unis"}</option>
+                        <option value="Belgique">{regionNames.of("BE") ?? "Belgique"}</option>
+                        <option value="Suisse">{regionNames.of("CH") ?? "Suisse"}</option>
                         <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
                       </select>
                     </label>
                     <label className="auth-field">
                       <span>{locale === "en" ? "Currency" : "Devise"}</span>
                       <select name="currency_code" defaultValue="CAD" required>
-                        <option value="CAD">CAD ($ CA)</option>
-                        <option value="USD">USD ($ US)</option>
-                        <option value="EUR">EUR (€)</option>
+                        <option value="CAD">CAD ({currencyExample("CAD")})</option>
+                        <option value="USD">USD ({currencyExample("USD")})</option>
+                        <option value="EUR">EUR ({currencyExample("EUR")})</option>
                       </select>
                     </label>
                   </div>
