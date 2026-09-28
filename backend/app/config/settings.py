@@ -290,6 +290,9 @@ class Settings(BaseSettings):
     # Jamais loggé ni exposé via une réponse API. Voir docs/platform-admin-setup.md.
     platform_admin_email: str | None = Field(default=None, alias="PLATFORM_ADMIN_EMAIL")
     platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
+    billing_legal_business_name: str | None = Field(default=None, alias="BILLING_LEGAL_BUSINESS_NAME")
+    billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
+    billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod

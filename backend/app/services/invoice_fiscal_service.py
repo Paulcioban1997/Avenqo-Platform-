@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.models import BillingInvoice, Company
+from backend.app.config.settings import get_settings
 
 
 class InvoiceNotFoundError(LookupError):
@@ -185,6 +186,10 @@ class InvoiceFiscalService:
         company_name = company.name if company else "Client Avenqo"
         inv_number = invoice.number or f"AVQ-{str(invoice.id)[:8].upper()}"
         currency = (invoice.currency or "CAD").upper()
+        settings = get_settings()
+        legal_name = settings.billing_legal_business_name or "Avenqo"
+        business_address = settings.billing_business_address or ""
+        support_email = settings.billing_support_email
 
         subtotal_val = (invoice.subtotal or 0) / 100.0
         tax_val = (invoice.tax_total or 0) / 100.0
@@ -200,7 +205,7 @@ class InvoiceFiscalService:
         doc.rect(0, 750, 612, 42, fill=1, stroke=0)
         doc.setFillColorRGB(1, 1, 1)
         doc.setFont("Helvetica-Bold", 16)
-        doc.drawString(50, 764, "AVENQO TECHNOLOGIES — FACTURE OFFICIELLE")
+        doc.drawString(50, 764, "AVENQO — FACTURE")
 
         # Invoice Info & Metadata
         doc.setFillColorRGB(0.1, 0.1, 0.15)
@@ -236,9 +241,10 @@ class InvoiceFiscalService:
         doc.setFont("Helvetica-Bold", 11)
         doc.drawString(50, 625, "ÉMETTEUR :")
         doc.setFont("Helvetica", 10)
-        doc.drawString(50, 610, "Avenqo Technologies Inc.")
-        doc.drawString(50, 596, "Plateforme IA B2B & Commerce Unifié")
-        doc.drawString(50, 582, "Québec / Canada — contact@avenqo.ca")
+        doc.drawString(50, 610, legal_name)
+        if business_address:
+            doc.drawString(50, 596, business_address)
+        doc.drawString(50, 582, support_email)
         doc.drawString(50, 568, "https://avenqo.ca")
 
         doc.setFont("Helvetica-Bold", 11)
@@ -306,8 +312,8 @@ class InvoiceFiscalService:
         doc.line(50, 100, 562, 100)
         doc.setFont("Helvetica", 8)
         doc.setFillColorRGB(0.5, 0.5, 0.55)
-        doc.drawString(50, 85, "Avenqo Technologies Inc. — Ce document constitue un reçu officiel de paiement fiscalement valable.")
-        doc.drawString(50, 72, "Pour toute question relative à votre facturation, contactez notre équipe : support@avenqo.ca")
+        doc.drawString(50, 85, "Document généré à partir des données de facturation enregistrées.")
+        doc.drawString(50, 72, f"Questions de facturation : {support_email}")
 
         doc.save()
         file_name = f"avenqo-facture-{inv_number}.pdf"
@@ -368,7 +374,7 @@ class InvoiceFiscalService:
         return output.getvalue(), "application/pdf", f"avenqo-releve-factures.pdf"
 
     def ensure_company_invoices(self, company_id: UUID) -> list[BillingInvoice]:
-        """Garantit qu'au moins une facture réaliste existe pour le tenant afin d'offrir des factures immédiatement téléchargeables."""
+        """Returns persisted invoices; never fabricates a billing document."""
         existing = list(
             self._session.scalars(
                 select(BillingInvoice)
@@ -380,62 +386,11 @@ class InvoiceFiscalService:
             return existing
 
         company = self._session.get(Company, company_id)
-        plan_code = company.subscription_plan if company else "demo"
-        now = datetime.now(timezone.utc)
-        short_id = str(company_id)[:4].upper()
-
-        seed_invoices = [
-            BillingInvoice(
-                company_id=company_id,
-                stripe_invoice_id=f"in_seed_{uuid4().hex[:12]}",
-                number=f"AVQ-{short_id}-2026-09",
-                plan_code=plan_code,
-                status="paid",
-                currency="cad",
-                subtotal=2900,
-                discount_total=0,
-                tax_total=434,
-                total=3334,
-                amount_due=0,
-                amount_paid=3334,
-                period_start=datetime(2026, 9, 1, tzinfo=timezone.utc),
-                period_end=datetime(2026, 9, 30, tzinfo=timezone.utc),
-                issued_at=now - timedelta(days=4),
-                paid_at=now - timedelta(days=4),
-                customer_email=getattr(company, "billing_email", None) or getattr(company, "email", "contact@avenqo.ca"),
-                line_items=[{"description": f"Abonnement Avenqo ({plan_code.capitalize()}) - Septembre 2026", "amount": 2900}],
-            ),
-            BillingInvoice(
-                company_id=company_id,
-                stripe_invoice_id=f"in_seed_{uuid4().hex[:12]}",
-                number=f"AVQ-{short_id}-2026-08",
-                plan_code=plan_code,
-                status="paid",
-                currency="cad",
-                subtotal=2900,
-                discount_total=0,
-                tax_total=434,
-                total=3334,
-                amount_due=0,
-                amount_paid=3334,
-                period_start=datetime(2026, 8, 1, tzinfo=timezone.utc),
-                period_end=datetime(2026, 8, 31, tzinfo=timezone.utc),
-                issued_at=now - timedelta(days=34),
-                paid_at=now - timedelta(days=34),
-                customer_email=getattr(company, "billing_email", None) or getattr(company, "email", "contact@avenqo.ca"),
-                line_items=[{"description": f"Abonnement Avenqo ({plan_code.capitalize()}) - Août 2026", "amount": 2900}],
-            ),
-        ]
-        for inv in seed_invoices:
-            self._session.add(inv)
-        try:
-            self._session.commit()
-            for inv in seed_invoices:
-                self._session.refresh(inv)
-            return seed_invoices
-        except Exception:
-            self._session.rollback()
+        if company is None:
             return []
+        # Stripe is the source of truth. Without a synced invoice, report empty
+        # history rather than inventing plan, price, tax, payment, or references.
+        return []
 
     def get_fiscal_summary_pdf(
         self,
