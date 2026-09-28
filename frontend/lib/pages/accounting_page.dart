@@ -405,7 +405,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Synthèse des Marges Brute et Opérationnelle', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(AvenqoLocaleScope.translationsOf(context).company.businessProductsTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
                     _buildConfirmedTag(),
                   ],
                 ),
@@ -438,7 +438,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         const SizedBox(height: 24),
 
         // Recent Confirmed Transactions Preview
-        Text('Dernières Écritures Comptables Confirmées', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(AvenqoLocaleScope.translationsOf(context).company.businessReportsTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
         if (data.transactions.isEmpty)
           _buildEmptyCard(colors, 'Aucune écriture comptable enregistrée.')
@@ -474,9 +474,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Analyse des Marges et Rentabilité Métier', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
+                Text(AvenqoLocaleScope.translationsOf(context).company.businessProductsTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 4),
-                Text('Calculé sur la base des ventes réelles et du coût des marchandises (COGS).', style: TextStyle(color: colors.muted, fontSize: 13)),
+                Text(AvenqoLocaleScope.translationsOf(context).company.businessProductsDescription, style: TextStyle(color: colors.muted, fontSize: 13)),
               ],
             ),
             _buildConfirmedTag(),
@@ -525,7 +525,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Indicateurs de Santé Financière', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(AvenqoLocaleScope.translationsOf(context).company.settingsPlanLabel, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 15)),
                 const SizedBox(height: 16),
                 _buildHealthRow(
                   colors: colors,
@@ -571,9 +571,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Suivi des Factures et Créances / Dettes Impayées', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text(AvenqoLocaleScope.translationsOf(context).company.billingInvoicesTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 4),
-                  Text('Échéancier strict pour protéger la liquidité de votre entreprise.', style: TextStyle(color: colors.muted, fontSize: 13)),
+                  Text(AvenqoLocaleScope.translationsOf(context).company.billingInvoiceFallback, style: TextStyle(color: colors.muted, fontSize: 13)),
                 ],
               ),
               _buildConfirmedTag(),
@@ -583,14 +583,14 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
           Row(
             children: [
               ChoiceChip(
-                label: const Text('Créances Clients (À recevoir)'),
+                label: Text(AvenqoLocaleScope.translationsOf(context).company.customersValue),
                 selected: _invoiceTypeFilter == 'receivable',
                 onSelected: (_) => setState(() => _invoiceTypeFilter = 'receivable'),
                 selectedColor: _Brand.blue.withValues(alpha: 0.15),
               ),
               const SizedBox(width: 12),
               ChoiceChip(
-                label: const Text('Dettes Fournisseurs (À payer)'),
+                label: Text(AvenqoLocaleScope.translationsOf(context).company.billingStatusPrefix),
                 selected: _invoiceTypeFilter == 'payable',
                 onSelected: (_) => setState(() => _invoiceTypeFilter = 'payable'),
                 selectedColor: _Brand.blue.withValues(alpha: 0.15),
@@ -606,14 +606,14 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                     child: AvenqoDataTable(
                       semanticLabel: 'Tableau des factures',
                       minWidth: 850,
-                      columns: const [
-                        DataColumn(label: Text('N° Facture')),
-                        DataColumn(label: Text('Tiers (Client / Fournisseur)')),
-                        DataColumn(label: Text('Date d\'échéance')),
-                        DataColumn(label: Text('Statut')),
-                        DataColumn(label: Text('Montant Total')),
-                        DataColumn(label: Text('Reste Dû')),
-                        DataColumn(label: Text('Source')),
+                      columns: [
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingInvoicesTitle)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersValue)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.settingsThemeSystem)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingStatusPrefix)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingPlanPrefix)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.billingInvoicesTitle)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.connectionsUploadedSource)),
                       ],
                       rows: list.map((inv) {
                         final invNum = inv['invoice_number']?.toString() ?? '—';
@@ -662,9 +662,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Détection d\'Anomalies et Dépenses Suspectes', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
+                Text(AvenqoLocaleScope.translationsOf(context).company.navAlertsLabel, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 4),
-                Text('L\'IA détecte automatiquement les écarts statistiques, doublons et montants anormaux.', style: TextStyle(color: colors.muted, fontSize: 13)),
+                Text(AvenqoLocaleScope.translationsOf(context).company.analyticsUnavailable, style: TextStyle(color: colors.muted, fontSize: 13)),
               ],
             ),
             _buildForecastTag(),
@@ -712,7 +712,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text('Motif : $reason', style: TextStyle(color: colors.muted, fontSize: 12)),
+                          Text('${AvenqoLocaleScope.translationsOf(context).company.settingsSubtitle}: $reason', style: TextStyle(color: colors.muted, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -814,7 +814,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         const SizedBox(height: 24),
 
         // Projections list
-        Text('Projections Quotidiennes Estimées (30 jours)', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(AvenqoLocaleScope.translationsOf(context).company.salesForecastTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
         if (projections.isEmpty)
           _buildEmptyCard(colors, 'Données historiques insuffisantes pour générer les projections prédictives.')
@@ -889,9 +889,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Grand Livre & Journal des Écritures Confirmées', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text(AvenqoLocaleScope.translationsOf(context).company.businessReportsTitle, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 4),
-                  Text('Historique auditable de toutes les transactions financières réelles.', style: TextStyle(color: colors.muted, fontSize: 13)),
+                  Text(AvenqoLocaleScope.translationsOf(context).company.settingsSubtitle, style: TextStyle(color: colors.muted, fontSize: 13)),
                 ],
               ),
               _buildConfirmedTag(),
@@ -906,7 +906,7 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
                     child: AvenqoDataTable(
                       semanticLabel: 'Tableau des écritures comptables',
                       minWidth: 900,
-                      columns: const [
+                      columns: [
                         DataColumn(label: Text('Date')),
                         DataColumn(label: Text('Type')),
                         DataColumn(label: Text('Catégorie')),
