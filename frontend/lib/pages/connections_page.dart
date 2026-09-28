@@ -1880,7 +1880,7 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Type : $semType',
+                                      '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['inferredType']} : $semType',
                                       style: TextStyle(
                                         color: colors.muted,
                                         fontSize: 11,
@@ -2302,7 +2302,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                                         ),
                                       ),
                                       Text(
-                                        'Score qualité : $qualityScore%',
+                                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} : $qualityScore%',
                                         style: const TextStyle(
                                           color: _Brand.green,
                                           fontWeight: FontWeight.w700,
@@ -2362,7 +2362,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                               const SizedBox(width: 8),
                               _KpiSummaryCard(
                                 icon: Icons.view_column_outlined,
-                                title: 'Colonnes détectées',
+                                title: AvenqoLocaleScope.translationsOf(context).company.connectionsStatColumnsLabel,
                                 value: '$columnCount',
                                 color: _Brand.blue,
                                 colors: colors,
@@ -2410,7 +2410,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
                               const SizedBox(width: 8),
                               _KpiSummaryCard(
                                 icon: Icons.verified_outlined,
-                                title: 'Score qualité global',
+                                title: '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} global',
                                 value: '$qualityScore%',
                                 color: _Brand.green,
                                 isHighlighted: true,
@@ -4045,7 +4045,7 @@ class _QualityTab extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Qualité globale : $globalScore%',
+                        '${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['quality']} global : $globalScore%',
                         style: TextStyle(
                           color: colors.ink,
                           fontWeight: FontWeight.w800,
