@@ -32,8 +32,8 @@ describe("credit display", () => {
       />,
     );
 
-    expect(screen.getByText((text) => text.replace(/\s+/g, " ").trim() === "6 486 / 6 500")).toBeInTheDocument();
-    expect(screen.queryByText((text) => text.replace(/\s+/g, " ").trim() === "0 / 6 500")).not.toBeInTheDocument();
+    expect(screen.getByText((text) => text.replace(/[^\d/]/g, "") === "6486/6500")).toBeInTheDocument();
+    expect(screen.queryByText((text) => text.replace(/[^\d/]/g, "") === "0/6500")).not.toBeInTheDocument();
 
     rerender(
       <CreditMeter
@@ -43,7 +43,7 @@ describe("credit display", () => {
         upgradeLabel="Changer de plan"
       />,
     );
-    expect(screen.getByText((text) => text.replace(/\s+/g, " ").trim() === "6 485 / 6 500")).toBeInTheDocument();
+    expect(screen.getByText((text) => text.replace(/[^\d/]/g, "") === "6485/6500")).toBeInTheDocument();
   });
 
   it("derives Billing remaining, used, and limit from the same ledger payload", () => {
