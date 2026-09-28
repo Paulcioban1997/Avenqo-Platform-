@@ -98,7 +98,7 @@ describe("Avenqo canonical localization", () => {
 
   it("keeps generated Web application catalogs synchronized with all canonical JSON sources", () => {
     const catalogRoot = resolve(process.cwd(), "../frontend/assets/i18n");
-    const generatedSections = ["auth", "company", "dashboardHome", "assistant", "admin"];
+    const generatedSections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4e"];
     expect(Object.keys(APPLICATION_CATALOGS)).toHaveLength(44);
     for (const locale of LOCALES) {
       const source = JSON.parse(readFileSync(resolve(catalogRoot, `${locale.code}.json`), "utf8"));

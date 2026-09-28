@@ -5,7 +5,7 @@ const root = resolve(import.meta.dirname, "..");
 const localeSource = readFileSync(resolve(root, "src/lib/i18n/locales.ts"), "utf8");
 const localeEntries = localeSource.split("export const LOCALES:")[1].split("];", 1)[0];
 const locales = [...localeEntries.matchAll(/code:\s*"([^"]+)"/g)].map((match) => match[1]);
-const sections = ["auth", "company", "dashboardHome", "assistant", "admin"];
+const sections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4e"];
 const catalogs = {};
 
 for (const locale of locales) {

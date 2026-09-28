@@ -126,6 +126,8 @@ export function BillingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const companyTranslations = getApplicationCatalog(locale).company;
+  const billingTranslations = getApplicationCatalog(locale).phase4e;
+  const invoiceTranslations = billingTranslations.billing;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -569,7 +571,7 @@ export function BillingView() {
           </div>
 
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Tarification</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{companyTranslations.billingTitle}</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
               {subscription.plan_code === "enterprise"
                 ? "Sur devis"
@@ -583,7 +585,7 @@ export function BillingView() {
           </div>
 
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Prochain renouvellement</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{invoiceTranslations.nextRenewal}</div>
             <div className="text-sm font-bold text-slate-800 dark:text-[#F4F7FB] mt-1 flex items-center gap-1.5">
               <Calendar size={14} className="text-slate-400" />
               <span>
@@ -597,12 +599,12 @@ export function BillingView() {
               </span>
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
-              Cycle: {credits.billing_period || "2026-09"}
+              {billingTranslations.billingPeriod}: {credits.billing_period || "2026-09"}
             </div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Mode de paiement</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{companyTranslations.billingPortalButton}</div>
             <div className="text-sm font-semibold text-slate-800 dark:text-[#F4F7FB] mt-1 flex items-center gap-1.5">
               <CreditCard size={14} className="text-[#0076FF]" />
               {subscription.payment_method ? (
@@ -616,7 +618,7 @@ export function BillingView() {
             <div className="text-[11px] text-slate-400 mt-1">
               {subscription.payment_method
                 ? `Exp: ${String(subscription.payment_method.exp_month).padStart(2, "0")}/${subscription.payment_method.exp_year}`
-                : "Sécurisé par Stripe"}
+                : t.shell.stripeNotLinked}
             </div>
           </div>
         </div>
@@ -767,7 +769,7 @@ export function BillingView() {
 
           <div className="flex items-center gap-3 self-end sm:self-auto">
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              Cycle: {credits.billing_period || "2026-09"}
+              {billingTranslations.billingPeriod}: {credits.billing_period || "2026-09"}
             </span>
             <button
               onClick={handleRefreshBalance}
@@ -784,7 +786,7 @@ export function BillingView() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-4">
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-              Allocation mensuelle
+              {billingTranslations.monthlyAllowance}
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
               {monthlyAlloc?.toLocaleString() ?? "—"}
@@ -793,7 +795,7 @@ export function BillingView() {
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-              Crédits utilisés
+              {billingTranslations.monthlyProgress}
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
               {monthlyUsed?.toLocaleString() ?? "—"}
@@ -802,7 +804,7 @@ export function BillingView() {
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-              Crédits restants
+              {billingTranslations.monthlyRemaining}
             </div>
             <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1.5">
               {monthlyRem?.toLocaleString() ?? "—"}
@@ -811,7 +813,7 @@ export function BillingView() {
 
           <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-[#172652] border border-blue-100 dark:border-[#0076FF]/30">
             <div className="text-[11px] font-semibold text-blue-700 dark:text-[#00D4FF]">
-              Total disponible
+              {billingTranslations.totalRemaining}
             </div>
             <div className="text-xl font-extrabold text-[#0076FF] dark:text-[#00D4FF] mt-1.5">
               {totalAvail?.toLocaleString() ?? "—"}
