@@ -13,7 +13,7 @@ import pandas as pd
 try:
     import psycopg2 as psycopg
 except ImportError:
-    import psycopg
+    import psycopg  # type: ignore
 
 BASE_API_URL = "https://api.avenqo.ca/api/v1"
 BASE_WEB_URL = "https://avenqo.ca"
