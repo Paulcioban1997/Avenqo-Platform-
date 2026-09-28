@@ -91,10 +91,9 @@ export function DashboardView({
         "30d": "last_30_days",
         quarter: "current_quarter",
       }[dateRange];
-      const [res, meRes, salesRes] = await Promise.all([
+      const [res, meRes] = await Promise.all([
         fetch(`/api/v1/dashboard?period=${periodKey}`, { headers }),
         fetch("/api/v1/auth/me", { headers }),
-        fetch(`/api/v1/sales/summary?period=${periodKey}`, { headers }).catch(() => null),
       ]);
 
       if (meRes.ok) {
@@ -113,20 +112,15 @@ export function DashboardView({
         if (Array.isArray(data.kpis)) {
           const mapped: Record<string, DashboardKPI> = {};
           data.kpis.forEach((k: DashboardKPI) => {
-            mapped[k.key] = k;
+            mapped[k.key === "average_order_value" ? "aov" : k.key] = k;
           });
           setKpis(mapped);
         }
         if (Array.isArray(data.priorities)) {
           setPriorities(data.priorities);
         }
-        if (salesRes?.ok) {
-          const salesData = await salesRes.json();
-          const points = salesData.trend?.points;
-          setTrendPoints(Array.isArray(points) ? points : []);
-        } else {
-          setTrendPoints([]);
-        }
+        const points = data.trend?.points;
+        setTrendPoints(Array.isArray(points) ? points : []);
       } else {
         // Empty state when unauthenticated or tenant has no calculated records
         setKpis({});
@@ -483,10 +477,10 @@ export function DashboardView({
                 <div className="my-8 p-4 rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] text-center space-y-2 bg-slate-50/50 dark:bg-white/[0.02]">
                   <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
                   <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">
-                    {t.dashboard.aiInsightInsufficient}
+                    {hasData ? t.dashboard.aiInsightNoPriority : t.dashboard.aiInsightInsufficient}
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-                    {t.dashboard.aiInsightEmpty}
+                    {!hasData && t.dashboard.aiInsightEmpty}
                   </p>
                 </div>
               )}

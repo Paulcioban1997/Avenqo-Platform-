@@ -69,6 +69,7 @@ export function CRMCopilotPanel({
   ]);
   const [isThinking, setIsThinking] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -159,15 +160,30 @@ export function CRMCopilotPanel({
     setIsThinking(true);
 
     try {
-      const res = await fetch("/api/v1/crm/copilot/chat", {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ title: query.slice(0, 54) }),
+        });
+        if (!conversationResponse.ok) throw new Error("Conversation creation failed");
+        const conversation = await conversationResponse.json();
+        activeConversationId = conversation.id;
+        setConversationId(activeConversationId);
+      }
+
+      const res = await fetch(`/api/v1/ai/central/conversations/${activeConversationId}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
           ...getAuthHeaders(),
         },
         body: JSON.stringify({
-          message: query,
+          content: query,
           locale,
+          page_context: "/crm",
         }),
       });
 
@@ -176,16 +192,15 @@ export function CRMCopilotPanel({
         const copilotMsg: Message = {
           id: `c-${Date.now()}`,
           sender: "copilot",
-          content: data.reply || (isRomanian ? "Procesare finalizată." : isEnglish ? "Processing complete." : "Traitement terminé."),
+          content: data.answer || (isRomanian ? "Procesare finalizată." : isEnglish ? "Processing complete." : "Traitement terminé."),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          status: data.status,
-          action: data.action,
-          details: data.appointment || data.slots || data.clients || data.kpis,
+          status: data.status === "success" ? "success" : "error",
+          details: data,
         };
         setMessages((prev) => [...prev, copilotMsg]);
 
         // Auto-refresh calendar and KPIs if appointment created
-        if (data.action === "appointment_created" || data.status === "success") {
+        if (data.status === "success") {
           onAppointmentCreated?.();
         }
       } else {

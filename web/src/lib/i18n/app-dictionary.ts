@@ -108,6 +108,7 @@ export type AppTranslations = {
     aiInsightTitle: string;
     aiInsightEmpty: string;
     aiInsightInsufficient: string;
+    aiInsightNoPriority: string;
     aiInsightConfidence: string;
     recommendationAction: string;
   };
@@ -384,6 +385,7 @@ const frApp: AppTranslations = {
     aiInsightTitle: "Insight IA Avenqo",
     aiInsightEmpty: "Aucun flux de données disponible pour générer une analyse.",
     aiInsightInsufficient: "Données insuffisantes. Activez un jeu de données ou une source connectée.",
+    aiInsightNoPriority: "Aucune priorité nécessitant votre attention n’a été détectée pour cette période.",
     aiInsightConfidence: "Niveau de confiance IA",
     recommendationAction: "Appliquer la recommandation",
   },
@@ -660,6 +662,7 @@ const enApp: AppTranslations = {
     aiInsightTitle: "Avenqo AI Insight",
     aiInsightEmpty: "No data stream available to produce insights.",
     aiInsightInsufficient: "Insufficient data. Enable a dataset or connected source to continue.",
+    aiInsightNoPriority: "No priority requiring your attention was detected for this period.",
     aiInsightConfidence: "AI Confidence Level",
     recommendationAction: "Apply recommendation",
   },
@@ -1008,9 +1011,6 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     },
     dashboard: {
       ...base.dashboard,
-      greetingMorning: catalog.dashboard.greeting,
-      greetingAfternoon: catalog.dashboard.greeting,
-      greetingEvening: catalog.dashboard.greeting,
       revenue: catalog.dashboard.salesLabel,
       customers: catalog.dashboard.activeClientsLabel,
       recommendationAction: catalog.dashboard.recommendationAction,

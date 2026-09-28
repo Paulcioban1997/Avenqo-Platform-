@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.app.ai.tools.business.analytics import (
     compute_business_overview,
+    compute_sales_trend,
     parse_business_datetime,
 )
 from backend.app.services.tenant_analytics_service import (
@@ -67,6 +68,16 @@ class TenantDashboardService:
         recommendations = self._recommendations.build_from_snapshot(tenant, snapshot)[
             "recommendations"
         ]
+        trend_source = snapshot.source_for(
+            BUSINESS_METRIC_FIELDS["revenue"] | BUSINESS_METRIC_FIELDS["orders"]
+        )
+        granularity = "day" if period_key == "last_7_days" else "week" if period_key == "last_30_days" else "month"
+        trend = compute_sales_trend(
+            trend_source,
+            date_from=None if period_key == "all" else period["start"],
+            date_to=None if period_key == "all" else period["end"],
+            granularity=granularity,
+        ) if trend_source is not None else {"points": []}
         return {
             "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
@@ -91,6 +102,7 @@ class TenantDashboardService:
                 }
                 for item in recommendations[:3]
             ],
+            "trend": {"points": trend.get("points", [])},
             "connections": {
                 "total": len(snapshot.statuses),
                 "ready": snapshot.statuses.count("ready"),

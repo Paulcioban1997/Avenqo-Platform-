@@ -25,6 +25,13 @@ import type { AppointmentItem } from "./appointment-details-drawer";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda" | "list" | "kanban";
 
+function localDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 interface CRMCalendarViewProps {
   appointments: AppointmentItem[];
   services: { id: string; name: string }[];
@@ -318,11 +325,11 @@ export function CRMCalendarView({
         {viewMode === "week" && (
           <div className="grid grid-cols-7 min-w-[800px] divide-x divide-slate-200 dark:divide-slate-800">
             {weekDays.map((day, idx) => {
-              const dayStr = day.toISOString().split("T")[0];
-              const isToday = new Date().toISOString().split("T")[0] === dayStr;
+              const dayStr = localDateKey(day);
+              const isToday = localDateKey(new Date()) === dayStr;
 
               const dayApps = filteredAppointments.filter((app) => {
-                const appDateStr = new Date(app.start_time).toISOString().split("T")[0];
+                const appDateStr = localDateKey(new Date(app.start_time));
                 return appDateStr === dayStr;
               });
 

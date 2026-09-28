@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LOCALES } from "../src/lib/i18n/locales";
 import { TRANSLATIONS } from "../src/lib/i18n/dictionary";
@@ -62,5 +64,19 @@ describe("Avenqo canonical localization", () => {
       allStatuses: "Toate stările",
       noAppointments: "Nicio programare",
     });
+  });
+
+  it("uses canonical backend state for Google integrations and dashboard trends", () => {
+    const integrations = readFileSync(
+      resolve(process.cwd(), "src/components/integrations/integrations-hub-view.tsx"),
+      "utf8",
+    );
+    const dashboard = readFileSync(
+      resolve(process.cwd(), "src/components/dashboard/dashboard-view.tsx"),
+      "utf8",
+    );
+    expect(integrations).toContain('/api/v1/crm/calendar/connection');
+    expect(dashboard).toContain("data.trend?.points");
+    expect(dashboard).not.toContain("/api/v1/sales/summary");
   });
 });

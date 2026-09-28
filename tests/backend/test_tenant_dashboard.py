@@ -173,6 +173,9 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     assert kpis["orders"]["value"] == 2
     assert kpis["customers"]["value"] == 2
     assert kpis["average_order_value"]["value"] == 75
+    assert dashboard_a["trend"]["points"] == [
+        {"period": "2026-08", "revenue": 150.0, "orders": 2, "change_percent": None},
+    ]
     assert all(item["state"] == "AVAILABLE" for item in kpis.values())
     assert kpis["revenue"]["previous_value"] == 0
     assert kpis["revenue"]["change_percent"] is None

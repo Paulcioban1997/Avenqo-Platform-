@@ -77,6 +77,14 @@ interface SyncLogItem {
   level: "info" | "success" | "warning" | "error";
 }
 
+interface StripeProviderStatus {
+  configured: boolean;
+  customer_linked: boolean;
+  subscription_linked: boolean;
+  subscription_status: string;
+  portal_available: boolean;
+}
+
 export function IntegrationsHubView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
@@ -90,6 +98,7 @@ export function IntegrationsHubView() {
 
   // Live connections from backend
   const [rawConnections, setRawConnections] = useState<RawConnection[]>([]);
+  const [stripeStatus, setStripeStatus] = useState<StripeProviderStatus | null>(null);
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
 
   // Modal manual configuration inputs
@@ -116,20 +125,42 @@ export function IntegrationsHubView() {
     setIsLoadingConnections(true);
     try {
       const headers = getAuthHeaders();
-      const [connRes, historyRes] = await Promise.all([
+      const [connRes, historyRes, calendarRes, stripeRes] = await Promise.all([
         fetch("/api/v1/connectors/connections", { headers }).catch(() => null),
         fetch("/api/v1/connectors/sync/history?limit=10", { headers }).catch(() => null),
+        fetch("/api/v1/crm/calendar/connection", { headers }).catch(() => null),
+        fetch("/api/v1/billing/provider-status", { headers }).catch(() => null),
       ]);
+
+      if (stripeRes && stripeRes.ok) {
+        setStripeStatus(await stripeRes.json());
+      }
 
       if (connRes && connRes.ok) {
         const data = await connRes.json();
         if (Array.isArray(data)) {
-          setRawConnections(data);
+          const connections: RawConnection[] = [...data];
+          if (calendarRes && calendarRes.ok) {
+            const calendar = await calendarRes.json();
+            if (calendar.connected && calendar.provider === "google") {
+              connections.push({
+                id: "google-calendar",
+                provider: "google",
+                external_account_id: calendar.account_email || "Google Calendar",
+                display_name: calendar.account_email || "Google Calendar",
+                status: calendar.sync_status === "connected" ? "CONNECTED" : "ERROR",
+                records_processed: 0,
+                last_successful_sync: calendar.last_synced_at,
+                is_enabled: true,
+              });
+            }
+          }
+          setRawConnections(connections);
 
           // Populate active states & entities
           const activeMap: Record<string, boolean> = {};
           const entitiesMap: Record<string, string[]> = {};
-          data.forEach((c: RawConnection) => {
+          connections.forEach((c: RawConnection) => {
             activeMap[c.provider.toLowerCase()] = c.is_enabled ?? true;
             entitiesMap[c.provider.toLowerCase()] = c.selected_entities || [
               "orders",
@@ -632,6 +663,24 @@ export function IntegrationsHubView() {
   ];
 
   const connectors: ConnectorItem[] = baseCatalog.map((item) => {
+    if (item.id === "stripe" && stripeStatus) {
+      const subscriptionActive =
+        stripeStatus.subscription_linked &&
+        ["active", "trialing"].includes(stripeStatus.subscription_status);
+      return {
+        ...item,
+        status: subscriptionActive
+          ? ("connected" as StatusBadgeType)
+          : stripeStatus.configured
+            ? ("needs_attention" as StatusBadgeType)
+            : ("disconnected" as StatusBadgeType),
+        lastSynced: subscriptionActive
+          ? (locale.startsWith("fr") ? "Abonnement actif" : "Subscription active")
+          : stripeStatus.configured
+            ? (locale.startsWith("fr") ? "Configuré · abonnement requis" : "Configured · subscription required")
+            : undefined,
+      };
+    }
     const activeConn = rawConnections.find((c) => {
       const provider = c.provider.toLowerCase();
       return (
@@ -880,7 +929,7 @@ export function IntegrationsHubView() {
                   </h3>
                   <div className="flex items-center gap-2 mt-0.5">
                     <StatusBadge
-                      status={currentActiveConn ? "connected" : "disconnected"}
+                      status={selectedConnector.status}
                       size="sm"
                     />
                     <span className="text-[11px] text-slate-400">

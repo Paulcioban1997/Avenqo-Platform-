@@ -137,6 +137,26 @@ def subscription(
     return subscription_response(account, company=identity.user.company)
 
 
+@router.get("/provider-status")
+def provider_status(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    account = db.scalar(
+        select(BillingAccount).where(BillingAccount.company_id == identity.user.company_id)
+    )
+    subscription_linked = bool(account and account.stripe_subscription_id)
+    return {
+        "provider": "stripe",
+        "configured": bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
+        "customer_linked": bool(account and account.stripe_customer_id),
+        "subscription_linked": subscription_linked,
+        "subscription_status": account.status if subscription_linked else "inactive",
+        "portal_available": bool(account and account.stripe_customer_id),
+    }
+
+
 @router.post(
     "/checkout",
     response_model=RedirectResponse,

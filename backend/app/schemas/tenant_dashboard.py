@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DashboardCompanyResponse(BaseModel):
@@ -57,6 +57,17 @@ class DashboardActivityResponse(BaseModel):
     occurred_at: datetime
 
 
+class DashboardTrendPointResponse(BaseModel):
+    period: str
+    revenue: float
+    orders: int
+    change_percent: float | None = None
+
+
+class DashboardTrendResponse(BaseModel):
+    points: list[DashboardTrendPointResponse] = Field(default_factory=list)
+
+
 class TenantDashboardResponse(BaseModel):
     status: str
     generated_at: datetime
@@ -65,5 +76,6 @@ class TenantDashboardResponse(BaseModel):
     capabilities: list[str]
     kpis: list[DashboardKPIResponse]
     priorities: list[DashboardPriorityResponse]
+    trend: DashboardTrendResponse = Field(default_factory=DashboardTrendResponse)
     connections: DashboardConnectionsResponse
     recent_activity: list[DashboardActivityResponse]

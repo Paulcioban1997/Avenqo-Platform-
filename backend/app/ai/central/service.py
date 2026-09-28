@@ -78,6 +78,8 @@ class CentralAIService:
             self._log_result(tenant.company_id, None, result, started_at, "permission_denied")
             return result
         agent = self._router.select(query)
+        if agent is None and page_context and page_context.startswith("/crm"):
+            agent = self._router.select("crm appointment")
         if agent is None:
             try:
                 self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
