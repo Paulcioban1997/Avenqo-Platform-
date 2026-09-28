@@ -59,12 +59,23 @@ def test_google_oauth_state_is_signed_and_tenant_bound() -> None:
 
 
 def test_callback_route_is_public_but_crm_routes_remain_protected() -> None:
+    route_contexts = []
+    for route in api_router.routes:
+        effective_route_contexts = getattr(route, "effective_route_contexts", None)
+        if callable(effective_route_contexts):
+            route_contexts.extend(effective_route_contexts())
+            continue
+        path = getattr(route, "path", None)
+        dependant = getattr(route, "dependant", None)
+        if path and dependant is not None:
+            route_contexts.append(SimpleNamespace(path=path, dependant=dependant))
+
     callback = next(
-        route for route in api_router.routes
+        route for route in route_contexts
         if getattr(route, "path", None) == "/api/v1/crm/calendar/google/callback"
     )
     kpis = next(
-        route for route in api_router.routes
+        route for route in route_contexts
         if getattr(route, "path", None) == "/api/v1/crm/kpis"
     )
     callback_dependencies = {dependency.call.__name__ for dependency in callback.dependant.dependencies}
