@@ -876,7 +876,7 @@ async def get_google_calendar_events(
     try:
         events = await service.list_google_events(
             tenant.company_id,
-            start_time=start or now - timedelta(days=1),
+            start_time=start or now,
             end_time=end or now + timedelta(days=365),
         )
         return {"events": events}
