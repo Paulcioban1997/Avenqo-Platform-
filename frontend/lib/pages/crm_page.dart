@@ -522,6 +522,8 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
   }
 
   Widget _buildContactsTab(BuildContext context, AvenqoColors colors, _CrmAllData data) {
+    final companyStrings = AvenqoLocaleScope.translationsOf(context).company;
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -549,6 +551,13 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
             final email = c['email'] ?? '—';
             final risk = (c['churn_risk']?.toString() ?? 'medium').toLowerCase();
             final factors = (c['churn_factors'] as List<dynamic>?)?.join(', ') ?? 'Diminution récente des commandes';
+            final riskLabel = switch (risk) {
+              'low' => companyStrings.customerRiskLow,
+              'high' => companyStrings.customerRiskHigh,
+              'critical' => companyStrings.customerRiskCritical,
+              'medium' => companyStrings.customerRiskMedium,
+              _ => AvenqoLocaleScope.translationsOf(context).admin.unknownStatus,
+            };
 
             Color riskColor = _Brand.amber;
             if (risk == 'high' || risk == 'critical') riskColor = _Brand.rose;
@@ -586,7 +595,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  'Risque : ${risk.toUpperCase()}',
+                                  '${companyStrings.customersRisk} : $riskLabel',
                                   style: TextStyle(color: riskColor, fontWeight: FontWeight.bold, fontSize: 11),
                                 ),
                               ),
