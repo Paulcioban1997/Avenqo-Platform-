@@ -167,6 +167,7 @@ class CRMClient(TimestampMixin, Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    preferred_language: Mapped[str] = mapped_column(String(16), nullable=False, default="fr")
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     industry_type: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
     # Données sectorielles flexibles (ex: garage: véhicule/plaque/VIN; clinique: dossier/médecin; salon: préférences)

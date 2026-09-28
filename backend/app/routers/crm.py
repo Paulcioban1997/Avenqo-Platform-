@@ -116,6 +116,7 @@ class CreateClientRequest(BaseModel):
     last_name: str
     email: str | None = None
     phone: str | None = None
+    preferred_language: str = "fr"
     company_name: str | None = None
     industry_type: str = "general"
     industry_metadata: dict[str, Any] = Field(default_factory=dict)
@@ -128,6 +129,7 @@ class UpdateClientRequest(BaseModel):
     last_name: str | None = None
     email: str | None = None
     phone: str | None = None
+    preferred_language: str | None = None
     company_name: str | None = None
     industry_type: str | None = None
     industry_metadata: dict[str, Any] | None = None
@@ -249,6 +251,7 @@ def list_clients(
             "last_name": c.last_name,
             "email": c.email,
             "phone": c.phone,
+            "preferred_language": c.preferred_language,
             "company_name": c.company_name,
             "industry_type": c.industry_type,
             "industry_metadata": c.industry_metadata,
@@ -277,6 +280,7 @@ def create_client(
         "last_name": client.last_name,
         "email": client.email,
         "phone": client.phone,
+        "preferred_language": client.preferred_language,
         "company_name": client.company_name,
     }
 
@@ -319,7 +323,14 @@ def update_client(
     updated = service.update_client(tenant.company_id, client_id, payload.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(status_code=404, detail="Client introuvable.")
-    return {"id": str(updated.id), "full_name": updated.full_name, "status": updated.status}
+    return {
+        "id": str(updated.id),
+        "full_name": updated.full_name,
+        "email": updated.email,
+        "phone": updated.phone,
+        "preferred_language": updated.preferred_language,
+        "status": updated.status,
+    }
 
 
 @router.get("/clients/{client_id}/360")
