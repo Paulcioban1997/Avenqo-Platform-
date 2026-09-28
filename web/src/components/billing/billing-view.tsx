@@ -1107,7 +1107,7 @@ export function BillingView() {
                             }`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {isPaid ? "Payée" : "En attente"}
+                            {isPaid ? invoiceTranslations.invoicePaid : invoiceTranslations.invoiceOpen}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">
@@ -1116,7 +1116,7 @@ export function BillingView() {
                             <button
                               onClick={() => handleDownloadInvoice(inv, "pdf")}
                               disabled={downloadingId === `${inv.id}-pdf`}
-                              title="Télécharger la facture officielle en PDF"
+                              title={`${invoiceTranslations.downloadPdf} — ${invoiceTranslations.officialInvoice}`}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-[#111D3D] dark:text-[#00D4FF] dark:hover:bg-[#172652] font-semibold text-[11px] transition-colors cursor-pointer"
                             >
                               <Download size={13} className={downloadingId === `${inv.id}-pdf` ? "animate-bounce" : ""} />
@@ -1127,7 +1127,7 @@ export function BillingView() {
                             <button
                               onClick={() => handleDownloadInvoice(inv, "csv")}
                               disabled={downloadingId === `${inv.id}-csv`}
-                              title="Exporter au format CSV"
+                              title={invoiceTranslations.downloadCsv}
                               className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-500 dark:text-[#94A3B8] text-[11px] transition-colors cursor-pointer"
                             >
                               <FileText size={13} />
@@ -1138,7 +1138,7 @@ export function BillingView() {
                             <button
                               onClick={() => handleDownloadInvoice(inv, "xlsx")}
                               disabled={downloadingId === `${inv.id}-xlsx`}
-                              title="Exporter au format Excel (XLSX)"
+                              title={invoiceTranslations.downloadXlsx}
                               className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-500 dark:text-[#94A3B8] text-[11px] transition-colors cursor-pointer"
                             >
                               <FileSpreadsheet size={13} />
