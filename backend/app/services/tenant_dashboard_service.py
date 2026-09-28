@@ -77,7 +77,13 @@ class TenantDashboardService:
             date_from=None if period_key == "all" else period["start"],
             date_to=None if period_key == "all" else period["end"],
             granularity=granularity,
-        ) if trend_source is not None else {"points": []}
+        ) if trend_source is not None else {
+            "points": [
+                point
+                for summary in snapshot.retail_summaries
+                for point in (summary.get("period_trends", {}).get(period_key or "last_30_days") or [])
+            ]
+        }
         return {
             "status": snapshot.status,
             "generated_at": datetime.now(timezone.utc),
@@ -141,9 +147,11 @@ class TenantDashboardService:
     ) -> DashboardKPI:
         summary_key = period_key or "last_30_days"
         for summary in snapshot.retail_summaries:
-            metrics = summary.get("period_metrics", {}).get(summary_key)
-            if metrics is None and summary_key == "last_30_days":
-                metrics = summary.get("current")
+            metrics = (
+                summary.get("current")
+                if period_key is None
+                else summary.get("period_metrics", {}).get(summary_key)
+            )
             if metrics is not None and key in metrics:
                 current = metrics[key]
                 monetary = key in {"revenue", "average_order_value"}

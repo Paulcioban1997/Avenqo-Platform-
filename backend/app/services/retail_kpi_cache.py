@@ -50,7 +50,7 @@ def descriptor(tenant, dataset):
     except OSError:
         return None
     return {
-        "format": 4, "company": str(tenant.company_id), "dataset": str(dataset.id),
+        "format": 5, "company": str(tenant.company_id), "dataset": str(dataset.id),
         "version": version.version_number, "version_id": version.id,
         "artifact": str(path.resolve()), "checksum": version.checksum,
         "size": stat.st_size, "mtime": stat.st_mtime_ns,
@@ -173,6 +173,9 @@ def build(spec):
         }
         for name in ranges
     }
+    trend_buckets: dict[str, dict[str, dict[str, object]]] = {
+        name: {} for name in ranges
+    }
     for row in rows(path):
         value = timestamp(row.get(date_col)) if date_col else None
         if end:
@@ -211,6 +214,26 @@ def build(spec):
                 bucket["orders"].add(str(order_value).strip())
             if customer_value is not None and str(customer_value).strip():
                 bucket["customers"].add(str(customer_value).strip())
+            if value is not None:
+                granularity = (
+                    "day" if bucket_name == "last_7_days"
+                    else "week" if bucket_name == "last_30_days"
+                    else "month"
+                )
+                period = (
+                    value.strftime("%Y-%m-%d")
+                    if granularity == "day"
+                    else (value - timedelta(days=value.weekday())).strftime("%Y-%m-%d")
+                    if granularity == "week"
+                    else value.strftime("%Y-%m")
+                )
+                point = trend_buckets[bucket_name].setdefault(
+                    period, {"revenue": Decimal(0), "orders": set(), "rows": 0}
+                )
+                point["revenue"] += amount
+                point["rows"] += 1
+                if order_value is not None and str(order_value).strip():
+                    point["orders"].add(str(order_value).strip())
     fields = set(reverse)
     revenue_ready = "total_amount" in fields or {"quantity", "unit_price"} <= fields
     available = {"revenue": revenue_ready, "orders": "order_id" in fields,
@@ -221,11 +244,22 @@ def build(spec):
                   "customers": len(bucket["customers"]),
                   "average_order_value": float(round(bucket["revenue"] / orders, 2)) if orders else 0.0}
         return {key: value for key, value in values.items() if available[key]}
+    def trend(bucket_name):
+        return [
+            {
+                "period": period,
+                "revenue": float(round(point["revenue"], 2)),
+                "orders": len(point["orders"]) or int(point["rows"]),
+                "change_percent": None,
+            }
+            for period, point in sorted(trend_buckets[bucket_name].items())
+        ]
     payload = {"source": spec,
                "period_metrics": {
                    key: metrics(bucket) for key, bucket in buckets.items()
                },
                "current": metrics(buckets["source_current"]),
+               "period_trends": {key: trend(key) for key in ranges},
                "previous": metrics(buckets["source_previous"])
                if buckets["source_previous"]["rows"] else {},
                "period": {key: value.isoformat() if value else None for key, value in

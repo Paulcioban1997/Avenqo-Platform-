@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -19,13 +20,15 @@ def large(tmp_path):
         company = _company(session, "Large", "CAD")
         dataset = _dataset(session, company, "retail.csv")
         artifact = tmp_path / "current.csv"
+        current_date = (datetime.now(timezone.utc).date() - timedelta(days=10)).isoformat()
+        prior_date = (datetime.now(timezone.utc).date() - timedelta(days=40)).isoformat()
         with artifact.open("w", encoding="utf-8") as handle:
             handle.write("order,customer,quantity,price,date\n")
             for index in range(60000):
-                handle.write(f"O{index // 2},C{index % 40001},2,0.10,2026-08-28\n")
+                handle.write(f"O{index // 2},C{index % 40001},2,0.10,{current_date}\n")
             # Revenue without an order must not disappear, nor should extra customers.
-            handle.write(",extra,3,0.10,2026-08-28\n")
-            handle.write("old,prior,1,10,2026-07-20\n")
+            handle.write(f",extra,3,0.10,{current_date}\n")
+            handle.write(f"old,prior,1,10,{prior_date}\n")
         dataset.source = "upload:retail.csv"
         dataset.rows_count = 1  # Current version metadata controls the large path.
         dataset.mapping.mapping_json = {"accepted": {"order": "order_id", "customer": "customer_id",
