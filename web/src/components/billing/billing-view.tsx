@@ -774,7 +774,7 @@ export function BillingView() {
             <button
               onClick={handleRefreshBalance}
               disabled={refreshing}
-              title="Rafraîchir les crédits"
+              title={companyTranslations.employeesRefreshTooltip}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
             >
               <RefreshCw size={15} className={refreshing ? "animate-spin text-[#0076FF]" : ""} />
