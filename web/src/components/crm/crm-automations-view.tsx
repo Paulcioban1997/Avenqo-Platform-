@@ -116,17 +116,17 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
   const getTriggerLabel = (event: string) => {
     switch (event) {
       case "appointment_created":
-        return "Rendez-vous créé";
+        return t.crm.calendar.noAppointments;
       case "appointment_approaching":
-        return "Rendez-vous dans 24h";
+        return t.crm.calendar.today;
       case "appointment_cancelled":
-        return "Rendez-vous annulé";
+        return t.crm.status.cancelled;
       case "client_inactive_30d":
-        return "Client inactif depuis 30 jours";
+        return t.crm.status.pending;
       case "new_lead":
-        return "Nouveau prospect / lead";
+        return t.crm.clients.client;
       case "pipeline_stage_changed":
-        return "Étape de vente franchie";
+        return t.crm.tabs.pipelines;
       default:
         return event;
     }
@@ -135,13 +135,13 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
   const getActionLabel = (act: string) => {
     switch (act) {
       case "send_email":
-        return "Envoyer un courriel de confirmation";
+        return t.crm.actions.save;
       case "send_sms":
-        return "Envoyer un rappel par SMS";
+        return t.crm.actions.save;
       case "create_reminder":
-        return "Créer un rappel tâche employé";
+        return t.crm.actions.addNote;
       case "generate_ai_task":
-        return "Générer une synthèse IA";
+        return t.copilot.quickPills.generateReport;
       default:
         return act;
     }
@@ -168,10 +168,10 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-500" />
-            {t.crm.tabs.automations || "Automations & Scénarios CRM"}
+            {t.crm.tabs.automations}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Rappels automatiques, alertes SMS, notifications client et synchronisation d'actions.
+            {t.crm.headerSubtitle}
           </p>
         </div>
 
@@ -180,23 +180,23 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
           className="px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:opacity-90 transition flex items-center gap-1.5"
         >
           <Plus className="w-4 h-4" />
-          <span>Nouvelle règle</span>
+          <span>{t.crm.actions.save}</span>
         </button>
       </div>
 
       {isLoading ? (
         <div className="py-16 text-center text-slate-400 text-xs">
-          Chargement des automations actives...
+          {t.copilot.statusThinking}
         </div>
       ) : automations.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800">
           <Zap className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-          <p className="text-xs text-slate-500">Aucun scénario d'automatisation actif.</p>
+          <p className="text-xs text-slate-500">{t.crm.calendar.noAppointments}</p>
           <button
             onClick={() => setIsNewModalOpen(true)}
             className="mt-3 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0076FF] text-white"
           >
-            Créer la première règle
+            {t.crm.actions.save}
           </button>
         </div>
       ) : (
