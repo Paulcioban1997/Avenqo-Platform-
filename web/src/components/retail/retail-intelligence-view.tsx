@@ -108,6 +108,8 @@ export function RetailIntelligenceView({
 }: RetailIntelligenceViewProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const retail = t.retail;
+  const integrations = t.integrations;
 
   const [activeTab, setActiveTab] = useState<RetailSubTab>(defaultTab);
   const [isLoading, setIsLoading] = useState(true);
@@ -252,7 +254,7 @@ export function RetailIntelligenceView({
                 href="/integrations"
                 className="text-xs font-semibold text-[#0076FF] hover:underline flex items-center gap-1"
               >
-                <span>Connecter ma boutique</span>
+                <span>{integrations.googleCalendarConnect}</span>
                 <ArrowRight size={11} />
               </Link>
             </div>
@@ -263,7 +265,7 @@ export function RetailIntelligenceView({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />
-            <span>Lancer la prévision</span>
+            <span>{retail.forecasts}</span>
           </button>
         </div>
       </div>
@@ -334,7 +336,7 @@ export function RetailIntelligenceView({
                 <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${qualityScores.completeness}%` }} />
                 </div>
-                <p className="text-[10px] text-slate-400">Champs requis renseignés</p>
+                <p className="text-[10px] text-slate-400">{retail.completeness}</p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
@@ -345,7 +347,7 @@ export function RetailIntelligenceView({
                 <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
                   <div className="h-full rounded-full bg-[#0076FF]" style={{ width: `${qualityScores.consistency}%` }} />
                 </div>
-                <p className="text-[10px] text-slate-400">Devises et dates harmonisées</p>
+                <p className="text-[10px] text-slate-400">{retail.consistency}</p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
@@ -356,7 +358,7 @@ export function RetailIntelligenceView({
                 <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
                   <div className="h-full rounded-full bg-[#00D4FF]" style={{ width: `${qualityScores.validity}%` }} />
                 </div>
-                <p className="text-[10px] text-slate-400">Dédoublonnage effectué</p>
+                <p className="text-[10px] text-slate-400">{retail.validity}</p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
@@ -367,7 +369,7 @@ export function RetailIntelligenceView({
                 <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
                   <div className="h-full rounded-full bg-indigo-500" style={{ width: `${qualityScores.freshness}%` }} />
                 </div>
-                <p className="text-[10px] text-slate-400">Synchro automatique active</p>
+                <p className="text-[10px] text-slate-400">{retail.freshness}</p>
               </div>
             </div>
           </AvenqoCard>
@@ -384,7 +386,7 @@ export function RetailIntelligenceView({
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Filtrer par nom de produit, SKU ou catégorie..."
+                placeholder={t.shell.searchPlaceholder}
                 className="w-full bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 outline-none focus:border-[#0076FF]"
               />
             </div>
@@ -411,12 +413,12 @@ export function RetailIntelligenceView({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 dark:bg-[#060B13]/60 border-b border-slate-200/80 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 font-semibold">
-                      <th className="py-3 px-4">Produit</th>
+                      <th className="py-3 px-4">{retail.products}</th>
                       <th className="py-3 px-4">SKU</th>
-                      <th className="py-3 px-4">Catégorie</th>
-                      <th className="py-3 px-4 text-right">Prix (CAD)</th>
-                      <th className="py-3 px-4 text-center">Stock disponible</th>
-                      <th className="py-3 px-4 text-center">Statut</th>
+                      <th className="py-3 px-4">{retail.overview}</th>
+                      <th className="py-3 px-4 text-right">{retail.sales}</th>
+                      <th className="py-3 px-4 text-center">{retail.inventory}</th>
+                      <th className="py-3 px-4 text-center">{integrations.statusConnected}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -500,11 +502,11 @@ export function RetailIntelligenceView({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 dark:bg-[#060B13]/60 border-b border-slate-200/80 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 font-semibold">
-                      <th className="py-3 px-4">Commande #</th>
-                      <th className="py-3 px-4">Client</th>
-                      <th className="py-3 px-4 text-right">Montant</th>
-                      <th className="py-3 px-4 text-center">Statut</th>
-                      <th className="py-3 px-4 text-right">Date</th>
+                      <th className="py-3 px-4">{t.crm.tabs.appointments}</th>
+                      <th className="py-3 px-4">{retail.customers}</th>
+                      <th className="py-3 px-4 text-right">{retail.sales}</th>
+                      <th className="py-3 px-4 text-center">{integrations.statusConnected}</th>
+                      <th className="py-3 px-4 text-right">{t.crm.calendar.today}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -563,10 +565,10 @@ export function RetailIntelligenceView({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 dark:bg-[#060B13]/60 border-b border-slate-200/80 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 font-semibold">
-                      <th className="py-3 px-4">Client</th>
+                      <th className="py-3 px-4">{retail.customers}</th>
                       <th className="py-3 px-4">Email</th>
-                      <th className="py-3 px-4 text-right">Dépenses totales (LTV)</th>
-                      <th className="py-3 px-4 text-center">Commandes passées</th>
+                      <th className="py-3 px-4 text-right">{retail.customers}</th>
+                      <th className="py-3 px-4 text-center">{retail.sales}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -620,10 +622,10 @@ export function RetailIntelligenceView({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 dark:bg-[#060B13]/60 border-b border-slate-200/80 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 font-semibold">
-                      <th className="py-3 px-4">Article</th>
+                      <th className="py-3 px-4">{retail.products}</th>
                       <th className="py-3 px-4">SKU</th>
-                      <th className="py-3 px-4 text-center">Quantité en stock</th>
-                      <th className="py-3 px-4 text-center">Alerte IA</th>
+                      <th className="py-3 px-4 text-center">{retail.inventory}</th>
+                      <th className="py-3 px-4 text-center">{retail.anomalies}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -650,12 +652,12 @@ export function RetailIntelligenceView({
                           {item.status === "critical" ? (
                             <span className="text-xs font-bold text-rose-600 flex items-center justify-center gap-1">
                               <AlertTriangle size={13} />
-                              <span>Rupture imminente</span>
+                              <span>{retail.stockoutRiskAlert}</span>
                             </span>
                           ) : item.status === "warning" ? (
-                            <span className="text-xs font-semibold text-amber-600">Stock bas</span>
+                            <span className="text-xs font-semibold text-amber-600">{retail.overstockAlert}</span>
                           ) : (
-                            <span className="text-xs text-emerald-600 font-medium">Optimal</span>
+                            <span className="text-xs text-emerald-600 font-medium">{integrations.statusConnected}</span>
                           )}
                         </td>
                       </tr>

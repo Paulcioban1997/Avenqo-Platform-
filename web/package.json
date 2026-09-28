@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "i18n:generate": "node scripts/generate-app-catalogs.mjs",
+    "i18n:check": "npm run i18n:generate && git diff --exit-code -- src/lib/i18n/application-catalogs.generated.json src/lib/i18n/generated-app-catalogs.ts"
   },
   "dependencies": {
     "framer-motion": "^13.0.0",

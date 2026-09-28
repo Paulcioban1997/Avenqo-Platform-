@@ -33,8 +33,8 @@ AppDestination localizeDestination(AppDestination destination, Translations tran
   final t = translations.company;
   return switch (destination.path) {
     '/dashboard' => destination.copyWith(
-      label: 'Tableau de bord',
-      description: 'Vue d’ensemble de votre activité.',
+      label: t.navOverviewLabel,
+      description: t.navOverviewDescription,
     ),
     '/retail' => destination.copyWith(
       label: translations.agents.value('retailName'),

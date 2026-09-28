@@ -1,6 +1,7 @@
 import type { LocaleCode } from "./types";
 import { APP_LOCALE_WORDS } from "./app-locale-overrides";
 import { getTranslations } from "./dictionary";
+import { getApplicationCatalog } from "./generated-app-catalogs";
 
 export type AppTranslations = {
   brand: {
@@ -960,18 +961,63 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       : enApp;
   const words = APP_LOCALE_WORDS[locale as LocaleCode] ?? APP_LOCALE_WORDS.en;
   const catalog = getTranslations(locale as LocaleCode);
+  const application = getApplicationCatalog(locale);
+  const company = application.company;
+  const dashboardHome = application.dashboardHome;
+  const assistant = application.assistant;
+  const connector = company.connectorHub;
+  const usesWebProductTerms = ["fr", "fr-FR", "en", "es"].includes(locale);
   const retailItems = Object.fromEntries(catalog.modulesSection.items.map((item) => [item.name.toLowerCase(), item]));
   const retailItem = Object.values(retailItems).find((item) => item.name.toLowerCase().includes("retail"));
   return {
     ...base,
     navigation: {
       ...base.navigation,
-      dashboard: words.dashboard,
+      dashboard: usesWebProductTerms ? base.navigation.dashboard : company.navOverviewLabel,
       retailAi: words.retail,
       crmAi: words.crm,
       accountingAi: words.accounting,
       integrations: words.integrations,
-      settings: words.settings,
+      settings: company.navSettingsLabel,
+      support: company.navSupportLabel,
+      team: company.navTeamLabel,
+      billing: usesWebProductTerms ? base.navigation.billing : company.navBillingLabel,
+      connections: company.navConnectionsLabel,
+    },
+    shell: {
+      ...base.shell,
+      themeToggle: company.settingsThemeLabel,
+      copilotButton: assistant.avenqoAi,
+      signOut: company.settingsLogout,
+      company: company.settingsCompanySection,
+    },
+    commandPalette: {
+      ...base.commandPalette,
+      actionAskCopilot: dashboardHome.askAvenqoCta,
+    },
+    copilot: {
+      ...base.copilot,
+      title: assistant.avenqoAi,
+      subtitle: assistant.subtitle,
+      statusThinking: assistant.thinking,
+      activeSourcesLabel: assistant.sourcesLabel,
+      errorPrompt: assistant.requestUnavailable,
+      retry: assistant.retry,
+    },
+    integrations: {
+      ...base.integrations,
+      title: connector.title,
+      subtitle: connector.subtitle,
+      syncNow: connector.sync,
+      syncing: connector.syncing,
+      lastSynced: connector.lastSync,
+      recordsCount: connector.records,
+      statusConnected: connector.connected,
+      statusSyncing: connector.syncing,
+      statusNeedsAttention: connector.error,
+      statusDisconnected: connector.disconnected,
+      drawerLogsTitle: connector.connection,
+      noLogs: connector.neverSynced,
     },
     crm: {
       ...base.crm,
@@ -1029,16 +1075,25 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     },
     dashboard: {
       ...base.dashboard,
-      revenue: catalog.dashboard.salesLabel,
-      customers: catalog.dashboard.activeClientsLabel,
+      dateRangeAll: dashboardHome.periodAll,
+      dateRange7d: dashboardHome.period7Days,
+      dateRange30d: dashboardHome.period30Days,
+      dateRangeQuarter: dashboardHome.periodQuarter,
+      revenue: dashboardHome.salesLabel,
+      orders: dashboardHome.ordersLabel,
+      customers: dashboardHome.customersLabel,
+      aov: dashboardHome.avgOrderLabel,
+      aiInsightTitle: dashboardHome.prioritiesTitle,
+      aiInsightEmpty: dashboardHome.prioritiesEmpty,
       recommendationAction: catalog.dashboard.recommendationAction,
     },
     retail: {
       ...base.retail,
-      overview: catalog.nav.features,
-      sales: catalog.dashboard.salesLabel,
-      customers: catalog.dashboard.activeClientsLabel,
-      recommendations: catalog.dashboard.recommendationLabel,
+      overview: company.navOverviewLabel,
+      sales: company.navSalesLabel,
+      products: company.navProductsLabel,
+      customers: company.navCustomersLabel,
+      recommendations: company.navRecommendationsLabel,
       forecastDisclaimer: retailItem?.description ?? base.retail.forecastDisclaimer,
     },
   };

@@ -23,6 +23,8 @@ import {
   Save,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
 // ---- Types ----
 interface Dataset {
@@ -114,6 +116,8 @@ const ACCEPTED_TYPES =
 
 // ---- Main Component ----
 export function DataHubView() {
+  const { locale } = useLocale();
+  const t = getAppTranslations(locale);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -317,7 +321,7 @@ export function DataHubView() {
       <div className="data-hub-detail">
         <div className="data-hub-detail-header">
           <button className="data-hub-back-btn" onClick={() => setSelectedDataset(null)}>
-            <ArrowLeft size={16} /> Retour
+            <ArrowLeft size={16} /> {t.crm.calendar.previous}
           </button>
           <div className="data-hub-detail-title">
             {FILE_ICON[selectedDataset.type ?? selectedDataset.file_type ?? "csv"] ?? <Database size={20} />}
@@ -331,13 +335,13 @@ export function DataHubView() {
           </div>
           <div className="data-hub-detail-actions">
             <button className="data-hub-action-btn" onClick={() => handleExport(selectedDataset)}>
-              <Download size={15} /> Exporter
+              <Download size={15} /> {t.integrations.syncNow}
             </button>
             <button
               className="data-hub-action-btn danger"
               onClick={() => setDeleteConfirm(selectedDataset.id)}
             >
-              <Trash2 size={15} /> Supprimer dataset
+              <Trash2 size={15} /> {t.integrations.sourceDisabled}
             </button>
           </div>
         </div>
@@ -350,7 +354,7 @@ export function DataHubView() {
 
         {isLoadingDetail ? (
           <div className="data-hub-loading">
-            <Loader2 size={28} className="spin" /> Chargement des données...
+            <Loader2 size={28} className="spin" /> {t.integrations.syncing}
           </div>
         ) : columns.length > 0 ? (
           <div className="data-hub-table-wrap">
@@ -360,7 +364,7 @@ export function DataHubView() {
                   {columns.map((col) => (
                     <th key={col}>{col}</th>
                   ))}
-                  <th>Actions</th>
+                  <th>{t.crm.actions.modify}</th>
                 </tr>
               </thead>
               <tbody>
@@ -382,10 +386,10 @@ export function DataHubView() {
                                 if (e.key === "Escape") setEditingCell(null);
                               }}
                             />
-                            <button onClick={() => handleSaveCell(rowIdx, col)} title="Sauvegarder">
+                            <button onClick={() => handleSaveCell(rowIdx, col)} title={t.crm.actions.save}>
                               <Save size={13} />
                             </button>
-                            <button onClick={() => setEditingCell(null)} title="Annuler">
+                            <button onClick={() => setEditingCell(null)} title={t.crm.actions.close}>
                               <X size={13} />
                             </button>
                           </div>
@@ -418,10 +422,10 @@ export function DataHubView() {
         {deleteConfirm && (
           <div className="data-hub-confirm-overlay" onClick={() => setDeleteConfirm(null)}>
             <div className="data-hub-confirm-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Supprimer ce dataset ?</h3>
-              <p>Cette action est irréversible. Toutes les données seront perdues.</p>
+              <h3>{t.integrations.drawerTitle}</h3>
+              <p>{t.integrations.noLogs}</p>
               <div className="data-hub-confirm-actions">
-                <button onClick={() => setDeleteConfirm(null)}>Annuler</button>
+                <button onClick={() => setDeleteConfirm(null)}>{t.crm.actions.close}</button>
                 <button className="danger" onClick={() => handleDeleteDataset(deleteConfirm)}>
                   Supprimer
                 </button>
@@ -438,7 +442,7 @@ export function DataHubView() {
     <div className="data-hub">
       <div className="data-hub-header">
         <div>
-          <h1 className="data-hub-title">Data Hub</h1>
+          <h1 className="data-hub-title">{t.navigation.dataHub}</h1>
           <p className="data-hub-subtitle">
             Gérez vos datasets, importez des fichiers et explorez vos données.
           </p>
@@ -451,7 +455,7 @@ export function DataHubView() {
             className="data-hub-upload-btn"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Plus size={16} /> Ajouter des fichiers
+            <Plus size={16} /> {t.integrations.uploadedRetailSource}
           </button>
         </div>
       </div>
@@ -467,7 +471,7 @@ export function DataHubView() {
       {Object.entries(uploadProgress).map(([fileId, pct]) => (
         <div key={fileId} className="data-hub-upload-progress">
           <Loader2 size={14} className="spin" />
-          <span>Upload en cours...</span>
+          <span>{t.integrations.syncing}</span>
           <div className="data-hub-progress-bar">
             <div style={{ width: `${pct}%` }} />
           </div>
@@ -485,7 +489,7 @@ export function DataHubView() {
         <Upload size={28} />
         <p>
           Glissez-déposez vos fichiers ici, ou{" "}
-          <span className="data-hub-dropzone-link">sélectionnez depuis votre ordinateur</span>
+          <span className="data-hub-dropzone-link">{t.integrations.selectSource}</span>
         </p>
         <p className="data-hub-dropzone-formats">
           CSV · XLS · XLSX · PDF · JSON · TXT · Parquet
@@ -504,7 +508,7 @@ export function DataHubView() {
       <div className="data-hub-search">
         <Search size={15} />
         <input
-          placeholder="Rechercher un dataset..."
+          placeholder={t.integrations.selectSource}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -513,12 +517,12 @@ export function DataHubView() {
       {/* Dataset list */}
       {isLoading && datasets.length === 0 ? (
         <div className="data-hub-loading">
-          <Loader2 size={28} className="spin" /> Chargement...
+          <Loader2 size={28} className="spin" /> {t.integrations.syncing}
         </div>
       ) : filteredDatasets.length === 0 ? (
         <div className="data-hub-empty">
           <Database size={48} />
-          <p>Aucun dataset. Importez votre premier fichier.</p>
+          <p>{t.integrations.noUploadedRetailSources}</p>
         </div>
       ) : (
         <div className="data-hub-list">
@@ -558,11 +562,11 @@ export function DataHubView() {
                 </div>
                 <div className="data-hub-card-actions">
                   {statusCat === "ready" && (
-                    <button title="Voir les données" onClick={() => fetchDatasetDetail(ds)}>
+                    <button title={t.integrations.currentRetailSource} onClick={() => fetchDatasetDetail(ds)}>
                       <Eye size={15} />
                     </button>
                   )}
-                  <button title="Exporter" onClick={() => handleExport(ds)}>
+                  <button title={t.integrations.syncNow} onClick={() => handleExport(ds)}>
                     <Download size={15} />
                   </button>
                   <button
@@ -588,10 +592,10 @@ export function DataHubView() {
       {deleteConfirm && (
         <div className="data-hub-confirm-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="data-hub-confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Supprimer ce dataset ?</h3>
-            <p>Cette action est irréversible. Toutes les données seront perdues.</p>
+            <h3>{t.integrations.drawerTitle}</h3>
+            <p>{t.integrations.noLogs}</p>
             <div className="data-hub-confirm-actions">
-              <button onClick={() => setDeleteConfirm(null)}>Annuler</button>
+              <button onClick={() => setDeleteConfirm(null)}>{t.crm.actions.close}</button>
               <button className="danger" onClick={() => handleDeleteDataset(deleteConfirm)}>
                 Supprimer
               </button>

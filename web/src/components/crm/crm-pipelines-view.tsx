@@ -142,7 +142,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
         <div className="flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-[#0076FF]" />
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            {t.crm.tabs.pipelines || "Pipelines de ventes & opportunités"}
+            {t.crm.tabs.pipelines}
           </h3>
           {pipelines.length > 1 && (
             <select
@@ -169,14 +169,14 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
           className="px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:opacity-90 transition flex items-center gap-1.5"
         >
           <Plus className="w-4 h-4" />
-          <span>Nouvelle opportunité</span>
+          <span>{t.crm.actions.save}</span>
         </button>
       </div>
 
       {/* Kanban Board */}
       {isLoading ? (
         <div className="py-16 text-center text-slate-400 text-xs">
-          Chargement des étapes du pipeline...
+          {t.crm.calendar.loadingAppointments}
         </div>
       ) : !activePipeline || !activePipeline.stages || activePipeline.stages.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800">

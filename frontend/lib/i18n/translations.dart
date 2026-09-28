@@ -51,45 +51,15 @@ class Translations {
         json['finalCta'] as Map<String, dynamic>,
       ),
       footer: FooterStrings.fromJson(json['footer'] as Map<String, dynamic>),
-      // Traduit uniquement pour fr/en pour le moment : les 40 autres locales
-      // retombent sur l'anglais existant tant qu'elles n'ont pas la clé.
-      assistant: json['assistant'] != null
-          ? AssistantStrings.fromJson(json['assistant'] as Map<String, dynamic>)
-          : AssistantStrings.fallback(),
-      // Même logique de repli que assistant : fr/en traduits, le reste en anglais.
-      auth: json['auth'] != null
-          ? AuthStrings.fromJson(json['auth'] as Map<String, dynamic>)
-          : AuthStrings.fallback(),
-      // Même logique de repli que assistant/auth : fr/en traduits, le reste en anglais.
-      dashboardHome: json['dashboardHome'] != null
-          ? DashboardHomeStrings.fromJson(
-              json['dashboardHome'] as Map<String, dynamic>,
-            )
-          : DashboardHomeStrings.fallback(),
-      // Même logique de repli que assistant/auth/dashboardHome : fr/en traduits,
-      // le reste en anglais.
-      admin: json['admin'] != null
-          ? AdminStrings.fromJson(json['admin'] as Map<String, dynamic>)
-          : AdminStrings.fallback(),
-      // Même logique de repli : fr/en traduits, le reste en anglais.
-      onboarding: json['onboarding'] != null
-          ? OnboardingStrings.fromJson(
-              json['onboarding'] as Map<String, dynamic>,
-            )
-          : OnboardingStrings.fallback(),
-      // Même logique de repli : fr/en traduits, le reste en anglais.
-      company: json['company'] != null
-          ? CompanyStrings.fromJson(json['company'] as Map<String, dynamic>)
-          : CompanyStrings.fallback(),
-      phase4d: json['phase4d'] != null
-          ? Phase4dStrings.fromJson(json['phase4d'] as Map<String, dynamic>)
-          : Phase4dStrings.fallback(),
-      phase4e: json['phase4e'] != null
-          ? Phase4eStrings.fromJson(json['phase4e'] as Map<String, dynamic>)
-          : Phase4eStrings.fallback(),
-      agents: json['agents'] != null
-          ? AgentStrings.fromJson(json['agents'] as Map<String, dynamic>)
-          : AgentStrings.fallback(),
+        assistant: AssistantStrings.fromJson(json['assistant'] as Map<String, dynamic>),
+        auth: AuthStrings.fromJson(json['auth'] as Map<String, dynamic>),
+        dashboardHome: DashboardHomeStrings.fromJson(json['dashboardHome'] as Map<String, dynamic>),
+        admin: AdminStrings.fromJson(json['admin'] as Map<String, dynamic>),
+        onboarding: OnboardingStrings.fromJson(json['onboarding'] as Map<String, dynamic>),
+        company: CompanyStrings.fromJson(json['company'] as Map<String, dynamic>),
+        phase4d: Phase4dStrings.fromJson(json['phase4d'] as Map<String, dynamic>),
+        phase4e: Phase4eStrings.fromJson(json['phase4e'] as Map<String, dynamic>),
+        agents: AgentStrings.fromJson(json['agents'] as Map<String, dynamic>),
     );
   }
 

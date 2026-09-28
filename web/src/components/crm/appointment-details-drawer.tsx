@@ -163,7 +163,7 @@ export function AppointmentDetailsDrawer({
 
             {/* Client Info */}
             <div className="space-y-2">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Client</h3>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.crm.clients.client}</h3>
               <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#060B13]/40 space-y-2">
                 <div className="flex items-center gap-2 text-slate-900 dark:text-[#F4F7FB] font-semibold">
                   <User className="w-4 h-4 text-blue-500" />
@@ -187,23 +187,23 @@ export function AppointmentDetailsDrawer({
             {/* Service & Employee */}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#060B13]/40">
-                <span className="text-xs text-slate-400">Prestation</span>
+                <span className="text-xs text-slate-400">{t.crm.filters.service}</span>
                 <p className="font-semibold text-slate-900 dark:text-[#F4F7FB] mt-0.5 truncate">
-                  {appointment.service_name || "Service standard"}
+                  {appointment.service_name || t.crm.filters.service}
                 </p>
                 <p className="text-xs text-[#0076FF] font-bold mt-1">
                   {appointment.price.toFixed(2)} {appointment.currency || "CAD"}
                 </p>
               </div>
               <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#060B13]/40">
-                <span className="text-xs text-slate-400">Collaborateur</span>
+                <span className="text-xs text-slate-400">{t.crm.filters.employee}</span>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: appointment.employee_color || "#00D4FF" }}
                   />
                   <p className="font-semibold text-slate-900 dark:text-[#F4F7FB] truncate">
-                    {appointment.employee_name || "Non assigné"}
+                    {appointment.employee_name || t.crm.filters.employee}
                   </p>
                 </div>
               </div>
@@ -213,7 +213,7 @@ export function AppointmentDetailsDrawer({
             {appointment.industry_data && Object.keys(appointment.industry_data).length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Car className="w-3.5 h-3.5 text-blue-500" /> Spécifications Métier
+                  <Car className="w-3.5 h-3.5 text-blue-500" /> {t.crm.headerSubtitle}
                 </h3>
                 <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#111D3D]/30 space-y-1.5 text-xs">
                   {Object.entries(appointment.industry_data).map(([key, val]) => (

@@ -49,6 +49,8 @@ interface TransactionItem {
 export function AccountingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const retail = t.retail;
+  const integrations = t.integrations;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -114,10 +116,10 @@ export function AccountingView() {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-                {t.navigation?.accountingAi || "Comptabilité & Finance IA"}
+                {t.navigation.accountingAi}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                Consolidation financière certifiée, détection d'anomalies et suivi automatisé de trésorerie.
+                {t.retail.forecastDisclaimer}
               </p>
             </div>
           </div>
@@ -130,7 +132,7 @@ export function AccountingView() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors cursor-pointer"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin text-[#0076FF]" : ""} />
-            <span>Actualiser</span>
+            <span>{integrations.syncNow}</span>
           </button>
 
           <Link
@@ -138,7 +140,7 @@ export function AccountingView() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors"
           >
             <Plus size={14} />
-            <span>Connecter des sources</span>
+            <span>{integrations.activeSources}</span>
           </Link>
         </div>
       </div>
@@ -148,7 +150,7 @@ export function AccountingView() {
         {/* Revenue */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>Chiffre d'affaires</span>
+            <span>{t.dashboard.revenue}</span>
             <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
               <ArrowUpRight size={14} />
             </span>
@@ -157,14 +159,14 @@ export function AccountingView() {
             ${revenue.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            Entrées comptabilisées
+            {t.dashboard.revenue}
           </div>
         </div>
 
         {/* Expenses */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>Dépenses consolidées</span>
+            <span>{retail.rawTitle}</span>
             <span className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400">
               <ArrowDownRight size={14} />
             </span>
@@ -173,14 +175,14 @@ export function AccountingView() {
             ${expenses.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            Charges et achats vérifiés
+            {retail.cleanedTitle}
           </div>
         </div>
 
         {/* Net Profit */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>Résultat Net</span>
+            <span>{t.dashboard.aiInsightTitle}</span>
             <span className={`p-1.5 rounded-lg text-xs font-bold ${netProfit >= 0 ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400" : "bg-rose-50 text-rose-600"}`}>
               {margin}%
             </span>
@@ -189,14 +191,14 @@ export function AccountingView() {
             ${netProfit.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            Marge bénéficiaire nette
+            {retail.qualityScore}
           </div>
         </div>
 
         {/* Pending Invoices */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>Créances en attente</span>
+            <span>{t.crm.status.pending}</span>
             <span className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400">
               <Clock size={14} />
             </span>
@@ -215,10 +217,10 @@ export function AccountingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-white/[0.06]">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              Journal des Écritures & Transactions
+              {t.integrations.drawerLogsTitle}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              Écritures synchronisées automatiquement depuis vos boutiques en ligne et imports bancaires.
+              {integrations.activeSourcesDescription}
             </p>
           </div>
 
@@ -231,7 +233,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              Toutes ({transactions.length})
+              {integrations.categoryAll} ({transactions.length})
             </button>
             <button
               onClick={() => setActiveFilter("revenue")}
@@ -241,7 +243,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              Revenus
+              {t.dashboard.revenue}
             </button>
             <button
               onClick={() => setActiveFilter("expense")}
@@ -251,7 +253,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              Dépenses
+              {retail.rawTitle}
             </button>
           </div>
         </div>
@@ -263,10 +265,10 @@ export function AccountingView() {
             </div>
             <div>
               <div className="text-sm font-bold text-slate-800 dark:text-[#F4F7FB]">
-                Aucune écriture comptable disponible
+                {t.dashboard.aiInsightEmpty}
               </div>
               <p className="text-xs text-slate-400 dark:text-slate-500 max-w-md mx-auto mt-1">
-                Connectez votre boutique en ligne (Shopify, WooCommerce, Etsy) ou importez vos relevés comptables (CSV, Excel) pour générer automatiquement vos écritures.
+                {integrations.activeSourcesDescription}
               </p>
             </div>
             <Link
@@ -274,7 +276,7 @@ export function AccountingView() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors"
             >
               <Plug size={14} />
-              <span>Ouvrir les Connexions</span>
+              <span>{t.navigation.connections}</span>
             </Link>
           </div>
         ) : (
@@ -282,13 +284,13 @@ export function AccountingView() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Catégorie</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4">Réf.</th>
-                  <th className="py-3 px-4 text-right">Montant</th>
-                  <th className="py-3 px-4 text-right">Statut</th>
+                  <th className="py-3 px-4">{t.crm.calendar.today}</th>
+                  <th className="py-3 px-4">{t.crm.filters.status}</th>
+                  <th className="py-3 px-4">{retail.overview}</th>
+                  <th className="py-3 px-4">{t.commandPalette.pagesGroup}</th>
+                  <th className="py-3 px-4">{t.integrations.drawerLogsTitle}</th>
+                  <th className="py-3 px-4 text-right">{t.dashboard.revenue}</th>
+                  <th className="py-3 px-4 text-right">{t.crm.filters.status}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -307,7 +309,7 @@ export function AccountingView() {
                               : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
                           }`}
                         >
-                          {isRevenue ? "Entrée" : "Sortie"}
+                          {isRevenue ? t.dashboard.revenue : retail.rawTitle}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-800 dark:text-[#F4F7FB] capitalize">
@@ -325,7 +327,7 @@ export function AccountingView() {
                       <td className="py-3 px-4 text-right">
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                           <CheckCircle2 size={12} />
-                          <span>Vérifié</span>
+                          <span>{integrations.statusConnected}</span>
                         </span>
                       </td>
                     </tr>

@@ -30,6 +30,7 @@ import { getAuthHeaders } from "@/lib/api-headers";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 
 interface ModuleEntitlementItem {
   key: string;
@@ -124,6 +125,7 @@ interface InvoiceItem {
 export function BillingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const companyTranslations = getApplicationCatalog(locale).company;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -321,15 +323,15 @@ export function BillingView() {
           return;
         }
       }
-      setActionError("Le portail Stripe n'est pas encore configuré pour cette organisation.");
+      setActionError(companyTranslations.billingUnavailable);
     } catch {
-      setActionError("Impossible d'ouvrir le portail Stripe pour l'instant.");
+      setActionError(companyTranslations.billingUnavailable);
     }
   };
 
   const handleManageSubscription = () => {
     if (!canManageBilling) {
-      setActionError("Seuls les administrateurs de l'organisation peuvent modifier l'abonnement.");
+      setActionError(companyTranslations.billingUnavailable);
       return;
     }
     const code = (subscription.plan_code || "").toLowerCase();
@@ -407,11 +409,11 @@ export function BillingView() {
           setQuoteSuccessMsg(null);
         }, 4000);
       } else {
-        const err = await res.json().catch(() => ({ detail: "Erreur d'enregistrement" }));
-        setActionError(err.detail || "Erreur lors de l'envoi de la demande Enterprise.");
+        const err = await res.json().catch(() => ({ detail: companyTranslations.billingUnavailable }));
+        setActionError(err.detail || companyTranslations.billingUnavailable);
       }
     } catch {
-      setActionError("Erreur réseau lors de l'envoi de la demande Enterprise.");
+      setActionError(companyTranslations.billingUnavailable);
     } finally {
       setSubmittingQuote(false);
     }
@@ -431,9 +433,9 @@ export function BillingView() {
           return;
         }
       }
-      setActionError("Un abonnement actif ou d'essai est requis pour acheter des packs de crédits.");
+      setActionError(companyTranslations.billingUnavailable);
     } catch {
-      setActionError("Erreur lors de l'accès au paiement des crédits.");
+      setActionError(companyTranslations.billingUnavailable);
     }
   };
 
@@ -451,7 +453,7 @@ export function BillingView() {
       });
 
       if (!res.ok) {
-        throw new Error("Erreur de téléchargement");
+        throw new Error(companyTranslations.billingUnavailable);
       }
 
       const blob = await res.blob();
@@ -465,10 +467,10 @@ export function BillingView() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      setActionSuccess(`Facture ${num} (${format.toUpperCase()}) téléchargée avec succès.`);
+      setActionSuccess(companyTranslations.billingInvoicesTitle);
       setTimeout(() => setActionSuccess(null), 4000);
     } catch {
-      setActionError(`Impossible de télécharger la facture au format ${format.toUpperCase()}.`);
+      setActionError(companyTranslations.billingUnavailable);
     } finally {
       setDownloadingId(null);
     }
@@ -511,10 +513,10 @@ export function BillingView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-white/[0.08]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-            {t.navigation?.billing || "Facturation"}
+            {companyTranslations.billingTitle}
           </h1>
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-            Gérez votre abonnement officiel, vos factures certifiées et le suivi de vos crédits d'intelligence artificielle.
+            {companyTranslations.settingsManageSubscription}
           </p>
         </div>
 
@@ -523,7 +525,7 @@ export function BillingView() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
         >
           <ExternalLink size={15} />
-          <span>Portail Stripe Sécurisé</span>
+          <span>{companyTranslations.billingPortalButton}</span>
         </button>
       </div>
 
@@ -546,7 +548,7 @@ export function BillingView() {
       <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-5">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/[0.06] pb-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Plan Actuel
+            {companyTranslations.settingsPlanLabel}
           </div>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${statusColor}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current" />
@@ -556,9 +558,9 @@ export function BillingView() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">Formule & Organisation</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{companyTranslations.settingsCompanySection}</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
-              {subscription.plan_name || "Base"}
+              {subscription.plan_name || companyTranslations.settingsPlanLabel}
             </div>
             <div className="text-xs text-slate-500 dark:text-[#94A3B8] flex items-center gap-1 mt-1">
               <Building2 size={13} className="text-[#0076FF]" />
@@ -625,14 +627,14 @@ export function BillingView() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <CreditCard size={14} />
-            <span>Changer de formule</span>
+              <span>{companyTranslations.settingsPlanLabel}</span>
           </button>
           <button
             onClick={handleOpenStripePortal}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#111D3D] dark:hover:bg-[#172652] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors cursor-pointer"
           >
             <ShieldCheck size={14} />
-            <span>Gérer le mode de paiement</span>
+            <span>{companyTranslations.billingPortalButton}</span>
           </button>
         </div>
       </div>
@@ -646,10 +648,10 @@ export function BillingView() {
             </div>
             <div>
               <h2 className="text-sm font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-                Modules Métiers Actifs & Quotas d'Agents
+                {companyTranslations.settingsTitle}
               </h2>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                Agents autonomes configurés pour votre organisation (distincts de vos crédits de requêtes IA).
+                {companyTranslations.settingsSubtitle}
               </p>
             </div>
           </div>
@@ -671,7 +673,7 @@ export function BillingView() {
         {/* Modules List Grid */}
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Agents métier activés sur votre espace :
+                {companyTranslations.settingsSessionSection}
           </div>
           <div className="flex flex-wrap gap-2.5">
             {entitlements?.active_modules && entitlements.active_modules.length > 0 ? (
@@ -696,7 +698,7 @@ export function BillingView() {
               })
             ) : (
               <span className="text-xs text-slate-400 italic">
-                Aucun module activé pour l'instant. Rendez-vous dans les Paramètres pour activer vos agents.
+                {companyTranslations.connectionsNoDataTitle}
               </span>
             )}
           </div>
@@ -708,7 +710,7 @@ export function BillingView() {
             <div className="space-y-1">
               <div className="text-xs font-bold text-[#0076FF] dark:text-[#00D4FF] flex items-center gap-1.5">
                 <Lock size={14} />
-                <span>Limite de 3 modules atteinte pour la formule Base</span>
+                <span>{companyTranslations.settingsSubtitle}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Passez à la formule Professional ({new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
@@ -718,7 +720,7 @@ export function BillingView() {
               onClick={() => setIsUpgradeModalOpen(true)}
               className="px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-semibold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              <span>Passer à Professional</span>
+              <span>{companyTranslations.settingsPlanLabel}</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -729,7 +731,7 @@ export function BillingView() {
             <div className="space-y-1">
               <div className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
                 <Shield size={14} />
-                <span>Capacité maximale de 6 modules atteinte (Professional)</span>
+                <span>{companyTranslations.settingsSubtitle}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Besoin d'agents supplémentaires, d'intégrations ERP/SAP ou d'un SLA dédié ? Demandez un devis Enterprise personnalisé.
@@ -739,7 +741,7 @@ export function BillingView() {
               onClick={() => setIsEnterpriseModalOpen(true)}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              <span>Demander un devis Enterprise</span>
+              <span>{companyTranslations.billingInvoicesTitle}</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -755,10 +757,10 @@ export function BillingView() {
             </div>
             <div>
               <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-                Crédits IA
+                {t.shell.aiCredits}
               </h2>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-                Consommation et solde en temps réel garantis par le registre de crédits d'Avenqo.
+                {companyTranslations.settingsSubtitle}
               </p>
             </div>
           </div>

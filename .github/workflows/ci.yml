@@ -30,6 +30,10 @@ jobs:
         working-directory: web
         run: npm ci || npm install
 
+      - name: Verify generated application catalogs
+        working-directory: web
+        run: npm run i18n:check
+
       - name: TypeScript type checking
         working-directory: web
         run: npx tsc --noEmit

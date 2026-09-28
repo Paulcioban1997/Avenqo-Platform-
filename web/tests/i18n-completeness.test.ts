@@ -5,6 +5,7 @@ import { LOCALES } from "../src/lib/i18n/locales";
 import { TRANSLATIONS } from "../src/lib/i18n/dictionary";
 import { getAppTranslations } from "../src/lib/i18n/app-dictionary";
 import { APP_LOCALE_WORDS } from "../src/lib/i18n/app-locale-overrides";
+import { APPLICATION_CATALOGS } from "../src/lib/i18n/generated-app-catalogs";
 
 const requiredAppPaths = [
   "navigation.dashboard",
@@ -93,6 +94,19 @@ describe("Avenqo canonical localization", () => {
     expect(errors, errors.slice(0, 100).join("\n")).toEqual([]);
     expect(`${passed}/44 PASS`).toBe("44/44 PASS");
     console.log("44/44 PASS");
+  });
+
+  it("keeps generated Web application catalogs synchronized with all canonical JSON sources", () => {
+    const catalogRoot = resolve(process.cwd(), "../frontend/assets/i18n");
+    const generatedSections = ["auth", "company", "dashboardHome", "assistant", "admin"];
+    expect(Object.keys(APPLICATION_CATALOGS)).toHaveLength(44);
+    for (const locale of LOCALES) {
+      const source = JSON.parse(readFileSync(resolve(catalogRoot, `${locale.code}.json`), "utf8"));
+      const expected = Object.fromEntries(
+        generatedSections.map((section) => [section, source[section]]),
+      );
+      expect(APPLICATION_CATALOGS[locale.code], locale.code).toEqual(expected);
+    }
   });
 
   it("provides visible application values for every locale", () => {

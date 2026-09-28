@@ -27,6 +27,7 @@ import { AvenqoCard, StatusBadge, StatusBadgeType } from "@/components/ui/avenqo
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export type ConnectorCategory =
@@ -88,6 +89,7 @@ interface StripeProviderStatus {
 export function IntegrationsHubView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const connector = getApplicationCatalog(locale).company.connectorHub;
 
   const [selectedCategory, setSelectedCategory] = useState<ConnectorCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -188,10 +190,10 @@ export function IntegrationsHubView() {
                   day: "numeric",
                   month: "short",
                 })
-              : "Récemment",
+              : connector.neverSynced,
             message:
               h.message ||
-              `Réconciliation ${h.provider} : ${h.records_synced || 0} enregistrements.`,
+              `${connector.sync}: ${h.records_synced || 0} ${connector.records}.`,
             level:
               h.status === "ERROR" || h.status === "FAILED"
                 ? "error"
@@ -236,9 +238,7 @@ export function IntegrationsHubView() {
     const currentState = connectorActiveState[connectorId] ?? true;
     const nextState = !currentState;
     setConnectorActiveState((prev) => ({ ...prev, [connectorId]: nextState }));
-    setSyncSuccessToast(
-      `Connecteur ${selectedConnector?.name} : ${nextState ? "Activé" : "Désactivé (synchronisation suspendue)"}.`
-    );
+    setSyncSuccessToast(`${selectedConnector?.name}: ${nextState ? connector.connected : connector.disconnected}.`);
 
     const activeConn = rawConnections.find((c) => c.provider.toLowerCase() === connectorId);
     if (activeConn) {
@@ -266,7 +266,7 @@ export function IntegrationsHubView() {
       ? current.filter((e) => e !== entityKey)
       : [...current, entityKey];
     setConnectorEntitiesState((prev) => ({ ...prev, [connectorId]: next }));
-    setSyncSuccessToast(`Flux de données sélectionné mis à jour pour ${selectedConnector?.name}.`);
+    setSyncSuccessToast(`${connector.connection}: ${selectedConnector?.name}.`);
 
     const activeConn = rawConnections.find((c) => c.provider.toLowerCase() === connectorId);
     if (activeConn) {
@@ -290,13 +290,13 @@ export function IntegrationsHubView() {
 
     try {
       if (!wooStoreUrl.trim()) {
-        throw new Error("Veuillez saisir l'URL de votre boutique WooCommerce.");
+        throw new Error(connector.wooStoreUrl);
       }
       if (!wooConsumerKey.trim()) {
-        throw new Error("Veuillez saisir la Consumer Key (commençant par ck_).");
+        throw new Error(connector.wooConsumerKey);
       }
       if (!wooConsumerSecret.trim()) {
-        throw new Error("Veuillez saisir la Consumer Secret (commençant par cs_).");
+        throw new Error(connector.wooConsumerSecret);
       }
 
       let formattedUrl = wooStoreUrl.trim();
@@ -318,12 +318,12 @@ export function IntegrationsHubView() {
         const errData = await res.json().catch(() => ({}));
         throw new Error(
           errData?.detail ||
-            "Échec de connexion à la boutique. Vérifiez l'adresse et vos clés d'accès."
+            connector.launchFailed
         );
       }
 
       setSyncSuccessToast(
-        `Boutique WooCommerce (${formattedUrl}) connectée avec succès ! Importation en cours...`
+        `${connector.connected}: ${connector.processing}`
       );
       setShowConfigForm(false);
       await loadConnections();
@@ -331,12 +331,12 @@ export function IntegrationsHubView() {
       const newLog: SyncLogItem = {
         id: `log-${Date.now()}`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        message: `Boutique WooCommerce connectée : ${formattedUrl}. Synchronisation initiale lancée.`,
+        message: `${connector.connected}: ${connector.syncing}.`,
         level: "success",
       };
       setSyncLogs((prev) => [newLog, ...prev]);
     } catch (err: any) {
-      setFormError(err.message || "Erreur lors de la connexion.");
+      setFormError(err.message || connector.launchFailed);
     } finally {
       setIsSubmittingManual(false);
     }

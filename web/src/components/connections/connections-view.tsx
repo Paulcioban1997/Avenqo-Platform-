@@ -27,6 +27,7 @@ import {
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 
 interface DatasetItem {
   id: string;
@@ -87,6 +88,8 @@ interface SyncLogItem {
 export function ConnectionsView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const company = getApplicationCatalog(locale).company;
+  const connector = company.connectorHub;
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -169,7 +172,7 @@ export function ConnectionsView() {
           enabled,
         }),
       });
-      if (!response.ok) throw new Error("Impossible d'actualiser cette source.");
+      if (!response.ok) throw new Error(connector.unavailable);
       const persisted = (await response.json()) as RetailSourceItem;
       setRetailSources((items) => items.map((item) =>
         item.source_type === persisted.source_type && item.source_id === persisted.source_id
@@ -177,7 +180,7 @@ export function ConnectionsView() {
           : item,
       ));
     } catch (error) {
-      setAlertError(error instanceof Error ? error.message : "Impossible d'actualiser cette source.");
+      setAlertError(error instanceof Error ? error.message : connector.unavailable);
     } finally {
       setActionLoading(false);
     }
@@ -192,14 +195,14 @@ export function ConnectionsView() {
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ source_type: source.source_type, source_id: source.source_id }),
       });
-      if (!response.ok) throw new Error("Impossible de sélectionner cette source.");
+      if (!response.ok) throw new Error(connector.unavailable);
       const selected = (await response.json()) as RetailSourceItem;
       setRetailSources((items) => items.map((item) => ({
         ...item,
         active: item.source_type === selected.source_type && item.source_id === selected.source_id,
       })));
     } catch (error) {
-      setAlertError(error instanceof Error ? error.message : "Impossible de sélectionner cette source.");
+      setAlertError(error instanceof Error ? error.message : connector.unavailable);
     } finally {
       setActionLoading(false);
     }
@@ -265,13 +268,13 @@ export function ConnectionsView() {
       }
 
       setUploadProgress(100);
-      setAlertSuccess(`${fileList.length} fichier(s) importé(s) et nettoyé(s) automatiquement par l'IA.`);
+      setAlertSuccess(`${fileList.length} ${fileList.length === 1 ? company.connectionsUploadCountOne : company.connectionsUploadCountOther}`);
       setTimeout(() => setUploadProgress(null), 1500);
       setTimeout(() => setAlertSuccess(null), 5000);
       loadData();
     } catch (err: any) {
       setUploadProgress(null);
-      setAlertError(err.message || "Erreur lors du traitement des fichiers.");
+      setAlertError(err.message || company.connectionsProcessingError);
     }
   };
 
@@ -290,7 +293,7 @@ export function ConnectionsView() {
       if (!res.ok) {
         throw new Error("Impossible de déclencher la synchronisation.");
       }
-      setAlertSuccess("Synchronisation lancée avec succès en arrière-plan.");
+      setAlertSuccess(connector.syncing);
       setTimeout(() => setAlertSuccess(null), 4000);
       loadData();
     } catch (err: any) {
@@ -329,7 +332,7 @@ export function ConnectionsView() {
       setWooStoreUrl("");
       setWooKey("");
       setWooSecret("");
-      setAlertSuccess("Boutique WooCommerce connectée avec succès !");
+      setAlertSuccess(connector.connected);
       loadData();
     } catch (err: any) {
       setAlertError(err.message);
@@ -346,7 +349,7 @@ export function ConnectionsView() {
         : `/api/v1/datasets/${dataset.id}/export/${format}`;
 
       const res = await fetch(endpoint, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error("Erreur de téléchargement");
+      if (!res.ok) throw new Error(connector.unavailable);
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -358,7 +361,7 @@ export function ConnectionsView() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch {
-      setAlertError("Impossible de télécharger le fichier.");
+      setAlertError(connector.unavailable);
     }
   };
 
@@ -371,11 +374,11 @@ export function ConnectionsView() {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error("Erreur lors de la suppression.");
+      if (!res.ok) throw new Error(company.connectionsDeleteFailure);
 
       setDatasets((prev) => prev.filter((d) => d.id !== deleteModalDataset.id));
       setDeleteModalDataset(null);
-      setAlertSuccess(`Jeu de données "${deleteModalDataset.name}" supprimé avec succès.`);
+      setAlertSuccess(company.connectionsDeleteSuccess);
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
       setAlertError(err.message);
@@ -399,10 +402,10 @@ export function ConnectionsView() {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-                {t.navigation?.connections || "Connexions"}
+                {t.navigation.connections}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                Centralisez vos boutiques en ligne, imports de fichiers et flux de données prêts pour l'intelligence artificielle.
+                {company.navConnectionsDescription}
               </p>
             </div>
           </div>
@@ -415,14 +418,14 @@ export function ConnectionsView() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? "animate-spin text-[#0076FF]" : ""} />
-            <span>Actualiser</span>
+            <span>{connector.refresh}</span>
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <Plus size={14} />
-            <span>Ajouter des fichiers</span>
+            <span>{company.connectionsAddFiles}</span>
           </button>
           <input
             ref={fileInputRef}
@@ -469,7 +472,7 @@ export function ConnectionsView() {
             <h2 id="active-retail-sources" className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">{t.integrations.activeSources}</h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">{t.integrations.activeSourcesDescription}</p>
           </div>
-          <button onClick={loadData} disabled={loading} aria-label="Actualiser les sources" className="p-2 text-slate-500 hover:text-[#0076FF] disabled:opacity-50">
+          <button onClick={loadData} disabled={loading} aria-label={connector.refresh} className="p-2 text-slate-500 hover:text-[#0076FF] disabled:opacity-50">
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
@@ -528,10 +531,10 @@ export function ConnectionsView() {
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
               <UploadCloud size={18} className="text-[#0076FF]" />
-              <span>A. Fichiers depuis votre ordinateur</span>
+              <span>{connector.fileImportTitle}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-              Glissez-déposez vos fichiers pour une ingestion universelle et un nettoyage automatique certifié.
+              {connector.fileImportSubtitle}
             </p>
           </div>
         </div>
@@ -558,17 +561,17 @@ export function ConnectionsView() {
             <UploadCloud size={24} />
           </div>
           <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">
-            Cliquez pour importer ou glissez-déposez vos fichiers ici
+            {company.connectionsImportButton}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            Formats supportés : CSV, XLS, XLSX, JSON, PDF, DOC, DOCX, Parquet (Max 50 Mo par fichier)
+            {company.connectionsNoDataFormats}
           </div>
         </div>
 
         {uploadProgress !== null && (
           <div className="space-y-1.5 pt-2">
             <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-semibold">
-              <span>Ingestion et nettoyage automatique en cours...</span>
+              <span>{company.connectionsPreparingData}</span>
               <span>{uploadProgress}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden">
@@ -586,10 +589,10 @@ export function ConnectionsView() {
         <div>
           <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
             <Store size={18} className="text-[#0076FF]" />
-            <span>B. Boutiques en ligne & Places de marché</span>
+            <span>{connector.commerceSources}</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-            Intégrations testées et certifiées pour l'extraction de vos commandes, stocks et clients.
+            {connector.providerDescription}
           </p>
         </div>
 
@@ -607,31 +610,31 @@ export function ConnectionsView() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Shopify</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Disponible</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{connector.available}</span>
                     </div>
                     {isSyncing ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
                         <RefreshCw size={10} className="animate-spin" />
-                        <span>Synchronisation</span>
+                        <span>{connector.syncing}</span>
                       </span>
                     ) : isError ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
                         <AlertTriangle size={10} />
-                        <span>Erreur</span>
+                        <span>{connector.error}</span>
                       </span>
                     ) : isConnected ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                         <CheckCircle2 size={10} />
-                        <span>Connecté</span>
+                        <span>{connector.connected}</span>
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-                        Non connecté
+                        {connector.disconnected}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                    Commandes, produits, inventaire et clients synchronisés via OAuth 2.0 officiel.
+                    {connector.providerDescription}
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
@@ -642,12 +645,12 @@ export function ConnectionsView() {
                       disabled={actionLoading}
                       className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-white/[0.08] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
                     >
-                      Synchroniser
+                      {connector.sync}
                     </button>
                   ) : (
                     <button
                       onClick={async () => {
-                        const shop = prompt("Entrez le domaine de votre boutique Shopify (ex: ma-boutique.myshopify.com) :");
+                        const shop = prompt(connector.shopDomainTitle);
                         if (!shop) return;
                         setActionLoading(true);
                         try {
@@ -658,14 +661,14 @@ export function ConnectionsView() {
                           });
                           if (!res.ok) {
                             const err = await res.json().catch(() => ({}));
-                            throw new Error(err.detail || "Erreur lors de l'autorisation Shopify.");
+                            throw new Error(err.detail || connector.launchFailed);
                           }
                           const data = await res.json();
                           if (data.authorization_url) {
                             window.location.href = data.authorization_url;
                           }
                         } catch (err: any) {
-                          setAlertError(err.message || "Erreur de connexion Shopify.");
+                          setAlertError(err.message || connector.launchFailed);
                         } finally {
                           setActionLoading(false);
                         }
@@ -673,7 +676,7 @@ export function ConnectionsView() {
                       disabled={actionLoading}
                       className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                     >
-                      Connecter
+                      {connector.connect}
                     </button>
                   )}
                 </div>
@@ -694,31 +697,31 @@ export function ConnectionsView() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">WooCommerce</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Disponible</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{connector.available}</span>
                     </div>
                     {isSyncing ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
                         <RefreshCw size={10} className="animate-spin" />
-                        <span>Synchronisation</span>
+                        <span>{connector.syncing}</span>
                       </span>
                     ) : isError ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
                         <AlertTriangle size={10} />
-                        <span>Erreur</span>
+                        <span>{connector.error}</span>
                       </span>
                     ) : isConnected ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                         <CheckCircle2 size={10} />
-                        <span>Connecté</span>
+                        <span>{connector.connected}</span>
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-                        Non connecté
+                        {connector.disconnected}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                    Connexion directe par clés API REST sécurisées avec synchronisation bidirectionnelle.
+                    {connector.providerDescription}
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
@@ -729,14 +732,14 @@ export function ConnectionsView() {
                       disabled={actionLoading}
                       className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-white/[0.08] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
                     >
-                      Synchroniser
+                      {connector.sync}
                     </button>
                   ) : (
                     <button
                       onClick={() => setIsWooModalOpen(true)}
                       className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                     >
-                      Connecter
+                      {connector.connect}
                     </button>
                   )}
                 </div>
@@ -750,11 +753,11 @@ export function ConnectionsView() {
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Etsy</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
-                  Bientôt disponible
+                  {connector.comingSoon}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                Marketplace Etsy (en cours de certification officielle pour une prochaine mise à jour).
+                {connector.providerDescription}
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
@@ -763,7 +766,7 @@ export function ConnectionsView() {
                 disabled
                 className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
               >
-                Bientôt disponible
+                {connector.comingSoon}
               </button>
             </div>
           </div>
@@ -778,22 +781,22 @@ export function ConnectionsView() {
                 <div className="flex items-center justify-between">
                   <span className="font-extrabold text-sm text-slate-700 dark:text-slate-300">{platform}</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
-                    Bientôt disponible
+                    {connector.comingSoon}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  Connecteur en cours d'intégration certifiée pour la prochaine mise à jour.
+                  {connector.providerDescription}
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-200/40 dark:border-white/[0.04] flex items-center justify-between">
                 <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Lock size={12} /> Prévu
+                  <Lock size={12} /> {connector.comingSoon}
                 </span>
                 <button
                   disabled
                   className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
                 >
-                  Bientôt
+                  {connector.comingSoon}
                 </button>
               </div>
             </div>
@@ -807,10 +810,10 @@ export function ConnectionsView() {
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
               <CheckCircle2 size={18} className="text-emerald-500" />
-              <span>C. Sources actuellement connectées</span>
+              <span>{connector.connectedStores}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-              Boutiques actives alimentant les modules Retail AI, CRM AI et Comptabilité de votre organisation.
+              {connector.commerceSources}
             </p>
           </div>
 
@@ -821,14 +824,14 @@ export function ConnectionsView() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               <RefreshCw size={13} className={actionLoading ? "animate-spin" : ""} />
-              <span>Tout resynchroniser</span>
+              <span>{connector.sync}</span>
             </button>
           )}
         </div>
 
         {connections.length === 0 ? (
           <div className="p-8 text-center rounded-xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06] text-xs text-slate-400 dark:text-slate-500">
-            Aucune boutique connectée pour le moment. Choisissez WooCommerce, Shopify ou Etsy ci-dessus pour connecter vos données.
+            {company.connectionsNoDataTitle}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -854,7 +857,7 @@ export function ConnectionsView() {
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                   <div>
-                    Dernière synchro: {conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString(locale) : "Récente"}
+                    {connector.lastSync}: {conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString(locale) : connector.neverSynced}
                   </div>
                   <div className="text-right font-semibold text-slate-700 dark:text-slate-300">
                     {conn.records_count || 0} {t.integrations.recordsCount}
@@ -882,7 +885,7 @@ export function ConnectionsView() {
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-[#0076FF] dark:bg-white/[0.08] dark:text-[#00D4FF] text-[11px] font-semibold transition-colors cursor-pointer"
                   >
                     <RefreshCw size={12} className={actionLoading ? "animate-spin" : ""} />
-                    <span>Synchroniser</span>
+                    <span>{connector.sync}</span>
                   </button>
                 </div>
               </div>;
@@ -897,7 +900,7 @@ export function ConnectionsView() {
         <div>
           <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
             <Clock size={18} className="text-[#0076FF]" />
-            <span>D. Historique des synchronisations</span>
+            <span>{t.integrations.drawerLogsTitle}</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
             Journal complet des cycles d'extraction, données reçues et mises à jour incrémentales.
@@ -913,12 +916,12 @@ export function ConnectionsView() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Source</th>
-                  <th className="py-3 px-4">Enregistrements</th>
-                  <th className="py-3 px-4">Mises à jour</th>
-                  <th className="py-3 px-4">Erreurs</th>
-                  <th className="py-3 px-4 text-right">Statut</th>
+                  <th className="py-3 px-4">{connector.lastSync}</th>
+                  <th className="py-3 px-4">{connector.connection}</th>
+                  <th className="py-3 px-4">{connector.records}</th>
+                  <th className="py-3 px-4">{connector.sync}</th>
+                  <th className="py-3 px-4">{connector.error}</th>
+                  <th className="py-3 px-4 text-right">{t.integrations.statusConnected}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -942,7 +945,7 @@ export function ConnectionsView() {
                     <td className="py-3 px-4 text-right">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 size={12} />
-                        <span>Réussi</span>
+                        <span>{connector.ready}</span>
                       </span>
                     </td>
                   </tr>
@@ -976,12 +979,12 @@ export function ConnectionsView() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                  <th className="py-3 px-4">Nom du fichier / Source</th>
-                  <th className="py-3 px-4">Lignes</th>
-                  <th className="py-3 px-4">Colonnes</th>
-                  <th className="py-3 px-4">Qualité</th>
-                  <th className="py-3 px-4">Statut</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">{connector.fileImportTitle}</th>
+                  <th className="py-3 px-4">{company.connectionsStatRowsLabel}</th>
+                  <th className="py-3 px-4">{company.connectionsStatColumnsLabel}</th>
+                  <th className="py-3 px-4">{company.connectionsStatUpdatedLabel}</th>
+                  <th className="py-3 px-4">{t.integrations.statusConnected}</th>
+                  <th className="py-3 px-4 text-right">{connector.connection}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -1011,22 +1014,22 @@ export function ConnectionsView() {
                           title={ds.source_missing_message || "Fichier source indisponible"}
                         >
                           <AlertTriangle size={12} className="shrink-0 text-amber-500" />
-                          <span>Fichier source indisponible</span>
+                          <span>{company.connectionsFileEmptyError}</span>
                         </span>
                       ) : ds.pipeline_status === "analyzing" || ds.status === "analyzing" ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
                           <RefreshCw size={12} className="animate-spin" />
-                          <span>Analyse...</span>
+                          <span>{connector.processing}</span>
                         </span>
                       ) : ds.status === "failed" || ds.pipeline_status === "failed" ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
                           <AlertCircle size={12} />
-                          <span>Échec</span>
+                          <span>{connector.error}</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                           <CheckCircle2 size={12} />
-                          <span>Prêt</span>
+                          <span>{connector.ready}</span>
                         </span>
                       )}
                     </td>
@@ -1035,24 +1038,24 @@ export function ConnectionsView() {
                         {ds.source_missing || ds.pipeline_status === "source_missing" ? (
                           <button
                             onClick={() => fileInputRef.current?.click()}
-                            title="Réimporter ce fichier pour restaurer l'analyse"
+                            title={company.connectionsImportAnother}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-[11px] font-semibold transition-colors cursor-pointer"
                           >
                             <UploadCloud size={12} />
-                            <span>Réimporter</span>
+                            <span>{company.connectionsImportAnother}</span>
                           </button>
                         ) : (
                           <>
                             <button
                               onClick={() => setPreviewDataset(ds)}
-                              title="Aperçu des colonnes et données"
+                              title={connector.capabilities}
                               className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-500 dark:text-slate-400 cursor-pointer"
                             >
                               <Eye size={14} />
                             </button>
                             <button
                               onClick={() => handleDownloadDataset(ds, "csv")}
-                              title="Télécharger les données nettoyées (CSV)"
+                              title={connector.records}
                               className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] text-[#0076FF] cursor-pointer"
                             >
                               <Download size={14} />
@@ -1061,7 +1064,7 @@ export function ConnectionsView() {
                         )}
                         <button
                           onClick={() => setDeleteModalDataset(ds)}
-                          title="Supprimer ce jeu de données"
+                          title={company.connectionsDeleteData}
                           className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-600 cursor-pointer"
                         >
                           <Trash2 size={14} />
@@ -1133,7 +1136,7 @@ export function ConnectionsView() {
                 <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
                   <AlertTriangle size={16} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                   <div>
-                    <div className="font-bold">Fichier source indisponible</div>
+                    <div className="font-bold">{company.connectionsFileEmptyError}</div>
                     <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
                       {previewDataset.source_missing_message ||
                         "Le fichier original n'est plus accessible sur le stockage. Utilisez le bouton Réimporter pour recharger ce fichier et relancer l'analyse."}
@@ -1160,7 +1163,7 @@ export function ConnectionsView() {
                     </div>
                   ))
                 ) : (
-                  <div className="text-xs text-slate-400">Colonnes standards synchronisées avec succès.</div>
+                  <div className="text-xs text-slate-400">{connector.ready}</div>
                 )}
               </div>
             </div>
@@ -1186,7 +1189,7 @@ export function ConnectionsView() {
                 <Trash2 size={20} />
               </div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Confirmer la suppression
+                {company.connectionsDeleteTitle}
               </h3>
             </div>
 
@@ -1196,7 +1199,7 @@ export function ConnectionsView() {
                 <strong>"{deleteModalDataset.name}"</strong> ?
               </p>
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
-                <strong>Impact :</strong> Ce jeu de données ne sera plus utilisé par les analyses prédictives du Retail AI et du Dashboard. Vos boutiques en ligne connectées resteront intactes.
+                <strong>{company.connectionsDeleteWarning}</strong>
               </div>
             </div>
 
@@ -1205,14 +1208,14 @@ export function ConnectionsView() {
                 onClick={() => setDeleteModalDataset(null)}
                 className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
               >
-                Annuler
+                {company.connectionsDeleteCancel}
               </button>
               <button
                 onClick={handleConfirmDelete}
                 disabled={actionLoading}
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                {actionLoading ? "Suppression..." : "Supprimer définitivement"}
+                {company.connectionsDeletePermanently}
               </button>
             </div>
           </div>
@@ -1227,7 +1230,7 @@ export function ConnectionsView() {
               <div className="flex items-center gap-2">
                 <Store size={18} className="text-[#0076FF]" />
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Connecter WooCommerce
+                  {connector.wooTitle}
                 </h3>
               </div>
               <button
@@ -1241,21 +1244,21 @@ export function ConnectionsView() {
             <form onSubmit={handleConnectWooCommerce} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  URL de la boutique WooCommerce
+                  {connector.wooStoreUrl}
                 </label>
                 <input
                   type="text"
                   required
                   value={wooStoreUrl}
                   onChange={(e) => setWooStoreUrl(e.target.value)}
-                  placeholder="https://votre-boutique.com"
+                  placeholder={connector.wooStoreUrlHint}
                   className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0076FF]"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Clé client (Consumer Key)
+                  {connector.wooConsumerKey}
                 </label>
                 <input
                   type="text"
@@ -1269,7 +1272,7 @@ export function ConnectionsView() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Secret client (Consumer Secret)
+                  {connector.wooConsumerSecret}
                 </label>
                 <input
                   type="password"
@@ -1282,7 +1285,7 @@ export function ConnectionsView() {
               </div>
 
               <div className="text-[11px] text-slate-400">
-                Vos clés API sont chiffrées côté serveur et restent isolées à votre entreprise.
+                {connector.wooManualDescription}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-white/[0.06]">
@@ -1291,14 +1294,14 @@ export function ConnectionsView() {
                   onClick={() => setIsWooModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                 >
-                  Annuler
+                  {connector.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
                   className="px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {actionLoading ? "Vérification..." : "Valider et connecter"}
+                  {actionLoading ? connector.connecting : connector.wooConnectManual}
                 </button>
               </div>
             </form>

@@ -135,7 +135,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || "Impossible de créer le client.");
+        throw new Error(d.detail || t.crm.actions.mutationError);
       }
 
       setIsNewClientOpen(false);
@@ -146,7 +146,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
       setCompanyName("");
       fetchClients();
     } catch (err: any) {
-      setError(err.message || "Erreur inconnue");
+      setError(err.message || t.crm.actions.mutationError);
     } finally {
       setIsSubmitting(false);
     }
@@ -162,7 +162,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher nom, courriel, téléphone..."
+            placeholder={t.crm.searchPlaceholder}
             className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#0076FF]"
           />
         </form>
@@ -173,11 +173,11 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[#0076FF]"
           >
-            <option value="all">Tous les statuts</option>
-            <option value="active">Actif</option>
-            <option value="lead">Prospect / Lead</option>
-            <option value="inactive">Inactif</option>
-            <option value="vip">VIP</option>
+            <option value="all">{t.crm.calendar.allStatuses}</option>
+            <option value="active">{t.crm.status.confirmed}</option>
+            <option value="lead">{t.crm.clients.client}</option>
+            <option value="inactive">{t.crm.status.cancelled}</option>
+            <option value="vip">{t.crm.status.completed}</option>
           </select>
 
           <button
@@ -185,7 +185,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             className="px-4 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:opacity-90 transition flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
-            <span>Nouveau client</span>
+            <span>{t.crm.actions.save}</span>
           </button>
         </div>
       </div>
@@ -196,25 +196,25 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-3 px-4 font-semibold">Client</th>
-                <th className="py-3 px-4 font-semibold">Contact</th>
-                <th className="py-3 px-4 font-semibold">Statut</th>
-                <th className="py-3 px-4 font-semibold">Rendez-vous</th>
-                <th className="py-3 px-4 font-semibold text-right">Revenus cumulés</th>
-                <th className="py-3 px-4 text-center">Action</th>
+                <th className="py-3 px-4 font-semibold">{t.crm.clients.client}</th>
+                <th className="py-3 px-4 font-semibold">{t.crm.searchPlaceholder}</th>
+                <th className="py-3 px-4 font-semibold">{t.crm.filters.status}</th>
+                <th className="py-3 px-4 font-semibold">{t.crm.tabs.appointments}</th>
+                <th className="py-3 px-4 font-semibold text-right">{t.crm.kpis.revenueGenerated}</th>
+                <th className="py-3 px-4 text-center">{t.crm.actions.modify}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    Chargement des fiches clients...
+                    {t.crm.calendar.loadingAppointments}
                   </td>
                 </tr>
               ) : clients.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    Aucun client trouvé dans ce portefeuille.
+                    {t.crm.calendar.noAppointments}
                   </td>
                 </tr>
               ) : (

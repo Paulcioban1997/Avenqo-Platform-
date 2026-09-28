@@ -8,6 +8,7 @@ import { useEffect, useState, FormEvent } from "react";
 import { RegionLanguageSelector } from "@/components/region-language-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { getAuthStrings } from "@/lib/i18n/auth-dictionary";
 
 type StatusState = "loading" | "success" | "error" | "missing_token";
 
@@ -17,6 +18,7 @@ export function VerifyEmailView() {
   const token = searchParams.get("token")?.trim() || "";
 
   const { locale } = useLocale();
+  const authStrings = getAuthStrings(locale);
   const isEn = locale === "en";
 
   const [status, setStatus] = useState<StatusState>(token ? "loading" : "missing_token");
@@ -152,23 +154,21 @@ export function VerifyEmailView() {
     }
   }
 
-  const asideTitle = isEn ? "Activate your workspace." : "Activez votre espace.";
-  const asideDesc = isEn
-    ? "Verify your corporate email address to unlock full multi-tenant access and enterprise intelligence modules."
-    : "Vérifiez votre adresse email professionnelle pour débloquer l'accès complet et vos modules d'intelligence d'affaires.";
+  const asideTitle = authStrings.badgeRegister;
+  const asideDesc = authStrings.asideRegisterDesc;
 
   return (
     <div className="auth-layout">
       <aside className="auth-aside">
         <Link href="/" className="auth-back">
-          <ArrowLeft size={16} /> {isEn ? "Back to home" : "Retour à l'accueil"}
+          <ArrowLeft size={16} /> {authStrings.backToHome}
         </Link>
         <div className="auth-aside-copy">
-          <span>{isEn ? "AVENQO WORKSPACE" : "ESPACE AVENQO"}</span>
+          <span>{authStrings.workspace}</span>
           <h1>{asideTitle}</h1>
           <p>{asideDesc}</p>
         </div>
-        <p className="auth-legal">Une plateforme de PMC Solutions AI</p>
+        <p className="auth-legal">{authStrings.legal}</p>
       </aside>
 
       <section className="auth-panel">
