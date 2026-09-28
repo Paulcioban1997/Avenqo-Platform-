@@ -179,7 +179,7 @@ export function MarketingView() {
                 <strong>Canal :</strong> {generatedCampaign.channel}
               </div>
               <div>
-                <strong>Segment :</strong> {generatedCampaign.target_segment}
+                <strong>{company.customersSegment} :</strong> {generatedCampaign.target_segment}
               </div>
             </div>
 
@@ -197,7 +197,9 @@ export function MarketingView() {
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">Clients Fidèles & VIP</div>
+            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">
+              {company.customerSegmentLoyal} &amp; {company.customerSegmentVip}
+            </div>
             <div className="text-lg font-extrabold text-[#0076FF] dark:text-[#00D4FF] mt-1">
               Top 15 %
             </div>
@@ -207,7 +209,7 @@ export function MarketingView() {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">À Risque d'Attrition</div>
             <div className="text-lg font-extrabold text-amber-600 dark:text-amber-400 mt-1">
-              Dormants
+              {company.customerSegmentDormant}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">Dernier achat il y a plus de 60 jours</div>
           </div>
