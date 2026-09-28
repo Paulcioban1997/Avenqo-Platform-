@@ -379,10 +379,10 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                   {/* Appointments Timeline */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold text-slate-900 dark:text-white uppercase tracking-wider">
-                      Historique des Rendez-vous
+                      {t.crm.tabs.appointments}
                     </h4>
                     {!client360Data?.appointments || client360Data.appointments.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">Aucun rendez-vous passé ou futur.</p>
+                      <p className="text-xs text-slate-400 italic">{t.crm.calendar.noAppointments}</p>
                     ) : (
                       <div className="space-y-2">
                         {client360Data.appointments.map((app: any) => (
