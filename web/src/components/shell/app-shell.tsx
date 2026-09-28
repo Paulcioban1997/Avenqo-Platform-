@@ -77,7 +77,7 @@ export function AppShell({ children }: AppShellProps) {
   const [activeDataSources, setActiveDataSources] = useState<string[]>([]);
   const [isTenantMenuOpen, setIsTenantMenuOpen] = useState(false);
   const [isNotifMenuOpen, setIsNotifMenuOpen] = useState(false);
-  const [unreadNotifsCount, setUnreadNotifsCount] = useState(2);
+  const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
 
   // Dynamic AI credit meter state
   const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
@@ -172,10 +172,10 @@ export function AppShell({ children }: AppShellProps) {
   ];
 
   const platformModules = [
-    { href: "/connections", label: locale === "fr" ? "Connexions" : "Connections", icon: Plug },
+    { href: "/connections", label: t.navigation.connections, icon: Plug },
     { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
-    { href: "/billing", label: t.navigation.billing || "Facturation", icon: CreditCard },
+    { href: "/billing", label: t.navigation.billing, icon: CreditCard },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
   ];
 
@@ -199,7 +199,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Mobile menu toggle */}
           <button
             onClick={() => setIsSidebarOpen((prev) => !prev)}
-            aria-label="Basculer la barre latérale"
+            aria-label={isSidebarOpen ? t.shell.collapseSidebar : t.shell.expandSidebar}
             className="lg:hidden p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-[#94A3B8] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
           >
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
@@ -269,7 +269,7 @@ export function AppShell({ children }: AppShellProps) {
           ) : (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08]">
               <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-              <span className="max-w-[140px] truncate">{activeTenant || "Mon Espace"}</span>
+              <span className="max-w-[140px] truncate">{activeTenant || t.shell.workspace}</span>
             </div>
           )}
 
@@ -313,7 +313,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Mobile search trigger */}
           <button
             onClick={() => setIsCommandPaletteOpen(true)}
-            aria-label="Recherche rapide"
+            aria-label={t.shell.quickSearch}
             className="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-[#94A3B8] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
           >
             <Search size={18} />
@@ -354,28 +354,11 @@ export function AppShell({ children }: AppShellProps) {
                     onClick={() => setUnreadNotifsCount(0)}
                     className="text-[10px] text-[#0076FF] hover:underline"
                   >
-                    Tout marquer comme lu
+                    {t.shell.markAllRead}
                   </button>
                 </div>
-                <div className="space-y-2">
-                  <div className="p-2 rounded-xl bg-blue-50/60 dark:bg-[#111D3D] border border-blue-100 dark:border-white/[0.06]">
-                    <div className="font-semibold text-slate-900 dark:text-[#F4F7FB] flex items-center justify-between">
-                      <span>Synchronisation WooCommerce</span>
-                      <span className="text-[10px] text-slate-400">14m</span>
-                    </div>
-                    <p className="mt-0.5 text-slate-600 dark:text-[#94A3B8] text-[11px]">
-                      14 produits réconciliés avec succès sur le registre normalisé.
-                    </p>
-                  </div>
-                  <div className="p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-                    <div className="font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                      <span>Alerte Réapprovisionnement</span>
-                      <span className="text-[10px] text-slate-400">1h</span>
-                    </div>
-                    <p className="mt-0.5 text-amber-700/90 dark:text-amber-300/80 text-[11px]">
-                      Stock bas identifié sur Avenqo Headphones X (30 unités restantes).
-                    </p>
-                  </div>
+                <div className="p-3 text-center text-slate-500 dark:text-slate-400">
+                  {t.shell.noNotifications}
                 </div>
               </div>
             )}
@@ -430,7 +413,7 @@ export function AppShell({ children }: AppShellProps) {
             {/* Core Modules */}
             <div>
               <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
-                Opérations Principales
+                {t.shell.mainOperations}
               </div>
               <nav className="space-y-1">
                 {mainModules.map((item) => {
@@ -460,7 +443,7 @@ export function AppShell({ children }: AppShellProps) {
             {/* AI Specialized Modules */}
             <div>
               <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
-                Intelligence Artificielle
+                {t.shell.artificialIntelligence}
               </div>
               <nav className="space-y-1">
                 {aiModules.map((item) => {
@@ -495,7 +478,7 @@ export function AppShell({ children }: AppShellProps) {
             {/* Platform & Integrations */}
             <div>
               <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
-                Plateforme & Données
+                {t.shell.platformData}
               </div>
               <nav className="space-y-1">
                 {platformModules.map((item) => {

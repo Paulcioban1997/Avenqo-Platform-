@@ -47,6 +47,12 @@ export type AppTranslations = {
     stripeNotLinked: string;
     collapseSidebar: string;
     expandSidebar: string;
+    mainOperations: string;
+    artificialIntelligence: string;
+    platformData: string;
+    workspace: string;
+    quickSearch: string;
+    markAllRead: string;
   };
   commandPalette: {
     title: string;
@@ -324,6 +330,12 @@ const frApp: AppTranslations = {
     stripeNotLinked: "Abonnement Stripe non lié",
     collapseSidebar: "Réduire le menu",
     expandSidebar: "Agrandir le menu",
+    mainOperations: "Opérations principales",
+    artificialIntelligence: "Intelligence artificielle",
+    platformData: "Plateforme et données",
+    workspace: "Mon espace",
+    quickSearch: "Recherche rapide",
+    markAllRead: "Tout marquer comme lu",
   },
   commandPalette: {
     title: "Palette de Commandes Rapides",
@@ -601,6 +613,12 @@ const enApp: AppTranslations = {
     stripeNotLinked: "Stripe subscription not linked",
     collapseSidebar: "Collapse sidebar",
     expandSidebar: "Expand sidebar",
+    mainOperations: "Core operations",
+    artificialIntelligence: "Artificial intelligence",
+    platformData: "Platform and data",
+    workspace: "My workspace",
+    quickSearch: "Quick search",
+    markAllRead: "Mark all as read",
   },
   commandPalette: {
     title: "Command Palette",
