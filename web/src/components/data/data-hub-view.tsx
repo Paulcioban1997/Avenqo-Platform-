@@ -442,7 +442,7 @@ export function DataHubView() {
         <div>
           <h1 className="data-hub-title">{t.navigation.dataHub}</h1>
           <p className="data-hub-subtitle">
-            Gérez vos datasets, importez des fichiers et explorez vos données.
+            {t.common.dataHubSubtitle}
           </p>
         </div>
         <div className="data-hub-header-actions">
@@ -486,7 +486,7 @@ export function DataHubView() {
       >
         <Upload size={28} />
         <p>
-          Glissez-déposez vos fichiers ici, ou{" "}
+          {t.common.dropFilesPrompt}{" "}
           <span className="data-hub-dropzone-link">{t.integrations.selectSource}</span>
         </p>
         <p className="data-hub-dropzone-formats">

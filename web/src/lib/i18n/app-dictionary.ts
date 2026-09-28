@@ -13,6 +13,8 @@ export type AppTranslations = {
     insufficientData: string;
     noPreview: string;
     paginationPage: string;
+    dataHubSubtitle: string;
+    dropFilesPrompt: string;
     retry: string;
   };
   brand: {
@@ -320,6 +322,8 @@ const frApp: AppTranslations = {
     insufficientData: "Données insuffisantes pour afficher cette analyse.",
     noPreview: "Aucun aperçu n’est disponible pour le moment.",
     paginationPage: "Page {page} sur {total}",
+    dataHubSubtitle: "Gérez vos jeux de données, importez des fichiers et explorez vos données.",
+    dropFilesPrompt: "Déposez vos fichiers ici, ou",
     retry: "Réessayer",
   },
   brand: {
@@ -627,6 +631,8 @@ const enApp: AppTranslations = {
     insufficientData: "This analysis is not available with your current data.",
     noPreview: "No preview is available yet.",
     paginationPage: "Page {page} of {total}",
+    dataHubSubtitle: "Manage your datasets, upload files, and explore your data.",
+    dropFilesPrompt: "Drop your files here, or",
     retry: "Retry",
   },
   brand: {

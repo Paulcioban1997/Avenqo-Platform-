@@ -106,6 +106,8 @@ type AppCommonWords = {
   downloadCsv: string;
   noPreview: string;
   paginationPage: string;
+  dataHubSubtitle: string;
+  dropFilesPrompt: string;
 };
 
 const enCommon: AppCommonWords = {
@@ -115,6 +117,8 @@ const enCommon: AppCommonWords = {
   downloadCsv: "Download CSV",
   noPreview: "No preview is available yet.",
   paginationPage: "Page {page} of {total}",
+  dataHubSubtitle: "Manage your datasets, upload files, and explore your data.",
+  dropFilesPrompt: "Drop your files here, or",
 };
 
 const frCommon: AppCommonWords = {
@@ -124,6 +128,8 @@ const frCommon: AppCommonWords = {
   downloadCsv: "Télécharger le CSV",
   noPreview: "Aucun aperçu disponible pour le moment.",
   paginationPage: "Page {page} sur {total}",
+  dataHubSubtitle: "Gérez vos jeux de données, importez des fichiers et explorez vos données.",
+  dropFilesPrompt: "Déposez vos fichiers ici, ou",
 };
 
 const esCommon: AppCommonWords = {
@@ -133,6 +139,8 @@ const esCommon: AppCommonWords = {
   downloadCsv: "Descargar CSV",
   noPreview: "Aún no hay una vista previa disponible.",
   paginationPage: "Página {page} de {total}",
+  dataHubSubtitle: "Gestiona tus conjuntos de datos, importa archivos y explora tus datos.",
+  dropFilesPrompt: "Suelta tus archivos aquí, o",
 };
 
 const ptCommon: AppCommonWords = {
@@ -142,6 +150,8 @@ const ptCommon: AppCommonWords = {
   downloadCsv: "Baixar CSV",
   noPreview: "Ainda não há uma pré-visualização disponível.",
   paginationPage: "Página {page} de {total}",
+  dataHubSubtitle: "Gira os seus conjuntos de dados, importe ficheiros e explore os seus dados.",
+  dropFilesPrompt: "Solte os seus ficheiros aqui, ou",
 };
 
 export const APP_COMMON_WORDS: Record<LocaleCode, AppCommonWords> = {
@@ -151,42 +161,42 @@ export const APP_COMMON_WORDS: Record<LocaleCode, AppCommonWords> = {
   "fr-FR": frCommon,
   es: esCommon,
   pt: ptCommon,
-  ro: { close: "Închide", cancel: "Anulează", deletePermanently: "Șterge definitiv", downloadCsv: "Descarcă CSV", noPreview: "Nu există încă o previzualizare disponibilă.", paginationPage: "Pagina {page} din {total}" },
-  de: { close: "Schließen", cancel: "Abbrechen", deletePermanently: "Endgültig löschen", downloadCsv: "CSV herunterladen", noPreview: "Noch keine Vorschau verfügbar.", paginationPage: "Seite {page} von {total}" },
-  it: { close: "Chiudi", cancel: "Annulla", deletePermanently: "Elimina definitivamente", downloadCsv: "Scarica CSV", noPreview: "Nessuna anteprima disponibile al momento.", paginationPage: "Pagina {page} di {total}" },
-  nl: { close: "Sluiten", cancel: "Annuleren", deletePermanently: "Definitief verwijderen", downloadCsv: "CSV downloaden", noPreview: "Er is nog geen voorbeeld beschikbaar.", paginationPage: "Pagina {page} van {total}" },
-  pl: { close: "Zamknij", cancel: "Anuluj", deletePermanently: "Usuń trwale", downloadCsv: "Pobierz CSV", noPreview: "Podgląd jest obecnie niedostępny.", paginationPage: "Strona {page} z {total}" },
-  ru: { close: "Закрыть", cancel: "Отмена", deletePermanently: "Удалить безвозвратно", downloadCsv: "Скачать CSV", noPreview: "Предварительный просмотр пока недоступен.", paginationPage: "Страница {page} из {total}" },
-  uk: { close: "Закрити", cancel: "Скасувати", deletePermanently: "Видалити назавжди", downloadCsv: "Завантажити CSV", noPreview: "Попередній перегляд поки недоступний.", paginationPage: "Сторінка {page} з {total}" },
-  el: { close: "Κλείσιμο", cancel: "Ακύρωση", deletePermanently: "Οριστική διαγραφή", downloadCsv: "Λήψη CSV", noPreview: "Δεν υπάρχει ακόμη διαθέσιμη προεπισκόπηση.", paginationPage: "Σελίδα {page} από {total}" },
-  sv: { close: "Stäng", cancel: "Avbryt", deletePermanently: "Ta bort permanent", downloadCsv: "Ladda ned CSV", noPreview: "Ingen förhandsvisning tillgänglig ännu.", paginationPage: "Sida {page} av {total}" },
-  tr: { close: "Kapat", cancel: "İptal", deletePermanently: "Kalıcı olarak sil", downloadCsv: "CSV indir", noPreview: "Henüz önizleme yok.", paginationPage: "{total} sayfadan {page}. sayfa" },
-  cs: { close: "Zavřít", cancel: "Zrušit", deletePermanently: "Trvale odstranit", downloadCsv: "Stáhnout CSV", noPreview: "Náhled zatím není k dispozici.", paginationPage: "Stránka {page} z {total}" },
-  ka: { close: "დახურვა", cancel: "გაუქმება", deletePermanently: "სამუდამოდ წაშლა", downloadCsv: "CSV-ის ჩამოტვირთვა", noPreview: "წინასწარი გადახედვა ჯერ მიუწვდომელია.", paginationPage: "გვერდი {page} / {total}" },
-  hy: { close: "Փակել", cancel: "Չեղարկել", deletePermanently: "Մշտապես ջնջել", downloadCsv: "Ներբեռնել CSV", noPreview: "Նախադիտումն առայժմ հասանելի չէ։", paginationPage: "Էջ {page}՝ {total}-ից" },
-  ar: { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "لا تتوفر معاينة حتى الآن.", paginationPage: "الصفحة {page} من {total}" },
-  "ar-EG": { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "مفيش معاينة متاحة لسه.", paginationPage: "الصفحة {page} من {total}" },
-  he: { close: "סגירה", cancel: "ביטול", deletePermanently: "מחיקה לצמיתות", downloadCsv: "הורדת CSV", noPreview: "אין עדיין תצוגה מקדימה זמינה.", paginationPage: "עמוד {page} מתוך {total}" },
-  fa: { close: "بستن", cancel: "لغو", deletePermanently: "حذف دائمی", downloadCsv: "دانلود CSV", noPreview: "پیش‌نمایشی در دسترس نیست.", paginationPage: "صفحه {page} از {total}" },
-  sw: { close: "Funga", cancel: "Ghairi", deletePermanently: "Futa kabisa", downloadCsv: "Pakua CSV", noPreview: "Hakuna onyesho la kukagua bado.", paginationPage: "Ukurasa {page} kati ya {total}" },
-  am: { close: "ዝጋ", cancel: "ይቅር", deletePermanently: "በቋሚነት ሰርዝ", downloadCsv: "CSV አውርድ", noPreview: "ቅድመ እይታ እስካሁን የለም።", paginationPage: "ገጽ {page} ከ {total}" },
-  af: { close: "Maak toe", cancel: "Kanselleer", deletePermanently: "Permanent uitvee", downloadCsv: "Laai CSV af", noPreview: "Geen voorskou beskikbaar nie.", paginationPage: "Bladsy {page} van {total}" },
-  ha: { close: "Rufe", cancel: "Soke", deletePermanently: "Share har abada", downloadCsv: "Sauke CSV", noPreview: "Babu samfoti da ake da shi tukuna.", paginationPage: "Shafi {page} cikin {total}" },
-  zh: { close: "关闭", cancel: "取消", deletePermanently: "永久删除", downloadCsv: "下载 CSV", noPreview: "暂无预览。", paginationPage: "第 {page} 页，共 {total} 页" },
-  ja: { close: "閉じる", cancel: "キャンセル", deletePermanently: "完全に削除", downloadCsv: "CSVをダウンロード", noPreview: "プレビューはまだありません。", paginationPage: "全 {total} ページ中 {page} ページ" },
-  ko: { close: "닫기", cancel: "취소", deletePermanently: "영구 삭제", downloadCsv: "CSV 다운로드", noPreview: "아직 미리보기가 없습니다.", paginationPage: "전체 {total}페이지 중 {page}페이지" },
-  hi: { close: "बंद करें", cancel: "रद्द करें", deletePermanently: "स्थायी रूप से हटाएँ", downloadCsv: "CSV डाउनलोड करें", noPreview: "अभी कोई पूर्वावलोकन उपलब्ध नहीं है।", paginationPage: "कुल {total} में से पृष्ठ {page}" },
-  bn: { close: "বন্ধ করুন", cancel: "বাতিল করুন", deletePermanently: "স্থায়ীভাবে মুছুন", downloadCsv: "CSV ডাউনলোড করুন", noPreview: "এখনও কোনো প্রিভিউ উপলভ্য নেই।", paginationPage: "মোট {total}টির মধ্যে পৃষ্ঠা {page}" },
-  ur: { close: "بند کریں", cancel: "منسوخ کریں", deletePermanently: "مستقل طور پر حذف کریں", downloadCsv: "CSV ڈاؤن لوڈ کریں", noPreview: "ابھی کوئی پیش منظر دستیاب نہیں ہے۔", paginationPage: "کل {total} میں سے صفحہ {page}" },
-  ta: { close: "மூடு", cancel: "ரத்துசெய்", deletePermanently: "நிரந்தரமாக நீக்கு", downloadCsv: "CSV பதிவிறக்கு", noPreview: "முன்னோட்டம் இன்னும் இல்லை.", paginationPage: "மொத்தம் {total} இல் பக்கம் {page}" },
-  pa: { close: "ਬੰਦ ਕਰੋ", cancel: "ਰੱਦ ਕਰੋ", deletePermanently: "ਪੱਕੇ ਤੌਰ 'ਤੇ ਮਿਟਾਓ", downloadCsv: "CSV ਡਾਊਨਲੋਡ ਕਰੋ", noPreview: "ਹਾਲੇ ਕੋਈ ਝਲਕ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।", paginationPage: "ਕੁੱਲ {total} ਵਿੱਚੋਂ ਪੰਨਾ {page}" },
-  ne: { close: "बन्द गर्नुहोस्", cancel: "रद्द गर्नुहोस्", deletePermanently: "स्थायी रूपमा मेटाउनुहोस्", downloadCsv: "CSV डाउनलोड गर्नुहोस्", noPreview: "अहिले पूर्वावलोकन उपलब्ध छैन।", paginationPage: "कुल {total} मध्ये पृष्ठ {page}" },
-  vi: { close: "Đóng", cancel: "Hủy", deletePermanently: "Xóa vĩnh viễn", downloadCsv: "Tải CSV xuống", noPreview: "Chưa có bản xem trước.", paginationPage: "Trang {page} / {total}" },
-  th: { close: "ปิด", cancel: "ยกเลิก", deletePermanently: "ลบถาวร", downloadCsv: "ดาวน์โหลด CSV", noPreview: "ยังไม่มีตัวอย่างให้ดู", paginationPage: "หน้า {page} จาก {total}" },
-  id: { close: "Tutup", cancel: "Batal", deletePermanently: "Hapus permanen", downloadCsv: "Unduh CSV", noPreview: "Pratinjau belum tersedia.", paginationPage: "Halaman {page} dari {total}" },
-  ms: { close: "Tutup", cancel: "Batal", deletePermanently: "Padam secara kekal", downloadCsv: "Muat turun CSV", noPreview: "Pratonton belum tersedia.", paginationPage: "Halaman {page} daripada {total}" },
-  tl: { close: "Isara", cancel: "Kanselahin", deletePermanently: "Permanenteng tanggalin", downloadCsv: "I-download ang CSV", noPreview: "Wala pang preview na magagamit.", paginationPage: "Pahina {page} sa {total}" },
-  my: { close: "ပိတ်ရန်", cancel: "မလုပ်တော့ပါ", deletePermanently: "အပြီးတိုင် ဖျက်ရန်", downloadCsv: "CSV ဒေါင်းလုဒ်လုပ်ရန်", noPreview: "အစမ်းကြည့်ရှုမှု မရှိသေးပါ။", paginationPage: "စာမျက်နှာ {page} / {total}" },
-  km: { close: "បិទ", cancel: "បោះបង់", deletePermanently: "លុបជាអចិន្ត្រៃយ៍", downloadCsv: "ទាញយក CSV", noPreview: "មិនទាន់មានការមើលជាមុនទេ។", paginationPage: "ទំព័រ {page} នៃ {total}" },
-  mn: { close: "Хаах", cancel: "Цуцлах", deletePermanently: "Бүрмөсөн устгах", downloadCsv: "CSV татах", noPreview: "Урьдчилан харах боломж хараахан алга.", paginationPage: "Нийт {total}-аас {page}-р хуудас" },
+  ro: { close: "Închide", cancel: "Anulează", deletePermanently: "Șterge definitiv", downloadCsv: "Descarcă CSV", noPreview: "Nu există încă o previzualizare disponibilă.", paginationPage: "Pagina {page} din {total}", dataHubSubtitle: "Gestionează seturile de date, importă fișiere și explorează datele.", dropFilesPrompt: "Plasează fișierele aici sau" },
+  de: { close: "Schließen", cancel: "Abbrechen", deletePermanently: "Endgültig löschen", downloadCsv: "CSV herunterladen", noPreview: "Noch keine Vorschau verfügbar.", paginationPage: "Seite {page} von {total}", dataHubSubtitle: "Verwalten Sie Datensätze, importieren Sie Dateien und erkunden Sie Ihre Daten.", dropFilesPrompt: "Dateien hier ablegen oder" },
+  it: { close: "Chiudi", cancel: "Annulla", deletePermanently: "Elimina definitivamente", downloadCsv: "Scarica CSV", noPreview: "Nessuna anteprima disponibile al momento.", paginationPage: "Pagina {page} di {total}", dataHubSubtitle: "Gestisci i dataset, importa file ed esplora i tuoi dati.", dropFilesPrompt: "Trascina qui i file oppure" },
+  nl: { close: "Sluiten", cancel: "Annuleren", deletePermanently: "Definitief verwijderen", downloadCsv: "CSV downloaden", noPreview: "Er is nog geen voorbeeld beschikbaar.", paginationPage: "Pagina {page} van {total}", dataHubSubtitle: "Beheer datasets, importeer bestanden en verken je gegevens.", dropFilesPrompt: "Sleep bestanden hierheen of" },
+  pl: { close: "Zamknij", cancel: "Anuluj", deletePermanently: "Usuń trwale", downloadCsv: "Pobierz CSV", noPreview: "Podgląd jest obecnie niedostępny.", paginationPage: "Strona {page} z {total}", dataHubSubtitle: "Zarządzaj zbiorami danych, importuj pliki i przeglądaj dane.", dropFilesPrompt: "Upuść tutaj pliki lub" },
+  ru: { close: "Закрыть", cancel: "Отмена", deletePermanently: "Удалить безвозвратно", downloadCsv: "Скачать CSV", noPreview: "Предварительный просмотр пока недоступен.", paginationPage: "Страница {page} из {total}", dataHubSubtitle: "Управляйте наборами данных, загружайте файлы и изучайте данные.", dropFilesPrompt: "Перетащите файлы сюда или" },
+  uk: { close: "Закрити", cancel: "Скасувати", deletePermanently: "Видалити назавжди", downloadCsv: "Завантажити CSV", noPreview: "Попередній перегляд поки недоступний.", paginationPage: "Сторінка {page} з {total}", dataHubSubtitle: "Керуйте наборами даних, імпортуйте файли та переглядайте дані.", dropFilesPrompt: "Перетягніть файли сюди або" },
+  el: { close: "Κλείσιμο", cancel: "Ακύρωση", deletePermanently: "Οριστική διαγραφή", downloadCsv: "Λήψη CSV", noPreview: "Δεν υπάρχει ακόμη διαθέσιμη προεπισκόπηση.", paginationPage: "Σελίδα {page} από {total}", dataHubSubtitle: "Διαχειριστείτε σύνολα δεδομένων, εισαγάγετε αρχεία και εξερευνήστε τα δεδομένα σας.", dropFilesPrompt: "Αποθέστε τα αρχεία εδώ ή" },
+  sv: { close: "Stäng", cancel: "Avbryt", deletePermanently: "Ta bort permanent", downloadCsv: "Ladda ned CSV", noPreview: "Ingen förhandsvisning tillgänglig ännu.", paginationPage: "Sida {page} av {total}", dataHubSubtitle: "Hantera datamängder, importera filer och utforska dina data.", dropFilesPrompt: "Släpp dina filer här eller" },
+  tr: { close: "Kapat", cancel: "İptal", deletePermanently: "Kalıcı olarak sil", downloadCsv: "CSV indir", noPreview: "Henüz önizleme yok.", paginationPage: "{total} sayfadan {page}. sayfa", dataHubSubtitle: "Veri kümelerinizi yönetin, dosyaları içe aktarın ve verilerinizi inceleyin.", dropFilesPrompt: "Dosyalarınızı buraya bırakın veya" },
+  cs: { close: "Zavřít", cancel: "Zrušit", deletePermanently: "Trvale odstranit", downloadCsv: "Stáhnout CSV", noPreview: "Náhled zatím není k dispozici.", paginationPage: "Stránka {page} z {total}", dataHubSubtitle: "Spravujte datové sady, importujte soubory a prozkoumávejte svá data.", dropFilesPrompt: "Přetáhněte sem soubory nebo" },
+  ka: { close: "დახურვა", cancel: "გაუქმება", deletePermanently: "სამუდამოდ წაშლა", downloadCsv: "CSV-ის ჩამოტვირთვა", noPreview: "წინასწარი გადახედვა ჯერ მიუწვდომელია.", paginationPage: "გვერდი {page} / {total}", dataHubSubtitle: "მართეთ მონაცემთა ნაკრებები, შემოიტანეთ ფაილები და დაათვალიერეთ მონაცემები.", dropFilesPrompt: "ჩამოაგდეთ ფაილები აქ ან" },
+  hy: { close: "Փակել", cancel: "Չեղարկել", deletePermanently: "Մշտապես ջնջել", downloadCsv: "Ներբեռնել CSV", noPreview: "Նախադիտումն առայժմ հասանելի չէ։", paginationPage: "Էջ {page}՝ {total}-ից", dataHubSubtitle: "Կառավարեք տվյալների հավաքածուները, ներմուծեք ֆայլեր և ուսումնասիրեք տվյալները։", dropFilesPrompt: "Ֆայլերը գցեք այստեղ կամ" },
+  ar: { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "لا تتوفر معاينة حتى الآن.", paginationPage: "الصفحة {page} من {total}", dataHubSubtitle: "أدر مجموعات البيانات واستورد الملفات واستكشف بياناتك.", dropFilesPrompt: "أفلت ملفاتك هنا أو" },
+  "ar-EG": { close: "إغلاق", cancel: "إلغاء", deletePermanently: "حذف نهائي", downloadCsv: "تنزيل CSV", noPreview: "مفيش معاينة متاحة لسه.", paginationPage: "الصفحة {page} من {total}", dataHubSubtitle: "أدر مجموعات البيانات واستورد الملفات واستكشف بياناتك.", dropFilesPrompt: "حط ملفاتك هنا أو" },
+  he: { close: "סגירה", cancel: "ביטול", deletePermanently: "מחיקה לצמיתות", downloadCsv: "הורדת CSV", noPreview: "אין עדיין תצוגה מקדימה זמינה.", paginationPage: "עמוד {page} מתוך {total}", dataHubSubtitle: "נהלו מערכי נתונים, ייבאו קבצים ועיינו בנתונים שלכם.", dropFilesPrompt: "גררו את הקבצים לכאן או" },
+  fa: { close: "بستن", cancel: "لغو", deletePermanently: "حذف دائمی", downloadCsv: "دانلود CSV", noPreview: "پیش‌نمایشی در دسترس نیست.", paginationPage: "صفحه {page} از {total}", dataHubSubtitle: "مجموعه‌داده‌ها را مدیریت کنید، فایل‌ها را وارد کنید و داده‌ها را بررسی کنید.", dropFilesPrompt: "فایل‌ها را اینجا رها کنید یا" },
+  sw: { close: "Funga", cancel: "Ghairi", deletePermanently: "Futa kabisa", downloadCsv: "Pakua CSV", noPreview: "Hakuna onyesho la kukagua bado.", paginationPage: "Ukurasa {page} kati ya {total}", dataHubSubtitle: "Dhibiti seti za data, leta faili na uchunguze data zako.", dropFilesPrompt: "Dondosha faili zako hapa au" },
+  am: { close: "ዝጋ", cancel: "ይቅር", deletePermanently: "በቋሚነት ሰርዝ", downloadCsv: "CSV አውርድ", noPreview: "ቅድመ እይታ እስካሁን የለም።", paginationPage: "ገጽ {page} ከ {total}", dataHubSubtitle: "የውሂብ ስብስቦችን ያስተዳድሩ፣ ፋይሎችን ያስገቡ እና ውሂብዎን ይመርምሩ።", dropFilesPrompt: "ፋይሎችዎን እዚህ ይጣሉ ወይም" },
+  af: { close: "Maak toe", cancel: "Kanselleer", deletePermanently: "Permanent uitvee", downloadCsv: "Laai CSV af", noPreview: "Geen voorskou beskikbaar nie.", paginationPage: "Bladsy {page} van {total}", dataHubSubtitle: "Bestuur datastelle, voer lêers in en verken jou data.", dropFilesPrompt: "Los jou lêers hier of" },
+  ha: { close: "Rufe", cancel: "Soke", deletePermanently: "Share har abada", downloadCsv: "Sauke CSV", noPreview: "Babu samfoti da ake da shi tukuna.", paginationPage: "Shafi {page} cikin {total}", dataHubSubtitle: "Sarrafa rukunin bayanai, shigo da fayiloli, sannan ka bincika bayananka.", dropFilesPrompt: "Ajiye fayilolinka a nan ko" },
+  zh: { close: "关闭", cancel: "取消", deletePermanently: "永久删除", downloadCsv: "下载 CSV", noPreview: "暂无预览。", paginationPage: "第 {page} 页，共 {total} 页", dataHubSubtitle: "管理数据集、导入文件并浏览数据。", dropFilesPrompt: "将文件拖放到此处，或" },
+  ja: { close: "閉じる", cancel: "キャンセル", deletePermanently: "完全に削除", downloadCsv: "CSVをダウンロード", noPreview: "プレビューはまだありません。", paginationPage: "全 {total} ページ中 {page} ページ", dataHubSubtitle: "データセットを管理し、ファイルをインポートしてデータを確認できます。", dropFilesPrompt: "ここにファイルをドロップするか" },
+  ko: { close: "닫기", cancel: "취소", deletePermanently: "영구 삭제", downloadCsv: "CSV 다운로드", noPreview: "아직 미리보기가 없습니다.", paginationPage: "전체 {total}페이지 중 {page}페이지", dataHubSubtitle: "데이터 세트를 관리하고 파일을 가져와 데이터를 살펴보세요.", dropFilesPrompt: "파일을 여기에 놓거나" },
+  hi: { close: "बंद करें", cancel: "रद्द करें", deletePermanently: "स्थायी रूप से हटाएँ", downloadCsv: "CSV डाउनलोड करें", noPreview: "अभी कोई पूर्वावलोकन उपलब्ध नहीं है।", paginationPage: "कुल {total} में से पृष्ठ {page}", dataHubSubtitle: "डेटासेट प्रबंधित करें, फ़ाइलें आयात करें और अपना डेटा देखें।", dropFilesPrompt: "अपनी फ़ाइलें यहाँ छोड़ें या" },
+  bn: { close: "বন্ধ করুন", cancel: "বাতিল করুন", deletePermanently: "স্থায়ীভাবে মুছুন", downloadCsv: "CSV ডাউনলোড করুন", noPreview: "এখনও কোনো প্রিভিউ উপলভ্য নেই।", paginationPage: "মোট {total}টির মধ্যে পৃষ্ঠা {page}", dataHubSubtitle: "ডেটাসেট পরিচালনা করুন, ফাইল আমদানি করুন এবং আপনার ডেটা দেখুন।", dropFilesPrompt: "আপনার ফাইল এখানে ছেড়ে দিন, অথবা" },
+  ur: { close: "بند کریں", cancel: "منسوخ کریں", deletePermanently: "مستقل طور پر حذف کریں", downloadCsv: "CSV ڈاؤن لوڈ کریں", noPreview: "ابھی کوئی پیش منظر دستیاب نہیں ہے۔", paginationPage: "کل {total} میں سے صفحہ {page}", dataHubSubtitle: "ڈیٹاسیٹس منظم کریں، فائلیں درآمد کریں اور اپنا ڈیٹا دیکھیں۔", dropFilesPrompt: "اپنی فائلیں یہاں چھوڑیں یا" },
+  ta: { close: "மூடு", cancel: "ரத்துசெய்", deletePermanently: "நிரந்தரமாக நீக்கு", downloadCsv: "CSV பதிவிறக்கு", noPreview: "முன்னோட்டம் இன்னும் இல்லை.", paginationPage: "மொத்தம் {total} இல் பக்கம் {page}", dataHubSubtitle: "தரவுத்தொகுப்புகளை நிர்வகித்து, கோப்புகளை இறக்குமதி செய்து, தரவை ஆராயுங்கள்.", dropFilesPrompt: "கோப்புகளை இங்கே விடுங்கள் அல்லது" },
+  pa: { close: "ਬੰਦ ਕਰੋ", cancel: "ਰੱਦ ਕਰੋ", deletePermanently: "ਪੱਕੇ ਤੌਰ 'ਤੇ ਮਿਟਾਓ", downloadCsv: "CSV ਡਾਊਨਲੋਡ ਕਰੋ", noPreview: "ਹਾਲੇ ਕੋਈ ਝਲਕ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।", paginationPage: "ਕੁੱਲ {total} ਵਿੱਚੋਂ ਪੰਨਾ {page}", dataHubSubtitle: "ਡਾਟਾਸੈੱਟ ਸੰਭਾਲੋ, ਫ਼ਾਈਲਾਂ ਇੰਪੋਰਟ ਕਰੋ ਅਤੇ ਆਪਣਾ ਡਾਟਾ ਵੇਖੋ।", dropFilesPrompt: "ਆਪਣੀਆਂ ਫ਼ਾਈਲਾਂ ਇੱਥੇ ਛੱਡੋ ਜਾਂ" },
+  ne: { close: "बन्द गर्नुहोस्", cancel: "रद्द गर्नुहोस्", deletePermanently: "स्थायी रूपमा मेटाउनुहोस्", downloadCsv: "CSV डाउनलोड गर्नुहोस्", noPreview: "अहिले पूर्वावलोकन उपलब्ध छैन।", paginationPage: "कुल {total} मध्ये पृष्ठ {page}", dataHubSubtitle: "डेटासेट व्यवस्थापन गर्नुहोस्, फाइलहरू आयात गर्नुहोस् र आफ्नो डेटा हेर्नुहोस्।", dropFilesPrompt: "फाइलहरू यहाँ छोड्नुहोस् वा" },
+  vi: { close: "Đóng", cancel: "Hủy", deletePermanently: "Xóa vĩnh viễn", downloadCsv: "Tải CSV xuống", noPreview: "Chưa có bản xem trước.", paginationPage: "Trang {page} / {total}", dataHubSubtitle: "Quản lý tập dữ liệu, nhập tệp và khám phá dữ liệu của bạn.", dropFilesPrompt: "Thả tệp vào đây hoặc" },
+  th: { close: "ปิด", cancel: "ยกเลิก", deletePermanently: "ลบถาวร", downloadCsv: "ดาวน์โหลด CSV", noPreview: "ยังไม่มีตัวอย่างให้ดู", paginationPage: "หน้า {page} จาก {total}", dataHubSubtitle: "จัดการชุดข้อมูล นำเข้าไฟล์ และสำรวจข้อมูลของคุณ", dropFilesPrompt: "วางไฟล์ของคุณที่นี่ หรือ" },
+  id: { close: "Tutup", cancel: "Batal", deletePermanently: "Hapus permanen", downloadCsv: "Unduh CSV", noPreview: "Pratinjau belum tersedia.", paginationPage: "Halaman {page} dari {total}", dataHubSubtitle: "Kelola kumpulan data, impor file, dan jelajahi data Anda.", dropFilesPrompt: "Letakkan file Anda di sini, atau" },
+  ms: { close: "Tutup", cancel: "Batal", deletePermanently: "Padam secara kekal", downloadCsv: "Muat turun CSV", noPreview: "Pratonton belum tersedia.", paginationPage: "Halaman {page} daripada {total}", dataHubSubtitle: "Urus set data, import fail dan terokai data anda.", dropFilesPrompt: "Letakkan fail anda di sini atau" },
+  tl: { close: "Isara", cancel: "Kanselahin", deletePermanently: "Permanenteng tanggalin", downloadCsv: "I-download ang CSV", noPreview: "Wala pang preview na magagamit.", paginationPage: "Pahina {page} sa {total}", dataHubSubtitle: "Pamahalaan ang mga dataset, mag-import ng mga file, at tingnan ang iyong data.", dropFilesPrompt: "I-drop ang mga file dito o" },
+  my: { close: "ပိတ်ရန်", cancel: "မလုပ်တော့ပါ", deletePermanently: "အပြီးတိုင် ဖျက်ရန်", downloadCsv: "CSV ဒေါင်းလုဒ်လုပ်ရန်", noPreview: "အစမ်းကြည့်ရှုမှု မရှိသေးပါ။", paginationPage: "စာမျက်နှာ {page} / {total}", dataHubSubtitle: "ဒေတာအစုများကို စီမံခန့်ခွဲပါ၊ ဖိုင်များထည့်သွင်းပါ၊ ဒေတာကို စူးစမ်းပါ။", dropFilesPrompt: "ဖိုင်များကို ဤနေရာသို့ ချထားပါ သို့မဟုတ်" },
+  km: { close: "បិទ", cancel: "បោះបង់", deletePermanently: "លុបជាអចិន្ត្រៃយ៍", downloadCsv: "ទាញយក CSV", noPreview: "មិនទាន់មានការមើលជាមុនទេ។", paginationPage: "ទំព័រ {page} នៃ {total}", dataHubSubtitle: "គ្រប់គ្រងសំណុំទិន្នន័យ នាំចូលឯកសារ និងស្វែងយល់ពីទិន្នន័យរបស់អ្នក។", dropFilesPrompt: "ទម្លាក់ឯកសាររបស់អ្នកនៅទីនេះ ឬ" },
+  mn: { close: "Хаах", cancel: "Цуцлах", deletePermanently: "Бүрмөсөн устгах", downloadCsv: "CSV татах", noPreview: "Урьдчилан харах боломж хараахан алга.", paginationPage: "Нийт {total}-аас {page}-р хуудас", dataHubSubtitle: "Өгөгдлийн багцаа удирдаж, файл импортлон, өгөгдлөө судлаарай.", dropFilesPrompt: "Файлаа энд чирж оруулах эсвэл" },
 };
