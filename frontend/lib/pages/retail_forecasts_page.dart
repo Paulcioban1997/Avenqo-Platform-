@@ -55,6 +55,9 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
+    final translations = AvenqoLocaleScope.translationsOf(context);
+    final retail = translations.phase4d;
+    final company = translations.company;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -72,9 +75,9 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: _Brand.rose),
                   const SizedBox(height: 16),
-                  Text('Erreur lors du calcul des prévisions', style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
+                  Text(translations.auth.genericError, style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Réessayer')),
+                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: Text(company.connectionsRetry)),
                 ],
               ),
             );
@@ -111,7 +114,7 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                     children: [
                       Row(
                         children: [
-                          Text('Prévisions & Projections IA', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
+                          Text(retail.performanceLabel, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colors.ink)),
                           const SizedBox(width: 12),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -120,15 +123,15 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(color: _Brand.purple.withValues(alpha: 0.3)),
                             ),
-                            child: const Text('PRÉVISION IA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _Brand.purple)),
+                            child: Text(retail.productGrowthTitle, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _Brand.purple)),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('Projections calculées par les modèles de prévision Avenqo à partir des données historiques.', style: TextStyle(fontSize: 14, color: colors.muted)),
+                      Text(retail.productRevenueChangedExplanation, style: TextStyle(fontSize: 14, color: colors.muted)),
                     ],
                   ),
-                  IconButton(onPressed: _reload, tooltip: 'Recalculer', icon: const Icon(Icons.refresh)),
+                  IconButton(onPressed: _reload, tooltip: company.connectionsRetry, icon: const Icon(Icons.refresh)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -150,8 +153,8 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'ENGAGEMENT DE TRANSPARENCE — AUCUNE ESTIMATION DÉGUISÉE',
+                          Text(
+                            retail.reasonDecisionPolicy,
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _Brand.amber, letterSpacing: 0.5),
                           ),
                           const SizedBox(height: 4),
@@ -172,7 +175,7 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth > 800;
                   final cards = [
-                    _buildForecastMetric('Chiffre d’affaires actuel (30j)', _formatMoney(context, currentRevenue, 'CAD'), 'Donnée confirmée', colors, isActual: true),
+                    _buildForecastMetric(retail.currentPeriodLabel, _formatMoney(context, currentRevenue, 'CAD'), retail.evidenceLabel, colors, isActual: true),
                     _buildForecastMetric(
                       'Ventes projetées',
                       projectedSales == null
@@ -182,7 +185,7 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                       colors,
                       isActual: false,
                     ),
-                    _buildForecastMetric('Commandes observées', '$ordersCount', 'Base de calcul validée', colors, isActual: true),
+                    _buildForecastMetric(retail.unitsLabel, '$ordersCount', retail.evidenceLabel, colors, isActual: true),
                   ];
 
                   if (!wide) {
@@ -201,13 +204,13 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
               const SizedBox(height: 24),
 
               // Predictive Recommendations Impact
-              Text('Impacts Prévisionnels Recommandés par l’IA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
+              Text(retail.suggestedActionLabel, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink)),
               const SizedBox(height: 12),
               if (data.recommendations.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: colors.line)),
-                  child: Center(child: Text('Aucune projection de recommandation active pour le moment.', style: TextStyle(color: colors.muted))),
+                  child: Center(child: Text(retail.recommendationsEmpty, style: TextStyle(color: colors.muted))),
                 )
               else
                 for (final rec in data.recommendations.take(4))
