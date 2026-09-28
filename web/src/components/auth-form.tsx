@@ -151,9 +151,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
           const lower = errorMsg.toLowerCase();
           if (lower.includes("mot de passe") && (lower.includes("minuscule") || lower.includes("caractère") || lower.includes("special"))) {
-            errorMsg = locale === "en"
-              ? "The password must contain at least one lowercase letter, one uppercase letter, one digit, and one special character."
-              : "Le mot de passe doit contenir au moins une lettre minuscule, une lettre majuscule, un chiffre et un caractère spécial.";
+            errorMsg = s.passwordTooWeak;
           }
         }
         if (isReset && response.status === 400) {
@@ -185,9 +183,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       } else if (isRegister) {
         setMessage(
           data.message ||
-            (locale === "en"
-              ? "Your workspace has been created! Please check your email to activate your account."
-              : "Votre espace a été créé avec succès ! Veuillez vérifier votre boîte de réception pour activer votre compte.")
+            s.forgotPasswordSuccess
         );
       }
     } catch (error) {
@@ -260,7 +256,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </div>
 
         <div className="auth-form-wrap">
-          <Link href="/" className="auth-wordmark" aria-label="Avenqo, accueil">
+          <Link href="/" className="auth-wordmark" aria-label={s.backToHome}>
             <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} priority />
           </Link>
 
@@ -292,7 +288,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                   </div>
                   <AuthField
                     name="company_name"
-                    label={locale === "en" ? "Workspace / Organization" : "Nom de l'espace / Organisation"}
+                    label={s.organization}
                     autoComplete="organization"
                     placeholder="Acme Inc."
                   />
