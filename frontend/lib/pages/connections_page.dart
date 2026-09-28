@@ -2085,7 +2085,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
-            content: Text('Export $format (${file.fileName}) téléchargé avec succès.'),
+            content: Text('${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['exports']}: ${file.fileName}'),
             backgroundColor: const Color(0xFF16A34A),
           ),
         );
@@ -2100,7 +2100,7 @@ class _DatasetCleaningDialogState extends State<_DatasetCleaningDialog> {
       if (mounted) {
         ScaffoldMessenger.maybeOf(
           context,
-        )?.showSnackBar(SnackBar(content: Text('Erreur lors du téléchargement : $e')));
+        )?.showSnackBar(SnackBar(content: Text(AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError)));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -2752,7 +2752,7 @@ class _ModificationsTab extends StatelessWidget {
                   child: TextField(
                     onChanged: onSearchChanged,
                     decoration: InputDecoration(
-                      hintText: 'Rechercher (Avenqo Headphones X, Stock, 25, WooCommerce, devise)...',
+                      hintText: AvenqoLocaleScope.translationsOf(context).company.connectorHub['search'] ?? AvenqoLocaleScope.translationsOf(context).company.connectorHub['searchHint'] ?? '',
                       hintStyle: TextStyle(color: colors.muted, fontSize: 13),
                       prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
                       suffixIcon: searchQuery.isNotEmpty
@@ -3141,7 +3141,7 @@ class _BusinessSyncCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text('${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['mappedField']}: ', style: TextStyle(color: colors.muted, fontSize: 12)),
                     Text(
                       colLabel,
                       style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
@@ -3330,7 +3330,7 @@ class _DataCleaningCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Champ : ', style: TextStyle(color: colors.muted, fontSize: 12)),
+                    Text('${AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['mappedField']}: ', style: TextStyle(color: colors.muted, fontSize: 12)),
                     Text(
                       colLabel,
                       style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 12),
@@ -3497,7 +3497,7 @@ class _ColumnsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (columns.isEmpty) {
       return Center(
-        child: Text('Aucune colonne analysée.', style: TextStyle(color: colors.muted)),
+                child: Text(AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['previewEmpty'] ?? '', style: TextStyle(color: colors.muted)),
       );
     }
 
@@ -3521,7 +3521,7 @@ class _ColumnsTab extends StatelessWidget {
             child: TextField(
               onChanged: onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Filtrer les colonnes (nom, type, original)...',
+                hintText: AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['columns'] ?? '',
                 hintStyle: TextStyle(color: colors.muted, fontSize: 13),
                 prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
                 suffixIcon: searchQuery.isNotEmpty
@@ -3831,7 +3831,7 @@ class _ApercuTab extends StatelessWidget {
                   child: TextField(
                     onChanged: onSearchChanged,
                     decoration: InputDecoration(
-                      hintText: 'Rechercher dans les données métier (nom, prix, commande, email)...',
+                      hintText: AvenqoLocaleScope.translationsOf(context).company.customersSearch,
                       hintStyle: TextStyle(color: colors.muted, fontSize: 13),
                       prefixIcon: Icon(Icons.search, size: 18, color: colors.muted),
                       suffixIcon: searchQuery.isNotEmpty
@@ -4274,7 +4274,7 @@ class _TechniqueTab extends StatelessWidget {
           Expanded(
             child: rows.isEmpty
                 ? Center(
-                    child: Text('Aucune donnée technique disponible.', style: TextStyle(color: colors.muted)),
+                    child: Text(AvenqoLocaleScope.translationsOf(context).company.connectionsCleaning['notAvailable'] ?? '', style: TextStyle(color: colors.muted)),
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) => Container(
