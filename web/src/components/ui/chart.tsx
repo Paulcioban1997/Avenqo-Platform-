@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
 export interface TrendSparklineProps {
   data: number[];
@@ -19,8 +21,14 @@ export function TrendSparkline({
   showGradient = true,
   className = "",
 }: TrendSparklineProps) {
+  const { locale } = useLocale();
+
   if (!data || data.length < 2) {
-    return <div className="text-xs text-neutral-400">Pas assez de données</div>;
+    return (
+      <div className="text-xs text-neutral-400">
+        {getAppTranslations(locale).common.insufficientData}
+      </div>
+    );
   }
 
   const min = Math.min(...data);

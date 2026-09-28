@@ -6,6 +6,7 @@ import { getApplicationCatalog } from "./generated-app-catalogs";
 export type AppTranslations = {
   common: {
     close: string;
+    insufficientData: string;
   };
   brand: {
     name: string;
@@ -292,6 +293,7 @@ export type AppTranslations = {
 const frApp: AppTranslations = {
   common: {
     close: "Fermer",
+    insufficientData: "Données insuffisantes pour afficher cette analyse.",
   },
   brand: {
     name: "AVENQO",
@@ -578,6 +580,7 @@ const frApp: AppTranslations = {
 const enApp: AppTranslations = {
   common: {
     close: "Close",
+    insufficientData: "This analysis is not available with your current data.",
   },
   brand: {
     name: "AVENQO",
@@ -983,6 +986,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     common: {
       ...base.common,
       close: connector.close,
+      insufficientData: company.analyticsUnavailable,
     },
     navigation: {
       ...base.navigation,
