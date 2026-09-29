@@ -31,6 +31,7 @@ import { TableSkeleton, KPISkeleton, ChartSkeleton } from "@/components/ui/skele
 import { EmptyState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export type RetailSubTab =
@@ -110,6 +111,7 @@ export function RetailIntelligenceView({
   const t = getAppTranslations(locale);
   const retail = t.retail;
   const integrations = t.integrations;
+  const connector = getApplicationCatalog(locale).company.connectorHub;
 
   const [activeTab, setActiveTab] = useState<RetailSubTab>(defaultTab);
   const [isLoading, setIsLoading] = useState(true);
@@ -393,7 +395,7 @@ export function RetailIntelligenceView({
 
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 font-medium">
-                {products.length} produit{products.length !== 1 ? "s" : ""} synchronisé{products.length !== 1 ? "s" : ""}
+                {products.length.toLocaleString(locale)} {connector.records}
               </span>
               <button
                 onClick={loadData}
@@ -432,7 +434,7 @@ export function RetailIntelligenceView({
                             {p.product_name}
                           </div>
                           <div className="text-[10px] text-slate-400 uppercase">
-                            Source : {p.provider}
+                            {connector.connection} : {p.provider}
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-300">
@@ -490,7 +492,7 @@ export function RetailIntelligenceView({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">
-              {orders.length} commande{orders.length !== 1 ? "s" : ""} synchronisée{orders.length !== 1 ? "s" : ""}
+              {orders.length.toLocaleString(locale)} {connector.records}
             </span>
           </div>
 
@@ -553,7 +555,7 @@ export function RetailIntelligenceView({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">
-              {customers.length} client{customers.length !== 1 ? "s" : ""} synchronisé{customers.length !== 1 ? "s" : ""}
+              {customers.length.toLocaleString(locale)} {connector.records}
             </span>
           </div>
 
@@ -610,7 +612,7 @@ export function RetailIntelligenceView({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">
-              {inventory.length} article{inventory.length !== 1 ? "s" : ""} en inventaire
+              {retail.inventoryCount.replace("{count}", inventory.length.toLocaleString(locale))}
             </span>
           </div>
 
@@ -645,7 +647,7 @@ export function RetailIntelligenceView({
                                 : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
                             }`}
                           >
-                            {item.stock_quantity} unités
+                            {item.stock_quantity.toLocaleString(locale)} {retail.unit}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -785,10 +787,10 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          Stock : {anom.currentStock} u
+                          {retail.stock}: {anom.currentStock.toLocaleString(locale)} {retail.unit}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          Seuil sécurité : {anom.safetyThreshold} u
+                          {retail.safetyThreshold}: {anom.safetyThreshold.toLocaleString(locale)} {retail.unit}
                         </div>
                       </div>
                       <button
@@ -827,11 +829,10 @@ export function RetailIntelligenceView({
               <Lightbulb className="w-5 h-5 text-[#0076FF] shrink-0 mt-0.5" />
               <div>
                 <h4 className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                  Réapprovisionnement automatisé conseillé
+                  {retail.reorderTitle}
                 </h4>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                  Pour maintenir un taux de service supérieur à 98%, déclenchez une commande fournisseur
-                  dès que le stock atteint le seuil de 15 unités.
+                  {retail.reorderDescription}
                 </p>
               </div>
             </div>

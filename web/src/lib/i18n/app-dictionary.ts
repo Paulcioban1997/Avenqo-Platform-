@@ -5,6 +5,7 @@ import {
   APP_LOCALE_WORDS,
   APP_MARKETING_EXTRA_WORDS,
   APP_MARKETING_WORDS,
+  APP_RETAIL_WORDS,
   type AppMarketingExtraWords,
   type AppMarketingWords,
 } from "./app-locale-overrides";
@@ -151,6 +152,12 @@ export type AppTranslations = {
     email: string;
     inventory: string;
     forecasts: string;
+    inventoryCount: string;
+    unit: string;
+    stock: string;
+    safetyThreshold: string;
+    reorderTitle: string;
+    reorderDescription: string;
     anomalies: string;
     recommendations: string;
     rawVsCleaned: string;
@@ -463,6 +470,12 @@ const frApp: AppTranslations = {
     email: "E-mail",
     inventory: "Inventaire",
     forecasts: "Prévisions",
+    inventoryCount: "{count} articles en inventaire",
+    unit: "unités",
+    stock: "Stock",
+    safetyThreshold: "Seuil de sécurité",
+    reorderTitle: "Réapprovisionnement automatisé recommandé",
+    reorderDescription: "Pour maintenir un taux de service supérieur à 98 %, passez une commande fournisseur lorsque le stock atteint 15 unités.",
     anomalies: "Anomalies",
     recommendations: "Recommandations",
     rawVsCleaned: "Comparatif Données Brutes vs Données Nettoyées IA",
@@ -775,6 +788,12 @@ const enApp: AppTranslations = {
     email: "Email",
     inventory: "Inventory",
     forecasts: "Forecasts",
+    inventoryCount: "{count} inventory items",
+    unit: "units",
+    stock: "Stock",
+    safetyThreshold: "Safety threshold",
+    reorderTitle: "Automated restocking recommended",
+    reorderDescription: "To maintain a service level above 98%, place a supplier order when stock reaches 15 units.",
     anomalies: "Anomalies",
     recommendations: "Recommendations",
     rawVsCleaned: "Comparative View: Raw Data vs AI-Cleaned Data",
@@ -1218,6 +1237,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     },
     retail: {
       ...base.retail,
+      ...(APP_RETAIL_WORDS[locale as LocaleCode] ?? APP_RETAIL_WORDS.en),
       overview: company.navOverviewLabel,
       sales: company.navSalesLabel,
       products: company.navProductsLabel,
