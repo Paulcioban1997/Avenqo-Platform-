@@ -633,7 +633,7 @@ class _ConnectionRow extends StatelessWidget {
                       key: ValueKey('retry-sync-${connection['id']}'),
                       onPressed: onSync,
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Réessayer'),
+                      label: Text(text('syncFailed')),
                     ),
                   ),
                 IconButton(
