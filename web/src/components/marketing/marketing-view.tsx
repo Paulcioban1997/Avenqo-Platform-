@@ -170,13 +170,13 @@ export function MarketingView() {
                 {generatedCampaign.title}
               </span>
               <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">
-                ROI estimé: {generatedCampaign.predicted_roi}
+                {t.marketing.estimatedRoi}: {generatedCampaign.predicted_roi}
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300">
               <div>
-                <strong>Canal :</strong> {generatedCampaign.channel}
+                <strong>{t.marketing.channel} :</strong> {generatedCampaign.channel}
               </div>
               <div>
                 <strong>{company.customersSegment} :</strong> {generatedCampaign.target_segment}
@@ -198,28 +198,31 @@ export function MarketingView() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">
-              {company.customerSegmentLoyal} &amp; {company.customerSegmentVip}
+              {t.marketing.loyalVip}
             </div>
             <div className="text-lg font-extrabold text-[#0076FF] dark:text-[#00D4FF] mt-1">
-              Top 15 %
+              {t.marketing.topPercent.replace(
+                "{percent}",
+                new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(0.15),
+              )}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">Panier moyen supérieur, fort réachat</div>
+            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.repeatPurchase}</div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">À Risque d'Attrition</div>
+            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">{t.marketing.churnRisk}</div>
             <div className="text-lg font-extrabold text-amber-600 dark:text-amber-400 mt-1">
               {company.customerSegmentDormant}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">Dernier achat il y a plus de 60 jours</div>
+            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.lastPurchase60Days}</div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">Paniers Abandonnés</div>
+            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">{t.marketing.abandonedCarts}</div>
             <div className="text-lg font-extrabold text-purple-600 dark:text-purple-400 mt-1">
-              À Réactiver
+              {t.marketing.reactivate}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1">Intention d'achat récente non concrétisée</div>
+            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.recentPurchaseIntent}</div>
           </div>
         </div>
       </div>

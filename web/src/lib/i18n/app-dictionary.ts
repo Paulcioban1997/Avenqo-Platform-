@@ -1,5 +1,12 @@
 import type { LocaleCode } from "./types";
-import { APP_COMMON_WORDS, APP_LOCALE_WORDS } from "./app-locale-overrides";
+import {
+  APP_COMMON_WORDS,
+  APP_LOCALE_WORDS,
+  APP_MARKETING_EXTRA_WORDS,
+  APP_MARKETING_WORDS,
+  type AppMarketingExtraWords,
+  type AppMarketingWords,
+} from "./app-locale-overrides";
 import { getTranslations } from "./dictionary";
 import { getApplicationCatalog } from "./generated-app-catalogs";
 
@@ -17,6 +24,7 @@ export type AppTranslations = {
     dropFilesPrompt: string;
     retry: string;
   };
+  marketing: AppMarketingWords & AppMarketingExtraWords;
   brand: {
     name: string;
     tagline: string;
@@ -326,6 +334,7 @@ const frApp: AppTranslations = {
     dropFilesPrompt: "Déposez vos fichiers ici, ou",
     retry: "Réessayer",
   },
+  marketing: { ...APP_MARKETING_WORDS.fr, ...APP_MARKETING_EXTRA_WORDS.fr },
   brand: {
     name: "AVENQO",
     tagline: "L'IA POUR UN AVENIR PLUS INTELLIGENT",
@@ -635,6 +644,7 @@ const enApp: AppTranslations = {
     dropFilesPrompt: "Drop your files here, or",
     retry: "Retry",
   },
+  marketing: { ...APP_MARKETING_WORDS.en, ...APP_MARKETING_EXTRA_WORDS.en },
   brand: {
     name: "AVENQO",
     tagline: "AI FOR A SMARTER FUTURE",
@@ -1065,6 +1075,10 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       errorTitle: company.connectionsGenericError,
       insufficientData: company.analyticsUnavailable,
       retry: company.connectionsRetry,
+    },
+    marketing: {
+      ...(APP_MARKETING_WORDS[locale as LocaleCode] ?? APP_MARKETING_WORDS.en),
+      ...(APP_MARKETING_EXTRA_WORDS[locale as LocaleCode] ?? APP_MARKETING_EXTRA_WORDS.en),
     },
     navigation: {
       ...base.navigation,

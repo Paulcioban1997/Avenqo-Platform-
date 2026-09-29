@@ -200,3 +200,157 @@ export const APP_COMMON_WORDS: Record<LocaleCode, AppCommonWords> = {
   km: { close: "បិទ", cancel: "បោះបង់", deletePermanently: "លុបជាអចិន្ត្រៃយ៍", downloadCsv: "ទាញយក CSV", noPreview: "មិនទាន់មានការមើលជាមុនទេ។", paginationPage: "ទំព័រ {page} នៃ {total}", dataHubSubtitle: "គ្រប់គ្រងសំណុំទិន្នន័យ នាំចូលឯកសារ និងស្វែងយល់ពីទិន្នន័យរបស់អ្នក។", dropFilesPrompt: "ទម្លាក់ឯកសាររបស់អ្នកនៅទីនេះ ឬ" },
   mn: { close: "Хаах", cancel: "Цуцлах", deletePermanently: "Бүрмөсөн устгах", downloadCsv: "CSV татах", noPreview: "Урьдчилан харах боломж хараахан алга.", paginationPage: "Нийт {total}-аас {page}-р хуудас", dataHubSubtitle: "Өгөгдлийн багцаа удирдаж, файл импортлон, өгөгдлөө судлаарай.", dropFilesPrompt: "Файлаа энд чирж оруулах эсвэл" },
 };
+
+export type AppMarketingWords = {
+  channel: string;
+  loyalVip: string;
+  repeatPurchase: string;
+  churnRisk: string;
+  lastPurchase60Days: string;
+  abandonedCarts: string;
+  reactivate: string;
+  recentPurchaseIntent: string;
+};
+
+const enMarketing: AppMarketingWords = {
+  channel: "Channel",
+  loyalVip: "Loyal customers & VIPs",
+  repeatPurchase: "Higher average basket, frequent repeat purchases",
+  churnRisk: "At risk of churn",
+  lastPurchase60Days: "Last purchase more than 60 days ago",
+  abandonedCarts: "Abandoned carts",
+  reactivate: "Reactivate",
+  recentPurchaseIntent: "Recent purchase intent not completed",
+};
+
+const frMarketing: AppMarketingWords = {
+  channel: "Canal",
+  loyalVip: "Clients fidèles et VIP",
+  repeatPurchase: "Panier moyen élevé et achats répétés",
+  churnRisk: "Risque d’attrition",
+  lastPurchase60Days: "Dernier achat il y a plus de 60 jours",
+  abandonedCarts: "Paniers abandonnés",
+  reactivate: "À réactiver",
+  recentPurchaseIntent: "Intention d’achat récente non concrétisée",
+};
+
+const esMarketing: AppMarketingWords = {
+  channel: "Canal",
+  loyalVip: "Clientes fieles y VIP",
+  repeatPurchase: "Cesta media alta y compras frecuentes",
+  churnRisk: "Riesgo de abandono",
+  lastPurchase60Days: "Última compra hace más de 60 días",
+  abandonedCarts: "Carritos abandonados",
+  reactivate: "Reactivar",
+  recentPurchaseIntent: "Intención de compra reciente no completada",
+};
+
+const ptMarketing: AppMarketingWords = {
+  channel: "Canal",
+  loyalVip: "Clientes fiéis e VIP",
+  repeatPurchase: "Cesto médio elevado e compras repetidas",
+  churnRisk: "Risco de abandono",
+  lastPurchase60Days: "Última compra há mais de 60 dias",
+  abandonedCarts: "Carrinhos abandonados",
+  reactivate: "Reativar",
+  recentPurchaseIntent: "Intenção de compra recente não concretizada",
+};
+
+export const APP_MARKETING_WORDS: Record<LocaleCode, AppMarketingWords> = {
+  en: enMarketing,
+  "en-GB": enMarketing,
+  fr: frMarketing,
+  "fr-FR": frMarketing,
+  es: esMarketing,
+  pt: ptMarketing,
+  ro: { channel: "Canal", loyalVip: "Clienți fideli și VIP", repeatPurchase: "Valoare medie ridicată și cumpărături repetate", churnRisk: "Risc de pierdere a clienților", lastPurchase60Days: "Ultima achiziție în urmă cu peste 60 de zile", abandonedCarts: "Coșuri abandonate", reactivate: "Reactivare", recentPurchaseIntent: "Intenție recentă de cumpărare nefinalizată" },
+  de: { channel: "Kanal", loyalVip: "Treue Kunden und VIPs", repeatPurchase: "Hoher durchschnittlicher Warenkorb und häufige Wiederkäufe", churnRisk: "Abwanderungsrisiko", lastPurchase60Days: "Letzter Kauf vor mehr als 60 Tagen", abandonedCarts: "Abgebrochene Warenkörbe", reactivate: "Reaktivieren", recentPurchaseIntent: "Jüngste Kaufabsicht nicht abgeschlossen" },
+  it: { channel: "Canale", loyalVip: "Clienti fedeli e VIP", repeatPurchase: "Valore medio elevato e acquisti ripetuti", churnRisk: "Rischio di abbandono", lastPurchase60Days: "Ultimo acquisto oltre 60 giorni fa", abandonedCarts: "Carrelli abbandonati", reactivate: "Riattivare", recentPurchaseIntent: "Intenzione di acquisto recente non completata" },
+  nl: { channel: "Kanaal", loyalVip: "Trouwe klanten en VIP’s", repeatPurchase: "Hogere gemiddelde bestelwaarde en herhaalaankopen", churnRisk: "Risico op klantverlies", lastPurchase60Days: "Laatste aankoop meer dan 60 dagen geleden", abandonedCarts: "Verlaten winkelwagens", reactivate: "Opnieuw activeren", recentPurchaseIntent: "Recente koopintentie niet afgerond" },
+  pl: { channel: "Kanał", loyalVip: "Lojalni klienci i VIP-y", repeatPurchase: "Wyższa średnia wartość koszyka i częste ponowne zakupy", churnRisk: "Ryzyko odejścia klienta", lastPurchase60Days: "Ostatni zakup ponad 60 dni temu", abandonedCarts: "Porzucone koszyki", reactivate: "Reaktywuj", recentPurchaseIntent: "Niezrealizowany zamiar zakupu" },
+  ru: { channel: "Канал", loyalVip: "Постоянные клиенты и VIP", repeatPurchase: "Высокий средний чек и частые повторные покупки", churnRisk: "Риск оттока", lastPurchase60Days: "Последняя покупка более 60 дней назад", abandonedCarts: "Брошенные корзины", reactivate: "Вернуть клиента", recentPurchaseIntent: "Недавнее намерение купить не завершилось покупкой" },
+  uk: { channel: "Канал", loyalVip: "Постійні клієнти та VIP", repeatPurchase: "Високий середній чек і часті повторні покупки", churnRisk: "Ризик відтоку", lastPurchase60Days: "Остання покупка була понад 60 днів тому", abandonedCarts: "Покинуті кошики", reactivate: "Повернути клієнта", recentPurchaseIntent: "Нещодавній намір купити не завершився покупкою" },
+  el: { channel: "Κανάλι", loyalVip: "Πιστοί πελάτες και VIP", repeatPurchase: "Υψηλότερη μέση αξία καλαθιού και επαναλαμβανόμενες αγορές", churnRisk: "Κίνδυνος αποχώρησης", lastPurchase60Days: "Τελευταία αγορά πριν από περισσότερες από 60 ημέρες", abandonedCarts: "Εγκαταλελειμμένα καλάθια", reactivate: "Επαναενεργοποίηση", recentPurchaseIntent: "Πρόσφατη πρόθεση αγοράς που δεν ολοκληρώθηκε" },
+  sv: { channel: "Kanal", loyalVip: "Lojala kunder och VIP-kunder", repeatPurchase: "Högre genomsnittligt ordervärde och återkommande köp", churnRisk: "Risk för kundbortfall", lastPurchase60Days: "Senaste köp för mer än 60 dagar sedan", abandonedCarts: "Övergivna kundvagnar", reactivate: "Återaktivera", recentPurchaseIntent: "Nylig köpavsikt som inte slutfördes" },
+  tr: { channel: "Kanal", loyalVip: "Sadık müşteriler ve VIP’ler", repeatPurchase: "Yüksek ortalama sepet ve sık tekrarlanan alışverişler", churnRisk: "Müşteri kaybı riski", lastPurchase60Days: "Son alışverişin üzerinden 60 günden fazla geçti", abandonedCarts: "Terk edilmiş sepetler", reactivate: "Yeniden etkinleştir", recentPurchaseIntent: "Yakın tarihli satın alma niyeti tamamlanmadı" },
+  cs: { channel: "Kanál", loyalVip: "Věrní zákazníci a VIP", repeatPurchase: "Vyšší průměrná hodnota košíku a opakované nákupy", churnRisk: "Riziko odchodu zákazníka", lastPurchase60Days: "Poslední nákup před více než 60 dny", abandonedCarts: "Opuštěné košíky", reactivate: "Znovu aktivovat", recentPurchaseIntent: "Nedokončený nedávný nákupní záměr" },
+  ka: { channel: "არხი", loyalVip: "ლოიალური მომხმარებლები და VIP-ები", repeatPurchase: "მაღალი საშუალო კალათა და ხშირი განმეორებითი შესყიდვები", churnRisk: "მომხმარებლის დაკარგვის რისკი", lastPurchase60Days: "ბოლო შესყიდვიდან 60 დღეზე მეტი გავიდა", abandonedCarts: "მიტოვებული კალათები", reactivate: "ხელახლა გააქტიურება", recentPurchaseIntent: "ბოლო შესყიდვის განზრახვა არ დასრულებულა" },
+  hy: { channel: "Ալիք", loyalVip: "Հավատարիմ հաճախորդներ և VIP-ներ", repeatPurchase: "Բարձր միջին զամբյուղ և հաճախակի կրկնվող գնումներ", churnRisk: "Հաճախորդի կորստի ռիսկ", lastPurchase60Days: "Վերջին գնումից անցել է ավելի քան 60 օր", abandonedCarts: "Լքված զամբյուղներ", reactivate: "Վերաակտիվացնել", recentPurchaseIntent: "Վերջին գնման մտադրությունը չի ավարտվել" },
+  ar: { channel: "القناة", loyalVip: "العملاء الأوفياء وكبار العملاء", repeatPurchase: "متوسط سلة أعلى وعمليات شراء متكررة", churnRisk: "مخاطر فقدان العملاء", lastPurchase60Days: "مر أكثر من 60 يومًا على آخر عملية شراء", abandonedCarts: "سلال متروكة", reactivate: "إعادة التفعيل", recentPurchaseIntent: "نية شراء حديثة لم تكتمل" },
+  "ar-EG": { channel: "القناة", loyalVip: "العملاء المخلصون وVIP", repeatPurchase: "متوسط سلة أعلى وشراء متكرر", churnRisk: "خطر فقدان العميل", lastPurchase60Days: "آخر شراء كان من أكتر من 60 يوم", abandonedCarts: "سلال متروكة", reactivate: "إعادة تنشيط", recentPurchaseIntent: "نية شراء قريبة ما اكتملتش" },
+  he: { channel: "ערוץ", loyalVip: "לקוחות נאמנים ולקוחות VIP", repeatPurchase: "סל ממוצע גבוה ורכישות חוזרות", churnRisk: "סיכון לנטישת לקוחות", lastPurchase60Days: "הרכישה האחרונה הייתה לפני יותר מ־60 יום", abandonedCarts: "עגלות נטושות", reactivate: "הפעלה מחדש", recentPurchaseIntent: "כוונת רכישה אחרונה שלא הושלמה" },
+  fa: { channel: "کانال", loyalVip: "مشتریان وفادار و ویژه", repeatPurchase: "میانگین سبد بالاتر و خریدهای تکراری", churnRisk: "ریسک ریزش مشتری", lastPurchase60Days: "بیش از ۶۰ روز از آخرین خرید گذشته است", abandonedCarts: "سبدهای رهاشده", reactivate: "فعال‌سازی دوباره", recentPurchaseIntent: "قصد خرید اخیر تکمیل نشده است" },
+  sw: { channel: "Kituo", loyalVip: "Wateja waaminifu na VIP", repeatPurchase: "Wastani wa kikapu mkubwa na ununuzi wa kurudia", churnRisk: "Hatari ya kupoteza wateja", lastPurchase60Days: "Ununuzi wa mwisho ulikuwa zaidi ya siku 60 zilizopita", abandonedCarts: "Mikokoteni iliyoachwa", reactivate: "Washa tena", recentPurchaseIntent: "Nia ya hivi karibuni ya kununua haikukamilika" },
+  am: { channel: "ቻናል", loyalVip: "ታማኝ ደንበኞች እና VIP", repeatPurchase: "ከፍተኛ አማካይ ጋሪ እና ተደጋጋሚ ግዢዎች", churnRisk: "የደንበኛ መጥፋት አደጋ", lastPurchase60Days: "የመጨረሻው ግዢ ከ60 ቀናት በፊት ነበር", abandonedCarts: "የተተዉ ጋሪዎች", reactivate: "እንደገና አንቃ", recentPurchaseIntent: "የቅርብ ግዢ ፍላጎት አልተጠናቀቀም" },
+  af: { channel: "Kanaal", loyalVip: "Lojale kliënte en BBP’s", repeatPurchase: "Hoër gemiddelde mandjie en herhaalde aankope", churnRisk: "Risiko vir kliënteverlies", lastPurchase60Days: "Laaste aankoop was meer as 60 dae gelede", abandonedCarts: "Verlate mandjies", reactivate: "Heraktiveer", recentPurchaseIntent: "Onlangse koopvoorneme nie voltooi nie" },
+  ha: { channel: "Tashar sadarwa", loyalVip: "Amintattun kwastomomi da VIP", repeatPurchase: "Babban matsakaicin kwando da yawan saye-saye", churnRisk: "Haɗarin rasa kwastoma", lastPurchase60Days: "Sayen ƙarshe ya wuce kwanaki 60", abandonedCarts: "Kwandunan da aka bari", reactivate: "Sake kunna", recentPurchaseIntent: "Niyyar saye ta baya-bayan nan ba ta kammala ba" },
+  zh: { channel: "渠道", loyalVip: "忠诚客户和 VIP 客户", repeatPurchase: "较高的平均客单价和频繁复购", churnRisk: "客户流失风险", lastPurchase60Days: "上次购买距今超过 60 天", abandonedCarts: "已弃置购物车", reactivate: "重新激活", recentPurchaseIntent: "近期购买意向未完成" },
+  ja: { channel: "チャネル", loyalVip: "ロイヤル顧客と VIP 顧客", repeatPurchase: "平均購入額が高く、リピート購入が多い", churnRisk: "顧客離脱リスク", lastPurchase60Days: "最終購入から60日以上経過", abandonedCarts: "放棄されたカート", reactivate: "再アクティブ化", recentPurchaseIntent: "最近の購入意向が未完了" },
+  ko: { channel: "채널", loyalVip: "충성 고객 및 VIP 고객", repeatPurchase: "높은 평균 주문 금액과 잦은 재구매", churnRisk: "고객 이탈 위험", lastPurchase60Days: "마지막 구매 후 60일 이상 경과", abandonedCarts: "버려진 장바구니", reactivate: "재활성화", recentPurchaseIntent: "최근 구매 의사가 완료되지 않음" },
+  hi: { channel: "चैनल", loyalVip: "वफ़ादार ग्राहक और VIP", repeatPurchase: "अधिक औसत टोकरी और बार-बार खरीदारी", churnRisk: "ग्राहक छोड़ने का जोखिम", lastPurchase60Days: "पिछली खरीदारी को 60 दिनों से अधिक हो गए", abandonedCarts: "छोड़ी गई टोकरी", reactivate: "फिर सक्रिय करें", recentPurchaseIntent: "हाल की खरीदारी की मंशा पूरी नहीं हुई" },
+  bn: { channel: "চ্যানেল", loyalVip: "অনুগত গ্রাহক ও VIP", repeatPurchase: "উচ্চ গড় ঝুড়ি এবং ঘন ঘন পুনঃক্রয়", churnRisk: "গ্রাহক হারানোর ঝুঁকি", lastPurchase60Days: "সর্বশেষ কেনাকাটা ৬০ দিনেরও বেশি আগে", abandonedCarts: "পরিত্যক্ত কার্ট", reactivate: "আবার সক্রিয় করুন", recentPurchaseIntent: "সাম্প্রতিক কেনার ইচ্ছা সম্পন্ন হয়নি" },
+  ur: { channel: "چینل", loyalVip: "وفادار صارفین اور VIP", repeatPurchase: "زیادہ اوسط ٹوکری اور بار بار خریداری", churnRisk: "صارف کے جانے کا خطرہ", lastPurchase60Days: "آخری خریداری کو 60 دن سے زیادہ ہو گئے", abandonedCarts: "چھوڑی گئی ٹرالیاں", reactivate: "دوبارہ فعال کریں", recentPurchaseIntent: "حالیہ خریداری کا ارادہ مکمل نہیں ہوا" },
+  ta: { channel: "சேனல்", loyalVip: "விசுவாசமான வாடிக்கையாளர்கள் மற்றும் VIP", repeatPurchase: "அதிக சராசரி கூடை மற்றும் மீண்டும் மீண்டும் கொள்முதல்", churnRisk: "வாடிக்கையாளர் விலகல் அபாயம்", lastPurchase60Days: "கடைசி கொள்முதல் 60 நாட்களுக்கு முன்பு", abandonedCarts: "கைவிடப்பட்ட கூடைகள்", reactivate: "மீண்டும் செயல்படுத்து", recentPurchaseIntent: "சமீபத்திய கொள்முதல் நோக்கம் நிறைவேறவில்லை" },
+  pa: { channel: "ਚੈਨਲ", loyalVip: "ਵਫ਼ਾਦਾਰ ਗਾਹਕ ਅਤੇ VIP", repeatPurchase: "ਉੱਚੀ ਔਸਤ ਟੋਕਰੀ ਅਤੇ ਵਾਰ-ਵਾਰ ਖਰੀਦ", churnRisk: "ਗਾਹਕ ਗੁਆਉਣ ਦਾ ਜੋਖਮ", lastPurchase60Days: "ਆਖਰੀ ਖਰੀਦ ਨੂੰ 60 ਦਿਨ ਤੋਂ ਵੱਧ ਹੋ ਗਏ", abandonedCarts: "ਛੱਡੀਆਂ ਟੋਕਰੀਆਂ", reactivate: "ਮੁੜ ਸਰਗਰਮ ਕਰੋ", recentPurchaseIntent: "ਹਾਲੀਆ ਖਰੀਦ ਦਾ ਇਰਾਦਾ ਪੂਰਾ ਨਹੀਂ ਹੋਇਆ" },
+  ne: { channel: "च्यानल", loyalVip: "निष्ठावान ग्राहक र VIP", repeatPurchase: "उच्च औसत टोकरी र बारम्बार पुनः खरिद", churnRisk: "ग्राहक गुमाउने जोखिम", lastPurchase60Days: "अन्तिम खरिद भएको ६० दिनभन्दा बढी भयो", abandonedCarts: "छोडिएका कार्टहरू", reactivate: "पुनः सक्रिय गर्नुहोस्", recentPurchaseIntent: "हालैको खरिद गर्ने इच्छा पूरा भएन" },
+  vi: { channel: "Kênh", loyalVip: "Khách hàng trung thành và VIP", repeatPurchase: "Giá trị giỏ hàng trung bình cao và mua lại thường xuyên", churnRisk: "Nguy cơ khách hàng rời bỏ", lastPurchase60Days: "Lần mua gần nhất cách đây hơn 60 ngày", abandonedCarts: "Giỏ hàng bị bỏ quên", reactivate: "Kích hoạt lại", recentPurchaseIntent: "Ý định mua gần đây chưa hoàn tất" },
+  th: { channel: "ช่องทาง", loyalVip: "ลูกค้าประจำและ VIP", repeatPurchase: "มูลค่าตะกร้าเฉลี่ยสูงและซื้อซ้ำบ่อย", churnRisk: "ความเสี่ยงที่ลูกค้าจะเลิกใช้บริการ", lastPurchase60Days: "ซื้อครั้งล่าสุดเมื่อกว่า 60 วันที่แล้ว", abandonedCarts: "ตะกร้าสินค้าที่ถูกทิ้ง", reactivate: "ดึงกลับมาใช้งาน", recentPurchaseIntent: "ความตั้งใจซื้อเมื่อเร็ว ๆ นี้ยังไม่สำเร็จ" },
+  id: { channel: "Saluran", loyalVip: "Pelanggan setia dan VIP", repeatPurchase: "Nilai keranjang rata-rata tinggi dan sering membeli kembali", churnRisk: "Risiko pelanggan berhenti", lastPurchase60Days: "Pembelian terakhir lebih dari 60 hari lalu", abandonedCarts: "Keranjang yang ditinggalkan", reactivate: "Aktifkan kembali", recentPurchaseIntent: "Niat membeli baru-baru ini belum terwujud" },
+  ms: { channel: "Saluran", loyalVip: "Pelanggan setia dan VIP", repeatPurchase: "Nilai bakul purata tinggi dan pembelian berulang", churnRisk: "Risiko pelanggan berhenti", lastPurchase60Days: "Pembelian terakhir lebih 60 hari lalu", abandonedCarts: "Bakul yang ditinggalkan", reactivate: "Aktifkan semula", recentPurchaseIntent: "Niat pembelian terkini belum diselesaikan" },
+  tl: { channel: "Channel", loyalVip: "Matatapat na customer at VIP", repeatPurchase: "Mas mataas na average basket at madalas na muling pagbili", churnRisk: "Panganib na mawala ang customer", lastPurchase60Days: "Mahigit 60 araw na mula nang huling bumili", abandonedCarts: "Mga inabandonang cart", reactivate: "Muling i-activate", recentPurchaseIntent: "Hindi natuloy ang kamakailang intensiyong bumili" },
+  my: { channel: "ချန်နယ်", loyalVip: "သစ္စာရှိဖောက်သည်များနှင့် VIP", repeatPurchase: "ပျမ်းမျှခြင်းတောင်းတန်ဖိုးမြင့်ပြီး ထပ်ခါတလဲလဲ ဝယ်ယူမှုများ", churnRisk: "ဖောက်သည်ဆုံးရှုံးနိုင်ခြေ", lastPurchase60Days: "နောက်ဆုံးဝယ်ယူမှုသည် ရက် ၆၀ ကျော်က ဖြစ်သည်", abandonedCarts: "စွန့်ပစ်ထားသော ဈေးခြင်းများ", reactivate: "ပြန်လည်အသက်သွင်းရန်", recentPurchaseIntent: "မကြာသေးမီက ဝယ်ယူလိုသည့်ဆန္ဒ မပြီးမြောက်ခဲ့ပါ" },
+  km: { channel: "ប៉ុស្តិ៍", loyalVip: "អតិថិជនស្មោះត្រង់ និង VIP", repeatPurchase: "តម្លៃកន្ត្រកមធ្យមខ្ពស់ និងការទិញម្ដងទៀតញឹកញាប់", churnRisk: "ហានិភ័យបាត់បង់អតិថិជន", lastPurchase60Days: "ការទិញចុងក្រោយលើសពី ៦០ ថ្ងៃមុន", abandonedCarts: "កន្ត្រកដែលបានបោះបង់", reactivate: "ធ្វើឱ្យសកម្មឡើងវិញ", recentPurchaseIntent: "បំណងទិញថ្មីៗនេះមិនទាន់បានបញ្ចប់" },
+  mn: { channel: "Суваг", loyalVip: "Үнэнч харилцагчид болон VIP", repeatPurchase: "Дундаж сагсны дүн өндөр, давтан худалдан авалт их", churnRisk: "Харилцагч алдах эрсдэл", lastPurchase60Days: "Сүүлийн худалдан авалтаас 60-аас дээш хоног өнгөрсөн", abandonedCarts: "Орхигдсон сагс", reactivate: "Дахин идэвхжүүлэх", recentPurchaseIntent: "Саяхны худалдан авах санаа хэрэгжээгүй" },
+};
+
+export type AppMarketingExtraWords = {
+  estimatedRoi: string;
+  topPercent: string;
+};
+
+export const APP_MARKETING_EXTRA_WORDS: Record<LocaleCode, AppMarketingExtraWords> = {
+  en: { estimatedRoi: "Estimated ROI", topPercent: "Top {percent}" },
+  "en-GB": { estimatedRoi: "Estimated ROI", topPercent: "Top {percent}" },
+  fr: { estimatedRoi: "ROI estimé", topPercent: "Meilleurs {percent}" },
+  "fr-FR": { estimatedRoi: "ROI estimé", topPercent: "Meilleurs {percent}" },
+  es: { estimatedRoi: "ROI estimado", topPercent: "Mejores {percent}" },
+  pt: { estimatedRoi: "ROI estimado", topPercent: "Principais {percent}" },
+  ro: { estimatedRoi: "Rentabilitate estimată", topPercent: "Top {percent}" },
+  de: { estimatedRoi: "Geschätzter ROI", topPercent: "Top {percent}" },
+  it: { estimatedRoi: "ROI stimato", topPercent: "Migliori {percent}" },
+  nl: { estimatedRoi: "Geschatte ROI", topPercent: "Top {percent}" },
+  pl: { estimatedRoi: "Szacowany ROI", topPercent: "Najlepsze {percent}" },
+  ru: { estimatedRoi: "Оценочный ROI", topPercent: "Лучшие {percent}" },
+  uk: { estimatedRoi: "Орієнтовний ROI", topPercent: "Найкращі {percent}" },
+  el: { estimatedRoi: "Εκτιμώμενο ROI", topPercent: "Κορυφαία {percent}" },
+  sv: { estimatedRoi: "Uppskattad ROI", topPercent: "Bästa {percent}" },
+  tr: { estimatedRoi: "Tahmini yatırım getirisi", topPercent: "En iyi {percent}" },
+  cs: { estimatedRoi: "Odhadovaná návratnost investic", topPercent: "Nejlepších {percent}" },
+  ka: { estimatedRoi: "სავარაუდო უკუგება", topPercent: "საუკეთესო {percent}" },
+  hy: { estimatedRoi: "Գնահատված ROI", topPercent: "Լավագույն {percent}" },
+  ar: { estimatedRoi: "العائد المتوقع", topPercent: "أفضل {percent}" },
+  "ar-EG": { estimatedRoi: "العائد المتوقع", topPercent: "أفضل {percent}" },
+  he: { estimatedRoi: "החזר השקעה משוער", topPercent: "המובילים {percent}" },
+  fa: { estimatedRoi: "بازده تخمینی سرمایه‌گذاری", topPercent: "برترها {percent}" },
+  sw: { estimatedRoi: "Faida inayokadiriwa", topPercent: "Bora {percent}" },
+  am: { estimatedRoi: "የተገመተ ROI", topPercent: "ከፍተኛ {percent}" },
+  af: { estimatedRoi: "Geskatte opbrengs", topPercent: "Top {percent}" },
+  ha: { estimatedRoi: "Ribar da aka kiyasta", topPercent: "Manyan {percent}" },
+  zh: { estimatedRoi: "预计投资回报率", topPercent: "排名前 {percent}" },
+  ja: { estimatedRoi: "推定投資収益率", topPercent: "上位 {percent}" },
+  ko: { estimatedRoi: "예상 투자 수익률", topPercent: "상위 {percent}" },
+  hi: { estimatedRoi: "अनुमानित ROI", topPercent: "शीर्ष {percent}" },
+  bn: { estimatedRoi: "আনুমানিক ROI", topPercent: "শীর্ষ {percent}" },
+  ur: { estimatedRoi: "متوقع منافع", topPercent: "سرفہرست {percent}" },
+  ta: { estimatedRoi: "மதிப்பிடப்பட்ட ROI", topPercent: "சிறந்த {percent}" },
+  pa: { estimatedRoi: "ਅਨੁਮਾਨਿਤ ROI", topPercent: "ਸਿਖਰਲੇ {percent}" },
+  ne: { estimatedRoi: "अनुमानित ROI", topPercent: "शीर्ष {percent}" },
+  vi: { estimatedRoi: "ROI ước tính", topPercent: "Nhóm đầu {percent}" },
+  th: { estimatedRoi: "ROI โดยประมาณ", topPercent: "อันดับต้น {percent}" },
+  id: { estimatedRoi: "ROI perkiraan", topPercent: "Teratas {percent}" },
+  ms: { estimatedRoi: "ROI anggaran", topPercent: "Teratas {percent}" },
+  tl: { estimatedRoi: "Tinatayang ROI", topPercent: "Nangungunang {percent}" },
+  my: { estimatedRoi: "ခန့်မှန်း ROI", topPercent: "ထိပ်တန်း {percent}" },
+  km: { estimatedRoi: "ROI ប៉ាន់ស្មាន", topPercent: "កំពូល {percent}" },
+  mn: { estimatedRoi: "Тооцоолсон ROI", topPercent: "Тэргүүлэх {percent}" },
+};
