@@ -23,6 +23,7 @@ import { KPISkeleton, ChartSkeleton, AIInsightSkeleton } from "@/components/ui/s
 import { EmptyState, ErrorState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
@@ -60,6 +61,7 @@ export function DashboardView({
 }: DashboardViewProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const company = getApplicationCatalog(locale).company;
 
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "quarter">("30d");
   const [isLoading, setIsLoading] = useState(true);
@@ -227,9 +229,9 @@ export function DashboardView({
 
           <button
             onClick={fetchDashboardData}
-            aria-label="Actualiser les métriques"
+            aria-label={company.employeesRefreshTooltip}
             className="p-2 rounded-xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] hover:bg-slate-50 dark:hover:bg-[#172652] text-slate-600 dark:text-[#94A3B8] transition-colors"
-            title="Actualiser"
+            title={company.employeesRefreshTooltip}
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
@@ -393,7 +395,7 @@ export function DashboardView({
               </div>
 
               <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                Données de catégories indisponibles
+                {company.analyticsUnavailable}
               </div>
             </AvenqoCard>
 
@@ -409,7 +411,7 @@ export function DashboardView({
               </div>
 
               <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                Données géographiques indisponibles
+                {company.analyticsUnavailable}
               </div>
             </AvenqoCard>
           </div>
