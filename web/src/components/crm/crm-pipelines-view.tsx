@@ -180,7 +180,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
         </div>
       ) : !activePipeline || !activePipeline.stages || activePipeline.stages.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800">
-          <p className="text-xs text-slate-400">Aucune étape configurée dans ce pipeline.</p>
+          <p className="text-xs text-slate-400">{t.crm.calendar.noAppointments}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
@@ -211,7 +211,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                 <div className="flex-1 space-y-2.5 overflow-y-auto">
                   {opps.length === 0 ? (
                     <div className="py-8 text-center text-[11px] text-slate-400 italic">
-                      Aucun dossier
+                      {t.crm.calendar.noAppointments}
                     </div>
                   ) : (
                     opps.map((opp) => (
@@ -241,7 +241,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                               onClick={() => handleMoveStage(opp.id, sIdx)}
                               className="text-[10px] font-semibold text-[#0076FF] hover:underline flex items-center gap-0.5"
                             >
-                              Étape suivante <ChevronRight className="w-3 h-3" />
+                              {t.crm.calendar.next} <ChevronRight className="w-3 h-3" />
                             </button>
                           </div>
                         )}
@@ -261,7 +261,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
           <div className="w-full max-w-md bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Ajouter une opportunité
+                {t.crm.tabs.pipelines}
               </h3>
               <button
                 onClick={() => setIsNewOppOpen(false)}
@@ -274,21 +274,21 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
             <form onSubmit={handleCreateOpportunity} className="space-y-3 text-xs">
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Titre du contrat ou besoin *
+                  {t.crm.clients.company} *
                 </label>
                 <input
                   type="text"
                   required
                   value={oppTitle}
                   onChange={(e) => setOppTitle(e.target.value)}
-                  placeholder="Ex: Contrat maintenance annuel flotte"
+                  placeholder={t.crm.searchPlaceholder}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                 />
               </div>
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Montant estimé (CAD)
+                  {t.crm.kpis.revenueGenerated}
                 </label>
                 <input
                   type="number"
@@ -301,7 +301,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Étape initiale
+                  {t.crm.calendar.today}
                 </label>
                 <select
                   value={oppStageId}
@@ -329,7 +329,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                   disabled={isSubmitting}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white font-medium shadow-md hover:opacity-90 disabled:opacity-50"
                 >
-                  {isSubmitting ? "Création..." : "Créer l'opportunité"}
+                  {isSubmitting ? t.copilot.statusThinking : t.crm.actions.save}
                 </button>
               </div>
             </form>

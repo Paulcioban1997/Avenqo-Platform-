@@ -396,7 +396,7 @@ export function NewAppointmentModal({
                     type="email"
                     value={newClientEmail}
                     onChange={(e) => setNewClientEmail(e.target.value)}
-                    placeholder="marc@example.ca"
+                    placeholder={t.crm.clients.email}
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
@@ -433,7 +433,7 @@ export function NewAppointmentModal({
                 <option value="">{t.crm.filters.service}</option>
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.duration_minutes} min — {s.price} $)
+                    {s.name} ({new Intl.NumberFormat(locale, { style: "unit", unit: "minute", unitDisplay: "short" }).format(s.duration_minutes)} — {s.price} $)
                   </option>
                 ))}
               </select>
@@ -463,7 +463,7 @@ export function NewAppointmentModal({
           <div>
             <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
               <FileText className="w-3.5 h-3.5 text-slate-400" />
-              Objet ou Titre du rendez-vous
+              {t.crm.modal.newAppointmentTitle}
             </label>
             <input
               type="text"
@@ -479,7 +479,7 @@ export function NewAppointmentModal({
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                 <Calendar className="w-3.5 h-3.5 text-[#0076FF]" />
-                Date *
+                {t.crm.calendar.day} *
               </label>
               <input
                 type="date"
@@ -492,7 +492,7 @@ export function NewAppointmentModal({
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#00D4FF]" />
-                Heure de début *
+                {t.crm.calendar.agenda} *
               </label>
               <input
                 type="time"
@@ -505,7 +505,7 @@ export function NewAppointmentModal({
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                Durée (min)
+                {t.crm.calendar.week}
               </label>
               <input
                 type="number"
@@ -522,7 +522,7 @@ export function NewAppointmentModal({
           <div>
             <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
               <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-              Tarif facturé (CAD)
+              {t.crm.kpis.revenueGenerated}
             </label>
             <input
               type="number"
@@ -538,7 +538,7 @@ export function NewAppointmentModal({
           <div>
             <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
               <FileText className="w-3.5 h-3.5 text-slate-400" />
-              Notes & Consignes
+              {t.crm.actions.addNote}
             </label>
             <textarea
               rows={2}

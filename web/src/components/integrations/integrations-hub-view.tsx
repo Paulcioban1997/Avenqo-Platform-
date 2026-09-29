@@ -757,7 +757,7 @@ export function IntegrationsHubView() {
               {t.integrations.title}
             </h1>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-[#0076FF]/15 dark:text-[#00D4FF] border border-blue-200 dark:border-[#0076FF]/30">
-              {connectors.length} Connecteurs
+              {connectors.length} {connector.title}
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
@@ -934,7 +934,7 @@ export function IntegrationsHubView() {
                       size="sm"
                     />
                     <span className="text-[11px] text-slate-400">
-                      ID: {selectedConnector.id}
+                      {connector.connection}: {selectedConnector.id}
                     </span>
                   </div>
                 </div>
@@ -976,7 +976,7 @@ export function IntegrationsHubView() {
                         onClick={() => setShowConfigForm(true)}
                         className="text-[11px] font-semibold text-[#0076FF] hover:underline cursor-pointer"
                       >
-                        Modifier l'URL ou les clés
+                        {connector.reconnect}
                       </button>
                     </div>
 
@@ -1010,8 +1010,8 @@ export function IntegrationsHubView() {
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-[#94A3B8] mt-0.5">
                         {connectorActiveState[selectedConnector.id] ?? true
-                          ? "Connecteur actif — La synchronisation automatique en arrière-plan est autorisée."
-                          : "Connecteur inactif — La synchronisation est temporairement suspendue."}
+                          ? connector.connected
+                          : connector.disconnected}
                       </div>
                     </div>
 
@@ -1043,7 +1043,7 @@ export function IntegrationsHubView() {
                           <span>{connector.capabilities}</span>
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          Choisissez vous-même les flux de données à importer dans Avenqo.
+                          {connector.capabilities}
                         </div>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]">
@@ -1056,11 +1056,11 @@ export function IntegrationsHubView() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                       {[
-                        { id: "orders", label: "Commandes & Ventes", desc: "Transactions et factures" },
-                        { id: "products", label: "Produits & Catalogue", desc: "SKUs, prix, variantes" },
-                        { id: "customers", label: "Clients & Profils", desc: "Coordonnées et profils" },
-                        { id: "inventory", label: "Niveaux de Stocks", desc: "Quantités et ruptures" },
-                        { id: "refunds", label: "Remboursements", desc: "Avoirs et retours" },
+                        { id: "orders", label: connector.capabilityOrders, desc: connector.capabilityOrders },
+                        { id: "products", label: connector.capabilityProducts, desc: connector.capabilityCatalog },
+                        { id: "customers", label: connector.capabilityCustomers, desc: connector.capabilityCustomers },
+                        { id: "inventory", label: connector.capabilityInventory, desc: connector.capabilityInventory },
+                        { id: "refunds", label: connector.capabilityRefunds, desc: connector.capabilityRefunds },
                       ].map((entity) => {
                         const isChecked = (
                           connectorEntitiesState[selectedConnector.id] || [
@@ -1111,7 +1111,7 @@ export function IntegrationsHubView() {
                         {connector.sync}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        Forcer la réconciliation et l'import immédiat des données.
+                        {connector.sync}
                       </div>
                     </div>
 
@@ -1122,7 +1122,7 @@ export function IntegrationsHubView() {
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                      <span>{isSyncing ? "Importation..." : "Synchroniser maintenant"}</span>
+                      <span>{isSyncing ? connector.processing : connector.sync}</span>
                     </button>
                   </div>
                 </div>
@@ -1155,7 +1155,7 @@ export function IntegrationsHubView() {
                           />
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          Exemple : https://mon-magasin.com ou https://boutique.example.ca
+                          {connector.wooStoreUrlHint}
                         </p>
                       </div>
 
@@ -1196,10 +1196,10 @@ export function IntegrationsHubView() {
                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/[0.06] text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
                         <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                           <HelpCircle size={13} className="text-[#0076FF]" />
-                          <span>Où trouver vos clés d'API WooCommerce ?</span>
+                          <span>{connector.wooCredentialsRequired}</span>
                         </div>
                         <p className="leading-relaxed">
-                          Dans l'administration WordPress de votre boutique : <strong>WooCommerce</strong> &gt; <strong>Réglages</strong> &gt; <strong>Avancé</strong> &gt; <strong>API REST</strong> &gt; Cliquez sur <strong>Ajouter une clé</strong> avec les permissions <strong>Lecture/Écriture</strong>.
+                          {connector.wooStoreUrlHint}
                         </p>
                       </div>
 
@@ -1230,7 +1230,7 @@ export function IntegrationsHubView() {
                     <form onSubmit={handleConnectShopify} className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Nom de domaine Shopify *
+                          {connector.shopDomainTitle} *
                         </label>
                         <div className="relative">
                           <Globe className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1247,7 +1247,7 @@ export function IntegrationsHubView() {
 
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Jeton d'accès Admin API (Admin Access Token) *
+                          {connector.authorize} *
                         </label>
                         <div className="relative">
                           <Key className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1313,9 +1313,7 @@ export function IntegrationsHubView() {
                   {selectedConnector.id !== "woocommerce" && selectedConnector.id !== "shopify" && selectedConnector.id !== "google_calendar" && (
                     <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-xs text-slate-600 dark:text-slate-400 space-y-3">
                       <p>
-                        Pour activer le connecteur <strong>{selectedConnector.name}</strong>, vous
-                        pouvez déclencher la liaison automatique ou synchroniser les données de
-                        l'entreprise.
+                        {connector.connectToAvenqo}
                       </p>
                       <button
                         type="button"
@@ -1324,7 +1322,7 @@ export function IntegrationsHubView() {
                         className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                        <span>Synchroniser {selectedConnector.name}</span>
+                        <span>{connector.sync}</span>
                       </button>
                     </div>
                   )}
@@ -1335,7 +1333,7 @@ export function IntegrationsHubView() {
               <div>
                 <div className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB] mb-2 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-[#0076FF]" />
-                  <span>Journal de synchronisation en direct</span>
+                  <span>{connector.lastSync}</span>
                 </div>
 
                 <div className="max-h-40 overflow-y-auto space-y-1.5 font-mono text-[11px] p-2.5 rounded-xl bg-slate-100/80 dark:bg-[#060B13] border border-slate-200/60 dark:border-white/[0.06]">
@@ -1426,19 +1424,19 @@ export function IntegrationsHubView() {
                   {connector.disconnect} {disconnectTarget.name}
                 </h3>
                 <p className="text-[11px] text-rose-700/80 dark:text-rose-400/80 mt-0.5">
-                  Action irréversible — les enregistrements normalisés seront supprimés.
+                  {connector.disconnectConfirm}
                 </p>
               </div>
             </div>
 
             <div className="p-5 space-y-4">
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                Êtes-vous certain de vouloir déconnecter la boutique et supprimer les données associées ?
+                {connector.disconnectConfirm}
               </p>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Tapez&nbsp;<code className="bg-slate-100 dark:bg-white/[0.08] px-1 py-0.5 rounded text-rose-600 dark:text-rose-400">{disconnectTarget.id}</code>&nbsp;pour confirmer :
+                  {connector.disconnectConfirm}: <code className="bg-slate-100 dark:bg-white/[0.08] px-1 py-0.5 rounded text-rose-600 dark:text-rose-400">{disconnectTarget.id}</code>
                 </label>
                 <input
                   type="text"
