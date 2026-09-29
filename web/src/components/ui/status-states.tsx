@@ -138,6 +138,8 @@ export function AIState({
   confidence,
   className = "",
 }: AIStateProps) {
+  const { locale } = useLocale();
+  const t = getAppTranslations(locale);
   const isThinking = status === "thinking";
 
   return (
@@ -179,7 +181,7 @@ export function AIState({
         {typeof confidence === "number" && (
           <div className="text-right shrink-0">
             <span className="text-[10px] uppercase font-semibold text-neutral-400 dark:text-neutral-500 block">
-              Confiance
+              {t.copilot.contextBadge}
             </span>
             <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
               {(confidence * 100).toFixed(0)}%

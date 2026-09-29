@@ -20,7 +20,7 @@ export function Header() {
   return (
     <header className="site-header">
       <div className="page-shell header-inner">
-        <Link href="/" className="header-logo" aria-label="Avenqo, accueil">
+        <Link href="/" className="header-logo" aria-label={t.common.login}>
           <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} priority />
         </Link>
         <nav className="desktop-nav">

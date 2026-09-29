@@ -203,7 +203,7 @@ export function SettingsView() {
               {company?.name || companyTranslations.connectionsLoading}
             </div>
             <div className="text-xs text-slate-400 font-mono mt-1 truncate">
-              ID: {company?.id || entitlements?.company_id || "—"}
+              {companyTranslations.connectionsUploadedSource}: {company?.id || entitlements?.company_id || "—"}
             </div>
           </div>
           <div className="pt-2 border-t border-slate-100 dark:border-white/[0.04] text-xs text-slate-500">

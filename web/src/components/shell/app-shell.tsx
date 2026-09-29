@@ -402,7 +402,7 @@ export function AppShell({ children }: AppShellProps) {
                   {t.brand.name}
                 </div>
                 <div className="text-[9px] font-bold text-slate-400 dark:text-[#94A3B8] tracking-widest uppercase mt-1">
-                  AI FOR A SMARTER FUTURE
+                  {t.brand.tagline}
                 </div>
               </div>
             </Link>
@@ -531,7 +531,7 @@ export function AppShell({ children }: AppShellProps) {
                     <span>{currentUser?.job_title || currentUser?.role || "Membre"}</span>
                     {currentUser?.is_platform_admin && (
                       <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 font-bold text-[8px]">
-                        ADMIN
+                        {t.shell.role}
                       </span>
                     )}
                   </div>
@@ -606,7 +606,7 @@ export function AppShell({ children }: AppShellProps) {
           className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-slate-500 dark:text-[#94A3B8]"
         >
           <Menu size={18} />
-          <span>Menu</span>
+          <span>{t.shell.workspace}</span>
         </button>
       </nav>
 

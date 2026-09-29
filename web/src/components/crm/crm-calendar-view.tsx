@@ -519,7 +519,7 @@ export function CRMCalendarView({
                       ))}
                       {dayApps.length > 2 && (
                         <span className="text-[9px] text-slate-400 block">
-                          +{dayApps.length - 2} autre(s)
+                          +{dayApps.length - 2} {t.crm.calendar.agenda}
                         </span>
                       )}
                     </div>

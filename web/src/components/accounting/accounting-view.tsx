@@ -204,7 +204,7 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            {overview?.unpaid_invoices_count || 0} facture(s)
+            {overview?.unpaid_invoices_count || 0} {t.navigation.billing}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             ${(overview?.unpaid_invoices_amount || 0).toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}

@@ -465,13 +465,12 @@ class _InvoiceHistoryState extends State<_InvoiceHistory> {
     final period = periodStart != null && periodEnd != null
         ? widget.strings.billingValue('invoicePeriod').replaceFirst('{start}', DateFormat.yMMMd(widget.localeCode).format(periodStart.toLocal())).replaceFirst('{end}', DateFormat.yMMMd(widget.localeCode).format(periodEnd.toLocal()))
         : null;
-    final total = NumberFormat.currency(locale: widget.localeCode, symbol: '', decimalDigits: 2).format((invoice['total'] as num) / 100).trim();
     return ListTile(
       leading: const Icon(Icons.receipt_outlined),
       title: Text(invoice['number']?.toString() ?? widget.invoiceFallback),
       subtitle: Text([if (issuedAt != null) DateFormat.yMMMd(widget.localeCode).format(issuedAt.toLocal()), widget.strings.planName(invoice['plan_code']?.toString() ?? ''), status, ?period].join(' · ')),
       trailing: Wrap(spacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text('$total $currency'),
+        Text(NumberFormat.currency(locale: widget.localeCode, name: currency, decimalDigits: 2).format((invoice['total'] as num) / 100)),
         if (invoice['hosted_invoice_url'] != null) IconButton(tooltip: widget.strings.billingValue('viewInvoice'), onPressed: () => widget.launcher(Uri.parse(invoice['hosted_invoice_url'].toString())), icon: const Icon(Icons.open_in_new)),
         if (invoice['invoice_pdf'] != null) IconButton(tooltip: widget.strings.billingValue('downloadPdf'), onPressed: () => widget.launcher(Uri.parse(invoice['invoice_pdf'].toString())), icon: const Icon(Icons.picture_as_pdf_outlined)),
         IconButton(tooltip: widget.strings.billingValue('downloadCsv'), onPressed: () => _download(invoice, 'csv'), icon: const Icon(Icons.table_view_outlined)),

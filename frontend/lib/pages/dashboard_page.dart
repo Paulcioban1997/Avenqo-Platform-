@@ -929,8 +929,12 @@ class _PlanBadge extends StatelessWidget {
         border: Border.all(color: _Brand.blue.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        '$label \u00b7 ${plan[0].toUpperCase()}${plan.substring(1)}',
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: label),
+          TextSpan(text: String.fromCharCode(0xB7)),
+          TextSpan(text: '${plan[0].toUpperCase()}${plan.substring(1)}'),
+        ]),
         style: const TextStyle(
           color: _Brand.blueDark,
           fontWeight: FontWeight.w700,

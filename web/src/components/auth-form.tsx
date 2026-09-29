@@ -293,7 +293,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     name="company_name"
                     label={s.organization}
                     autoComplete="organization"
-                    placeholder="Acme Inc."
+                    placeholder={s.organization}
                   />
                   <div className="auth-field-row">
                     <label className="auth-field">
@@ -334,14 +334,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <label className="auth-field">
                       <span>{locale === "en" ? "Currency" : "Devise"}</span>
                       <select name="currency_code" defaultValue="CAD" required>
-                        <option value="CAD">CAD ({currencyExample("CAD")})</option>
-                        <option value="USD">USD ({currencyExample("USD")})</option>
-                        <option value="EUR">EUR ({currencyExample("EUR")})</option>
+                        <option value="CAD">{currencyExample("CAD")}</option>
+                        <option value="USD">{currencyExample("USD")}</option>
+                        <option value="EUR">{currencyExample("EUR")}</option>
                       </select>
                     </label>
                   </div>
                   <div className="auth-field-row">
-                    <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" placeholder="facturation@entreprise.ca" />
+                    <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" placeholder={s.billingEmail} />
                     <label className="auth-field">
                       <span>{locale === "en" ? "Formula / Plan" : "Formule d'abonnement"}</span>
                       <select name="plan_code" defaultValue="base" required>
@@ -359,7 +359,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                   label={isForgot ? s.emailAddress : s.email}
                   type="email"
                   autoComplete="email"
-                  placeholder="nom@entreprise.ca"
+                  placeholder={s.emailAddress}
                 />
               )}
 

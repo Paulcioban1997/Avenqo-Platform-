@@ -156,7 +156,7 @@ export function AppointmentDetailsDrawer({
                 </p>
                 <p className="text-xs text-slate-500 dark:text-[#94A3B8] flex items-center gap-1 mt-0.5">
                   <Clock className="w-3.5 h-3.5" />
-                  {startDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {endDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ({appointment.duration_minutes} min)
+                  {startDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {endDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ({new Intl.NumberFormat(undefined, { style: "unit", unit: "minute", unitDisplay: "short" }).format(appointment.duration_minutes)})
                 </p>
               </div>
             </div>
@@ -230,7 +230,7 @@ export function AppointmentDetailsDrawer({
             {appointment.notes && (
               <div className="space-y-1.5">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5" /> Notes
+                  <FileText className="w-3.5 h-3.5" /> {t.crm.actions.addNote}
                 </h3>
                 <p className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#111D3D] text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
                   {appointment.notes}
@@ -242,13 +242,13 @@ export function AppointmentDetailsDrawer({
             <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <CalendarSync className="w-4 h-4 text-blue-500" />
-                <span className="font-medium text-slate-700 dark:text-slate-300">
-                  {appointment.external_event_id ? "Synchronisé Google Calendar" : "Calendrier local"}
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {appointment.external_event_id ? t.crm.calendar.connected : t.crm.calendar.disconnected}
                 </span>
               </div>
               {appointment.external_event_id && (
                 <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                  <CheckCircle className="w-3.5 h-3.5" /> Connecté
+                  <CheckCircle className="w-3.5 h-3.5" /> {t.crm.calendar.connected}
                 </span>
               )}
             </div>

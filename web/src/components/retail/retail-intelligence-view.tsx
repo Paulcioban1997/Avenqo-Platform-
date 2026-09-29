@@ -219,14 +219,14 @@ export function RetailIntelligenceView({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-              Retail Intelligence &amp; Data Engine
+              {t.navigation.retailAi}
             </h1>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
-              Live Normalized Ledger
+              {t.retail.overview}
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-            Pipeline IA de réconciliation, prévision de demande et monitoring du stock en temps réel.
+            {t.retail.forecastDescription}
           </p>
         </div>
 
@@ -235,7 +235,7 @@ export function RetailIntelligenceView({
             <div className="flex items-center gap-2">
               <StatusBadge
                 status="connected"
-                label={`Boutique ${retailStatus.provider?.toUpperCase()} Connectée`}
+                label={`${retailStatus.provider?.toUpperCase()} ${integrations.statusConnected}`}
                 size="sm"
               />
               {retailStatus.store_url && (
@@ -251,7 +251,7 @@ export function RetailIntelligenceView({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <StatusBadge status="disconnected" label="Aucune boutique connectée" size="sm" />
+              <StatusBadge status="disconnected" label={integrations.statusDisconnected} size="sm" />
               <Link
                 href="/integrations"
                 className="text-xs font-semibold text-[#0076FF] hover:underline flex items-center gap-1"
@@ -314,7 +314,7 @@ export function RetailIntelligenceView({
                   </h2>
                 </div>
                 <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-                  Score algorithmique d'intégrité calculé après passage dans le pipeline de nettoyage IA.
+                  {t.retail.qualityScore}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -323,7 +323,7 @@ export function RetailIntelligenceView({
                     {qualityScores.overall} / 100
                   </div>
                   <div className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                    Qualité Entreprise Validée
+                    {t.retail.qualityScore}
                   </div>
                 </div>
               </div>

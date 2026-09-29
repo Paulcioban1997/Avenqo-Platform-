@@ -515,8 +515,14 @@ class _PeriodFact extends StatelessWidget {
   Widget build(BuildContext context) {
     final locale = Localizations.localeOf(context).toLanguageTag();
     return Chip(
-      label: Text(
-        '$label · ${point['period']} · ${formatMoney(point['revenue'] as num, locale: locale, currencyCode: currency)}',
+      label: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: label),
+          TextSpan(text: String.fromCharCode(0xB7)),
+          TextSpan(text: point['period']?.toString() ?? ''),
+          TextSpan(text: String.fromCharCode(0xB7)),
+          TextSpan(text: formatMoney(point['revenue'] as num, locale: locale, currencyCode: currency)),
+        ]),
       ),
     );
   }

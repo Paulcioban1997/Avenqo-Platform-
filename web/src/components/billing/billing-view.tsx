@@ -612,7 +612,7 @@ export function BillingView() {
                   {subscription.payment_method.brand} •••• {subscription.payment_method.last4}
                 </span>
               ) : (
-                <span className="text-slate-400 dark:text-slate-500 text-xs">Stripe Checkout</span>
+                <span className="text-slate-400 dark:text-slate-500 text-xs">{companyTranslations.billingPortalButton}</span>
               )}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
@@ -715,7 +715,7 @@ export function BillingView() {
                 <span>{companyTranslations.settingsSubtitle}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                Passez à la formule Professional ({new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois) pour activer jusqu'à 6 modules métiers, sans aucune perte de vos données ou connexions actuelles.
+                {companyTranslations.settingsSubtitle}
               </p>
             </div>
             <button
@@ -736,7 +736,7 @@ export function BillingView() {
                 <span>{companyTranslations.settingsSubtitle}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                Besoin d'agents supplémentaires, d'intégrations ERP/SAP ou d'un SLA dédié ? Demandez un devis Enterprise personnalisé.
+                {companyTranslations.billingInvoicesTitle}
               </p>
             </div>
             <button
@@ -1180,49 +1180,49 @@ export function BillingView() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Passer à Avenqo Professional
+                  {companyTranslations.settingsPlanLabel}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Débloquez jusqu'à 6 agents métiers et 25 000 crédits IA mensuels.
+                  {companyTranslations.settingsSubtitle}
                 </p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-medium">Tarif officiel :</span>
+                <span className="text-xs text-slate-500 font-medium">{billingTranslations.priceUsd}:</span>
                 <span className="text-base font-extrabold text-slate-900 dark:text-white">{new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Fréquence :</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">Facturation mensuelle</span>
+                <span className="text-slate-500 font-medium">{billingTranslations.billingPeriod}:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{billingTranslations.billingPeriod}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Date d'effet :</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Immédiate (dès confirmation Stripe)</span>
+                <span className="text-slate-500 font-medium">{companyTranslations.connectionsImportedAtLabel}:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{companyTranslations.connectionsImportCompleteTitle}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Prorata :</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">Ajusté automatiquement par Stripe</span>
+                <span className="text-slate-500 font-medium">{billingTranslations.monthlyProgress}:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{billingTranslations.monthlyProgress}</span>
               </div>
               <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
-                <span className="text-slate-500 font-medium">Capacité modules :</span>
-                <span className="font-bold text-[#0076FF] dark:text-[#00D4FF]">Jusqu'à 6 modules actifs</span>
+                <span className="text-slate-500 font-medium">{companyTranslations.settingsSessionSection}:</span>
+                <span className="font-bold text-[#0076FF] dark:text-[#00D4FF]">{companyTranslations.settingsSessionSection}</span>
               </div>
             </div>
 
             <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-500 shrink-0" />
-                <span>Tous vos modules actuels restent activés et opérationnels.</span>
+                <span>{companyTranslations.connectionsSynchronizedSource}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-500 shrink-0" />
-                <span>Conservation intégrale de vos données, boutiques et fichiers importés.</span>
+                <span>{companyTranslations.connectionsConnectedDataTitle}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-500 shrink-0" />
-                <span>Paiement sécurisé 3D Secure via Stripe Customer Checkout.</span>
+                <span>{companyTranslations.billingPortalButton}</span>
               </div>
             </div>
 
@@ -1239,7 +1239,7 @@ export function BillingView() {
                 onClick={handleConfirmUpgradeToProfessional}
                 className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
               >
-                <span>Confirmer et passer à Professional</span>
+                <span>{companyTranslations.settingsPlanLabel}</span>
                 <ArrowRight size={14} />
               </button>
             </div>
@@ -1267,10 +1267,10 @@ export function BillingView() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Demande de Devis Avenqo Enterprise
+                  {companyTranslations.billingTitle}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Solutions sur-mesure pour grands comptes et volumes intensifs.
+                  {companyTranslations.billingUnavailable}
                 </p>
               </div>
             </div>
@@ -1279,7 +1279,7 @@ export function BillingView() {
               <div className="p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-center space-y-3">
                 <CheckCircle2 size={36} className="text-emerald-600 dark:text-emerald-400 mx-auto" />
                 <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
-                  Demande transmise avec succès
+                  {companyTranslations.connectionsImportCompleteTitle}
                 </h4>
                 <p className="text-xs text-emerald-800 dark:text-emerald-300">
                   {quoteSuccessMsg}
@@ -1289,7 +1289,7 @@ export function BillingView() {
               <form onSubmit={handleSubmitEnterpriseQuote} className="space-y-4 text-xs">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                    Organisation & Contact
+                    {companyTranslations.settingsCompanySection}
                   </label>
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08] flex justify-between">
                     <span className="font-bold text-slate-900 dark:text-white">{subscription.company_name || "Votre Organisation"}</span>
@@ -1299,7 +1299,7 @@ export function BillingView() {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                    Modules Métiers souhaités
+                    {companyTranslations.settingsSessionSection}
                   </label>
                   <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08]">
                     {([
@@ -1336,7 +1336,7 @@ export function BillingView() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                      Nombre d'utilisateurs estimés
+                      {companyTranslations.employeesTitle}
                     </label>
                     <input
                       type="number"
@@ -1349,29 +1349,29 @@ export function BillingView() {
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                      Volume mensuel estimé
+                      {billingTranslations.billingPeriod}
                     </label>
                     <select
                       value={enterpriseForm.monthly_volume}
                       onChange={(e) => setEnterpriseForm({ ...enterpriseForm, monthly_volume: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08] text-slate-900 dark:text-white font-medium"
                     >
-                      <option value="10k à 50k transactions">10k à 50k transactions</option>
-                      <option value="50k à 100k transactions">50k à 100k transactions</option>
-                      <option value="Plus de 100k transactions">Plus de 100k transactions</option>
+                      <option value="10k à 50k transactions">{new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 0 }).format(10000)} - {new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 0 }).format(50000)} {companyTranslations.connectorHub.records}</option>
+                      <option value="50k à 100k transactions">{new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 0 }).format(50000)} - {new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 0 }).format(100000)} {companyTranslations.connectorHub.records}</option>
+                      <option value="Plus de 100k transactions">{String.fromCharCode(62)}{new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 0 }).format(100000)} {companyTranslations.connectorHub.records}</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                    Intégrations requises & Spécifications
+                    {companyTranslations.connectorHub.title}
                   </label>
                   <textarea
                     rows={2}
                     value={enterpriseForm.notes}
                     onChange={(e) => setEnterpriseForm({ ...enterpriseForm, notes: e.target.value })}
-                    placeholder="ERP interne, Shopify Plus multi-pays, volumétrie spécifique..."
+                    placeholder={companyTranslations.connectorHub.providerSearchHint}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08] text-slate-900 dark:text-white placeholder:text-slate-400 resize-none"
                   />
                 </div>
@@ -1379,7 +1379,7 @@ export function BillingView() {
                 <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-2">
                   <ShieldCheck size={16} className="text-[#0076FF] shrink-0 mt-0.5" />
                   <span>
-                    La soumission de ce formulaire n'entraîne aucun débit bancaire et ne modifie pas vos droits sans validation contractuelle préalable.
+                    {companyTranslations.billingUnavailable}
                   </span>
                 </div>
 

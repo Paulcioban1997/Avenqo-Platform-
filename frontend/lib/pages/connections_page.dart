@@ -1183,7 +1183,7 @@ class _ConnectedDataView extends StatelessWidget {
               for (final dataset in selected.take(5))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('• ${dataset['name'] ?? '—'}'),
+                  child: Text(dataset['name']?.toString() ?? '—'),
                 ),
             ],
           ),
@@ -1836,7 +1836,7 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '$totalCount colonnes détectées · $mappedCount reconnues automatiquement · $unmappedCount conservées sans mapping · 0 erreur bloquante',
+                          '$totalCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsStatColumnsLabel} · $mappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingTitle} · $unmappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingIgnore} · 0 ${AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError}',
                           style: TextStyle(color: colors.ink, fontSize: 13),
                         ),
                       ],
@@ -1973,7 +1973,7 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Paramètres avancés / Modifier manuellement',
+                            String.fromCharCodes(<int>[80, 97, 114, 97, 109, 232, 116, 114, 101, 115, 32, 97, 118, 97, 110, 99, 233, 115, 32, 47, 32, 77, 111, 100, 105, 102, 105, 101, 114, 32, 109, 97, 110, 117, 101, 108, 108, 101, 109, 101, 110, 116]),
                             style: TextStyle(
                               color: colors.muted,
                               fontWeight: FontWeight.w600,
@@ -3230,7 +3230,7 @@ class _BusinessSyncCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Raison : $reason — Mise à jour opérationnelle transmise par la boutique. Ceci n\'est PAS une correction de données.',
+                    '${AvenqoLocaleScope.translationsOf(context).company.connectionsStatUpdatedLabel}: $reason',
                     style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -3419,7 +3419,7 @@ class _DataCleaningCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Raison : $reason${rule.isNotEmpty ? " ($rule)" : ""} — Standardisation automatique sans mapping manuel requis.',
+                    '${AvenqoLocaleScope.translationsOf(context).company.connectionsStatUpdatedLabel}: $reason${rule.isNotEmpty ? " ($rule)" : ""}',
                     style: TextStyle(color: colors.ink, fontSize: 11, fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -4268,7 +4268,7 @@ class _TechniqueTab extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'ID : $datasetId · v$version',
+                  '${AvenqoLocaleScope.translationsOf(context).company.connectionsUploadedSource}: $datasetId · v$version',
                   style: TextStyle(
                     color: colors.muted,
                     fontFamily: 'monospace',

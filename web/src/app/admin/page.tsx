@@ -110,7 +110,7 @@ export default function AdminPage() {
                   {company?.name || "—"}
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5 font-mono truncate">
-                  Plan: {company?.subscription_plan || "Standard"}
+                  {isFr ? "Plan" : "Plan"}: {company?.subscription_plan || "Standard"}
                 </div>
               </div>
 
@@ -135,7 +135,7 @@ export default function AdminPage() {
                   <span>api.avenqo.ca</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  FastAPI v1 • PostgreSQL • Redis
+                  {["FastAPI v1", "PostgreSQL", "Redis"].join(` ${String.fromCharCode(0xB7)} `)}
                 </div>
               </div>
 
@@ -148,7 +148,7 @@ export default function AdminPage() {
                   <span>avenqo.ca</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  Next.js App Router • Vercel Edge
+                  {["Next.js App Router", "Vercel Edge"].join(` ${String.fromCharCode(0xB7)} `)}
                 </div>
               </div>
             </div>

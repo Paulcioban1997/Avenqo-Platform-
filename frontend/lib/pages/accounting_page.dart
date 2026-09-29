@@ -28,6 +28,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
   late final TabController _tabController;
   late Future<_AccountingAllData> _future;
   String _invoiceTypeFilter = 'receivable';
+  String _confirmedDataLabel = '';
+  String _forecastLabel = '';
+  String _demoDataLabel = '';
 
   @override
   void initState() {
@@ -73,6 +76,9 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
     final colors = AvenqoColors.of(context);
     final locale = AvenqoLocaleScope.of(context).code;
     final translations = AvenqoLocaleScope.translationsOf(context);
+    _confirmedDataLabel = translations.company.connectionsSynchronizedSource;
+    _forecastLabel = translations.company.salesForecastTitle;
+    _demoDataLabel = translations.company.connectionsUploadedSource;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -215,13 +221,13 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: _Brand.emerald.withValues(alpha: 0.3)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.verified, size: 12, color: _Brand.emerald),
           SizedBox(width: 4),
           Text(
-            'Confirmed data',
+            _confirmedDataLabel,
             style: TextStyle(
               color: _Brand.emerald,
               fontSize: 10,
@@ -242,13 +248,13 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: _Brand.purple.withValues(alpha: 0.3)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.auto_awesome, size: 12, color: _Brand.purple),
           SizedBox(width: 4),
           Text(
-            'AI forecast',
+            _forecastLabel,
             style: TextStyle(
               color: _Brand.purple,
               fontSize: 10,
@@ -269,13 +275,13 @@ class _AccountingPageState extends State<AccountingPage> with SingleTickerProvid
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: _Brand.amber.withValues(alpha: 0.35)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.info_outline, size: 12, color: _Brand.amber),
           SizedBox(width: 4),
           Text(
-            'Demo data',
+            _demoDataLabel,
             style: TextStyle(
               color: _Brand.amber,
               fontSize: 10,

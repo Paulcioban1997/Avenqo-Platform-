@@ -10,6 +10,8 @@ import { Mail, Phone, MapPin, CheckCircle2, AlertCircle, ArrowRight, LoaderCircl
 export default function ContactPage() {
   const { locale } = useLocale();
   const isEn = locale === "en";
+  const contactEmail = "info@avenqo.ca";
+  const headquarters = "Montréal, QC, Canada";
 
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -90,9 +92,9 @@ export default function ContactPage() {
                     <Mail size={18} />
                   </div>
                   <div>
-                    <span style={{ fontSize: "0.8rem", color: "var(--muted)", display: "block" }}>Email</span>
-                    <a href="mailto:info@avenqo.ca" style={{ color: "var(--foreground)", fontWeight: 600, textDecoration: "none" }}>
-                      info@avenqo.ca
+                    <span style={{ fontSize: "0.8rem", color: "var(--muted)", display: "block" }}>{isEn ? "Email" : "Courriel"}</span>
+                    <a href={`mailto:${contactEmail}`} style={{ color: "var(--foreground)", fontWeight: 600, textDecoration: "none" }}>
+                      {contactEmail}
                     </a>
                   </div>
                 </div>
@@ -105,7 +107,7 @@ export default function ContactPage() {
                     <span style={{ fontSize: "0.8rem", color: "var(--muted)", display: "block" }}>
                       {isEn ? "Headquarters" : "Siège"}
                     </span>
-                    <span style={{ fontWeight: 600 }}>Montréal, QC, Canada</span>
+                    <span style={{ fontWeight: 600 }}>{headquarters}</span>
                   </div>
                 </div>
 
@@ -202,7 +204,7 @@ export default function ContactPage() {
                     <input
                       type="email"
                       required
-                      placeholder="nom@entreprise.ca"
+                      placeholder={isEn ? "name@company.ca" : "nom@entreprise.ca"}
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "inherit" }}

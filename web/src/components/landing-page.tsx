@@ -171,7 +171,7 @@ export function LandingPage() {
             </div>
           </motion.div>
           <motion.div className="brand-card-wrap" initial={{ opacity: 0, scale: 0.97 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.6, ease: "easeOut" }}>
-            <Image src="/brand/avenqo-card.png" alt="Carte officielle Avenqo, plateforme IA tout-en-un" width={1536} height={864} />
+            <Image src="/brand/avenqo-card.png" alt={t.hero.titleLine1} width={1536} height={864} />
           </motion.div>
         </div>
       </section>

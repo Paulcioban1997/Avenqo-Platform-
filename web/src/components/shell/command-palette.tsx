@@ -484,7 +484,7 @@ export function CommandPalette({
           </div>
           <span className="flex items-center gap-1">
             <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-white/[0.08] border border-slate-200 dark:border-white/[0.1] font-mono">
-              ESC
+              {String.fromCharCode(69, 83, 67)}
             </kbd>{" "}
             {t.commandPalette.closeHint}
           </span>

@@ -175,8 +175,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Synchronise automatiquement les disponibilités réelles et crée instantanément les événements
-              dans votre agenda Google Workspace. Chiffrement des jetons au repos AES-256.
+              {t.integrations.googleCalendarDescription}
             </p>
 
             {googleStatus.connected && (
@@ -253,7 +252,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Microsoft Outlook / 365
+                    {t.integrations.categoryAutomation}
                   </h4>
                   <span className="text-xs text-slate-400">{t.integrations.categoryAutomation}</span>
                 </div>
@@ -265,7 +264,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Le moteur de calendrier Avenqo intègre l'abstraction modulaire CalendarProvider compatible avec Microsoft Graph pour Exchange et Office 365.
+              {t.integrations.googleCalendarDescription}
             </p>
           </div>
 

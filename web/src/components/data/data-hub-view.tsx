@@ -490,7 +490,7 @@ export function DataHubView() {
           <span className="data-hub-dropzone-link">{t.integrations.selectSource}</span>
         </p>
         <p className="data-hub-dropzone-formats">
-          CSV · XLS · XLSX · PDF · JSON · TXT · Parquet
+            {Object.keys(FILE_ICON).map((format) => format.replace(".", "").toUpperCase()).join(" · ")}
         </p>
         <input
           ref={fileInputRef}

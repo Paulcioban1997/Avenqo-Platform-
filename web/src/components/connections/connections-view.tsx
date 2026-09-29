@@ -751,7 +751,7 @@ export function ConnectionsView() {
           <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-[#111D3D]/60 border border-slate-200/50 dark:border-white/[0.05] flex flex-col justify-between opacity-90">
             <div>
               <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Etsy</span>
+                <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">{"Etsy"}</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
                   {connector.comingSoon}
                 </span>
@@ -1120,7 +1120,7 @@ export function ConnectionsView() {
                   {connector.capabilities}: {previewDataset.name}
                 </h3>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  {previewDataset.rows_count || 0} lignes • {previewDataset.columns_count || 0} colonnes
+                  {previewDataset.rows_count || 0} {company.connectionsStatRowsLabel} {String.fromCharCode(0xB7)} {previewDataset.columns_count || 0} {company.connectionsStatColumnsLabel}
                 </div>
               </div>
               <button

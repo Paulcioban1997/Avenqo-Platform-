@@ -24,6 +24,8 @@ class RetailForecastsPage extends StatefulWidget {
 
 class _RetailForecastsPageState extends State<RetailForecastsPage> {
   late Future<_ForecastData> _future;
+  String _forecastLabel = '';
+  String _actualLabel = '';
 
   @override
   void initState() {
@@ -56,6 +58,8 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final translations = AvenqoLocaleScope.translationsOf(context);
+    _forecastLabel = translations.company.salesForecastTitle;
+    _actualLabel = translations.company.connectionsSynchronizedSource;
     final retail = translations.phase4d;
     final company = translations.company;
 
@@ -240,7 +244,7 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(color: _Brand.purple.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-                                    child: const Text('PRÉVISION IA', style: TextStyle(color: _Brand.purple, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    child: Text(_forecastLabel, style: const TextStyle(color: _Brand.purple, fontSize: 10, fontWeight: FontWeight.bold)),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -300,7 +304,7 @@ class _RetailForecastsPageState extends State<RetailForecastsPage> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  isActual ? 'RÉEL' : 'PRÉVISION IA',
+                  isActual ? _actualLabel : _forecastLabel,
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w800,

@@ -59,7 +59,7 @@ export function PricingContent() {
           </p>
           <div style={{ display: "flex", justifyContent: "center", gap: 24, flexWrap: "wrap", fontSize: 14, color: "var(--muted)" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={16} color="#38bdf8" /> {t.common.guidedSetup}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Zap size={16} color="#38bdf8" /> Activation immédiate</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Zap size={16} color="#38bdf8" /> {t.common.guidedSetup}</span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldCheck size={16} color="#38bdf8" /> {t.common.isolatedData}</span>
           </div>
         </div>
@@ -131,7 +131,7 @@ export function PricingContent() {
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, maxWidth: 960, margin: "0 auto" }}>
               <div style={{ padding: 24, borderRadius: 16, border: "1px solid var(--border)", background: "var(--card-bg, rgba(255,255,255,0.03))", textAlign: "left" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Starter Pack</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{isFr ? "Pack Starter" : "Starter Pack"}</span>
                 <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>6 500 {isFr ? "crédits IA" : "AI credits"}</h4>
                 <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$10 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
                 <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Idéal pour compléter un mois actif." : "Great for topping up an active month."}</p>
@@ -141,7 +141,7 @@ export function PricingContent() {
               </div>
               <div style={{ padding: 24, borderRadius: 16, border: "1px solid #38bdf8", background: "rgba(56, 189, 248, 0.04)", textAlign: "left", position: "relative" }}>
                 <span style={{ position: "absolute", top: -10, right: 20, background: "#38bdf8", color: "#0b1120", fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 9999 }}>{isFr ? "Populaire" : "Popular"}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Growth Pack</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{isFr ? "Pack Growth" : "Growth Pack"}</span>
                 <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>25 000 {isFr ? "crédits IA" : "AI credits"}</h4>
                 <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$35 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
                 <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Pour les campagnes et automatisations intenses." : "For intensive campaigns and workflows."}</p>
@@ -150,7 +150,7 @@ export function PricingContent() {
                 </Link>
               </div>
               <div style={{ padding: 24, borderRadius: 16, border: "1px solid var(--border)", background: "var(--card-bg, rgba(255,255,255,0.03))", textAlign: "left" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Scale Pack</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{isFr ? "Pack Scale" : "Scale Pack"}</span>
                 <h4 style={{ fontSize: 20, fontWeight: 700, margin: "8px 0 4px" }}>65 000 {isFr ? "crédits IA" : "AI credits"}</h4>
                 <div style={{ fontSize: 28, fontWeight: 800, margin: "12px 0" }}>$80 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--muted)" }}>USD</span></div>
                 <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>{isFr ? "Volume maximal avec tarif préférentiel." : "Maximum volume with preferential rate."}</p>

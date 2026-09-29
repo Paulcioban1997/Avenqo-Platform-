@@ -21,10 +21,10 @@ const quickModuleIcons: Record<string, typeof ShoppingBag> = {
 export function DashboardPreview() {
   const t = useTranslations();
   return (
-    <div className="dashboard-window" aria-label="Aperçu du tableau de bord Avenqo">
+    <div className="dashboard-window" aria-label={t.dashboard.subtitle}>
       <div className="window-topbar">
         <div className="window-dots"><i /><i /><i /></div>
-        <span>Vue d’ensemble</span>
+        <span>{t.dashboard.subtitle}</span>
         <div className="avatar">PC</div>
       </div>
       <div className="dashboard-body">

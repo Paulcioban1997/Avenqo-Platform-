@@ -178,7 +178,7 @@ export function VerifyEmailView() {
         </div>
 
         <div className="auth-form-wrap">
-          <Link href="/" className="auth-wordmark" aria-label="Avenqo, accueil">
+          <Link href="/" className="auth-wordmark" aria-label={authStrings.backToHome}>
             <Image src="/brand/avenqo-logo.png" alt="Avenqo" width={1920} height={864} priority />
           </Link>
 

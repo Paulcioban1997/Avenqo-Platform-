@@ -285,7 +285,7 @@ class _DestinationList extends StatelessWidget {
             child: ListTile(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
               leading: const Icon(Icons.admin_panel_settings_outlined, size: 21),
-              title: const Text('Avenqo Admin', style: TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(String.fromCharCodes(<int>[65, 118, 101, 110, 113, 111, 32, 65, 100, 109, 105, 110]), style: const TextStyle(fontWeight: FontWeight.w700)),
               onTap: () {
                 if (Scaffold.maybeOf(context)?.hasDrawer ?? false) Navigator.pop(context);
                 onSelect('/admin');

@@ -58,12 +58,12 @@ export function CRMCopilotPanel({
       id: "welcome-1",
       sender: "copilot",
       content: isSpanish
-        ? `¡Hola ${userName}! Soy tu Copilot Avenqo. ¿Cómo puedo ayudarte hoy?`
+          ? `${t.copilot.title}: ${userName}`
         : isRomanian
-          ? `Bună, ${userName}! Sunt Copilotul tău Avenqo. Cum te pot ajuta astăzi?`
+          ? `${t.copilot.title}: ${userName}`
         : isEnglish
-          ? `Hello ${userName}! I am your Avenqo Copilot. How can I help you today?`
-          : `Bonjour ${userName} ! Je suis votre Copilot Avenqo en direct. Comment puis-je vous aider aujourd'hui ?`,
+          ? `${t.copilot.title}: ${userName}`
+          : `${t.copilot.title}: ${userName}`,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
@@ -241,7 +241,7 @@ export function CRMCopilotPanel({
           <div className="relative">
             <Image
               src="/brand/avenqo-icon.png"
-              alt="Avenqo Copilot"
+              alt={t.copilot.title}
               width={34}
               height={34}
               className="rounded-xl object-contain shadow-xs shadow-blue-500/25"

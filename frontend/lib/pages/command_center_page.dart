@@ -54,6 +54,8 @@ class CommandCenterPage extends StatefulWidget {
 }
 
 class _CommandCenterPageState extends State<CommandCenterPage> {
+  String _forecastLabel = '';
+  String _noAlertsLabel = '';
   late Future<CommandCenterData> _future;
 
   @override
@@ -104,6 +106,8 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
   Widget build(BuildContext context) {
     final colors = AvenqoColors.of(context);
     final translations = AvenqoLocaleScope.translationsOf(context);
+    _forecastLabel = translations.company.salesForecastTitle;
+    _noAlertsLabel = translations.company.connectionsNoDataTitle;
     final companyName = widget.auth.company?['name'] as String? ?? 'Avenqo';
 
     return Scaffold(
@@ -270,7 +274,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
 
           // Section 3: Pillars 360° Summary Cards
           Text(
-            'Synthèse des 3 Domaines Avenqo',
+            translations.company.businessDefaultTitle,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink),
           ),
           const SizedBox(height: 12),
@@ -490,7 +494,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(color: _Brand.purple.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(3)),
-                  child: const Text('PRÉVISION IA', style: TextStyle(color: _Brand.purple, fontSize: 9, fontWeight: FontWeight.bold)),
+                  child: Text(_forecastLabel, style: const TextStyle(color: _Brand.purple, fontSize: 9, fontWeight: FontWeight.bold)),
                 ),
             ],
           ),
@@ -559,7 +563,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                'Aucune alerte critique en cours. Tous les indicateurs opérationnels sont dans les seuils normaux.',
+                _noAlertsLabel,
                 style: TextStyle(color: colors.muted, fontSize: 14),
               ),
             )
@@ -696,7 +700,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               const Icon(Icons.auto_awesome, size: 20, color: _Brand.purple),
               const SizedBox(width: 8),
               Text(
-                'AI Central — Intelligence croisée',
+                AvenqoLocaleScope.translationsOf(context).company.navAssistantLabel,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colors.ink),
               ),
               const Spacer(),
@@ -815,8 +819,8 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
                   children: [
                     Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.ink)),
                     if (isDemo)
-                      const Text(
-                        'DONNÉES DE DÉMONSTRATION',
+                      Text(
+                        AvenqoLocaleScope.translationsOf(context).company.connectionsUploadedSource,
                         style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: _Brand.amber, letterSpacing: 0.4),
                       ),
                   ],
@@ -824,7 +828,7 @@ class _CommandCenterPageState extends State<CommandCenterPage> {
               ),
               IconButton(
                 onPressed: () => context.go(route),
-                tooltip: 'Ouvrir $title',
+                tooltip: AvenqoLocaleScope.translationsOf(context).company.connectionsContinueLabel,
                 icon: const Icon(Icons.arrow_forward_ios, size: 14),
               ),
             ],

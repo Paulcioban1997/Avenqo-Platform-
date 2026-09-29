@@ -435,7 +435,7 @@ export function DashboardView({
                       {t.dashboard.aiInsightTitle}
                     </h3>
                     <span className="text-[10px] text-[#0076FF] dark:text-[#00D4FF] font-semibold">
-                      Moteur Prédictif Multi-Agents
+                      {t.dashboard.aiInsightTitle}
                     </span>
                   </div>
                 </div>
@@ -492,7 +492,7 @@ export function DashboardView({
             <div className="mt-4 pt-3 border-t border-blue-100 dark:border-white/[0.06] flex items-center justify-between text-xs text-slate-500 dark:text-[#94A3B8]">
               <div className="flex items-center gap-1.5 text-[11px]">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Raisonnement certifié</span>
+                <span>{t.dashboard.aiInsightConfidence}</span>
               </div>
               <span className="text-[11px] font-semibold text-slate-600 dark:text-[#F4F7FB]">
                 {periodLabel}

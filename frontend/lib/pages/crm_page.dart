@@ -24,6 +24,7 @@ class CrmPage extends StatefulWidget {
 }
 
 class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
+  String _scoreLabel = '';
   late final TabController _tabController;
   late Future<_CrmAllData> _future;
   String _leadStatusFilter = 'all';
@@ -71,6 +72,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
     final colors = AvenqoColors.of(context);
     final locale = AvenqoLocaleScope.of(context).code;
     final translations = AvenqoLocaleScope.translationsOf(context);
+    _scoreLabel = translations.company.customersRisk;
 
     return Scaffold(
       backgroundColor: colors.canvas,
@@ -184,13 +186,13 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                         color: _Brand.emerald.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.check_circle, size: 12, color: _Brand.emerald),
                           SizedBox(width: 4),
                           Text(
-                            'Agent Actif',
+                            AvenqoLocaleScope.translationsOf(context).company.navAssistantLabel,
                             style: TextStyle(
                               color: _Brand.emerald,
                               fontSize: 11,
@@ -208,13 +210,13 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: _Brand.amber.withValues(alpha: 0.35)),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.info_outline, size: 12, color: _Brand.amber),
+                          const Icon(Icons.info_outline, size: 12, color: _Brand.amber),
                           SizedBox(width: 4),
                           Text(
-                            'DONNÉES DE DÉMONSTRATION',
+                            AvenqoLocaleScope.translationsOf(context).company.connectionsUploadedSource,
                             style: TextStyle(
                               color: _Brand.amber,
                               fontSize: 10,
@@ -229,14 +231,14 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Scoring prédictif, priorisation commerciale, gestion du churn et opportunités de vente.',
+                  AvenqoLocaleScope.translationsOf(context).company.businessCustomersDescription,
                   style: TextStyle(color: colors.muted, fontSize: 13),
                 ),
               ],
             ),
           ),
           IconButton(
-            tooltip: 'Rafraîchir les données',
+            tooltip: AvenqoLocaleScope.translationsOf(context).company.employeesRefreshTooltip,
             onPressed: _reload,
             icon: const Icon(Icons.refresh),
           ),
@@ -349,7 +351,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Recommandation IA de Suivi Client',
+                        AvenqoLocaleScope.translationsOf(context).company.businessRecommendationsTitle,
                         style: TextStyle(
                           color: colors.ink,
                           fontWeight: FontWeight.w700,
@@ -374,7 +376,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
 
         // High priority leads preview
         Text(
-          'Top Prospects prioritaires à contacter',
+          AvenqoLocaleScope.translationsOf(context).company.customersNew,
           style: TextStyle(color: colors.ink, fontWeight: FontWeight.w700, fontSize: 17),
         ),
         const SizedBox(height: 12),
@@ -532,7 +534,7 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
             const Icon(Icons.warning_amber_rounded, color: _Brand.rose, size: 22),
             const SizedBox(width: 8),
             Text(
-              'Clients & Contacts prioritaires avec Détection du Risque d’Attrition (Churn)',
+              companyStrings.customersRisk,
               style: TextStyle(color: colors.ink, fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
@@ -973,7 +975,14 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
         color: c.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text('Score : $score', style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.bold)),
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: _scoreLabel),
+          TextSpan(text: String.fromCharCode(0x3A)),
+          TextSpan(text: score.toString()),
+        ]),
+        style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
     );
   }
 

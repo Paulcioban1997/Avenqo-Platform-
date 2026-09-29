@@ -202,7 +202,7 @@ export function AvenqoCopilot({
 
         <button
           onClick={onClose}
-          aria-label="Fermer Avenqo Copilot"
+          aria-label={t.common.close}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
         >
           <X className="w-5 h-5" />
@@ -229,7 +229,7 @@ export function AvenqoCopilot({
       {/* Quick Action Pills */}
       <div className="p-3 border-b border-slate-100 dark:border-white/[0.04] bg-white dark:bg-[#0B132B]">
         <div className="text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-2 tracking-wider">
-          Actions Rapides Contextuelles
+          {t.copilot.quickPills.analyzeSales}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button

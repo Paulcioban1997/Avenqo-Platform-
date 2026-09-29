@@ -266,7 +266,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           <div className="flex items-center gap-3.5">
             <Image
               src="/brand/avenqo-icon.png"
-              alt="Avenqo CRM AI"
+              alt={t.crm.title}
               width={42}
               height={42}
               className="rounded-xl object-contain shadow-sm shadow-blue-500/20 shrink-0"
@@ -288,7 +288,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
             <button
               onClick={() => loadCRMData()}
               className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-              title="Rafraîchir les données"
+              title={t.crm.actions.syncNow}
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
             </button>
@@ -297,7 +297,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
             <button
               onClick={() => setIsMobileCopilotOpen(true)}
               className="lg:hidden p-2.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-[#0076FF] dark:text-[#00D4FF] hover:bg-blue-100 transition"
-              title="Ouvrir Avenqo Copilot"
+              title={t.shell.copilotButton}
             >
               <Sparkles className="w-4 h-4" />
             </button>
