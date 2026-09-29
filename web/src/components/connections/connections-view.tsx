@@ -638,7 +638,7 @@ export function ConnectionsView() {
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">OAuth / REST</span>
+                  <span className="text-[11px] text-slate-400">{connector.connection}</span>
                   {isConnected ? (
                     <button
                       onClick={() => handleTriggerSync(conn.id)}
@@ -725,7 +725,7 @@ export function ConnectionsView() {
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">API REST v3</span>
+                  <span className="text-[11px] text-slate-400">{connector.connection}</span>
                   {isConnected ? (
                     <button
                       onClick={() => handleTriggerSync(conn.id)}
@@ -761,7 +761,7 @@ export function ConnectionsView() {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Open API v3</span>
+              <span className="text-[11px] text-slate-400">{connector.connection}</span>
               <button
                 disabled
                 className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
@@ -903,7 +903,7 @@ export function ConnectionsView() {
             <span>{t.integrations.drawerLogsTitle}</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-            Journal complet des cycles d'extraction, données reçues et mises à jour incrémentales.
+            {connector.sync}
           </p>
         </div>
 
@@ -962,17 +962,17 @@ export function ConnectionsView() {
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
               <Layers size={18} className="text-[#0076FF]" />
-              <span>E. Jeux de données & Fichiers importés ({datasets.length})</span>
+              <span>{connector.fileImportTitle} ({datasets.length})</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-              Consultez, prévisualisez et téléchargez vos données brutes et traitées par l'IA.
+              {connector.capabilities}
             </p>
           </div>
         </div>
 
         {datasets.length === 0 ? (
           <div className="p-8 text-center rounded-xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06] text-xs text-slate-400 dark:text-slate-500">
-            Aucun jeu de données importé. Utilisez le bouton "Ajouter des fichiers" ci-dessus pour importer votre premier fichier.
+            {company.connectionsNoDataTitle}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1084,7 +1084,7 @@ export function ConnectionsView() {
         <div className="p-6 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40 shadow-xs space-y-3">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
             <AlertTriangle size={18} />
-            <span>F. Imports nécessitant votre attention ({failedDatasets.length})</span>
+            <span>{company.connectionsAttentionRequired} ({failedDatasets.length})</span>
           </div>
           <p className="text-xs text-amber-700 dark:text-amber-400">
             {company.connectionsProcessingError}
@@ -1117,7 +1117,7 @@ export function ConnectionsView() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/[0.06]">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Aperçu : {previewDataset.name}
+                  {connector.capabilities}: {previewDataset.name}
                 </h3>
                 <div className="text-xs text-slate-400 mt-0.5">
                   {previewDataset.rows_count || 0} lignes • {previewDataset.columns_count || 0} colonnes
@@ -1145,7 +1145,7 @@ export function ConnectionsView() {
                 </div>
               )}
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Colonnes détectées et typées par l'IA :
+                {company.connectionsStatColumnsLabel}:
               </div>
               <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto">
                 {previewDataset.columns && previewDataset.columns.length > 0 ? (
@@ -1195,7 +1195,7 @@ export function ConnectionsView() {
 
             <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
               <p>
-                Êtes-vous sûr de vouloir supprimer définitivement le jeu de données{" "}
+                {company.connectionsDeleteWarning}{" "}
                 <strong>"{deleteModalDataset.name}"</strong> ?
               </p>
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-300">
