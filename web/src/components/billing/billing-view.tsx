@@ -1045,7 +1045,10 @@ export function BillingView() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">
-              {invoices.length} facture(s) émise(s)
+              {t.common.invoicesIssued.replace(
+                "{count}",
+                invoices.length.toLocaleString(locale),
+              )}
             </span>
           </div>
         </div>

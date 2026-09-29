@@ -1,6 +1,7 @@
 import type { LocaleCode } from "./types";
 import {
   APP_COMMON_WORDS,
+  APP_INVOICES_ISSUED,
   APP_LOCALE_WORDS,
   APP_MARKETING_EXTRA_WORDS,
   APP_MARKETING_WORDS,
@@ -22,6 +23,7 @@ export type AppTranslations = {
     paginationPage: string;
     dataHubSubtitle: string;
     dropFilesPrompt: string;
+    invoicesIssued: string;
     retry: string;
   };
   marketing: AppMarketingWords & AppMarketingExtraWords;
@@ -333,6 +335,7 @@ const frApp: AppTranslations = {
     paginationPage: "Page {page} sur {total}",
     dataHubSubtitle: "Gérez vos jeux de données, importez des fichiers et explorez vos données.",
     dropFilesPrompt: "Déposez vos fichiers ici, ou",
+    invoicesIssued: "Factures émises : {count}",
     retry: "Réessayer",
   },
   marketing: { ...APP_MARKETING_WORDS.fr, ...APP_MARKETING_EXTRA_WORDS.fr },
@@ -644,6 +647,7 @@ const enApp: AppTranslations = {
     paginationPage: "Page {page} of {total}",
     dataHubSubtitle: "Manage your datasets, upload files, and explore your data.",
     dropFilesPrompt: "Drop your files here, or",
+    invoicesIssued: "Invoices issued: {count}",
     retry: "Retry",
   },
   marketing: { ...APP_MARKETING_WORDS.en, ...APP_MARKETING_EXTRA_WORDS.en },
@@ -1079,6 +1083,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       errorTitle: company.connectionsGenericError,
       insufficientData: company.analyticsUnavailable,
       retry: company.connectionsRetry,
+      invoicesIssued: APP_INVOICES_ISSUED[locale as LocaleCode] ?? APP_INVOICES_ISSUED.en,
     },
     marketing: {
       ...(APP_MARKETING_WORDS[locale as LocaleCode] ?? APP_MARKETING_WORDS.en),
