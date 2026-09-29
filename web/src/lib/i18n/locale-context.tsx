@@ -25,6 +25,8 @@ function applyDocumentAttributes(locale: LocaleCode) {
   if (!definition) return;
   document.documentElement.lang = locale;
   document.documentElement.dir = definition.direction;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(locale)}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {

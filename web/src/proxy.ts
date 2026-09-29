@@ -97,14 +97,15 @@ export async function proxy(request: NextRequest) {
   // Injecter le token dans les headers Authorization pour les API proxy
   const isApiRoute = pathname.startsWith("/api/v1/") || pathname.startsWith("/api/auth/");
   if (isApiRoute) {
+    const requestHeaders = new Headers(request.headers);
+    const locale = request.cookies.get("avenqo-locale")?.value;
+    if (locale) requestHeaders.set("Accept-Language", locale);
     if (token) {
-      const requestHeaders = new Headers(request.headers);
       requestHeaders.set("authorization", `Bearer ${token}`);
-      const response = NextResponse.next({ request: { headers: requestHeaders } });
-      if (refreshedTokens) setAuthCookies(response, refreshedTokens);
-      return response;
     }
-    return NextResponse.next();
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    if (refreshedTokens) setAuthCookies(response, refreshedTokens);
+    return response;
   }
 
   // Protéger les routes authentifiées

@@ -181,7 +181,7 @@ def test_inscription_signale_une_erreur_smtp_sans_effacer_le_compte(auth_environ
 
     assert response.status_code == 201
     assert response.json()["email_delivery_configured"] is False
-    assert "n'a pas pu être envoyé" in response.json()["message"].lower()
+    assert "temporairement indisponible" in response.json()["message"].lower()
 
     token = notifier.verification_tokens.get(payload["email"])
     assert token is None

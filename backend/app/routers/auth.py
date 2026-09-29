@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.core.error_localization import catalog_message, localized_api_message
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
 from backend.app.core.security import create_access_token
@@ -127,6 +128,7 @@ def _clear_auth_cookies(response: Response) -> None:
     dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute"))],
 )
 def register(
+    http_request: Request,
     request: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
@@ -139,12 +141,16 @@ def register(
     except InvalidModuleSelection as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    if verification_email_sent:
-        message = "Compte créé. Vérifiez votre adresse email."
-    else:
-        message = "Compte créé. L'email de vérification n'a pas pu être envoyé. Vous pouvez demander un renvoi."
+    message_key = "registerSuccess" if verification_email_sent else "emailDeliveryUnavailable"
+    fallback_message = (
+        "Compte créé. Vérifiez votre adresse email."
+        if verification_email_sent
+        else "La livraison des emails est temporairement indisponible. Contactez le support ou réessayez plus tard."
+    )
     return MessageResponse(
-        message=message,
+        message=catalog_message(
+            http_request.headers.get("accept-language"), "auth", message_key, fallback_message
+        ),
         email_delivery_configured=verification_email_sent,
     )
 
@@ -154,6 +160,7 @@ def register(
 def verify_email(
     request: TokenRequest,
     response: Response,
+    http_request: Request,
     service: AuthService = Depends(get_auth_service),
     db: Session = Depends(get_db),
 ) -> VerifyEmailResponse:
@@ -162,7 +169,12 @@ def verify_email(
         result = service._create_auth_session(user)
         _set_auth_cookies(response, result.access_token, result.refresh_token)
         return VerifyEmailResponse(
-            message="Adresse email vérifiée.",
+            message=catalog_message(
+                http_request.headers.get("accept-language"),
+                "auth",
+                "verifySuccess",
+                "Adresse email vérifiée.",
+            ),
             access_token=result.access_token,
             refresh_token=result.refresh_token,
             token_type="bearer",
@@ -187,17 +199,20 @@ def verify_email(
     dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
 )
 def resend_verification(
+    http_request: Request,
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     email_delivery_configured = service.resend_verification(str(request.email))
-    message = (
-        "Si le compte existe, un email a été envoyé."
+    accept_language = http_request.headers.get("accept-language")
+    message_key = "verificationResent" if email_delivery_configured else "emailDeliveryUnavailable"
+    fallback_message = (
+        "Si le compte existe, un email de vérification a été envoyé."
         if email_delivery_configured
         else "La livraison des emails est temporairement indisponible. Contactez le support."
     )
     return MessageResponse(
-        message=message,
+        message=catalog_message(accept_language, "auth", message_key, fallback_message),
         email_delivery_configured=email_delivery_configured,
     )
 
@@ -421,13 +436,18 @@ def switch_tenant(
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(
+    http_request: Request,
     response: Response,
     identity: CurrentIdentity = Depends(get_current_identity),
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     service.logout(identity.raw_token)
     _clear_auth_cookies(response)
-    return MessageResponse(message="Session fermée.")
+    return MessageResponse(
+        message=localized_api_message(
+            http_request.headers.get("accept-language"), "logout_success"
+        )
+    )
 
 
 @router.post(
@@ -436,11 +456,19 @@ def logout(
     dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute"))],
 )
 def forgot_password(
+    http_request: Request,
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     service.forgot_password(str(request.email))
-    return MessageResponse(message="Si le compte existe, un email a été envoyé.")
+    return MessageResponse(
+        message=catalog_message(
+            http_request.headers.get("accept-language"),
+            "auth",
+            "forgotSuccess",
+            "Si le compte existe, un email a été envoyé.",
+        )
+    )
 
 
 @router.post(
@@ -449,6 +477,7 @@ def forgot_password(
     dependencies=[Depends(rate_limit("auth_password_reset", "rate_limit_auth_per_minute"))],
 )
 def reset_password(
+    http_request: Request,
     request: ResetPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
@@ -456,4 +485,11 @@ def reset_password(
         service.reset_password(request.token, request.new_password)
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return MessageResponse(message="Mot de passe modifié. Reconnectez-vous.")
+    return MessageResponse(
+        message=catalog_message(
+            http_request.headers.get("accept-language"),
+            "auth",
+            "resetSuccess",
+            "Mot de passe modifié. Reconnectez-vous.",
+        )
+    )

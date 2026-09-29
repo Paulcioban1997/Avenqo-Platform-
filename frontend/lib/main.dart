@@ -10,9 +10,12 @@ import 'package:avenqo/i18n/locale_controller.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
-  final api = ApiClient(tokenStore: const SecureTokenStore());
-  final auth = AuthController(api);
   final locale = LocaleController();
+  final api = ApiClient(
+    tokenStore: const SecureTokenStore(),
+    localeCode: () => locale.code,
+  );
+  final auth = AuthController(api);
   final theme = ThemeController();
   await Future.wait([auth.initialize(), locale.initialize(), theme.initialize()]);
   runApp(AvenqoApp(auth: auth, locale: locale, theme: theme));

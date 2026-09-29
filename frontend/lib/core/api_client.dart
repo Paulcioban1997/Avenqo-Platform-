@@ -30,16 +30,23 @@ class ApiClient {
     required this.tokenStore,
     http.Client? httpClient,
     String? baseUrl,
+    this.localeCode,
     this._requestTimeout = const Duration(seconds: 15),
   }) : _httpClient = httpClient ?? createPlatformHttpClient(),
        _baseUrl = (baseUrl ?? AppConfig.apiBaseUrl).replaceFirst(RegExp(r'/$'), '');
 
   final TokenStore tokenStore;
+  final String Function()? localeCode;
   final http.Client _httpClient;
   final String _baseUrl;
   final Duration _requestTimeout;
   String? _accessToken;
   String? _refreshToken;
+
+  Map<String, String> _localeHeaders() {
+    final code = localeCode?.call();
+    return code == null || code.isEmpty ? const {} : {'Accept-Language': code};
+  }
 
   Uri _buildUri(String path) {
     if (_baseUrl.startsWith('http://') || _baseUrl.startsWith('https://')) {
@@ -110,6 +117,7 @@ class ApiClient {
   }) async {
     final headers = <String, String>{
       'X-Requested-With': 'XMLHttpRequest',
+      ..._localeHeaders(),
     };
     if (_accessToken != null) headers['Authorization'] = 'Bearer $_accessToken';
     late final http.Response response;
@@ -172,6 +180,7 @@ class ApiClient {
         http.MultipartFile.fromBytes(fileField, fileBytes, filename: fileName),
       );
     request.headers['X-Requested-With'] = 'XMLHttpRequest';
+    request.headers.addAll(_localeHeaders());
     if (_accessToken != null) {
       request.headers['Authorization'] = 'Bearer $_accessToken';
     }
@@ -216,6 +225,7 @@ class ApiClient {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
       'X-Requested-With': 'XMLHttpRequest',
+      ..._localeHeaders(),
     };
     if (_accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
@@ -266,6 +276,7 @@ class ApiClient {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
+      ..._localeHeaders(),
     };
     if (authenticated && _accessToken != null) {
       headers['Authorization'] = 'Bearer $_accessToken';
@@ -309,6 +320,7 @@ class ApiClient {
       final headers = <String, String>{
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
+        ..._localeHeaders(),
       };
       final body = (kIsWeb && _refreshToken == null)
           ? '{}'

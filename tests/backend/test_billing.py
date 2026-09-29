@@ -229,6 +229,23 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
+def test_enterprise_quote_success_message_uses_accept_language(billing_environment) -> None:
+    client, _, notifier = billing_environment
+    login = create_owner(client, notifier, email="quote@acme.ca")
+
+    response = client.post(
+        "/api/v1/billing/enterprise-quote",
+        json={"requested_modules": ["retail"]},
+        headers={**auth_headers(login), "Accept-Language": "de-CH"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"reference_id", "status", "message", "created_at"}
+    assert body["status"] == "received"
+    assert body["message"].startswith("Ihre Enterprise-Angebotsanfrage ist eingegangen.")
+
+
 def test_country_currency_selects_base_price_and_webhook_plan(
     billing_environment,
 ) -> None:

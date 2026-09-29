@@ -50,6 +50,10 @@ export async function POST(
       "Content-Type": request.headers.get("content-type") ?? "application/json",
       Accept: "application/json",
     };
+    const acceptLanguage =
+      request.headers.get("accept-language") ??
+      request.cookies.get("avenqo-locale")?.value;
+    if (acceptLanguage) headers["Accept-Language"] = acceptLanguage;
     const incomingCookie = request.headers.get("cookie");
     if (incomingCookie) headers["Cookie"] = incomingCookie;
     const secFetchSite = request.headers.get("sec-fetch-site");

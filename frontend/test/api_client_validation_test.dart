@@ -26,6 +26,24 @@ class _TestTokenStore implements TokenStore {
 }
 
 void main() {
+  test('ApiClient forwards the active locale in Accept-Language', () async {
+    String? acceptLanguage;
+    final client = MockClient((request) async {
+      acceptLanguage = request.headers['accept-language'];
+      return http.Response('{}', 200);
+    });
+    final api = ApiClient(
+      tokenStore: _TestTokenStore(),
+      httpClient: client,
+      baseUrl: 'https://avenqo.test/api/v1',
+      localeCode: () => 'es-LatAm',
+    );
+
+    await api.get('/health', authenticated: false);
+
+    expect(acceptLanguage, 'es-LatAm');
+  });
+
   test(
     'a 422 validation error surfaces the field detail instead of the generic message',
     () async {

@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
+from backend.app.core.error_localization import localized_api_message
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
 from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
@@ -522,6 +523,7 @@ def credit_pack_checkout(
 
 @router.post("/enterprise-quote", response_model=EnterpriseQuoteResponse)
 def request_enterprise_quote(
+    http_request: Request,
     request: EnterpriseQuoteRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -584,7 +586,9 @@ def request_enterprise_quote(
     return EnterpriseQuoteResponse(
         reference_id=reference_id,
         status="received",
-        message="Votre demande de devis Enterprise a été enregistrée avec succès. Notre équipe vous contactera sous 24h ouvrées.",
+        message=localized_api_message(
+            http_request.headers.get("accept-language"), "enterprise_quote_received"
+        ),
         created_at=now,
     )
 

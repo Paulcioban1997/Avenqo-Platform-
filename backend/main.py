@@ -73,6 +73,7 @@ def create_application() -> FastAPI:
         "allow_headers": [
             "Authorization",
             "Content-Type",
+            "Accept-Language",
             "X-Request-ID",
             "Stripe-Signature",
             "X-Requested-With",

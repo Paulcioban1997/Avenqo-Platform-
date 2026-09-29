@@ -78,7 +78,9 @@ function scanBackend() {
   const candidates = [];
   for (const file of filesUnder(root, new Set(["py"]))) {
     const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/(?:detail|message)\s*=\s*["']([^"']+)["']/gu)) {
+    // HTTPException.detail is rendered by the centralized Accept-Language-aware handler;
+    // only message fields returned directly in normal API responses bypass that layer.
+    for (const match of source.matchAll(/message\s*=\s*["']([^"']+)["']/gu)) {
       if (keep(match[1])) candidates.push({ file: relative(repository, file), value: match[1].trim() });
     }
   }

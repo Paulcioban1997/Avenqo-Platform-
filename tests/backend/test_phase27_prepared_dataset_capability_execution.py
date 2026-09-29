@@ -718,7 +718,7 @@ def test_api_prepare_price_missing_unit_price_returns_business_error(phase27_env
 
     response = client.post(f"/api/v1/datasets/{dataset_id}/capabilities/price/prepare")
     assert response.status_code == 422
-    assert response.json()["error"]["message"] == "Price analysis requires unit price."
+    assert response.json()["error"]["message"] == "L’analyse des prix nécessite un prix unitaire."
 
 
 def test_api_prepare_unknown_capability_returns_400(phase27_environment) -> None:
