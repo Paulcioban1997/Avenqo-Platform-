@@ -89,7 +89,8 @@ interface StripeProviderStatus {
 export function IntegrationsHubView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
-  const connector = getApplicationCatalog(locale).company.connectorHub;
+  const company = getApplicationCatalog(locale).company;
+  const connector = company.connectorHub;
 
   const [selectedCategory, setSelectedCategory] = useState<ConnectorCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -988,7 +989,7 @@ export function IntegrationsHubView() {
                         <span className="font-bold text-slate-900 dark:text-white">
                           {currentActiveConn.records_processed.toLocaleString()}
                         </span>{" "}
-                        enregistrements synchronisés
+                        {connector.records}
                       </div>
                     </div>
                   </div>
@@ -1046,7 +1047,10 @@ export function IntegrationsHubView() {
                         </div>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]">
-                        {(connectorEntitiesState[selectedConnector.id] || []).length} sélectionnés
+                          {company.connectionsSelectedCount.replace(
+                            "{n}",
+                            (connectorEntitiesState[selectedConnector.id] || []).length.toString(),
+                          )}
                       </span>
                     </div>
 
@@ -1128,11 +1132,7 @@ export function IntegrationsHubView() {
                   <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-[#172652]/40 border border-blue-200 dark:border-[#0076FF]/30 text-xs text-slate-700 dark:text-[#94A3B8] leading-relaxed flex items-start gap-2.5">
                     <Store className="w-4 h-4 text-[#0076FF] shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold text-slate-900 dark:text-white">
-                        Connectez la boutique avec laquelle vous travaillez.
-                      </span>{" "}
-                      Collez l'adresse web de votre boutique et vos clés d'API. Avenqo importera et
-                      réconciliera automatiquement votre catalogue et vos commandes.
+                      {connector.providerDescription}
                     </div>
                   </div>
 
