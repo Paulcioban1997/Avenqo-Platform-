@@ -186,7 +186,7 @@ class _RetailInventoryPageState extends State<RetailInventoryPage> {
                         border: Border.all(color: colors.line),
                       ),
                       child: Text(
-                        'Source : $syncProvider',
+                        '${company.connectorHub['connection']}: $syncProvider',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colors.ink),
                       ),
                     ),
