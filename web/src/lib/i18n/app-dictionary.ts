@@ -297,6 +297,7 @@ export type AppTranslations = {
       company: string;
       status: string;
       active: string;
+      inactive: string;
       vip: string;
     };
     actions: {
@@ -607,6 +608,7 @@ const frApp: AppTranslations = {
       company: "Entreprise",
       status: "Statut",
       active: "Clients actifs",
+      inactive: "Inactifs",
       vip: "VIP",
     },
     actions: {
@@ -917,6 +919,7 @@ const enApp: AppTranslations = {
       company: "Company",
       status: "Status",
       active: "Active customers",
+      inactive: "Inactive",
       vip: "VIP",
     },
     actions: {
@@ -1030,6 +1033,7 @@ const esApp: AppTranslations = {
       company: "Empresa",
       status: "Estado",
       active: "Clientes activos",
+      inactive: "Inactivos",
       vip: "VIP",
     },
     actions: {
@@ -1183,6 +1187,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
         company: company.settingsCompanySection,
         status: company.employeesColumnStatus,
         active: company.customersActive,
+        inactive: company.customerSegmentDormant,
         vip: company.customerSegmentVip,
       },
       status: {

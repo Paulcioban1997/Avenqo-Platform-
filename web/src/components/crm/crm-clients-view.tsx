@@ -176,7 +176,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
             <option value="all">{t.crm.calendar.allStatuses}</option>
             <option value="active">{t.crm.clients.active}</option>
             <option value="lead">{t.crm.clients.client}</option>
-            <option value="inactive">{t.crm.status.cancelled}</option>
+            <option value="inactive">{t.crm.clients.inactive}</option>
             <option value="vip">{t.crm.clients.vip}</option>
           </select>
 
@@ -544,7 +544,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                   <option value="active">{t.crm.clients.active}</option>
                   <option value="lead">Prospect / Lead</option>
                   <option value="vip">{t.crm.clients.vip}</option>
-                  <option value="inactive">Inactif</option>
+                  <option value="inactive">{t.crm.clients.inactive}</option>
                 </select>
               </div>
 
