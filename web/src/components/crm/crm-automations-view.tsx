@@ -218,7 +218,7 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
                   <div>
                     <h4 className="text-xs font-bold text-slate-900 dark:text-white">{auto.name}</h4>
                     <span className="text-[10px] text-slate-400">
-                      Déclenché {auto.executions_count || 0} fois
+                      {auto.executions_count || 0} {t.crm.tabs.automations}
                     </span>
                   </div>
                 </div>
@@ -238,11 +238,11 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">QUAND:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">{t.crm.calendar.agenda}:</span>
                   <span className="font-medium">{getTriggerLabel(auto.trigger_event)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">ALORS:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">{t.crm.actions.save}:</span>
                   <span className="font-medium">{getActionLabel(auto.action_type)}</span>
                 </div>
               </div>
@@ -257,7 +257,7 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
           <div className="w-full max-w-md bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Nouvelle règle d'automatisation
+                {t.crm.tabs.automations}
               </h3>
               <button
                 onClick={() => setIsNewModalOpen(false)}
@@ -270,49 +270,49 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
             <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Nom du scénario *
+                  {t.crm.clients.client} *
                 </label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Confirmation de RDV par courriel"
+                  placeholder={t.crm.searchPlaceholder}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                 />
               </div>
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Événement déclencheur (QUAND)
+                  {t.crm.calendar.agenda}
                 </label>
                 <select
                   value={triggerEvent}
                   onChange={(e) => setTriggerEvent(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                 >
-                  <option value="appointment_created">Nouveau rendez-vous planifié</option>
-                  <option value="appointment_approaching">24h avant le rendez-vous</option>
-                  <option value="appointment_cancelled">Rendez-vous annulé</option>
-                  <option value="client_inactive_30d">Client inactif (30 jours sans RDV)</option>
-                  <option value="new_lead">Nouveau prospect entrant</option>
-                  <option value="pipeline_stage_changed">Opportunité change de phase</option>
+                  <option value="appointment_created">{getTriggerLabel("appointment_created")}</option>
+                  <option value="appointment_approaching">{getTriggerLabel("appointment_approaching")}</option>
+                  <option value="appointment_cancelled">{getTriggerLabel("appointment_cancelled")}</option>
+                  <option value="client_inactive_30d">{getTriggerLabel("client_inactive_30d")}</option>
+                  <option value="new_lead">{getTriggerLabel("new_lead")}</option>
+                  <option value="pipeline_stage_changed">{getTriggerLabel("pipeline_stage_changed")}</option>
                 </select>
               </div>
 
               <div>
                 <label className="text-slate-600 dark:text-slate-400 block mb-1 font-medium">
-                  Action exécutée (ALORS)
+                  {t.crm.actions.save}
                 </label>
                 <select
                   value={actionType}
                   onChange={(e) => setActionType(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                 >
-                  <option value="send_email">Envoyer un courriel de confirmation</option>
-                  <option value="send_sms">Envoyer un SMS automatique</option>
-                  <option value="create_reminder">Créer une tâche / rappel pour l'employé</option>
-                  <option value="generate_ai_task">Créer une analyse de préparation IA</option>
+                  <option value="send_email">{getActionLabel("send_email")}</option>
+                  <option value="send_sms">{getActionLabel("send_sms")}</option>
+                  <option value="create_reminder">{getActionLabel("create_reminder")}</option>
+                  <option value="generate_ai_task">{getActionLabel("generate_ai_task")}</option>
                 </select>
               </div>
 
@@ -329,7 +329,7 @@ export function CRMAutomationsView({ t }: CRMAutomationsViewProps) {
                   disabled={isSubmitting}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white font-medium shadow-md hover:opacity-90 disabled:opacity-50"
                 >
-                  {isSubmitting ? "Création..." : "Enregistrer la règle"}
+                  {isSubmitting ? t.copilot.statusThinking : t.crm.actions.save}
                 </button>
               </div>
             </form>
