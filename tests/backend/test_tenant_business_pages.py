@@ -276,6 +276,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     products_data = _dataset(session, company, "catalog-data.csv")
     payments = _dataset(session, company, "settlements.csv")
     foreign = _dataset(session, company_b, "foreign-settlements.csv")
+    now = datetime.now(timezone.utc)
 
     prepared.update(
         {
@@ -289,9 +290,21 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
                 company,
                 orders,
                 [
-                    {"order": "O1", "buyer": "C1", "when": "2026-07-01"},
-                    {"order": "O2", "buyer": "C1", "when": "2026-08-01"},
-                    {"order": "O3", "buyer": "C2", "when": "2026-08-15"},
+                    {
+                        "order": "O1",
+                        "buyer": "C1",
+                        "when": (now - timedelta(days=60)).isoformat(),
+                    },
+                    {
+                        "order": "O2",
+                        "buyer": "C1",
+                        "when": (now - timedelta(days=20)).isoformat(),
+                    },
+                    {
+                        "order": "O3",
+                        "buyer": "C2",
+                        "when": (now - timedelta(days=10)).isoformat(),
+                    },
                 ],
                 {"order": "order_id", "buyer": "customer_id", "when": "order_timestamp"},
             ),
