@@ -270,6 +270,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     session.delete(_dataset_a)
     session.commit()
     prepared.clear()
+    now = datetime.now(timezone.utc)
     customers_data = _dataset(session, company, "party-records.csv")
     orders = _dataset(session, company, "commerce-events.csv")
     items = _dataset(session, company, "line-facts.csv")
@@ -289,9 +290,21 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
                 company,
                 orders,
                 [
-                    {"order": "O1", "buyer": "C1", "when": "2026-07-01"},
-                    {"order": "O2", "buyer": "C1", "when": "2026-08-01"},
-                    {"order": "O3", "buyer": "C2", "when": "2026-08-15"},
+                    {
+                        "order": "O1",
+                        "buyer": "C1",
+                        "when": (now - timedelta(days=75)).isoformat(),
+                    },
+                    {
+                        "order": "O2",
+                        "buyer": "C1",
+                        "when": (now - timedelta(days=50)).isoformat(),
+                    },
+                    {
+                        "order": "O3",
+                        "buyer": "C2",
+                        "when": (now - timedelta(days=20)).isoformat(),
+                    },
                 ],
                 {"order": "order_id", "buyer": "customer_id", "when": "order_timestamp"},
             ),
