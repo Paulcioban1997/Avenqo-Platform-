@@ -158,7 +158,8 @@ export function DashboardView({
     return new Intl.NumberFormat(locale === "fr" ? "fr-CA" : "en-CA", {
       style: "currency",
       currency: currency || "CAD",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(val);
   };
 
