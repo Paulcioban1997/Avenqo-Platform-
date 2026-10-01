@@ -82,3 +82,25 @@ class VoiceToolAction(Base):
     action_id: Mapped[str] = mapped_column(String(255), nullable=False)
     tool_name: Mapped[str] = mapped_column(String(64), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class VoiceCentralSession(TimestampMixin, Base):
+    """Browser/mobile Voice Central session; raw audio is never stored."""
+
+    __tablename__ = "voice_central_sessions"
+    __table_args__ = (UniqueConstraint("company_id", "request_id", name="uq_voice_central_session_request"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    locale: Mapped[str] = mapped_column(String(16), nullable=False)
+    stt_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tts_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    realtime_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    stt_input_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
+    tts_output_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
+    interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

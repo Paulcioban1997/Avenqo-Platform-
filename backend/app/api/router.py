@@ -31,6 +31,7 @@ from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.voice import router as voice_router
+from backend.app.routers.ai_voice import router as ai_voice_router
 from backend.app.routers.tenant_business import customers_router, sales_router
 from backend.app.routers.tenant_products_recommendations import (
 	products_router,
@@ -126,6 +127,7 @@ api_router.include_router(
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )
+api_router.include_router(ai_voice_router, prefix="/api/v1")
 api_router.include_router(
 	cross_agent_router,
 	prefix="/api/v1",

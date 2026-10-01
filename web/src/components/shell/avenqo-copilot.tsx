@@ -13,6 +13,8 @@ import {
   RefreshCw,
   FileSpreadsheet,
   ChevronRight,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -53,6 +55,8 @@ export function AvenqoCopilot({
   const [isThinking, setIsThinking] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeSources, setActiveSources] = useState<EnabledSource[]>([]);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
 
@@ -173,6 +177,46 @@ export function AvenqoCopilot({
     } finally {
       setIsThinking(false);
     }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    const Recognition = typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
+    if (!Recognition) {
+      setMessages((prev) => [...prev, {
+        id: `voice-${Date.now()}`,
+        sender: "copilot",
+        content: "Voice input is not available in this browser. You can continue with text.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      }]);
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = locale;
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    let transcript = "";
+    recognition.onresult = (event: any) => {
+      transcript = Array.from(event.results as ArrayLike<any>)
+        .map((result: any) => result[0]?.transcript || "")
+        .join(" ");
+      setInput(transcript);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+      if (transcript.trim()) void handleSend(transcript);
+    };
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    recognition.start();
   };
 
   if (!isOpen) return null;
@@ -358,6 +402,14 @@ export function AvenqoCopilot({
             placeholder={t.copilot.inputPlaceholder}
             className="flex-1 bg-slate-100 dark:bg-[#111D3D] border border-transparent focus:border-[#0076FF] rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-[#F4F7FB] placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
           />
+          <button
+            type="button"
+            onClick={toggleListening}
+            aria-label={isListening ? "Stop microphone" : "Start microphone"}
+            className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-colors ${isListening ? "border-rose-400 bg-rose-50 text-rose-600" : "border-slate-200 text-slate-500 hover:border-[#0076FF] hover:text-[#0076FF]"}`}
+          >
+            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
           <button
             type="submit"
             disabled={!input.trim() || isThinking}

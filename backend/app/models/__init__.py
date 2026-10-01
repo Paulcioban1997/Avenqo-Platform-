@@ -73,7 +73,7 @@ from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
-from backend.app.models.voice import VoiceBusinessConfig, VoiceCall, VoiceToolAction
+from backend.app.models.voice import VoiceBusinessConfig, VoiceCall, VoiceCentralSession, VoiceToolAction
 
 __all__ = [
     "AccountingInvoice",

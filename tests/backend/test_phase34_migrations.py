@@ -67,7 +67,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0031_ai_tool_confirmation_challenges"
+    assert current == "0032_voice_central_sessions"
     attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
     assert {
         "user_id",
@@ -81,6 +81,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
     }.issubset(attempt_columns)
     assert "locale" in {column["name"] for column in inspector.get_columns("ai_conversations")}
     assert "ai_tool_confirmation_challenges" in inspector.get_table_names()
+    assert "voice_central_sessions" in inspector.get_table_names()
     receipt_columns = {
         column["name"]
         for column in inspector.get_columns("commerce_webhook_receipts")
