@@ -56,6 +56,7 @@ export function AvenqoCopilot({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeSources, setActiveSources] = useState<EnabledSource[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
@@ -89,7 +90,7 @@ export function AvenqoCopilot({
     return () => { cancelled = true; };
   }, [isOpen]);
 
-  const handleSend = async (textToSend?: string) => {
+  const handleSend = async (textToSend?: string, voiceSessionOverride?: string | null) => {
     const query = (textToSend || input).trim();
     if (!query || isThinking) return;
     const pendingRequest = pendingRequestRef.current?.content === query
@@ -127,7 +128,17 @@ export function AvenqoCopilot({
         setConversationId(activeConversationId);
       }
 
-      const res = await fetch(
+      const voiceSession = voiceSessionOverride ?? voiceSessionId;
+      const res = voiceSession
+        ? await fetch(`/api/v1/ai/voice/sessions/${voiceSession}/turn`, {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Idempotency-Key": pendingRequest.key,
+          },
+          body: JSON.stringify({ transcript: query, request_id: pendingRequest.key }),
+        })
+        : await fetch(
         `/api/v1/ai/central/conversations/${activeConversationId}/messages`,
         {
         method: "POST",
@@ -212,11 +223,42 @@ export function AvenqoCopilot({
     recognition.onend = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      if (transcript.trim()) void handleSend(transcript);
+      if (transcript.trim()) void handleSend(transcript, recognitionRef.current?.voiceSessionId ?? voiceSessionId);
     };
     recognitionRef.current = recognition;
     setIsListening(true);
-    recognition.start();
+    const startVoice = async () => {
+      let sessionId = voiceSessionId;
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ title: "Voice Central" }),
+        });
+        if (conversationResponse.ok) {
+          activeConversationId = (await conversationResponse.json()).id;
+          setConversationId(activeConversationId);
+        }
+      }
+      if (!sessionId && activeConversationId) {
+        const response = await fetch("/api/v1/ai/voice/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ conversation_id: activeConversationId, locale, request_id: crypto.randomUUID() }),
+        });
+        if (response.ok) {
+          sessionId = (await response.json()).id;
+          setVoiceSessionId(sessionId);
+        }
+      }
+      recognitionRef.current.voiceSessionId = sessionId;
+      recognition.start();
+    };
+    void startVoice().catch(() => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    });
   };
 
   if (!isOpen) return null;
