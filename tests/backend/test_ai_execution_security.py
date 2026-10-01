@@ -129,6 +129,7 @@ def security_context(tmp_path: Path):
             module_code="retail", allowed_tool_names=frozenset({"retail_write"}),
             mutation_capabilities=frozenset({"retail.write"}),
             supported_operations=frozenset({"retail.write"}),
+            confirmation_policy="explicit_user_confirmation",
         ))
         agents.register(AssistantDefinition(
             slug="crm", name_key="agent.crm.name",

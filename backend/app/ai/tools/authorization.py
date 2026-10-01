@@ -82,6 +82,8 @@ class ToolAuthorizationPolicy:
         if tool.mutates:
             if tool.read_only or not tool.mutation_capabilities:
                 raise ToolAuthorizationError("The mutating tool has no valid mutation policy.")
+            if tool.confirmation_policy != agent.confirmation_policy:
+                raise ToolAuthorizationError("The tool confirmation policy does not match the selected agent.")
             if not tool.mutation_capabilities.issubset(agent.mutation_capabilities):
                 raise ToolAuthorizationError("The selected agent cannot perform this mutation.")
             if not tool.mutation_capabilities.issubset(agent.supported_operations | agent.mutation_capabilities):
