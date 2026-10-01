@@ -51,6 +51,8 @@ from backend.app.models.crm import (
     CRMAppointment,
 )
 from backend.app.services.crm_service import CRMService as CRMAppService
+from backend.app.services.crm_service import _tenant_month_bounds
+import backend.app.services.crm_service as crm_service_module
 from backend.app.services.crm_notification_service import CRMNotificationService
 from backend.app.services.crm_recipient_policy import evaluate_crm_recipient, is_test_email, is_test_phone
 from backend.app.services.crm_search_service import CRMSearchService
@@ -83,6 +85,46 @@ def _create_company(session, slug: str) -> Company:
     session.add(co)
     session.flush()
     return co
+
+
+def test_crm_month_bounds_follow_tenant_timezone_at_utc_month_boundary():
+    now = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
+
+    start, end = _tenant_month_bounds(now, "America/Toronto")
+
+    assert start == datetime(2026, 9, 1, 4, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 10, 1, 4, 0, tzinfo=timezone.utc)
+
+
+def test_crm_appointments_this_month_uses_tenant_local_month(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-month-boundary")
+    crm_service = CRMAppService(db_session)
+    client = crm_service.create_client(
+        company_id=company.id,
+        data={"first_name": "Monthly", "last_name": "Client", "email": "monthly@example.com"},
+    )
+    db_session.add(
+        CRMAppointment(
+            company_id=company.id,
+            client_id=client.id,
+            title="Existing appointment",
+            start_time=datetime(2026, 9, 28, 12, 30, tzinfo=timezone.utc),
+            end_time=datetime(2026, 9, 28, 13, 0, tzinfo=timezone.utc),
+            duration_minutes=30,
+            status="confirmed",
+        )
+    )
+    db_session.commit()
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            instant = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
+            return instant.astimezone(tz) if tz else instant.replace(tzinfo=None)
+
+    monkeypatch.setattr(crm_service_module, "datetime", FrozenDateTime)
+
+    assert crm_service.get_kpis(company.id)["appointments_this_month"] == 1
 
 
 def test_strict_multi_tenant_isolation(db_session):

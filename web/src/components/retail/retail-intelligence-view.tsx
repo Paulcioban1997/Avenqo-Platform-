@@ -111,7 +111,8 @@ export function RetailIntelligenceView({
   const t = getAppTranslations(locale);
   const retail = t.retail;
   const integrations = t.integrations;
-  const connector = getApplicationCatalog(locale).company.connectorHub;
+  const company = getApplicationCatalog(locale).company;
+  const connector = company.connectorHub;
 
   const [activeTab, setActiveTab] = useState<RetailSubTab>(defaultTab);
   const [isLoading, setIsLoading] = useState(true);
@@ -235,7 +236,7 @@ export function RetailIntelligenceView({
             <div className="flex items-center gap-2">
               <StatusBadge
                 status="connected"
-                label={`${retailStatus.provider?.toUpperCase()} ${integrations.statusConnected}`}
+                label={`${retailStatus.provider?.toUpperCase() || company.connectionsUploadedSource} ${integrations.statusConnected}`}
                 size="sm"
               />
               {retailStatus.store_url && (

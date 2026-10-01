@@ -8,6 +8,7 @@ import logging
 import re
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from backend.app.models.crm import (
     CRMPipelineStage,
     CRMService as CRMServiceModel,
 )
+from backend.app.models.company import Company
 from backend.app.services.calendar.base import CalendarEventData, CalendarProviderError
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -36,6 +38,20 @@ from backend.app.services.crm_notification_service import CRMNotificationService
 from backend.app.services.crm_recipient_policy import evaluate_crm_recipient, is_test_email
 
 logger = logging.getLogger(__name__)
+
+
+def _tenant_month_bounds(now: datetime, timezone_name: str | None) -> tuple[datetime, datetime]:
+    try:
+        tenant_timezone = ZoneInfo(timezone_name or "UTC")
+    except ZoneInfoNotFoundError:
+        tenant_timezone = timezone.utc
+    local_now = now.astimezone(tenant_timezone)
+    start_local = datetime(local_now.year, local_now.month, 1, tzinfo=tenant_timezone)
+    if local_now.month == 12:
+        next_local = datetime(local_now.year + 1, 1, 1, tzinfo=tenant_timezone)
+    else:
+        next_local = datetime(local_now.year, local_now.month + 1, 1, tzinfo=tenant_timezone)
+    return start_local.astimezone(timezone.utc), next_local.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,12 +74,10 @@ class CRMService:
     def get_kpis(self, company_id: UUID) -> dict[str, Any]:
         """Calculates real tenant KPI metrics directly from database records."""
         now = datetime.now(timezone.utc)
-        start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-        if now.month == 12:
-            start_of_next_month = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
-        else:
-            start_of_next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
-
+        tenant_timezone = self._session.scalar(
+            select(Company.timezone).where(Company.id == company_id)
+        )
+        start_of_month, start_of_next_month = _tenant_month_bounds(now, tenant_timezone)
         # 1. Active clients count
         active_clients = self._session.scalar(
             select(func.count(CRMClient.id)).where(
