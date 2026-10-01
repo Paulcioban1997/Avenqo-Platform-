@@ -10,8 +10,8 @@ export default defineRailway(() => {
   const avenqoBackups = bucket("avenqo-backups", { region: "iad" });
   const AvenqoPlatform2 = service("Avenqo-Platform-", {
     source: AvenqoPlatform,
-    healthcheck: "/api/v1/health",
-    healthcheckTimeout: 600,
+    healthcheck: null,
+    healthcheckTimeout: null,
     replicas: { "sfo": 1 },
     domains: [{ domain: "api.avenqo.ca", port: 8000 }],
     networking: { privateNetworkEndpoint: "avenqo-platform" },
