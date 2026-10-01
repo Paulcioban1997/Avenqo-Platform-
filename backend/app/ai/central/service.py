@@ -170,6 +170,7 @@ class CentralAIService:
                 client_context=page_context or "",
                 allowed_tool_names=allowed_tool_names,
                 selected_agent_id=agent.agent_id if agent is not None else None,
+                module_id=agent.module_code if agent is not None else None,
                 authorized_tool_agents=authorized_tool_agents,
                 retrieve_tenant_data=agent is not None,
             )

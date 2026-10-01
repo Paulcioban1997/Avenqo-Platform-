@@ -176,15 +176,30 @@ class AvenqoAIGateway(LLMProvider):
                 input_tokens=int(raw.get("input_tokens", 0) or 0),
                 cached_input_tokens=int(raw.get("cached_input_tokens", 0) or 0),
                 output_tokens=int(raw.get("output_tokens", 0) or 0),
+                cached_output_tokens=int(raw.get("cached_output_tokens", 0) or 0),
                 reasoning_tokens=int(raw.get("reasoning_tokens", 0) or 0),
+                audio_input_units=raw.get("audio_input_units", 0) or 0,
+                audio_output_units=raw.get("audio_output_units", 0) or 0,
                 tool_calls=int(raw.get("tool_calls", 0) or 0),
                 provider_request_id=raw.get("provider_request_id"),
             )
         usage = self._registered_usage(provider, usage)
+        return self._attribute_usage(usage)
+
+    def _attribute_usage(self, usage: LLMUsage) -> LLMUsage:
         context = self._routing_context.get()
-        if context is not None and context.avenqo_request_id:
-            usage = replace(usage, avenqo_request_id=context.avenqo_request_id)
-        return usage
+        if context is None:
+            return usage
+        return replace(
+            usage,
+            avenqo_request_id=context.avenqo_request_id or usage.avenqo_request_id,
+            tenant_id=context.tenant_id or usage.tenant_id,
+            user_id=context.user_id or usage.user_id,
+            conversation_id=context.conversation_id or usage.conversation_id,
+            agent_id=context.agent_id or usage.agent_id,
+            module_id=context.module_id or usage.module_id,
+            idempotency_key=context.idempotency_key or usage.idempotency_key,
+        )
 
     def _registered_usage(self, provider: LLMProvider, usage: LLMUsage) -> LLMUsage:
         if self._rate_card is None or self._rate_card.get(provider.name, usage.model):
@@ -205,11 +220,11 @@ class AvenqoAIGateway(LLMProvider):
     def _empty_usage(self, provider: LLMProvider) -> LLMUsage:
         context = self._routing_context.get()
         model = self._candidate_id(provider).partition(":")[2]
-        return LLMUsage(
+        return self._attribute_usage(LLMUsage(
             provider=provider.name,
             model=model,
             avenqo_request_id=context.avenqo_request_id if context else None,
-        )
+        ))
 
     def _attempt(
         self,
@@ -221,7 +236,10 @@ class AvenqoAIGateway(LLMProvider):
         latency_ms: int,
         usage: LLMUsage,
         failure_category: str | None = None,
+        fallback_reason: str | None = None,
+        request_status: str = "completed",
     ) -> LLMProviderAttempt:
+        usage = self._attribute_usage(usage)
         if self._rate_card is None or not usage.model:
             return LLMProviderAttempt(
                 provider=provider.name,
@@ -232,9 +250,12 @@ class AvenqoAIGateway(LLMProvider):
                 latency_ms=latency_ms,
                 usage=usage,
                 failure_category=failure_category,
+                fallback_reason=fallback_reason,
+                request_status=request_status,
             )
         usage = self._registered_usage(provider, usage)
         spec = self._rate_card.spec_for(provider.name, usage.model)
+        pricing = self._rate_card.pricing_for(provider.name, usage.model)
         return LLMProviderAttempt(
             provider=provider.name,
             model=usage.model,
@@ -244,11 +265,18 @@ class AvenqoAIGateway(LLMProvider):
             latency_ms=latency_ms,
             usage=usage,
             failure_category=failure_category,
-            provider_cost_usd=spec.cost_for(usage),
-            input_cost_per_million_usd=spec.input_cost_per_million_usd,
-            cached_input_cost_per_million_usd=spec.cached_input_cost_per_million_usd,
-            output_cost_per_million_usd=spec.output_cost_per_million_usd,
+            fallback_reason=fallback_reason,
+            request_status=request_status,
+            provider_cost_usd=pricing.cost_for(usage),
+            input_cost_per_million_usd=pricing.input_cost_per_million_usd,
+            cached_input_cost_per_million_usd=pricing.cached_input_cost_per_million_usd,
+            output_cost_per_million_usd=pricing.output_cost_per_million_usd,
+            cached_output_cost_per_million_usd=pricing.cached_output_cost_per_million_usd,
+            reasoning_cost_per_million_usd=pricing.reasoning_cost_per_million_usd,
             tool_call_cost_usd=spec.tool_call_cost_usd,
+            pricing_version=pricing.version,
+            pricing_source=pricing.source,
+            pricing_effective_from=pricing.effective_from.isoformat(),
         )
 
     async def _retry_delay(
@@ -308,6 +336,8 @@ class AvenqoAIGateway(LLMProvider):
                         latency_ms=latency_ms,
                         usage=usage,
                         failure_category=category.value,
+                        fallback_reason=category.value,
+                        request_status="failed",
                     ))
                     logger.warning(
                         "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
@@ -419,6 +449,8 @@ class AvenqoAIGateway(LLMProvider):
                         latency_ms=latency_ms,
                         usage=failed_usage,
                         failure_category=category.value,
+                        fallback_reason=category.value,
+                        request_status="failed",
                     ))
                     if emitted_content or not is_fallback_eligible(category):
                         exc.attempts = tuple(attempts)
@@ -436,9 +468,7 @@ class AvenqoAIGateway(LLMProvider):
                     self._breaker.record_success(candidate_id)
                     self._health.record_success(candidate_id, latency_ms)
                     normalized = usage or self._empty_usage(provider)
-                    context = self._routing_context.get()
-                    if context is not None and context.avenqo_request_id:
-                        normalized = replace(normalized, avenqo_request_id=context.avenqo_request_id)
+                    normalized = self._attribute_usage(normalized)
                     attempts.append(self._attempt(
                         provider=provider,
                         operation="stream",

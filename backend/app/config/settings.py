@@ -253,6 +253,23 @@ class Settings(BaseSettings):
         le=10080,
         alias="AI_CREDIT_RESERVATION_TTL_MINUTES",
     )
+    ai_credit_minimum_charge: int = Field(default=1, ge=0, alias="AI_CREDIT_MINIMUM_CHARGE")
+    ai_credit_minimum_reserve: int = Field(default=1, ge=1, alias="AI_CREDIT_MINIMUM_RESERVE")
+    ai_credit_margin_protection_factor: Decimal = Field(
+        default=Decimal("1"), gt=0, alias="AI_CREDIT_MARGIN_PROTECTION_FACTOR"
+    )
+    ai_max_estimated_provider_cost_usd: Decimal | None = Field(
+        default=None, gt=0, alias="AI_MAX_ESTIMATED_PROVIDER_COST_USD"
+    )
+    ai_max_input_tokens_per_request: int | None = Field(
+        default=None, gt=0, alias="AI_MAX_INPUT_TOKENS_PER_REQUEST"
+    )
+    ai_max_output_tokens_per_request: int | None = Field(
+        default=None, gt=0, alias="AI_MAX_OUTPUT_TOKENS_PER_REQUEST"
+    )
+    ai_max_request_credits: int | None = Field(
+        default=None, gt=0, alias="AI_MAX_REQUEST_CREDITS"
+    )
     ai_model_rate_card: dict[str, dict[str, object]] = Field(
         default_factory=dict,
         alias="AI_MODEL_RATE_CARD",

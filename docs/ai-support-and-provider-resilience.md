@@ -152,6 +152,18 @@ Le scoring conserve la priorité qualité pour les requêtes sans plan explicite
 les requêtes `professional` de complexité élevée donnent davantage de poids au
 coût estimé, tandis que `demo` reste prioritairement orienté coût.
 
+## Phase 4 Usage Engine
+
+Le moteur unique `AIUsageService` conserve les réservations, règlements,
+achats, ledger et tentatives provider existants. `ProviderPricingCatalog`
+versionne les dimensions de prix et le rate card conserve le snapshot appliqué
+à chaque tentative. `AvenqoCreditPolicy` centralise conversion, arrondi,
+minimum de réservation, facteur de protection et garde-fous coût/tokens;
+les defaults préservent la conversion historique de `0.00030 USD` par crédit.
+Les tentatives enrichies restent tenant-scoped et peuvent être agrégées par
+provider, modèle, utilisateur, agent ou module sans stocker de prompt, réponse,
+clé API ou en-tête d’autorisation.
+
 ### Quota et sécurité
 
 Le quota est réservé atomiquement **avant** tout appel au Gateway. Une seule

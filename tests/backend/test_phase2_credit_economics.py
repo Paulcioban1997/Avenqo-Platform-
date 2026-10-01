@@ -136,6 +136,24 @@ def test_reserve_settle_releases_unused_and_records_fallback_cost(credit_db) -> 
             transaction_type="ai_settlement"
         ).count() == 1
 
+        analytics = service.usage_analytics(company.id, group_by="provider")
+        assert analytics == [
+            {
+                "dimension": "gemini",
+                "input_tokens": 1_000,
+                "output_tokens": 100,
+                "provider_cost_usd": Decimal("0.00020"),
+                "avenqo_credits": 2,
+            },
+            {
+                "dimension": "openai",
+                "input_tokens": 1_000,
+                "output_tokens": 100,
+                "provider_cost_usd": Decimal("0.00031"),
+                "avenqo_credits": 0,
+            },
+        ]
+
         service.settle_reservation(
             company.id,
             "professional",

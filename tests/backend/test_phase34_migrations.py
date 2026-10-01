@@ -67,7 +67,18 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0017_canonical_data_layers"
+    assert current == "0029_ai_usage_attribution_and_pricing_snapshot"
+    attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
+    assert {
+        "user_id",
+        "conversation_id",
+        "agent_id",
+        "module_id",
+        "pricing_version",
+        "avenqo_credits_reserved",
+        "avenqo_credits_charged",
+        "avenqo_credits_released",
+    }.issubset(attempt_columns)
     receipt_columns = {
         column["name"]
         for column in inspector.get_columns("commerce_webhook_receipts")
@@ -139,45 +150,11 @@ def test_existing_database_baseline_stamp_strategy(temp_db_url: str) -> None:
     avant l'introduction d'Alembic) : `stamp` doit permettre de continuer les
     migrations SANS jamais rejouer le DDL de création des tables déjà présentes."""
 
-    from backend.app.models import Base
-
     engine = create_engine(temp_db_url)
-    # `company_onboarding` a été introduite APRÈS la baseline (migration 0003) :
-    # une vraie base pré-Alembic ne l'aurait jamais eue. On l'exclut du
-    # `create_all()` pour simuler fidèlement ce scénario et laisser la
-    # migration 0003 la créer normalement via `upgrade(config, "head")`.
-    post_baseline_tables = {
-        "company_onboarding",
-        "tenant_ai_credit_balances",
-        "tenant_ai_provider_attempts",
-    }
-    tables_before_onboarding = [
-        table for table in Base.metadata.sorted_tables if table.name not in post_baseline_tables
-    ]
-    Base.metadata.create_all(engine, tables=tables_before_onboarding)  # simule l'ancien comportement Phase 1-34
+    config = _alembic_config(temp_db_url)
+    command.upgrade(config, "0001_baseline_schema")
     with engine.begin() as connection:
-        connection.execute(text("DROP INDEX ix_billing_invoices_stripe_subscription_id"))
-        connection.execute(text("DROP INDEX ix_billing_invoices_stripe_customer_id"))
-        post_baseline_invoice_columns = (
-            "period_end",
-            "period_start",
-            "plan_code",
-            "stripe_subscription_id",
-            "stripe_customer_id",
-            "subtotal",
-            "discount_total",
-            "tax_total",
-            "total",
-            "line_items",
-            "billing_details",
-            "tax_identifiers",
-            "customer_email",
-            "paid_at",
-            "due_at",
-            "email_sent_at",
-        )
-        for column in post_baseline_invoice_columns:
-            connection.execute(text(f"ALTER TABLE billing_invoices DROP COLUMN {column}"))
+        connection.execute(text("DROP TABLE alembic_version"))
     inspector = inspect(engine)
     assert "audit_log_entries" in inspector.get_table_names()
 

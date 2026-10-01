@@ -18,7 +18,13 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    tables = set(inspector.get_table_names(schema="public"))
+    schema = "public" if bind.dialect.name == "postgresql" else None
+    tables = set(inspector.get_table_names(schema=schema))
+    membership_id_default = (
+        "gen_random_uuid()"
+        if bind.dialect.name == "postgresql"
+        else "lower(hex(randomblob(16)))"
+    )
 
     # 1. Create company_memberships table if missing
     if "company_memberships" not in tables:
@@ -26,7 +32,7 @@ def upgrade() -> None:
         user_role_enum = postgresql.ENUM("OWNER", "ADMIN", "USER", "PLATFORM_ADMIN", name="user_role", create_type=False)
         op.create_table(
             "company_memberships",
-            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text(membership_id_default)),
             sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
             sa.Column("company_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),
             sa.Column("role", user_role_enum, nullable=False, server_default="USER"),
@@ -49,7 +55,7 @@ def upgrade() -> None:
 
     # 2. Add missing columns to commerce_connections if missing
     if "commerce_connections" in tables:
-        existing_cols = {c["name"] for c in inspector.get_columns("commerce_connections", schema="public")}
+        existing_cols = {c["name"] for c in inspector.get_columns("commerce_connections", schema=schema)}
 
         missing_cols = [
             ("records_created", sa.Column("records_created", sa.Integer(), nullable=False, server_default="0")),
@@ -81,9 +87,19 @@ def upgrade() -> None:
     """))
 
     # Ensure all companies have a billing_account
-    bind.execute(sa.text("""
+    membership_id_sql = (
+        "gen_random_uuid()"
+        if bind.dialect.name == "postgresql"
+        else "lower(hex(randomblob(16)))"
+    )
+    period_end_sql = (
+        "CURRENT_TIMESTAMP + INTERVAL '14 days'"
+        if bind.dialect.name == "postgresql"
+        else "datetime(CURRENT_TIMESTAMP, '+14 days')"
+    )
+    bind.execute(sa.text(f"""
         INSERT INTO billing_accounts (id, company_id, plan_code, status, cancel_at_period_end, current_period_end, created_at, updated_at)
-        SELECT gen_random_uuid(), c.id, COALESCE(c.subscription_plan, 'base'), 'trialing', false, CURRENT_TIMESTAMP + INTERVAL '14 days', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        SELECT {membership_id_sql}, c.id, COALESCE(c.subscription_plan, 'base'), 'trialing', false, {period_end_sql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         FROM companies c
         LEFT JOIN billing_accounts b ON b.company_id = c.id
         WHERE b.id IS NULL

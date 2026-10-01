@@ -284,7 +284,14 @@ async def test_gateway_breaker_isolated_by_model_and_logs_selection(caplog) -> N
         {("openai", model_id): rate_card.spec_for("openai", model_id) for model_id in model_ids},
         health,
     )
-    context = LLMRoutingContext()
+    context = LLMRoutingContext(
+        tenant_id="tenant-1",
+        user_id="user-1",
+        conversation_id="conversation-1",
+        agent_id="agent-1",
+        module_id="retail",
+        idempotency_key="request-1",
+    )
     first = router.rank(providers, context)[0]
     first._fail = LLMProviderError("Le fournisseur IA est temporairement indisponible")
     first._fail.__cause__ = TimeoutError("timed out")
@@ -301,7 +308,7 @@ async def test_gateway_breaker_isolated_by_model_and_logs_selection(caplog) -> N
     )
 
     with caplog.at_level("INFO"), gateway.routing(context):
-        await gateway.generate(system_instruction="sys", prompt="hello")
+        result = await gateway.generate(system_instruction="sys", prompt="hello")
 
     sibling = next(provider for provider in providers if provider is not first)
     assert calls == ["openai", "openai"]
@@ -311,6 +318,11 @@ async def test_gateway_breaker_isolated_by_model_and_logs_selection(caplog) -> N
     assert f"selected_model={first._model}" in caplog.text
     assert gateway.last_router_decision is not None
     assert gateway.last_router_decision.selected_model == first._model
+    assert gateway.last_router_decision.selected_provider == "openai"
+    assert result.attempts[0].usage.tenant_id == "tenant-1"
+    assert result.attempts[0].usage.agent_id == "agent-1"
+    assert result.attempts[0].usage.module_id == "retail"
+    assert result.attempts[0].usage.idempotency_key == "request-1"
 
 
 def test_smart_router_selects_inexpensive_model_for_simple_task() -> None:

@@ -18,7 +18,13 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.ai.usage.exceptions import AIQuotaExceededError, INSUFFICIENT_AI_CREDITS
+from backend.app.ai.usage.exceptions import (
+    AIQuotaExceededError,
+    AIRequestBudgetExceededError,
+    INSUFFICIENT_AI_CREDITS,
+    AI_REQUEST_BUDGET_EXCEEDED,
+)
+from backend.app.ai.usage.credit_policy import AvenqoCreditPolicy
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.policy import (
     MONTHLY_AI_REQUESTS,
@@ -75,14 +81,16 @@ class AIUsageService:
         policy: AIQuotaPolicy,
         provider_cost_per_credit_usd: Decimal = _DEFAULT_PROVIDER_COST_PER_CREDIT_USD,
         reservation_ttl_minutes: int = 1440,
+        credit_policy: AvenqoCreditPolicy | None = None,
     ) -> None:
         self._db = db
         self._policy = policy
-        if provider_cost_per_credit_usd <= 0:
-            raise ValueError("Provider cost per credit must be positive")
+        self._credit_policy = credit_policy or AvenqoCreditPolicy(
+            provider_cost_per_credit_usd=provider_cost_per_credit_usd,
+        )
         if reservation_ttl_minutes <= 0:
             raise ValueError("Reservation TTL must be positive")
-        self._provider_cost_per_credit_usd = provider_cost_per_credit_usd
+        self._provider_cost_per_credit_usd = self._credit_policy.provider_cost_per_credit_usd
         self._reservation_ttl = timedelta(minutes=reservation_ttl_minutes)
 
     def current_billing_period(self) -> str:
@@ -257,16 +265,30 @@ class AIUsageService:
         self._db.flush()
         return reversed_credits
 
-    def estimate_credits(self, provider_cost_usd: Decimal | None) -> int:
-        if provider_cost_usd is None:
-            return 1
-        return max(
-            credits_from_provider_cost(
-                provider_cost_usd,
-                self._provider_cost_per_credit_usd,
-            ),
-            1,
-        )
+    def estimate_credits(
+        self,
+        provider_cost_usd: Decimal | None,
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ) -> int:
+        try:
+            self._credit_policy.validate_estimate(provider_cost_usd)
+            if (
+                input_tokens is not None
+                and self._credit_policy.max_input_tokens_per_request is not None
+                and input_tokens > self._credit_policy.max_input_tokens_per_request
+            ):
+                raise ValueError("input token budget exceeded")
+            if (
+                output_tokens is not None
+                and self._credit_policy.max_output_tokens_per_request is not None
+                and output_tokens > self._credit_policy.max_output_tokens_per_request
+            ):
+                raise ValueError("output token budget exceeded")
+        except ValueError as exc:
+            raise AIRequestBudgetExceededError(AI_REQUEST_BUDGET_EXCEEDED) from exc
+        return self._credit_policy.reserve_for_cost(provider_cost_usd)
 
     def _reserve_purchase_lots(
         self,
@@ -508,10 +530,7 @@ class AIUsageService:
             start=Decimal("0"),
         )
         actual_credits = (
-            credits_from_provider_cost(
-                provider_cost,
-                self._provider_cost_per_credit_usd,
-            )
+            self._credit_policy.provider_cost_to_credits(provider_cost)
             if attempts
             else (1 if count_request else 0)
         )
@@ -588,7 +607,13 @@ class AIUsageService:
             },
         )
         if attempts:
-            self._record_provider_attempts(company_id, attempts, actual_credits)
+            self._record_provider_attempts(
+                company_id,
+                attempts,
+                actual_credits,
+                reserved_credits=reservation.estimated_credits,
+                released_credits=max(reservation.estimated_credits - actual_credits, 0),
+            )
         if count_request or tokens or tool_calls:
             usage = self._get_or_create(company_id, plan_code)
             if count_request:
@@ -780,6 +805,9 @@ class AIUsageService:
         company_id: UUID,
         attempts: tuple[LLMProviderAttempt, ...],
         credits_used: int,
+        *,
+        reserved_credits: int = 0,
+        released_credits: int = 0,
     ) -> None:
         request_id = next(
             (attempt.usage.avenqo_request_id for attempt in attempts if attempt.usage.avenqo_request_id),
@@ -802,13 +830,31 @@ class AIUsageService:
                 cached_input_tokens=max(usage.cached_input_tokens, 0),
                 output_tokens=max(usage.output_tokens, 0),
                 reasoning_tokens=max(usage.reasoning_tokens, 0),
+                cached_output_tokens=max(usage.cached_output_tokens, 0),
+                audio_input_units=usage.audio_input_units,
+                audio_output_units=usage.audio_output_units,
                 tool_calls=max(usage.tool_calls, 0),
+                user_id=UUID(usage.user_id) if usage.user_id else None,
+                conversation_id=UUID(usage.conversation_id) if usage.conversation_id else None,
+                agent_id=usage.agent_id,
+                module_id=usage.module_id,
+                idempotency_key=usage.idempotency_key,
+                request_status=attempt.request_status,
+                fallback_reason=attempt.fallback_reason or attempt.failure_category,
                 provider_cost_usd=attempt.provider_cost_usd,
                 input_cost_per_million_usd=attempt.input_cost_per_million_usd,
                 cached_input_cost_per_million_usd=attempt.cached_input_cost_per_million_usd,
                 output_cost_per_million_usd=attempt.output_cost_per_million_usd,
+                cached_output_cost_per_million_usd=attempt.cached_output_cost_per_million_usd,
+                reasoning_cost_per_million_usd=attempt.reasoning_cost_per_million_usd,
                 tool_call_cost_usd=attempt.tool_call_cost_usd,
+                pricing_version=attempt.pricing_version,
+                pricing_source=attempt.pricing_source,
+                pricing_effective_from=attempt.pricing_effective_from,
                 avenqo_credits=credits_used if index == len(attempts) - 1 else 0,
+                avenqo_credits_reserved=reserved_credits if index == 0 else 0,
+                avenqo_credits_charged=credits_used if index == len(attempts) - 1 else 0,
+                avenqo_credits_released=released_credits if index == len(attempts) - 1 else 0,
             ))
 
     def limit_for(self, company_id: UUID, plan_code: str | None, metric: str) -> int | None:
@@ -859,10 +905,7 @@ class AIUsageService:
                 (attempt.provider_cost_usd for attempt in attempts),
                 start=Decimal("0"),
             )
-            credits_used = credits_from_provider_cost(
-                provider_cost,
-                self._provider_cost_per_credit_usd,
-            )
+            credits_used = self._credit_policy.provider_cost_to_credits(provider_cost)
         else:
             credits_used = 1
 
@@ -887,6 +930,47 @@ class AIUsageService:
             self._record_provider_attempts(company_id, attempts, credits_used)
         self._db.flush()
         return usage
+
+    def usage_analytics(
+        self,
+        company_id: UUID,
+        *,
+        group_by: str = "provider",
+    ) -> list[dict[str, object]]:
+        """Return internal, tenant-scoped cost/token aggregates for future admin views."""
+
+        dimensions = {
+            "provider": TenantAIProviderAttempt.provider,
+            "model": TenantAIProviderAttempt.model,
+            "user": TenantAIProviderAttempt.user_id,
+            "agent": TenantAIProviderAttempt.agent_id,
+            "module": TenantAIProviderAttempt.module_id,
+        }
+        dimension = dimensions.get(group_by)
+        if dimension is None:
+            raise ValueError(f"Unsupported usage analytics dimension: {group_by}")
+        rows = self._db.execute(
+            select(
+                dimension.label("dimension"),
+                func.sum(TenantAIProviderAttempt.input_tokens).label("input_tokens"),
+                func.sum(TenantAIProviderAttempt.output_tokens).label("output_tokens"),
+                func.sum(TenantAIProviderAttempt.provider_cost_usd).label("provider_cost_usd"),
+                func.sum(TenantAIProviderAttempt.avenqo_credits_charged).label("avenqo_credits"),
+            )
+            .where(TenantAIProviderAttempt.company_id == company_id)
+            .group_by(dimension)
+            .order_by(dimension)
+        )
+        return [
+            {
+                "dimension": row.dimension,
+                "input_tokens": int(row.input_tokens or 0),
+                "output_tokens": int(row.output_tokens or 0),
+                "provider_cost_usd": row.provider_cost_usd or Decimal("0"),
+                "avenqo_credits": int(row.avenqo_credits or 0),
+            }
+            for row in rows
+        ]
 
 
 def tokens_from_usage(token_usage: dict[str, object]) -> int:

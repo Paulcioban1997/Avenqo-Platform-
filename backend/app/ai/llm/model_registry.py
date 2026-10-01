@@ -6,11 +6,13 @@ This registry is intentionally separate from the tenant ML ModelRegistry.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from collections.abc import Iterable, Mapping, Sequence
 
 from backend.app.ai.llm.schemas import LLMUsage
+from backend.app.ai.usage.pricing import ProviderPricingCatalog, ProviderPricingEntry
 
 
 class LLMCapability(StrEnum):
@@ -39,6 +41,8 @@ class LLMModelSpec:
     cached_input_cost_per_million_usd: Decimal = Decimal("0")
     output_cost_per_million_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
+    cached_output_cost_per_million_usd: Decimal = Decimal("0")
+    reasoning_cost_per_million_usd: Decimal = Decimal("0")
     reasoning_strength: int = 1
     modalities: frozenset[str] = frozenset({"text"})
     streaming: bool = True
@@ -52,6 +56,9 @@ class LLMModelSpec:
     max_retries: int = 2
     base_delay_seconds: float = 0.5
     max_delay_seconds: float = 4.0
+    pricing_version: str = "default"
+    pricing_source: str = "configuration"
+    pricing_effective_from: str = ""
 
     def cost_for(self, usage: LLMUsage) -> Decimal:
         cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
@@ -185,6 +192,16 @@ def model_spec(
             "tool_call_cost_usd",
             str(profile.get("tool_call_cost_usd", _DEFAULT_RATES.get((provider, model_id), {}).get("tool_call_cost_usd", "0"))),
         ),
+        "cached_output_cost_per_million_usd": _decimal_value(
+            configured,
+            "cached_output_cost_per_million_usd",
+            str(profile.get("cached_output_cost_per_million_usd", "0")),
+        ),
+        "reasoning_cost_per_million_usd": _decimal_value(
+            configured,
+            "reasoning_cost_per_million_usd",
+            str(profile.get("reasoning_cost_per_million_usd", "0")),
+        ),
     }
     capabilities = frozenset(LLMCapability(value) for value in profile["capabilities"])
     return LLMModelSpec(
@@ -209,6 +226,9 @@ def model_spec(
         max_retries=int(profile.get("max_retries", 2)),
         base_delay_seconds=float(profile.get("base_delay_seconds", 0.5)),
         max_delay_seconds=float(profile.get("max_delay_seconds", 4.0)),
+        pricing_version=str(profile.get("pricing_version", "default")),
+        pricing_source=str(profile.get("pricing_source", "configuration")),
+        pricing_effective_from=str(profile.get("pricing_effective_from", "")),
         **rate_kwargs,
     )
 
@@ -255,6 +275,26 @@ class LLMRateCard:
 
     def __init__(self, specs: Mapping[tuple[str, str], LLMModelSpec]) -> None:
         self._specs = dict(specs)
+        self._pricing = ProviderPricingCatalog(
+            ProviderPricingEntry(
+                provider_id=spec.provider,
+                model_id=spec.model_id,
+                input_cost_per_million_usd=spec.input_cost_per_million_usd,
+                cached_input_cost_per_million_usd=spec.cached_input_cost_per_million_usd,
+                output_cost_per_million_usd=spec.output_cost_per_million_usd,
+                cached_output_cost_per_million_usd=spec.cached_output_cost_per_million_usd,
+                reasoning_cost_per_million_usd=spec.reasoning_cost_per_million_usd,
+                tool_call_cost_usd=spec.tool_call_cost_usd,
+                version=spec.pricing_version,
+                effective_from=(
+                    date.fromisoformat(spec.pricing_effective_from)
+                    if spec.pricing_effective_from
+                    else date.min
+                ),
+                source=spec.pricing_source,
+            )
+            for spec in self._specs.values()
+        )
 
     @classmethod
     def from_models(
@@ -297,4 +337,13 @@ class LLMRateCard:
         )
 
     def cost_for(self, usage: LLMUsage) -> Decimal:
-        return self.spec_for(usage.provider, usage.model).cost_for(usage)
+        return self.pricing_for(usage.provider, usage.model).cost_for(usage)
+
+    def pricing_for(self, provider: str, model_id: str) -> ProviderPricingEntry:
+        try:
+            return self._pricing.lookup(provider, model_id)
+        except LookupError:
+            candidates = self.specs_for_provider(provider)
+            if len(candidates) != 1:
+                raise
+            return self._pricing.lookup(provider, candidates[0].model_id)

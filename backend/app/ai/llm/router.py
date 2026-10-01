@@ -47,6 +47,12 @@ class LLMRoutingContext:
     remaining_credits: int | None = None
     expected_tool_calls: int = 0
     avenqo_request_id: str = ""
+    tenant_id: str | None = None
+    user_id: str | None = None
+    conversation_id: str | None = None
+    agent_id: str | None = None
+    module_id: str | None = None
+    idempotency_key: str | None = None
 
     @property
     def required_capabilities(self) -> frozenset[LLMCapability]:
@@ -256,6 +262,12 @@ def routing_context_for_chat(
     required_model_capabilities: frozenset[LLMCapability] = frozenset(),
     required_modalities: frozenset[str] = frozenset({"text"}),
     task_complexity: LLMTaskComplexity | None = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    conversation_id: str | None = None,
+    agent_id: str | None = None,
+    module_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> LLMRoutingContext:
     normalized = query.casefold()
     simple_markers = ("extract", "classif", "categor", "identify", "parse", "format")
@@ -300,4 +312,10 @@ def routing_context_for_chat(
         remaining_credits=remaining_credits,
         expected_tool_calls=1 if has_tools else 0,
         avenqo_request_id=avenqo_request_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        agent_id=agent_id,
+        module_id=module_id,
+        idempotency_key=idempotency_key,
     )

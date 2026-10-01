@@ -10,10 +10,15 @@ from __future__ import annotations
 
 INSUFFICIENT_AI_CREDITS = "INSUFFICIENT_AI_CREDITS"
 AI_REQUEST_ALREADY_PROCESSED = "AI_REQUEST_ALREADY_PROCESSED"
+AI_REQUEST_BUDGET_EXCEEDED = "AI_REQUEST_BUDGET_EXCEEDED"
 
 
 class AIQuotaExceededError(RuntimeError):
     """Levée quand un tenant dépasse une limite d'usage IA configurée."""
+
+
+class AIRequestBudgetExceededError(AIQuotaExceededError):
+    """Levée avant le provider quand un garde-fou interne est dépassé."""
 
 
 class AIRequestConflictError(RuntimeError):

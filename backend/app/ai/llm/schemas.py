@@ -15,10 +15,19 @@ class LLMUsage:
     input_tokens: int = 0
     cached_input_tokens: int = 0
     output_tokens: int = 0
+    cached_output_tokens: int = 0
     reasoning_tokens: int = 0
+    audio_input_units: Decimal = Decimal("0")
+    audio_output_units: Decimal = Decimal("0")
     tool_calls: int = 0
     provider_request_id: str | None = None
     avenqo_request_id: str | None = None
+    tenant_id: str | None = None
+    user_id: str | None = None
+    conversation_id: str | None = None
+    agent_id: str | None = None
+    module_id: str | None = None
+    idempotency_key: str | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -30,10 +39,19 @@ class LLMUsage:
             "input_tokens": self.input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
             "output_tokens": self.output_tokens,
+            "cached_output_tokens": self.cached_output_tokens,
             "reasoning_tokens": self.reasoning_tokens,
+            "audio_input_units": str(self.audio_input_units),
+            "audio_output_units": str(self.audio_output_units),
             "tool_calls": self.tool_calls,
             "provider_request_id": self.provider_request_id,
             "avenqo_request_id": self.avenqo_request_id,
+            "tenant_id": self.tenant_id,
+            "user_id": self.user_id,
+            "conversation_id": self.conversation_id,
+            "agent_id": self.agent_id,
+            "module_id": self.module_id,
+            "idempotency_key": self.idempotency_key,
         }
 
 
@@ -49,11 +67,21 @@ class LLMProviderAttempt:
     latency_ms: int
     usage: LLMUsage
     failure_category: str | None = None
+    fallback_reason: str | None = None
+    request_status: str = "completed"
     provider_cost_usd: Decimal = Decimal("0")
     input_cost_per_million_usd: Decimal = Decimal("0")
     cached_input_cost_per_million_usd: Decimal = Decimal("0")
     output_cost_per_million_usd: Decimal = Decimal("0")
+    cached_output_cost_per_million_usd: Decimal = Decimal("0")
+    reasoning_cost_per_million_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
+    pricing_version: str | None = None
+    pricing_source: str | None = None
+    pricing_effective_from: str | None = None
+    credits_reserved: int = 0
+    credits_charged: int = 0
+    credits_released: int = 0
 
 
 @dataclass(frozen=True, slots=True)

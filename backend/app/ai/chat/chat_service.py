@@ -118,7 +118,9 @@ class ChatService:
         reservation_active = False
         if self._usage_service is not None and tenant_id is not None:
             estimated_credits = self._usage_service.estimate_credits(
-                self._provider.estimate_cost_usd(routing_context)
+                self._provider.estimate_cost_usd(routing_context),
+                input_tokens=routing_context.context_tokens,
+                output_tokens=routing_context.expected_output_tokens,
             )
             claim = self._usage_service.claim_credit_reservation(
                 tenant_id,
@@ -217,6 +219,7 @@ class ChatService:
         client_context: str = "",
         allowed_tool_names: frozenset[str] | None = None,
         selected_agent_id: str | None = None,
+        module_id: str | None = None,
         authorized_tool_agents: dict[str, str] | None = None,
         retrieve_tenant_data: bool = True,
     ):
@@ -260,11 +263,19 @@ class ChatService:
             plan_code=plan_code,
             remaining_credits=remaining_credits,
             avenqo_request_id=tool_context.request_id,
+            tenant_id=str(tenant_id),
+            user_id=str(user_id),
+            conversation_id=str(conversation_id),
+            agent_id=selected_agent_id,
+            module_id=module_id,
+            idempotency_key=tool_context.request_id,
         )
         reservation_active = False
         if self._usage_service is not None:
             estimated_credits = self._usage_service.estimate_credits(
-                self._provider.estimate_cost_usd(routing_context)
+                    self._provider.estimate_cost_usd(routing_context),
+                    input_tokens=routing_context.context_tokens,
+                    output_tokens=routing_context.expected_output_tokens,
             )
             claim = self._usage_service.claim_credit_reservation(
                 tenant_id,
@@ -373,6 +384,7 @@ class ChatService:
         company_timezone: str = "UTC",
         allowed_tool_names: frozenset[str] | None = None,
         selected_agent_id: str | None = None,
+        module_id: str | None = None,
         authorized_tool_agents: dict[str, str] | None = None,
         retrieve_tenant_data: bool = True,
     ) -> AsyncIterator[ChatStreamEvent]:
@@ -438,6 +450,12 @@ class ChatService:
             remaining_credits=remaining_credits,
             avenqo_request_id=avenqo_request_id,
             requires_streaming=True,
+            tenant_id=str(tenant_id),
+            user_id=str(user_id),
+            conversation_id=str(conversation_id),
+            agent_id=selected_agent_id,
+            module_id=module_id,
+            idempotency_key=avenqo_request_id,
         )
         reservation_active = False
         if self._usage_service is not None:
