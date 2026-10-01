@@ -1,4 +1,5 @@
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/idempotency_key.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_api.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 import 'package:flutter/widgets.dart';
@@ -17,6 +18,8 @@ class CentralAIController extends ChangeNotifier {
   int? remainingAiCredits;
   bool creditsExhausted = false;
   bool _initialized = false;
+  String? _pendingRequestContent;
+  String? _pendingRequestId;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -50,7 +53,9 @@ class CentralAIController extends ChangeNotifier {
       if (selected?.id == conversation.id) messages = detail.messages;
     } on ApiException catch (error) {
       if (error.statusCode == 404) {
-        conversations = conversations.where((item) => item.id != conversation.id).toList();
+        conversations = conversations
+            .where((item) => item.id != conversation.id)
+            .toList();
         selected = null;
       }
       errorCode = 'open';
@@ -65,6 +70,8 @@ class CentralAIController extends ChangeNotifier {
     selected = null;
     messages = const [];
     errorCode = null;
+    _pendingRequestContent = null;
+    _pendingRequestId = null;
     notifyListeners();
   }
 
@@ -73,9 +80,15 @@ class CentralAIController extends ChangeNotifier {
     required String Function(String status) statusMessage,
     String? pageContext,
     String? locale,
+    bool isRetry = false,
   }) async {
     content = content.trim();
     if (content.isEmpty || generating) return;
+    final requestId = _pendingRequestContent == content
+        ? _pendingRequestId ?? newIdempotencyKey()
+        : newIdempotencyKey();
+    _pendingRequestContent = content;
+    _pendingRequestId = requestId;
     try {
       var conversation = selected;
       if (conversation == null) {
@@ -87,23 +100,41 @@ class CentralAIController extends ChangeNotifier {
       generating = true;
       errorCode = null;
       creditsExhausted = false;
-      messages = [
-        ...messages,
-        ChatMessage(id: 'local-user-${now.microsecondsSinceEpoch}', role: ChatRole.user, content: content, createdAt: now),
-        ChatMessage(id: 'local-assistant-${now.microsecondsSinceEpoch}', role: ChatRole.assistant, content: '', createdAt: now),
-      ];
+      if (!isRetry) {
+        messages = [
+          ...messages,
+          ChatMessage(
+            id: 'local-user-${now.microsecondsSinceEpoch}',
+            role: ChatRole.user,
+            content: content,
+            createdAt: now,
+          ),
+          ChatMessage(
+            id: 'local-assistant-${now.microsecondsSinceEpoch}',
+            role: ChatRole.assistant,
+            content: '',
+            createdAt: now,
+          ),
+        ];
+      }
       notifyListeners();
       final result = await _chat.sendCentralMessage(
         conversation.id,
         content,
+        idempotencyKey: requestId,
         pageContext: pageContext,
         locale: locale,
       );
       final response = result.answer ?? statusMessage(result.status);
       final last = messages.last;
-      messages = [...messages.take(messages.length - 1), last.copyWith(content: response)];
+      messages = [
+        ...messages.take(messages.length - 1),
+        last.copyWith(content: response),
+      ];
       remainingAiCredits = result.remainingAiCredits;
       creditsExhausted = result.status == 'credits_exhausted';
+      _pendingRequestContent = null;
+      _pendingRequestId = null;
     } on ApiException catch (error) {
       errorCode = error.statusCode == 401 ? 'session' : 'request';
     } finally {
@@ -119,7 +150,13 @@ class CentralAIController extends ChangeNotifier {
   }) async {
     for (final message in messages.reversed) {
       if (message.role == ChatRole.user) {
-        await send(message.content, statusMessage: statusMessage, pageContext: pageContext, locale: locale);
+        await send(
+          message.content,
+          statusMessage: statusMessage,
+          pageContext: pageContext,
+          locale: locale,
+          isRetry: true,
+        );
         return;
       }
     }
@@ -129,7 +166,9 @@ class CentralAIController extends ChangeNotifier {
     if (generating) return;
     try {
       await _chat.deleteConversation(conversation.id);
-      conversations = conversations.where((item) => item.id != conversation.id).toList();
+      conversations = conversations
+          .where((item) => item.id != conversation.id)
+          .toList();
       if (selected?.id == conversation.id) {
         selected = null;
         messages = const [];
@@ -140,7 +179,8 @@ class CentralAIController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _titleFor(String content) => content.length > 54 ? '${content.substring(0, 54)}...' : content;
+  String _titleFor(String content) =>
+      content.length > 54 ? '${content.substring(0, 54)}...' : content;
 }
 
 class CentralAIControllerScope extends InheritedNotifier<CentralAIController> {
@@ -150,6 +190,7 @@ class CentralAIControllerScope extends InheritedNotifier<CentralAIController> {
     required super.child,
   }) : super(notifier: controller);
 
-  static CentralAIController? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CentralAIControllerScope>()?.notifier;
+  static CentralAIController? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<CentralAIControllerScope>()
+      ?.notifier;
 }

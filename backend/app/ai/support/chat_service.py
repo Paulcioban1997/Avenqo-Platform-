@@ -109,6 +109,9 @@ class SupportChatService:
             permissions=permissions,
             request_id=avenqo_request_id,
             conversation_id=conversation_id,
+            selected_agent_id="platform_support",
+            capabilities=capabilities,
+            user_message=query,
         )
         routing_context = routing_context_for_chat(
             query=query,
@@ -228,6 +231,9 @@ class SupportChatService:
             permissions=permissions,
             request_id=request_id or str(uuid4()),
             conversation_id=conversation_id,
+            selected_agent_id="platform_support",
+            capabilities=capabilities,
+            user_message=query,
         )
         content = ""
         provider_name = self._provider.name

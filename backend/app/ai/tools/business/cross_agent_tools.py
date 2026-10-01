@@ -11,6 +11,7 @@ from pydantic import Field
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import CrossAgentAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.services.cross_agent_intelligence_service import CrossAgentIntelligenceService
 
@@ -19,7 +20,8 @@ class CrossAgentGenericArgs(ToolArguments):
     pass
 
 
-class GetCrossAgentBusinessHealthTool(AITool):
+class GetCrossAgentBusinessHealthTool(CrossAgentAITool):
+    required_entitlements = frozenset({"retail", "crm", "accounting"})
     name = "get_cross_agent_business_health"
     description = (
         "Synthèse exécutive 360° de l'entreprise reliant Retail Intelligence (ventes, commandes, alertes stocks), "

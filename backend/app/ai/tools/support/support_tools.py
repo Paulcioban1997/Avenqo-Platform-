@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.llm.health import ProviderHealthRegistry, ProviderHealthStatus
 from backend.app.ai.support.retrieval_service import PlatformKnowledgeRetrievalService
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import PlatformSupportAITool, ToolArguments
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.usage.policy import MONTHLY_AI_REQUESTS
@@ -26,7 +27,7 @@ class SearchAvenqoDocsArgs(ToolArguments):
     query: str = Field(min_length=1, max_length=300)
 
 
-class SearchAvenqoDocsTool(AITool):
+class SearchAvenqoDocsTool(PlatformSupportAITool):
     name = "search_avenqo_docs"
     description = "Search Avenqo's product documentation (how-to guides, FAQ, troubleshooting). Never returns business data."
     input_schema = SearchAvenqoDocsArgs
@@ -45,7 +46,7 @@ class SearchAvenqoDocsTool(AITool):
         )
 
 
-class GetCurrentPlanTool(AITool):
+class GetCurrentPlanTool(PlatformSupportAITool):
     name = "get_current_plan"
     description = "Get the current company's subscription plan. Never reveals pricing or data for other companies."
 
@@ -59,7 +60,7 @@ class GetCurrentPlanTool(AITool):
         return ToolResult(success=True, data={"plan_code": company.subscription_plan})
 
 
-class GetAvailableFeaturesTool(AITool):
+class GetAvailableFeaturesTool(PlatformSupportAITool):
     name = "get_available_features"
     description = "Get the list of AI/module capabilities currently enabled for the company. Never reveals business data."
 
@@ -72,7 +73,7 @@ class GetAvailableFeaturesTool(AITool):
         return ToolResult(success=True, data={"capabilities": sorted(capabilities)})
 
 
-class GetConnectionStatusTool(AITool):
+class GetConnectionStatusTool(PlatformSupportAITool):
     name = "get_connection_status"
     description = "Check whether the company has at least one connected data source. Never reveals the data itself."
 
@@ -84,7 +85,7 @@ class GetConnectionStatusTool(AITool):
         return ToolResult(success=True, data={"has_connected_data_source": count is not None})
 
 
-class GetAICapabilityStatusTool(AITool):
+class GetAICapabilityStatusTool(PlatformSupportAITool):
     name = "get_ai_capability_status"
     description = "Get a generic status of Avenqo's AI availability (healthy/degraded/unavailable). Never reveals which provider is used."
 
@@ -102,7 +103,7 @@ class GetAICapabilityStatusTool(AITool):
         return ToolResult(success=True, data={"status": aggregate})
 
 
-class GetBillingStatusTool(AITool):
+class GetBillingStatusTool(PlatformSupportAITool):
     name = "get_billing_status"
     description = (
         "Get the current company's subscription status, billing period, and whether the "

@@ -46,5 +46,26 @@ class AssistantDefinition:
     category: str
     module_code: str | None = None
     minimum_plan: str | None = None
+    capabilities: frozenset[str] = field(default_factory=frozenset)
     required_capabilities: frozenset[str] = field(default_factory=frozenset)
     allowed_tool_names: frozenset[str] = field(default_factory=frozenset)
+    required_permissions: frozenset[str] = field(default_factory=lambda: frozenset({"ai:use"}))
+    required_entitlements: frozenset[str] = field(default_factory=frozenset)
+    intents: tuple[str, ...] = ()
+    intent_keywords: frozenset[str] = field(default_factory=frozenset)
+    page_context_prefixes: tuple[str, ...] = ()
+    aggregate: bool = False
+    supported_operations: frozenset[str] = field(default_factory=frozenset)
+    mutation_capabilities: frozenset[str] = field(default_factory=frozenset)
+    confirmation_policy: str = "none"
+    localization_metadata: dict[str, str] = field(default_factory=dict)
+    routing_priority: int = 0
+    entrypoints: frozenset[str] = field(default_factory=lambda: frozenset({"business"}))
+
+    @property
+    def agent_id(self) -> str:
+        return self.slug
+
+    @property
+    def module_id(self) -> str | None:
+        return self.module_code

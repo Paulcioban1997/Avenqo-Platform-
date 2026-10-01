@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import CRMAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
@@ -69,6 +70,7 @@ class CreateAppointmentArgs(ToolArguments):
     service_name: str | None = Field(default=None, description="Nom de la prestation.")
     notes: str | None = Field(default=None, description="Notes ou spécifications (ex: Véhicule, Plaque d'immatriculation).")
     idempotency_key: str | None = Field(default=None, description="Clé stable de l'opération pour éviter les doublons lors d'une nouvelle tentative.")
+    confirmed: bool = Field(default=False, description="Vrai uniquement après confirmation explicite de l'utilisateur.")
 
 
 class UpdateAppointmentArgs(ToolArguments):
@@ -87,7 +89,7 @@ class CancelAppointmentArgs(ToolArguments):
 
 # --- Tools ---
 
-class GetCRMOverviewTool(AITool):
+class GetCRMOverviewTool(CRMAITool):
     name = "get_crm_overview"
     description = (
         "Fournit la vue d'ensemble du CRM de l'entreprise : nombre total de prospects, "
@@ -104,7 +106,7 @@ class GetCRMOverviewTool(AITool):
         return ToolResult(success=True, data=data, source_refs=("crm_summary",))
 
 
-class GetLeadsToContactTool(AITool):
+class GetLeadsToContactTool(CRMAITool):
     name = "get_leads_to_contact"
     description = (
         "Retourne la liste priorisée des prospects à contacter aujourd'hui, avec score IA, "
@@ -123,7 +125,7 @@ class GetLeadsToContactTool(AITool):
         return ToolResult(success=True, data={"count": len(leads), "leads_to_contact": leads}, source_refs=("crm_leads",))
 
 
-class GetRankedLeadsTool(AITool):
+class GetRankedLeadsTool(CRMAITool):
     name = "get_ranked_leads"
     description = "Classe les prospects par probabilité de conversion et score prédictif."
     input_schema = CRMGenericArgs
@@ -139,7 +141,7 @@ class GetRankedLeadsTool(AITool):
         return ToolResult(success=True, data={"count": len(ranked), "ranked_leads": ranked}, source_refs=("crm_leads",))
 
 
-class GetHighRiskCustomersTool(AITool):
+class GetHighRiskCustomersTool(CRMAITool):
     name = "get_high_risk_customers"
     description = "Identifie les clients existants à risque d'attrition / départ (churn risk)."
     input_schema = CRMGenericArgs
@@ -155,7 +157,7 @@ class GetHighRiskCustomersTool(AITool):
         return ToolResult(success=True, data={"count": len(customers), "high_risk_customers": customers}, source_refs=("crm_contacts",))
 
 
-class GetTopRevenueDealsTool(AITool):
+class GetTopRevenueDealsTool(CRMAITool):
     name = "get_top_revenue_deals"
     description = "Identifie les opportunités commerciales représentant le plus de revenus potentiels."
     input_schema = CRMGenericArgs
@@ -171,7 +173,7 @@ class GetTopRevenueDealsTool(AITool):
         return ToolResult(success=True, data={"count": len(deals), "top_deals": deals}, source_refs=("crm_opportunities",))
 
 
-class GetFollowUpRecommendationTool(AITool):
+class GetFollowUpRecommendationTool(CRMAITool):
     name = "get_follow_up_recommendation"
     description = "Génère une recommandation de suivi et une prochaine action recommandée (Next Best Action)."
     input_schema = CRMLeadSearchArgs
@@ -188,7 +190,7 @@ class GetFollowUpRecommendationTool(AITool):
 
 # --- Action Tools pour la Planification et la Gestion CRM ---
 
-class SearchClientsTool(AITool):
+class SearchClientsTool(CRMAITool):
     name = "search_clients"
     description = (
         "Recherche des clients dans la base CRM par nom, prénom, email, téléphone, entreprise ou véhicule. "
@@ -217,7 +219,7 @@ class SearchClientsTool(AITool):
         return ToolResult(success=True, data={"count": len(data), "clients": data}, source_refs=("crm_clients",))
 
 
-class GetClientTool(AITool):
+class GetClientTool(CRMAITool):
     name = "get_client"
     description = "Récupère les détails complets d'un client par son identifiant UUID."
     input_schema = GetClientArgs
@@ -253,7 +255,7 @@ class GetClientTool(AITool):
         )
 
 
-class SearchAppointmentsTool(AITool):
+class SearchAppointmentsTool(CRMAITool):
     name = "search_appointments"
     description = (
         "Recherche des rendez-vous par client, motif, notes ou statut."
@@ -287,7 +289,7 @@ class SearchAppointmentsTool(AITool):
         return ToolResult(success=True, data={"count": len(data), "appointments": data}, source_refs=("crm_appointments",))
 
 
-class CheckAvailabilityTool(AITool):
+class CheckAvailabilityTool(CRMAITool):
     name = "check_availability"
     description = (
         "Vérifie si un créneau horaire précis est disponible (sans conflit) pour un rendez-vous "
@@ -323,7 +325,7 @@ class CheckAvailabilityTool(AITool):
         )
 
 
-class ListAvailableSlotsTool(AITool):
+class ListAvailableSlotsTool(CRMAITool):
     name = "list_available_slots"
     description = (
         "Calcule et retourne la liste des créneaux horaires disponibles sur une journée donnée. "
@@ -354,14 +356,18 @@ class ListAvailableSlotsTool(AITool):
         )
 
 
-class CreateAppointmentTool(AITool):
+class CreateAppointmentTool(CRMAITool):
     name = "create_appointment"
     description = (
         "Crée un rendez-vous dans le CRM et le synchronise automatiquement avec Google Calendar. "
         "Vérifie au préalable les conflits d'horaire."
     )
     input_schema = CreateAppointmentArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "crm:appointments:write")
+    read_only = False
+    mutates = True
+    mutation_capabilities = frozenset({"crm.appointment.write", "appointment.create", "calendar.write"})
+    confirmation_policy = "explicit_user_confirmation"
 
     def __init__(self, session: Session) -> None:
         self._crm = CRMService(session)
@@ -398,7 +404,7 @@ class CreateAppointmentTool(AITool):
             "start_time": start_dt,
             "duration_minutes": arguments.duration_minutes,
             "notes": arguments.notes,
-            "idempotency_key": arguments.idempotency_key or f"copilot:{context.request_id}",
+            "idempotency_key": f"copilot:{context.tenant_id}:{context.request_id}",
         }
         apt, err = await self._crm.create_appointment(
             context.tenant.company_id, apt_data, actor_name="IA Copilot"
@@ -421,14 +427,18 @@ class CreateAppointmentTool(AITool):
         )
 
 
-class UpdateAppointmentTool(AITool):
+class UpdateAppointmentTool(CRMAITool):
     name = "update_appointment"
     description = (
         "Déplace ou modifie les paramètres d'un rendez-vous existant. "
         "Synchronise automatiquement le changement avec Google Calendar."
     )
     input_schema = UpdateAppointmentArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "crm:appointments:write")
+    read_only = False
+    mutates = True
+    mutation_capabilities = frozenset({"crm.appointment.write", "appointment.update", "calendar.write"})
+    confirmation_policy = "explicit_user_confirmation"
 
     def __init__(self, session: Session) -> None:
         self._crm = CRMService(session)
@@ -474,11 +484,15 @@ class UpdateAppointmentTool(AITool):
         )
 
 
-class CancelAppointmentTool(AITool):
+class CancelAppointmentTool(CRMAITool):
     name = "cancel_appointment"
     description = "Annule un rendez-vous et supprime l'événement du calendrier synchronisé."
     input_schema = CancelAppointmentArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "crm:appointments:write")
+    read_only = False
+    mutates = True
+    mutation_capabilities = frozenset({"crm.appointment.write", "appointment.cancel", "calendar.write"})
+    confirmation_policy = "explicit_user_confirmation"
 
     def __init__(self, session: Session) -> None:
         self._crm = CRMService(session)
@@ -507,7 +521,7 @@ class CancelAppointmentTool(AITool):
         )
 
 
-class GetClientHistoryTool(AITool):
+class GetClientHistoryTool(CRMAITool):
     name = "get_client_history"
     description = "Consulte l'historique complet d'un client (rendez-vous passés, chiffre d'affaires, notes et communications)."
     input_schema = GetClientArgs
@@ -529,7 +543,7 @@ class GetClientHistoryTool(AITool):
         return ToolResult(success=True, data=profile, source_refs=("crm_clients",))
 
 
-class GetCRMMetricsTool(AITool):
+class GetCRMMetricsTool(CRMAITool):
     name = "get_crm_metrics"
     description = "Fournit les KPIs réels du CRM : clients actifs, rendez-vous du mois, taux de présence et chiffre d'affaires généré."
     input_schema = CRMGenericArgs

@@ -70,7 +70,7 @@ jobs:
 
       - name: Run backend validation suite
         run: |
-          python -m pytest tests/backend/test_sales_date_regressions.py tests/backend/test_product_portfolio_scaling.py tests/backend/test_tenant_business_pages.py tests/backend/test_crm_suite.py tests/backend/test_central_ai.py -q
+          python -m pytest tests/backend/test_sales_date_regressions.py tests/backend/test_product_portfolio_scaling.py tests/backend/test_tenant_business_pages.py tests/backend/test_crm_suite.py tests/backend/test_central_ai.py tests/backend/test_ai_execution_security.py tests/backend/test_assistant_framework.py tests/backend/test_ai_chat.py tests/backend/test_phase30_tool_calling.py tests/backend/test_phase30_1_sse_tool_calling.py tests/backend/test_ai_credit_economics.py -q
         env:
           PYTHONPATH: .
           ENVIRONMENT: test

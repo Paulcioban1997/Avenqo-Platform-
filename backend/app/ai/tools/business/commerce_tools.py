@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 from backend.app.models.commerce_connection import NormalizedCommerceRecord
@@ -112,7 +113,7 @@ class ProductDetailArgs(ToolArguments):
     sku: str | None = None
 
 
-class GetProductDetailTool(AITool):
+class GetProductDetailTool(RetailAITool):
     name = "get_product_detail"
     description = (
         "Return the current stock level (inventory_level), price (unit_price), SKU, "
@@ -263,7 +264,7 @@ class InventorySummaryArgs(ToolArguments):
     low_stock_threshold: int = 10
 
 
-class GetInventorySummaryTool(AITool):
+class GetInventorySummaryTool(RetailAITool):
     name = "get_inventory_summary"
     description = (
         "Return a summary of the current inventory levels for all products in the "

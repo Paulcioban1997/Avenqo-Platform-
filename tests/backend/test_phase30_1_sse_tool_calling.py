@@ -25,9 +25,10 @@ from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.schemas import LLMGeneration, LLMToolResponse
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.ai.tools.contracts import ToolCall
-from backend.app.ai.tools.executor import ToolExecutor
+from backend.app.ai.tools.executor import ToolExecutor as _ToolExecutor
+from backend.app.ai.tools.exceptions import ToolAuthorizationError
 from backend.app.core.permissions import permissions_for
-from backend.app.models import Base, Company, Dataset, DatasetStatus, User, UserRole
+from backend.app.models import Base, Company, Dataset, DatasetStatus, Mapping, User, UserRole
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
@@ -36,6 +37,19 @@ from shared.ai_engine.dataset_ingestion.quality import assess_quality
 from shared.ai_engine.dataset_ingestion.readiness import assess_capability_readiness
 
 pytestmark = pytest.mark.asyncio
+
+
+class _PipelineTestAuthorizationPolicy:
+    def authorize(self, tool, context) -> None:
+        if not context.selected_agent_id:
+            raise ToolAuthorizationError("A selected test agent is required.")
+        if not set(tool.required_permissions).issubset(context.permissions):
+            raise ToolAuthorizationError("Missing test permission.")
+
+
+class ToolExecutor(_ToolExecutor):
+    def __init__(self, registry) -> None:
+        super().__init__(registry, _PipelineTestAuthorizationPolicy())
 
 
 CANONICAL_COLUMNS = {
@@ -142,7 +156,9 @@ def _make_tenant(db_session, seed: int):
     user = User(company_id=company.id, first_name="Ana", last_name="Lyst", email=f"analyst{seed}@example.com", password_hash="hash", role=UserRole.ANALYST)
     db_session.add(user); db_session.flush()
     dataset = Dataset(company_id=company.id, name="Sales", type="csv", source="sales.csv", rows_count=6, columns_count=6, status=DatasetStatus.READY)
-    db_session.add(dataset); db_session.commit()
+    db_session.add(dataset); db_session.flush()
+    db_session.add(Mapping(dataset_id=dataset.id, mapping_json=CANONICAL_COLUMNS, approved=True))
+    db_session.commit()
     return company, user, dataset
 
 
@@ -167,6 +183,7 @@ async def test_sse_happy_path_emits_status_delta_sources_done_and_persists_once(
     events = await _drain(service.stream(
         company.id, user.id, conversation.id, "How were my sales this month?",
         permissions=permissions, plan_code="demo", request_id="req-sse-1",
+        selected_agent_id="retail", allowed_tool_names=frozenset({"get_sales_summary"}),
     ))
 
     kinds = [event.kind for event in events]
@@ -210,6 +227,7 @@ async def test_sse_cross_tenant_isolation_never_leaks_other_tenant_data(db_sessi
     events = await _drain(service.stream(
         company_a.id, user_a.id, conversation.id, "How were my sales this month?",
         permissions=permissions, plan_code="demo", request_id="req-sse-2",
+        selected_agent_id="retail", allowed_tool_names=frozenset({"get_sales_summary"}),
     ))
 
     sources_event = next(event for event in events if event.kind == "sources")
@@ -245,6 +263,7 @@ async def test_sse_cancellation_stops_and_does_not_persist(db_session) -> None:
         async for event in service.stream(
             company.id, user.id, conversation.id, "How were my sales this month?",
             permissions=permissions, plan_code="demo", request_id="req-sse-3",
+            selected_agent_id="retail", allowed_tool_names=frozenset({"get_sales_summary"}),
             is_cancelled=is_cancelled,
         ):
             collected.append(event)

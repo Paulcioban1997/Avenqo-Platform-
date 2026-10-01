@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.business.analytics import compute_customer_summary
 from backend.app.ai.tools.business.dataset_access import load_latest_prepared_dataset
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
@@ -28,7 +29,7 @@ class CustomerSummaryArgs(ToolArguments):
     pass
 
 
-class GetCustomerSummaryTool(AITool):
+class GetCustomerSummaryTool(RetailAITool):
     name = "get_customer_summary"
     description = "Return how many customers the tenant has, and how many are new vs. returning."
     input_schema = CustomerSummaryArgs
@@ -52,7 +53,7 @@ class CustomerSegmentsArgs(ToolArguments):
     pass
 
 
-class GetCustomerSegmentsTool(AITool):
+class GetCustomerSegmentsTool(RetailAITool):
     name = "get_customer_segments"
     description = (
         "Return the dominant customer segment identified by the tenant's already "

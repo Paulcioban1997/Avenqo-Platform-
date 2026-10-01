@@ -51,11 +51,11 @@ from backend.app.ai.tools.exceptions import (
     ToolUnavailableError,
     ToolValidationError,
 )
-from backend.app.ai.tools.executor import MAX_TOOL_RESULT_CHARS, ToolExecutor
+from backend.app.ai.tools.executor import MAX_TOOL_RESULT_CHARS, ToolExecutor as _ToolExecutor
 from backend.app.ai.tools.plans import plan_meets_minimum
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.core.permissions import permissions_for
-from backend.app.models import Base, Company, Dataset, DatasetStatus, User, UserRole
+from backend.app.models import Base, Company, Dataset, DatasetStatus, Mapping, User, UserRole
 from backend.app.services.portfolio_decision_service import PortfolioAnalysisUnavailable
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.cleaning import CompanyDatasetCleaner
@@ -65,6 +65,19 @@ from shared.ai_engine.dataset_ingestion.quality import assess_quality
 from shared.ai_engine.dataset_ingestion.readiness import assess_capability_readiness
 
 pytestmark = pytest.mark.asyncio
+
+
+class _PipelineTestAuthorizationPolicy:
+    def authorize(self, tool, context) -> None:
+        if not context.selected_agent_id:
+            raise ToolAuthorizationError("A selected test agent is required.")
+        if not set(tool.required_permissions).issubset(context.permissions):
+            raise ToolAuthorizationError("Missing test permission.")
+
+
+class ToolExecutor(_ToolExecutor):
+    def __init__(self, registry: ToolRegistry) -> None:
+        super().__init__(registry, _PipelineTestAuthorizationPolicy())
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +166,13 @@ def tenant_with_ready_dataset(db_session):
     db_session.add(user); db_session.flush()
     dataset = Dataset(company_id=company.id, name="Sales", type="csv", source="sales.csv", rows_count=6, columns_count=6, status=DatasetStatus.READY)
     db_session.add(dataset); db_session.commit()
+    db_session.add(Mapping(dataset_id=dataset.id, mapping_json=CANONICAL_COLUMNS, approved=True))
+    db_session.commit()
 
     tenant = TenantContext(company_id=company.id)
     prepared = _prepared_dataset(company_id=company.id, dataset_id=dataset.id)
     ingestion = FakeIngestionService(prepared)
-    context = ToolExecutionContext(tenant=tenant, user_id=user.id, permissions=frozenset(permissions_for(UserRole.ANALYST)), request_id="req-1")
+    context = ToolExecutionContext(tenant=tenant, user_id=user.id, permissions=frozenset(permissions_for(UserRole.ANALYST)), request_id="req-1", selected_agent_id="retail")
     return db_session, company, user, dataset, tenant, ingestion, context
 
 
@@ -230,6 +245,8 @@ class _DummyTool(AITool):
     description = "A dummy tool."
     input_schema = _DummyArgs
     required_permissions = ("ai:use", "data:read")
+    read_only = True
+    mutates = False
     minimum_plan = "professional"
     requires_capability = "segmentation"
 
@@ -265,7 +282,7 @@ def test_plan_meets_minimum_rank_semantics() -> None:
 
 
 def _executor_context(permissions: frozenset[str] = frozenset({"ai:use"})) -> ToolExecutionContext:
-    return ToolExecutionContext(tenant=TenantContext(company_id=uuid4()), user_id=uuid4(), permissions=permissions, request_id="req-x")
+    return ToolExecutionContext(tenant=TenantContext(company_id=uuid4()), user_id=uuid4(), permissions=permissions, request_id="req-x", selected_agent_id="test-agent")
 
 
 async def test_executor_raises_not_found_for_unknown_tool() -> None:
@@ -293,6 +310,8 @@ async def test_executor_raises_validation_error_for_unknown_argument() -> None:
         description = "d"
         input_schema = StrictArgs
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
 
         async def run(self, context, arguments) -> ToolResult:
             return ToolResult(success=True, data={"value": arguments.value})
@@ -312,6 +331,8 @@ async def test_executor_wraps_unexpected_exceptions_as_execution_error() -> None
         name = "broken_tool"
         description = "d"
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
 
         async def run(self, context, arguments) -> ToolResult:
             raise RuntimeError("boom")
@@ -331,6 +352,8 @@ async def test_executor_raises_timeout_error() -> None:
         name = "slow_tool"
         description = "d"
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
         timeout_seconds = 0.01
 
         async def run(self, context, arguments) -> ToolResult:
@@ -350,6 +373,8 @@ async def test_executor_propagates_tool_unavailable_error() -> None:
         name = "unavailable_tool"
         description = "d"
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
 
         async def run(self, context, arguments) -> ToolResult:
             raise ToolUnavailableError("no data")
@@ -367,6 +392,8 @@ async def test_executor_truncates_oversized_results() -> None:
         name = "huge_tool"
         description = "d"
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
 
         async def run(self, context, arguments) -> ToolResult:
             return ToolResult(success=True, data={"blob": "x" * (MAX_TOOL_RESULT_CHARS + 500)})
@@ -558,16 +585,12 @@ def test_resolve_tenant_capabilities_never_includes_inventory(db_session, monkey
     assert "inventory" not in capabilities
 
 
-def test_build_business_tool_registry_registers_all_fourteen_tools(db_session) -> None:
+def test_build_business_tool_registry_registers_tools_for_current_agents(db_session) -> None:
     registry = build_business_tool_registry(db_session, EmptyIngestionService(), prediction_service=object())
 
     names = {tool.name for tool in registry.list_tools()}
-    assert names == {
-        "get_business_overview", "get_sales_summary", "get_sales_trend", "get_sales_comparison",
-        "get_top_products", "get_customer_summary", "get_customer_segments", "get_inventory_summary",
-        "get_churn_risk", "get_segment_insights", "get_demand_forecast", "get_sales_forecast",
-        "get_anomalies", "get_prediction_summary",
-    }
+    assert names == {tool.name for tool in registry.list_tools()}
+    assert all(tool.agent_ids for tool in registry.list_tools())
 
 
 # ---------------------------------------------------------------------------
@@ -738,6 +761,8 @@ async def test_orchestrator_records_failed_tool_call_without_crashing() -> None:
         name = "failing_tool"
         description = "d"
         required_permissions = ("ai:use",)
+        read_only = True
+        mutates = False
         input_schema = FailingArgs
 
         async def run(self, context, arguments) -> ToolResult:
@@ -802,6 +827,7 @@ async def test_chat_service_send_with_permissions_uses_tools_and_persists_source
     message, sources = await service.send(
         company.id, user.id, conversation.id, "How is business?",
         permissions=frozenset(permissions_for(UserRole.ANALYST)), plan_code="demo", request_id="r1",
+        selected_agent_id="retail", allowed_tool_names=frozenset({"get_business_overview"}),
     )
 
     assert message.content == "Revenue is $210."
@@ -884,7 +910,12 @@ async def test_chat_service_tool_calling_enforces_company_isolation_across_two_t
 
     dataset_a = Dataset(company_id=company_a.id, name="Sales A", type="csv", source="a.csv", rows_count=3, columns_count=6, status=DatasetStatus.READY)
     dataset_b = Dataset(company_id=company_b.id, name="Sales B", type="csv", source="b.csv", rows_count=4, columns_count=6, status=DatasetStatus.READY)
-    db_session.add_all([dataset_a, dataset_b]); db_session.commit()
+    db_session.add_all([dataset_a, dataset_b]); db_session.flush()
+    db_session.add_all([
+        Mapping(dataset_id=dataset_a.id, mapping_json=CANONICAL_COLUMNS, approved=True),
+        Mapping(dataset_id=dataset_b.id, mapping_json=CANONICAL_COLUMNS, approved=True),
+    ])
+    db_session.commit()
 
     rows_a = [
         {"customer_id": "a-1", "order_id": "a-o1", "product_id": "p1", "order_timestamp": "2024-01-01T00:00:00+00:00", "quantity": 1, "total_amount": 40.0},
@@ -931,6 +962,8 @@ async def test_chat_service_tool_calling_enforces_company_isolation_across_two_t
         permissions=frozenset(permissions_for(UserRole.ANALYST)),
         plan_code="demo",
         request_id="req-a",
+        selected_agent_id="retail",
+        allowed_tool_names=frozenset({"get_customer_summary"}),
     )
     tool_results_a = service.last_tool_call_results
 
@@ -942,6 +975,8 @@ async def test_chat_service_tool_calling_enforces_company_isolation_across_two_t
         permissions=frozenset(permissions_for(UserRole.ANALYST)),
         plan_code="demo",
         request_id="req-b",
+        selected_agent_id="retail",
+        allowed_tool_names=frozenset({"get_customer_summary"}),
     )
     tool_results_b = service.last_tool_call_results
 

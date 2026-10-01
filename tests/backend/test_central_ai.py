@@ -541,3 +541,19 @@ async def test_viewer_without_ai_permission_never_calls_provider_or_consumes_cre
     assert result.status == "not_authorized"
     assert provider.calls == 0
     assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 0
+
+
+async def test_cross_agent_requires_every_domain_entitlement_before_provider_call(db_session) -> None:
+    company, user = make_company(db_session, "cross-agent-boundary")
+    provider = StubProvider()
+    central, conversations, usage, tenant = make_service(db_session, company, provider, limit=3)
+    conversation = conversations.create(company.id, user.id, "Cross agent")
+
+    result = await execute(
+        central, tenant, user, conversation,
+        "Synthèse globale des ventes, du CRM et de la comptabilité",
+    )
+
+    assert (result.selected_agent, result.status) == ("cross_agent", "not_entitled")
+    assert provider.calls == 0
+    assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 0

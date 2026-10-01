@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
+import unicodedata
 from typing import Any
 
 from pydantic import ValidationError
 
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+from backend.app.ai.tools.authorization import ToolAuthorizationPolicy
+from backend.app.ai.tools.idempotency import AIToolExecutionIdempotencyStore
 from backend.app.ai.tools.exceptions import (
     ToolAuthorizationError,
     ToolError,
@@ -35,8 +39,15 @@ MAX_TOOL_RESULT_CHARS = 8000
 
 
 class ToolExecutor:
-    def __init__(self, registry: ToolRegistry) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        authorization_policy: ToolAuthorizationPolicy | None = None,
+        idempotency_store: AIToolExecutionIdempotencyStore | None = None,
+    ) -> None:
         self._registry = registry
+        self._authorization_policy = authorization_policy
+        self._idempotency_store = idempotency_store
 
     async def execute(
         self,
@@ -51,18 +62,40 @@ class ToolExecutor:
             if tool is None:
                 raise ToolNotFoundError(f"Unknown tool: '{name}'.")
 
-            if not set(tool.required_permissions).issubset(context.permissions):
-                raise ToolAuthorizationError(f"Missing permissions to run '{name}'.")
+            if self._authorization_policy is None:
+                raise ToolAuthorizationError("Tool authorization is not configured.")
+            self._authorization_policy.authorize(tool, context)
 
             try:
                 arguments = tool.input_schema.model_validate(raw_arguments)
             except ValidationError as exc:
                 raise ToolValidationError(f"Invalid arguments for '{name}'.") from exc
 
+            if tool.mutates and tool.confirmation_policy != "explicit_user_confirmation":
+                raise ToolAuthorizationError("The mutating tool has no supported confirmation policy.")
+            if tool.mutates:
+                confirmed = getattr(arguments, tool.confirmation_field, False) is True
+                if not confirmed or not _is_explicit_confirmation(context.user_message):
+                    return ToolResult(
+                        success=False,
+                        data={"confirmation_required": True, "operation": name},
+                        error="Explicit user confirmation is required before this action.",
+                    )
+
             try:
-                result = await asyncio.wait_for(
-                    tool.run(context, arguments), timeout=tool.timeout_seconds
-                )
+                async def run_tool() -> ToolResult:
+                    return await asyncio.wait_for(
+                        tool.run(context, arguments), timeout=tool.timeout_seconds
+                    )
+
+                if tool.mutates:
+                    if self._idempotency_store is None:
+                        raise ToolAuthorizationError("Mutation idempotency is not configured.")
+                    result = await self._idempotency_store.run_once(
+                        context, tool, raw_arguments, run_tool
+                    )
+                else:
+                    result = await run_tool()
             except TimeoutError as exc:
                 raise ToolTimeoutError(f"Tool '{name}' timed out.") from exc
             except ToolUnavailableError:
@@ -102,3 +135,14 @@ def _truncate_result(result: ToolResult) -> ToolResult:
         metadata={**result.metadata, "truncated": True},
         error=result.error,
     )
+
+
+def _is_explicit_confirmation(message: str) -> bool:
+    normalized = unicodedata.normalize("NFKD", message.casefold())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = " ".join(re.findall(r"[a-z0-9]+", normalized))
+    return normalized in {
+        "yes", "yes i confirm", "i confirm", "confirm", "confirmed",
+        "oui", "oui je confirme", "je confirme", "confirme", "confirmer",
+        "d accord", "daccord", "ok",
+    }

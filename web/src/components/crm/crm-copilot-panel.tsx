@@ -67,6 +67,7 @@ export function CRMCopilotPanel({
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
+  const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -147,6 +148,10 @@ export function CRMCopilotPanel({
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query || isThinking) return;
+    const pendingRequest = pendingRequestRef.current?.content === query
+      ? pendingRequestRef.current
+      : { content: query, key: crypto.randomUUID() };
+    pendingRequestRef.current = pendingRequest;
 
     const userMsg: Message = {
       id: `u-${Date.now()}`,
@@ -177,7 +182,7 @@ export function CRMCopilotPanel({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": pendingRequest.key,
           ...getAuthHeaders(),
         },
         body: JSON.stringify({
@@ -189,6 +194,7 @@ export function CRMCopilotPanel({
 
       if (res.ok) {
         const data = await res.json();
+        pendingRequestRef.current = null;
         const copilotMsg: Message = {
           id: `c-${Date.now()}`,
           sender: "copilot",

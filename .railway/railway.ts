@@ -10,6 +10,7 @@ export default defineRailway(() => {
   const avenqoBackups = bucket("avenqo-backups", { region: "iad" });
   const AvenqoPlatform2 = service("Avenqo-Platform-", {
     source: AvenqoPlatform,
+    preDeployCommand: "python -m alembic upgrade head",
     healthcheck: null,
     healthcheckTimeout: null,
     replicas: { "sfo": 1 },

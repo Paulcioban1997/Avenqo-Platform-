@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import AccountingAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
 
@@ -46,7 +47,7 @@ class ExpenseAnomaliesArgs(ToolArguments):
     )
 
 
-class GetFinancialOverviewTool(AITool):
+class GetFinancialOverviewTool(AccountingAITool):
     name = "get_financial_overview"
     description = (
         "Fournit la synthèse financière globale de l'entreprise : chiffre d'affaires total confirmé, "
@@ -68,7 +69,7 @@ class GetFinancialOverviewTool(AITool):
         )
 
 
-class GetMonthlyExpensesTool(AITool):
+class GetMonthlyExpensesTool(AccountingAITool):
     name = "get_monthly_expenses"
     description = (
         "Retourne le total des dépenses du mois courant (ou spécifié), la ventilation par catégorie "
@@ -94,7 +95,7 @@ class GetMonthlyExpensesTool(AITool):
         )
 
 
-class GetProfitMarginTool(AITool):
+class GetProfitMarginTool(AccountingAITool):
     name = "get_profit_margin"
     description = (
         "Calcule la marge brute ($ et %), la marge opérationnelle ($ et %), les revenus totaux "
@@ -116,7 +117,7 @@ class GetProfitMarginTool(AITool):
         )
 
 
-class GetUnpaidInvoicesTool(AITool):
+class GetUnpaidInvoicesTool(AccountingAITool):
     name = "get_unpaid_invoices"
     description = (
         "Fournit la liste détaillée des factures impayées et en retard (clients ou fournisseurs), "
@@ -141,7 +142,7 @@ class GetUnpaidInvoicesTool(AITool):
         )
 
 
-class GetExpenseAnomaliesTool(AITool):
+class GetExpenseAnomaliesTool(AccountingAITool):
     name = "get_expense_anomalies"
     description = (
         "Détecte les dépenses inhabituelles, anormalement élevées ou atypiques par rapport à la moyenne de leur catégorie. "
@@ -165,7 +166,7 @@ class GetExpenseAnomaliesTool(AITool):
         )
 
 
-class GetCashFlowForecastTool(AITool):
+class GetCashFlowForecastTool(AccountingAITool):
     name = "get_cash_flow_forecast"
     description = (
         "Génère une prévision prédictive de trésorerie (Cash Flow Forecast) sur 30, 60 ou 90 jours "

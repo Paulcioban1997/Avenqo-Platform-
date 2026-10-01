@@ -11,6 +11,7 @@ sont pas construites (hors périmètre Phase 30).
 from __future__ import annotations
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 
@@ -19,7 +20,7 @@ class InventorySummaryArgs(ToolArguments):
     pass
 
 
-class GetInventorySummaryTool(AITool):
+class GetInventorySummaryTool(RetailAITool):
     name = "get_inventory_summary"
     description = "Return which products are low in stock or need attention. NOT YET AVAILABLE: no inventory data source exists in the platform."
     input_schema = InventorySummaryArgs

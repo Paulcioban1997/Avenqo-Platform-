@@ -15,6 +15,14 @@ class ToolRegistry:
         self._tools: dict[str, AITool] = {}
 
     def register(self, tool: AITool) -> None:
+        if tool.read_only is None or tool.mutates is None:
+            raise ValueError(f"Tool '{tool.name}' must explicitly declare its read-only or mutating behavior.")
+        if tool.mutates and (tool.read_only or not tool.mutation_capabilities):
+            raise ValueError(f"Mutating tool '{tool.name}' must declare mutation capabilities and read_only=False.")
+        if tool.mutates and tool.confirmation_policy != "explicit_user_confirmation":
+            raise ValueError(f"Mutating tool '{tool.name}' must require explicit user confirmation.")
+        if not tool.mutates and tool.read_only is not True:
+            raise ValueError(f"Tool '{tool.name}' must explicitly declare mutates=True.")
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> AITool | None:
@@ -38,4 +46,5 @@ class ToolRegistry:
             if set(tool.required_permissions).issubset(permissions)
             and plan_meets_minimum(plan_code, tool.minimum_plan)
             and tool.is_available_for(capabilities=capabilities)
+            and tool.required_capabilities.issubset(capabilities)
         )

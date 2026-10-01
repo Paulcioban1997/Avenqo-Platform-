@@ -54,6 +54,7 @@ export function AvenqoCopilot({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeSources, setActiveSources] = useState<EnabledSource[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
 
   // Auto-scroll on message change
   useEffect(() => {
@@ -87,6 +88,10 @@ export function AvenqoCopilot({
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query || isThinking) return;
+    const pendingRequest = pendingRequestRef.current?.content === query
+      ? pendingRequestRef.current
+      : { content: query, key: crypto.randomUUID() };
+    pendingRequestRef.current = pendingRequest;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -124,7 +129,7 @@ export function AvenqoCopilot({
         method: "POST",
         headers: {
           ...headers,
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": pendingRequest.key,
         },
         body: JSON.stringify({
           content: query,
@@ -136,6 +141,7 @@ export function AvenqoCopilot({
 
       if (res.ok) {
         const data = await res.json();
+        pendingRequestRef.current = null;
         window.dispatchEvent(new Event("avenqo:ai-credits-updated"));
         const copilotMsg: ChatMessage = {
           id: `c-${Date.now()}`,

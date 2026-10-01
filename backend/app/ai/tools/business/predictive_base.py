@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 
-from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import (
     ModelInputIncompatibleError,
@@ -46,7 +46,7 @@ from backend.app.services.prediction_freshness import (
 )
 
 
-class PredictiveAITool(AITool):
+class PredictiveAITool(RetailAITool):
     """Base commune : convertit `PortfolioAnalysisUnavailable` en erreur sûre.
 
     Les sous-classes implémentent uniquement `build_prediction(context,

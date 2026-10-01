@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/token_store.dart';
 import 'package:avenqo/features/ai_chat/central_ai_controller.dart';
+import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 import 'package:avenqo/i18n/locale_controller.dart';
 import 'package:avenqo/i18n/locale_scope.dart';
 import 'package:avenqo/widgets/floating_central_ai.dart';
@@ -30,19 +31,25 @@ class _LocaleStore implements LocalePreferenceStore {
 }
 
 void main() {
-  testWidgets('floating launcher reuses Central AI state and forwards only page context', (tester) async {
-    Map<String, dynamic>? sentBody;
+  test('Central AI retry reuses one idempotency identity', () async {
+    final sentKeys = <String>[];
+    var messageAttempts = 0;
     final client = MockClient((request) async {
       if (request.method == 'GET') return http.Response('[]', 200);
       if (request.url.path.endsWith('/conversations')) {
         return http.Response(
-          '{"id":"chat-1","title":"Sales","created_at":"2026-09-03T12:00:00Z","updated_at":"2026-09-03T12:00:00Z"}',
+          '{"id":"retry-chat","title":"Retry","created_at":"2026-09-03T12:00:00Z","updated_at":"2026-09-03T12:00:00Z"}',
           201,
         );
       }
-      sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      sentKeys.add(body['idempotency_key'] as String);
+      messageAttempts += 1;
+      if (messageAttempts == 1) {
+        return http.Response('{"detail":"temporary"}', 503);
+      }
       return http.Response(
-        '{"selected_agent":"retail","status":"success","answer":"Retail answer","remaining_ai_credits":9,"agent_availability":"available","conversation_id":"chat-1"}',
+        '{"selected_agent":"retail","status":"success","answer":"Done","remaining_ai_credits":9,"agent_availability":"available","conversation_id":"retry-chat"}',
         200,
       );
     });
@@ -51,46 +58,93 @@ void main() {
       httpClient: client,
       baseUrl: 'https://avenqo.test/api/v1',
     );
-    final centralAI = CentralAIController(api);
-    addTearDown(centralAI.dispose);
-    final locale = LocaleController(store: _LocaleStore());
-    await locale.initialize();
+    final controller = CentralAIController(api);
+    addTearDown(controller.dispose);
+    String statusMessage(String status) => status;
 
-    await tester.pumpWidget(
-      AvenqoLocaleScope(
-        controller: locale,
-        child: MaterialApp(
-          home: Scaffold(
-            body: FloatingCentralAI(
-              api: api,
-              controller: centralAI,
-              currentPath: '/retail/products',
-              onOpenFull: () {},
+    await controller.send('Retry this request', statusMessage: statusMessage);
+    await controller.retryLastMessage(statusMessage: statusMessage);
+
+    expect(sentKeys, hasLength(2));
+    expect(sentKeys.first, isNotEmpty);
+    expect(sentKeys[1], sentKeys.first);
+    expect(controller.messages.last.content, 'Done');
+    expect(
+      controller.messages.where((message) => message.role == ChatRole.user),
+      hasLength(1),
+    );
+  });
+
+  testWidgets(
+    'floating launcher reuses Central AI state and forwards only page context',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+      final client = MockClient((request) async {
+        if (request.method == 'GET') return http.Response('[]', 200);
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(
+            '{"id":"chat-1","title":"Sales","created_at":"2026-09-03T12:00:00Z","updated_at":"2026-09-03T12:00:00Z"}',
+            201,
+          );
+        }
+        sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          '{"selected_agent":"retail","status":"success","answer":"Retail answer","remaining_ai_credits":9,"agent_availability":"available","conversation_id":"chat-1"}',
+          200,
+        );
+      });
+      final api = ApiClient(
+        tokenStore: _TokenStore(),
+        httpClient: client,
+        baseUrl: 'https://avenqo.test/api/v1',
+      );
+      final centralAI = CentralAIController(api);
+      addTearDown(centralAI.dispose);
+      final locale = LocaleController(store: _LocaleStore());
+      await locale.initialize();
+
+      await tester.pumpWidget(
+        AvenqoLocaleScope(
+          controller: locale,
+          child: MaterialApp(
+            home: Scaffold(
+              body: FloatingCentralAI(
+                api: api,
+                controller: centralAI,
+                currentPath: '/retail/products',
+                onOpenFull: () {},
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'How are products performing?');
-    await tester.tap(find.byIcon(Icons.arrow_upward));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'How are products performing?',
+      );
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Retail answer'), findsOneWidget);
-    expect(sentBody, {
-      'content': 'How are products performing?',
-      'page_context': '/retail/products',
-      'locale': 'en-US',
-    });
+      expect(find.text('Retail answer'), findsOneWidget);
+      expect(sentBody?['idempotency_key'], isNotEmpty);
+      final bodyWithoutIdempotencyKey = Map<String, dynamic>.from(sentBody!)
+        ..remove('idempotency_key');
+      expect(bodyWithoutIdempotencyKey, {
+        'content': 'How are products performing?',
+        'page_context': '/retail/products',
+        'locale': 'en-US',
+      });
 
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Retail answer'), findsOneWidget);
-    expect(centralAI.selected?.id, 'chat-1');
-  });
+      expect(find.text('Retail answer'), findsOneWidget);
+      expect(centralAI.selected?.id, 'chat-1');
+    },
+  );
 }

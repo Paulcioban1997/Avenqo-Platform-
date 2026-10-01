@@ -1,13 +1,15 @@
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.chat_service import ChatService
+from backend.app.ai.request_identity import reconcile_idempotency_keys, resolve_ai_request_id
+from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError, ConversationNotFoundError
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
@@ -18,18 +20,26 @@ from backend.app.database import get_db
 from backend.app.dependencies.ai_chat import get_chat_service, get_conversation_service
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.dependencies.ai_authorization import get_active_ai_membership
+from backend.app.dependencies.assistants import get_assistant_registry
+from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.dependencies.tenant_business import (
     get_tenant_customers_service,
     get_tenant_sales_service,
 )
 from backend.app.services.retail_source_service import RetailSourceService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.schemas.ai_chat import ChatMessageResponse, ConversationDetailResponse, ConversationResponse, CreateConversationRequest, MessageResponse, SendMessageRequest, SourceResponse
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
-router = APIRouter(prefix="/ai/chat", tags=["ai-chat"])
+router = APIRouter(
+    prefix="/ai/chat",
+    tags=["ai-chat"],
+    dependencies=[Depends(get_active_ai_membership)],
+)
 logger = logging.getLogger("avenqo.ai.router")
 
 
@@ -75,6 +85,16 @@ def response(item) -> ConversationResponse:
     return ConversationResponse(id=item.id, title=item.title, created_at=item.created_at, updated_at=item.updated_at)
 
 
+def _authorized_agent(query: str, page_context: str | None, tenant: TenantContext, db: Session, registry: AssistantRegistry):
+    agent = CentralAIIntentRouter(registry).select(query, page_context=page_context)
+    if agent is None:
+        return None
+    active_modules = frozenset(ModuleEntitlementService(db).get_active_modules(tenant))
+    if not agent.status.is_executable or not agent_entitlements(agent).issubset(active_modules):
+        raise HTTPException(status_code=403, detail="The requested AI agent is not available to this tenant.")
+    return agent
+
+
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 def create(request: CreateConversationRequest, tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
     return response(service.create(tenant.company_id, identity.user.id, request.title))
@@ -84,6 +104,8 @@ def create(request: CreateConversationRequest, tenant: TenantContext = Depends(g
 def list_items(
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    agent_registry: AssistantRegistry = Depends(get_assistant_registry),
     service: ConversationService = Depends(get_conversation_service),
     skip: int = 0,
     limit: int = 50,
@@ -111,6 +133,7 @@ def detail(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_con
 async def message(
     conversation_id: UUID,
     request: SendMessageRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     service: ChatService = Depends(get_chat_service),
@@ -133,15 +156,25 @@ async def message(
         identity.user.company_id,
         tenant.company_id,
     )
-    trusted_context = _retail_trusted_context(
-        tenant,
-        db,
-        sales_service,
-        customers_service,
-    )
-    permissions = frozenset(permissions_for(identity.user.role))
+    permissions = frozenset(permissions_for(membership.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
+    agent = _authorized_agent(request.content, None, tenant, db, agent_registry)
+    trusted_context = (
+        _retail_trusted_context(tenant, db, sales_service, customers_service)
+        if agent is not None and agent.module_code == "retail"
+        else ""
+    )
     company = identity.user.company
+    plan_code = ModuleEntitlementService(db).get_company_plan(tenant).code.value
+    try:
+        request_id = resolve_ai_request_id(
+            reconcile_idempotency_keys(idempotency_key, request.idempotency_key),
+            tenant_id=tenant.company_id,
+            user_id=identity.user.id,
+            conversation_id=conversation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Idempotency-Key invalide") from exc
     try:
         item, sources = await service.send(
             tenant.company_id,
@@ -149,14 +182,17 @@ async def message(
             conversation_id,
             request.content,
             permissions=permissions,
-            plan_code=company.subscription_plan,
+            plan_code=plan_code,
             capabilities=capabilities,
-            request_id=str(uuid4()),
+            request_id=request_id,
             trusted_context=trusted_context,
             user_language=company.preferred_language or "fr",
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
+            selected_agent_id=agent.agent_id if agent is not None else None,
+            allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
+            retrieve_tenant_data=agent is not None,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
@@ -177,8 +213,11 @@ async def stream(
     conversation_id: UUID,
     request: SendMessageRequest,
     http_request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    agent_registry: AssistantRegistry = Depends(get_assistant_registry),
     service: ChatService = Depends(get_chat_service),
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),
@@ -199,15 +238,25 @@ async def stream(
         identity.user.company_id,
         tenant.company_id,
     )
-    trusted_context = _retail_trusted_context(
-        tenant,
-        db,
-        sales_service,
-        customers_service,
-    )
-    permissions = frozenset(permissions_for(identity.user.role))
+    permissions = frozenset(permissions_for(membership.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
     company = identity.user.company
+    agent = _authorized_agent(request.content, None, tenant, db, agent_registry)
+    trusted_context = (
+        _retail_trusted_context(tenant, db, sales_service, customers_service)
+        if agent is not None and agent.module_code == "retail"
+        else ""
+    )
+    plan_code = ModuleEntitlementService(db).get_company_plan(tenant).code.value
+    try:
+        request_id = resolve_ai_request_id(
+            reconcile_idempotency_keys(idempotency_key, request.idempotency_key),
+            tenant_id=tenant.company_id,
+            user_id=identity.user.id,
+            conversation_id=conversation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Idempotency-Key invalide") from exc
 
     async def is_cancelled() -> bool:
         return await http_request.is_disconnected()
@@ -220,15 +269,18 @@ async def stream(
                 conversation_id,
                 request.content,
                 permissions=permissions,
-                plan_code=company.subscription_plan,
+                plan_code=plan_code,
                 capabilities=capabilities,
-                request_id=str(uuid4()),
+                request_id=request_id,
                 trusted_context=trusted_context,
                 is_cancelled=is_cancelled,
                 user_language=company.preferred_language or "fr",
                 company_country=company.country or "",
                 company_currency=getattr(company, "currency_code", None) or "USD",
                 company_timezone=company.timezone or "UTC",
+                selected_agent_id=agent.agent_id if agent is not None else None,
+                allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
+                retrieve_tenant_data=agent is not None,
             ):
                 if event.kind == "delta":
                     yield f"data: {json.dumps(event.payload)}\n\n"

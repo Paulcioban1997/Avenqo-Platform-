@@ -11,6 +11,7 @@ from datetime import date, datetime, time
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
+from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.business.analytics import (
     TOP_PRODUCTS_METRICS,
     compute_business_overview,
@@ -49,7 +50,7 @@ class BusinessOverviewArgs(ToolArguments):
     pass
 
 
-class GetBusinessOverviewTool(AITool):
+class GetBusinessOverviewTool(RetailAITool):
     name = "get_business_overview"
     description = (
         "Return a synthetic view of the company's business performance: revenue, "
@@ -81,7 +82,7 @@ class SalesSummaryArgs(ToolArguments):
     product: str | None = None
 
 
-class GetSalesSummaryTool(AITool):
+class GetSalesSummaryTool(RetailAITool):
     name = "get_sales_summary"
     description = (
         "Return the sales revenue, order count and average order value for the "
@@ -116,7 +117,7 @@ class SalesTrendArgs(ToolArguments):
     pass
 
 
-class GetSalesTrendTool(AITool):
+class GetSalesTrendTool(RetailAITool):
     name = "get_sales_trend"
     description = "Return the monthly revenue trend as a structured time series for the tenant's business data."
     input_schema = SalesTrendArgs
@@ -143,7 +144,7 @@ class SalesComparisonArgs(ToolArguments):
     previous_to: date
 
 
-class GetSalesComparisonTool(AITool):
+class GetSalesComparisonTool(RetailAITool):
     name = "get_sales_comparison"
     description = (
         "Compare revenue between two real date ranges (e.g. this month vs previous "
@@ -180,7 +181,7 @@ class TopProductsArgs(ToolArguments):
     category: str | None = None
 
 
-class GetTopProductsTool(AITool):
+class GetTopProductsTool(RetailAITool):
     name = "get_top_products"
     description = (
         "Return the top-performing products for the tenant, ranked by revenue, "

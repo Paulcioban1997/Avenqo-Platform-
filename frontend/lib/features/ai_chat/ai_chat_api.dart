@@ -1,4 +1,5 @@
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/idempotency_key.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 
 class AiChatApi {
@@ -7,22 +8,23 @@ class AiChatApi {
   final ApiClient _client;
 
   Future<List<Conversation>> listConversations() async {
-    final response = await _client.get('/ai/chat/conversations') as List<dynamic>;
+    final response =
+        await _client.get('/ai/chat/conversations') as List<dynamic>;
     return response
         .map((item) => Conversation.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
   Future<Conversation> createConversation(String title) async {
-    final response = await _client.post(
-      '/ai/chat/conversations',
-      body: {'title': title},
-    ) as Map<String, dynamic>;
+    final response =
+        await _client.post('/ai/chat/conversations', body: {'title': title})
+            as Map<String, dynamic>;
     return Conversation.fromJson(response);
   }
 
   Future<ConversationDetail> getConversation(String id) async {
-    final response = await _client.get('/ai/chat/conversations/$id') as Map<String, dynamic>;
+    final response =
+        await _client.get('/ai/chat/conversations/$id') as Map<String, dynamic>;
     return ConversationDetail.fromJson(response);
   }
 
@@ -33,24 +35,35 @@ class AiChatApi {
   Future<CentralAIResponse> sendCentralMessage(
     String conversationId,
     String content, {
+    required String idempotencyKey,
     String? pageContext,
     String? locale,
-  }
-  ) async {
-    final response = await _client.post(
-      '/ai/central/conversations/$conversationId/messages',
-      body: {
-        'content': content,
-        'page_context': ?pageContext,
-        'locale': ?locale,
-      },
-    ) as Map<String, dynamic>;
+  }) async {
+    final response =
+        await _client.post(
+              '/ai/central/conversations/$conversationId/messages',
+              body: {
+                'content': content,
+                'idempotency_key': idempotencyKey,
+                'page_context': ?pageContext,
+                'locale': ?locale,
+              },
+            )
+            as Map<String, dynamic>;
     return CentralAIResponse.fromJson(response);
   }
 
-  Stream<ChatStreamEvent> streamMessage(String conversationId, String content) =>
-      _client.postSseEvents(
+  Stream<ChatStreamEvent> streamMessage(
+    String conversationId,
+    String content, {
+    String? idempotencyKey,
+  }) => _client
+      .postSseEvents(
         '/ai/chat/conversations/$conversationId/messages/stream',
-        body: {'content': content},
-      ).map(ChatStreamEvent.fromJson);
+        body: {
+          'content': content,
+          'idempotency_key': idempotencyKey ?? newIdempotencyKey(),
+        },
+      )
+      .map(ChatStreamEvent.fromJson);
 }

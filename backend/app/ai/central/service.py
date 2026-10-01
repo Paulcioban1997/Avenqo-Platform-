@@ -12,7 +12,7 @@ from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.usage.service import AIUsageService
-from backend.app.assistants.registry import AssistantRegistry
+from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -77,9 +77,7 @@ class CentralAIService:
             )
             self._log_result(tenant.company_id, None, result, started_at, "permission_denied")
             return result
-        agent = self._router.select(query)
-        if agent is None and page_context and page_context.startswith("/crm"):
-            agent = self._router.select("crm appointment")
+        agent = self._router.select(query, page_context=page_context)
         if agent is None:
             try:
                 self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
@@ -108,14 +106,9 @@ class CentralAIService:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
             return result
-        is_cross_agent = agent is not None and agent.slug == "cross_agent"
-        if agent is not None and not is_cross_agent and (agent.module_code is None or agent.module_code not in context.active_modules):
+        if agent is not None and not agent_entitlements(agent).issubset(context.active_modules):
             result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_inactive")
-            return result
-        if is_cross_agent and not any(m in context.active_modules for m in ("retail", "crm", "accounting")):
-            result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
-            self._log_result(tenant.company_id, "cross_agent", result, started_at, "no_active_business_modules")
             return result
 
         try:
@@ -135,6 +128,7 @@ class CentralAIService:
                 trusted_context=context.as_prompt_context(),
                 client_context=page_context or "",
                 allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
+                selected_agent_id=agent.agent_id if agent is not None else None,
                 retrieve_tenant_data=agent is not None,
             )
         except AIQuotaExceededError:

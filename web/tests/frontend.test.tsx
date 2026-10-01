@@ -107,6 +107,51 @@ describe("Copilot production response", () => {
     fireEvent.click(send);
     await waitFor(() => expect(screen.getByText(/Votre chiffre d'affaires total est de 2 297 200,86 CAD/)).toBeInTheDocument());
   });
+
+  it("reuses the same idempotency key when retrying the same request", async () => {
+    const requestKeys: string[] = [];
+    let messageAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/retail/sources")) {
+        return new Response("[]", { status: 200 });
+      }
+      if (url.endsWith("/ai/chat/conversations")) {
+        return new Response(JSON.stringify({ id: "retry-conversation" }), { status: 201 });
+      }
+      if (url.includes("/ai/central/conversations/") && init?.method === "POST") {
+        requestKeys.push(new Headers(init.headers).get("Idempotency-Key") || "");
+        messageAttempts += 1;
+        if (messageAttempts === 1) return new Response("{}", { status: 503 });
+        return new Response(JSON.stringify({ answer: "Done", status: "success" }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(
+      <LocaleProvider>
+        <AvenqoCopilot
+          isOpen
+          onClose={vi.fn()}
+          activeRoute="/retail"
+          t={getAppTranslations("en")}
+        />
+      </LocaleProvider>,
+    );
+
+    const input = screen.getByPlaceholderText(/ask anything/i);
+    const send = screen.getByRole("button", { name: /send/i });
+    fireEvent.change(input, { target: { value: "Summarize today's sales" } });
+    fireEvent.click(send);
+    await waitFor(() => expect(messageAttempts).toBe(1));
+    fireEvent.change(input, { target: { value: "Summarize today's sales" } });
+    fireEvent.click(send);
+    await waitFor(() => expect(screen.getByText("Done")).toBeInTheDocument());
+
+    expect(requestKeys).toHaveLength(2);
+    expect(requestKeys[0]).toBeTruthy();
+    expect(requestKeys[1]).toBe(requestKeys[0]);
+  });
 });
 
 describe("locale persistence", () => {

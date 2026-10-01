@@ -57,11 +57,9 @@ from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.models.enterprise_override import EnterpriseOverride
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.prediction_runtime import resolve_active_model_type
+from modules.registry import RETAIL_MODULE_CODE
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
-
-RETAIL_MODULE_CODE = "retail"
-
 
 def build_business_tool_registry(
     session: Session,

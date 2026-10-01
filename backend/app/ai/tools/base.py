@@ -30,10 +30,17 @@ class AITool(ABC):
     input_schema: type[ToolArguments] = ToolArguments
     output_schema: type[BaseModel] | None = None
     required_permissions: tuple[str, ...] = ("ai:use",)
-    read_only: bool = True
+    read_only: bool | None = None
+    mutates: bool | None = None
     timeout_seconds: float = 10.0
     minimum_plan: str | None = None
     requires_capability: str | None = None
+    required_capabilities: frozenset[str] = frozenset()
+    required_entitlements: frozenset[str] = frozenset()
+    mutation_capabilities: frozenset[str] = frozenset()
+    confirmation_policy: str = "none"
+    confirmation_field: str = "confirmed"
+    agent_ids: frozenset[str] = frozenset()
 
     def definition(self) -> ToolDefinition:
         """Représentation provider-agnostique consommée par le LLM tool calling."""
@@ -56,3 +63,33 @@ class AITool(ABC):
         if self.requires_capability is None:
             return True
         return self.requires_capability in capabilities
+
+
+class RetailAITool(AITool):
+    agent_ids = frozenset({"retail"})
+    read_only = True
+    mutates = False
+
+
+class CRMAITool(AITool):
+    agent_ids = frozenset({"crm"})
+    read_only = True
+    mutates = False
+
+
+class AccountingAITool(AITool):
+    agent_ids = frozenset({"accounting"})
+    read_only = True
+    mutates = False
+
+
+class CrossAgentAITool(AITool):
+    agent_ids = frozenset({"cross_agent"})
+    read_only = True
+    mutates = False
+
+
+class PlatformSupportAITool(AITool):
+    agent_ids = frozenset({"platform_support"})
+    read_only = True
+    mutates = False

@@ -1,4 +1,5 @@
 import 'package:avenqo/core/api_client.dart';
+import 'package:avenqo/core/idempotency_key.dart';
 import 'package:avenqo/features/ai_chat/ai_chat_models.dart';
 
 /// Avenqo Support AI (Phase 32) — mirrors [AiChatApi] but targets the
@@ -42,11 +43,15 @@ class AiSupportApi {
 
   Stream<ChatStreamEvent> streamMessage(
     String conversationId,
-    String content,
-  ) => _client
+    String content, {
+    String? idempotencyKey,
+  }) => _client
       .postSseEvents(
         '/support/chat/conversations/$conversationId/messages/stream',
-        body: {'content': content},
+        body: {
+          'content': content,
+          'idempotency_key': idempotencyKey ?? newIdempotencyKey(),
+        },
       )
       .timeout(const Duration(seconds: 60))
       .map(ChatStreamEvent.fromJson);

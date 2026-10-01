@@ -9,6 +9,8 @@ from backend.app.ai.support.chat_service import SupportChatService
 from backend.app.ai.support.conversation_service import SupportConversationService
 from backend.app.ai.support.retrieval_service import PlatformKnowledgeRetrievalService
 from backend.app.ai.tools.executor import ToolExecutor
+from backend.app.ai.tools.authorization import ToolAuthorizationPolicy
+from backend.app.ai.tools.idempotency import AIToolExecutionIdempotencyStore
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.ai.tools.support.registry_factory import build_support_tool_registry
 from backend.app.ai.usage.policy import AIQuotaPolicy
@@ -16,6 +18,8 @@ from backend.app.ai.usage.service import AIUsageService
 from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.ai_engine import get_prediction_service
+from backend.app.dependencies.ai_tools import get_business_tool_registry
+from backend.app.assistants.registry import build_default_assistant_registry
 from shared.ai_engine.prediction.service import PredictionService
 
 
@@ -53,8 +57,17 @@ def get_support_tool_registry(
     )
 
 
-def get_support_tool_executor(registry: ToolRegistry = Depends(get_support_tool_registry)) -> ToolExecutor:
-    return ToolExecutor(registry)
+def get_support_tool_executor(
+    registry: ToolRegistry = Depends(get_support_tool_registry),
+    business_tools: ToolRegistry = Depends(get_business_tool_registry),
+    db: Session = Depends(get_db),
+) -> ToolExecutor:
+    agents = build_default_assistant_registry(business_tools, registry)
+    return ToolExecutor(
+        registry,
+        ToolAuthorizationPolicy(db, agents),
+        AIToolExecutionIdempotencyStore(db),
+    )
 
 
 def get_support_chat_service(

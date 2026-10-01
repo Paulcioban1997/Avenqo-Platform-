@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
+RETAIL_MODULE_CODE = "retail"
+
+
 class ModuleAvailability(StrEnum):
     AVAILABLE = "available"
     COMING_SOON = "coming_soon"

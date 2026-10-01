@@ -23,6 +23,9 @@ class ToolExecutionContext:
     permissions: frozenset[str]
     request_id: str
     conversation_id: UUID | None = None
+    selected_agent_id: str | None = None
+    capabilities: frozenset[str] = frozenset()
+    user_message: str = ""
 
     @property
     def tenant_id(self) -> UUID:

@@ -16,6 +16,7 @@ class CreateSupportConversationRequest(StrictSchema):
 
 class SendSupportMessageRequest(StrictSchema):
     content: str = Field(min_length=1, max_length=4000)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class SupportConversationResponse(StrictSchema):

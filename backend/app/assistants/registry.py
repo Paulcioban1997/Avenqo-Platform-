@@ -1,79 +1,42 @@
-"""Registre minimal des assistants Avenqo (Retail AVAILABLE, autres COMING_SOON).
-
-Ne construit PAS un marketplace : uniquement de quoi résoudre le statut/les
-outils autorisés d'un assistant. Le Tool Registry par assistant existe déjà
-(`build_business_tool_registry`, `build_support_tool_registry`) : ce module
-formalise seulement quel assistant possède quel registre, sans le dupliquer.
-"""
+"""Définitions déclaratives des agents Avenqo et de leurs capacités réelles."""
 
 from __future__ import annotations
 
 from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
-from backend.app.ai.tools.business.registry_factory import RETAIL_MODULE_CODE
-from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
-
-RETAIL_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "get_business_overview",
-        "get_sales_summary",
-        "get_sales_trend",
-        "get_sales_comparison",
-        "get_top_products",
-        "get_customer_summary",
-        "get_customer_segments",
-        "get_inventory_summary",
-        "get_churn_risk",
-        "get_segment_insights",
-        "get_demand_forecast",
-        "get_sales_forecast",
-        "get_anomalies",
-        "get_prediction_summary",
-    }
-)
+from modules.registry import RETAIL_MODULE_CODE
 
 CRM_MODULE_CODE = "crm"
-CRM_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "get_crm_overview",
-        "get_crm_metrics",
-        "search_clients",
-        "get_client",
-        "search_appointments",
-        "check_availability",
-        "list_available_slots",
-        "create_appointment",
-        "update_appointment",
-        "cancel_appointment",
-        "get_client_history",
-        "get_leads_to_contact",
-        "get_ranked_leads",
-        "get_high_risk_customers",
-        "get_top_revenue_deals",
-        "get_follow_up_recommendation",
-    }
-)
-
 ACCOUNTING_MODULE_CODE = "accounting"
-ACCOUNTING_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "get_financial_overview",
-        "get_monthly_expenses",
-        "get_profit_margin",
-        "get_unpaid_invoices",
-        "get_expense_anomalies",
-        "get_cash_flow_forecast",
-    }
-)
-
 CROSS_AGENT_MODULE_CODE = "cross_agent"
-CROSS_AGENT_TOOL_NAMES: frozenset[str] = (
-    RETAIL_TOOL_NAMES
-    | CRM_TOOL_NAMES
-    | ACCOUNTING_TOOL_NAMES
-    | frozenset({"get_cross_agent_business_health"})
-)
 
-
+RETAIL_INTENT_KEYWORDS = frozenset({
+    "sale", "sales", "vente", "ventes", "revenue", "revenu", "customer",
+    "customers", "client", "clients", "order", "orders", "commande",
+    "commandes", "product", "products", "produit", "produits", "inventory",
+    "inventaire", "stock", "recommendation", "recommendations", "recommandation",
+    "recommandations", "kpi", "trend", "trends", "tendance", "tendances",
+    "anomaly", "anomalies", "anomalie", "forecast", "prevision", "demand",
+    "demande", "churn", "performance", "chiffre", "chiffres", "statistique",
+    "statistiques", "bilan", "overview",
+})
+CRM_INTENT_KEYWORDS = frozenset({
+    "crm", "lead", "leads", "opportunity", "opportunities", "prospect",
+    "prospects", "deal", "deals", "relance", "relances", "contact", "contacts",
+    "appointment", "appointments", "rendez", "creneau", "creneaux", "disponibilite",
+    "disponibilites", "slot", "slots", "reservation", "reservations", "schedule",
+    "scheduling", "booking", "calendrier", "agenda",
+})
+ACCOUNTING_INTENT_KEYWORDS = frozenset({
+    "accounting", "comptabilite", "comptable", "invoice", "invoices", "facture",
+    "factures", "impaye", "impayee", "impayes", "impayees", "depense", "depenses",
+    "depenser", "marge", "marges", "tresorerie", "cashflow", "cash", "burn",
+    "creance", "creances",
+})
+CROSS_AGENT_INTENT_KEYWORDS = frozenset({
+    "360", "cross", "synergie", "synergies", "global", "globale", "globales",
+    "synthese", "omnicanal", "strategie", "strategique", "complet", "complete",
+    "holistique", "transversal", "transversale",
+})
 class AssistantRegistry:
     """Résout les métadonnées/statut d'un assistant par slug."""
 
@@ -92,43 +55,117 @@ class AssistantRegistry:
     def list_available(self) -> tuple[AssistantDefinition, ...]:
         return tuple(item for item in self._items.values() if item.status.is_executable)
 
-
-def build_default_assistant_registry() -> AssistantRegistry:
-    """Registre de référence Avenqo : Retail AVAILABLE, futurs assistants COMING_SOON."""
-
-    registry = AssistantRegistry()
-    for module in BUSINESS_MODULE_REGISTRY:
-        status = {
-            ModuleAvailability.AVAILABLE: AssistantStatus.AVAILABLE,
-            ModuleAvailability.COMING_SOON: AssistantStatus.COMING_SOON,
-            ModuleAvailability.UNAVAILABLE: AssistantStatus.DISABLED,
-        }[module.availability]
-        registry.register(
-            AssistantDefinition(
-                slug=module.key,
-                name_key=f"assistant.{module.key}.name",
-                description_key=f"assistant.{module.key}.description",
-                status=status,
-                category=module.category,
-                module_code=module.key,
-                allowed_tool_names=RETAIL_TOOL_NAMES
-                if module.key == RETAIL_MODULE_CODE
-                else (
-                    CRM_TOOL_NAMES
-                    if module.key == CRM_MODULE_CODE
-                    else (ACCOUNTING_TOOL_NAMES if module.key == ACCOUNTING_MODULE_CODE else frozenset())
-                ),
-            )
+    def list_authorized(self, active_modules: frozenset[str]) -> tuple[AssistantDefinition, ...]:
+        return tuple(
+            item for item in self.list_available()
+            if agent_entitlements(item).issubset(active_modules)
         )
-    registry.register(
+
+
+def agent_entitlements(definition: AssistantDefinition) -> frozenset[str]:
+    entitlements = set(definition.required_entitlements)
+    if definition.module_code:
+        entitlements.add(definition.module_code)
+    return frozenset(entitlements)
+
+
+def build_default_assistant_registry(*tool_registries) -> AssistantRegistry:
+    """Register only agents whose tools and business behavior are implemented."""
+
+    tools_by_agent: dict[str, set[str]] = {}
+    capabilities_by_agent: dict[str, set[str]] = {}
+    for tool_registry in tool_registries:
+        for tool in tool_registry.list_tools():
+            for agent_id in tool.agent_ids:
+                tools_by_agent.setdefault(agent_id, set()).add(tool.name)
+                capabilities = capabilities_by_agent.setdefault(agent_id, set())
+                capabilities.update(tool.required_capabilities)
+                if tool.requires_capability:
+                    capabilities.add(tool.requires_capability)
+    allowed_tools = {
+        agent_id: frozenset(tool_names)
+        for agent_id, tool_names in tools_by_agent.items()
+    }
+
+    definitions = (
+        AssistantDefinition(
+            slug=RETAIL_MODULE_CODE,
+            name_key="assistant.retail.name",
+            description_key="assistant.retail.description",
+            status=AssistantStatus.AVAILABLE,
+            category="commerce",
+            module_code=RETAIL_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(RETAIL_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(RETAIL_MODULE_CODE, frozenset()),
+            intents=("retail.sales", "retail.customers", "retail.products", "retail.analytics"),
+            intent_keywords=RETAIL_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "analyze", "forecast"}),
+            localization_metadata={"system_prompt": "ai.agent.retail.system"},
+        ),
+        AssistantDefinition(
+            slug=CRM_MODULE_CODE,
+            name_key="assistant.crm.name",
+            description_key="assistant.crm.description",
+            status=AssistantStatus.AVAILABLE,
+            category="customer",
+            module_code=CRM_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(CRM_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(CRM_MODULE_CODE, frozenset()),
+            intents=("crm.customers", "crm.leads", "crm.appointments"),
+            intent_keywords=CRM_INTENT_KEYWORDS,
+            page_context_prefixes=("/crm",),
+            supported_operations=frozenset({"read", "analyze", "appointment.create", "appointment.update", "appointment.cancel"}),
+            mutation_capabilities=frozenset({
+                "calendar.write", "crm.appointment.write", "appointment.create",
+                "appointment.update", "appointment.cancel",
+            }),
+            confirmation_policy="explicit_user_confirmation",
+            localization_metadata={"system_prompt": "ai.agent.crm.system"},
+        ),
+        AssistantDefinition(
+            slug=ACCOUNTING_MODULE_CODE,
+            name_key="assistant.accounting.name",
+            description_key="assistant.accounting.description",
+            status=AssistantStatus.AVAILABLE,
+            category="finance",
+            module_code=ACCOUNTING_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(ACCOUNTING_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(ACCOUNTING_MODULE_CODE, frozenset()),
+            intents=("accounting.invoices", "accounting.expenses", "accounting.cashflow"),
+            intent_keywords=ACCOUNTING_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "analyze", "forecast"}),
+            localization_metadata={"system_prompt": "ai.agent.accounting.system"},
+        ),
         AssistantDefinition(
             slug=CROSS_AGENT_MODULE_CODE,
             name_key="assistant.cross_agent.name",
             description_key="assistant.cross_agent.description",
             status=AssistantStatus.AVAILABLE,
             category="intelligence",
-            module_code=CROSS_AGENT_MODULE_CODE,
-            allowed_tool_names=CROSS_AGENT_TOOL_NAMES,
-        )
+            required_entitlements=frozenset({"retail", "crm", "accounting"}),
+            capabilities=frozenset(capabilities_by_agent.get(CROSS_AGENT_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(CROSS_AGENT_MODULE_CODE, frozenset()),
+            intents=("business.cross_domain_summary",),
+            intent_keywords=CROSS_AGENT_INTENT_KEYWORDS,
+            aggregate=True,
+            supported_operations=frozenset({"read", "analyze"}),
+            localization_metadata={"system_prompt": "ai.agent.cross_domain.system"},
+        ),
+        AssistantDefinition(
+            slug="platform_support",
+            name_key="assistant.platform_support.name",
+            description_key="assistant.platform_support.description",
+            status=AssistantStatus.AVAILABLE,
+            category="platform_support",
+            capabilities=frozenset(capabilities_by_agent.get("platform_support", set())),
+            allowed_tool_names=allowed_tools.get("platform_support", frozenset()),
+            intents=("platform.support",),
+            supported_operations=frozenset({"read"}),
+            localization_metadata={"system_prompt": "ai.agent.platform_support.system"},
+            entrypoints=frozenset({"support"}),
+        ),
     )
+    registry = AssistantRegistry()
+    for definition in definitions:
+        registry.register(definition)
     return registry

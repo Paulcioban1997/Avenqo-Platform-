@@ -16,15 +16,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.assistants.contracts import AssistantStatus
-from backend.app.assistants.registry import (
-    ACCOUNTING_TOOL_NAMES,
-    CRM_TOOL_NAMES,
-    RETAIL_TOOL_NAMES,
-    build_default_assistant_registry,
-)
+from backend.app.assistants.registry import build_default_assistant_registry
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.models import Base
-from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
 
 @pytest.fixture
@@ -47,33 +41,26 @@ def test_retail_assistant_resolves_as_available() -> None:
     assert retail.module_code == "retail"
 
 
-def test_registered_assistants_resolve_from_current_module_availability() -> None:
+def test_registry_contains_only_implemented_agents_and_future_placeholders() -> None:
     registry = build_default_assistant_registry()
 
-    for module in BUSINESS_MODULE_REGISTRY:
-        definition = registry.get(module.key)
+    for agent_id in ("retail", "crm", "accounting", "cross_agent"):
+        definition = registry.get(agent_id)
         assert definition is not None
-        expected_status = (
-            AssistantStatus.AVAILABLE
-            if module.availability is ModuleAvailability.AVAILABLE
-            else AssistantStatus.COMING_SOON
-        )
-        assert definition.status is expected_status
-        assert definition.status.is_executable is (expected_status is AssistantStatus.AVAILABLE)
-    assert registry.get("workflow").allowed_tool_names == frozenset()
-    assert registry.get("crm").allowed_tool_names == CRM_TOOL_NAMES
-    assert registry.get("accounting").allowed_tool_names == ACCOUNTING_TOOL_NAMES
+        assert definition.status is AssistantStatus.AVAILABLE
+        assert definition.status.is_executable is True
+    assert registry.get("marketing") is None
+    assert registry.get("appointments") is None
+    assert registry.get("workflow") is None
+    assert registry.get("crm").allowed_tool_names == frozenset()
+    assert registry.get("accounting").allowed_tool_names == frozenset()
 
 
 def test_unavailable_assistant_cannot_execute() -> None:
     registry = build_default_assistant_registry()
 
-    for slug in ("workflow",):
-        definition = registry.get(slug)
-        assert definition is not None
-        assert definition.status is AssistantStatus.COMING_SOON
-        assert definition.status.is_executable is False
-        assert definition.allowed_tool_names == frozenset()
+    for slug in ("marketing", "ocr", "voice", "media", "legal", "workflow", "ai_agents"):
+        assert registry.get(slug) is None
 
 
 def test_unknown_assistant_slug_resolves_to_none() -> None:
@@ -82,17 +69,12 @@ def test_unknown_assistant_slug_resolves_to_none() -> None:
     assert registry.get("does-not-exist") is None
 
 
-def test_list_available_contains_only_retail() -> None:
+def test_list_available_contains_only_implemented_agents() -> None:
     registry = build_default_assistant_registry()
 
     available_slugs = {item.slug for item in registry.list_available()}
 
-    expected = {
-        module.key
-        for module in BUSINESS_MODULE_REGISTRY
-        if module.availability is ModuleAvailability.AVAILABLE
-    }
-    expected.add("cross_agent")
+    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support"}
     assert available_slugs == expected
 
 
@@ -108,10 +90,34 @@ def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_sess
 
     business_registry = build_business_tool_registry(db_session, _FakeIngestion(), _FakePredictionService())
     actual_tool_names = {tool.name for tool in business_registry.list_tools()}
+    assistants = build_default_assistant_registry(business_registry)
 
-    assert actual_tool_names == (
-        RETAIL_TOOL_NAMES
-        | CRM_TOOL_NAMES
-        | ACCOUNTING_TOOL_NAMES
-        | {"get_product_detail", "get_cross_agent_business_health"}
+    assert assistants.get("retail").allowed_tool_names == frozenset(
+        tool.name for tool in business_registry.list_tools() if "retail" in tool.agent_ids
     )
+    assert assistants.get("crm").allowed_tool_names == frozenset(
+        tool.name for tool in business_registry.list_tools() if "crm" in tool.agent_ids
+    )
+    assert assistants.get("accounting").allowed_tool_names == frozenset(
+        tool.name for tool in business_registry.list_tools() if "accounting" in tool.agent_ids
+    )
+    assert all(tool.agent_ids for tool in business_registry.list_tools())
+    assert actual_tool_names == {tool.name for tool in business_registry.list_tools()}
+
+
+def test_cross_agent_definition_is_not_a_union_of_domain_tool_allowlists() -> None:
+    class _Tool:
+        name = "get_cross_agent_business_health"
+        agent_ids = frozenset({"cross_agent"})
+        required_capabilities = frozenset()
+        requires_capability = None
+
+    class _ToolRegistry:
+        def list_tools(self):
+            return (_Tool(),)
+
+    cross_agent = build_default_assistant_registry(_ToolRegistry()).get("cross_agent")
+
+    assert cross_agent is not None
+    assert cross_agent.allowed_tool_names == frozenset({"get_cross_agent_business_health"})
+    assert cross_agent.required_entitlements == frozenset({"retail", "crm", "accounting"})
