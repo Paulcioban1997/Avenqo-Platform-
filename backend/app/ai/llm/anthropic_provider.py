@@ -43,9 +43,17 @@ class AnthropicProvider(LLMProvider):
     name = "anthropic"
     supports_tool_calling = True
 
-    def __init__(self, api_key: str | None, model: str, temperature: float, max_tokens: int) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        request_timeout_seconds: float = 60.0,
+    ) -> None:
         self._api_key, self._model = api_key, model
         self._temperature, self._max_tokens = temperature, max_tokens
+        self._request_timeout_seconds = request_timeout_seconds
 
     def _client(self):
         if not self._api_key:
@@ -54,7 +62,7 @@ class AnthropicProvider(LLMProvider):
             from anthropic import AsyncAnthropic
         except ImportError as exc:
             raise LLMProviderError("La dépendance Anthropic n'est pas installée") from exc
-        return AsyncAnthropic(api_key=self._api_key)
+        return AsyncAnthropic(api_key=self._api_key, timeout=self._request_timeout_seconds)
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         try:

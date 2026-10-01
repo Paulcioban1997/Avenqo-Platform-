@@ -7,8 +7,9 @@ from backend.app.ai.llm.exceptions import UnsupportedLLMProviderError
 from backend.app.ai.llm.gateway import AvenqoAIGateway
 from backend.app.ai.llm.gemini_provider import GeminiProvider
 from backend.app.ai.llm.health import get_provider_health_registry
-from backend.app.ai.llm.model_registry import LLMRateCard
+from backend.app.ai.llm.model_registry import LLMModelRegistry, LLMModelSpec, LLMRateCard
 from backend.app.ai.llm.openai_provider import OpenAIProvider
+from backend.app.ai.llm.provider_registry import DEFAULT_LLM_PROVIDER_REGISTRY
 from backend.app.ai.llm.router import SmartModelRouter
 from backend.app.config.settings import Settings
 
@@ -33,19 +34,44 @@ class LLMProviderFactory:
 
     @staticmethod
     def _credential_for(settings: Settings, provider_code: str) -> str | None:
-        return {
-            "openai": settings.openai_api_key,
-            "anthropic": settings.anthropic_api_key,
-            "gemini": settings.google_ai_api_key,
-        }.get(provider_code)
+        definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
+        return getattr(settings, definition.credential_setting, None) if definition else None
 
     @staticmethod
     def _model_for(settings: Settings, provider_code: str) -> str:
-        return {
-            "openai": settings.openai_model,
-            "anthropic": settings.anthropic_model,
-            "gemini": settings.gemini_model,
-        }.get(provider_code, settings.llm_model)
+        definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
+        return getattr(settings, definition.model_setting, settings.llm_model) if definition else settings.llm_model
+
+    @staticmethod
+    def _build_model(settings: Settings, spec: LLMModelSpec) -> LLMProvider:
+        max_tokens = min(settings.llm_max_tokens, spec.max_output_tokens)
+        builders = {
+            "openai": lambda: OpenAIProvider(
+                settings.openai_api_key,
+                spec.model_id,
+                settings.llm_temperature,
+                max_tokens,
+                spec.request_timeout_seconds,
+            ),
+            "anthropic": lambda: AnthropicProvider(
+                settings.anthropic_api_key,
+                spec.model_id,
+                settings.llm_temperature,
+                max_tokens,
+                spec.request_timeout_seconds,
+            ),
+            "gemini": lambda: GeminiProvider(
+                settings.google_ai_api_key,
+                spec.model_id,
+                settings.llm_temperature,
+                max_tokens,
+                spec.request_timeout_seconds,
+            ),
+        }
+        try:
+            return builders[spec.provider]()
+        except KeyError as exc:
+            raise UnsupportedLLMProviderError("Fournisseur IA non pris en charge") from exc
 
     @staticmethod
     def create_gateway(settings: Settings) -> LLMProvider:
@@ -58,23 +84,24 @@ class LLMProviderFactory:
         """
 
         configured_order = [
-            settings.ai_primary_provider,
-            settings.ai_fallback_provider_1,
-            settings.ai_fallback_provider_2,
+            code.casefold()
+            for code in (
+                settings.ai_primary_provider,
+                settings.ai_fallback_provider_1,
+                settings.ai_fallback_provider_2,
+            )
+            if code
         ]
         # Explicit fallback order remains authoritative. Any other provider
         # with a configured key is appended so all available capabilities are
         # active without requiring operators to maintain a second list.
         order = configured_order + [
-            code for code in LLMProviderFactory._BUILDERS
+            code for code in DEFAULT_LLM_PROVIDER_REGISTRY.codes()
             if code not in configured_order
         ]
         seen: set[str] = set()
-        providers: list[LLMProvider] = []
+        model_lists: dict[str, tuple[str, ...]] = {}
         for index, code in enumerate(order):
-            if not code:
-                continue
-            code = code.lower()
             if code in seen or code not in LLMProviderFactory._BUILDERS:
                 continue
             if index > 0 and not LLMProviderFactory._credential_for(settings, code):
@@ -86,48 +113,57 @@ class LLMProviderFactory:
                 )
                 continue
             seen.add(code)
+            configured_models = {
+                provider.casefold(): tuple(dict.fromkeys(model_ids))
+                for provider, model_ids in settings.ai_provider_models.items()
+            }
+            model_ids = configured_models.get(code, (LLMProviderFactory._model_for(settings, code),))
+            if not model_ids:
+                logger.info(
+                    "ai_provider_config provider=%s role=%s position=%d included=false reason=no_models",
+                    code,
+                    "primary" if index == 0 else "fallback",
+                    index,
+                )
+                continue
+            model_lists[code] = model_ids
             logger.info(
-                "ai_provider_config provider=%s role=%s position=%d api_key_configured=%s model=%s included=true",
+                "ai_provider_config provider=%s role=%s position=%d api_key_configured=%s models=%s included=true",
                 code,
                 "primary" if index == 0 else "fallback",
                 index,
                 str(bool(LLMProviderFactory._credential_for(settings, code))).lower(),
-                LLMProviderFactory._model_for(settings, code),
+                ",".join(model_ids),
             )
-            model_id = LLMProviderFactory._model_for(settings, code)
-            spec = LLMRateCard.from_models(
-                {code: model_id},
-                settings.ai_model_rate_card,
-            ).spec_for(code, model_id)
+        rate_card = LLMRateCard.from_models(
+            model_lists,
+            settings.ai_model_rate_card,
+            settings.ai_model_catalog,
+        )
+        specs = tuple(
+            rate_card.spec_for(provider, model_id)
+            for provider, model_ids in model_lists.items()
+            for model_id in model_ids
+        )
+        registry = LLMModelRegistry(specs)
+        active_specs = registry.list_all(enabled_only=True)
+        providers = [LLMProviderFactory._build_model(settings, spec) for spec in active_specs]
+        for spec in specs:
             logger.info(
-                "ai_model_registry provider=%s model=%s capabilities=%s context_window=%d cost_class=%s latency_class=%s",
+                "ai_model_registry provider=%s model=%s enabled=%s capabilities=%s context_window=%d max_output_tokens=%d timeout_seconds=%s cost_class=%s latency_class=%s",
                 spec.provider,
                 spec.model_id,
+                str(spec.enabled).lower(),
                 ",".join(sorted(capability.value for capability in spec.capabilities)),
                 spec.context_window,
+                spec.max_output_tokens,
+                spec.request_timeout_seconds,
                 spec.estimated_cost_class,
                 spec.latency_class,
             )
-            providers.append(LLMProviderFactory._BUILDERS[code](settings))
-
-        if not providers and settings.ai_primary_provider.lower() in LLMProviderFactory._BUILDERS:
-            providers = [LLMProviderFactory._BUILDERS[settings.ai_primary_provider.lower()](settings)]
-            primary = settings.ai_primary_provider.lower()
-            logger.info(
-                "ai_provider_config provider=%s role=primary position=0 api_key_configured=%s model=%s included=true reason=primary_only_fallback",
-                primary,
-                str(bool(LLMProviderFactory._credential_for(settings, primary))).lower(),
-                LLMProviderFactory._model_for(settings, primary),
-            )
-
-        models = {
-            provider.name: LLMProviderFactory._model_for(settings, provider.name)
-            for provider in providers
-        }
-        rate_card = LLMRateCard.from_models(models, settings.ai_model_rate_card)
         health_registry = get_provider_health_registry()
         router = SmartModelRouter(
-            {provider.name: rate_card.spec_for(provider.name, models[provider.name]) for provider in providers},
+            {(spec.provider, spec.model_id): spec for spec in specs},
             health_registry,
         )
         breaker = get_circuit_breaker()

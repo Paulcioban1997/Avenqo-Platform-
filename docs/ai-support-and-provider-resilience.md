@@ -84,7 +84,7 @@ en langage clair, jamais un détail technique.
   `unknown`) en inspectant `exc.__cause__` (les providers Phase 28
   enveloppent déjà toute exception SDK avec `raise ... from exc`).
 - `circuit_breaker.py` — `ProviderCircuitBreaker`, un état en mémoire par
-  fournisseur ; s'ouvre après N échecs consécutifs (configurable), se
+  candidate provider/modèle ; s'ouvre après N échecs consécutifs (configurable), se
   referme après un cooldown (half-open probe).
 - `health.py` — `ProviderHealthRegistry`, snapshot interne
   (healthy/degraded/unavailable/rate_limited/unknown) — jamais exposé au
@@ -136,7 +136,21 @@ fournisseurs). Limitation documentée ci-dessous.
 | `AVENQO_PROVIDER_COST_PER_CREDIT_USD` | `0.00030` | Coût fournisseur correspondant à un crédit Avenqo |
 | `AI_CREDIT_RESERVATION_TTL_MINUTES` | `1440` | Délai avant restitution atomique d'une réservation abandonnée |
 | `AI_MODEL_RATE_CARD` | `{}` | Surcharges JSON des tarifs/activation par provider ou modèle |
+| `AI_PROVIDER_MODELS` | `{}` | Liste JSON des IDs de modèles candidats, indexée par provider |
+| `AI_MODEL_CATALOG` | `{}` | Profils explicites des modèles additionnels, indexés par `provider:model` |
 | `AI_SUPPORT_KNOWLEDGE_ROOT` | `platform_knowledge` | Dossier de la base de connaissances Support |
+
+Sans `AI_PROVIDER_MODELS`, les variables historiques `OPENAI_MODEL`,
+`ANTHROPIC_MODEL` et `GEMINI_MODEL` continuent de configurer un candidat par
+provider. Un modèle non inclus dans les profils connus doit avoir un objet dans
+`AI_MODEL_CATALOG` contenant au minimum `capabilities`, `context_window` et
+`max_output_tokens`; ce profil peut aussi définir `request_timeout_seconds`,
+`streaming`, `tool_calling`, `structured_output`, `quality_tier` et
+`task_suitability`. Le timeout est passé au SDK du provider, et les breakers,
+états de santé et décisions sont suivis par candidate `provider:model`.
+Le scoring conserve la priorité qualité pour les requêtes sans plan explicite;
+les requêtes `professional` de complexité élevée donnent davantage de poids au
+coût estimé, tandis que `demo` reste prioritairement orienté coût.
 
 ### Quota et sécurité
 

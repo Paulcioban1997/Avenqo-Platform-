@@ -61,9 +61,17 @@ class GeminiProvider(LLMProvider):
     name = "gemini"
     supports_tool_calling = True
 
-    def __init__(self, api_key: str | None, model: str, temperature: float, max_tokens: int) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        request_timeout_seconds: float = 60.0,
+    ) -> None:
         self._api_key, self._model = api_key, model
         self._temperature, self._max_tokens = temperature, max_tokens
+        self._request_timeout_seconds = request_timeout_seconds
         self._client_instance = None
 
     def _client(self):
@@ -73,9 +81,15 @@ class GeminiProvider(LLMProvider):
             return self._client_instance
         try:
             from google import genai
+            from google.genai import types
         except ImportError as exc:
             raise LLMProviderError("La dépendance Google GenAI n'est pas installée") from exc
-        self._client_instance = genai.Client(api_key=self._api_key)
+        self._client_instance = genai.Client(
+            api_key=self._api_key,
+            http_options=types.HttpOptions(
+                timeout=max(1, int(self._request_timeout_seconds * 1000)),
+            ),
+        )
         return self._client_instance
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:

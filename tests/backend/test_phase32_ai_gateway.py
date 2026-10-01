@@ -17,7 +17,7 @@ from backend.app.ai.llm.gateway import AvenqoAIGateway
 from backend.app.ai.llm.health import ProviderHealthRegistry
 from backend.app.ai.llm.failure_classification import FailureCategory
 from backend.app.ai.llm.model_registry import model_spec
-from backend.app.ai.llm.model_registry import LLMRateCard
+from backend.app.ai.llm.model_registry import LLMModelRegistry, LLMRateCard
 from backend.app.ai.llm.router import (
     LLMRoutingContext,
     LLMTaskComplexity,
@@ -25,6 +25,7 @@ from backend.app.ai.llm.router import (
     SmartModelRouter,
     routing_context_for_chat,
 )
+from backend.app.ai.llm.provider_registry import DEFAULT_LLM_PROVIDER_REGISTRY
 from backend.app.ai.llm.schemas import LLMGeneration, LLMStreamChunk, LLMUsage
 from backend.app.config.settings import Settings
 
@@ -193,6 +194,125 @@ def test_llm_factory_automatically_includes_all_configured_providers() -> None:
     assert [provider.name for provider in gateway._providers] == ["openai", "anthropic", "gemini"]
 
 
+def test_llm_factory_builds_multiple_models_with_catalog_limits_and_timeout() -> None:
+    settings = Settings(
+        AI_PRIMARY_PROVIDER="openai",
+        OPENAI_API_KEY="test-key",
+        ANTHROPIC_API_KEY="",
+        GOOGLE_AI_API_KEY="",
+        LLM_MAX_TOKENS=800,
+        AI_PROVIDER_MODELS={"openai": ["gpt-4o-mini", "openai-test-model"]},
+        AI_MODEL_CATALOG={
+            "openai:openai-test-model": {
+                "capabilities": ["text"],
+                "context_window": 32_000,
+                "max_output_tokens": 1_024,
+                "request_timeout_seconds": 12.5,
+            },
+        },
+    )
+
+    gateway = LLMProviderFactory.create_gateway(settings)
+
+    assert [(provider.name, provider._model) for provider in gateway._providers] == [
+        ("openai", "gpt-4o-mini"),
+        ("openai", "openai-test-model"),
+    ]
+    assert gateway._providers[1]._max_tokens == 800
+    assert gateway._providers[1]._request_timeout_seconds == 12.5
+
+
+def test_llm_factory_rejects_unknown_model_without_catalog_metadata() -> None:
+    settings = Settings(
+        AI_PRIMARY_PROVIDER="openai",
+        OPENAI_API_KEY="test-key",
+        ANTHROPIC_API_KEY="",
+        GOOGLE_AI_API_KEY="",
+        AI_PROVIDER_MODELS={"openai": ["unregistered-model"]},
+    )
+
+    with pytest.raises(ValueError, match="requires explicit capability and limit metadata"):
+        LLMProviderFactory.create_gateway(settings)
+
+
+def test_default_provider_registry_exposes_all_supported_provider_codes() -> None:
+    assert DEFAULT_LLM_PROVIDER_REGISTRY.codes() == ("openai", "anthropic", "gemini")
+    assert DEFAULT_LLM_PROVIDER_REGISTRY.get("OPENAI").model_setting == "openai_model"
+
+
+def test_model_registry_rejects_invalid_timeout_and_retry_policy() -> None:
+    with pytest.raises(ValueError, match="timeout and retry policy"):
+        LLMModelRegistry(
+            [
+                model_spec(
+                    "openai",
+                    "invalid-policy-model",
+                    metadata={
+                        "capabilities": ["text"],
+                        "context_window": 1_000,
+                        "max_output_tokens": 100,
+                        "request_timeout_seconds": 0,
+                    },
+                ),
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_gateway_breaker_isolated_by_model_and_logs_selection(caplog) -> None:
+    calls: list[str] = []
+    providers = [FakeProvider("openai", calls=calls), FakeProvider("openai", calls=calls)]
+    model_ids = ("gpt-4o-mini", "openai-test-model")
+    for provider, model_id in zip(providers, model_ids):
+        provider._model = model_id
+    catalog = {
+        "openai:openai-test-model": {
+            "capabilities": ["text"],
+            "context_window": 32_000,
+            "max_output_tokens": 4_096,
+        },
+        "openai:gpt-4o-mini": {
+            "max_retries": 0,
+        },
+    }
+    rate_card = LLMRateCard.from_models(
+        {"openai": model_ids},
+        metadata=catalog,
+    )
+    health = ProviderHealthRegistry()
+    router = SmartModelRouter(
+        {("openai", model_id): rate_card.spec_for("openai", model_id) for model_id in model_ids},
+        health,
+    )
+    context = LLMRoutingContext()
+    first = router.rank(providers, context)[0]
+    first._fail = LLMProviderError("Le fournisseur IA est temporairement indisponible")
+    first._fail.__cause__ = TimeoutError("timed out")
+    breaker = ProviderCircuitBreaker(failure_threshold=1, cooldown_seconds=9999)
+    gateway = AvenqoAIGateway(
+        providers,
+        circuit_breaker=breaker,
+        health_registry=health,
+        router=router,
+        rate_card=rate_card,
+        max_retries_per_provider=0,
+        base_delay_seconds=0,
+        max_delay_seconds=0,
+    )
+
+    with caplog.at_level("INFO"), gateway.routing(context):
+        await gateway.generate(system_instruction="sys", prompt="hello")
+
+    sibling = next(provider for provider in providers if provider is not first)
+    assert calls == ["openai", "openai"]
+    assert breaker.status_for(f"openai:{first._model}") == "open"
+    assert breaker.status_for(f"openai:{sibling._model}") == "closed"
+    assert "ai_router_decision" in caplog.text
+    assert f"selected_model={first._model}" in caplog.text
+    assert gateway.last_router_decision is not None
+    assert gateway.last_router_decision.selected_model == first._model
+
+
 def test_smart_router_selects_inexpensive_model_for_simple_task() -> None:
     providers = [FakeProvider("anthropic"), FakeProvider("openai"), FakeProvider("gemini")]
     health = ProviderHealthRegistry()
@@ -246,6 +366,32 @@ def test_smart_router_filters_models_without_required_tool_capability() -> None:
     )
 
     assert [provider.name for provider in ranked] == ["openai"]
+
+
+def test_smart_router_filters_models_without_streaming_support() -> None:
+    model_ids = ("gpt-4o-mini", "openai-non-streaming")
+    providers = [FakeProvider("openai"), FakeProvider("openai")]
+    for provider, model_id in zip(providers, model_ids):
+        provider._model = model_id
+    rate_card = LLMRateCard.from_models(
+        {"openai": model_ids},
+        metadata={
+            "openai:openai-non-streaming": {
+                "capabilities": ["text"],
+                "context_window": 32_000,
+                "max_output_tokens": 4_096,
+                "streaming": False,
+            },
+        },
+    )
+    router = SmartModelRouter(
+        {("openai", model_id): rate_card.spec_for("openai", model_id) for model_id in model_ids},
+        ProviderHealthRegistry(),
+    )
+
+    ranked = router.rank(providers, LLMRoutingContext(requires_streaming=True))
+
+    assert [provider._model for provider in ranked] == ["gpt-4o-mini"]
 
 
 def test_smart_router_increases_cost_priority_when_credits_are_low() -> None:
@@ -353,6 +499,8 @@ async def test_gateway_calls_only_smart_router_primary_when_it_succeeds() -> Non
 
     assert calls == ["anthropic"]
     assert len(result.attempts) == 1
+    assert result.attempts[0].model == models["anthropic"]
+    assert result.attempts[0].output_cost_per_million_usd > 0
     assert result.attempts[0].usage.avenqo_request_id == "req-123"
 
 

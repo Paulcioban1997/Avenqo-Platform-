@@ -257,6 +257,14 @@ class Settings(BaseSettings):
         default_factory=dict,
         alias="AI_MODEL_RATE_CARD",
     )
+    ai_provider_models: dict[str, list[str]] = Field(
+        default_factory=dict,
+        alias="AI_PROVIDER_MODELS",
+    )
+    ai_model_catalog: dict[str, dict[str, object]] = Field(
+        default_factory=dict,
+        alias="AI_MODEL_CATALOG",
+    )
     # Avenqo Platform Support AI (Phase 32) : dossier de la base de connaissances
     # produit (jamais les données métier d'un tenant — voir backend/app/ai/support/).
     ai_support_knowledge_root: str = Field(default="platform_knowledge", alias="AI_SUPPORT_KNOWLEDGE_ROOT")

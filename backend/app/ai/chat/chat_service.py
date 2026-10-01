@@ -437,6 +437,7 @@ class ChatService:
             plan_code=plan_code,
             remaining_credits=remaining_credits,
             avenqo_request_id=avenqo_request_id,
+            requires_streaming=True,
         )
         reservation_active = False
         if self._usage_service is not None:

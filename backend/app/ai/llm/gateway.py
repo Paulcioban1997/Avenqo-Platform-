@@ -40,7 +40,7 @@ from backend.app.ai.llm.exceptions import AIProvidersUnavailableError, LLMProvid
 from backend.app.ai.llm.failure_classification import classify_exception, is_fallback_eligible, is_retryable
 from backend.app.ai.llm.health import ProviderHealthRegistry
 from backend.app.ai.llm.model_registry import LLMRateCard
-from backend.app.ai.llm.router import LLMRoutingContext, SmartModelRouter
+from backend.app.ai.llm.router import LLMRouterDecision, LLMRoutingContext, SmartModelRouter
 from backend.app.ai.llm.schemas import (
     LLMGeneration,
     LLMMessage,
@@ -81,6 +81,7 @@ class AvenqoAIGateway(LLMProvider):
         self._max_retries = max_retries_per_provider
         self._base_delay = base_delay_seconds
         self._max_delay = max_delay_seconds
+        self._last_router_decision: LLMRouterDecision | None = None
         self._routing_context: ContextVar[LLMRoutingContext | None] = ContextVar(
             f"avenqo_routing_context_{id(self)}",
             default=None,
@@ -89,6 +90,12 @@ class AvenqoAIGateway(LLMProvider):
     @property
     def supports_tool_calling(self) -> bool:
         return any(provider.supports_tool_calling for provider in self._providers)
+
+    @property
+    def last_router_decision(self) -> LLMRouterDecision | None:
+        """Latest explainable decision, retained for internal observability."""
+
+        return self._last_router_decision
 
     @contextmanager
     def routing(self, context: LLMRoutingContext):
@@ -106,7 +113,34 @@ class AvenqoAIGateway(LLMProvider):
             context = replace(context, requires_tool_calling=True)
         if self._router is None:
             return list(self._providers)
+        decision = self._router.decide(self._providers, context)
+        self._last_router_decision = decision
+        logger.info(
+            "ai_router_decision operation=%s selected_provider=%s selected_model=%s reason=%s candidates=%s",
+            operation,
+            decision.selected_provider,
+            decision.selected_model,
+            decision.reason,
+            ",".join(f"{provider}:{model}" for provider, model in decision.eligible_candidates),
+        )
         return self._router.rank(self._providers, context)
+
+    def _retry_policy(self, provider: LLMProvider) -> tuple[int, float, float]:
+        if self._rate_card is None:
+            return self._max_retries, self._base_delay, self._max_delay
+        model_id = self._candidate_id(provider).partition(":")[2]
+        spec = self._rate_card.get(provider.name, model_id) if model_id else None
+        if spec is None:
+            return self._max_retries, self._base_delay, self._max_delay
+        return spec.max_retries, spec.base_delay_seconds, spec.max_delay_seconds
+
+    def _candidate_id(self, provider: LLMProvider) -> str:
+        model_id = (
+            self._router.model_id_for(provider)
+            if self._router is not None
+            else str(getattr(provider, "model_id", "") or getattr(provider, "_model", ""))
+        )
+        return f"{provider.name}:{model_id}" if model_id else provider.name
 
     def estimate_cost_usd(self, context: object):
         if not isinstance(context, LLMRoutingContext) or self._rate_card is None:
@@ -119,7 +153,7 @@ class AvenqoAIGateway(LLMProvider):
         if not providers:
             return None
         primary = providers[0]
-        model_id = str(getattr(primary, "_model", ""))
+        model_id = self._candidate_id(primary).partition(":")[2]
         if not model_id:
             return None
         spec = self._rate_card.spec_for(primary.name, model_id)
@@ -146,14 +180,31 @@ class AvenqoAIGateway(LLMProvider):
                 tool_calls=int(raw.get("tool_calls", 0) or 0),
                 provider_request_id=raw.get("provider_request_id"),
             )
+        usage = self._registered_usage(provider, usage)
         context = self._routing_context.get()
         if context is not None and context.avenqo_request_id:
             usage = replace(usage, avenqo_request_id=context.avenqo_request_id)
         return usage
 
+    def _registered_usage(self, provider: LLMProvider, usage: LLMUsage) -> LLMUsage:
+        if self._rate_card is None or self._rate_card.get(provider.name, usage.model):
+            return usage
+        configured_model = str(getattr(provider, "_model", ""))
+        if not configured_model and self._router is not None:
+            configured_model = self._router.model_id_for(provider) or ""
+        if not configured_model:
+            models = self._rate_card.specs_for_provider(provider.name)
+            configured_model = models[0].model_id if len(models) == 1 else ""
+        spec = self._rate_card.get(provider.name, configured_model) if configured_model else None
+        if spec is None:
+            raise ValueError(
+                f"Cannot price unregistered model '{provider.name}:{usage.model}'"
+            )
+        return replace(usage, provider=provider.name, model=spec.model_id)
+
     def _empty_usage(self, provider: LLMProvider) -> LLMUsage:
         context = self._routing_context.get()
-        model = getattr(provider, "_model", "")
+        model = self._candidate_id(provider).partition(":")[2]
         return LLMUsage(
             provider=provider.name,
             model=model,
@@ -182,6 +233,7 @@ class AvenqoAIGateway(LLMProvider):
                 usage=usage,
                 failure_category=failure_category,
             )
+        usage = self._registered_usage(provider, usage)
         spec = self._rate_card.spec_for(provider.name, usage.model)
         return LLMProviderAttempt(
             provider=provider.name,
@@ -199,9 +251,15 @@ class AvenqoAIGateway(LLMProvider):
             tool_call_cost_usd=spec.tool_call_cost_usd,
         )
 
-    async def _retry_delay(self, retry_index: int) -> None:
-        delay = min(self._max_delay, self._base_delay * (2 ** retry_index))
-        delay += random.uniform(0, self._base_delay)
+    async def _retry_delay(
+        self,
+        retry_index: int,
+        *,
+        base_delay: float,
+        max_delay: float,
+    ) -> None:
+        delay = min(max_delay, base_delay * (2 ** retry_index))
+        delay += random.uniform(0, base_delay)
         await asyncio.sleep(delay)
 
     async def _run(
@@ -215,11 +273,19 @@ class AvenqoAIGateway(LLMProvider):
         attempt_number = 0
 
         for provider in self._ordered_providers(operation):
-            if self._breaker.is_open(provider.name):
-                logger.info("ai_gateway_provider_skipped provider=%s operation=%s reason=circuit_open", provider.name, operation)
+            candidate_id = self._candidate_id(provider)
+            model_id = candidate_id.partition(":")[2]
+            max_retries, base_delay, max_delay = self._retry_policy(provider)
+            if self._breaker.is_open(candidate_id):
+                logger.info(
+                    "ai_gateway_candidate_skipped provider=%s model=%s operation=%s reason=circuit_open",
+                    provider.name,
+                    model_id,
+                    operation,
+                )
                 continue
 
-            for retry_index in range(self._max_retries + 1):
+            for retry_index in range(max_retries + 1):
                 attempted_any = True
                 attempt_number += 1
                 started = perf_counter()
@@ -230,8 +296,8 @@ class AvenqoAIGateway(LLMProvider):
                 except LLMProviderError as exc:
                     category = classify_exception(exc.__cause__ or exc)
                     latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_failure(provider.name)
-                    self._health.record_failure(provider.name, category, latency_ms)
+                    self._breaker.record_failure(candidate_id)
+                    self._health.record_failure(candidate_id, category, latency_ms)
                     last_error = exc
                     usage = exc.usage or self._empty_usage(provider)
                     attempts.append(self._attempt(
@@ -244,20 +310,24 @@ class AvenqoAIGateway(LLMProvider):
                         failure_category=category.value,
                     ))
                     logger.warning(
-                        "ai_gateway_failure provider=%s operation=%s attempt=%d category=%s",
-                        provider.name, operation, retry_index + 1, category.value,
+                        "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
+                        provider.name, model_id, operation, retry_index + 1, category.value,
                     )
                     if not is_fallback_eligible(category):
                         exc.attempts = tuple(attempts)
                         raise
-                    if is_retryable(category) and retry_index < self._max_retries:
-                        await self._retry_delay(retry_index)
+                    if is_retryable(category) and retry_index < max_retries:
+                        await self._retry_delay(
+                            retry_index,
+                            base_delay=base_delay,
+                            max_delay=max_delay,
+                        )
                         continue
                     break  # passe au fournisseur suivant
                 else:
                     latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_success(provider.name)
-                    self._health.record_success(provider.name, latency_ms)
+                    self._breaker.record_success(candidate_id)
+                    self._health.record_success(candidate_id, latency_ms)
                     usage = self._usage_for_result(provider, result)
                     attempts.append(self._attempt(
                         provider=provider,
@@ -267,7 +337,13 @@ class AvenqoAIGateway(LLMProvider):
                         latency_ms=latency_ms,
                         usage=usage,
                     ))
-                    logger.info("ai_gateway_success provider=%s operation=%s attempt=%d", provider.name, operation, retry_index + 1)
+                    logger.info(
+                        "ai_gateway_success provider=%s model=%s operation=%s attempt=%d",
+                        provider.name,
+                        model_id,
+                        operation,
+                        retry_index + 1,
+                    )
                     return replace(
                         result,
                         token_usage=usage.as_token_usage(),
@@ -303,9 +379,17 @@ class AvenqoAIGateway(LLMProvider):
         attempts: list[LLMProviderAttempt] = []
         attempt_number = 0
         for provider in self._ordered_providers("stream"):
-            if self._breaker.is_open(provider.name):
+            candidate_id = self._candidate_id(provider)
+            model_id = candidate_id.partition(":")[2]
+            max_retries, base_delay, max_delay = self._retry_policy(provider)
+            if self._breaker.is_open(candidate_id):
+                logger.info(
+                    "ai_gateway_candidate_skipped provider=%s model=%s operation=stream reason=circuit_open",
+                    provider.name,
+                    model_id,
+                )
                 continue
-            for retry_index in range(self._max_retries + 1):
+            for retry_index in range(max_retries + 1):
                 attempt_number += 1
                 started = perf_counter()
                 emitted_content = False
@@ -323,8 +407,8 @@ class AvenqoAIGateway(LLMProvider):
                 except LLMProviderError as exc:
                     category = classify_exception(exc.__cause__ or exc)
                     latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_failure(provider.name)
-                    self._health.record_failure(provider.name, category, latency_ms)
+                    self._breaker.record_failure(candidate_id)
+                    self._health.record_failure(candidate_id, category, latency_ms)
                     last_error = exc
                     failed_usage = exc.usage or usage or self._empty_usage(provider)
                     attempts.append(self._attempt(
@@ -339,14 +423,18 @@ class AvenqoAIGateway(LLMProvider):
                     if emitted_content or not is_fallback_eligible(category):
                         exc.attempts = tuple(attempts)
                         raise
-                    if is_retryable(category) and retry_index < self._max_retries:
-                        await self._retry_delay(retry_index)
+                    if is_retryable(category) and retry_index < max_retries:
+                        await self._retry_delay(
+                            retry_index,
+                            base_delay=base_delay,
+                            max_delay=max_delay,
+                        )
                         continue
                     break
                 else:
                     latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_success(provider.name)
-                    self._health.record_success(provider.name, latency_ms)
+                    self._breaker.record_success(candidate_id)
+                    self._health.record_success(candidate_id, latency_ms)
                     normalized = usage or self._empty_usage(provider)
                     context = self._routing_context.get()
                     if context is not None and context.avenqo_request_id:

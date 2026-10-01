@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import StrEnum
-from typing import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 
 from backend.app.ai.llm.schemas import LLMUsage
 
@@ -40,6 +40,18 @@ class LLMModelSpec:
     output_cost_per_million_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
     reasoning_strength: int = 1
+    modalities: frozenset[str] = frozenset({"text"})
+    streaming: bool = True
+    tool_calling: bool = True
+    structured_output: bool = True
+    max_output_tokens: int = 8192
+    quality_tier: int = 2
+    speed_tier: int = 2
+    task_suitability: frozenset[str] = frozenset()
+    request_timeout_seconds: float = 60.0
+    max_retries: int = 2
+    base_delay_seconds: float = 0.5
+    max_delay_seconds: float = 4.0
 
     def cost_for(self, usage: LLMUsage) -> Decimal:
         cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
@@ -73,10 +85,31 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
     },
 }
 
-_PROVIDER_FALLBACK_RATES: dict[str, dict[str, str]] = {
-    "openai": _DEFAULT_RATES[("openai", "gpt-4o-mini")],
-    "anthropic": _DEFAULT_RATES[("anthropic", "claude-3-5-sonnet-20241022")],
-    "gemini": _DEFAULT_RATES[("gemini", "gemini-flash-latest")],
+_KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
+    ("openai", "gpt-4o-mini"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "reasoning"],
+        "context_window": 128_000,
+        "max_output_tokens": 16_384,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+    },
+    ("anthropic", "claude-3-5-sonnet-20241022"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context"],
+        "context_window": 200_000,
+        "max_output_tokens": 8_192,
+        "quality_tier": 3,
+        "speed_tier": 2,
+        "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+    },
+    ("gemini", "gemini-flash-latest"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "reasoning", "vision"],
+        "context_window": 1_000_000,
+        "max_output_tokens": 8_192,
+        "quality_tier": 1,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration", "business_reasoning"],
+    },
 }
 
 
@@ -113,57 +146,108 @@ def model_spec(
     provider: str,
     model_id: str,
     overrides: Mapping[str, Mapping[str, object]] | None = None,
+    metadata: Mapping[str, object] | None = None,
 ) -> LLMModelSpec:
     provider = provider.casefold()
-    rates = _DEFAULT_RATES.get((provider, model_id), _PROVIDER_FALLBACK_RATES.get(provider, {}))
+    profile = dict(_KNOWN_MODEL_PROFILES.get((provider, model_id), {}))
+    if metadata:
+        profile.update(metadata)
+    if not profile:
+        raise ValueError(
+            f"Model '{provider}:{model_id}' requires explicit capability and limit metadata"
+        )
+    required_profile = {"capabilities", "context_window", "max_output_tokens"}
+    missing = required_profile - profile.keys()
+    if missing:
+        raise ValueError(
+            f"Model '{provider}:{model_id}' is missing metadata: {', '.join(sorted(missing))}"
+        )
     configured = _configured_values(provider, model_id, overrides)
     rate_kwargs = {
         "enabled": _enabled_value(configured),
         "input_cost_per_million_usd": _decimal_value(
-            configured, "input_cost_per_million_usd", rates.get("input_cost_per_million_usd", "0")
+            configured,
+            "input_cost_per_million_usd",
+            str(profile.get("input_cost_per_million_usd", _DEFAULT_RATES.get((provider, model_id), {}).get("input_cost_per_million_usd", "0"))),
         ),
         "cached_input_cost_per_million_usd": _decimal_value(
             configured,
             "cached_input_cost_per_million_usd",
-            rates.get("cached_input_cost_per_million_usd", "0"),
+            str(profile.get("cached_input_cost_per_million_usd", _DEFAULT_RATES.get((provider, model_id), {}).get("cached_input_cost_per_million_usd", "0"))),
         ),
         "output_cost_per_million_usd": _decimal_value(
-            configured, "output_cost_per_million_usd", rates.get("output_cost_per_million_usd", "0")
+            configured,
+            "output_cost_per_million_usd",
+            str(profile.get("output_cost_per_million_usd", _DEFAULT_RATES.get((provider, model_id), {}).get("output_cost_per_million_usd", "0"))),
         ),
         "tool_call_cost_usd": _decimal_value(
-            configured, "tool_call_cost_usd", rates.get("tool_call_cost_usd", "0")
+            configured,
+            "tool_call_cost_usd",
+            str(profile.get("tool_call_cost_usd", _DEFAULT_RATES.get((provider, model_id), {}).get("tool_call_cost_usd", "0"))),
         ),
     }
-    common = {
-        LLMCapability.TEXT,
-        LLMCapability.TOOL_CALLING,
-        LLMCapability.STRUCTURED_OUTPUT,
-    }
-    if provider == "openai":
-        capabilities = common | {LLMCapability.FAST_RESPONSE, LLMCapability.LOW_COST, LLMCapability.REASONING}
-        return LLMModelSpec(
-            provider, model_id, "OpenAI", frozenset(capabilities), 128_000,
-            "low", "fast", 10, reasoning_strength=2, **rate_kwargs,
+    capabilities = frozenset(LLMCapability(value) for value in profile["capabilities"])
+    return LLMModelSpec(
+        provider=provider,
+        model_id=model_id,
+        display_name=str(profile.get("display_name", provider)),
+        capabilities=capabilities,
+        context_window=int(profile["context_window"]),
+        estimated_cost_class=str(profile.get("estimated_cost_class", "unknown")),
+        latency_class=str(profile.get("latency_class", "medium")),
+        fallback_priority=int(profile.get("fallback_priority", 0)),
+        reasoning_strength=int(profile.get("reasoning_strength", 1)),
+        modalities=frozenset(str(value) for value in profile.get("modalities", ("text",))),
+        streaming=bool(profile.get("streaming", True)),
+        tool_calling=bool(profile.get("tool_calling", LLMCapability.TOOL_CALLING in capabilities)),
+        structured_output=bool(profile.get("structured_output", LLMCapability.STRUCTURED_OUTPUT in capabilities)),
+        max_output_tokens=int(profile["max_output_tokens"]),
+        quality_tier=int(profile.get("quality_tier", 1)),
+        speed_tier=int(profile.get("speed_tier", 2)),
+        task_suitability=frozenset(str(value) for value in profile.get("task_suitability", ())),
+        request_timeout_seconds=float(profile.get("request_timeout_seconds", 60.0)),
+        max_retries=int(profile.get("max_retries", 2)),
+        base_delay_seconds=float(profile.get("base_delay_seconds", 0.5)),
+        max_delay_seconds=float(profile.get("max_delay_seconds", 4.0)),
+        **rate_kwargs,
+    )
+
+
+class LLMModelRegistry:
+    """Registry of enabled, provider-neutral model capability definitions."""
+
+    def __init__(self, specs: Iterable[LLMModelSpec] = ()) -> None:
+        self._specs: dict[tuple[str, str], LLMModelSpec] = {}
+        for spec in specs:
+            self.register(spec)
+
+    def register(self, spec: LLMModelSpec) -> None:
+        key = (spec.provider.casefold(), spec.model_id)
+        if key in self._specs:
+            raise ValueError(f"Model '{key[0]}:{key[1]}' is already registered")
+        if spec.context_window < 1 or spec.max_output_tokens < 1:
+            raise ValueError("Model token limits must be positive")
+        if spec.request_timeout_seconds <= 0 or spec.max_retries < 0:
+            raise ValueError("Model timeout and retry policy are invalid")
+        self._specs[key] = spec
+
+    def get(self, provider_id: str, model_id: str) -> LLMModelSpec | None:
+        return self._specs.get((provider_id.casefold(), model_id))
+
+    def list_all(self, *, enabled_only: bool = False) -> tuple[LLMModelSpec, ...]:
+        items = tuple(self._specs.values())
+        return tuple(spec for spec in items if spec.enabled) if enabled_only else items
+
+    def list_for_provider(
+        self,
+        provider_id: str,
+        *,
+        enabled_only: bool = False,
+    ) -> tuple[LLMModelSpec, ...]:
+        return tuple(
+            spec for spec in self.list_all(enabled_only=enabled_only)
+            if spec.provider.casefold() == provider_id.casefold()
         )
-    if provider == "anthropic":
-        capabilities = common | {LLMCapability.REASONING, LLMCapability.LONG_CONTEXT}
-        return LLMModelSpec(
-            provider, model_id, "Anthropic Claude", frozenset(capabilities), 200_000,
-            "high", "medium", 20, reasoning_strength=3, **rate_kwargs,
-        )
-    if provider == "gemini":
-        capabilities = common | {
-            LLMCapability.FAST_RESPONSE,
-            LLMCapability.LOW_COST,
-            LLMCapability.LONG_CONTEXT,
-            LLMCapability.REASONING,
-            LLMCapability.VISION,
-        }
-        return LLMModelSpec(
-            provider, model_id, "Google Gemini", frozenset(capabilities), 1_000_000,
-            "low", "fast", 30, reasoning_strength=1, **rate_kwargs,
-        )
-    raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
 class LLMRateCard:
@@ -175,26 +259,42 @@ class LLMRateCard:
     @classmethod
     def from_models(
         cls,
-        models: Mapping[str, str],
+        models: Mapping[str, str | Sequence[str]],
         overrides: Mapping[str, Mapping[str, object]] | None = None,
+        metadata: Mapping[str, Mapping[str, object]] | None = None,
     ) -> "LLMRateCard":
-        return cls({
-            (provider.casefold(), model_id): model_spec(provider, model_id, overrides)
-            for provider, model_id in models.items()
-        })
+        specs = {}
+        for provider, model_ids in models.items():
+            ids = (model_ids,) if isinstance(model_ids, str) else tuple(model_ids)
+            for model_id in ids:
+                key = f"{provider.casefold()}:{model_id}"
+                specs[(provider.casefold(), model_id)] = model_spec(
+                    provider,
+                    model_id,
+                    overrides,
+                    (metadata or {}).get(key),
+                )
+        return cls(specs)
+
+    @classmethod
+    def from_specs(cls, specs: Iterable[LLMModelSpec]) -> "LLMRateCard":
+        return cls({(spec.provider.casefold(), spec.model_id): spec for spec in specs})
 
     def spec_for(self, provider: str, model_id: str) -> LLMModelSpec:
         key = (provider.casefold(), model_id)
         exact = self._specs.get(key)
         if exact is not None:
             return exact
-        provider_specs = [
+        return model_spec(provider, model_id)
+
+    def get(self, provider: str, model_id: str) -> LLMModelSpec | None:
+        return self._specs.get((provider.casefold(), model_id))
+
+    def specs_for_provider(self, provider: str) -> tuple[LLMModelSpec, ...]:
+        return tuple(
             spec for (provider_code, _), spec in self._specs.items()
             if provider_code == provider.casefold()
-        ]
-        if len(provider_specs) == 1:
-            return replace(provider_specs[0], model_id=model_id)
-        return model_spec(provider, model_id)
+        )
 
     def cost_for(self, usage: LLMUsage) -> Decimal:
         return self.spec_for(usage.provider, usage.model).cost_for(usage)
