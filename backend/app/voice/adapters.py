@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
 from typing import Protocol
 
-import httpx
+from openai import AsyncOpenAI
 
 
 class SpeechToTextAdapter(Protocol):
@@ -31,6 +32,8 @@ class RealtimeAudioAdapter(Protocol):
 
     async def close(self) -> None: ...
 
+    async def events(self): ...
+
 
 class ExternalVoiceConfigurationRequired(RuntimeError):
     pass
@@ -48,29 +51,26 @@ class OpenAIAudioConfig:
 class OpenAISpeechToTextAdapter:
     provider_id = "openai"
 
-    def __init__(self, config: OpenAIAudioConfig, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, config: OpenAIAudioConfig, client: AsyncOpenAI | None = None) -> None:
         self._config = config
         self._client = client
 
     async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
         if not self._config.api_key or not self._config.stt_model:
             raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_STT_MODEL are required")
-        files = {"file": ("voice-input", audio, content_type)}
-        data = {"model": self._config.stt_model, "language": locale.split("-")[0]}
-        headers = {"Authorization": f"Bearer {self._config.api_key}"}
-        if self._client is not None:
-            response = await self._client.post(f"{self._config.base_url}/audio/transcriptions", headers=headers, data=data, files=files)
-        else:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(f"{self._config.base_url}/audio/transcriptions", headers=headers, data=data, files=files)
-        response.raise_for_status()
-        return str(response.json().get("text") or "")
+        client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        response = await client.audio.transcriptions.create(
+            file=("voice-input", audio, content_type),
+            model=self._config.stt_model,
+            language=locale.split("-")[0],
+        )
+        return str(getattr(response, "text", response) or "")
 
 
 class OpenAITextToSpeechAdapter:
     provider_id = "openai"
 
-    def __init__(self, config: OpenAIAudioConfig, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, config: OpenAIAudioConfig, client: AsyncOpenAI | None = None) -> None:
         self._config = config
         self._client = client
 
@@ -79,15 +79,14 @@ class OpenAITextToSpeechAdapter:
             raise ExternalVoiceConfigurationRequired(
                 "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
             )
-        payload = {"model": self._config.tts_model, "voice": self._config.tts_voice, "input": text, "response_format": "opus"}
-        headers = {"Authorization": f"Bearer {self._config.api_key}", "Content-Type": "application/json"}
-        if self._client is not None:
-            response = await self._client.post(f"{self._config.base_url}/audio/speech", headers=headers, json=payload)
-        else:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(f"{self._config.base_url}/audio/speech", headers=headers, json=payload)
-        response.raise_for_status()
-        return response.content
+        client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        response = await client.audio.speech.create(
+            input=text,
+            model=self._config.tts_model,
+            voice=self._config.tts_voice,
+            response_format="opus",
+        )
+        return response.read()
 
 
 class UnconfiguredRealtimeAudioAdapter:
@@ -104,3 +103,57 @@ class UnconfiguredRealtimeAudioAdapter:
 
     async def close(self) -> None:
         return None
+
+    async def events(self):
+        if False:
+            yield None
+
+
+class OpenAIRealtimeAudioAdapter:
+    provider_id = "openai"
+
+    def __init__(self, config: OpenAIAudioConfig, realtime_model: str | None) -> None:
+        self._config = config
+        self._model = realtime_model
+        self._manager = None
+        self._connection = None
+
+    async def open(self, *, locale: str) -> None:
+        if not self._config.api_key or not self._model:
+            raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
+        client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        self._manager = client.realtime.connect(model=self._model)
+        self._connection = await self._manager.__aenter__()
+        self._connection.send({
+            "type": "session.update",
+            "session": {
+                "type": "realtime",
+                "output_modalities": ["audio"],
+                "audio": {"input": {"turn_detection": {"type": "server_vad"}}, "output": {}},
+            },
+        })
+
+    async def send_audio(self, audio: bytes) -> None:
+        if self._connection is None:
+            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        self._connection.send({
+            "type": "input_audio_buffer.append",
+            "audio": base64.b64encode(audio).decode("ascii"),
+        })
+
+    async def interrupt(self) -> None:
+        if self._connection is not None:
+            self._connection.send({"type": "response.cancel"})
+            self._connection.send({"type": "output_audio_buffer.clear"})
+
+    async def close(self) -> None:
+        if self._manager is not None:
+            await self._manager.__aexit__(None, None, None)
+        self._manager = None
+        self._connection = None
+
+    async def events(self):
+        if self._connection is None:
+            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        async for event in self._connection:
+            yield event
