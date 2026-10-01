@@ -267,6 +267,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     business_environment,
 ):
     session, company, company_b, _dataset_a, prepared = business_environment
+    now = datetime.now(timezone.utc)
     session.delete(_dataset_a)
     session.commit()
     prepared.clear()
@@ -289,9 +290,9 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
                 company,
                 orders,
                 [
-                    {"order": "O1", "buyer": "C1", "when": "2026-07-01"},
-                    {"order": "O2", "buyer": "C1", "when": "2026-08-01"},
-                    {"order": "O3", "buyer": "C2", "when": "2026-08-15"},
+                    {"order": "O1", "buyer": "C1", "when": (now - timedelta(days=60)).isoformat()},
+                    {"order": "O2", "buyer": "C1", "when": (now - timedelta(days=20)).isoformat()},
+                    {"order": "O3", "buyer": "C2", "when": (now - timedelta(days=10)).isoformat()},
                 ],
                 {"order": "order_id", "buyer": "customer_id", "when": "order_timestamp"},
             ),
@@ -535,6 +536,18 @@ def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
 
 def test_sales_never_invents_change_and_only_uses_active_validated_forecast(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    comparison_end = month_start - timedelta(microseconds=1)
+    comparison_start = comparison_end - (now - month_start)
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [
+            {"date": comparison_start.isoformat(), "sale": "PREVIOUS", "client": "C1", "amount": 100},
+            {"date": now.isoformat(), "sale": "CURRENT", "client": "C2", "amount": 200},
+        ],
+    )
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=False)
     sales, _customers, predictions = _services(session, prepared)
     assert sales.build(TenantContext(company.id))["forecast"] is None
