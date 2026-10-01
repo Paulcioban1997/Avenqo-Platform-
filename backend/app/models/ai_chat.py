@@ -30,6 +30,7 @@ class AIConversation(TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    locale: Mapped[str] = mapped_column(String(16), nullable=False, default="fr")
 
 
 class AIMessage(Base):

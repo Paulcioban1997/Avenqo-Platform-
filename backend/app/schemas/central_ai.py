@@ -8,7 +8,7 @@ class CentralAIRequest(BaseModel):
 
     content: str = Field(min_length=1, max_length=12000)
     page_context: str | None = Field(default=None, max_length=200)
-    locale: str | None = Field(default=None, min_length=2, max_length=16, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2})?$")
+    locale: str | None = Field(default=None, min_length=2, max_length=16, pattern=r"^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,4})?$")
     active_source_id: str | None = None
     source_type: str | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=100)

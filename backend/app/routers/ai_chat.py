@@ -82,7 +82,7 @@ def _retail_trusted_context(
 
 
 def response(item) -> ConversationResponse:
-    return ConversationResponse(id=item.id, title=item.title, created_at=item.created_at, updated_at=item.updated_at)
+    return ConversationResponse(id=item.id, title=item.title, created_at=item.created_at, updated_at=item.updated_at, locale=item.locale)
 
 
 def _authorized_agent(query: str, page_context: str | None, tenant: TenantContext, db: Session, registry: AssistantRegistry):
@@ -97,7 +97,7 @@ def _authorized_agent(query: str, page_context: str | None, tenant: TenantContex
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 def create(request: CreateConversationRequest, tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
-    return response(service.create(tenant.company_id, identity.user.id, request.title))
+    return response(service.create(tenant.company_id, identity.user.id, request.title, request.locale or "fr"))
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])

@@ -10,6 +10,7 @@ class StrictSchema(BaseModel):
 
 class CreateConversationRequest(StrictSchema):
     title: str = Field(min_length=1, max_length=200)
+    locale: str | None = Field(default=None, min_length=2, max_length=16)
 
 
 class SendMessageRequest(StrictSchema):
@@ -22,6 +23,7 @@ class ConversationResponse(StrictSchema):
     title: str
     created_at: datetime
     updated_at: datetime
+    locale: str
 
 
 class MessageResponse(StrictSchema):

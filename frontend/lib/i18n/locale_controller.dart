@@ -64,11 +64,10 @@ class LocaleController extends ChangeNotifier {
     final normalized = rawCode.trim().replaceAll('_', '-');
     final lower = normalized.toLowerCase();
     final alias = switch (lower) {
-      'fr' => 'fr-CA',
-      'en' => 'en-US',
-      'es' => 'es-LatAm',
-      'pt' => 'pt-PT',
-      'es-419' || 'es-latam' => 'es-LatAm',
+      'fr' || 'fr-ca' => 'fr',
+      'en' || 'en-us' => 'en',
+      'es' || 'es-es' || 'es-419' || 'es-latam' => 'es',
+      'pt' || 'pt-pt' || 'pt-br' => 'pt',
       _ => normalized,
     };
     for (final locale in _availableLocales) {
@@ -87,10 +86,10 @@ class LocaleController extends ChangeNotifier {
       }
     }
     return _availableLocale(language) ?? switch (language) {
-      'fr' => _availableLocale('fr-CA'),
-      'en' => _availableLocale('en-US'),
-      'es' => _availableLocale('es-LatAm'),
-      'pt' => _availableLocale('pt-PT'),
+      'fr' => _availableLocale('fr'),
+      'en' => _availableLocale('en'),
+      'es' => _availableLocale('es'),
+      'pt' => _availableLocale('pt'),
       _ => null,
     };
   }

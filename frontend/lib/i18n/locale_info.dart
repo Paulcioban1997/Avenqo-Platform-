@@ -28,10 +28,10 @@ class LocaleInfo {
   bool get isRtl => direction == 'rtl';
 }
 
-const String defaultLocaleCode = 'fr-CA';
+const String defaultLocaleCode = 'fr';
 
 String intlLocaleCode(String code) {
-  if (code.toLowerCase() == 'es-latam') {
+  if (code.toLowerCase() == 'es-latam' || code.toLowerCase() == 'es-419') {
     return 'es_419';
   }
   return code.replaceAll('-', '_');

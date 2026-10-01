@@ -10,6 +10,7 @@ from backend.app.ai.request_identity import reconcile_idempotency_keys, resolve_
 from backend.app.ai.central.service import CentralAIService
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
 from backend.app.core.permissions import permissions_for
+from backend.app.core.locale_catalog import resolve_locale
 from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.ai_engine import get_prediction_service
@@ -92,11 +93,12 @@ async def message(
             permissions=frozenset(permissions_for(membership.role)),
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=request_id,
-            user_language=request.locale or company.preferred_language or "fr",
+            user_language=resolve_locale(request.locale or company.preferred_language or "fr"),
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
             page_context=request.page_context,
+            locale_explicit=request.locale is not None,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc

@@ -135,7 +135,7 @@ void main() {
       expect(bodyWithoutIdempotencyKey, {
         'content': 'How are products performing?',
         'page_context': '/retail/products',
-        'locale': 'en-US',
+        'locale': 'en',
       });
 
       await tester.tap(find.byIcon(Icons.close));

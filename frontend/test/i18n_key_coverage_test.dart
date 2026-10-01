@@ -32,16 +32,16 @@ class _LocaleStore implements LocalePreferenceStore {
 }
 
 const List<String> kExpectedLocaleCodes = [
-  'fr-CA', 'fr-FR', 'en-US', 'en-GB', 'es-ES', 'es-LatAm',
-  'pt-PT', 'pt-BR', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
+  'fr', 'en', 'es', 'pt', 'fr-FR', 'en-GB', 'ro', 'de', 'it', 'nl', 'pl', 'ru', 'uk',
   'el', 'sv', 'tr', 'cs', 'ka', 'hy', 'ar', 'ar-EG', 'he', 'fa', 'sw', 'am',
   'af', 'ha', 'zh', 'ja', 'ko', 'hi', 'bn', 'ur', 'ta', 'pa', 'ne', 'vi',
   'th', 'id', 'ms', 'tl', 'my', 'km', 'mn',
 ];
 
-/// Catalogues génériques conservés sur disque pour les préférences historiques,
-/// mais migrés vers une variante régionale et jamais affichés dans le sélecteur.
-const List<String> kLegacyAliasLocaleCodes = ['fr', 'en', 'es', 'pt'];
+/// Catalogues régionaux historiques conservés sur disque mais jamais exposés.
+const List<String> kLegacyAliasLocaleCodes = [
+  'fr-CA', 'en-US', 'es-ES', 'es-LatAm', 'pt-PT', 'pt-BR',
+];
 
 /// Set of top-level sections that must never silently fall back to English
 /// via `Translations.fromJson`'s `json['x'] != null ? ... : Fallback()`
@@ -85,27 +85,11 @@ void main() {
   final registeredCodes =
       localesCatalog.map((e) => (e as Map<String, dynamic>)['code'] as String).toList();
 
-  test('only regional variants are registered in _locales.json', () {
-    expect(defaultLocaleCode, 'fr-CA');
+  test('exactly the canonical 44 locales are registered in _locales.json', () {
+    expect(defaultLocaleCode, 'fr');
     expect(registeredCodes.toSet(), equals(kExpectedLocaleCodes.toSet()));
-    expect(registeredCodes.length, 46);
-    expect(
-      registeredCodes,
-      isNot(contains(anyOf('fr', 'en', 'es', 'pt'))),
-    );
-    expect(
-      registeredCodes,
-      containsAll([
-        'fr-CA',
-        'fr-FR',
-        'en-US',
-        'en-GB',
-        'es-ES',
-        'es-LatAm',
-        'pt-PT',
-        'pt-BR',
-      ]),
-    );
+    expect(registeredCodes.length, 44);
+    expect(registeredCodes, containsAll(['fr', 'en', 'es', 'pt', 'fr-FR', 'en-GB']));
   });
 
   test('no stale/unsupported locale file is accidentally exposed', () {
@@ -405,26 +389,26 @@ void main() {
     }
   });
 
-  test('a regional locale preference persists and restores per user', () async {
+  test('a canonical locale preference persists and restores per user', () async {
     final store = _LocaleStore('en-GB');
     final first = LocaleController(store: store);
     await first.initialize();
 
     expect(first.code, 'en-GB');
     await first.setLocale('pt-BR');
-    expect(store.writes.last, 'pt-BR');
+    expect(store.writes.last, 'pt');
 
     final restored = LocaleController(store: store);
     await restored.initialize();
-    expect(restored.code, 'pt-BR');
+    expect(restored.code, 'pt');
   });
 
-  test('legacy generic locale preferences migrate to regional options', () async {
+  test('legacy generic locale preferences remain canonical', () async {
     const aliases = {
-      'fr': 'fr-CA',
-      'en': 'en-US',
-      'es': 'es-LatAm',
-      'pt': 'pt-PT',
+      'fr': 'fr',
+      'en': 'en',
+      'es': 'es',
+      'pt': 'pt',
     };
 
     for (final entry in aliases.entries) {
@@ -437,14 +421,14 @@ void main() {
     }
   });
 
-  test('browser detection preserves exact supported regional locales', () async {
+  test('browser detection resolves to canonical locales', () async {
     final cases = <Locale, String>{
       const Locale('fr', 'FR'): 'fr-FR',
-      const Locale('en', 'US'): 'en-US',
+      const Locale('en', 'US'): 'en',
       const Locale('en', 'GB'): 'en-GB',
-      const Locale('es', 'ES'): 'es-ES',
-      const Locale('pt', 'PT'): 'pt-PT',
-      const Locale('pt', 'BR'): 'pt-BR',
+      const Locale('es', 'ES'): 'es',
+      const Locale('pt', 'PT'): 'pt',
+      const Locale('pt', 'BR'): 'pt',
     };
 
     for (final entry in cases.entries) {
@@ -457,7 +441,7 @@ void main() {
     }
   });
 
-  test('es-419 and Latin-American browser regions resolve to es-LatAm', () async {
+  test('es-419 and Latin-American browser regions resolve to es', () async {
     for (final locale in const [
       Locale.fromSubtags(languageCode: 'es', countryCode: '419'),
       Locale('es', 'MX'),
@@ -467,7 +451,7 @@ void main() {
         platformLocale: locale,
       );
       await controller.initialize();
-      expect(controller.code, 'es-LatAm', reason: locale.toLanguageTag());
+      expect(controller.code, 'es', reason: locale.toLanguageTag());
     }
   });
 

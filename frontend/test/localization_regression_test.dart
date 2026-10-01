@@ -97,7 +97,7 @@ void main() {
     await tester.pumpWidget(_wrap(locale, const HomePage()));
     await tester.pumpAndSettle();
 
-    expect(locale.code, 'fr-CA');
+    expect(locale.code, 'fr');
 
     await locale.setLocale('en');
     await tester.pumpAndSettle();
@@ -105,11 +105,11 @@ void main() {
     final englishTitle = AvenqoLocaleScope.translationsOf(
       tester.element(find.byType(HomePage)),
     ).hero.titleLine1;
-    expect(locale.code, 'en-US');
+    expect(locale.code, 'en');
     expect(englishTitle, isNotEmpty);
   });
 
-  testWidgets('language selector exposes regional options without generic duplicates', (
+  testWidgets('language selector exposes the canonical locale set', (
     tester,
   ) async {
     final locale = await _readyController();
@@ -123,18 +123,13 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final label in const [
-      'Español (Latinoamérica)',
-      'Español (España)',
-      'Português (Brasil)',
-      'Português (Portugal)',
-      'English (United States)',
-      'English (United Kingdom)',
+      'Español',
+      'Português',
+      'English (US)',
+      'English (UK)',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
-    expect(find.text('Español'), findsNothing);
-    expect(find.text('Português'), findsNothing);
-    expect(find.text('English'), findsNothing);
   });
 
   testWidgets(

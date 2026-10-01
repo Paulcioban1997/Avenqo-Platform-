@@ -53,6 +53,7 @@ class LLMRoutingContext:
     agent_id: str | None = None
     module_id: str | None = None
     idempotency_key: str | None = None
+    locale: str = "fr"
 
     @property
     def required_capabilities(self) -> frozenset[LLMCapability]:
@@ -268,6 +269,7 @@ def routing_context_for_chat(
     agent_id: str | None = None,
     module_id: str | None = None,
     idempotency_key: str | None = None,
+    locale: str = "fr",
 ) -> LLMRoutingContext:
     normalized = query.casefold()
     simple_markers = ("extract", "classif", "categor", "identify", "parse", "format")
@@ -318,4 +320,5 @@ def routing_context_for_chat(
         agent_id=agent_id,
         module_id=module_id,
         idempotency_key=idempotency_key,
+        locale=locale,
     )

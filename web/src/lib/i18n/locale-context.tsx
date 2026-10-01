@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { LocaleCode, Translations } from "./types";
-import { DEFAULT_LOCALE, LOCALES } from "./locales";
+import { DEFAULT_LOCALE, LOCALES, resolveLocaleCode } from "./locales";
 import { getTranslations } from "./dictionary";
 
 const STORAGE_KEY = "avenqo-locale";
@@ -15,10 +15,6 @@ type LocaleContextValue = {
 };
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
-
-function isLocaleCode(value: string | null): value is LocaleCode {
-  return !!value && LOCALES.some((entry) => entry.code === value);
-}
 
 function applyDocumentAttributes(locale: LocaleCode) {
   const definition = LOCALES.find((entry) => entry.code === locale);
@@ -36,10 +32,11 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     try {
       const params = new URLSearchParams(window.location.search);
       const queryParam = params.get("lang") || params.get("locale");
-      if (isLocaleCode(queryParam)) {
-        setLocaleState(queryParam);
-        window.localStorage.setItem(STORAGE_KEY, queryParam);
-        applyDocumentAttributes(queryParam);
+      if (queryParam) {
+        const resolved = resolveLocaleCode(queryParam);
+        setLocaleState(resolved);
+        window.localStorage.setItem(STORAGE_KEY, resolved);
+        applyDocumentAttributes(resolved);
         return;
       }
     } catch {
@@ -47,18 +44,20 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     }
 
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (isLocaleCode(stored)) {
-      setLocaleState(stored);
-      applyDocumentAttributes(stored);
+    if (stored) {
+      const resolved = resolveLocaleCode(stored);
+      setLocaleState(resolved);
+      applyDocumentAttributes(resolved);
     } else {
       applyDocumentAttributes(DEFAULT_LOCALE);
     }
   }, []);
 
   const setLocale = useCallback((next: LocaleCode) => {
-    setLocaleState(next);
-    window.localStorage.setItem(STORAGE_KEY, next);
-    applyDocumentAttributes(next);
+    const resolved = resolveLocaleCode(next);
+    setLocaleState(resolved);
+    window.localStorage.setItem(STORAGE_KEY, resolved);
+    applyDocumentAttributes(resolved);
   }, []);
 
   const value = useMemo<LocaleContextValue>(

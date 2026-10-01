@@ -12,6 +12,7 @@ from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.usage.service import AIUsageService
+from backend.app.core.locale_catalog import resolve_locale
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from shared.ai_engine.contracts import TenantContext
 
@@ -89,7 +90,9 @@ class CentralAIService:
         company_currency: str,
         company_timezone: str,
         page_context: str | None = None,
+        locale_explicit: bool = True,
     ) -> CentralAIResult:
+        user_language = resolve_locale(user_language)
         started_at = perf_counter()
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         context = self._context_builder.build(
@@ -171,6 +174,7 @@ class CentralAIService:
                 allowed_tool_names=allowed_tool_names,
                 selected_agent_id=agent.agent_id if agent is not None else None,
                 module_id=agent.module_code if agent is not None else None,
+                locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
                 retrieve_tenant_data=agent is not None,
             )

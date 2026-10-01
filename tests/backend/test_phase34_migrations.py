@@ -67,7 +67,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0029_ai_usage_attribution_and_pricing_snapshot"
+    assert current == "0030_conversation_canonical_locale"
     attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
     assert {
         "user_id",
@@ -79,6 +79,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
         "avenqo_credits_charged",
         "avenqo_credits_released",
     }.issubset(attempt_columns)
+    assert "locale" in {column["name"] for column in inspector.get_columns("ai_conversations")}
     receipt_columns = {
         column["name"]
         for column in inspector.get_columns("commerce_webhook_receipts")

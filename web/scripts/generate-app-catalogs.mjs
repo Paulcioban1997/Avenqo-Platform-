@@ -2,9 +2,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const localeSource = readFileSync(resolve(root, "src/lib/i18n/locales.ts"), "utf8");
-const localeEntries = localeSource.split("export const LOCALES:")[1].split("];", 1)[0];
-const locales = [...localeEntries.matchAll(/code:\s*"([^"]+)"/g)].map((match) => match[1]);
+const locales = JSON.parse(
+  readFileSync(resolve(root, "../shared/locales/canonical_locales.json"), "utf8"),
+).map((locale) => locale.code);
 const sections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4e"];
 const catalogs = {};
 

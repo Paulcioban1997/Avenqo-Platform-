@@ -123,7 +123,7 @@ void _expectCreditMetric(WidgetTester tester, String label, String value) {
 
 void main() {
   final billingLocaleCases = <String, Map<String, String>>{
-    'fr-CA': {
+    'fr': {
       'creditsTitle': 'Crédits IA',
       'billingPeriod': 'Période de facturation:',
       'monthlyAllowance': 'Allocation mensuelle',
@@ -223,7 +223,7 @@ void main() {
     });
   }
 
-  testWidgets('fr-CA Billing runtime uses the French Phase4e catalog', (
+  testWidgets('canonical French Billing runtime uses the French Phase4e catalog', (
     tester,
   ) async {
     final api = _api(MockClient((_) async => http.Response('{}', 200)));
@@ -233,7 +233,7 @@ void main() {
         api: api,
         loader: (_) async => _startingBillingData('demo'),
       ),
-      localeCode: 'fr-CA',
+      localeCode: 'fr',
     ));
     await tester.pumpAndSettle();
 
@@ -283,7 +283,7 @@ void main() {
     expect(find.text('Purchase'), findsNothing);
   });
 
-  testWidgets('Billing updates from English to fr-CA without remounting', (
+  testWidgets('Billing updates from English to canonical French without remounting', (
     tester,
   ) async {
     final locale = LocaleController(store: const _LocaleStore('en'));
@@ -298,7 +298,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('AI credits'), findsOneWidget);
 
-    await locale.setLocale('fr-CA');
+    await locale.setLocale('fr');
     await tester.pumpAndSettle();
 
     expect(find.text('Crédits IA'), findsOneWidget);

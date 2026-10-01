@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.exceptions import ConversationNotFoundError
 from backend.app.models import AIConversation, AIMessage, AIMessageRole, AIMessageSource
+from backend.app.core.locale_catalog import resolve_locale
 
 
 class ConversationService:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def create(self, tenant_id: UUID, user_id: UUID, title: str) -> AIConversation:
-        item = AIConversation(company_id=tenant_id, user_id=user_id, title=title)
+    def create(self, tenant_id: UUID, user_id: UUID, title: str, locale: str = "fr") -> AIConversation:
+        item = AIConversation(company_id=tenant_id, user_id=user_id, title=title, locale=resolve_locale(locale))
         self._db.add(item); self._db.commit(); self._db.refresh(item)
         return item
 
@@ -26,6 +27,23 @@ class ConversationService:
         if item is None:
             raise ConversationNotFoundError("Conversation introuvable")
         return item
+
+    def ensure_locale(
+        self,
+        tenant_id: UUID,
+        user_id: UUID,
+        conversation_id: UUID,
+        requested_locale: str,
+        *,
+        explicit: bool = False,
+    ) -> str:
+        item = self.get(tenant_id, user_id, conversation_id)
+        canonical = resolve_locale(requested_locale)
+        if explicit or not item.locale:
+            if item.locale != canonical:
+                item.locale = canonical
+                self._db.commit()
+        return item.locale or canonical
 
     def messages(self, tenant_id: UUID, conversation_id: UUID, limit: int = 12) -> list[AIMessage]:
         return list(self._db.scalars(select(AIMessage).where(AIMessage.conversation_id == conversation_id, AIMessage.company_id == tenant_id).order_by(AIMessage.created_at.desc()).limit(limit)).all())[::-1]
