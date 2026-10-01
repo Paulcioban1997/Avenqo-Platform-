@@ -25,8 +25,11 @@ from backend.app.assistants.registry import build_default_assistant_registry
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
 from backend.app.assistants.registry import AssistantRegistry
-from backend.app.models import AIToolExecutionRecord, Base, Company, CompanyMembership, User, UserRole
+from backend.app.models import AIToolExecutionRecord, Base, Company, CompanyMembership, CRMAppointment, User, UserRole
+from backend.app.routers.crm import CRMCopilotChatRequest, crm_copilot_chat
+from backend.app.routers.cross_agent import get_cross_agent_synthesis
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.crm_service import CRMService
 from backend.app.routers.ai_chat import _authorized_agent
 from shared.ai_engine.contracts import TenantContext
 
@@ -283,6 +286,37 @@ def test_legacy_chat_routes_only_to_registered_entitled_agent(security_context) 
     with pytest.raises(HTTPException) as error:
         _authorized_agent("Prioritize CRM leads", None, tenant, db, registry)
     assert error.value.status_code == 403
+
+
+def test_direct_cross_agent_endpoint_requires_all_domain_entitlements(security_context) -> None:
+    db, company, _, membership, _, _, _, _, _ = security_context
+    tenant = TenantContext(company.id)
+    ModuleEntitlementService(db).activate_module(tenant, "crm")
+
+    with pytest.raises(HTTPException) as error:
+        get_cross_agent_synthesis(tenant, membership, db)
+    assert error.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_legacy_crm_copilot_requires_crm_module_and_confirmation(security_context) -> None:
+    db, company, user, membership, _, _, _, _, _ = security_context
+    tenant = TenantContext(company.id)
+    identity = SimpleNamespace(user=user)
+    request = CRMCopilotChatRequest(
+        message="Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie pour Marie.",
+    )
+
+    with pytest.raises(HTTPException) as module_error:
+        await crm_copilot_chat(request, tenant, identity, membership, db, CRMService(db))
+    assert module_error.value.status_code == 403
+
+    ModuleEntitlementService(db).activate_module(tenant, "crm")
+    before = db.query(CRMAppointment).filter_by(company_id=company.id).count()
+    result = await crm_copilot_chat(request, tenant, identity, membership, db, CRMService(db))
+
+    assert result["status"] == "confirmation_required"
+    assert db.query(CRMAppointment).filter_by(company_id=company.id).count() == before
 
 
 @pytest.mark.asyncio

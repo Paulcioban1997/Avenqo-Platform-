@@ -20,8 +20,10 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_token
+from backend.app.core.permissions import permissions_for
 from backend.app.database import get_db
-from backend.app.dependencies.auth import get_current_identity, get_tenant_context
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.models.crm import (
     CRMActivity,
@@ -38,6 +40,8 @@ from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.ai.request_identity import resolve_ai_request_id
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -924,15 +928,23 @@ class CRMCopilotChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     locale: str = "fr"
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=100)
+    confirmed: bool = False
+    confirmation_command: str | None = Field(default=None, max_length=16)
 
 
 @router.post("/copilot/chat")
 async def crm_copilot_chat(
     req: CRMCopilotChatRequest,
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
     db: Session = Depends(get_db),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
+    permissions = frozenset(permissions_for(membership.role))
+    if "ai:use" not in permissions or not ModuleEntitlementService(db).can_use_module(tenant, "crm"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     msg = req.message.strip().lower()
 
     # 1. Natural Language Appointment Creation (Target workflow §12)
@@ -945,6 +957,27 @@ async def crm_copilot_chat(
     ]) and any(h in msg for h in ["h", ":", "heure", "am", "pm", "at "])
 
     if is_create_intent:
+        if "crm:appointments:write" not in permissions:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+        if not req.confirmed or req.confirmation_command != "/confirm":
+            return {
+                "reply": (
+                    "Explicitly confirm this appointment creation with /confirm."
+                    if req.locale == "en"
+                    else "Confirmez explicitement la création du rendez-vous avec /confirm."
+                ),
+                "status": "confirmation_required",
+                "action": "appointment_not_created",
+            }
+        if not req.idempotency_key:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        conversation_uuid = UUID(req.conversation_id) if req.conversation_id else UUID(int=0)
+        request_id = resolve_ai_request_id(
+            req.idempotency_key,
+            tenant_id=tenant.company_id,
+            user_id=identity.user.id,
+            conversation_id=conversation_uuid,
+        )
         now = datetime.now(timezone.utc)
         target_date = now.date()
         date_label = "aujourd'hui" if req.locale == "fr" else "today"
@@ -1063,6 +1096,7 @@ async def crm_copilot_chat(
                 "start_time": start_dt,
                 "duration_minutes": duration,
                 "notes": f"Created via Avenqo Copilot • {service_title}" if req.locale == "en" else f"Créé via Avenqo Copilot • {service_title}",
+                "idempotency_key": f"crm-copilot:{request_id}",
             },
             actor_name="Avenqo Copilot",
         )

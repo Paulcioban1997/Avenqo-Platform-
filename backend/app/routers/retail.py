@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
+from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.retail import get_retail_assistant
 from backend.app.dependencies.tenant_business import (
     get_tenant_analytics_service,
@@ -90,9 +92,12 @@ def set_retail_source_enabled(
 def ask_retail_assistant(
     request: RetailAssistantRequest,
     tenant: TenantContext = Depends(get_tenant_context),
+    membership=Depends(get_active_ai_membership),
     assistant: RetailAssistantService = Depends(get_retail_assistant),
     db: Session = Depends(get_db),
 ) -> RetailAssistantResponse:
+    if "ai:use" not in permissions_for(membership.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     active_source_name = None
     active_source_id_str = None
     if request.source_id and request.source_type:
