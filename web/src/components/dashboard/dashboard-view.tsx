@@ -62,6 +62,7 @@ export function DashboardView({
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
+  const [greeting, setGreeting] = useState(t.dashboard.greetingMorning);
 
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "quarter">("30d");
   const [isLoading, setIsLoading] = useState(true);
@@ -74,13 +75,16 @@ export function DashboardView({
   const [userFirstName, setUserFirstName] = useState<string>(userName);
   const [currentTenant, setCurrentTenant] = useState<string>(tenantName);
 
-  // Dynamic greeting based on current local hour
-  const greeting = (() => {
+  useEffect(() => {
     const hour = new Date().getHours();
-    if (hour < 12) return t.dashboard.greetingMorning;
-    if (hour < 18) return t.dashboard.greetingAfternoon;
-    return t.dashboard.greetingEvening;
-  })();
+    setGreeting(
+      hour < 12
+        ? t.dashboard.greetingMorning
+        : hour < 18
+          ? t.dashboard.greetingAfternoon
+          : t.dashboard.greetingEvening,
+    );
+  }, [t.dashboard.greetingAfternoon, t.dashboard.greetingEvening, t.dashboard.greetingMorning]);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
