@@ -70,7 +70,7 @@ def default_voice_registry(locales: Iterable[str]) -> VoiceProviderRegistry:
             provider_id="browser_speech",
             realtime_audio=False,
             speech_to_text=True,
-            text_to_speech=True,
+            text_to_speech=False,
             streaming_stt=True,
             streaming_tts=False,
             interruption=True,

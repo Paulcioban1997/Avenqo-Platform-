@@ -7,7 +7,7 @@ def test_voice_provider_capabilities_use_the_canonical_44_locales() -> None:
     registry = default_voice_registry(codes)
     assert len(codes) == 44
     assert registry.compatible("fr", "speech_to_text")
-    assert registry.compatible("ar", "text_to_speech")
+    assert registry.compatible("ar", "text_to_speech") == ()
     assert registry.compatible("fr", "realtime_audio") == ()
 
 
