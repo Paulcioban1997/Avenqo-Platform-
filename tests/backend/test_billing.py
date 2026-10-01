@@ -1,9 +1,10 @@
 ﻿from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +23,7 @@ from backend.app.models import (
     Company,
     TenantAICreditBalance,
     TenantAICreditLedgerEntry,
+    TenantAIProviderAttempt,
 )
 from backend.app.routers.billing import subscription_response
 from backend.app.ai.usage.service import AIUsageService
@@ -227,6 +229,69 @@ def create_owner(
 
 def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
+
+
+def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
+    billing_environment,
+    tmp_path: Path,
+) -> None:
+    client, _, notifier = billing_environment
+    login = create_owner(client, notifier, email="credit-period@acme.ca")
+    company_id = UUID(login["company"]["id"])
+    now = datetime.now(timezone.utc)
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    def attempt(operation: str, credits: int, created_at: datetime) -> TenantAIProviderAttempt:
+        return TenantAIProviderAttempt(
+            id=uuid4(),
+            company_id=company_id,
+            avenqo_request_id=str(uuid4()),
+            operation=operation,
+            attempt_number=1,
+            provider="openai",
+            model="test-model",
+            success=True,
+            latency_ms=1,
+            input_tokens=1,
+            output_tokens=1,
+            provider_cost_usd=Decimal("0.001"),
+            input_cost_per_million_usd=Decimal("1"),
+            cached_input_cost_per_million_usd=Decimal("0"),
+            output_cost_per_million_usd=Decimal("1"),
+            tool_call_cost_usd=Decimal("0"),
+            avenqo_credits=credits,
+            created_at=created_at,
+        )
+
+    with factory() as session:
+        session.add_all([
+            attempt("generate_with_tools", 3, now - timedelta(hours=1)),
+            attempt("generate", 0, now - timedelta(hours=2)),
+            attempt("generate", 7, now - timedelta(days=40)),
+        ])
+        session.commit()
+
+    headers = auth_headers(login)
+    for period in ("today", "7d", "30d", "billing_period"):
+        breakdown = client.get(
+            f"/api/v1/billing/ai-credits/breakdown?period={period}", headers=headers
+        )
+        assert breakdown.status_code == 200
+        body = breakdown.json()
+        assert body["total_used"] == 3
+        copilot = next(item for item in body["items"] if item["module"] == "Copilot")
+        assert copilot["credits_used"] == 3
+
+    history = client.get(
+        "/api/v1/billing/ai-credits/history?offset=0&limit=20&period=today",
+        headers=headers,
+    )
+    assert history.status_code == 200
+    history_body = history.json()
+    assert history_body["total"] == 2
+    assert {item["credits_used"] for item in history_body["items"]} == {0, 3}
+    assert all(datetime.fromisoformat(item["date"]) >= now - timedelta(days=1) for item in history_body["items"])
 
 
 def test_enterprise_quote_success_message_uses_accept_language(billing_environment) -> None:

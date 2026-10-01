@@ -1,8 +1,9 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse as HTTPRedirectResponse
@@ -47,13 +48,53 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, Company, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAIProviderAttempt
 from payments import PLANS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
+
+
+def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Session) -> datetime:
+    now = datetime.now(timezone.utc)
+    try:
+        tenant_timezone = ZoneInfo(identity.user.company.timezone or "UTC")
+    except ZoneInfoNotFoundError:
+        tenant_timezone = timezone.utc
+
+    if period == "today":
+        local_now = now.astimezone(tenant_timezone)
+        return local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    if period == "7d":
+        return now - timedelta(days=7)
+    if period == "30d":
+        return now - timedelta(days=30)
+
+    balance = db.get(TenantAICreditBalance, identity.user.company_id)
+    billing_period = balance.monthly_period if balance is not None else now.strftime("%Y-%m")
+    try:
+        return datetime.strptime(billing_period, "%Y-%m").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _ai_usage_module(operation: str | None) -> str:
+    normalized = (operation or "").lower()
+    if "retail" in normalized or "sales" in normalized:
+        return "Retail AI"
+    if "crm" in normalized or "appointment" in normalized:
+        return "CRM AI"
+    if "ocr" in normalized or "document" in normalized:
+        return "OCR AI"
+    if "marketing" in normalized:
+        return "Marketing AI"
+    if "copilot" in normalized or "chat" in normalized or normalized in {
+        "generate", "generate_with_tools", "stream"
+    }:
+        return "Copilot"
+    return "Autre"
 
 
 def subscription_response(account, company: Company | None = None) -> SubscriptionResponse:
@@ -403,9 +444,13 @@ def ai_credits_breakdown(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> AICreditBreakdownResponse:
+    period_start = _credit_usage_period_start(period, identity, db)
     attempts = db.scalars(
         select(TenantAIProviderAttempt)
-        .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+        .where(
+            TenantAIProviderAttempt.company_id == identity.user.company_id,
+            TenantAIProviderAttempt.created_at >= period_start,
+        )
     ).all()
 
     module_counts: dict[str, int] = {
@@ -419,20 +464,8 @@ def ai_credits_breakdown(
 
     total = 0
     for att in attempts:
-        op = (att.operation or "").lower()
         creds = att.avenqo_credits or 0
-        if "retail" in op or "sales" in op:
-            module_counts["Retail AI"] += creds
-        elif "crm" in op or "appointment" in op:
-            module_counts["CRM AI"] += creds
-        elif "copilot" in op or "chat" in op:
-            module_counts["Copilot"] += creds
-        elif "ocr" in op or "document" in op:
-            module_counts["OCR AI"] += creds
-        elif "marketing" in op:
-            module_counts["Marketing AI"] += creds
-        else:
-            module_counts["Autre"] += creds
+        module_counts[_ai_usage_module(att.operation)] += creds
         total += creds
 
     items = []
@@ -451,19 +484,25 @@ def ai_credits_breakdown(
 def ai_credits_history(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=10, ge=1, le=100),
+    period: str = Query(default="billing_period"),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> AICreditHistoryResponse:
+    period_start = _credit_usage_period_start(period, identity, db)
+    filters = (
+        TenantAIProviderAttempt.company_id == identity.user.company_id,
+        TenantAIProviderAttempt.created_at >= period_start,
+    )
     query = (
         select(TenantAIProviderAttempt)
-        .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+        .where(*filters)
         .order_by(TenantAIProviderAttempt.id.desc())
     )
     total = (
         db.scalar(
             select(func.count())
             .select_from(TenantAIProviderAttempt)
-            .where(TenantAIProviderAttempt.company_id == identity.user.company_id)
+            .where(*filters)
         )
         or 0
     )
@@ -472,14 +511,16 @@ def ai_credits_history(
     items = []
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
-        mod = "CRM AI" if "crm" in op.lower() else ("Retail AI" if "retail" in op.lower() else "Copilot")
+        timestamp = att.created_at or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
         items.append(
             AICreditHistoryItem(
                 id=str(att.id),
-                date="Aujourd'hui",
-                module=mod,
+                date=timestamp.isoformat(),
+                module=_ai_usage_module(att.operation),
                 operation=op,
-                credits_used=att.avenqo_credits or 10,
+                credits_used=att.avenqo_credits or 0,
                 user=f"{identity.user.first_name} {identity.user.last_name}",
             )
         )

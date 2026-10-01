@@ -245,12 +245,12 @@ export function BillingView() {
     } catch {}
   }, []);
 
-  const loadHistory = useCallback(async (page: number) => {
+  const loadHistory = useCallback(async (page: number, period: string) => {
     try {
       const headers = getAuthHeaders();
       const offset = page * historyPageSize;
       const res = await fetch(
-        `/api/v1/billing/ai-credits/history?offset=${offset}&limit=${historyPageSize}`,
+        `/api/v1/billing/ai-credits/history?offset=${offset}&limit=${historyPageSize}&period=${encodeURIComponent(period)}`,
         { headers }
       );
       if (res.ok) {
@@ -285,8 +285,8 @@ export function BillingView() {
   }, [loadBreakdown, breakdownPeriod]);
 
   useEffect(() => {
-    loadHistory(historyPage);
-  }, [loadHistory, historyPage]);
+    loadHistory(historyPage, breakdownPeriod);
+  }, [loadHistory, historyPage, breakdownPeriod]);
 
   const handleRefreshBalance = async () => {
     setRefreshing(true);
@@ -305,7 +305,7 @@ export function BillingView() {
         setBreakdownItems(bdData.items || []);
         setTotalBreakdownUsed(bdData.total_used || 0);
       }
-      loadHistory(0);
+      loadHistory(0, breakdownPeriod);
       setHistoryPage(0);
     } finally {
       setRefreshing(false);
@@ -862,7 +862,10 @@ export function BillingView() {
             ].map((p) => (
               <button
                 key={p.id}
-                onClick={() => setBreakdownPeriod(p.id)}
+                onClick={() => {
+                  setBreakdownPeriod(p.id);
+                  setHistoryPage(0);
+                }}
                 className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                   breakdownPeriod === p.id
                     ? "bg-white dark:bg-[#0076FF] text-slate-900 dark:text-white font-bold shadow-xs"
@@ -923,7 +926,7 @@ export function BillingView() {
             </p>
           </div>
           <div className="text-xs text-slate-400">
-            {historyTotal} {billingTranslations.creditsUnit}
+            {historyTotal.toLocaleString(locale)} {companyTranslations.connectorHub.records}
           </div>
         </div>
 
@@ -946,7 +949,7 @@ export function BillingView() {
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                 {historyItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">
-                    <td className="py-3 px-4 text-slate-600 dark:text-[#94A3B8]">{item.date}</td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-[#94A3B8]">{new Date(item.date).toLocaleString(locale)}</td>
                     <td className="py-3 px-4 font-semibold text-slate-800 dark:text-[#F4F7FB]">{item.module}</td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{item.operation}</td>
                     <td className="py-3 px-4 font-mono font-bold text-[#0076FF] dark:text-[#00D4FF]">
