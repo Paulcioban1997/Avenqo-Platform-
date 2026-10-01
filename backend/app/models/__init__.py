@@ -3,7 +3,7 @@ from backend.app.models.accounting import AccountingInvoice, AccountingTransacti
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
-from backend.app.models.ai_tool_execution import AIToolExecutionRecord
+from backend.app.models.ai_tool_execution import AIToolConfirmationChallenge, AIToolExecutionRecord
 from backend.app.models.ai_usage import (
     TenantAICreditBalance,
     TenantAICreditLedgerEntry,

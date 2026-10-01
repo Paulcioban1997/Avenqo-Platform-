@@ -27,6 +27,10 @@ from backend.app.ai.tools.exceptions import (
     ToolValidationError,
 )
 from backend.app.ai.tools.registry import ToolRegistry
+from backend.app.ai.tools.natural_confirmation import (
+    confirmation_required_message,
+    is_natural_confirmation,
+)
 
 logger = logging.getLogger("avenqo.tool_calling")
 
@@ -73,11 +77,33 @@ class ToolExecutor:
                 raise ToolAuthorizationError("The mutating tool has no supported confirmation policy.")
             if tool.mutates:
                 confirmed = getattr(arguments, tool.confirmation_field, False) is True
-                if not confirmed or context.user_message.strip().casefold() != "/confirm":
+                explicit_confirmation = (
+                    confirmed and context.user_message.strip().casefold() == "/confirm"
+                )
+                natural_confirmation = False
+                if (
+                    not explicit_confirmation
+                    and is_natural_confirmation(context.locale, context.user_message)
+                ):
+                    if self._idempotency_store is None:
+                        raise ToolAuthorizationError("Mutation idempotency is not configured.")
+                    natural_confirmation = self._idempotency_store.consume_confirmation_challenge(
+                        context, tool, raw_arguments
+                    )
+                if not explicit_confirmation and not natural_confirmation:
+                    if self._idempotency_store is None:
+                        raise ToolAuthorizationError("Mutation idempotency is not configured.")
+                    self._idempotency_store.create_confirmation_challenge(
+                        context,
+                        tool,
+                        raw_arguments,
+                        context.locale,
+                    )
                     return ToolResult(
                         success=False,
-                        data={"confirmation_required": True, "operation": name},
-                        error="Explicit user confirmation is required before this action.",
+                        data={"confirmation_required": True, "operation": name, "error_key": "confirmation_required"},
+                        metadata={"error_key": "confirmation_required", "locale": context.locale},
+                        error=confirmation_required_message(context.locale),
                     )
 
             try:

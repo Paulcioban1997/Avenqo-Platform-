@@ -27,6 +27,7 @@ class ToolExecutionContext:
     selected_agent_id: str | None = None
     capabilities: frozenset[str] = frozenset()
     user_message: str = ""
+    locale: str = "fr"
     authorized_tool_agents: Mapping[str, str] = field(default_factory=dict)
 
     @property

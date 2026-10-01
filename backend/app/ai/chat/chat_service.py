@@ -261,6 +261,7 @@ class ChatService:
             selected_agent_id=selected_agent_id,
             capabilities=capabilities,
             user_message=query,
+            locale=resolve_locale(user_language),
             authorized_tool_agents=authorized_tool_agents or {},
         )
         routing_context = routing_context_for_chat(

@@ -60,6 +60,18 @@ async def _never_cancelled() -> bool:
     return False
 
 
+def _tool_error_key(error: ToolError) -> str:
+    mapping = {
+        "ToolValidationError": "tool_validation_error",
+        "ToolAuthorizationError": "permission_denied",
+        "ToolNotFoundError": "tool_not_found",
+        "ToolTimeoutError": "tool_timeout",
+        "ToolUnavailableError": "tool_unavailable",
+        "ToolExecutionError": "tool_execution_error",
+    }
+    return mapping.get(type(error).__name__, "tool_execution_error")
+
+
 def _collect_response_usage(
     totals: dict[str, int],
     attempts: list[LLMProviderAttempt],
@@ -252,7 +264,12 @@ class ToolOrchestrator:
                     result = await self._executor.execute(call.name, context, call.arguments)
                     logger.info("ai_tool_execution selected_tool_name=%s tool_success=true", call.name)
                 except ToolError as exc:
-                    result = ToolResult(success=False, error=str(exc))
+                    result = ToolResult(
+                        success=False,
+                        data={"error_key": _tool_error_key(exc)},
+                        metadata={"error_key": _tool_error_key(exc), "locale": context.locale},
+                        error=_tool_error_key(exc),
+                    )
                     logger.info("ai_tool_execution selected_tool_name=%s tool_success=false", call.name)
                 tool_call_results.append(ToolCallResult(call=call, result=result))
                 messages.append(

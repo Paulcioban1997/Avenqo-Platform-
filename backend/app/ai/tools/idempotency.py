@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, text
@@ -15,12 +15,73 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import AITool
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import ToolAuthorizationError, ToolExecutionError
-from backend.app.models import AIToolExecutionRecord
+from backend.app.models import AIToolConfirmationChallenge, AIToolExecutionRecord
+
+
+def mutation_arguments_hash(arguments: dict[str, Any], confirmation_field: str = "confirmed") -> str:
+    normalized = dict(arguments)
+    normalized.pop(confirmation_field, None)
+    serialized = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 class AIToolExecutionIdempotencyStore:
     def __init__(self, db: Session) -> None:
         self._db = db
+
+    def create_confirmation_challenge(
+        self,
+        context: ToolExecutionContext,
+        tool: AITool,
+        arguments: dict[str, Any],
+        locale: str,
+        *,
+        ttl_seconds: int = 600,
+    ) -> None:
+        agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
+        challenge = AIToolConfirmationChallenge(
+            company_id=context.tenant_id,
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            request_id=context.request_id,
+            agent_id=agent_id,
+            tool_name=tool.name,
+            arguments_hash=mutation_arguments_hash(arguments, tool.confirmation_field),
+            locale=locale,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+        )
+        self._db.add(challenge)
+        self._db.commit()
+
+    def consume_confirmation_challenge(
+        self,
+        context: ToolExecutionContext,
+        tool: AITool,
+        arguments: dict[str, Any],
+    ) -> bool:
+        agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
+        now = datetime.now(timezone.utc)
+        statement = (
+            select(AIToolConfirmationChallenge)
+            .where(
+                AIToolConfirmationChallenge.company_id == context.tenant_id,
+                AIToolConfirmationChallenge.user_id == context.user_id,
+                AIToolConfirmationChallenge.conversation_id == context.conversation_id,
+                AIToolConfirmationChallenge.agent_id == agent_id,
+                AIToolConfirmationChallenge.tool_name == tool.name,
+                AIToolConfirmationChallenge.arguments_hash == mutation_arguments_hash(arguments, tool.confirmation_field),
+                AIToolConfirmationChallenge.consumed_at.is_(None),
+                AIToolConfirmationChallenge.expires_at > now,
+            )
+            .order_by(AIToolConfirmationChallenge.created_at.desc())
+            .with_for_update()
+        )
+        challenge = self._db.scalar(statement)
+        if challenge is None:
+            return False
+        challenge.consumed_at = now
+        self._db.commit()
+        return True
 
     async def run_once(
         self,

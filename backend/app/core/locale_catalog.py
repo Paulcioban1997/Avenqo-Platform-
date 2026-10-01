@@ -97,6 +97,37 @@ def locale_info(raw_locale: str | None) -> LocaleInfo:
     return BY_LOCALE[resolve_locale(raw_locale).casefold()]
 
 
+_LANGUAGE_SWITCHES = (
+    ("es", ("en español", "en espanol", "responde en español")),
+    ("en", ("in english", "answer in english", "réponds en anglais")),
+    ("fr", ("en français", "en francais", "réponds en français")),
+    ("de", ("auf deutsch", "auf deutsch antworten")),
+    ("it", ("in italiano", "rispondi in italiano")),
+    ("pt", ("em português", "em portugues")),
+    ("ro", ("în română", "in romana")),
+)
+
+
+def detect_locale_from_text(text: str) -> str | None:
+    """Detect only reliable script/switch signals; ambiguous text returns None."""
+
+    normalized = (text or "").casefold().strip()
+    if len(normalized) < 8:
+        return None
+    for locale, markers in _LANGUAGE_SWITCHES:
+        if any(marker in normalized for marker in markers):
+            return locale
+    if any("\u0600" <= char <= "\u06ff" for char in normalized):
+        return "ar"
+    if any("\u3040" <= char <= "\u30ff" for char in normalized):
+        return "ja"
+    if any("\u4e00" <= char <= "\u9fff" for char in normalized):
+        return "zh"
+    if any("\uac00" <= char <= "\ud7af" for char in normalized):
+        return "ko"
+    return None
+
+
 def defaults_for_country(country: str) -> LocaleInfo | None:
     normalized = (country or "").strip().casefold()
     for info in LOCALES:
