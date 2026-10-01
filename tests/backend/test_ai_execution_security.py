@@ -43,6 +43,23 @@ class RetailReadTool(AITool):
     name = "retail_read"
     description = "Read-only test tool"
     input_schema = ReadArgs
+    agent_ids = frozenset({"retail", "crm"})
+    read_only = True
+    mutates = False
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def run(self, context, arguments) -> ToolResult:
+        self.calls += 1
+        return ToolResult(success=True, data={"tenant_id": str(context.tenant_id)})
+
+
+class CRMReadTool(AITool):
+    name = "crm_read"
+    description = "CRM test tool"
+    input_schema = ReadArgs
+    agent_ids = frozenset({"crm"})
     read_only = True
     mutates = False
 
@@ -62,6 +79,7 @@ class MutatingTool(AITool):
     mutates = True
     mutation_capabilities = frozenset({"retail.write"})
     confirmation_policy = "explicit_user_confirmation"
+    agent_ids = frozenset({"retail_writer"})
 
     def __init__(self) -> None:
         self.calls = 0
@@ -77,6 +95,7 @@ class UnsafeMutatingTool(AITool):
     read_only = False
     mutates = True
     mutation_capabilities = frozenset({"retail.write"})
+    agent_ids = frozenset({"retail_writer"})
 
     async def run(self, context, arguments) -> ToolResult:
         return ToolResult(success=True)
@@ -135,12 +154,20 @@ def security_context(tmp_path: Path):
             slug="crm", name_key="agent.crm.name",
             description_key="agent.crm.description",
             status=AssistantStatus.AVAILABLE, category="customer",
-            module_code="crm", allowed_tool_names=frozenset({"retail_read"}),
+            module_code="crm", allowed_tool_names=frozenset({"crm_read"}),
+        ))
+        agents.register(AssistantDefinition(
+            slug="cross_agent", name_key="agent.cross.name",
+            description_key="agent.cross.description",
+            status=AssistantStatus.AVAILABLE, category="intelligence",
+            aggregate=True,
         ))
         tool = RetailReadTool()
+        crm_tool = CRMReadTool()
         mutating_tool = MutatingTool()
         tools = ToolRegistry()
         tools.register(tool)
+        tools.register(crm_tool)
         tools.register(mutating_tool)
         executor = ToolExecutor(
             tools,
@@ -157,12 +184,12 @@ def security_context(tmp_path: Path):
                 selected_agent_id=agent_id,
             )
 
-        yield db, company, user, membership, tool, mutating_tool, executor, context
+        yield db, company, user, membership, tool, crm_tool, mutating_tool, executor, context
 
 
 @pytest.mark.asyncio
 async def test_authorized_read_only_tool_succeeds(security_context) -> None:
-    db, company, _, _, tool, _, executor, context = security_context
+    db, company, _, _, tool, _, _, executor, context = security_context
 
     result = await executor.execute("retail_read", context(), {})
 
@@ -173,7 +200,7 @@ async def test_authorized_read_only_tool_succeeds(security_context) -> None:
 
 @pytest.mark.asyncio
 async def test_inactive_membership_is_denied_at_execution(security_context) -> None:
-    db, _, _, membership, tool, _, executor, context = security_context
+    db, _, _, membership, tool, _, _, executor, context = security_context
     membership.is_active = False
     db.flush()
 
@@ -183,7 +210,7 @@ async def test_inactive_membership_is_denied_at_execution(security_context) -> N
 
 
 def test_ai_route_requires_active_company_membership(security_context) -> None:
-    db, _, user, membership, _, _, _, _ = security_context
+    db, _, user, membership, _, _, _, _, _ = security_context
     identity = SimpleNamespace(user=user)
 
     assert get_active_ai_membership(identity, db) is membership
@@ -196,7 +223,7 @@ def test_ai_route_requires_active_company_membership(security_context) -> None:
 
 @pytest.mark.asyncio
 async def test_wrong_tenant_is_denied_at_execution(security_context) -> None:
-    db, _, _, _, tool, _, executor, context = security_context
+    db, _, _, _, tool, _, _, executor, context = security_context
     other = Company(
         name="Tenant B", slug="tenant-b", email="b@example.ca",
         country="CA", timezone="America/Toronto", industry="Retail",
@@ -212,7 +239,7 @@ async def test_wrong_tenant_is_denied_at_execution(security_context) -> None:
 
 @pytest.mark.asyncio
 async def test_wrong_agent_cannot_use_another_agents_tool(security_context) -> None:
-    _, _, _, _, tool, _, executor, context = security_context
+    _, _, _, _, tool, _, _, executor, context = security_context
 
     with pytest.raises(ToolAuthorizationError):
         await executor.execute("retail_read", context(agent_id="other"), {})
@@ -221,15 +248,33 @@ async def test_wrong_agent_cannot_use_another_agents_tool(security_context) -> N
 
 @pytest.mark.asyncio
 async def test_wrong_module_is_denied_even_when_tool_is_in_agent_allowlist(security_context) -> None:
-    _, _, _, _, tool, _, executor, context = security_context
+    _, _, _, _, _, crm_tool, _, executor, context = security_context
 
     with pytest.raises(ToolAuthorizationError):
-        await executor.execute("retail_read", context(agent_id="crm"), {})
-    assert tool.calls == 0
+        await executor.execute("crm_read", context(agent_id="crm"), {})
+    assert crm_tool.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_cross_agent_tool_delegation_still_requires_its_own_module(security_context) -> None:
+    _, _, _, _, _, crm_tool, _, executor, context = security_context
+    base = context(agent_id="cross_agent")
+    delegated = ToolExecutionContext(
+        tenant=base.tenant,
+        user_id=base.user_id,
+        permissions=base.permissions,
+        request_id=base.request_id,
+        selected_agent_id="cross_agent",
+        authorized_tool_agents={"crm_read": "crm"},
+    )
+
+    with pytest.raises(ToolAuthorizationError):
+        await executor.execute("crm_read", delegated, {})
+    assert crm_tool.calls == 0
 
 
 def test_legacy_chat_routes_only_to_registered_entitled_agent(security_context) -> None:
-    db, company, _, _, _, _, _, _ = security_context
+    db, company, _, _, _, _, _, _, _ = security_context
     tenant = TenantContext(company_id=company.id)
     registry = build_default_assistant_registry()
 
@@ -242,7 +287,7 @@ def test_legacy_chat_routes_only_to_registered_entitled_agent(security_context) 
 
 @pytest.mark.asyncio
 async def test_membership_role_not_user_role_controls_tool_permission(security_context) -> None:
-    db, _, _, membership, tool, _, executor, context = security_context
+    db, _, _, membership, tool, _, _, executor, context = security_context
     membership.role = UserRole.VIEWER
     db.flush()
     tool.required_permissions = ("ai:use",)
@@ -254,7 +299,7 @@ async def test_membership_role_not_user_role_controls_tool_permission(security_c
 
 @pytest.mark.asyncio
 async def test_mutation_requires_registered_capability_and_explicit_user_confirmation(security_context) -> None:
-    _, _, _, _, _, tool, executor, context = security_context
+    _, _, _, _, _, _, tool, executor, context = security_context
 
     unconfirmed_context = context(agent_id="retail_writer")
     unconfirmed_context = ToolExecutionContext(
@@ -280,7 +325,7 @@ async def test_mutation_requires_registered_capability_and_explicit_user_confirm
         permissions=confirmed_context.permissions,
         request_id=confirmed_context.request_id,
         selected_agent_id=confirmed_context.selected_agent_id,
-        user_message="Yes, I confirm",
+        user_message="/confirm",
     )
     result = await executor.execute("retail_write", confirmed_context, {"confirmed": True})
     assert result.success is True
@@ -294,7 +339,7 @@ def test_registry_rejects_mutating_tool_without_confirmation_policy() -> None:
 
 @pytest.mark.asyncio
 async def test_confirmed_mutation_retry_returns_receipt_without_second_execution(security_context) -> None:
-    db, _, _, _, _, tool, executor, context = security_context
+    db, _, _, _, _, _, tool, executor, context = security_context
     base = context(agent_id="retail_writer")
     confirmed_context = ToolExecutionContext(
         tenant=base.tenant,
@@ -303,7 +348,7 @@ async def test_confirmed_mutation_retry_returns_receipt_without_second_execution
         request_id="same-request",
         conversation_id=base.conversation_id,
         selected_agent_id=base.selected_agent_id,
-        user_message="Yes, I confirm",
+        user_message="/confirm",
     )
 
     first = await executor.execute(
@@ -320,7 +365,7 @@ async def test_confirmed_mutation_retry_returns_receipt_without_second_execution
 
 @pytest.mark.asyncio
 async def test_revoked_membership_blocks_replay_of_completed_mutation(security_context) -> None:
-    db, _, _, membership, _, tool, executor, context = security_context
+    db, _, _, membership, _, _, tool, executor, context = security_context
     base = context(agent_id="retail_writer")
     confirmed_context = ToolExecutionContext(
         tenant=base.tenant,
@@ -329,7 +374,7 @@ async def test_revoked_membership_blocks_replay_of_completed_mutation(security_c
         request_id="revocation-request",
         conversation_id=base.conversation_id,
         selected_agent_id=base.selected_agent_id,
-        user_message="Yes, I confirm",
+        user_message="/confirm",
     )
     await executor.execute("retail_write", confirmed_context, {"confirmed": True})
     membership.is_active = False
@@ -342,7 +387,7 @@ async def test_revoked_membership_blocks_replay_of_completed_mutation(security_c
 
 @pytest.mark.asyncio
 async def test_repeated_provider_tool_call_does_not_repeat_mutation(security_context) -> None:
-    _, _, _, _, _, tool, executor, context = security_context
+    _, _, _, _, _, _, tool, executor, context = security_context
     base = context(agent_id="retail_writer")
     confirmed_context = ToolExecutionContext(
         tenant=base.tenant,
@@ -350,7 +395,7 @@ async def test_repeated_provider_tool_call_does_not_repeat_mutation(security_con
         permissions=base.permissions,
         request_id="provider-retry-request",
         selected_agent_id=base.selected_agent_id,
-        user_message="Yes, I confirm",
+        user_message="/confirm",
     )
 
     class RepeatingToolProvider(LLMProvider):
@@ -380,7 +425,7 @@ async def test_repeated_provider_tool_call_does_not_repeat_mutation(security_con
     provider = RepeatingToolProvider()
     result = await ToolOrchestrator(provider, executor).run(
         system_instruction="test",
-        user_query="Yes, I confirm",
+        user_query="/confirm",
         context=confirmed_context,
         available_tools=(tool,),
     )

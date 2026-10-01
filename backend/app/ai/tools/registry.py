@@ -15,6 +15,8 @@ class ToolRegistry:
         self._tools: dict[str, AITool] = {}
 
     def register(self, tool: AITool) -> None:
+        if not tool.agent_ids:
+            raise ValueError(f"Tool '{tool.name}' must declare at least one owning agent.")
         if tool.read_only is None or tool.mutates is None:
             raise ValueError(f"Tool '{tool.name}' must explicitly declare its read-only or mutating behavior.")
         if tool.mutates and (tool.read_only or not tool.mutation_capabilities):

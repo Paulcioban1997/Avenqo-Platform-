@@ -18,7 +18,8 @@ from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.schemas import LLMGeneration, LLMProviderAttempt, LLMUsage
 from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.ai.usage.service import AIUsageService
-from backend.app.assistants.registry import build_default_assistant_registry
+from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
+from backend.app.assistants.registry import AssistantRegistry, build_default_assistant_registry
 from backend.app.config.settings import Settings
 from backend.app.models import Base, BillingAccount, Company, TenantAIProviderAttempt, User, UserRole
 from backend.app.schemas.central_ai import CentralAIRequest
@@ -557,3 +558,67 @@ async def test_cross_agent_requires_every_domain_entitlement_before_provider_cal
     assert (result.selected_agent, result.status) == ("cross_agent", "not_entitled")
     assert provider.calls == 0
     assert usage.get_credit_balance(company.id, "demo")["monthly_used"] == 0
+
+
+def test_cross_agent_scope_maps_only_requested_authorized_agent_tools(db_session) -> None:
+    company, user = make_company(db_session, "cross-agent-scope")
+    provider = StubProvider()
+    central, _conversations, usage, tenant = make_service(
+        db_session, company, provider, limit=3
+    )
+    ModuleEntitlementService(db_session).activate_module(tenant, "crm")
+
+    registry = AssistantRegistry()
+    registry.register(AssistantDefinition(
+        slug="retail", name_key="agent.retail.name", description_key="agent.retail.description",
+        status=AssistantStatus.AVAILABLE, category="commerce", module_code="retail",
+        allowed_tool_names=frozenset({"get_sales_summary"}),
+        intent_keywords=frozenset({"sales", "revenue"}),
+    ))
+    registry.register(AssistantDefinition(
+        slug="crm", name_key="agent.crm.name", description_key="agent.crm.description",
+        status=AssistantStatus.AVAILABLE, category="customer", module_code="crm",
+        allowed_tool_names=frozenset({"search_appointments"}),
+        intent_keywords=frozenset({"crm", "appointments"}),
+    ))
+    registry.register(AssistantDefinition(
+        slug="accounting", name_key="agent.accounting.name", description_key="agent.accounting.description",
+        status=AssistantStatus.AVAILABLE, category="finance", module_code="accounting",
+        allowed_tool_names=frozenset({"get_unpaid_invoices"}),
+        intent_keywords=frozenset({"accounting", "invoices"}),
+    ))
+    registry.register(AssistantDefinition(
+        slug="cross_agent", name_key="agent.cross.name", description_key="agent.cross.description",
+        status=AssistantStatus.AVAILABLE, category="intelligence", aggregate=True,
+        required_entitlements=frozenset({"retail", "crm", "accounting"}),
+        allowed_tool_names=frozenset({"get_cross_agent_business_health"}),
+        intent_keywords=frozenset({"global", "synthesis"}),
+    ))
+    service = CentralAIService(registry, central._chat, usage, central._context_builder)
+
+    query = "Compare sales with CRM appointments"
+    selected = service._router.select(query)
+    assert selected is not None and selected.agent_id == "cross_agent"
+    scope = service._tool_scope_for_request(
+        selected,
+        query,
+        None,
+        frozenset({"retail", "crm"}),
+    )
+    assert scope is not None
+    allowed_names, tool_owners = scope
+    assert allowed_names == frozenset({"get_sales_summary", "search_appointments"})
+    assert tool_owners == {
+        "get_sales_summary": "retail",
+        "search_appointments": "crm",
+    }
+
+    accounting_query = "Compare sales with accounting invoices"
+    accounting_selected = service._router.select(accounting_query)
+    assert accounting_selected is not None and accounting_selected.aggregate
+    assert service._tool_scope_for_request(
+        accounting_selected,
+        accounting_query,
+        None,
+        frozenset({"retail", "crm"}),
+    ) is None

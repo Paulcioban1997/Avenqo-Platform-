@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
-import unicodedata
 from typing import Any
 
 from pydantic import ValidationError
@@ -75,7 +73,7 @@ class ToolExecutor:
                 raise ToolAuthorizationError("The mutating tool has no supported confirmation policy.")
             if tool.mutates:
                 confirmed = getattr(arguments, tool.confirmation_field, False) is True
-                if not confirmed or not _is_explicit_confirmation(context.user_message):
+                if not confirmed or context.user_message.strip().casefold() != "/confirm":
                     return ToolResult(
                         success=False,
                         data={"confirmation_required": True, "operation": name},
@@ -135,14 +133,3 @@ def _truncate_result(result: ToolResult) -> ToolResult:
         metadata={**result.metadata, "truncated": True},
         error=result.error,
     )
-
-
-def _is_explicit_confirmation(message: str) -> bool:
-    normalized = unicodedata.normalize("NFKD", message.casefold())
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
-    normalized = " ".join(re.findall(r"[a-z0-9]+", normalized))
-    return normalized in {
-        "yes", "yes i confirm", "i confirm", "confirm", "confirmed",
-        "oui", "oui je confirme", "je confirme", "confirme", "confirmer",
-        "d accord", "daccord", "ok",
-    }

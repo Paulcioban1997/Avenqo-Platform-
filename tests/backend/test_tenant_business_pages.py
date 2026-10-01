@@ -276,6 +276,7 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     products_data = _dataset(session, company, "catalog-data.csv")
     payments = _dataset(session, company, "settlements.csv")
     foreign = _dataset(session, company_b, "foreign-settlements.csv")
+    today = datetime.now(timezone.utc).date()
 
     prepared.update(
         {
@@ -289,9 +290,9 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
                 company,
                 orders,
                 [
-                    {"order": "O1", "buyer": "C1", "when": "2026-07-01"},
-                    {"order": "O2", "buyer": "C1", "when": "2026-08-01"},
-                    {"order": "O3", "buyer": "C2", "when": "2026-08-15"},
+                    {"order": "O1", "buyer": "C1", "when": (today - timedelta(days=80)).isoformat()},
+                    {"order": "O2", "buyer": "C1", "when": (today - timedelta(days=60)).isoformat()},
+                    {"order": "O3", "buyer": "C2", "when": (today - timedelta(days=45)).isoformat()},
                 ],
                 {"order": "order_id", "buyer": "customer_id", "when": "order_timestamp"},
             ),
@@ -544,7 +545,9 @@ def test_sales_never_invents_change_and_only_uses_active_validated_forecast(busi
     result = sales.build(TenantContext(company.id), period_key="current_month")
     assert result["forecast"]["forecasted_total"] == 170
     assert len(result["forecast"]["points"]) == 2
-    assert result["summary"]["revenue_change_percent"] is not None
+    assert result["summary"]["revenue"] == 0
+    assert result["summary"]["previous_revenue"] == 0
+    assert result["summary"]["revenue_change_percent"] is None
 
 
 def test_sales_and_customers_capability_and_processing_states(business_environment):

@@ -31,6 +31,10 @@ class AIToolExecutionIdempotencyStore:
     ) -> ToolResult:
         serialized_arguments = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
         arguments_hash = hashlib.sha256(serialized_arguments.encode("utf-8")).hexdigest()
+        agent_id = context.authorized_tool_agents.get(
+            tool.name,
+            context.selected_agent_id,
+        ) or ""
         key = f"ai-tool:{context.tenant_id}:{context.request_id}:{tool.name}"
         if self._db.get_bind().dialect.name == "postgresql":
             self._db.execute(
@@ -51,7 +55,7 @@ class AIToolExecutionIdempotencyStore:
             if (
                 record.user_id != context.user_id
                 or record.conversation_id != context.conversation_id
-                or record.agent_id != context.selected_agent_id
+                or record.agent_id != agent_id
                 or record.arguments_hash != arguments_hash
             ):
                 raise ToolAuthorizationError("The idempotency key was already used for a different action.")
@@ -64,7 +68,7 @@ class AIToolExecutionIdempotencyStore:
             user_id=context.user_id,
             conversation_id=context.conversation_id,
             request_id=context.request_id,
-            agent_id=context.selected_agent_id or "",
+            agent_id=agent_id,
             tool_name=tool.name,
             arguments_hash=arguments_hash,
             status="in_progress",

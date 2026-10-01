@@ -373,6 +373,12 @@ class CreateAppointmentTool(CRMAITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CreateAppointmentArgs) -> ToolResult:
+        if not arguments.confirmed:
+            return ToolResult(
+                success=False,
+                data={"confirmation_required": True},
+                error="Confirmez explicitement la création du rendez-vous avant de continuer.",
+            )
         try:
             start_dt = datetime.fromisoformat(arguments.start_time.replace("Z", "+00:00"))
         except ValueError:

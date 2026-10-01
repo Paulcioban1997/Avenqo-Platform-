@@ -243,6 +243,7 @@ class _DummyArgs(ToolArguments):
 class _DummyTool(AITool):
     name = "dummy_tool"
     description = "A dummy tool."
+    agent_ids = frozenset({"test-agent"})
     input_schema = _DummyArgs
     required_permissions = ("ai:use", "data:read")
     read_only = True
@@ -308,6 +309,7 @@ async def test_executor_raises_validation_error_for_unknown_argument() -> None:
     class StrictTool(AITool):
         name = "strict_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         input_schema = StrictArgs
         required_permissions = ("ai:use",)
         read_only = True
@@ -330,6 +332,7 @@ async def test_executor_wraps_unexpected_exceptions_as_execution_error() -> None
     class BrokenTool(AITool):
         name = "broken_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         required_permissions = ("ai:use",)
         read_only = True
         mutates = False
@@ -351,6 +354,7 @@ async def test_executor_raises_timeout_error() -> None:
     class SlowTool(AITool):
         name = "slow_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         required_permissions = ("ai:use",)
         read_only = True
         mutates = False
@@ -372,6 +376,7 @@ async def test_executor_propagates_tool_unavailable_error() -> None:
     class UnavailableTool(AITool):
         name = "unavailable_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         required_permissions = ("ai:use",)
         read_only = True
         mutates = False
@@ -391,6 +396,7 @@ async def test_executor_truncates_oversized_results() -> None:
     class HugeTool(AITool):
         name = "huge_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         required_permissions = ("ai:use",)
         read_only = True
         mutates = False
@@ -760,6 +766,7 @@ async def test_orchestrator_records_failed_tool_call_without_crashing() -> None:
     class FailingTool(AITool):
         name = "failing_tool"
         description = "d"
+        agent_ids = frozenset({"test-agent"})
         required_permissions = ("ai:use",)
         read_only = True
         mutates = False

@@ -45,11 +45,17 @@ class ToolAuthorizationPolicy:
         if not set(tool.required_permissions).issubset(permissions):
             raise ToolAuthorizationError("The membership role cannot run this tool.")
 
-        if not context.selected_agent_id:
+        selected_agent_id = context.authorized_tool_agents.get(
+            tool.name,
+            context.selected_agent_id,
+        )
+        if not selected_agent_id:
             raise ToolAuthorizationError("A selected agent is required to run this tool.")
-        agent = self._agents.get(context.selected_agent_id)
+        agent = self._agents.get(selected_agent_id)
         if agent is None or not agent.status.is_executable:
             raise ToolAuthorizationError("The selected agent is not executable.")
+        if tool.agent_ids and agent.agent_id not in tool.agent_ids:
+            raise ToolAuthorizationError("The tool is not owned by the selected agent.")
         if tool.name not in agent.allowed_tool_names:
             raise ToolAuthorizationError("The selected agent is not allowed to run this tool.")
         if not set(agent.required_permissions).issubset(permissions):

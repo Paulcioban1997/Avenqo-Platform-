@@ -69,6 +69,35 @@ class CentralAIIntentRouter:
             None,
         )
 
+    def select_matching_agents(
+        self,
+        query: str,
+        *,
+        page_context: str | None = None,
+    ) -> tuple[AssistantDefinition, ...]:
+        """Resolve every implemented agent explicitly implicated by a request."""
+
+        words = self._words(query)
+        matching = [
+            definition for definition in self._registry.list_all()
+            if definition.status.is_executable
+            and not definition.aggregate
+            and words.intersection(definition.intent_keywords)
+        ]
+        if page_context:
+            contextual = next(
+                (
+                    definition for definition in self._registry.list_all()
+                    if definition.status.is_executable
+                    and not definition.aggregate
+                    and any(page_context.startswith(prefix) for prefix in definition.page_context_prefixes)
+                ),
+                None,
+            )
+            if contextual is not None and contextual not in matching:
+                matching.append(contextual)
+        return tuple(matching)
+
     async def select_free_form(
         self,
         query: str,

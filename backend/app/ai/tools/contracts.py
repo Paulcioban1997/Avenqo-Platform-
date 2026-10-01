@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
@@ -26,6 +27,7 @@ class ToolExecutionContext:
     selected_agent_id: str | None = None
     capabilities: frozenset[str] = frozenset()
     user_message: str = ""
+    authorized_tool_agents: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def tenant_id(self) -> UUID:

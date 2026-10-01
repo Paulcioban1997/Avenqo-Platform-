@@ -40,6 +40,40 @@ class CentralAIService:
         self._usage = usage_service
         self._context_builder = context_builder
 
+    def _tool_scope_for_request(
+        self,
+        agent,
+        query: str,
+        page_context: str | None,
+        active_modules: frozenset[str],
+    ) -> tuple[frozenset[str], dict[str, str]] | None:
+        if agent is None:
+            return frozenset(), {}
+        if not agent.aggregate:
+            if not agent_entitlements(agent).issubset(active_modules):
+                return None
+            tool_agents = {name: agent.agent_id for name in agent.allowed_tool_names}
+            return agent.allowed_tool_names, tool_agents
+
+        requested_agents = self._router.select_matching_agents(
+            query,
+            page_context=page_context,
+        )
+        tool_agents: dict[str, str] = {}
+        for requested_agent in requested_agents:
+            if not agent_entitlements(requested_agent).issubset(active_modules):
+                return None
+            for tool_name in requested_agent.allowed_tool_names:
+                tool_agents[tool_name] = requested_agent.agent_id
+
+        if agent_entitlements(agent).issubset(active_modules):
+            for tool_name in agent.allowed_tool_names:
+                tool_agents[tool_name] = agent.agent_id
+        elif not requested_agents:
+            return None
+
+        return frozenset(tool_agents), tool_agents
+
     async def execute(
         self,
         tenant: TenantContext,
@@ -106,10 +140,17 @@ class CentralAIService:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
             return result
-        if agent is not None and not agent_entitlements(agent).issubset(context.active_modules):
+        tool_scope = self._tool_scope_for_request(
+            agent,
+            query,
+            page_context,
+            frozenset(context.active_modules),
+        )
+        if tool_scope is None:
             result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_inactive")
             return result
+        allowed_tool_names, authorized_tool_agents = tool_scope
 
         try:
             message, _ = await self._chat.send(
@@ -127,8 +168,9 @@ class CentralAIService:
                 company_timezone=company_timezone,
                 trusted_context=context.as_prompt_context(),
                 client_context=page_context or "",
-                allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
+                allowed_tool_names=allowed_tool_names,
                 selected_agent_id=agent.agent_id if agent is not None else None,
+                authorized_tool_agents=authorized_tool_agents,
                 retrieve_tenant_data=agent is not None,
             )
         except AIQuotaExceededError:

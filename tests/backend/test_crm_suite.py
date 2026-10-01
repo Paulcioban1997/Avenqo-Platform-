@@ -524,6 +524,7 @@ def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
     }))
     assert error is None and appointment is not None
     original_start = appointment.start_time
+    appointment_count = db_session.query(CRMAppointment).filter_by(company_id=company.id).count()
     context = ToolExecutionContext(
         tenant=TenantContext(company_id=company.id),
         user_id=uuid4(),
@@ -531,6 +532,14 @@ def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
         request_id="confirmation-required",
     )
 
+    create = asyncio.run(CreateAppointmentTool(db_session).run(
+        context,
+        CreateAppointmentArgs(
+            client_name_or_id=str(client.id),
+            start_time=(datetime.now(timezone.utc) + timedelta(days=4)).isoformat(),
+            title="Another consultation",
+        ),
+    ))
     update = asyncio.run(UpdateAppointmentTool(db_session).run(
         context,
         UpdateAppointmentArgs(
@@ -544,6 +553,8 @@ def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
     ))
     db_session.refresh(appointment)
 
+    assert create.success is False and create.data["confirmation_required"] is True
+    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == appointment_count
     assert update.success is False and update.data["confirmation_required"] is True
     assert cancel.success is False and cancel.data["confirmation_required"] is True
     refreshed_start = appointment.start_time.replace(tzinfo=timezone.utc) if appointment.start_time.tzinfo is None else appointment.start_time
@@ -867,6 +878,7 @@ def test_ai_copilot_crm_tools_execution(db_session):
         user_id=uuid4(),
         permissions=frozenset(["ai:use"]),
         request_id="copilot-test-1",
+        user_message="/confirm",
     )
 
     # 1. Vérification métriques KPI
@@ -886,6 +898,7 @@ def test_ai_copilot_crm_tools_execution(db_session):
                 title="Consultation IA",
                 start_time=future_time.isoformat(),
                 duration_minutes=45,
+                    confirmed=True,
             ),
         )
     )
