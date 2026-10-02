@@ -77,6 +77,7 @@ class _Connections:
             last_successful_sync=datetime.now(timezone.utc),
             sync_started_at=None,
             dataset_ids={},
+            sync_cursor={},
         )
 
     def list_connections(self, tenant):
@@ -144,6 +145,7 @@ class _WooConnections:
             last_successful_sync=None,
             sync_started_at=None,
             dataset_ids={},
+            sync_cursor={},
         )
 
     async def complete_woocommerce_authorization(self, *, raw_state, callback_payload):
@@ -522,8 +524,6 @@ def test_available_woocommerce_authorization_allows_tenant_manager(
 def test_available_woocommerce_catalog_needs_no_internal_test_permission(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("ENVIRONMENT", "sandbox")
-    get_settings.cache_clear()
     company_id = uuid4()
     identity = SimpleNamespace(
         user=SimpleNamespace(
@@ -543,6 +543,15 @@ def test_available_woocommerce_catalog_needs_no_internal_test_permission(
 
     from backend.app.routers import commerce as commerce_router
 
+    monkeypatch.setattr(
+        commerce_router,
+        "get_settings",
+        lambda: SimpleNamespace(
+            environment="sandbox",
+            shopify_connector_configured=True,
+            woocommerce_connector_configured=True,
+        ),
+    )
     app.dependency_overrides[commerce_router.require_connector_read] = lambda: identity
     with TestClient(app) as client:
         response = client.get("/api/v1/connectors")
@@ -556,7 +565,6 @@ def test_available_woocommerce_catalog_needs_no_internal_test_permission(
     assert not any(permissions.values())
     woo = next(item for item in response.json() if item["provider"] == "woocommerce")
     assert woo["customer_status"] == "AVAILABLE"
-    get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(

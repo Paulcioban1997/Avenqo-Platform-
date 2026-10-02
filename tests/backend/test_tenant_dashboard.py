@@ -24,6 +24,7 @@ from backend.app.models import (
     TrainingJob,
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services import tenant_dashboard_service
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.app.services.tenant_products_service import TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
@@ -260,11 +261,20 @@ def test_dashboard_periods_filter_rows_and_compute_aov_from_distinct_orders(tmp_
     assert metrics(all_time)["orders"]["value"] == 3
 
 
-def test_dashboard_seven_day_month_quarter_and_all_time_totals_are_distinct(tmp_path) -> None:
+def test_dashboard_seven_day_month_quarter_and_all_time_totals_are_distinct(
+    tmp_path, monkeypatch
+) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-period-buckets.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    now = datetime.now(timezone.utc)
+    now = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz) if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(tenant_dashboard_service, "datetime", FrozenDateTime)
     quarter_month = ((now.month - 1) // 3) * 3 + 1
     quarter_start = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
     quarter_only_date = quarter_start + timedelta(days=1)

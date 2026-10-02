@@ -20,7 +20,7 @@ from backend.app.core.locale_catalog import (
     distinct_currencies,
     defaults_for_country,
 )
-from backend.app.models import Base, Company, Dataset, DatasetStatus, User, UserRole
+from backend.app.models import Base, Company, Dataset, DatasetStatus, Mapping, User, UserRole
 from backend.app.ai.chat.chat_service import _localized_system_instruction, SYSTEM_INSTRUCTION
 from backend.app.ai.tools.business.sales_tools import GetBusinessOverviewTool, BusinessOverviewArgs
 from backend.app.ai.tools.contracts import ToolExecutionContext
@@ -161,6 +161,8 @@ async def test_business_overview_tool_returns_numeric_value_with_currency_code()
     session.commit()
 
     prepared = _prepared_dataset(company_id=company.id, dataset_id=dataset.id)
+    session.add(Mapping(dataset_id=dataset.id, mapping_json=prepared.canonical_columns, approved=True))
+    session.commit()
     ingestion = FakeIngestionService(prepared)
     tool = GetBusinessOverviewTool(session=session, ingestion=ingestion)
     context = ToolExecutionContext(

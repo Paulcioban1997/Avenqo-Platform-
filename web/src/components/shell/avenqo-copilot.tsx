@@ -58,6 +58,9 @@ export function AvenqoCopilot({
   const [isListening, setIsListening] = useState(false);
   const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const voiceSocketRef = useRef<WebSocket | null>(null);
+  const captureRef = useRef<{ stream: MediaStream; context: AudioContext; source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode } | null>(null);
+  const playbackRef = useRef<{ context: AudioContext; nextTime: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
 
@@ -190,19 +193,29 @@ export function AvenqoCopilot({
     }
   };
 
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
+  const stopVoice = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    const capture = captureRef.current;
+    captureRef.current = null;
+    if (capture) {
+      capture.processor.disconnect();
+      capture.source.disconnect();
+      capture.stream.getTracks().forEach((track) => track.stop());
+      void capture.context.close();
     }
-    const Recognition = typeof window !== "undefined"
-      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      : null;
+    voiceSocketRef.current?.close();
+    voiceSocketRef.current = null;
+    void playbackRef.current?.context.close();
+    playbackRef.current = null;
+    setIsListening(false);
+  };
+
+  const startFallbackRecognition = (sessionId: string | null) => {
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!Recognition) {
       setMessages((prev) => [...prev, {
-        id: `voice-${Date.now()}`,
-        sender: "copilot",
+        id: `voice-${Date.now()}`, sender: "copilot",
         content: "Voice input is not available in this browser. You can continue with text.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       }]);
@@ -215,18 +228,28 @@ export function AvenqoCopilot({
     let transcript = "";
     recognition.onresult = (event: any) => {
       transcript = Array.from(event.results as ArrayLike<any>)
-        .map((result: any) => result[0]?.transcript || "")
-        .join(" ");
+        .map((result: any) => result[0]?.transcript || "").join(" ");
       setInput(transcript);
     };
     recognition.onerror = () => setIsListening(false);
     recognition.onend = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      if (transcript.trim()) void handleSend(transcript, recognitionRef.current?.voiceSessionId ?? voiceSessionId);
+      if (transcript.trim()) void handleSend(transcript, sessionId);
     };
     recognitionRef.current = recognition;
     setIsListening(true);
+    recognition.start();
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopVoice();
+      return;
+    }
+    const playbackContext = new AudioContext({ sampleRate: 24000 });
+    void playbackContext.resume();
+    playbackRef.current = { context: playbackContext, nextTime: 0 };
     const startVoice = async () => {
       let sessionId = voiceSessionId;
       let activeConversationId = conversationId;
@@ -248,16 +271,117 @@ export function AvenqoCopilot({
           body: JSON.stringify({ conversation_id: activeConversationId, locale, request_id: crypto.randomUUID() }),
         });
         if (response.ok) {
-          sessionId = (await response.json()).id;
+          const session = await response.json();
+          sessionId = session.id;
           setVoiceSessionId(sessionId);
         }
       }
-      recognitionRef.current.voiceSessionId = sessionId;
-      recognition.start();
+      if (!sessionId || !navigator.mediaDevices?.getUserMedia) {
+        void playbackRef.current?.context.close();
+        playbackRef.current = null;
+        startFallbackRecognition(sessionId);
+        return;
+      }
+      const ticketResponse = await fetch(`/api/v1/ai/voice/sessions/${sessionId}/stream-ticket`, {
+        method: "POST", headers: getAuthHeaders(),
+      });
+      if (!ticketResponse.ok) throw new Error("Voice ticket unavailable");
+      const { ticket, realtime: available } = await ticketResponse.json();
+      if (!available) {
+        void playbackRef.current?.context.close();
+        playbackRef.current = null;
+        startFallbackRecognition(sessionId);
+        return;
+      }
+      const host = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+        ? `${window.location.hostname}:8000` : "api.avenqo.ca";
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${host}/api/v1/ai/voice/sessions/${sessionId}/stream`, ["avenqo.voice", `ticket.${ticket}`]);
+      voiceSocketRef.current = socket;
+      let sequence = -1;
+      socket.onmessage = (message) => {
+        const event = JSON.parse(message.data);
+        if (event.type === "lifecycle" && Number.isInteger(event.next_audio_sequence)) {
+          sequence = Math.max(sequence, event.next_audio_sequence);
+        }
+        if (event.type === "error" && event.status === "text_fallback") {
+          stopVoice();
+          startFallbackRecognition(sessionId);
+          return;
+        }
+        if (event.type === "lifecycle" && event.status === "interrupted") {
+          void playbackRef.current?.context.close();
+          playbackRef.current = null;
+        }
+        if (event.type === "transcript" && event.status === "final") {
+          setMessages((prev) => [...prev, {
+            id: crypto.randomUUID(), sender: "user", content: event.transcript,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          }]);
+        }
+        if (event.type === "answer") {
+          window.dispatchEvent(new Event("avenqo:ai-credits-updated"));
+          setMessages((prev) => [...prev, {
+            id: crypto.randomUUID(), sender: "copilot", content: event.answer || t.copilot.errorPrompt,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          }]);
+        }
+        if (event.type === "audio" && event.format === "pcm16") {
+          const playback = playbackRef.current ?? { context: new AudioContext({ sampleRate: 24000 }), nextTime: 0 };
+          playbackRef.current = playback;
+          const raw = atob(event.audio);
+          const buffer = playback.context.createBuffer(1, raw.length / 2, 24000);
+          const samples = buffer.getChannelData(0);
+          for (let index = 0; index < samples.length; index++) {
+            const value = raw.charCodeAt(index * 2) | (raw.charCodeAt(index * 2 + 1) << 8);
+            samples[index] = (value > 32767 ? value - 65536 : value) / 32768;
+          }
+          const source = playback.context.createBufferSource();
+          source.buffer = buffer;
+          source.connect(playback.context.destination);
+          source.start(Math.max(playback.context.currentTime, playback.nextTime));
+          playback.nextTime = Math.max(playback.context.currentTime, playback.nextTime) + buffer.duration;
+        }
+      };
+      socket.onclose = () => {
+        if (voiceSocketRef.current === socket && captureRef.current) {
+          stopVoice();
+          startFallbackRecognition(sessionId);
+        }
+      };
+      await new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve();
+        socket.onerror = () => reject(new Error("Voice stream unavailable"));
+      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const context = new AudioContext({ sampleRate: 24000 });
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(2048, 1, 1);
+      processor.onaudioprocess = (event) => {
+        if (socket.readyState !== WebSocket.OPEN || sequence < 0) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const count = Math.floor(input.length * 24000 / context.sampleRate);
+        const raw = new Uint8Array(count * 2);
+        for (let index = 0; index < count; index++) {
+          const sample = Math.max(-1, Math.min(1, input[Math.floor(index * context.sampleRate / 24000)]));
+          const value = Math.round(sample * (sample < 0 ? 32768 : 32767));
+          raw[index * 2] = value & 255;
+          raw[index * 2 + 1] = (value >> 8) & 255;
+        }
+        let binary = "";
+        for (const byte of raw) binary += String.fromCharCode(byte);
+        if (socket.bufferedAmount < 240000) {
+          socket.send(JSON.stringify({ type: "audio", sequence: sequence++, audio: btoa(binary) }));
+        }
+      };
+      source.connect(processor);
+      processor.connect(context.destination);
+      captureRef.current = { stream, context, source, processor };
+      setIsListening(true);
     };
     void startVoice().catch(() => {
-      setIsListening(false);
-      recognitionRef.current = null;
+      stopVoice();
+      startFallbackRecognition(voiceSessionId);
     });
   };
 
@@ -293,7 +417,7 @@ export function AvenqoCopilot({
         </div>
 
         <button
-          onClick={onClose}
+          onClick={() => { stopVoice(); onClose(); }}
           aria-label={t.common.close}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
         >

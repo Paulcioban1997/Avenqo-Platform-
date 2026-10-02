@@ -11,6 +11,7 @@ from backend.app.ai.central.context import CentralAIContextBuilder
 from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
+from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.service import AIUsageService
 from backend.app.core.locale_catalog import detect_locale_from_text, resolve_locale
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
@@ -40,6 +41,10 @@ class CentralAIService:
         self._chat = chat_service
         self._usage = usage_service
         self._context_builder = context_builder
+
+    @property
+    def usage_service(self) -> AIUsageService:
+        return self._usage
 
     def _tool_scope_for_request(
         self,
@@ -91,6 +96,8 @@ class CentralAIService:
         company_timezone: str,
         page_context: str | None = None,
         locale_explicit: bool = True,
+        allow_existing_reservation: bool = False,
+        attempt_sink: list[LLMProviderAttempt] | None = None,
     ) -> CentralAIResult:
         user_language = resolve_locale(user_language)
         if not locale_explicit:
@@ -119,7 +126,8 @@ class CentralAIService:
         agent = self._router.select(query, page_context=page_context)
         if agent is None:
             try:
-                self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
+                if not allow_existing_reservation:
+                    self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
             except AIQuotaExceededError:
                 result = self._result(
                     tenant.company_id,
@@ -132,12 +140,17 @@ class CentralAIService:
                 return result
 
             async def classify(system_instruction: str, prompt: str) -> str:
+                classification_request_id = (
+                    request_id if allow_existing_reservation else f"{request_id}:classification"
+                )
                 return await self._chat.classify_intent(
                     system_instruction,
                     prompt,
                     tenant_id=tenant.company_id,
                     plan_code=context.plan_code,
-                    request_id=f"{request_id}:classification",
+                    request_id=classification_request_id,
+                    allow_existing_reservation=allow_existing_reservation,
+                    attempt_sink=attempt_sink,
                 )
 
             agent = await self._router.select_free_form(query, classify)
@@ -179,6 +192,8 @@ class CentralAIService:
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
                 retrieve_tenant_data=agent is not None,
+                allow_existing_reservation=allow_existing_reservation,
+                attempt_sink=attempt_sink,
             )
         except AIQuotaExceededError:
             result = self._result(tenant.company_id, agent.slug if agent else None, "credits_exhausted", context.plan_code, "available")

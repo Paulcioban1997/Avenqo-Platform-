@@ -18,6 +18,7 @@ vi.mock("next/link", () => ({
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
@@ -55,6 +56,69 @@ describe("credit display", () => {
 });
 
 describe("Copilot production response", () => {
+  it("streams microphone PCM and provider audio through the Voice session without an HTTP turn", async () => {
+    const playbackStart = vi.fn();
+    const playbackClose = vi.fn(async () => undefined);
+    const processor = { onaudioprocess: null as ((event: { inputBuffer: { getChannelData: () => Float32Array } }) => void) | null,
+      connect: vi.fn(), disconnect: vi.fn() };
+    const context = {
+      sampleRate: 24000, currentTime: 0, destination: {},
+      resume: vi.fn(async () => undefined), close: playbackClose,
+      createMediaStreamSource: () => ({ connect: vi.fn(), disconnect: vi.fn() }),
+      createScriptProcessor: () => processor,
+      createBuffer: (_channels: number, count: number) => ({ getChannelData: () => new Float32Array(count), duration: count / 24000 }),
+      createBufferSource: () => ({ connect: vi.fn(), start: playbackStart, buffer: null }),
+    };
+    vi.stubGlobal("AudioContext", class { constructor() { return context; } });
+    const stopTrack = vi.fn();
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      mediaDevices: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: stopTrack }] })) },
+    });
+    const sockets: Array<{ onopen?: () => void; onmessage?: (event: { data: string }) => void;
+      onclose?: () => void; sent: string[]; readyState: number; protocols: string[]; close: () => void }> = [];
+    vi.stubGlobal("WebSocket", class {
+      static OPEN = 1;
+      readyState = 1;
+      bufferedAmount = 0;
+      sent: string[] = [];
+      onopen?: () => void;
+      onmessage?: (event: { data: string }) => void;
+      onclose?: () => void;
+      close() { this.onclose?.(); }
+      constructor(public url: string, public protocols: string[]) {
+        sockets.push(this);
+        queueMicrotask(() => this.onopen?.());
+      }
+      send(value: string) { this.sent.push(value); }
+    });
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/retail/sources")) return new Response("[]", { status: 200 });
+      if (url.endsWith("/ai/chat/conversations")) return Response.json({ id: "same-conversation" });
+      if (url.endsWith("/ai/voice/sessions")) return Response.json({ id: "voice-session", conversation_id: "same-conversation" });
+      if (url.endsWith("/stream-ticket")) return Response.json({ ticket: "short-ticket", realtime: true });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(<LocaleProvider><AvenqoCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("en")} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
+    await waitFor(() => expect(processor.onaudioprocess).toBeTruthy());
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "lifecycle", next_audio_sequence: 0 }) });
+    processor.onaudioprocess!({ inputBuffer: { getChannelData: () => new Float32Array(2048) } });
+    expect(JSON.parse(sockets[0].sent[0])).toMatchObject({ type: "audio", sequence: 0 });
+    expect(sockets[0].protocols).toEqual(["avenqo.voice", "ticket.short-ticket"]);
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "audio", format: "pcm16", audio: "AQI=" }) });
+    expect(playbackStart).toHaveBeenCalled();
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "lifecycle", status: "interrupted" }) });
+    expect(playbackClose).toHaveBeenCalled();
+    expect(requests.every((url) => !url.endsWith("/turn"))).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
+    expect(stopTrack).toHaveBeenCalled();
+  });
+
   it("renders grounded Retail values and never CRM fallback values", async () => {
     const answers = [
       "Chiffre d'affaires : 2 297 200,86 CAD. Commandes : 5 009. Clients : 793. AOV : 458,61 CAD. Source : Superstore-utf8-cleaned.csv",

@@ -12,6 +12,7 @@ from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.failure_classification import FailureCategory, classify_exception
 from backend.app.ai.llm.router import LLMRoutingContext, LLMTaskComplexity, LLMTaskType, routing_context_for_chat
+from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
@@ -103,6 +104,8 @@ class ChatService:
         tenant_id: UUID | None = None,
         plan_code: str | None = None,
         request_id: str = "",
+        allow_existing_reservation: bool = False,
+        attempt_sink: list[LLMProviderAttempt] | None = None,
     ) -> str:
         """Classify untrusted text without tenant retrieval or tools."""
 
@@ -116,7 +119,10 @@ class ChatService:
             avenqo_request_id=avenqo_request_id,
         )
         reservation_active = False
+        reservation_owner = False
         if self._usage_service is not None and tenant_id is not None:
+            if not allow_existing_reservation:
+                self._usage_service.ensure_quota_available(tenant_id, plan_code)
             estimated_credits = self._usage_service.estimate_credits(
                 self._provider.estimate_cost_usd(routing_context),
                 input_tokens=routing_context.context_tokens,
@@ -128,9 +134,13 @@ class ChatService:
                 avenqo_request_id,
                 estimated_credits,
             )
-            if not claim.acquired:
+            if claim.acquired:
+                reservation_active = True
+                reservation_owner = True
+            elif allow_existing_reservation and claim.reservation.status == "reserved":
+                reservation_active = True
+            else:
                 raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
-            reservation_active = True
         try:
             with self._provider.routing(routing_context):
                 generation = await self._provider.generate(
@@ -138,9 +148,11 @@ class ChatService:
                     prompt=prompt,
                 )
         except LLMProviderError as exc:
+            failed_attempts = tuple(getattr(exc, "attempts", ()))
+            if attempt_sink is not None:
+                attempt_sink.extend(failed_attempts)
             if self._usage_service is not None and tenant_id is not None and reservation_active:
-                failed_attempts = tuple(getattr(exc, "attempts", ()))
-                if failed_attempts:
+                if reservation_owner and failed_attempts:
                     self._usage_service.settle_reservation(
                         tenant_id,
                         plan_code,
@@ -148,7 +160,7 @@ class ChatService:
                         attempts=failed_attempts,
                         count_request=False,
                     )
-                else:
+                elif reservation_owner:
                     self._usage_service.release_reservation(
                         tenant_id,
                         avenqo_request_id,
@@ -156,14 +168,16 @@ class ChatService:
                     )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
         except BaseException:
-            if self._usage_service is not None and tenant_id is not None and reservation_active:
+            if self._usage_service is not None and tenant_id is not None and reservation_owner:
                 self._usage_service.release_reservation(
                     tenant_id,
                     avenqo_request_id,
                     reason="classification_aborted",
                 )
             raise
-        if self._usage_service is not None and tenant_id is not None:
+        if attempt_sink is not None:
+            attempt_sink.extend(generation.attempts)
+        if self._usage_service is not None and tenant_id is not None and reservation_owner:
             self._usage_service.settle_reservation(
                 tenant_id,
                 plan_code,
@@ -223,9 +237,12 @@ class ChatService:
         locale_explicit: bool = False,
         authorized_tool_agents: dict[str, str] | None = None,
         retrieve_tenant_data: bool = True,
+        allow_existing_reservation: bool = False,
+        attempt_sink: list[LLMProviderAttempt] | None = None,
     ):
         if self._usage_service is not None:
-            self._usage_service.ensure_quota_available(tenant_id, plan_code)
+            if not allow_existing_reservation:
+                self._usage_service.ensure_quota_available(tenant_id, plan_code)
             balance = self._usage_service.get_credit_balance(tenant_id, plan_code)
             remaining = balance["total_remaining"]
             remaining_credits = remaining if isinstance(remaining, int) else None
@@ -280,6 +297,7 @@ class ChatService:
             locale=resolve_locale(user_language),
         )
         reservation_active = False
+        reservation_owner = False
         if self._usage_service is not None:
             estimated_credits = self._usage_service.estimate_credits(
                     self._provider.estimate_cost_usd(routing_context),
@@ -292,9 +310,13 @@ class ChatService:
                 tool_context.request_id,
                 estimated_credits,
             )
-            if not claim.acquired:
+            if claim.acquired:
+                reservation_active = True
+                reservation_owner = True
+            elif allow_existing_reservation and claim.reservation.status == "reserved":
+                reservation_active = True
+            else:
                 raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
-            reservation_active = True
         try:
             self._conversations.add_message(
                 tenant_id,
@@ -326,9 +348,11 @@ class ChatService:
                     attempts = generation.attempts
                     self.last_tool_call_results = ()
         except LLMProviderError as exc:
+            failed_attempts = tuple(getattr(exc, "attempts", ()))
+            if attempt_sink is not None:
+                attempt_sink.extend(failed_attempts)
             if self._usage_service is not None and reservation_active:
-                failed_attempts = tuple(getattr(exc, "attempts", ()))
-                if failed_attempts:
+                if reservation_owner and failed_attempts:
                     self._usage_service.settle_reservation(
                         tenant_id,
                         plan_code,
@@ -336,7 +360,7 @@ class ChatService:
                         attempts=failed_attempts,
                         count_request=False,
                     )
-                else:
+                elif reservation_owner:
                     self._usage_service.release_reservation(
                         tenant_id,
                         tool_context.request_id,
@@ -352,7 +376,7 @@ class ChatService:
             )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
         except BaseException:
-            if self._usage_service is not None and reservation_active:
+            if self._usage_service is not None and reservation_owner:
                 self._usage_service.release_reservation(
                     tenant_id,
                     tool_context.request_id,
@@ -360,7 +384,9 @@ class ChatService:
                 )
             raise
 
-        if self._usage_service is not None:
+        if attempt_sink is not None:
+            attempt_sink.extend(attempts)
+        if self._usage_service is not None and reservation_owner:
             self._usage_service.settle_reservation(
                 tenant_id,
                 plan_code,

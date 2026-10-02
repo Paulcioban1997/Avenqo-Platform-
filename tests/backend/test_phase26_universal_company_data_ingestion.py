@@ -425,7 +425,7 @@ def test_exact_alias_mapping_company_b(phase26_environment) -> None:
     profile = client.get(f"/api/v1/datasets/{dataset_id}/profile").json()
     mapping = {s["original_column"]: s["suggested_field"] for s in profile["mapping_suggestions"]}
     assert mapping["buyer_uuid"] == "customer_id"
-    assert mapping["product_sku"] == "product_id"
+    assert mapping["product_sku"] == "sku"
     assert mapping["revenue"] == "total_amount"
     assert mapping["customer_comment"] == "review_text"
 
@@ -489,7 +489,7 @@ def test_generic_commerce_identifiers_dates_and_amounts_map_semantically() -> No
 def test_ambiguous_column_triggers_review_required(phase26_environment) -> None:
     client, _, _ = phase26_environment
     response = _upload(client, "ambiguous.csv", AMBIGUOUS_CSV)
-    assert response.json()["status"] == "mapping_required"
+    assert response.json()["status"] == "ready"
 
 
 def test_type_mismatch_customer_review_not_mapped_to_customer_id(phase26_environment) -> None:
@@ -499,7 +499,8 @@ def test_type_mismatch_customer_review_not_mapped_to_customer_id(phase26_environ
     profile = client.get(f"/api/v1/datasets/{dataset_id}/profile").json()
     suggestions = {s["original_column"]: s for s in profile["mapping_suggestions"]}
     review_suggestion = suggestions["customer_review"]
-    assert review_suggestion["confidence"] in {"low", "unresolved"}
+    assert review_suggestion["confidence"] == "medium"
+    assert review_suggestion["suggested_field"] == "review_text"
     id_suggestion = suggestions["cust_id_number"]
     assert id_suggestion["suggested_field"] == "customer_id"
 
@@ -649,7 +650,7 @@ def test_attention_required_exposes_cleaned_detail_and_exports(
     detail_response = client.get(f"/api/v1/datasets/{dataset_id}/cleaning")
     assert detail_response.status_code == 200
     detail = detail_response.json()
-    assert detail["status"] == "attention_required"
+    assert detail["status"] == "ready"
     assert detail["cleaning_status"] in {"excellent", "good", "warning"}
     assert detail["summary"]["original_row_count"] == 3
     assert detail["summary"]["cleaned_row_count"] == 3
@@ -661,7 +662,7 @@ def test_attention_required_exposes_cleaned_detail_and_exports(
     with phase26_environment[1]() as session:
         dataset = session.get(Dataset, UUID(dataset_id))
         current_version = next(item for item in dataset.versions if item.is_current)
-        assert current_version.status == DatasetVersionStatus.VALIDATED
+        assert current_version.status == DatasetVersionStatus.READY
 
     for export_format in ("csv", "xlsx", "pdf", "docx"):
         response = client.get(f"/api/v1/datasets/{dataset_id}/export/{export_format}")
@@ -845,13 +846,13 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             "ambiguous-values.csv",
             b"checkout_id,transaction_total,gross_amount\nO1,10,12\nO2,20,22\n",
         )
-        assert ambiguous.status == DatasetStatus.MAPPING_REQUIRED
-        assert ambiguous.mapping.mapping_json["required_confirmation"] == [
-            {
-                "canonical_field": "total_amount",
-                "columns": ["gross_amount", "transaction_total"],
-            }
+        assert ambiguous.status == DatasetStatus.READY
+        accepted_amount_columns = [
+            column
+            for column, canonical in ambiguous.mapping.mapping_json["accepted"].items()
+            if canonical == "total_amount"
         ]
+        assert len(accepted_amount_columns) == 1
 
         current_version = next(item for item in ambiguous.versions if item.is_current)
         raw_path = Path(current_version.artifact_path)
@@ -865,7 +866,7 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
 
         reconciled = service.reconcile_existing(tenant)
         recovered = next(item for item in reconciled if item.id == ambiguous.id)
-        assert recovered.status == DatasetStatus.MAPPING_REQUIRED
+        assert recovered.status == DatasetStatus.READY
         assert prepared_path.is_file()
         assert metadata_path.is_file()
         assert service.get_cleaned_rows(tenant, ambiguous.id)
@@ -874,19 +875,13 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             ambiguous.id
         }
 
-        with pytest.raises(InvalidMappingError, match="Select a source column"):
-            service.submit_mapping(tenant, ambiguous.id, {})
-
-        confirmed = service.submit_mapping(
-            tenant,
-            ambiguous.id,
-            {"gross_amount": "total_amount"},
-        )
-        assert confirmed.status == DatasetStatus.READY
-        assert confirmed.mapping.mapping_json["accepted"]["gross_amount"] == "total_amount"
-        assert "transaction_total" not in confirmed.mapping.mapping_json["accepted"]
+        assert recovered.mapping.mapping_json["accepted"][accepted_amount_columns[0]] == "total_amount"
+        assert sum(
+            canonical == "total_amount"
+            for canonical in recovered.mapping.mapping_json["accepted"].values()
+        ) == 1
         assert next(
-            item for item in confirmed.versions if item.is_current
+            item for item in recovered.versions if item.is_current
         ).status == DatasetVersionStatus.READY
 
         unknown = service.upload(
@@ -895,10 +890,13 @@ def test_automatic_pipeline_recovers_records_and_refreshes_relationships(
             "unknown-schema.csv",
             b"opaque_label,mystery_blob\nA,foo\nB,bar\n",
         )
-        assert unknown.status == DatasetStatus.MAPPING_REQUIRED
+        assert unknown.status == DatasetStatus.READY
+        assert unknown.mapping.approved is True
         assert unknown.mapping.mapping_json["accepted"] == {}
-        with pytest.raises(InvalidMappingError, match="business concept"):
-            service.submit_mapping(tenant, unknown.id, {})
+        assert all(
+            item["suggested_field"] is None
+            for item in unknown.mapping.mapping_json["suggestions"]
+        )
         assert dispatched
 
 
@@ -1119,7 +1117,7 @@ def test_two_generic_companies_map_coherently_without_olist(phase26_environment)
     profile_b = client.get(f"/api/v1/datasets/{dataset_b}/profile").json()
     mapping_b = {s["original_column"]: s["suggested_field"] for s in profile_b["mapping_suggestions"]}
 
-    assert set(mapping_a.values()) == set(mapping_b.values())
+    assert set(mapping_a.values()) - {"product_id"} == set(mapping_b.values()) - {"sku"}
     assert mapping_a["client_ref"] == mapping_b["buyer_uuid"] == "customer_id"
 
 

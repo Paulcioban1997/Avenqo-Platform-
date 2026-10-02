@@ -69,6 +69,39 @@ def test_pricing_catalog_applies_cached_token_prices() -> None:
     assert cost == Decimal("0.0017")
 
 
+def test_pricing_catalog_accounts_for_cached_audio_and_transcription_duration() -> None:
+    entry = ProviderPricingEntry(
+        "openai",
+        "gpt-realtime-test",
+        input_cost_per_million_usd=Decimal("1"),
+        cached_input_cost_per_million_usd=Decimal("0.25"),
+        output_cost_per_million_usd=Decimal("2"),
+        audio_input_cost_per_million_usd=Decimal("10"),
+        cached_audio_input_cost_per_million_usd=Decimal("1"),
+        audio_output_cost_per_million_usd=Decimal("20"),
+        audio_input_cost_per_second_usd=Decimal("0.00005"),
+        version="2026-10-01",
+        source="openai-api-pricing",
+    )
+    usage = LLMUsage(
+        "openai",
+        "gpt-realtime-test",
+        input_tokens=1_000_100,
+        cached_input_tokens=200_020,
+        output_tokens=500_050,
+        audio_input_units=Decimal("1000000"),
+        cached_audio_input_units=Decimal("200000"),
+        audio_output_units=Decimal("500000"),
+        audio_input_seconds=Decimal("30"),
+    )
+
+    assert entry.cost_for(usage) == Decimal("18.201685")
+    snapshot = ProviderPricingCatalog([entry]).snapshot("openai", "gpt-realtime-test")
+    assert snapshot["version"] == "2026-10-01"
+    assert snapshot["cached_audio_input_cost_per_million_usd"] == "1"
+    assert snapshot["audio_input_cost_per_second_usd"] == "0.00005"
+
+
 def test_credit_policy_preserves_default_conversion_and_enforces_guardrail() -> None:
     policy = AvenqoCreditPolicy()
     assert policy.provider_cost_to_credits(Decimal("0.00030")) == 1

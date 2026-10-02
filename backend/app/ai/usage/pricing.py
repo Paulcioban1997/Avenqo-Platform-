@@ -22,6 +22,10 @@ class ProviderPricingEntry:
     reasoning_cost_per_million_usd: Decimal = Decimal("0")
     audio_input_cost_per_unit_usd: Decimal = Decimal("0")
     audio_output_cost_per_unit_usd: Decimal = Decimal("0")
+    audio_input_cost_per_million_usd: Decimal = Decimal("0")
+    cached_audio_input_cost_per_million_usd: Decimal = Decimal("0")
+    audio_output_cost_per_million_usd: Decimal = Decimal("0")
+    audio_input_cost_per_second_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
     version: str = "default"
     effective_from: date = date.min
@@ -40,6 +44,10 @@ class ProviderPricingEntry:
             "reasoning_cost_per_million_usd",
             "audio_input_cost_per_unit_usd",
             "audio_output_cost_per_unit_usd",
+            "audio_input_cost_per_million_usd",
+            "cached_audio_input_cost_per_million_usd",
+            "audio_output_cost_per_million_usd",
+            "audio_input_cost_per_second_usd",
             "tool_call_cost_usd",
         ):
             if getattr(self, field_name) < 0:
@@ -53,21 +61,51 @@ class ProviderPricingEntry:
         )
 
     def cost_for(self, usage: LLMUsage) -> Decimal:
-        cached_input = min(max(usage.cached_input_tokens, 0), max(usage.input_tokens, 0))
-        uncached_input = max(usage.input_tokens - cached_input, 0)
-        cached_output = min(max(usage.cached_output_tokens, 0), max(usage.output_tokens, 0))
-        uncached_output = max(usage.output_tokens - cached_output, 0)
+        audio_input = max(usage.audio_input_units, Decimal("0"))
+        cached_audio_input = min(
+            max(usage.cached_audio_input_units, Decimal("0")), audio_input
+        )
+        audio_output = max(usage.audio_output_units, Decimal("0"))
+        text_input = max(
+            usage.text_input_tokens
+            if usage.text_input_tokens is not None
+            else usage.input_tokens - int(audio_input),
+            0,
+        )
+        cached_text_input = min(
+            max(
+                usage.cached_text_input_tokens
+                if usage.cached_text_input_tokens is not None
+                else usage.cached_input_tokens - int(cached_audio_input),
+                0,
+            ),
+            text_input,
+        )
+        text_output = max(
+            usage.text_output_tokens
+            if usage.text_output_tokens is not None
+            else usage.output_tokens - int(audio_output),
+            0,
+        )
+        cached_output = min(max(usage.cached_output_tokens, 0), text_output)
+        uncached_input = max(text_input - cached_text_input, 0)
+        uncached_output = max(text_output - cached_output, 0)
         return (
             Decimal(uncached_input) * self.input_cost_per_million_usd
-            + Decimal(cached_input) * self.cached_input_cost_per_million_usd
+            + Decimal(cached_text_input) * self.cached_input_cost_per_million_usd
             + Decimal(uncached_output) * self.output_cost_per_million_usd
             + Decimal(cached_output) * self.cached_output_cost_per_million_usd
             + Decimal(max(usage.reasoning_tokens, 0)) * self.reasoning_cost_per_million_usd
         ) / Decimal(1_000_000) + (
-            Decimal(str(usage.audio_input_units)) * self.audio_input_cost_per_unit_usd
-            + Decimal(str(usage.audio_output_units)) * self.audio_output_cost_per_unit_usd
+            audio_input * self.audio_input_cost_per_unit_usd
+            + audio_output * self.audio_output_cost_per_unit_usd
             + Decimal(max(usage.tool_calls, 0)) * self.tool_call_cost_usd
-        )
+            + usage.audio_input_seconds * self.audio_input_cost_per_second_usd
+        ) + (
+            (audio_input - cached_audio_input) * self.audio_input_cost_per_million_usd
+            + cached_audio_input * self.cached_audio_input_cost_per_million_usd
+            + audio_output * self.audio_output_cost_per_million_usd
+        ) / Decimal(1_000_000)
 
 
 class ProviderPricingCatalog:
@@ -113,5 +151,9 @@ class ProviderPricingCatalog:
             "reasoning_cost_per_million_usd": str(entry.reasoning_cost_per_million_usd),
             "audio_input_cost_per_unit_usd": str(entry.audio_input_cost_per_unit_usd),
             "audio_output_cost_per_unit_usd": str(entry.audio_output_cost_per_unit_usd),
+            "audio_input_cost_per_million_usd": str(entry.audio_input_cost_per_million_usd),
+            "cached_audio_input_cost_per_million_usd": str(entry.cached_audio_input_cost_per_million_usd),
+            "audio_output_cost_per_million_usd": str(entry.audio_output_cost_per_million_usd),
+            "audio_input_cost_per_second_usd": str(entry.audio_input_cost_per_second_usd),
             "tool_call_cost_usd": str(entry.tool_call_cost_usd),
         }

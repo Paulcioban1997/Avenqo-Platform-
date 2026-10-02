@@ -194,13 +194,13 @@ def test_onboarding_never_activates_coming_soon_modules(onboarding_environment) 
         json={
             "business_goals": ["increase_sales"],
             "team_size": "solo",
-            "selected_modules": ["retail", "crm", "accounting"],
+            "selected_modules": ["retail", "workflow"],
         },
     )
     assert response.status_code == 200
     body = response.json()
     assert body["activated_modules"] == ["retail"]
-    assert body["unavailable_modules"] == ["crm", "accounting"]
+    assert body["unavailable_modules"] == ["workflow"]
 
 
 def test_module_entitlement_api_is_tenant_scoped(onboarding_environment) -> None:
@@ -233,17 +233,17 @@ def test_module_entitlement_api_is_tenant_scoped(onboarding_environment) -> None
 
     initial = client.get("/api/v1/modules/entitlements", headers=headers_a)
     assert initial.status_code == 200
-    assert initial.json()["module_limit"] == 2
+    assert initial.json()["module_limit"] == 3
     assert initial.json()["active_modules"] == []
 
     activated = client.post("/api/v1/modules/retail/activate", headers=headers_a)
     assert activated.status_code == 200
     assert activated.json()["active_modules"] == ["retail"]
-    assert activated.json()["remaining_module_slots"] == 1
+    assert activated.json()["remaining_module_slots"] == 2
 
-    coming_soon = client.post("/api/v1/modules/crm/activate", headers=headers_a)
+    coming_soon = client.post("/api/v1/modules/workflow/activate", headers=headers_a)
     assert coming_soon.status_code == 409
-    assert "not available" in coming_soon.json()["error"]["message"]
+    assert "pas encore disponible" in coming_soon.json()["error"]["message"]
 
     tenant_b = client.get("/api/v1/modules/entitlements", headers=headers_b)
     assert tenant_b.status_code == 200

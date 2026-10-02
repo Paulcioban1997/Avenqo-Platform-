@@ -220,7 +220,7 @@ class Settings(BaseSettings):
     voice_tts_model: str | None = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
-    voice_realtime_model: str | None = Field(default="gpt-realtime", alias="VOICE_REALTIME_MODEL")
+    voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")

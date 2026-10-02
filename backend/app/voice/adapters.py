@@ -28,6 +28,8 @@ class RealtimeAudioAdapter(Protocol):
 
     async def send_audio(self, audio: bytes) -> None: ...
 
+    async def speak(self, text: str) -> None: ...
+
     async def interrupt(self) -> None: ...
 
     async def close(self) -> None: ...
@@ -98,6 +100,9 @@ class UnconfiguredRealtimeAudioAdapter:
     async def send_audio(self, audio: bytes) -> None:
         raise ExternalVoiceConfigurationRequired("VOICE_REALTIME_PROVIDER is required")
 
+    async def speak(self, text: str) -> None:
+        raise ExternalVoiceConfigurationRequired("VOICE_REALTIME_PROVIDER is required")
+
     async def interrupt(self) -> None:
         return None
 
@@ -129,7 +134,17 @@ class OpenAIRealtimeAudioAdapter:
             "session": {
                 "type": "realtime",
                 "output_modalities": ["audio"],
-                "audio": {"input": {"turn_detection": {"type": "server_vad"}}, "output": {}},
+                "tools": [],
+                "audio": {
+                    "input": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "transcription": {"model": self._config.stt_model, "language": locale.split("-")[0]},
+                        "turn_detection": {
+                            "type": "server_vad", "create_response": False, "interrupt_response": False,
+                        },
+                    },
+                    "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": self._config.tts_voice},
+                },
             },
         })
 
@@ -139,6 +154,19 @@ class OpenAIRealtimeAudioAdapter:
         self._connection.send({
             "type": "input_audio_buffer.append",
             "audio": base64.b64encode(audio).decode("ascii"),
+        })
+
+    async def speak(self, text: str) -> None:
+        if self._connection is None:
+            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        self._connection.send({
+            "type": "response.create",
+            "response": {
+                "conversation": "none",
+                "output_modalities": ["audio"],
+                "instructions": "Speak the supplied text verbatim. Do not answer or add information.",
+                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
+            },
         })
 
     async def interrupt(self) -> None:

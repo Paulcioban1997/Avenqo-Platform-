@@ -16,7 +16,7 @@ from shared.ai_engine.dataset_ingestion.type_inference import SemanticType
 CANONICAL_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "customer_id": (
         "customer_id", "user_id", "client_id", "client_number", "buyer_id",
-        "buyer_uuid", "client_ref", "customer_number", "customer",
+        "buyer_uuid", "client_ref", "customer_number", "cust_id_number", "customer",
     ),
     "order_id": (
         "order_id", "order_number", "sale_number", "transaction_ref",

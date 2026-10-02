@@ -96,7 +96,7 @@ def test_new_demo_company_can_import_data_with_zero_company_modules(
     session = verify_and_login(client, notifier, email)
     with session_factory() as db_session:
         activate_subscription_by_id(db_session, session["company"]["id"])
-    assert session["company"]["subscription_plan"] == "demo"
+    assert session["company"]["subscription_plan"] == "base"
     token = session["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 

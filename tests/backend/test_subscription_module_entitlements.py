@@ -80,20 +80,21 @@ def test_demo_limit_swap_core_and_credit_independence(db: Session) -> None:
     service = _service(db)
 
     initial = service.summary(tenant)
-    assert initial.module_limit == 2
+    assert initial.module_limit == 3
     assert initial.active_modules == ()
-    assert initial.remaining_module_slots == 2
+    assert initial.remaining_module_slots == 3
     assert "billing" not in {module.key for module in initial.modules}
     assert next(module for module in initial.modules if module.key == "retail").state == ModuleEntitlementState.AVAILABLE
 
     service.activate_module(tenant, "crm")
     service.activate_module(tenant, "marketing")
-    with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
+    service.activate_module(tenant, "appointments")
+    with pytest.raises(ModuleLimitReached, match="supports 3 active modules"):
         service.activate_module(tenant, "accounting")
 
     service.deactivate_module(tenant, "crm")
     swapped = service.activate_module(tenant, "accounting")
-    assert set(swapped.active_modules) == {"marketing", "accounting"}
+    assert set(swapped.active_modules) == {"marketing", "appointments", "accounting"}
     assert swapped.remaining_module_slots == 0
     assert credits.monthly_used == 4
     assert credits.purchased_balance == 9
@@ -104,16 +105,16 @@ def test_professional_limit_and_swap(db: Session) -> None:
     tenant = TenantContext(company.id)
     service = _service(db)
 
-    for key in AVAILABLE_KEYS[:8]:
+    for key in AVAILABLE_KEYS[:6]:
         service.activate_module(tenant, key)
-    assert service.summary(tenant).module_limit == 8
-    with pytest.raises(ModuleLimitReached, match="supports 8 active modules"):
-        service.activate_module(tenant, AVAILABLE_KEYS[8])
+    assert service.summary(tenant).module_limit == 6
+    with pytest.raises(ModuleLimitReached, match="supports 6 active modules"):
+        service.activate_module(tenant, AVAILABLE_KEYS[6])
 
     service.deactivate_module(tenant, AVAILABLE_KEYS[0])
-    summary = service.activate_module(tenant, AVAILABLE_KEYS[8])
-    assert len(summary.active_modules) == 8
-    assert AVAILABLE_KEYS[8] in summary.active_modules
+    summary = service.activate_module(tenant, AVAILABLE_KEYS[6])
+    assert len(summary.active_modules) == 6
+    assert AVAILABLE_KEYS[6] in summary.active_modules
 
 
 def test_enterprise_all_available_and_coming_soon_never_consumes_slot(db: Session) -> None:

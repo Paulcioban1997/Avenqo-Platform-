@@ -102,5 +102,6 @@ class VoiceCentralSession(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     stt_input_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
     tts_output_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
+    last_audio_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=-1, server_default="-1")
     interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

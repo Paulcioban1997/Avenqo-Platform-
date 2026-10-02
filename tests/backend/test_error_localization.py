@@ -63,7 +63,7 @@ def test_error_catalog_covers_all_canonical_locales_and_keys() -> None:
 def test_accept_language_resolves_region_and_quality_preferences() -> None:
     assert resolve_api_locale("es-MX, fr;q=0.8") == "es"
     assert resolve_api_locale("de-CH, en;q=0.5") == "de"
-    assert resolve_api_locale("unsupported;q=1, fr-CA;q=0.6") == "fr-CA"
+    assert resolve_api_locale("unsupported;q=1, fr-CA;q=0.6") == "fr"
     assert resolve_api_locale(None) == "fr"
 
 

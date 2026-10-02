@@ -515,7 +515,7 @@ async def test_materialization_permission_failure_is_truthful_and_retryable(tmp_
         with pytest.raises(Exception, match="Commerce synchronization failed"):
             await service.synchronize(tenant, connection.id)
 
-        assert connection.status == CommerceConnectionStatus.ERROR.value
+        assert connection.status == CommerceConnectionStatus.FAILED.value
         assert connection.error_category == "storage_unavailable"
         assert connection.last_successful_sync is None
         previous_dataset_id = connection.dataset_ids["retail"]
@@ -643,7 +643,7 @@ async def test_sync_resumes_cursor_and_skips_unchanged_replay(tmp_path) -> None:
 
         with pytest.raises(Exception, match="Commerce synchronization failed"):
             await service.synchronize(tenant, connection.id)
-        assert connection.status == CommerceConnectionStatus.ERROR.value
+        assert connection.status == CommerceConnectionStatus.FAILED.value
         assert connection.sync_started_at is None
         assert connection.sync_cursor["orders"]["next_cursor"] == "page-2"
 

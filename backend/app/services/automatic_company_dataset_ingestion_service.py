@@ -85,7 +85,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         dataset = super().upload(tenant, module_code, filename, content)
 
         try:
-            dataset = self._hold_mapping_conflicts(dataset)
+            dataset = self._hold_mapping_conflicts(tenant, dataset)
             dataset = self._resolve_mapping_without_blocking(tenant, dataset)
             if dataset.status == DatasetStatus.READY:
                 dataset = self._finalize_automatic_pipeline(tenant, dataset)
@@ -105,40 +105,80 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
         super().delete_if_exists(tenant, dataset_id)
         self._dispatcher.invalidate_dataset_models(tenant, dataset_id)
 
-    def _hold_mapping_conflicts(self, dataset: Dataset) -> Dataset:
+    def _hold_mapping_conflicts(
+        self, tenant: TenantContext, dataset: Dataset
+    ) -> Dataset:
         if dataset.mapping is None:
             return dataset
         payload = dict(dataset.mapping.mapping_json or {})
         accepted = dict(payload.get("accepted") or {})
-        conflicts = self._mapping_conflicts(accepted)
-        if not conflicts:
-            return dataset
-
-        # Résolution automatique sans intervention client :
-        # Pour chaque champ canonique disputé par plusieurs colonnes,
-        # conserver celle qui a le score le plus élevé / l'alias le plus exact
         suggestions = {
             str(s.get("original_column")): s
             for s in payload.get("suggestions") or []
         }
+        candidates = {
+            column: str(suggestion["suggested_field"])
+            for column, suggestion in suggestions.items()
+            if suggestion.get("suggested_field")
+            and suggestion.get("confidence") in {
+                MappingConfidence.EXACT.value,
+                MappingConfidence.HIGH.value,
+                MappingConfidence.MEDIUM.value,
+            }
+        }
+        conflicts = self._mapping_conflicts({**candidates, **accepted})
+        if not conflicts:
+            return dataset
+
+        relationship_resolutions = DatasetRelationshipService(
+            self._session
+        ).resolve_mapping_conflicts(tenant, dataset, conflicts, self)
+        resolved_by_field = {
+            item.canonical_field: item for item in relationship_resolutions
+        }
+        provenance = dict(payload.get("provenance") or {})
         for conflict in conflicts:
             canonical = str(conflict.get("canonical_field") or "")
             cols = [str(c) for c in conflict.get("columns") or ()]
-            cols.sort(
-                key=lambda c: (
-                    float(suggestions.get(c, {}).get("score") or 0.0),
-                    1 if c.lower().replace("_", "") == canonical.lower().replace("_", "") else 0,
-                ),
-                reverse=True,
-            )
-            # La meilleure colonne reste dans accepted, les autres sont retirées d'accepted
-            for other in cols[1:]:
-                accepted.pop(other, None)
+            relationship = resolved_by_field.get(canonical)
+            if relationship is not None:
+                winner = relationship.source_column
+            else:
+                cols.sort(
+                    key=lambda c: (
+                        float(suggestions.get(c, {}).get("score") or 0.0),
+                        1 if c.lower().replace("_", "") == canonical.lower().replace("_", "") else 0,
+                    ),
+                    reverse=True,
+                )
+                winner = cols[0]
+            for other in cols:
+                if other != winner:
+                    accepted.pop(other, None)
+                    provenance.pop(other, None)
+            accepted[winner] = canonical
+            provenance[winner] = MappingProvenance.AUTO.value
 
+        automatic = dict(payload.get("automatic_resolution") or {})
         dataset.mapping.mapping_json = {
             **payload,
             "accepted": accepted,
+            "provenance": provenance,
             "required_confirmation": [],
+            "automatic_resolution": {
+                **automatic,
+                "relationship_evidence": [
+                    {
+                        "canonical_field": item.canonical_field,
+                        "source_column": item.source_column,
+                        "peer_dataset_id": str(item.peer_dataset_id),
+                        "peer_column": item.peer_column,
+                        "overlap_ratio": item.overlap_ratio,
+                        "confidence": item.confidence,
+                    }
+                    for item in relationship_resolutions
+                ],
+            },
         }
         dataset.mapping.approved = True
         dataset.status = DatasetStatus.READY
@@ -224,16 +264,24 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
                 )
         return tuple(reconciled)
 
-    @staticmethod
-    def _has_canonical_training_source(dataset: Dataset) -> bool:
+    def _has_canonical_training_source(self, dataset: Dataset) -> bool:
         current_version = next((item for item in dataset.versions if item.is_current), None)
         if current_version is None or not current_version.artifact_path:
             return False
-        expected = (
-            Path(current_version.artifact_path).parent.parent / "prepared" / "training.csv"
+        prepared = self._storage.prepared_path(
+            dataset.company_id, dataset.id, current_version.version_number
         )
+        metadata = self._storage.metadata_path(
+            dataset.company_id, dataset.id, current_version.version_number
+        )
+        expected = prepared.parent / "training.csv"
         try:
-            return expected.is_file() and Path(dataset.source).resolve() == expected.resolve()
+            return (
+                expected.is_file()
+                and prepared.is_file()
+                and metadata.is_file()
+                and Path(dataset.source).resolve() == expected.resolve()
+            )
         except (OSError, TypeError):
             return False
 

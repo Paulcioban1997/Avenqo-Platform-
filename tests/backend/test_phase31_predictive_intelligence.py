@@ -43,7 +43,7 @@ from backend.app.ai.tools.business.predictive_tools import (
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.ai.tools.contracts import ToolCall, ToolExecutionContext
 from backend.app.ai.tools.exceptions import PredictionUnavailableError
-from backend.app.ai.tools.executor import ToolExecutor
+from backend.app.ai.tools.executor import ToolExecutor as _ToolExecutor
 from backend.app.core.permissions import permissions_for
 from backend.app.models import Base, Company, User, UserRole
 from backend.app.services.portfolio_decision_service import PortfolioAnalysisUnavailable
@@ -51,6 +51,19 @@ from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.decision_intelligence.contracts import BusinessSignal, SignalDirection
 
 pytestmark = pytest.mark.asyncio
+
+
+class _PipelineTestAuthorizationPolicy:
+    def authorize(self, tool, context) -> None:
+        if context.selected_agent_id not in tool.agent_ids:
+            raise AssertionError("Predictive tool must be owned by the selected test agent.")
+        if not set(tool.required_permissions).issubset(context.permissions):
+            raise AssertionError("Predictive tool test requires its declared permissions.")
+
+
+class ToolExecutor(_ToolExecutor):
+    def __init__(self, registry) -> None:
+        super().__init__(registry, _PipelineTestAuthorizationPolicy())
 
 
 @pytest.fixture
@@ -316,6 +329,7 @@ async def test_sse_predictive_tool_calling_end_to_end(db_session, monkeypatch) -
     events = [event async for event in service.stream(
         company.id, user.id, conversation.id, "Which customers are at risk of leaving?",
         permissions=permissions, plan_code="demo", capabilities=frozenset({"churn"}), request_id="req-pred-1",
+        selected_agent_id="retail", allowed_tool_names=frozenset({"get_churn_risk"}),
     )]
 
     kinds = [event.kind for event in events]
@@ -360,6 +374,7 @@ async def test_sse_predictive_cancellation_does_not_persist(db_session, monkeypa
         company.id, user.id, conversation.id, "Which customers are at risk of leaving?",
         permissions=permissions, plan_code="demo", capabilities=frozenset({"churn"}), request_id="req-pred-2",
         is_cancelled=is_cancelled,
+        selected_agent_id="retail", allowed_tool_names=frozenset({"get_churn_risk"}),
     ):
         collected.append(event)
         if event.kind == "status":

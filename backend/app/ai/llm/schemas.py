@@ -15,10 +15,15 @@ class LLMUsage:
     input_tokens: int = 0
     cached_input_tokens: int = 0
     output_tokens: int = 0
+    text_input_tokens: int | None = None
+    cached_text_input_tokens: int | None = None
+    text_output_tokens: int | None = None
     cached_output_tokens: int = 0
     reasoning_tokens: int = 0
     audio_input_units: Decimal = Decimal("0")
+    cached_audio_input_units: Decimal = Decimal("0")
     audio_output_units: Decimal = Decimal("0")
+    audio_input_seconds: Decimal = Decimal("0")
     tool_calls: int = 0
     provider_request_id: str | None = None
     avenqo_request_id: str | None = None
@@ -39,10 +44,15 @@ class LLMUsage:
             "input_tokens": self.input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
             "output_tokens": self.output_tokens,
+            "text_input_tokens": self.text_input_tokens,
+            "cached_text_input_tokens": self.cached_text_input_tokens,
+            "text_output_tokens": self.text_output_tokens,
             "cached_output_tokens": self.cached_output_tokens,
             "reasoning_tokens": self.reasoning_tokens,
             "audio_input_units": str(self.audio_input_units),
+            "cached_audio_input_units": str(self.cached_audio_input_units),
             "audio_output_units": str(self.audio_output_units),
+            "audio_input_seconds": str(self.audio_input_seconds),
             "tool_calls": self.tool_calls,
             "provider_request_id": self.provider_request_id,
             "avenqo_request_id": self.avenqo_request_id,
@@ -76,6 +86,10 @@ class LLMProviderAttempt:
     cached_output_cost_per_million_usd: Decimal = Decimal("0")
     reasoning_cost_per_million_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
+    audio_input_cost_per_million_usd: Decimal = Decimal("0")
+    cached_audio_input_cost_per_million_usd: Decimal = Decimal("0")
+    audio_output_cost_per_million_usd: Decimal = Decimal("0")
+    audio_input_cost_per_second_usd: Decimal = Decimal("0")
     pricing_version: str | None = None
     pricing_source: str | None = None
     pricing_effective_from: str | None = None
