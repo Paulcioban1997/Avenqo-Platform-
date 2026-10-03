@@ -170,11 +170,14 @@ export type AppTranslations = {
     freshness: string;
     demandForecastTitle: string;
     forecastUnavailable: string;
+    forecastMethodModel: string;
+    forecastMethodHistorical: string;
     forecastDisclaimer: string;
     forecastDescription: string;
     anomalyDescription: string;
     noAnomaliesMessage: string;
     recommendationsDescription: string;
+    recommendationsUnavailable: string;
     overstockAlert: string;
     stockoutRiskAlert: string;
   };
@@ -488,12 +491,15 @@ const frApp: AppTranslations = {
     validity: "Validité",
     freshness: "Fraîcheur",
     demandForecastTitle: "Prévisions de Demande & Réapprovisionnement",
-    forecastUnavailable: "Les prévisions ne sont pas disponibles sur cette page. Les ventes réelles restent accessibles dans l’onglet Ventes.",
+    forecastUnavailable: "Aucune prévision n’est disponible pour ces données.",
+    forecastMethodModel: "Modèle de prévision actif",
+    forecastMethodHistorical: "Moyenne historique hebdomadaire",
     forecastDisclaimer: "Modèle prédictif basé sur l'historique de ventes. Ne constitue pas une garantie contractuelle de vente.",
     forecastDescription: "Les tendances, comparaisons et prévisions de ventes apparaîtront ici.",
     anomalyDescription: "Les variations importantes et les risques seront signalés avec une action recommandée.",
     noAnomaliesMessage: "Surveillez les changements qui demandent votre attention.",
     recommendationsDescription: "Avenqo classera les opportunités selon leur impact potentiel sur votre activité.",
+    recommendationsUnavailable: "Aucune recommandation n’a été générée pour ces données.",
     overstockAlert: "Alerte Surstock Détecté",
     stockoutRiskAlert: "Risque de Rupture Imminente",
   },
@@ -807,12 +813,15 @@ const enApp: AppTranslations = {
     validity: "Validity",
     freshness: "Freshness",
     demandForecastTitle: "Demand Forecast & Replenishment Planning",
-    forecastUnavailable: "Forecasts are unavailable here. Actual orders remain available in Sales.",
+    forecastUnavailable: "No forecast is available for this data.",
+    forecastMethodModel: "Active forecast model",
+    forecastMethodHistorical: "Historical weekly average",
     forecastDisclaimer: "Predictive model based on historical sales velocity. Does not constitute a contractual sales guarantee.",
     forecastDescription: "Your sales trends, comparisons and forecasts will appear here.",
     anomalyDescription: "Important changes and risks will be flagged with a recommended action.",
     noAnomaliesMessage: "Watch for changes that need your attention.",
     recommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
+    recommendationsUnavailable: "No recommendations have been generated for this data.",
     overstockAlert: "Excess Inventory Detected",
     stockoutRiskAlert: "Imminent Stockout Risk",
   },

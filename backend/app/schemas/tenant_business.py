@@ -45,6 +45,8 @@ class SalesForecastPointResponse(BaseModel):
 
 class SalesForecastResponse(BaseModel):
     granularity: str
+    method: str | None = None
+    horizon: int | None = None
     forecasted_total: float
     points: list[SalesForecastPointResponse]
 

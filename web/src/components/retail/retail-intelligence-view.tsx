@@ -89,6 +89,25 @@ interface InventoryItem {
   status: "critical" | "warning" | "normal" | "unknown";
 }
 
+interface RetailSalesSummary {
+  currency: string;
+  summary: { revenue: number; orders: number } | null;
+  forecast: {
+    method: string | null;
+    granularity: string;
+    forecasted_total: number;
+    points: Array<{ period: string; value: number }>;
+  } | null;
+}
+
+interface RetailRecommendation {
+  id: string;
+  title: string;
+  explanation: string;
+  suggested_action: string;
+  action_route: string | null;
+}
+
 interface RetailStatus {
   is_connected: boolean;
   provider: string | null;
@@ -122,6 +141,8 @@ export function RetailIntelligenceView({
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [stockAnomalies, setStockAnomalies] = useState<any[]>([]);
+  const [salesSummary, setSalesSummary] = useState<RetailSalesSummary | null>(null);
+  const [recommendations, setRecommendations] = useState<RetailRecommendation[]>([]);
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
@@ -130,12 +151,14 @@ export function RetailIntelligenceView({
     setIsLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [statusRes, prodRes, ordRes, custRes, invRes] = await Promise.all([
+      const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
         fetch("/api/v1/retail/status", { headers }).catch(() => null),
         fetch("/api/v1/retail/products?limit=100", { headers }).catch(() => null),
         fetch("/api/v1/retail/orders?limit=100", { headers }).catch(() => null),
         fetch("/api/v1/retail/customers?limit=100", { headers }).catch(() => null),
         fetch("/api/v1/retail/inventory?limit=100", { headers }).catch(() => null),
+        fetch("/api/v1/sales/summary?period=last_30_days", { headers }).catch(() => null),
+        fetch("/api/v1/recommendations", { headers }).catch(() => null),
       ]);
 
       if (statusRes && statusRes.ok) {
@@ -162,6 +185,19 @@ export function RetailIntelligenceView({
         const iData = await invRes.json();
         setInventory(iData.inventory || []);
         setStockAnomalies(iData.anomalies || []);
+      }
+
+      if (salesRes && salesRes.ok) {
+        setSalesSummary(await salesRes.json());
+      } else {
+        setSalesSummary(null);
+      }
+
+      if (recommendationsRes && recommendationsRes.ok) {
+        const rData = await recommendationsRes.json();
+        setRecommendations(rData.recommendations || []);
+      } else {
+        setRecommendations([]);
       }
     } catch {
       // Local fallback
@@ -201,10 +237,20 @@ export function RetailIntelligenceView({
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
   );
-  const lowStockItems = inventory.filter(
-    (item) => item.stock_quantity !== null && item.status !== "normal",
-  );
   const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
+  const forecast = salesSummary?.forecast ?? null;
+  const forecastPoints = forecast?.points ?? [];
+  const maxForecastValue = Math.max(1, ...forecastPoints.map((point) => Math.abs(point.value)));
+  const forecastMethodLabel = forecast?.method === "trained_model"
+    ? retail.forecastMethodModel
+    : forecast?.method === "historical_weekly_mean"
+      ? retail.forecastMethodHistorical
+      : retail.forecasts;
+  const forecastCurrency = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: salesSummary?.currency || "USD",
+    maximumFractionDigits: 0,
+  });
   const retailCounts: Array<{ label: string; value: number }> = [
     { label: retail.products, value: retailStatus?.product_count ?? products.length },
     { label: retail.sales, value: retailStatus?.order_count ?? orders.length },
@@ -651,11 +697,56 @@ export function RetailIntelligenceView({
 
       {/* Tab 6: Demand Forecast Module */}
       {activeTab === "forecasts" && (
-        <EmptyState
-          icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
-          title={retail.forecasts}
-          description={retail.forecastUnavailable}
-        />
+        isLoading ? (
+          <ChartSkeleton />
+        ) : forecast ? (
+          <AvenqoCard variant="default" className="space-y-5 p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-white/[0.06] pb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
+                  {retail.forecasts}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
+                  {forecastMethodLabel}
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
+                  {forecastCurrency.format(forecast.forecasted_total)}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                  {retail.sales}
+                </div>
+              </div>
+            </div>
+            {forecastPoints.length > 0 ? (
+              <div className="flex h-56 items-end gap-3">
+                {forecastPoints.map((point) => (
+                  <div key={point.period} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+                    <div
+                      className="w-full max-w-12 rounded-t bg-[#0076FF]"
+                      style={{ height: `${Math.max(6, Math.abs(point.value) / maxForecastValue * 100)}%` }}
+                      title={forecastCurrency.format(point.value)}
+                    />
+                    <span className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                      {point.period}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-[#94A3B8]">
+                {retail.forecastUnavailable}
+              </p>
+            )}
+          </AvenqoCard>
+        ) : (
+          <EmptyState
+            icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
+            title={retail.forecasts}
+            description={retail.forecastUnavailable}
+          />
+        )
       )}
 
       {/* Tab 7: Anomalies & Stock Alerts */}
@@ -745,25 +836,35 @@ export function RetailIntelligenceView({
           <div className="space-y-3">
             {isLoading ? (
               <TableSkeleton rows={3} columns={2} />
-            ) : lowStockItems.length > 0 ? (
-              lowStockItems.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-200/80 dark:border-white/[0.08] p-4">
+            ) : recommendations.length > 0 ? (
+              recommendations.map((recommendation) => (
+                <div key={recommendation.id} className="flex items-start gap-3 rounded-lg border border-slate-200/80 dark:border-white/[0.08] p-4">
                   <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[#0076FF]" />
                   <div>
                     <h4 className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                      {item.status === "critical" ? retail.stockoutRiskAlert : retail.reorderTitle}
+                      {recommendation.title}
                     </h4>
                     <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      {item.product_name} · {retail.stock}: {item.stock_quantity?.toLocaleString(locale)} {retail.unit}
+                      {recommendation.explanation}
                     </p>
+                    {recommendation.suggested_action && (
+                      <p className="mt-2 text-xs font-semibold text-[#0076FF]">
+                        {recommendation.suggested_action}
+                      </p>
+                    )}
+                    {recommendation.action_route?.startsWith("/") && (
+                      <Link href={recommendation.action_route} className="mt-2 inline-flex text-xs font-semibold text-[#0076FF] hover:underline">
+                        {retail.products}
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))
             ) : inventory.length === 0 || !inventoryHasStockData ? (
-              <EmptyState title={retail.noData} description={t.common.insufficientData} />
+              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             ) : (
               <div className="p-6 text-center text-slate-400 text-xs">
-                {retail.noAnomaliesMessage}
+                {retail.recommendationsUnavailable}
               </div>
             )}
           </div>

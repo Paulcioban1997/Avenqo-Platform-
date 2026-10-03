@@ -89,6 +89,10 @@ describe("Retail inventory rendering", () => {
           anomalies: [],
         });
       }
+      if (url.endsWith("/sales/summary?period=last_30_days")) {
+        return Response.json({ currency: "CAD", summary: null, forecast: null });
+      }
+      if (url.endsWith("/recommendations")) return Response.json({ recommendations: [] });
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
@@ -105,11 +109,72 @@ describe("Retail inventory rendering", () => {
     expect(screen.queryByText(/\d{2} \/ 100/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Prévisions" })[0]);
-    expect(await screen.findByText(/prévisions ne sont pas disponibles/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Aucune prévision n’est disponible/i)).toBeInTheDocument();
     expect(screen.queryByText("Modèle Arima-Ensemble v2")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
     expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Aucune recommandation n’a été générée/i)).toBeInTheDocument();
+  });
+
+  it("renders forecast and recommendation data returned by their tenant APIs", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/retail/status")) {
+        return Response.json({
+          is_connected: true,
+          provider: "dataset",
+          store_url: null,
+          status: "READY",
+          last_synced_at: null,
+          records_count: 3,
+          product_count: 1,
+          order_count: 1,
+          customer_count: 1,
+        });
+      }
+      if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
+      if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
+      if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
+      if (url.endsWith("/retail/inventory?limit=100")) return Response.json({ inventory: [], anomalies: [] });
+      if (url.endsWith("/sales/summary?period=last_30_days")) {
+        return Response.json({
+          currency: "CAD",
+          summary: { revenue: 500, orders: 3 },
+          forecast: {
+            method: "historical_weekly_mean",
+            granularity: "week",
+            forecasted_total: 400,
+            points: [
+              { period: "Week A", value: 180 },
+              { period: "Week B", value: 220 },
+            ],
+          },
+        });
+      }
+      if (url.endsWith("/recommendations")) {
+        return Response.json({ recommendations: [{
+          id: "recommendation-1",
+          title: "Review the seasonal stock plan",
+          explanation: "The active sales model detected a change in demand.",
+          suggested_action: "Review the next purchase order",
+          action_route: null,
+        }] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(
+      <LocaleProvider>
+        <RetailIntelligenceView defaultTab="forecasts" />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText("Moyenne historique hebdomadaire")).toBeInTheDocument();
+    expect(screen.getByText("Week A")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
+    expect(await screen.findByText("Review the seasonal stock plan")).toBeInTheDocument();
+    expect(screen.getByText(/Review the next purchase order/)).toBeInTheDocument();
   });
 });
 

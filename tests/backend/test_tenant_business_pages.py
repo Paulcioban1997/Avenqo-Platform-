@@ -260,6 +260,12 @@ def test_retail_forecast_uses_real_dataset_history_without_fake_confidence(
     assert len(result["forecast"]["points"]) == 4
     assert result["forecast"]["forecasted_total"] > 0
     assert "confidence" not in result["forecast"]
+    from backend.app.schemas.tenant_business import TenantSalesResponse
+
+    response = TenantSalesResponse.model_validate(result)
+    assert response.forecast is not None
+    assert response.forecast.method == "historical_weekly_mean"
+    assert response.forecast.horizon == 4
 
 
 @pytest.mark.asyncio
