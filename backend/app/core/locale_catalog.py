@@ -120,7 +120,14 @@ _LANGUAGE_SWITCHES = (
 _HAUSA_MARKERS = frozenset({
     "yaya", "kake", "kike", "nake", "muke", "suke", "sannu", "lafiya",
     "yanzu", "wannan", "menene", "taimako", "akwai", "yadda", "sayi",
-    "kaya", "odarka", "rubuta", "magana",
+    "kaya", "odarka", "rubuta", "magana", "tambaya", "abokin", "aiki",
+    "siyarwa", "huldar", "kasuwanci", "ayyuka",
+})
+_INDONESIAN_MARKERS = frozenset({
+    "pertanyaan", "ajukan", "mengumpulkan", "langsung", "pelanggan", "penjualan",
+})
+_MALAY_MARKERS = frozenset({
+    "soalan", "rakan", "sekerja", "mengumpul", "terus", "perniagaan", "jualan",
 })
 
 
@@ -216,6 +223,10 @@ def detect_spoken_language(text: str, *, preferred_locale: str | None = None) ->
     if any("\u1000" <= char <= "\u109f" or "\ua9e0" <= char <= "\ua9ff" for char in normalized):
         return LanguageDetection(_locale_for_language_code("my", preferred_locale), "my", 1.0, "script")
     words = set(_fold_language_text(normalized).split())
+    if len(words.intersection(_INDONESIAN_MARKERS)) >= 2:
+        return LanguageDetection(_locale_for_language_code("id", preferred_locale), "id", 0.92, "lexical")
+    if len(words.intersection(_MALAY_MARKERS)) >= 2:
+        return LanguageDetection(_locale_for_language_code("ms", preferred_locale), "ms", 0.92, "lexical")
     if len(words.intersection(_HAUSA_MARKERS)) >= 2 or any(char in normalized for char in "ɓɗƙƴƁƊƘƳ"):
         return LanguageDetection(_locale_for_language_code("ha", preferred_locale), "ha", 0.95, "lexical")
     if any("\u3040" <= char <= "\u30ff" for char in normalized):

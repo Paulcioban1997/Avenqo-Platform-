@@ -174,3 +174,17 @@ def test_every_canonical_voice_locale_has_an_explicit_language_switch_path() -> 
             failures.append((locale.locale, detection, canonical_detection, support[locale.locale]))
 
     assert not failures, failures
+
+
+def test_spoken_language_detection_recognizes_a_native_sample_for_every_locale() -> None:
+    failures = []
+
+    for locale in LOCALES:
+        catalog_path = ROOT / "frontend" / "assets" / "i18n" / f"{locale.locale}.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        transcript = catalog["features"]["assistantText"]
+        detection = detect_spoken_language(transcript, preferred_locale=locale.locale)
+        if detection.locale != locale.locale:
+            failures.append((locale.locale, detection.locale, detection.source, transcript[:100]))
+
+    assert not failures, failures
