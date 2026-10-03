@@ -263,6 +263,7 @@ export function RetailIntelligenceView({
   ];
 
   if (loadError) return <RequestFailure error={loadError} retry={() => { void loadData(); }} />;
+  if (isLoading && !retailStatus) return <div role="status">{company.connectionsLoading}</div>;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
@@ -283,9 +284,7 @@ export function RetailIntelligenceView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {!retailStatus && isLoading ? (
-            <span role="status" className="text-xs text-slate-500 dark:text-[#94A3B8]">{company.connectionsLoading}</span>
-          ) : retailStatus?.is_connected ? (
+          {retailStatus?.is_connected ? (
             <div className="flex items-center gap-2">
               <StatusBadge
                 status="connected"

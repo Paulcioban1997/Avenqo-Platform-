@@ -257,6 +257,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   ];
 
   if (loadError) return <RequestFailure error={loadError} retry={() => { void loadCRMData(); }} />;
+  if (isLoading) return <div role="status">{t.crm.calendar.loadingAppointments}</div>;
 
   return (
     <div className="flex gap-6 items-start animate-in fade-in duration-300">

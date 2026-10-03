@@ -6,6 +6,7 @@ import { SessionProvider } from "@/lib/session-context";
 import { AvenqoCopilot, type AvenqoCopilotProps } from "@/components/shell/avenqo-copilot";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { ConnectionsView } from "@/components/connections/connections-view";
+import { CRMView } from "@/components/crm/crm-view";
 import { RetailIntelligenceView } from "@/components/retail/retail-intelligence-view";
 import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -66,6 +67,20 @@ describe("credit display", () => {
 });
 
 describe("Retail inventory rendering", () => {
+  it("does not claim there are no CRM appointments before the read completes", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<LocaleProvider><CRMView /></LocaleProvider>);
+    expect(screen.getByRole("status")).toHaveTextContent("Chargement");
+    expect(screen.queryByText("Aucun rendez-vous")).not.toBeInTheDocument();
+  });
+
+  it("reports a failed CRM read instead of displaying zero KPIs", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 })));
+    render(<LocaleProvider><CRMView /></LocaleProvider>);
+    expect(await screen.findByRole("alert")).toHaveAttribute("data-error-category", "backend_error");
+    expect(screen.queryByText("REVENUS GÉNÉRÉS")).not.toBeInTheDocument();
+  });
+
   it("keeps Connections in a loading state instead of claiming the dataset is absent", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
