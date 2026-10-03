@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AvenqoCopilot } from "@/components/shell/avenqo-copilot";
 import { RetailIntelligenceView } from "@/components/retail/retail-intelligence-view";
+import { PrivacyContent, TrustCenterContent, TrustSections } from "@/components/trust-sections";
+import { TRUST_COPY } from "@/lib/i18n/translations/trust";
 import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-context";
@@ -21,6 +23,58 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+});
+
+describe("public trust content", () => {
+  beforeEach(() => {
+    vi.stubGlobal("IntersectionObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+  });
+
+  it("has complete qualified trust and privacy content in all 44 locales", () => {
+    expect(Object.keys(TRUST_COPY).sort()).toEqual(LOCALES.map((locale) => locale.code).sort());
+    for (const locale of LOCALES) {
+      const content = getTranslations(locale.code).trust;
+      expect(content).toBe(TRUST_COPY[locale.code]);
+      expect(content.cards).toHaveLength(6);
+      expect(content.principles).toHaveLength(4);
+      expect(content.data).toHaveLength(7);
+      expect(content.research[2]).toContain("LawZero");
+      expect(content.research[2]).toContain("Yoshua Bengio");
+      const strings = Object.values(content).flat(2);
+      expect(strings.every((value) => typeof value === "string" && value.trim().length > 0)).toBe(true);
+      expect(strings.join(" ")).not.toMatch(/SOC\s*2|ISO\s*27001|HIPAA|GDPR|AES-256|TLS\s*1\.3|Scientist AI/i);
+      if (!["en", "en-GB"].includes(locale.code)) {
+        expect(content.heading).not.toBe(TRUST_COPY.en.heading);
+        expect(content.research[2]).not.toBe(TRUST_COPY.en.research[2]);
+      }
+    }
+  });
+
+  it.each(["en", "fr", "ar"] as const)("renders six trust cards and four principles in %s", async (locale) => {
+    window.localStorage.setItem("avenqo-locale", locale);
+    const content = TRUST_COPY[locale];
+    const { container } = render(<LocaleProvider><TrustSections /></LocaleProvider>);
+    expect(await screen.findByRole("heading", { name: content.heading })).toBeInTheDocument();
+    expect(container.querySelectorAll(".trust-grid article")).toHaveLength(6);
+    expect(container.querySelectorAll(".principle-grid article")).toHaveLength(4);
+    expect(screen.getByText(content.research[2])).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "LawZero" })).toHaveAttribute("href", "https://lawzero.org/");
+    expect(screen.getByRole("link", { name: content.center })).toHaveAttribute("href", "/trust");
+    expect(document.documentElement.dir).toBe(locale === "ar" ? "rtl" : "ltr");
+  });
+
+  it("renders localized Privacy and Trust Center without obsolete guarantees", () => {
+    window.localStorage.setItem("avenqo-locale", "en");
+    const { container } = render(<LocaleProvider><PrivacyContent /><TrustCenterContent /></LocaleProvider>);
+    expect(screen.getByRole("heading", { level: 1, name: "Privacy" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Trust Center" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/AES-256|TLS 1\.3|\bSOC\b|ISO 27001|30 days|6 years/i);
+    expect(screen.getAllByRole("link", { name: "Contact us" }).every((link) => link.getAttribute("href") === "/contact")).toBe(true);
+  });
 });
 
 describe("credit display", () => {

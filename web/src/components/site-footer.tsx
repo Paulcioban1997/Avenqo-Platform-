@@ -19,8 +19,8 @@ export function SiteFooter() {
     },
     {
       title: t.footer.resourcesTitle,
-      links: [t.nav.docs, t.footer.resourcesLinks[1], t.footer.resourcesLinks[2], t.footer.resourcesLinks[3]],
-      hrefs: ["/docs", "/#faq", "/privacy", "/terms"],
+      links: [t.nav.docs, t.footer.resourcesLinks[1], t.trust.privacy, t.footer.resourcesLinks[3], t.trust.center],
+      hrefs: ["/docs", "/#faq", "/privacy", "/terms", "/trust"],
     },
   ];
 

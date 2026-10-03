@@ -12,6 +12,7 @@ import {
 import { DashboardPreview } from "@/components/dashboard-preview";
 import { Header } from "@/components/header";
 import { SiteFooter } from "@/components/site-footer";
+import { TrustSections } from "@/components/trust-sections";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
 
 const moduleIcons = [
@@ -114,6 +115,8 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      <TrustSections />
 
       <section className="section modules-section" id="modules">
         <div className="page-shell">

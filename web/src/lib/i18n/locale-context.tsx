@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { LocaleCode, Translations } from "./types";
+import type { LocaleCode } from "./types";
 import { DEFAULT_LOCALE, LOCALES, resolveLocaleCode } from "./locales";
 import { getTranslations } from "./dictionary";
 
@@ -11,7 +11,7 @@ const STORAGE_KEY = "avenqo-locale";
 type LocaleContextValue = {
   locale: LocaleCode;
   setLocale: (locale: LocaleCode) => void;
-  t: Translations;
+  t: ReturnType<typeof getTranslations>;
 };
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
@@ -83,6 +83,6 @@ export function useLocale() {
 }
 
 /** Objet de traductions complet pour la locale active. */
-export function useTranslations(): Translations {
+export function useTranslations(): ReturnType<typeof getTranslations> {
   return useLocaleContext().t;
 }

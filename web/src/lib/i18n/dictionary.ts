@@ -44,6 +44,7 @@ import km from "./translations/km";
 import mn from "./translations/mn";
 import frFR from "./translations/fr-FR";
 import enGB from "./translations/en-GB";
+import { TRUST_COPY, type TrustCopy } from "./translations/trust";
 
 /** Source de vérité unique associant chaque locale à ses traductions complètes. */
 export const TRANSLATIONS: Record<LocaleCode, Translations> = {
@@ -94,6 +95,9 @@ export const TRANSLATIONS: Record<LocaleCode, Translations> = {
 };
 
 /** Retourne les traductions d'une locale, avec repli sur la locale par défaut si absente. */
-export function getTranslations(locale: LocaleCode): Translations {
-  return TRANSLATIONS[locale] ?? TRANSLATIONS[DEFAULT_LOCALE];
+export function getTranslations(locale: LocaleCode): Translations & { trust: TrustCopy } {
+  return {
+    ...(TRANSLATIONS[locale] ?? TRANSLATIONS[DEFAULT_LOCALE]),
+    trust: TRUST_COPY[locale] ?? TRUST_COPY[DEFAULT_LOCALE],
+  };
 }
