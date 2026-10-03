@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "@/lib/session-context";
 import { AvenqoCopilot, type AvenqoCopilotProps } from "@/components/shell/avenqo-copilot";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { ConnectionsView } from "@/components/connections/connections-view";
 import { RetailIntelligenceView } from "@/components/retail/retail-intelligence-view";
 import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -65,6 +66,27 @@ describe("credit display", () => {
 });
 
 describe("Retail inventory rendering", () => {
+  it("keeps Connections in a loading state instead of claiming the dataset is absent", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
+    expect(screen.getByRole("status")).toHaveTextContent("Chargement");
+    expect(screen.queryByText(getAppTranslations("fr").integrations.noUploadedRetailSources)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed Connections read instead of an empty source list", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 })));
+    render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
+    expect(await screen.findByRole("alert")).toHaveAttribute("data-error-category", "backend_error");
+    expect(screen.queryByText(getAppTranslations("fr").integrations.noUploadedRetailSources)).not.toBeInTheDocument();
+  });
+
+  it("does not report a disconnected source while its status is loading", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<LocaleProvider><RetailIntelligenceView /></LocaleProvider>);
+    expect(screen.queryByText("Déconnecté")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Chargement");
+  });
+
   it("renders products with an unknown stock count without crashing the page", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

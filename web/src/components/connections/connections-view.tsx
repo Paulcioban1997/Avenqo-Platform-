@@ -396,6 +396,7 @@ export function ConnectionsView() {
   );
 
   if (loadError) return <RequestFailure error={loadError} retry={() => { void loadData(); }} />;
+  if (loading) return <div role="status">{company.connectionsLoading}</div>;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
