@@ -19,21 +19,22 @@ function tokenExpiresSoon(token: string): boolean {
   }
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string } | null> {
+async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; refreshToken?: string } | null | "unavailable"> {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "avenqo-web" },
       body: JSON.stringify({ refresh_token: refreshToken }),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) return response.status === 401 || response.status === 403 ? null : "unavailable";
     const payload = await response.json();
     return payload.access_token
       ? { accessToken: payload.access_token, refreshToken: payload.refresh_token }
       : null;
   } catch {
-    return null;
+    return "unavailable";
   }
 }
 
@@ -69,6 +70,7 @@ const PROTECTED_ROUTES = [
   "/admin",
   "/onboarding",
   "/assistant",
+  "/central-ai",
   "/agents",
   "/accounting",
   "/connections",
@@ -90,8 +92,14 @@ export async function proxy(request: NextRequest) {
 
   let refreshedTokens: { accessToken: string; refreshToken?: string } | null = null;
   if ((!token || tokenExpiresSoon(token)) && refreshToken && pathname !== "/api/auth/refresh") {
-    refreshedTokens = await refreshAccessToken(refreshToken);
+    const refreshed = await refreshAccessToken(refreshToken);
+    if (refreshed === "unavailable") {
+      return NextResponse.json({ error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, { status: 503, headers: { "Retry-After": "15" } });
+    }
+    refreshedTokens = refreshed;
     token = refreshedTokens?.accessToken;
+  } else if (token && tokenExpiresSoon(token)) {
+    token = undefined;
   }
 
   // Injecter le token dans les headers Authorization pour les API proxy
@@ -102,6 +110,18 @@ export async function proxy(request: NextRequest) {
     if (locale) requestHeaders.set("Accept-Language", locale);
     if (token) {
       requestHeaders.set("authorization", `Bearer ${token}`);
+    }
+    if (refreshedTokens) {
+      // The backend uses the canonical cookie first. Forward the refreshed
+      // cookie on this request too, rather than the expired incoming cookie.
+      const cookies = (request.headers.get("cookie") ?? "").split(";").filter((cookie) => {
+        const name = cookie.trim().split("=")[0];
+        return name && name !== "avenqo_access_token" && name !== "avenqo_refresh_token";
+      });
+      cookies.push(`avenqo_access_token=${refreshedTokens.accessToken}`);
+      if (refreshedTokens.refreshToken) cookies.push(`avenqo_refresh_token=${refreshedTokens.refreshToken}`);
+      else if (refreshToken) cookies.push(`avenqo_refresh_token=${refreshToken}`);
+      requestHeaders.set("cookie", cookies.join("; "));
     }
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     if (refreshedTokens) setAuthCookies(response, refreshedTokens);
@@ -124,11 +144,13 @@ export async function proxy(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(route + "/")
   );
 
-  if (isAuthOnlyRoute && token) {
+  if (isAuthOnlyRoute && token && !(pathname === "/login" && request.nextUrl.searchParams.get("session_expired") === "1")) {
     const next = request.nextUrl.searchParams.get("next");
     const destination =
       next && PROTECTED_ROUTES.some((r) => next.startsWith(r)) ? next : "/dashboard";
-    return NextResponse.redirect(new URL(destination, request.url));
+    const response = NextResponse.redirect(new URL(destination, request.url));
+    if (refreshedTokens) setAuthCookies(response, refreshedTokens);
+    return response;
   }
 
   const response = NextResponse.next();

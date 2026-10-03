@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AvenqoCopilot } from "@/components/shell/avenqo-copilot";
+import { SessionProvider } from "@/lib/session-context";
+import { AvenqoCopilot, type AvenqoCopilotProps } from "@/components/shell/avenqo-copilot";
+import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { RetailIntelligenceView } from "@/components/retail/retail-intelligence-view";
 import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -10,6 +12,12 @@ import { LocaleProvider, useLocale } from "@/lib/i18n/locale-context";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { LOCALES } from "@/lib/i18n/locales";
 import { getTranslations } from "@/lib/i18n/dictionary";
+
+vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
+
+function TestCopilot(props: AvenqoCopilotProps) {
+  return <SessionProvider><AvenqoCopilot {...props} /></SessionProvider>;
+}
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
@@ -60,6 +68,8 @@ describe("Retail inventory rendering", () => {
   it("renders products with an unknown stock count without crashing the page", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/status")) {
         return Response.json({
           is_connected: true,
@@ -120,6 +130,8 @@ describe("Retail inventory rendering", () => {
   it("renders forecast and recommendation data returned by their tenant APIs", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/status")) {
         return Response.json({
           is_connected: true,
@@ -195,13 +207,15 @@ describe("Copilot production response", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/sources")) return new Response("[]", { status: 200 });
       if (url.endsWith("/ai/chat/conversations")) return Response.json({ id: "same-conversation" });
       if (url.endsWith("/ai/voice/sessions")) return Response.json({ id: "voice-session" });
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    render(<LocaleProvider><AvenqoCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("fr")} /></LocaleProvider>);
+    render(<LocaleProvider><TestCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("fr")} /></LocaleProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
     await waitFor(() => expect(recognitions).toHaveLength(1));
 
@@ -248,6 +262,8 @@ describe("Copilot production response", () => {
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       requests.push(url);
       if (url.endsWith("/retail/sources")) return new Response("[]", { status: 200 });
       if (url.endsWith("/ai/chat/conversations")) return Response.json({ id: "same-conversation" });
@@ -256,7 +272,7 @@ describe("Copilot production response", () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    render(<LocaleProvider><AvenqoCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("en")} /></LocaleProvider>);
+    render(<LocaleProvider><TestCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("en")} /></LocaleProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
     await waitFor(() => expect(processor.onaudioprocess).toBeTruthy());
     sockets[0].onmessage?.({ data: JSON.stringify({ type: "lifecycle", next_audio_sequence: 0 }) });
@@ -281,6 +297,8 @@ describe("Copilot production response", () => {
     let messageIndex = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/sources")) {
         return new Response(JSON.stringify([{ source_id: "dataset-1", display_name: "Superstore-utf8-cleaned.csv", enabled: true }]), { status: 200 });
       }
@@ -295,7 +313,7 @@ describe("Copilot production response", () => {
 
     render(
       <LocaleProvider>
-        <AvenqoCopilot
+        <TestCopilot
           isOpen
           onClose={vi.fn()}
           activeRoute="/retail"
@@ -330,6 +348,8 @@ describe("Copilot production response", () => {
     let messageAttempts = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/sources")) {
         return new Response("[]", { status: 200 });
       }
@@ -347,7 +367,7 @@ describe("Copilot production response", () => {
 
     render(
       <LocaleProvider>
-        <AvenqoCopilot
+        <TestCopilot
           isOpen
           onClose={vi.fn()}
           activeRoute="/retail"
@@ -469,4 +489,17 @@ describe("authenticated navigation labels", () => {
       "Data & Cleaning", "Billing & Plans", "Settings", "AI Credits",
     ]);
   });
+});
+
+it("shows a Dashboard backend failure instead of a valid empty dataset", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user", first_name: "Alex" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+    if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6000 });
+    if (url.includes("/dashboard?")) return Response.json({ error: { message: "Dashboard service unavailable" } }, { status: 503 });
+    return Response.json([]);
+  }));
+  render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard service unavailable");
+  expect(screen.queryByText("Mon espace")).not.toBeInTheDocument();
 });

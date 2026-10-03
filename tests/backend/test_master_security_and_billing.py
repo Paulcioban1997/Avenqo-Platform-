@@ -103,6 +103,7 @@ def _register_and_login(client: TestClient, notifier: MockNotifier, first_name: 
 
     login_res = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
     assert login_res.status_code == 200
+    client.cookies.clear()  # Exercise bearer-only identity independently of browser cookies.
     return login_res.json()["access_token"]
 
 

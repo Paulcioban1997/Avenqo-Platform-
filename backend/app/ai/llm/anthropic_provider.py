@@ -62,7 +62,7 @@ class AnthropicProvider(LLMProvider):
             from anthropic import AsyncAnthropic
         except ImportError as exc:
             raise LLMProviderError("La dépendance Anthropic n'est pas installée") from exc
-        return AsyncAnthropic(api_key=self._api_key, timeout=self._request_timeout_seconds)
+        return AsyncAnthropic(api_key=self._api_key, timeout=self._request_timeout_seconds, max_retries=0)
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         try:

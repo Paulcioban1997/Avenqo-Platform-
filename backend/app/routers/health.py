@@ -17,9 +17,9 @@ router = APIRouter()
 
 def _git_sha() -> str:
     return (
-        os.getenv("GIT_SHA")
-        or os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
         or os.getenv("VERCEL_GIT_COMMIT_SHA")
+        or os.getenv("GIT_SHA")
         or "unknown"
     )
 

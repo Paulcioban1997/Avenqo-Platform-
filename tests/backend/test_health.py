@@ -20,6 +20,13 @@ def test_health_returns_200() -> None:
     assert response.json()["status"] == "healthy"
 
 
+def test_health_reports_deployed_commit_over_stale_manual_sha(monkeypatch) -> None:
+    monkeypatch.setenv("GIT_SHA", "old-manual-commit")
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "current-deployment-commit")
+    response = client.get("/api/v1/health")
+    assert response.json()["git_sha"] == "current-deployment-commit"
+
+
 def test_readiness_is_degraded_when_artifact_storage_is_unavailable(
     monkeypatch,
 ) -> None:

@@ -24,6 +24,8 @@ import {
   X,
   Lock,
 } from "lucide-react";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { RequestFailure } from "@/components/ui/request-failure";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -92,6 +94,7 @@ export function ConnectionsView() {
   const connector = company.connectorHub;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
@@ -119,13 +122,14 @@ export function ConnectionsView() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const headers = getAuthHeaders();
       const [dsRes, connRes, syncRes, sourceRes] = await Promise.all([
-        fetch("/api/v1/datasets", { headers }).catch(() => null),
-        fetch("/api/v1/connectors/connections", { headers }).catch(() => null),
-        fetch("/api/v1/connectors/sync/history?limit=10", { headers }).catch(() => null),
-        fetch("/api/v1/retail/sources", { headers }).catch(() => null),
+        apiFetch("/api/v1/datasets", { headers }),
+        apiFetch("/api/v1/connectors/connections", { headers }),
+        apiFetch("/api/v1/connectors/sync/history?limit=10", { headers }),
+        apiFetch("/api/v1/retail/sources", { headers }),
       ]);
 
       if (dsRes && dsRes.ok) {
@@ -152,8 +156,8 @@ export function ConnectionsView() {
         const sourceData = await sourceRes.json();
         if (Array.isArray(sourceData)) setRetailSources(sourceData);
       }
-    } catch {
-      // keep existing state
+    } catch (error) {
+      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
       setLoading(false);
     }
@@ -390,6 +394,8 @@ export function ConnectionsView() {
   const failedDatasets = datasets.filter(
     (d) => d.status === "failed" || d.pipeline_status === "failed" || d.status === "invalid"
   );
+
+  if (loadError) return <RequestFailure error={loadError} retry={() => { void loadData(); }} />;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">

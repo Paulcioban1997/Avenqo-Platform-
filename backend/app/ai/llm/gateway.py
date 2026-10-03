@@ -309,93 +309,101 @@ class AvenqoAIGateway(LLMProvider):
         attempts: list[LLMProviderAttempt] = []
         attempt_number = 0
 
-        for provider in self._ordered_providers(operation):
-            candidate_id = self._candidate_id(provider)
-            model_id = candidate_id.partition(":")[2]
-            max_retries, base_delay, max_delay = self._retry_policy(provider)
-            if self._breaker.is_open(candidate_id):
-                logger.info(
-                    "ai_gateway_candidate_skipped provider=%s model=%s operation=%s reason=circuit_open",
-                    provider.name,
-                    model_id,
-                    operation,
-                )
-                continue
-
-            for retry_index in range(max_retries + 1):
-                attempted_any = True
-                attempt_number += 1
-                started = perf_counter()
-                try:
-                    result = await call(provider)
-                except ToolCallingUnsupportedError:
-                    raise
-                except LLMProviderError as exc:
-                    category = classify_exception(exc.__cause__ or exc)
-                    latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_failure(candidate_id)
-                    self._health.record_failure(candidate_id, category, latency_ms)
-                    last_error = exc
-                    usage = exc.usage or self._empty_usage(provider)
-                    attempts.append(self._attempt(
-                        provider=provider,
-                        operation=operation,
-                        attempt_number=attempt_number,
-                        success=False,
-                        latency_ms=latency_ms,
-                        usage=usage,
-                        failure_category=category.value,
-                        fallback_reason=category.value,
-                        request_status="failed",
-                    ))
-                    logger.warning(
-                        "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
-                        provider.name, model_id, operation, retry_index + 1, category.value,
-                    )
-                    if not is_fallback_eligible(category):
-                        exc.attempts = tuple(attempts)
-                        raise
-                    if is_retryable(category) and retry_index < max_retries:
-                        await self._retry_delay(
-                            retry_index,
-                            base_delay=base_delay,
-                            max_delay=max_delay,
-                        )
-                        continue
-                    break  # passe au fournisseur suivant
-                else:
-                    latency_ms = round((perf_counter() - started) * 1000)
-                    self._breaker.record_success(candidate_id)
-                    self._health.record_success(candidate_id, latency_ms)
-                    usage = self._usage_for_result(provider, result)
-                    attempts.append(self._attempt(
-                        provider=provider,
-                        operation=operation,
-                        attempt_number=attempt_number,
-                        success=True,
-                        latency_ms=latency_ms,
-                        usage=usage,
-                    ))
+        try:
+            for provider in self._ordered_providers(operation):
+                candidate_id = self._candidate_id(provider)
+                model_id = candidate_id.partition(":")[2]
+                max_retries, base_delay, max_delay = self._retry_policy(provider)
+                if self._breaker.is_open(candidate_id):
                     logger.info(
-                        "ai_gateway_success provider=%s model=%s operation=%s attempt=%d",
+                        "ai_gateway_candidate_skipped provider=%s model=%s operation=%s reason=circuit_open",
                         provider.name,
                         model_id,
                         operation,
-                        retry_index + 1,
                     )
-                    return replace(
-                        result,
-                        token_usage=usage.as_token_usage(),
-                        attempts=tuple(attempts) + tuple(result.attempts),
-                        usage=usage,
-                    )
+                    continue
 
-        if not attempted_any:
-            logger.error("ai_gateway_all_circuits_open operation=%s", operation)
-        raise AIProvidersUnavailableError(
-            "Avenqo AI est temporairement indisponible. Merci de réessayer dans quelques instants.",
-            attempts=tuple(attempts),
-        ) from last_error
+                for retry_index in range(max_retries + 1):
+                    attempted_any = True
+                    attempt_number += 1
+                    started = perf_counter()
+                    try:
+                        result = await call(provider)
+                    except ToolCallingUnsupportedError:
+                        raise
+                    except LLMProviderError as exc:
+                        category = classify_exception(exc.__cause__ or exc)
+                        latency_ms = round((perf_counter() - started) * 1000)
+                        self._breaker.record_failure(candidate_id)
+                        self._health.record_failure(candidate_id, category, latency_ms)
+                        last_error = exc
+                        usage = exc.usage or self._empty_usage(provider)
+                        attempts.append(self._attempt(
+                            provider=provider,
+                            operation=operation,
+                            attempt_number=attempt_number,
+                            success=False,
+                            latency_ms=latency_ms,
+                            usage=usage,
+                            failure_category=category.value,
+                            fallback_reason=category.value,
+                            request_status="failed",
+                        ))
+                        logger.warning(
+                            "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
+                            provider.name, model_id, operation, retry_index + 1, category.value,
+                        )
+                        if not is_fallback_eligible(category):
+                            exc.attempts = tuple(attempts)
+                            raise
+                        if is_retryable(category) and retry_index < max_retries:
+                            await self._retry_delay(
+                                retry_index,
+                                base_delay=base_delay,
+                                max_delay=max_delay,
+                            )
+                            continue
+                        break  # passe au fournisseur suivant
+                    else:
+                        latency_ms = round((perf_counter() - started) * 1000)
+                        self._breaker.record_success(candidate_id)
+                        self._health.record_success(candidate_id, latency_ms)
+                        usage = self._usage_for_result(provider, result)
+                        attempts.append(self._attempt(
+                            provider=provider,
+                            operation=operation,
+                            attempt_number=attempt_number,
+                            success=True,
+                            latency_ms=latency_ms,
+                            usage=usage,
+                        ))
+                        logger.info(
+                            "ai_gateway_success provider=%s model=%s operation=%s attempt=%d",
+                            provider.name,
+                            model_id,
+                            operation,
+                            retry_index + 1,
+                        )
+                        return replace(
+                            result,
+                            token_usage=usage.as_token_usage(),
+                            attempts=tuple(attempts) + tuple(result.attempts),
+                            usage=usage,
+                        )
+
+            if not attempted_any:
+                logger.error("ai_gateway_all_circuits_open operation=%s", operation)
+            raise AIProvidersUnavailableError(
+                "Avenqo AI est temporairement indisponible. Merci de réessayer dans quelques instants.",
+                attempts=tuple(attempts),
+            ) from last_error
+        except BaseException as exc:
+            known = list(attempts)
+            for attempt in getattr(exc, "attempts", ()):
+                if not any(attempt is recorded for recorded in known):
+                    known.append(replace(attempt, attempt_number=len(known) + 1))
+            exc.attempts = tuple(known)
+            raise
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         return await self._run(

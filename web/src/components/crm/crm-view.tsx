@@ -24,6 +24,8 @@ import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { RequestFailure } from "@/components/ui/request-failure";
 import { CRMKpiCards, type CRMKpis } from "./crm-kpi-cards";
 import { CRMCalendarView } from "./crm-calendar-view";
 import { CRMClientsView } from "./crm-clients-view";
@@ -69,7 +71,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
     { id: string; first_name: string; last_name: string; color_code?: string | null }[]
   >([]);
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [isMobileCopilotOpen, setIsMobileCopilotOpen] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -83,20 +86,16 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   // Load CRM data from backend
   const loadCRMData = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const headers = getAuthHeaders();
-      await fetch("/api/v1/crm/calendar/google/sync", {
-        method: "POST",
-        headers,
-      }).catch(() => null);
-
       const [kpiRes, appRes, srvRes, empRes, sumRes, googleRes] = await Promise.all([
-        fetch("/api/v1/crm/kpis", { headers }),
-        fetch("/api/v1/crm/appointments?limit=250", { headers }),
-        fetch("/api/v1/crm/services", { headers }),
-        fetch("/api/v1/crm/employees", { headers }),
-        fetch("/api/v1/crm/summary", { headers }),
-        fetch("/api/v1/crm/calendar/google/events", { headers }).catch(() => null),
+        apiFetch("/api/v1/crm/kpis", { headers }),
+        apiFetch("/api/v1/crm/appointments?limit=250", { headers }),
+        apiFetch("/api/v1/crm/services", { headers }),
+        apiFetch("/api/v1/crm/employees", { headers }),
+        apiFetch("/api/v1/crm/summary", { headers }),
+        apiFetch("/api/v1/crm/calendar/google/events", { headers }),
       ]);
 
       if (kpiRes.ok) {
@@ -144,8 +143,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           setCompanyName(sumData.company_name);
         }
       }
-    } catch {
-      // Keep real zeroes
+    } catch (error) {
+      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +182,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   };
 
   const handleStatusChange = async (id: string, newStatus: string) => {
-    const response = await fetch(
+    const response = await apiFetch(
       newStatus === "cancelled"
         ? `/api/v1/crm/appointments/${id}/cancel`
         : `/api/v1/crm/appointments/${id}`,
@@ -196,7 +195,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
       body: newStatus === "cancelled" ? undefined : JSON.stringify({ status: newStatus }),
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => null);
+      const error = await response.json();
       throw new Error(typeof error?.detail === "string" ? error.detail : t.crm.actions.mutationError);
     }
     // Refresh without full page reload
@@ -214,12 +213,12 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   };
 
   const handleDeleteAppointment = async (id: string) => {
-    const response = await fetch(`/api/v1/crm/appointments/${id}`, {
+    const response = await apiFetch(`/api/v1/crm/appointments/${id}`, {
       method: "DELETE",
       headers: getAuthHeaders(),
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => null);
+      const error = await response.json();
       throw new Error(typeof error?.detail === "string" ? error.detail : t.crm.actions.mutationError);
     }
     await loadCRMData();
@@ -256,6 +255,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
     { id: "reports", label: t.crm.tabs.reports || "Rapports", icon: BarChart3 },
     { id: "connections", label: t.crm.tabs.connections || "Connexions", icon: Settings },
   ];
+
+  if (loadError) return <RequestFailure error={loadError} retry={() => { void loadCRMData(); }} />;
 
   return (
     <div className="flex gap-6 items-start animate-in fade-in duration-300">

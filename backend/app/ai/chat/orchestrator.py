@@ -173,81 +173,8 @@ class ToolOrchestrator:
             "reasoning_tokens": 0,
         }
 
-        for _iteration in range(self._max_iterations):
-            if await check_cancelled():
-                yield OrchestrationEvent(
-                    kind="final",
-                    result=OrchestrationResult(
-                        content="", tool_call_results=tuple(tool_call_results),
-                        token_usage=dict(usage_totals), attempts=tuple(attempts),
-                        status_events=tuple(status_events), cancelled=True,
-                    ),
-                )
-                return
-
-            try:
-                response = await self._provider.generate_with_tools(
-                    system_instruction=system_instruction, messages=messages, tools=definitions
-                )
-            except (ToolCallingUnsupportedError, LLMProviderError) as exc:
-                prior_attempts = getattr(exc, "attempts", ())
-                for attempt in prior_attempts:
-                    attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
-                try:
-                    generation = await self._provider.generate(
-                        system_instruction=system_instruction,
-                        prompt=user_query,
-                    )
-                except LLMProviderError as fallback_exc:
-                    combined = list(attempts)
-                    for attempt in fallback_exc.attempts:
-                        combined.append(replace(attempt, attempt_number=len(combined) + 1))
-                    fallback_exc.attempts = tuple(combined)
-                    raise
-                _collect_response_usage(usage_totals, attempts, generation)
-                yield OrchestrationEvent(
-                    kind="final",
-                    result=OrchestrationResult(
-                        content=generation.content,
-                        tool_call_results=tuple(tool_call_results),
-                        provider=generation.provider,
-                        model=generation.model,
-                        token_usage=dict(usage_totals),
-                        attempts=tuple(attempts),
-                        status_events=tuple(status_events),
-                    ),
-                )
-                return
-
-            _collect_response_usage(usage_totals, attempts, response)
-
-            if not response.tool_calls:
-                yield OrchestrationEvent(
-                    kind="final",
-                    result=OrchestrationResult(
-                        content=response.content or "",
-                        tool_call_results=tuple(tool_call_results),
-                        provider=response.provider,
-                        model=response.model,
-                        token_usage=dict(usage_totals),
-                        attempts=tuple(attempts),
-                        status_events=tuple(status_events),
-                    ),
-                )
-                return
-
-            status_events.append(STATUS_ANALYZING_BUSINESS_DATA)
-            yield OrchestrationEvent(kind="status", status=STATUS_ANALYZING_BUSINESS_DATA)
-
-            calls = response.tool_calls[: max(0, self._max_tools_per_request - tools_called)]
-            # Rejoue le tour "assistant" tel que produit par le mod\u00e8le AVANT les
-            # r\u00e9sultats d'outils : les 3 fournisseurs (OpenAI/Anthropic/Gemini)
-            # rejettent un message role="tool" qui ne suit pas imm\u00e9diatement un
-            # message assistant portant les m\u00eames tool_calls.
-            messages.append(
-                LLMMessage(role="assistant", content=response.content or "", tool_calls=calls)
-            )
-            for call in calls:
+        try:
+            for _iteration in range(self._max_iterations):
                 if await check_cancelled():
                     yield OrchestrationEvent(
                         kind="final",
@@ -259,38 +186,119 @@ class ToolOrchestrator:
                     )
                     return
 
-                tools_called += 1
                 try:
-                    result = await self._executor.execute(call.name, context, call.arguments)
-                    logger.info("ai_tool_execution selected_tool_name=%s tool_success=true", call.name)
-                except ToolError as exc:
-                    result = ToolResult(
-                        success=False,
-                        data={"error_key": _tool_error_key(exc)},
-                        metadata={"error_key": _tool_error_key(exc), "locale": context.locale},
-                        error=_tool_error_key(exc),
+                    response = await self._provider.generate_with_tools(
+                        system_instruction=system_instruction, messages=messages, tools=definitions
                     )
-                    logger.info("ai_tool_execution selected_tool_name=%s tool_success=false", call.name)
-                tool_call_results.append(ToolCallResult(call=call, result=result))
-                messages.append(
-                    LLMMessage(
-                        role="tool",
-                        content=json.dumps(result.data if result.success else {"error": result.error}, default=str),
-                        tool_call_id=call.id,
-                        name=call.name,
+                except (ToolCallingUnsupportedError, LLMProviderError) as exc:
+                    prior_attempts = getattr(exc, "attempts", ())
+                    for attempt in prior_attempts:
+                        attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
+                    try:
+                        generation = await self._provider.generate(
+                            system_instruction=system_instruction,
+                            prompt=user_query,
+                        )
+                    except LLMProviderError as fallback_exc:
+                        combined = list(attempts)
+                        for attempt in fallback_exc.attempts:
+                            combined.append(replace(attempt, attempt_number=len(combined) + 1))
+                        fallback_exc.attempts = tuple(combined)
+                        raise
+                    _collect_response_usage(usage_totals, attempts, generation)
+                    yield OrchestrationEvent(
+                        kind="final",
+                        result=OrchestrationResult(
+                            content=generation.content,
+                            tool_call_results=tuple(tool_call_results),
+                            provider=generation.provider,
+                            model=generation.model,
+                            token_usage=dict(usage_totals),
+                            attempts=tuple(attempts),
+                            status_events=tuple(status_events),
+                        ),
                     )
-                )
-                if tools_called >= self._max_tools_per_request:
-                    break
+                    return
 
-        yield OrchestrationEvent(
-            kind="final",
-            result=OrchestrationResult(
-                content="I could not complete this request within the allowed number of steps.",
-                tool_call_results=tuple(tool_call_results),
-                token_usage=dict(usage_totals),
-                attempts=tuple(attempts),
-                status_events=tuple(status_events),
-            ),
-        )
+                _collect_response_usage(usage_totals, attempts, response)
+
+                if not response.tool_calls:
+                    yield OrchestrationEvent(
+                        kind="final",
+                        result=OrchestrationResult(
+                            content=response.content or "",
+                            tool_call_results=tuple(tool_call_results),
+                            provider=response.provider,
+                            model=response.model,
+                            token_usage=dict(usage_totals),
+                            attempts=tuple(attempts),
+                            status_events=tuple(status_events),
+                        ),
+                    )
+                    return
+
+                status_events.append(STATUS_ANALYZING_BUSINESS_DATA)
+                yield OrchestrationEvent(kind="status", status=STATUS_ANALYZING_BUSINESS_DATA)
+
+                calls = response.tool_calls[: max(0, self._max_tools_per_request - tools_called)]
+                # Rejoue le tour "assistant" tel que produit par le mod\u00e8le AVANT les
+                # r\u00e9sultats d'outils : les 3 fournisseurs (OpenAI/Anthropic/Gemini)
+                # rejettent un message role="tool" qui ne suit pas imm\u00e9diatement un
+                # message assistant portant les m\u00eames tool_calls.
+                messages.append(
+                    LLMMessage(role="assistant", content=response.content or "", tool_calls=calls)
+                )
+                for call in calls:
+                    if await check_cancelled():
+                        yield OrchestrationEvent(
+                            kind="final",
+                            result=OrchestrationResult(
+                                content="", tool_call_results=tuple(tool_call_results),
+                                token_usage=dict(usage_totals), attempts=tuple(attempts),
+                                status_events=tuple(status_events), cancelled=True,
+                            ),
+                        )
+                        return
+
+                    tools_called += 1
+                    try:
+                        result = await self._executor.execute(call.name, context, call.arguments)
+                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=true", call.name)
+                    except ToolError as exc:
+                        result = ToolResult(
+                            success=False,
+                            data={"error_key": _tool_error_key(exc)},
+                            metadata={"error_key": _tool_error_key(exc), "locale": context.locale},
+                            error=_tool_error_key(exc),
+                        )
+                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=false", call.name)
+                    tool_call_results.append(ToolCallResult(call=call, result=result))
+                    messages.append(
+                        LLMMessage(
+                            role="tool",
+                            content=json.dumps(result.data if result.success else {"error": result.error}, default=str),
+                            tool_call_id=call.id,
+                            name=call.name,
+                        )
+                    )
+                    if tools_called >= self._max_tools_per_request:
+                        break
+
+            yield OrchestrationEvent(
+                kind="final",
+                result=OrchestrationResult(
+                    content="I could not complete this request within the allowed number of steps.",
+                    tool_call_results=tuple(tool_call_results),
+                    token_usage=dict(usage_totals),
+                    attempts=tuple(attempts),
+                    status_events=tuple(status_events),
+                ),
+            )
+        except BaseException as exc:
+            known = list(attempts)
+            for attempt in getattr(exc, "attempts", ()):
+                if not any(attempt is recorded for recorded in known):
+                    known.append(replace(attempt, attempt_number=len(known) + 1))
+            exc.attempts = tuple(known)
+            raise
 

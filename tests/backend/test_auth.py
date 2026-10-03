@@ -93,6 +93,8 @@ def verify_and_login(
         json={"email": email, "password": password},
     )
     assert login.status_code == 200
+    # These helpers model bearer-only API clients; cookie sessions have their own tests.
+    client.cookies.clear()
     return login.json()
 
 

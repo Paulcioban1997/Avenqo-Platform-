@@ -24,6 +24,9 @@ import { EmptyState, ErrorState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { useSession } from "@/lib/session-context";
+import { RequestFailure } from "@/components/ui/request-failure";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
@@ -66,14 +69,15 @@ export function DashboardView({
 
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "quarter">("30d");
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiRequestError | null>(null);
   const [kpis, setKpis] = useState<Record<string, DashboardKPI>>({});
   const [priorities, setPriorities] = useState<DashboardPriority[]>([]);
   const [trendPoints, setTrendPoints] = useState<DashboardTrendPoint[]>([]);
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
-  const [userFirstName, setUserFirstName] = useState<string>(userName);
-  const [currentTenant, setCurrentTenant] = useState<string>(tenantName);
+  const session = useSession();
+  const userFirstName = session.identity?.user.first_name ?? userName;
+  const currentTenant = session.identity?.company.name ?? tenantName;
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -97,20 +101,7 @@ export function DashboardView({
         "30d": "last_30_days",
         quarter: "current_quarter",
       }[dateRange];
-      const [res, meRes] = await Promise.all([
-        fetch(`/api/v1/dashboard?period=${periodKey}`, { headers }),
-        fetch("/api/v1/auth/me", { headers }),
-      ]);
-
-      if (meRes.ok) {
-        const meData = await meRes.json();
-        if (meData.user?.first_name) {
-          setUserFirstName(meData.user.first_name);
-        }
-        if (meData.company?.name) {
-          setCurrentTenant(meData.company.name);
-        }
-      }
+      const res = await apiFetch(`/api/v1/dashboard?period=${periodKey}`, { headers });
 
       if (res.ok) {
         const data = await res.json();
@@ -127,17 +118,9 @@ export function DashboardView({
         }
         const points = data.trend?.points;
         setTrendPoints(Array.isArray(points) ? points : []);
-      } else {
-        // Empty state when unauthenticated or tenant has no calculated records
-        setKpis({});
-        setPriorities([]);
-        setTrendPoints([]);
       }
-    } catch {
-      // Network or gateway unreached: keep empty state with zero fake data
-      setKpis({});
-      setPriorities([]);
-      setTrendPoints([]);
+    } catch (error) {
+      setError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
       setIsLoading(false);
     }
@@ -166,6 +149,8 @@ export function DashboardView({
       maximumFractionDigits: 2,
     }).format(val);
   };
+
+  if (error) return <RequestFailure error={error} retry={() => { void fetchDashboardData(); }} />;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">

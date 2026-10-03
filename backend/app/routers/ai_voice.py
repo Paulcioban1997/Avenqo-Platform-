@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.central.service import CentralAIService
+from backend.app.ai.chat.exceptions import AIServiceUnavailableError
 from backend.app.ai.request_identity import resolve_ai_request_id
 from backend.app.config.settings import get_settings
 from backend.app.core.locale_catalog import (
@@ -175,6 +176,13 @@ def stream_ticket(
     )
 
 
+async def _execute_voice(service, *args, **kwargs):
+    try:
+        return await service.execute(*args, **kwargs)
+    except AIServiceUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/sessions/{session_id}/turn", response_model=VoiceTurnResponse)
 async def turn(
     session_id: UUID,
@@ -201,7 +209,7 @@ async def turn(
         user_id=identity.user.id,
         conversation_id=session.conversation_id,
     )
-    result = await service.execute(
+    result = await _execute_voice(service,
         tenant,
         identity.user.id,
         session.conversation_id,
@@ -294,7 +302,11 @@ async def stream_session(
         return
     user = db.get(User, user_id)
     def authorized() -> CompanyMembership | None:
+        if user is not None:
+            db.refresh(user)
         auth_session = db.get(AuthSession, auth_session_id)
+        if auth_session is not None:
+            db.refresh(auth_session)
         membership = db.scalar(select(CompanyMembership).where(
             CompanyMembership.user_id == user_id,
             CompanyMembership.company_id == tenant_id,
@@ -314,6 +326,7 @@ async def stream_session(
         await websocket.close(code=4403)
         return
 
+    db.commit()
     await websocket.accept(subprotocol="avenqo.voice" if browser_ticket else None)
     adapter = None
     settings = get_settings()
@@ -506,6 +519,7 @@ async def stream_session(
     provider_task = asyncio.create_task(provider_events()) if adapter is not None else None
     try:
         while True:
+            db.commit()
             event = await websocket.receive_json()
             if authorized() is None:
                 await websocket.close(code=4403)

@@ -7,6 +7,7 @@ import logging
 from time import perf_counter
 from uuid import UUID
 
+from backend.app.ai.request_timeout import bounded_ai_request
 from backend.app.ai.central.context import CentralAIContextBuilder
 from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.chat_service import ChatService
@@ -80,6 +81,7 @@ class CentralAIService:
 
         return frozenset(tool_agents), tool_agents
 
+    @bounded_ai_request
     async def execute(
         self,
         tenant: TenantContext,
