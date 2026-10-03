@@ -10,26 +10,32 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "crm_custom_field_definitions",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("company_id", sa.Uuid(), nullable=False),
-        sa.Column("entity_type", sa.String(length=50), nullable=False, server_default="appointment"),
-        sa.Column("field_key", sa.String(length=100), nullable=False),
-        sa.Column("label", sa.String(length=200), nullable=False),
-        sa.Column("field_type", sa.String(length=30), nullable=False, server_default="text"),
-        sa.Column("required", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("options", sa.JSON(), nullable=False),
-        sa.Column("industry_template", sa.String(length=80), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("company_id", "entity_type", "field_key", name="uq_crm_custom_field_tenant_entity_key"),
-    )
-    op.create_index("ix_crm_custom_field_definitions_company_id", "crm_custom_field_definitions", ["company_id"])
-    op.create_index("ix_crm_custom_field_definitions_is_active", "crm_custom_field_definitions", ["is_active"])
+    bind = op.get_bind()
+    if not sa.inspect(bind).has_table("crm_custom_field_definitions"):
+        op.create_table(
+            "crm_custom_field_definitions",
+            sa.Column("id", sa.Uuid(), nullable=False),
+            sa.Column("company_id", sa.Uuid(), nullable=False),
+            sa.Column("entity_type", sa.String(length=50), nullable=False, server_default="appointment"),
+            sa.Column("field_key", sa.String(length=100), nullable=False),
+            sa.Column("label", sa.String(length=200), nullable=False),
+            sa.Column("field_type", sa.String(length=30), nullable=False, server_default="text"),
+            sa.Column("required", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column("options", sa.JSON(), nullable=False),
+            sa.Column("industry_template", sa.String(length=80), nullable=True),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("company_id", "entity_type", "field_key", name="uq_crm_custom_field_tenant_entity_key"),
+        )
+
+    indexes = {index["name"] for index in sa.inspect(bind).get_indexes("crm_custom_field_definitions")}
+    if "ix_crm_custom_field_definitions_company_id" not in indexes:
+        op.create_index("ix_crm_custom_field_definitions_company_id", "crm_custom_field_definitions", ["company_id"])
+    if "ix_crm_custom_field_definitions_is_active" not in indexes:
+        op.create_index("ix_crm_custom_field_definitions_is_active", "crm_custom_field_definitions", ["is_active"])
 
 
 def downgrade() -> None:

@@ -11,8 +11,19 @@ branch_labels = None
 depends_on = None
 
 
+def _create_table_if_missing(name: str, *elements) -> None:
+    if not sa.inspect(op.get_bind()).has_table(name):
+        op.create_table(name, *elements)
+
+
+def _create_index_if_missing(name: str, table: str, columns: list[str]) -> None:
+    indexes = {index["name"] for index in sa.inspect(op.get_bind()).get_indexes(table)}
+    if name not in indexes:
+        op.create_index(name, table, columns)
+
+
 def upgrade() -> None:
-    op.create_table(
+    _create_table_if_missing(
         "voice_business_configs",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("company_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -38,9 +49,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("retell_agent_id", name="uq_voice_business_retell_agent"),
         sa.UniqueConstraint("voice_api_key_hash", name="uq_voice_business_api_key_hash"),
     )
-    op.create_index("ix_voice_business_configs_company_id", "voice_business_configs", ["company_id"])
+    _create_index_if_missing("ix_voice_business_configs_company_id", "voice_business_configs", ["company_id"])
 
-    op.create_table(
+    _create_table_if_missing(
         "voice_calls",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("company_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -65,12 +76,12 @@ def upgrade() -> None:
         sa.UniqueConstraint("telnyx_call_control_id", name="uq_voice_calls_telnyx_id"),
         sa.UniqueConstraint("retell_call_id", name="uq_voice_calls_retell_id"),
     )
-    op.create_index("ix_voice_calls_company_id", "voice_calls", ["company_id"])
-    op.create_index("ix_voice_calls_config_id", "voice_calls", ["config_id"])
-    op.create_index("ix_voice_calls_appointment_id", "voice_calls", ["appointment_id"])
-    op.create_index("ix_voice_calls_status", "voice_calls", ["status"])
+    _create_index_if_missing("ix_voice_calls_company_id", "voice_calls", ["company_id"])
+    _create_index_if_missing("ix_voice_calls_config_id", "voice_calls", ["config_id"])
+    _create_index_if_missing("ix_voice_calls_appointment_id", "voice_calls", ["appointment_id"])
+    _create_index_if_missing("ix_voice_calls_status", "voice_calls", ["status"])
 
-    op.create_table(
+    _create_table_if_missing(
         "voice_tool_actions",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("company_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -83,8 +94,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("config_id", "action_id", name="uq_voice_tool_action_id"),
     )
-    op.create_index("ix_voice_tool_actions_company_id", "voice_tool_actions", ["company_id"])
-    op.create_index("ix_voice_tool_actions_config_id", "voice_tool_actions", ["config_id"])
+    _create_index_if_missing("ix_voice_tool_actions_company_id", "voice_tool_actions", ["company_id"])
+    _create_index_if_missing("ix_voice_tool_actions_config_id", "voice_tool_actions", ["config_id"])
 
 
 def downgrade() -> None:

@@ -133,6 +133,21 @@ def test_current_production_head_upgrades_through_compatibility_merge(temp_db_ur
     assert current == "0036_merge_sandbox_membership_ancestry"
 
 
+def test_sandbox_schema_created_from_models_upgrades_idempotently(temp_db_url: str) -> None:
+    from backend.app.models import Base
+
+    config = _alembic_config(temp_db_url)
+    command.upgrade(config, "0019_company_memberships")
+    engine = create_engine(temp_db_url)
+    Base.metadata.create_all(engine)
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    assert current == "0036_merge_sandbox_membership_ancestry"
+
+
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
     config = _alembic_config(temp_db_url)
     command.upgrade(config, "head")
