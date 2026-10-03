@@ -19,6 +19,7 @@ from backend.app.ai.usage.service import AIUsageService
 from backend.app.ai.llm.schemas import LLMProviderAttempt, LLMUsage
 from backend.app.ai.chat.chat_service import _localized_system_instruction
 from backend.app.config.settings import Settings
+from backend.app.schemas.voice_central import VoiceStreamTicketResponse
 from backend.app.models import (
     AuthSession,
     Base,
@@ -516,7 +517,16 @@ async def test_browser_ticket_is_bound_to_authenticated_voice_session(voice_rout
     identity = SimpleNamespace(user=SimpleNamespace(id=voice_route.voice.user_id),
                                auth_session=SimpleNamespace(id=auth_id))
     tenant = SimpleNamespace(company_id=voice_route.voice.company_id)
-    ticket = ai_voice.stream_ticket(voice_route.voice.id, tenant, identity, voice_route.db, voice_route.membership)["ticket"]
+    ticket_response = ai_voice.stream_ticket(
+        voice_route.voice.id,
+        tenant,
+        identity,
+        voice_route.db,
+        voice_route.membership,
+    )
+    validated_ticket = VoiceStreamTicketResponse.model_validate(ticket_response)
+    assert isinstance(validated_ticket.realtime, bool)
+    ticket = validated_ticket.ticket
     socket = FakeSocket(token="")
     socket.headers["sec-websocket-protocol"] = f"avenqo.voice, ticket.{ticket}"
     run = asyncio.create_task(ai_voice.stream_session(socket, voice_route.voice.id, voice_route.db, voice_route.service))

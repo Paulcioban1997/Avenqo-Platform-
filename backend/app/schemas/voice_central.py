@@ -25,6 +25,11 @@ class VoiceSessionResponse(BaseModel):
     voice_capability: str
 
 
+class VoiceStreamTicketResponse(BaseModel):
+    ticket: str
+    realtime: bool
+
+
 class VoiceTurnRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=12000)
     request_id: str = Field(min_length=1, max_length=100)

@@ -31,6 +31,7 @@ from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.schemas.voice_central import (
     VoiceSessionCreate,
     VoiceSessionResponse,
+    VoiceStreamTicketResponse,
     VoiceTurnRequest,
     VoiceTurnResponse,
 )
@@ -142,14 +143,17 @@ def create_session(
     return _response(session)
 
 
-@router.post("/sessions/{session_id}/stream-ticket")
+@router.post(
+    "/sessions/{session_id}/stream-ticket",
+    response_model=VoiceStreamTicketResponse,
+)
 def stream_ticket(
     session_id: UUID,
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
     membership: CompanyMembership = Depends(get_active_ai_membership),
-) -> dict[str, str]:
+) -> VoiceStreamTicketResponse:
     session = db.scalar(select(VoiceCentralSession).where(
         VoiceCentralSession.id == session_id,
         VoiceCentralSession.company_id == tenant.company_id,
@@ -165,7 +169,10 @@ def stream_ticket(
         "session_id": str(session_id), "auth_session_id": str(identity.auth_session.id),
         "iat": now, "exp": now + 30, "iss": settings.auth_jwt_issuer, "aud": settings.auth_jwt_audience,
     }, settings.auth_jwt_secret, algorithm=settings.auth_jwt_algorithm)
-    return {"ticket": ticket, "realtime": _realtime_available(session.locale)}
+    return VoiceStreamTicketResponse(
+        ticket=ticket,
+        realtime=_realtime_available(session.locale),
+    )
 
 
 @router.post("/sessions/{session_id}/turn", response_model=VoiceTurnResponse)
