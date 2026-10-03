@@ -103,6 +103,7 @@ class CentralAIService:
         user_language = resolve_locale(user_language)
         language_source = "explicit" if locale_explicit else "fallback"
         language_confidence = None
+        language_explicitly_requested = False
         language_auto_detect = False
         if spoken_language_input or not locale_explicit:
             language_detection = detect_spoken_language(
@@ -110,6 +111,7 @@ class CentralAIService:
             )
             language_source = language_detection.source
             language_confidence = language_detection.confidence
+            language_explicitly_requested = language_detection.source == "explicit_request"
             if language_detection.locale is not None:
                 user_language = language_detection.locale
                 locale_explicit = True
@@ -211,6 +213,7 @@ class CentralAIService:
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
                 follow_latest_utterance_language=spoken_language_input,
+                language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
             )
         except AIQuotaExceededError:

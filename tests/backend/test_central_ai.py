@@ -251,6 +251,32 @@ async def test_spoken_utterance_language_reaches_central_context_and_prompt(db_s
     assert "Follow language changes within the same conversation" in provider.last_system_instruction
 
 
+async def test_explicit_voice_language_request_overrides_transcript_language(db_session) -> None:
+    company, user = make_company(db_session)
+    provider = StubProvider()
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=5)
+    conversation = conversations.create(company.id, user.id, "Voice")
+
+    result = await central.execute(
+        tenant,
+        user.id,
+        conversation.id,
+        "Please switch to locale es. Reply only in Spanish with the word hola.",
+        permissions=frozenset({"ai:use"}),
+        capabilities=frozenset(),
+        request_id="voice-explicit-language-request",
+        user_language="fr",
+        company_country="CA",
+        company_currency="CAD",
+        company_timezone="America/Toronto",
+        spoken_language_input=True,
+    )
+
+    assert result.status == "success"
+    assert "The user explicitly requested a response in Spanish" in provider.last_system_instruction
+    assert "overrides the language used to phrase this message" in provider.last_system_instruction
+
+
 async def test_undetermined_spoken_language_does_not_fall_back_to_account_locale(db_session) -> None:
     company, user = make_company(db_session)
     provider = StubProvider()

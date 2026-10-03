@@ -36,6 +36,7 @@ def _localized_system_instruction(
     company_currency: str,
     company_timezone: str,
     follow_latest_utterance_language: bool = False,
+    language_explicitly_requested: bool = False,
     language_auto_detect: bool = False,
 ) -> str:
     """Ajoute le contexte de localisation métier — jamais de devise déduite de la langue."""
@@ -52,14 +53,24 @@ def _localized_system_instruction(
             f"User language: {language_name}\n"
             f"Canonical locale: {locale.locale} ({locale.bcp47})\n"
         )
-    language_instruction = (
-        "Respond in the language used by the user's latest utterance unless they explicitly request another language. "
-        "Follow language changes within the same conversation; do not translate back to French or another fallback. "
-        "Treat tool results as source data; explain them in the active response language without changing factual values. "
-        if follow_latest_utterance_language
-        else "Respond in the user's selected language. "
-        "Treat tool results as source data; explain them in the active response language without changing factual values. "
-    )
+    if follow_latest_utterance_language and language_explicitly_requested:
+        language_instruction = (
+            f"The user explicitly requested a response in {language_name}. This request overrides the language used "
+            f"to phrase this message and any prior conversation language. Respond entirely in {language_name}; "
+            "do not refuse to switch languages or revert to French or English. "
+            "Treat tool results as source data; explain them in the active response language without changing factual values. "
+        )
+    elif follow_latest_utterance_language:
+        language_instruction = (
+            "Respond in the language used by the user's latest utterance unless they explicitly request another language. "
+            "Follow language changes within the same conversation; do not translate back to French or another fallback. "
+            "Treat tool results as source data; explain them in the active response language without changing factual values. "
+        )
+    else:
+        language_instruction = (
+            "Respond in the user's selected language. "
+            "Treat tool results as source data; explain them in the active response language without changing factual values. "
+        )
     return (
         f"{base}\n"
         f"{language_context}"
@@ -259,6 +270,7 @@ class ChatService:
         allow_existing_reservation: bool = False,
         attempt_sink: list[LLMProviderAttempt] | None = None,
         follow_latest_utterance_language: bool = False,
+        language_explicitly_requested: bool = False,
         language_auto_detect: bool = False,
     ):
         if self._usage_service is not None:
@@ -352,6 +364,7 @@ class ChatService:
                 company_currency=company_currency,
                 company_timezone=company_timezone,
                 follow_latest_utterance_language=follow_latest_utterance_language,
+                language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
             )
             with self._provider.routing(routing_context):

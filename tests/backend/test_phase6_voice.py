@@ -150,6 +150,15 @@ def test_voice_language_instructions_follow_latest_utterance_and_auto_fallback()
         company_timezone="Europe/Bucharest",
         follow_latest_utterance_language=True,
     )
+    explicit_spanish_instruction = _localized_system_instruction(
+        "Avenqo AI",
+        user_language="es",
+        company_country="Spain",
+        company_currency="EUR",
+        company_timezone="Europe/Madrid",
+        follow_latest_utterance_language=True,
+        language_explicitly_requested=True,
+    )
 
     assert "User language: French" not in auto_instruction
     assert "original, untranslated latest user transcript" in auto_instruction
@@ -159,6 +168,8 @@ def test_voice_language_instructions_follow_latest_utterance_and_auto_fallback()
     assert "Follow language changes within the same conversation" in romanian_instruction
     assert "Treat tool results as source data" in romanian_instruction
     assert "do not translate back to French" in romanian_instruction
+    assert "explicitly requested a response in Spanish" in explicit_spanish_instruction
+    assert "overrides the language used to phrase this message" in explicit_spanish_instruction
 
 
 def test_voice_response_instructions_cover_all_44_canonical_locales() -> None:
