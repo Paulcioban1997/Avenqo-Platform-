@@ -72,6 +72,7 @@ export async function POST(
       headers,
       body: body || undefined,
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
 
     const responseBody = await upstream.text();
@@ -175,6 +176,7 @@ export async function GET(
       method: "GET",
       headers,
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
 
     const responseBody = await upstream.text();

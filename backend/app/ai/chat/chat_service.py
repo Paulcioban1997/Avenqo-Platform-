@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import logging
 from uuid import UUID, uuid4
 
+from backend.app.ai.request_timeout import bounded_ai_request
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError
 from backend.app.ai.chat.orchestrator import ToolOrchestrator
@@ -126,6 +127,7 @@ class ChatService:
     def provider_name(self) -> str:
         return self._provider.name
 
+    @bounded_ai_request
     async def classify_intent(
         self,
         system_instruction: str,
@@ -197,13 +199,15 @@ class ChatService:
                         reason="classification_failure_without_cost",
                     )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
-        except BaseException:
+        except BaseException as exc:
+            known_attempts = tuple(getattr(exc, "attempts", ()))
+            if attempt_sink is not None:
+                attempt_sink.extend(known_attempts)
             if self._usage_service is not None and tenant_id is not None and reservation_owner:
-                self._usage_service.release_reservation(
-                    tenant_id,
-                    avenqo_request_id,
-                    reason="classification_aborted",
-                )
+                if known_attempts:
+                    self._usage_service.settle_reservation(tenant_id, plan_code, avenqo_request_id, attempts=known_attempts, count_request=False)
+                else:
+                    self._usage_service.release_reservation(tenant_id, avenqo_request_id, reason="classification_aborted")
             raise
         if attempt_sink is not None:
             attempt_sink.extend(generation.attempts)
@@ -244,6 +248,7 @@ class ChatService:
             return "DEV: requete_provider_invalide"
         return "DEV: provider_indisponible"
 
+    @bounded_ai_request
     async def send(
         self,
         tenant_id: UUID,
@@ -411,13 +416,15 @@ class ChatService:
                 category.value,
             )
             raise AIServiceUnavailableError(self._client_error_message(exc)) from exc
-        except BaseException:
+        except BaseException as exc:
+            known_attempts = tuple(getattr(exc, "attempts", ()))
+            if attempt_sink is not None:
+                attempt_sink.extend(known_attempts)
             if self._usage_service is not None and reservation_owner:
-                self._usage_service.release_reservation(
-                    tenant_id,
-                    tool_context.request_id,
-                    reason="request_aborted",
-                )
+                if known_attempts:
+                    self._usage_service.settle_reservation(tenant_id, plan_code, tool_context.request_id, attempts=known_attempts, count_request=False)
+                else:
+                    self._usage_service.release_reservation(tenant_id, tool_context.request_id, reason="request_aborted")
             raise
 
         if attempt_sink is not None:

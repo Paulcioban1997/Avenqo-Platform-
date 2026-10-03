@@ -244,6 +244,7 @@ class Settings(BaseSettings):
     ai_primary_provider: str = Field(default="openai", alias="AI_PRIMARY_PROVIDER")
     ai_fallback_provider_1: str | None = Field(default=None, alias="AI_FALLBACK_PROVIDER_1")
     ai_fallback_provider_2: str | None = Field(default=None, alias="AI_FALLBACK_PROVIDER_2")
+    ai_request_timeout_seconds: float = Field(default=90.0, gt=0, le=100.0, alias="AI_REQUEST_TIMEOUT_SECONDS")
     ai_gateway_max_retries: int = Field(default=2, ge=0, le=10, alias="AI_GATEWAY_MAX_RETRIES")
     ai_gateway_base_delay_seconds: float = Field(default=0.5, ge=0.0, le=30.0, alias="AI_GATEWAY_BASE_DELAY_SECONDS")
     ai_gateway_max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0, alias="AI_GATEWAY_MAX_DELAY_SECONDS")

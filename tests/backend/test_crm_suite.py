@@ -26,6 +26,8 @@ from backend.app.ai.tools.contracts import ToolExecutionContext
 from backend.app.ai.tools.business.crm_tools import (
     SearchClientsTool,
     SearchClientsArgs,
+    SearchAppointmentsTool,
+    SearchAppointmentsArgs,
     GetClientTool,
     GetClientArgs,
     CheckAvailabilityTool,
@@ -94,6 +96,52 @@ def test_crm_month_bounds_follow_tenant_timezone_at_utc_month_boundary():
 
     assert start == datetime(2026, 9, 1, 4, 0, tzinfo=timezone.utc)
     assert end == datetime(2026, 10, 1, 4, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("target_date,expected", [
+    (None, {"past", "today", "overnight", "tomorrow", "dst-evening"}),
+    ("today", {"today", "overnight"}),
+    ("2026-10-03", {"today", "overnight"}),
+    ("2026-10-05", set()),
+    ("2026-11-01", {"dst-evening"}),
+])
+def test_copilot_appointment_search_reads_real_service_rows_and_tenant_local_day(db_session, monkeypatch, target_date, expected):
+    import backend.app.ai.tools.business.crm_tools as crm_tools
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = datetime(2026, 10, 4, 2, 0, tzinfo=timezone.utc)
+            return current.astimezone(tz) if tz else current.replace(tzinfo=None)
+
+    monkeypatch.setattr(crm_tools, "datetime", FrozenDateTime)
+    company = _create_company(db_session, "appointment-reader")
+    other = _create_company(db_session, "other-appointment-reader")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {"first_name": "Local", "last_name": "Client"})
+    other_client = service.create_client(other.id, {"first_name": "Other", "last_name": "Client"})
+    for owner, customer, title, start in [
+        (company, client, "past", datetime(2026, 10, 2, 16, tzinfo=timezone.utc)),
+        (company, client, "today", datetime(2026, 10, 3, 4, tzinfo=timezone.utc)),
+        (company, client, "overnight", datetime(2026, 10, 4, 3, 30, tzinfo=timezone.utc)),
+        (company, client, "tomorrow", datetime(2026, 10, 4, 4, tzinfo=timezone.utc)),
+        (company, client, "dst-evening", datetime(2026, 11, 2, 4, 30, tzinfo=timezone.utc)),
+        (other, other_client, "private-other-tenant", datetime(2026, 10, 3, 12, tzinfo=timezone.utc)),
+    ]:
+        db_session.add(CRMAppointment(company_id=owner.id, client_id=customer.id, title=title,
+            start_time=start, end_time=start + timedelta(hours=1), duration_minutes=60, status="confirmed"))
+    db_session.commit()
+    before = db_session.query(CRMAppointment).count()
+    context = ToolExecutionContext(tenant=TenantContext(company_id=company.id), user_id=uuid4(),
+        permissions=frozenset({"ai:use"}), request_id="appointment-read")
+    args = SearchAppointmentsArgs(**({"target_date": target_date} if target_date else {}))
+    result = asyncio.run(SearchAppointmentsTool(db_session).run(context, args))
+    assert result.success is True
+    assert {row["title"] for row in result.data["appointments"]} == expected
+    assert result.data["count"] == len(expected)
+    assert result.source_refs == ("crm_appointments",)
+    assert all("client_email" not in row and "client_phone" not in row for row in result.data["appointments"])
+    assert db_session.query(CRMAppointment).count() == before
 
 
 def test_crm_appointments_this_month_uses_tenant_local_month(db_session, monkeypatch):

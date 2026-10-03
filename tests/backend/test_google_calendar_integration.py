@@ -172,6 +172,7 @@ def test_google_auth_url_uses_offline_calendar_scopes() -> None:
 
 def test_google_provider_fetches_account_email(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeResponse:
+        status = 200
         def __enter__(self):
             return self
 
@@ -188,6 +189,7 @@ def test_google_provider_fetches_account_email(monkeypatch: pytest.MonkeyPatch) 
 
 def test_google_calendar_list_response_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeResponse:
+        status = 200
         def __enter__(self):
             return self
 

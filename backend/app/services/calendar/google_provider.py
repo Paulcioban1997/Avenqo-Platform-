@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+from io import BytesIO
 import json
 import logging
 from datetime import datetime, timezone
@@ -27,6 +30,19 @@ CALENDAR_SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
+
+
+@asynccontextmanager
+async def _open_response(request, *, timeout):
+    """Keep blocking urllib I/O off the API event loop, including body reads."""
+    def read_response():
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.read(), response.status
+
+    body, status = await asyncio.to_thread(read_response)
+    with BytesIO(body) as response:
+        response.status = status
+        yield response
 
 
 class GoogleCalendarProvider(CalendarProvider):
@@ -78,7 +94,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 token_payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             err_body = exc.read().decode("utf-8")
@@ -102,7 +118,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="GET",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            async with _open_response(req, timeout=10) as resp:
                 info = json.loads(resp.read().decode("utf-8"))
                 return info.get("email", "")
         except Exception:
@@ -116,7 +132,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="GET",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return [
                     {
@@ -153,7 +169,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except Exception as exc:
             raise CalendarProviderError(f"Échec du rafraîchissement du token Google: {exc}") from exc
@@ -184,7 +200,7 @@ class GoogleCalendarProvider(CalendarProvider):
         )
         req = urllib.request.Request(url, headers=self._auth_headers(credentials), method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data.get("items", [])
         except urllib.error.HTTPError as exc:
@@ -224,7 +240,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 created = json.loads(resp.read().decode("utf-8"))
                 return created.get("id", "")
         except urllib.error.HTTPError as exc:
@@ -262,7 +278,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="PATCH",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 return resp.status in {200, 204}
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
@@ -290,7 +306,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="DELETE",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 return resp.status in {200, 204}
         except urllib.error.HTTPError as exc:
             if exc.code in {404, 410}:
@@ -320,7 +336,7 @@ class GoogleCalendarProvider(CalendarProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            async with _open_response(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 cal_data = data.get("calendars", {}).get(calendar_id, {})
                 busy_list = cal_data.get("busy", [])

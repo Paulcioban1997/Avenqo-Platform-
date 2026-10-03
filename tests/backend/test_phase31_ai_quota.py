@@ -621,3 +621,47 @@ async def test_chat_service_without_usage_service_is_unaffected_backward_compati
     for _ in range(5):
         message, _ = await service.send(company.id, user.id, conversation.id, "hi", plan_code="demo")
         assert message.content == "reply"
+
+
+@pytest.mark.parametrize("known_cost", [False, True])
+@pytest.mark.parametrize("operation", ["send", "classify_intent"])
+async def test_ai_deadline_cancels_provider_and_releases_credit_reservation(db_session, monkeypatch, operation, known_cost):
+    import asyncio
+    import backend.app.ai.request_timeout as deadline
+    from types import SimpleNamespace
+    from sqlalchemy import select
+    from backend.app.models import TenantAICreditReservation
+
+    company = _company(db_session, slug="deadline")
+    user = _user(db_session, company)
+    db_session.commit()
+    conversations = ConversationService(db_session)
+    conversation = conversations.create(company.id, user.id, "Timeout")
+    usage = AIUsageService(db_session, AIQuotaPolicy(_settings({"demo": {MONTHLY_AI_REQUESTS: 6500}})))
+    cancelled = asyncio.Event()
+    class StalledProvider(StubLLMProvider):
+        async def generate(self, **kwargs):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError as exc:
+                if known_cost:
+                    from tests.backend.test_phase2_credit_economics import _attempt
+                    exc.attempts = (_attempt("deadline-turn", "0.00051"),)
+                raise
+            finally:
+                cancelled.set()
+    chat = ChatService(conversations, RetrievalService(db_session), StalledProvider(), usage_service=usage)
+    monkeypatch.setattr(deadline, "get_settings", lambda: SimpleNamespace(ai_request_timeout_seconds=0.05))
+    with pytest.raises(AIServiceUnavailableError):
+        if operation == "send":
+            await chat.send(company.id, user.id, conversation.id, "Bonjour", request_id="deadline-turn", plan_code="demo", retrieve_tenant_data=False)
+        else:
+            await chat.classify_intent("classify", "Bonjour", tenant_id=company.id, request_id="deadline-turn", plan_code="demo")
+    assert cancelled.is_set()
+    reservation = db_session.scalar(select(TenantAICreditReservation).where(TenantAICreditReservation.avenqo_request_id == "deadline-turn"))
+    assert reservation.status == ("settled" if known_cost else "released")
+    balance = usage.get_credit_balance(company.id, "demo")
+    expected_charge = 2 if known_cost else 0
+    assert balance["monthly_used"] == expected_charge
+    assert balance["total_remaining"] == 6500 - expected_charge
+    assert not db_session.in_transaction()

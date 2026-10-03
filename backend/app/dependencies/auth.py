@@ -1,6 +1,7 @@
 """Dépendances FastAPI établissant une identité multi-tenant de confiance."""
 
 import hmac
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -9,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import permissions_for
+from backend.app.core.request_context import request_id_var
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.models import AuthSession, User
@@ -22,6 +24,7 @@ from backend.app.services.auth_service import AuthenticationError, AuthService
 from shared.ai_engine.contracts import TenantContext
 
 _bearer = HTTPBearer(auto_error=False)
+logger = logging.getLogger("avenqo.auth")
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,11 +92,19 @@ def get_current_identity(
     token: str | None = None
     is_cookie_auth = False
 
-    if credentials is not None and credentials.scheme.lower() == "bearer":
-        token = credentials.credentials
-    elif "avenqo_access_token" in request.cookies:
+    if "avenqo_access_token" in request.cookies:
         token = request.cookies["avenqo_access_token"]
-        is_cookie_auth = True
+        # Explicit possession of the canonical token supports API clients that
+        # also retain cookies. A different/stale bearer never selects a tenant
+        # or exempts cookie authentication from CSRF checks.
+        is_cookie_auth = not (
+            credentials is not None
+            and credentials.scheme.lower() == "bearer"
+            and hmac.compare_digest(credentials.credentials, token)
+            and request.headers.get("sec-fetch-site") is None
+        )
+    elif credentials is not None and credentials.scheme.lower() == "bearer":
+        token = credentials.credentials
 
     if not token:
         raise HTTPException(
@@ -107,10 +118,13 @@ def get_current_identity(
     try:
         auth_session, user = service.authenticate(token)
     except AuthenticationError as exc:
+        logger.warning("auth_identity_rejected request_id=%s path=%s category=session_expired", request_id_var.get(), request.url.path)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         ) from exc
+    if request.url.path.endswith("/auth/me"):
+        logger.info("auth_identity_resolved request_id=%s user_id=%s tenant_id=%s", request_id_var.get(), user.id, user.company_id)
     return CurrentIdentity(auth_session, user, token)
 
 

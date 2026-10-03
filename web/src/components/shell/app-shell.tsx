@@ -39,7 +39,10 @@ import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { CommandPalette } from "./command-palette";
 import { AvenqoCopilot } from "./avenqo-copilot";
 import { CreditMeter } from "./credit-meter";
-import { creditBalanceViewModel } from "@/lib/credit-balance";
+import { useSession, type OrganizationItem } from "@/lib/session-context";
+import { apiFetch } from "@/lib/api-request";
+import { RequestFailure } from "@/components/ui/request-failure";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -50,94 +53,33 @@ export function AppShell({ children }: AppShellProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
 
-  interface UserProfile {
-    id: string;
-    first_name: string;
-    last_name: string;
-    job_title?: string;
-    role: string;
-    is_platform_admin: boolean;
-  }
-
-  interface OrganizationItem {
-    id: string;
-    name: string;
-    slug: string;
-    subscription_plan: string;
-    role: string;
-    is_current: boolean;
-  }
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [activeTenant, setActiveTenant] = useState<string>("");
-  const [organizations, setOrganizations] = useState<OrganizationItem[]>([]);
-  const [activeDataSources, setActiveDataSources] = useState<string[]>([]);
+  const session = useSession();
+  const currentUser = session.identity?.user ?? null;
+  const activeTenant = session.identity?.company.name ?? "";
+  const organizations = session.identity?.organizations ?? [];
+  const activeDataSources = session.activeDataSources;
+  const catalog = getApplicationCatalog(locale);
   const [isTenantMenuOpen, setIsTenantMenuOpen] = useState(false);
   const [isNotifMenuOpen, setIsNotifMenuOpen] = useState(false);
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
 
-  // Dynamic AI credit meter state
-  const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
-  const [aiCreditsLimit, setAiCreditsLimit] = useState<number | null>(null);
-
-  useEffect(() => {
-    const refreshCredits = async () => {
-      const response = await fetch("/api/v1/billing/ai-credits");
-      if (!response.ok) return;
-      const balance = await response.json();
-      const view = creditBalanceViewModel(balance);
-      setAiCreditsRemaining(view.remaining);
-      setAiCreditsLimit(view.limit);
-    };
-    const handleCreditsUpdated = () => { void refreshCredits(); };
-    window.addEventListener("avenqo:ai-credits-updated", handleCreditsUpdated);
-    const refreshTimer = window.setInterval(handleCreditsUpdated, 30000);
-    async function loadIdentity() {
-      try {
-        const res = await fetch("/api/v1/auth/me");
-        if (res.ok) {
-          const data = await res.json();
-          setCurrentUser(data.user);
-          setActiveTenant(data.company?.name || "");
-          if (Array.isArray(data.organizations)) {
-            setOrganizations(data.organizations);
-          }
-        }
-        const [connRes] = await Promise.all([
-          fetch("/api/v1/connectors/connections").catch(() => null),
-        ]);
-        void refreshCredits();
-
-        if (connRes && connRes.ok) {
-          const conns = await connRes.json();
-          if (Array.isArray(conns)) {
-            const active = conns
-              .filter((c: any) => (c.status === "READY" || c.status === "CONNECTED") && c.is_enabled !== false)
-              .map((c: any) => c.provider);
-            setActiveDataSources(active);
-          }
-        }
-      } catch {}
-    }
-    loadIdentity();
-    return () => {
-      window.removeEventListener("avenqo:ai-credits-updated", handleCreditsUpdated);
-      window.clearInterval(refreshTimer);
-    };
-  }, []);
+  const aiCreditsRemaining = session.credits.remaining;
+  const aiCreditsLimit = session.credits.limit;
 
   const handleSwitchTenant = async (org: OrganizationItem) => {
     try {
-      const res = await fetch("/api/v1/auth/switch-tenant", {
+      const res = await apiFetch("/api/v1/auth/switch-tenant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_id: org.id }),
       });
       if (res.ok) {
-        setActiveTenant(org.name);
+        const channel = new BroadcastChannel("avenqo-session");
+        channel.postMessage("tenant-changed");
+        channel.close();
         setIsTenantMenuOpen(false);
         window.location.reload();
       }
@@ -146,12 +88,17 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/v1/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST", headers: { "X-Requested-With": "avenqo-web" }, signal: AbortSignal.timeout(15_000) });
     } catch {}
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel("avenqo-session");
+      channel.postMessage("session-ended");
+      channel.close();
+    }
     localStorage.removeItem("avenqo_token");
     localStorage.removeItem("avenqo_access_token");
     localStorage.removeItem("avenqo_refresh_token");
-    window.location.href = "/login";
+    window.location.href = "/login?session_expired=1";
   };
 
   // Navigation modules
@@ -269,7 +216,7 @@ export function AppShell({ children }: AppShellProps) {
           ) : (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08]">
               <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-              <span className="max-w-[140px] truncate">{activeTenant || t.shell.workspace}</span>
+              <span className="max-w-[140px] truncate">{activeTenant || catalog.company.connectionsLoading}</span>
             </div>
           )}
 
@@ -513,6 +460,10 @@ export function AppShell({ children }: AppShellProps) {
               limit={aiCreditsLimit}
               label={t.shell.aiCredits}
               upgradeLabel={t.shell.upgradePlan}
+              error={session.creditError ? session.creditError.publicMessage ?? catalog.auth.genericError : undefined}
+              loadingLabel={catalog.company.connectionsLoading}
+              onRetry={() => { void session.reload(); }}
+              retryLabel={t.common.retry}
             />
 
             {/* User Profile */}
@@ -559,7 +510,11 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Page Main Content Area */}
         <main className="flex-1 overflow-y-auto focus:outline-none p-4 sm:p-6 lg:p-8">
-          {children}
+          {session.error ? <RequestFailure error={session.error} retry={() => { void session.reload(); }} />
+            : session.identity ? <>
+              {session.sourceError && <RequestFailure error={session.sourceError} retry={() => { void session.reload(); }} />}
+              {children}
+            </> : <div role="status">{catalog.company.connectionsLoading}</div>}
         </main>
       </div>
 

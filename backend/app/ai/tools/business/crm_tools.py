@@ -7,9 +7,11 @@ vérifier les disponibilités, gérer les clients et analyser les performances C
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
@@ -19,6 +21,7 @@ from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
+from backend.app.models.company import Company
 
 
 # --- Arguments Schemas ---
@@ -46,7 +49,11 @@ class GetClientArgs(ToolArguments):
 class SearchAppointmentsArgs(ToolArguments):
     query: str | None = Field(default=None, description="Titre du rendez-vous, nom du client ou notes.")
     status: str | None = Field(default=None, description="Filtrer par statut: confirmed, pending, completed, cancelled, no_show.")
-    limit: int = Field(default=10, description="Nombre maximal de rendez-vous.")
+    target_date: date | Literal["today"] | None = Field(
+        default=None,
+        description="Jour à consulter : date YYYY-MM-DD ou 'today' pour aujourd'hui dans le fuseau de l'entreprise. Ne pas utiliser query pour une date.",
+    )
+    limit: int = Field(default=10, ge=1, le=100, description="Nombre maximal de rendez-vous.")
 
 
 class CheckAvailabilityArgs(ToolArguments):
@@ -258,35 +265,47 @@ class GetClientTool(CRMAITool):
 class SearchAppointmentsTool(CRMAITool):
     name = "search_appointments"
     description = (
-        "Recherche des rendez-vous par client, motif, notes ou statut."
+        "Recherche des rendez-vous par jour, client, motif, notes ou statut. "
+        "Pour les rendez-vous d'aujourd'hui, utiliser target_date='today' ; le backend résout la date locale réelle."
     )
     input_schema = SearchAppointmentsArgs
     required_permissions = ("ai:use",)
 
     def __init__(self, session: Session) -> None:
         self._crm = CRMService(session)
+        self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: SearchAppointmentsArgs) -> ToolResult:
+        start_date = starting_before = None
+        target_day = None
+        if arguments.target_date is not None:
+            timezone_name = self._session.scalar(select(Company.timezone).where(Company.id == context.tenant.company_id))
+            try:
+                tenant_timezone = ZoneInfo(timezone_name or "UTC")
+            except ZoneInfoNotFoundError:
+                tenant_timezone = timezone.utc
+            target_day = datetime.now(tenant_timezone).date() if arguments.target_date == "today" else arguments.target_date
+            local_start = datetime.combine(target_day, datetime.min.time(), tzinfo=tenant_timezone)
+            start_date = local_start.astimezone(timezone.utc)
+            starting_before = (local_start + timedelta(days=1)).astimezone(timezone.utc)
         appts = self._crm.list_appointments(
             context.tenant.company_id,
+            start_date=start_date,
+            starting_before=starting_before,
             status=arguments.status,
             search=arguments.query,
             limit=arguments.limit,
         )
         data = [
             {
-                "id": str(a.id),
-                "title": a.title,
-                "client_name": a.client.full_name if a.client else "Client inconnu",
-                "start_time": a.start_time.isoformat(),
-                "end_time": a.end_time.isoformat(),
-                "status": a.status,
-                "duration_minutes": a.duration_minutes,
-                "notes": a.notes,
+                key: a[key] for key in (
+                    "id", "title", "client_name", "start_time", "end_time",
+                    "status", "duration_minutes", "notes",
+                )
             }
             for a in appts
         ]
-        return ToolResult(success=True, data={"count": len(data), "appointments": data}, source_refs=("crm_appointments",))
+        return ToolResult(success=True, data={"count": len(data), "appointments": data, "date": target_day.isoformat() if target_day else None}, source_refs=("crm_appointments",))
 
 
 class CheckAvailabilityTool(CRMAITool):

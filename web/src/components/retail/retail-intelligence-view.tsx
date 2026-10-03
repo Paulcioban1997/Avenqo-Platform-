@@ -26,11 +26,13 @@ import {
 } from "lucide-react";
 import { AvenqoCard, MetricCard, StatusBadge } from "@/components/ui/avenqo-card";
 import { TableSkeleton, KPISkeleton, ChartSkeleton } from "@/components/ui/skeleton";
+import { RequestFailure } from "@/components/ui/request-failure";
 import { EmptyState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
 
 export type RetailSubTab =
   | "overview"
@@ -133,6 +135,7 @@ export function RetailIntelligenceView({
 
   const [activeTab, setActiveTab] = useState<RetailSubTab>(defaultTab);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -149,16 +152,17 @@ export function RetailIntelligenceView({
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const headers = getAuthHeaders();
       const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
-        fetch("/api/v1/retail/status", { headers }).catch(() => null),
-        fetch("/api/v1/retail/products?limit=100", { headers }).catch(() => null),
-        fetch("/api/v1/retail/orders?limit=100", { headers }).catch(() => null),
-        fetch("/api/v1/retail/customers?limit=100", { headers }).catch(() => null),
-        fetch("/api/v1/retail/inventory?limit=100", { headers }).catch(() => null),
-        fetch("/api/v1/sales/summary?period=last_30_days", { headers }).catch(() => null),
-        fetch("/api/v1/recommendations", { headers }).catch(() => null),
+        apiFetch("/api/v1/retail/status", { headers }),
+        apiFetch("/api/v1/retail/products?limit=100", { headers }),
+        apiFetch("/api/v1/retail/orders?limit=100", { headers }),
+        apiFetch("/api/v1/retail/customers?limit=100", { headers }),
+        apiFetch("/api/v1/retail/inventory?limit=100", { headers }),
+        apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
+        apiFetch("/api/v1/recommendations", { headers }),
       ]);
 
       if (statusRes && statusRes.ok) {
@@ -199,8 +203,8 @@ export function RetailIntelligenceView({
       } else {
         setRecommendations([]);
       }
-    } catch {
-      // Local fallback
+    } catch (error) {
+      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
       setIsLoading(false);
     }
@@ -257,6 +261,9 @@ export function RetailIntelligenceView({
     { label: retail.customers, value: retailStatus?.customer_count ?? customers.length },
     { label: retail.inventory, value: inventory.length },
   ];
+
+  if (loadError) return <RequestFailure error={loadError} retry={() => { void loadData(); }} />;
+  if (isLoading && !retailStatus) return <div role="status">{company.connectionsLoading}</div>;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">

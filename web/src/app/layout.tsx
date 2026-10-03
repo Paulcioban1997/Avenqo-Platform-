@@ -1,3 +1,4 @@
+import { SessionProvider } from "@/lib/session-context";
 import type { Metadata } from "next";
 import { Geist, Manrope } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n/locale-context";
@@ -103,7 +104,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <StructuredData />
-        <LocaleProvider>{children}</LocaleProvider>
+        <LocaleProvider><SessionProvider>{children}</SessionProvider></LocaleProvider>
       </body>
     </html>
   );

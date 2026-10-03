@@ -19,6 +19,10 @@ import {
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useSession } from "@/lib/session-context";
+import { RequestFailure } from "@/components/ui/request-failure";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { apiFetch } from "@/lib/api-request";
 
 export interface AvenqoCopilotProps {
   isOpen: boolean;
@@ -37,12 +41,6 @@ interface ChatMessage {
   grounded?: boolean;
 }
 
-interface EnabledSource {
-  source_id: string;
-  display_name: string;
-  enabled: boolean;
-}
-
 export function AvenqoCopilot({
   isOpen,
   onClose,
@@ -54,7 +52,8 @@ export function AvenqoCopilot({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [activeSources, setActiveSources] = useState<EnabledSource[]>([]);
+  const session = useSession();
+  const activeSources = session.activeDataSources;
   const [isListening, setIsListening] = useState(false);
   const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -70,28 +69,6 @@ export function AvenqoCopilot({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isThinking]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    void fetch("/api/v1/retail/sources", { headers: getAuthHeaders() })
-      .then(async (response) => response.ok ? response.json() : [])
-      .then((sources: unknown) => {
-        if (!cancelled && Array.isArray(sources)) {
-          setActiveSources(
-            sources.filter(
-              (source): source is EnabledSource =>
-                typeof source === "object" && source !== null &&
-                (source as EnabledSource).enabled === true,
-            ),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setActiveSources([]);
-      });
-    return () => { cancelled = true; };
-  }, [isOpen]);
 
   const handleSend = async (textToSend?: string, voiceSessionOverride?: string | null) => {
     const query = (textToSend || input).trim();
@@ -120,7 +97,7 @@ export function AvenqoCopilot({
 
       let activeConversationId = conversationId;
       if (activeConversationId === null) {
-        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
+        const conversationResponse = await apiFetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers,
           body: JSON.stringify({ title: query.slice(0, 54) }),
@@ -133,7 +110,7 @@ export function AvenqoCopilot({
 
       const voiceSession = voiceSessionOverride ?? voiceSessionId;
       const res = voiceSession
-        ? await fetch(`/api/v1/ai/voice/sessions/${voiceSession}/turn`, {
+        ? await apiFetch(`/api/v1/ai/voice/sessions/${voiceSession}/turn`, {
           method: "POST",
           headers: {
             ...headers,
@@ -141,7 +118,7 @@ export function AvenqoCopilot({
           },
           body: JSON.stringify({ transcript: query, request_id: pendingRequest.key }),
         })
-        : await fetch(
+        : await apiFetch(
         `/api/v1/ai/central/conversations/${activeConversationId}/messages`,
         {
         method: "POST",
@@ -253,7 +230,7 @@ export function AvenqoCopilot({
       let sessionId = voiceSessionId;
       let activeConversationId = conversationId;
       if (!activeConversationId) {
-        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
+        const conversationResponse = await apiFetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ title: "Voice Central" }),
@@ -264,7 +241,7 @@ export function AvenqoCopilot({
         }
       }
       if (!sessionId && activeConversationId) {
-        const response = await fetch("/api/v1/ai/voice/sessions", {
+        const response = await apiFetch("/api/v1/ai/voice/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ conversation_id: activeConversationId, locale, request_id: crypto.randomUUID() }),
@@ -281,7 +258,7 @@ export function AvenqoCopilot({
         startFallbackRecognition(sessionId);
         return;
       }
-      const ticketResponse = await fetch(`/api/v1/ai/voice/sessions/${sessionId}/stream-ticket`, {
+      const ticketResponse = await apiFetch(`/api/v1/ai/voice/sessions/${sessionId}/stream-ticket`, {
         method: "POST", headers: getAuthHeaders(),
       });
       if (!ticketResponse.ok) throw new Error("Voice ticket unavailable");
@@ -430,12 +407,14 @@ export function AvenqoCopilot({
           {t.copilot.activeSourcesLabel}
         </div>
         <div className="flex items-center gap-2 flex-wrap text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-          {activeSources.length === 0
+          {session.sourceError ? <RequestFailure error={session.sourceError} retry={() => { void session.reload(); }} />
+            : session.loading ? <span>{getApplicationCatalog(locale).company.connectionsLoading}</span>
+            : activeSources.length === 0
             ? <span>{t.copilot.noActiveSources}</span>
             : activeSources.map((source) => (
-                <span key={source.source_id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400">
+                <span key={source} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {source.display_name}
+                  {source}
                 </span>
               ))}
         </div>

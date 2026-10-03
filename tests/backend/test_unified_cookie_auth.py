@@ -226,3 +226,25 @@ def test_admin_permissions_with_cookie_auth(auth_env):
     # Accès route admin -> Accepté (200)
     adm_admin_resp = client.get("/api/v1/admin/companies")
     assert adm_admin_resp.status_code == 200
+
+
+def test_stale_bearer_cannot_override_valid_cookie_identity(auth_env):
+    client, _, standard_user, _ = auth_env
+    assert client.post("/api/v1/auth/login", json={"email": standard_user.email, "password": "AvenqoTest123!"}).status_code == 200
+    response = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer stale-browser-token"})
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == str(standard_user.id)
+
+
+def test_cookie_identity_does_not_bypass_csrf_when_bearer_is_present(auth_env):
+    client, _, standard_user, _ = auth_env
+    client.post("/api/v1/auth/login", json={"email": standard_user.email, "password": "AvenqoTest123!"})
+    response = client.post("/api/v1/auth/logout", headers={"Authorization": "Bearer stale-browser-token", "Sec-Fetch-Site": "cross-site"})
+    assert response.status_code == 403
+
+
+def test_proxy_injected_canonical_bearer_does_not_bypass_cross_site_csrf(auth_env):
+    client, _, standard_user, _ = auth_env
+    login = client.post("/api/v1/auth/login", json={"email": standard_user.email, "password": "AvenqoTest123!"})
+    response = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {login.json()['access_token']}", "Sec-Fetch-Site": "cross-site"})
+    assert response.status_code == 403

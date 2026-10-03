@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
 
 interface Message {
@@ -167,7 +168,7 @@ export function CRMCopilotPanel({
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
-        const conversationResponse = await fetch("/api/v1/ai/chat/conversations", {
+        const conversationResponse = await apiFetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ title: query.slice(0, 54) }),
@@ -178,7 +179,7 @@ export function CRMCopilotPanel({
         setConversationId(activeConversationId);
       }
 
-      const res = await fetch(`/api/v1/ai/central/conversations/${activeConversationId}/messages`, {
+      const res = await apiFetch(`/api/v1/ai/central/conversations/${activeConversationId}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

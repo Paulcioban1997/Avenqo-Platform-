@@ -472,3 +472,31 @@ def test_concurrent_reservations_cannot_double_spend(credit_db) -> None:
         assert balance.purchased_balance == 0
         assert balance.purchased_reserved == 0
         assert session.query(TenantAICreditReservation).filter_by(status="reserved").count() == 1
+
+
+@pytest.mark.parametrize("operation", ["balance", "quota", "duplicate", "released", "settled", "maintenance"])
+def test_credit_operation_releases_transaction_before_network_wait(credit_db, operation):
+    """An idle Voice session must not retain the tenant credit lock."""
+    with credit_db() as session:
+        company = _company(session, "short-credit-transaction")
+        service = AIUsageService(session, AIQuotaPolicy(_settings(6500)))
+        service.reserve_credits(company.id, "professional", "turn-1", 1)
+        if operation == "balance":
+            balance = service.get_credit_balance(company.id, "professional")
+            assert balance["total_remaining"] == 6500
+        elif operation == "quota":
+            service.ensure_quota_available(company.id, "professional")
+        elif operation == "duplicate":
+            assert not service.claim_credit_reservation(company.id, "professional", "turn-1", 1).acquired
+        elif operation == "released":
+            service.release_reservation(company.id, "turn-1", reason="test_cancelled")
+            service.release_reservation(company.id, "turn-1", reason="test_cancelled")
+        elif operation == "settled":
+            service.settle_reservation(company.id, "professional", "turn-1")
+            service.settle_reservation(company.id, "professional", "turn-1")
+        else:
+            assert service.release_stale_reservations(company.id) == 0
+        assert not session.in_transaction()
+        with credit_db() as other:
+            other_service = AIUsageService(other, AIQuotaPolicy(_settings(6500)))
+            assert other_service.claim_credit_reservation(company.id, "professional", "turn-2", 1).acquired

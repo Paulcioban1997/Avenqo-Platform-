@@ -140,6 +140,8 @@ class AIUsageService:
             credits.purchased_balance - credits.purchased_reserved,
             0,
         )
+        # Credit maintenance is a short transaction, never a provider lifetime.
+        self._db.commit()
         if included_available + purchased_available <= 0:
             raise AIQuotaExceededError(INSUFFICIENT_AI_CREDITS)
 
@@ -154,7 +156,7 @@ class AIUsageService:
         )
         purchased_remaining = credits.purchased_balance
         total = None if monthly_remaining is None else monthly_remaining + purchased_remaining
-        return {
+        snapshot = {
             "billing_period": credits.monthly_period,
             "monthly_included": included,
             "monthly_used": credits.monthly_used,
@@ -162,6 +164,10 @@ class AIUsageService:
             "purchased_remaining": purchased_remaining,
             "total_remaining": total,
         }
+        # pg_advisory_xact_lock and FOR UPDATE must be released before callers
+        # await a model, WebSocket event or another request on this tenant.
+        self._db.commit()
+        return snapshot
 
     def _record_credit_transaction(
         self,
@@ -410,6 +416,7 @@ class AIUsageService:
             )
         )
         if existing is not None:
+            self._db.commit()
             return CreditReservationClaim(existing, acquired=False)
 
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
@@ -475,6 +482,7 @@ class AIUsageService:
             .with_for_update()
         )
         if reservation is None or reservation.status != "reserved":
+            self._db.commit()
             return reservation
         balance = self._get_or_create_credits(company_id)
         self._release_stale_reservations_locked(
@@ -523,6 +531,7 @@ class AIUsageService:
         if reservation is None:
             raise ValueError("Credit reservation not found")
         if reservation.status != "reserved":
+            self._db.commit()
             return reservation
 
         provider_cost = sum(
@@ -688,8 +697,7 @@ class AIUsageService:
         with _tenant_credit_lock(company_id):
             balance = self._get_or_create_credits(company_id)
             released = self._release_stale_reservations_locked(company_id, balance)
-            if released:
-                self._db.commit()
+            self._db.commit()
             return released
 
     def _release_stale_reservations_locked(
