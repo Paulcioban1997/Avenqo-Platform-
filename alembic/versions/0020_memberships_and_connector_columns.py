@@ -1,7 +1,7 @@
 """Add company_memberships table, missing commerce_connections columns, and normalize plans.
 
 Revision ID: 0020_memberships_and_connector_columns
-Revises: 0019_enterprise_quotes
+Revises: 0019_company_memberships
 """
 
 from alembic import op
@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "0020_memberships_and_connector_columns"
-down_revision = "0019_enterprise_quotes"
+down_revision = "0019_company_memberships"
 branch_labels = None
 depends_on = None
 
@@ -108,3 +108,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     pass
+
