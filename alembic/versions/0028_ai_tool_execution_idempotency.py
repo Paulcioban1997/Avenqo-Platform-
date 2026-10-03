@@ -12,7 +12,8 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    if not sa.inspect(bind).has_table("ai_tool_execution_records"):
+    offline = op.get_context().as_sql
+    if offline or not sa.inspect(bind).has_table("ai_tool_execution_records"):
         op.create_table(
             "ai_tool_execution_records",
             sa.Column("id", sa.UUID(), nullable=False),
@@ -36,7 +37,11 @@ def upgrade() -> None:
             ),
         )
 
-    indexes = {index["name"] for index in sa.inspect(bind).get_indexes("ai_tool_execution_records")}
+    indexes = (
+        set()
+        if offline
+        else {index["name"] for index in sa.inspect(bind).get_indexes("ai_tool_execution_records")}
+    )
     for name, columns in (
         ("ix_ai_tool_execution_records_company_id", ["company_id"]),
         ("ix_ai_tool_execution_records_user_id", ["user_id"]),
