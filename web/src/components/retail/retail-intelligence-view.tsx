@@ -17,10 +17,8 @@ import {
   Database,
   ArrowDownUp,
   RefreshCw,
-  FileCheck2,
   Layers,
   Filter,
-  ShieldCheck,
   Percent,
   Search,
   ExternalLink,
@@ -86,9 +84,9 @@ interface InventoryItem {
   id: string;
   product_name: string;
   sku: string;
-  stock_quantity: number;
+  stock_quantity: number | null;
   unit_price: number;
-  status: "critical" | "warning" | "normal";
+  status: "critical" | "warning" | "normal" | "unknown";
 }
 
 interface RetailStatus {
@@ -127,15 +125,6 @@ export function RetailIntelligenceView({
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
-
-  // Data Quality Score metrics
-  const qualityScores = {
-    overall: retailStatus?.is_connected ? 98 : 92,
-    completeness: retailStatus?.product_count ? 99 : 94,
-    consistency: 96,
-    validity: 97,
-    freshness: retailStatus?.last_synced_at ? 99 : 90,
-  };
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -212,6 +201,16 @@ export function RetailIntelligenceView({
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
   );
+  const lowStockItems = inventory.filter(
+    (item) => item.stock_quantity !== null && item.status !== "normal",
+  );
+  const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
+  const retailCounts: Array<{ label: string; value: number }> = [
+    { label: retail.products, value: retailStatus?.product_count ?? products.length },
+    { label: retail.sales, value: retailStatus?.order_count ?? orders.length },
+    { label: retail.customers, value: retailStatus?.customer_count ?? customers.length },
+    { label: retail.inventory, value: inventory.length },
+  ];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
@@ -301,79 +300,43 @@ export function RetailIntelligenceView({
         </nav>
       </div>
 
-      {/* Tab 1: Overview & Data Cleaning Pipeline */}
+      {/* Tab 1: Overview backed by tenant source data */}
       {activeTab === "overview" && (
         <div className="space-y-6">
-          {/* Data Quality Score (DQS) Composite Gauge */}
           <AvenqoCard variant="elevated" className="p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
               <div>
-                <div className="flex items-center gap-2">
-                  <FileCheck2 className="w-5 h-5 text-[#0076FF]" />
-                  <h2 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
-                    {t.retail.qualityScore}
-                  </h2>
-                </div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
+                  {retail.overview}
+                </h2>
                 <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-                  {t.retail.qualityScore}
+                  {isLoading
+                    ? "—"
+                    : retailStatus?.is_connected
+                      ? `${(retailStatus.records_count ?? 0).toLocaleString(locale)} ${connector.records}`
+                      : t.common.insufficientData}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-2xl font-black text-[#0076FF] dark:text-[#00D4FF]">
-                    {qualityScores.overall} / 100
-                  </div>
-                  <div className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                    {t.retail.qualityScore}
-                  </div>
-                </div>
-              </div>
+              {retailStatus?.last_synced_at && (
+                <time
+                  className="text-xs text-slate-500 dark:text-[#94A3B8]"
+                  dateTime={retailStatus.last_synced_at}
+                >
+                  {new Date(retailStatus.last_synced_at).toLocaleString(locale)}
+                </time>
+              )}
             </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-[#94A3B8]">{t.retail.completeness}</span>
-                  <span className="text-slate-900 dark:text-[#F4F7FB]">{qualityScores.completeness}%</span>
+              {retailCounts.map((metric) => (
+                <div key={metric.label} className="rounded-lg border border-slate-200/80 dark:border-white/[0.08] p-4">
+                  <div className="text-xs font-medium text-slate-500 dark:text-[#94A3B8]">
+                    {metric.label}
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
+                    {isLoading ? "—" : metric.value.toLocaleString(locale)}
+                  </div>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${qualityScores.completeness}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400">{retail.completeness}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-[#94A3B8]">{t.retail.consistency}</span>
-                  <span className="text-slate-900 dark:text-[#F4F7FB]">{qualityScores.consistency}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#0076FF]" style={{ width: `${qualityScores.consistency}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400">{retail.consistency}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-[#94A3B8]">{t.retail.validity}</span>
-                  <span className="text-slate-900 dark:text-[#F4F7FB]">{qualityScores.validity}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#00D4FF]" style={{ width: `${qualityScores.validity}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400">{retail.validity}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-1">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-[#94A3B8]">{t.retail.freshness}</span>
-                  <span className="text-slate-900 dark:text-[#F4F7FB]">{qualityScores.freshness}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
-                  <div className="h-full rounded-full bg-indigo-500" style={{ width: `${qualityScores.freshness}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400">{retail.freshness}</p>
-              </div>
+              ))}
             </div>
           </AvenqoCard>
         </div>
@@ -648,7 +611,9 @@ export function RetailIntelligenceView({
                                 : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
                             }`}
                           >
-                            {item.stock_quantity.toLocaleString(locale)} {retail.unit}
+                            {item.stock_quantity === null
+                              ? "—"
+                              : `${item.stock_quantity.toLocaleString(locale)} ${retail.unit}`}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -686,58 +651,11 @@ export function RetailIntelligenceView({
 
       {/* Tab 6: Demand Forecast Module */}
       {activeTab === "forecasts" && (
-        <div className="space-y-6">
-          <AvenqoCard variant="highlighted" className="p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-4 border-b border-blue-100 dark:border-white/[0.06]">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-[#0076FF]" />
-                  <h3 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
-                    {t.retail.demandForecastTitle}
-                  </h3>
-                </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
-                  {retail.forecastDescription}
-                </p>
-              </div>
-              <StatusBadge status="active" label="Modèle Arima-Ensemble v2" size="sm" />
-            </div>
-
-            {/* Projection Chart */}
-            <div className="h-64 w-full flex items-end justify-between gap-3 pt-6">
-              {[
-                { label: "J+3", hist: 22, proj: 24 },
-                { label: "J+7", hist: 26, proj: 30 },
-                { label: "J+14", hist: 28, proj: 36 },
-                { label: "J+21", hist: null, proj: 42 },
-                { label: "J+28", hist: null, proj: 48 },
-              ].map((bar, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center h-full justify-end group">
-                  <div className="w-full max-w-[40px] flex items-end justify-center gap-1 h-full">
-                    {bar.hist !== null && (
-                      <div
-                        className="w-1/2 rounded-t-md bg-[#0076FF]"
-                        style={{ height: `${bar.hist * 2}%` }}
-                        title={`Historique: ${bar.hist} u`}
-                      />
-                    )}
-                    <div
-                      className="w-1/2 rounded-t-md bg-gradient-to-t from-[#00D4FF] to-cyan-200 border-t-2 border-dashed border-[#0076FF]"
-                      style={{ height: `${bar.proj * 2}%` }}
-                      title={`Projection IA: ${bar.proj} u`}
-                    />
-                  </div>
-                  <span className="mt-2 text-xs font-semibold text-slate-500">{bar.label}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.08] flex items-start gap-2.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-              <ShieldCheck className="w-4 h-4 text-[#0076FF] flex-none mt-0.5" />
-              <span>{t.retail.forecastDisclaimer}</span>
-            </div>
-          </AvenqoCard>
-        </div>
+        <EmptyState
+          icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
+          title={retail.forecasts}
+          description={retail.forecastUnavailable}
+        />
       )}
 
       {/* Tab 7: Anomalies & Stock Alerts */}
@@ -805,7 +723,9 @@ export function RetailIntelligenceView({
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  {retail.noAnomaliesMessage}
+                  {inventory.length > 0 && !inventoryHasStockData
+                    ? t.common.insufficientData
+                    : retail.noAnomaliesMessage}
                 </div>
               )}
             </div>
@@ -820,23 +740,32 @@ export function RetailIntelligenceView({
             <h3 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
               {retail.recommendations}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              {retail.recommendationsDescription}
-            </p>
           </div>
 
           <div className="space-y-3">
-            <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-[#172652]/30 flex items-start gap-3">
-              <Lightbulb className="w-5 h-5 text-[#0076FF] shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                  {retail.reorderTitle}
-                </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                  {retail.reorderDescription}
-                </p>
+            {isLoading ? (
+              <TableSkeleton rows={3} columns={2} />
+            ) : lowStockItems.length > 0 ? (
+              lowStockItems.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-200/80 dark:border-white/[0.08] p-4">
+                  <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[#0076FF]" />
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
+                      {item.status === "critical" ? retail.stockoutRiskAlert : retail.reorderTitle}
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                      {item.product_name} · {retail.stock}: {item.stock_quantity?.toLocaleString(locale)} {retail.unit}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : inventory.length === 0 || !inventoryHasStockData ? (
+              <EmptyState title={retail.noData} description={t.common.insufficientData} />
+            ) : (
+              <div className="p-6 text-center text-slate-400 text-xs">
+                {retail.noAnomaliesMessage}
               </div>
-            </div>
+            )}
           </div>
         </AvenqoCard>
       )}

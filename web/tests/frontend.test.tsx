@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AvenqoCopilot } from "@/components/shell/avenqo-copilot";
+import { RetailIntelligenceView } from "@/components/retail/retail-intelligence-view";
 import { CreditMeter } from "@/components/shell/credit-meter";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-context";
@@ -52,6 +53,63 @@ describe("credit display", () => {
       monthly_included: 6500,
       monthly_remaining: 6485,
     })).toEqual({ remaining: 6485, used: 15, limit: 6500 });
+  });
+});
+
+describe("Retail inventory rendering", () => {
+  it("renders products with an unknown stock count without crashing the page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/retail/status")) {
+        return Response.json({
+          is_connected: true,
+          provider: "dataset",
+          store_url: null,
+          status: "READY",
+          last_synced_at: null,
+          records_count: 1,
+          product_count: 1,
+          order_count: 0,
+          customer_count: 0,
+        });
+      }
+      if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
+      if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
+      if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
+      if (url.endsWith("/retail/inventory?limit=100")) {
+        return Response.json({
+          inventory: [{
+            id: "product-1",
+            product_name: "Product without stock data",
+            sku: "SKU-UNKNOWN",
+            stock_quantity: null,
+            unit_price: 12,
+            status: "unknown",
+          }],
+          anomalies: [],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(
+      <LocaleProvider>
+        <RetailIntelligenceView defaultTab="inventory" />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText("SKU-UNKNOWN")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Vue d.ensemble/ }));
+    expect(screen.queryByText(/\d{2} \/ 100/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Prévisions" })[0]);
+    expect(await screen.findByText(/prévisions ne sont pas disponibles/i)).toBeInTheDocument();
+    expect(screen.queryByText("Modèle Arima-Ensemble v2")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
+    expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
   });
 });
 

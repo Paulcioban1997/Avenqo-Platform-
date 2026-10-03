@@ -169,6 +169,7 @@ export type AppTranslations = {
     validity: string;
     freshness: string;
     demandForecastTitle: string;
+    forecastUnavailable: string;
     forecastDisclaimer: string;
     forecastDescription: string;
     anomalyDescription: string;
@@ -487,6 +488,7 @@ const frApp: AppTranslations = {
     validity: "Validité",
     freshness: "Fraîcheur",
     demandForecastTitle: "Prévisions de Demande & Réapprovisionnement",
+    forecastUnavailable: "Les prévisions ne sont pas disponibles sur cette page. Les ventes réelles restent accessibles dans l’onglet Ventes.",
     forecastDisclaimer: "Modèle prédictif basé sur l'historique de ventes. Ne constitue pas une garantie contractuelle de vente.",
     forecastDescription: "Les tendances, comparaisons et prévisions de ventes apparaîtront ici.",
     anomalyDescription: "Les variations importantes et les risques seront signalés avec une action recommandée.",
@@ -805,6 +807,7 @@ const enApp: AppTranslations = {
     validity: "Validity",
     freshness: "Freshness",
     demandForecastTitle: "Demand Forecast & Replenishment Planning",
+    forecastUnavailable: "Forecasts are unavailable here. Actual orders remain available in Sales.",
     forecastDisclaimer: "Predictive model based on historical sales velocity. Does not constitute a contractual sales guarantee.",
     forecastDescription: "Your sales trends, comparisons and forecasts will appear here.",
     anomalyDescription: "Important changes and risks will be flagged with a recommended action.",
