@@ -142,7 +142,11 @@ async def test_configured_adapter_contract_fails_closed_without_provider_credent
 @pytest.mark.asyncio
 async def test_realtime_adapter_never_creates_autonomous_agent_response(monkeypatch) -> None:
     sent = []
-    connection = SimpleNamespace(send=sent.append)
+
+    async def send(event):
+        sent.append(event)
+
+    connection = SimpleNamespace(send=send)
 
     class Manager:
         async def __aenter__(self):
@@ -159,8 +163,11 @@ async def test_realtime_adapter_never_creates_autonomous_agent_response(monkeypa
     await adapter.speak("Authorized answer")
     await adapter.interrupt()
     await adapter.close()
+    assert sent[0]["type"] == "session.update"
     assert sent[0]["session"]["audio"]["input"]["turn_detection"]["create_response"] is False
+    assert sent[0]["session"]["audio"]["input"]["turn_detection"]["type"] == "server_vad"
     assert sent[0]["session"]["tools"] == []
+    assert not any(event["type"] == "input_audio_buffer.commit" for event in sent)
     assert sent[1] == {"type": "input_audio_buffer.append", "audio": "AQI="}
     assert sent[2]["type"] == "response.create"
     assert sent[2]["response"]["input"][0]["content"][0]["text"] == "Authorized answer"

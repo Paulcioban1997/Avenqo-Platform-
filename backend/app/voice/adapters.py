@@ -129,7 +129,7 @@ class OpenAIRealtimeAudioAdapter:
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         self._manager = client.realtime.connect(model=self._model)
         self._connection = await self._manager.__aenter__()
-        self._connection.send({
+        await self._connection.send({
             "type": "session.update",
             "session": {
                 "type": "realtime",
@@ -151,7 +151,7 @@ class OpenAIRealtimeAudioAdapter:
     async def send_audio(self, audio: bytes) -> None:
         if self._connection is None:
             raise ExternalVoiceConfigurationRequired("Realtime session is not open")
-        self._connection.send({
+        await self._connection.send({
             "type": "input_audio_buffer.append",
             "audio": base64.b64encode(audio).decode("ascii"),
         })
@@ -159,7 +159,7 @@ class OpenAIRealtimeAudioAdapter:
     async def speak(self, text: str) -> None:
         if self._connection is None:
             raise ExternalVoiceConfigurationRequired("Realtime session is not open")
-        self._connection.send({
+        await self._connection.send({
             "type": "response.create",
             "response": {
                 "conversation": "none",
@@ -171,8 +171,8 @@ class OpenAIRealtimeAudioAdapter:
 
     async def interrupt(self) -> None:
         if self._connection is not None:
-            self._connection.send({"type": "response.cancel"})
-            self._connection.send({"type": "output_audio_buffer.clear"})
+            await self._connection.send({"type": "response.cancel"})
+            await self._connection.send({"type": "output_audio_buffer.clear"})
 
     async def close(self) -> None:
         if self._manager is not None:
