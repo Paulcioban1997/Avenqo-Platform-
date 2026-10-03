@@ -263,7 +263,7 @@ class ToolOrchestrator:
                     tools_called += 1
                     try:
                         result = await self._executor.execute(call.name, context, call.arguments)
-                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=true", call.name)
+                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=%s", call.name, str(result.success).lower())
                     except ToolError as exc:
                         result = ToolResult(
                             success=False,
@@ -271,7 +271,7 @@ class ToolOrchestrator:
                             metadata={"error_key": _tool_error_key(exc), "locale": context.locale},
                             error=_tool_error_key(exc),
                         )
-                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=false", call.name)
+                        logger.info("ai_tool_execution selected_tool_name=%s tool_success=false error_key=%s", call.name, _tool_error_key(exc))
                     tool_call_results.append(ToolCallResult(call=call, result=result))
                     messages.append(
                         LLMMessage(

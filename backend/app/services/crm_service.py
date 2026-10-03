@@ -431,6 +431,7 @@ class CRMService:
         client_id: UUID | None = None,
         search: str | None = None,
         limit: int | None = None,
+        starting_before: datetime | None = None,
     ) -> list[dict[str, Any]]:
         query = select(CRMAppointment).where(
             CRMAppointment.company_id == company_id,
@@ -438,6 +439,8 @@ class CRMService:
         )
         if start_date:
             query = query.where(CRMAppointment.start_time >= start_date)
+        if starting_before:
+            query = query.where(CRMAppointment.start_time < starting_before)
         if end_date:
             query = query.where(CRMAppointment.end_time <= end_date)
         if status:
