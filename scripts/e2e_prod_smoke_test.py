@@ -17,7 +17,9 @@ except ImportError:
 
 BASE_API_URL = "https://api.avenqo.ca/api/v1"
 BASE_WEB_URL = "https://avenqo.ca"
-DB_URL = "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
+DB_URL = os.environ.get("DATABASE_PUBLIC_URL")
+if not DB_URL:
+    raise SystemExit("DATABASE_PUBLIC_URL must be provided by the authorized secret source")
 
 results = {}
 

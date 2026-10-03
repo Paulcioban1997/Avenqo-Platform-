@@ -94,7 +94,9 @@ class GetAICapabilityStatusTool(PlatformSupportAITool):
 
     async def run(self, context: ToolExecutionContext, arguments: ToolArguments) -> ToolResult:
         statuses = set(self._health_registry.snapshot().values())
-        if not statuses or statuses == {ProviderHealthStatus.HEALTHY.value}:
+        if not statuses:
+            aggregate = "unknown"
+        elif statuses == {ProviderHealthStatus.HEALTHY.value}:
             aggregate = "healthy"
         elif ProviderHealthStatus.UNAVAILABLE.value in statuses and len(statuses) == 1:
             aggregate = "unavailable"

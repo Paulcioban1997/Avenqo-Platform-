@@ -72,6 +72,18 @@ class LLMModelSpec:
 
 
 _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
+    ("anthropic", "claude-sonnet-4-6"): {
+        "input_cost_per_million_usd": "3.00",
+        "cached_input_cost_per_million_usd": "0.30",
+        "output_cost_per_million_usd": "15.00",
+        "tool_call_cost_usd": "0",
+    },
+    ("gemini", "gemini-2.5-flash"): {
+        "input_cost_per_million_usd": "0.30",
+        "cached_input_cost_per_million_usd": "0.03",
+        "output_cost_per_million_usd": "2.50",
+        "tool_call_cost_usd": "0",
+    },
     ("openai", "gpt-4o-mini"): {
         "input_cost_per_million_usd": "0.15",
         "cached_input_cost_per_million_usd": "0.075",
@@ -93,6 +105,28 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
 }
 
 _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
+    ("anthropic", "claude-sonnet-4-6"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context"],
+        "context_window": 1_000_000,
+        "max_output_tokens": 128_000,
+        "quality_tier": 3,
+        "speed_tier": 2,
+        "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "pricing_version": "claude-sonnet-4-6-standard-2026-10-03",
+        "pricing_effective_from": "2026-10-03",
+    },
+    ("gemini", "gemini-2.5-flash"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "long_context", "reasoning"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 65_536,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration", "business_reasoning"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-2.5-flash-standard-text-2026-10-03",
+        "pricing_effective_from": "2026-10-03",
+    },
     ("openai", "gpt-4o-mini"): {
         "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "reasoning"],
         "context_window": 128_000,
@@ -170,6 +204,21 @@ def model_spec(
             f"Model '{provider}:{model_id}' is missing metadata: {', '.join(sorted(missing))}"
         )
     configured = _configured_values(provider, model_id, overrides)
+    if provider == "vertex":
+        required_rates = {
+            "input_cost_per_million_usd",
+            "cached_input_cost_per_million_usd",
+            "output_cost_per_million_usd",
+            "reasoning_cost_per_million_usd",
+        }
+        if any(key not in configured and key not in profile for key in required_rates):
+            raise ValueError("Vertex requires explicit pricing; unknown rates are not free")
+        if any(not profile.get(key) for key in ("pricing_source", "pricing_version", "pricing_effective_from")):
+            raise ValueError("Vertex requires versioned pricing provenance")
+        if any(Decimal(str(configured.get(key, profile.get(key)))) <= 0 for key in ("input_cost_per_million_usd", "output_cost_per_million_usd")):
+            raise ValueError("Vertex requires positive input and output pricing")
+        if Decimal(str(configured.get("reasoning_cost_per_million_usd", profile.get("reasoning_cost_per_million_usd")))) != 0:
+            raise ValueError("Vertex reasoning is included in output tokens and must not be charged twice")
     rate_kwargs = {
         "enabled": _enabled_value(configured),
         "input_cost_per_million_usd": _decimal_value(

@@ -27,6 +27,7 @@ class FailureCategory(str, Enum):
     INVALID_REQUEST = "invalid_request"
     CONTENT_REJECTED = "content_rejected"
     QUOTA_PROBLEM = "quota_problem"
+    USAGE_UNAVAILABLE = "usage_unavailable"
     UNKNOWN = "unknown"
 
 
@@ -61,11 +62,13 @@ def classify_exception(exc: BaseException) -> FailureCategory:
 
     text = f"{type(exc).__name__} {exc}".lower()
 
+    if "usage metadata unavailable" in text:
+        return FailureCategory.USAGE_UNAVAILABLE
     if "timeout" in text or "timed out" in text:
         return FailureCategory.TIMEOUT
     if ("rate" in text and "limit" in text) or "429" in text or "ratelimit" in text:
         return FailureCategory.RATE_LIMITED
-    if any(marker in text for marker in ("api key", "authentication", "unauthorized", "401", "403", "n'est pas configuré", "dépendance", "not installed")):
+    if any(marker in text for marker in ("api key", "authentication", "unauthorized", "401", "403", "n'est pas configuré", "n'est pas configure", "dépendance", "not installed", "defaultcredentialserror", "refresherror")):
         return FailureCategory.AUTH_CONFIG
     if "overloaded" in text or "503" in text or "service unavailable" in text:
         return FailureCategory.OVERLOADED

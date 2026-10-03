@@ -108,8 +108,12 @@ class Settings(BaseSettings):
     # (Phase 28), mais le Resilient AI Gateway (Phase 32) utilise ces valeurs
     # spécifiques par fournisseur pour éviter les erreurs "modèle inconnu".
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
-    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", alias="ANTHROPIC_MODEL")
-    gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
+    anthropic_model: str = Field(default="claude-sonnet-4-6", alias="ANTHROPIC_MODEL")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    vertex_enabled: bool = Field(default=False, alias="VERTEX_ENABLED")
+    vertex_project: str = Field(default="", alias="VERTEX_PROJECT")
+    vertex_location: str = Field(default="", alias="VERTEX_LOCATION")
+    vertex_model: str = Field(default="", alias="VERTEX_MODEL")
     llm_temperature: float = Field(default=0.2, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=800, ge=1, le=8192, alias="LLM_MAX_TOKENS")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

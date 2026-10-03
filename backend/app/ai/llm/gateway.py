@@ -347,7 +347,7 @@ class AvenqoAIGateway(LLMProvider):
                             usage=usage,
                             failure_category=category.value,
                             fallback_reason=category.value,
-                            request_status="failed",
+                            request_status="usage_unavailable" if category.value == "usage_unavailable" else "failed",
                         ))
                         logger.warning(
                             "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
@@ -467,7 +467,7 @@ class AvenqoAIGateway(LLMProvider):
                         usage=failed_usage,
                         failure_category=category.value,
                         fallback_reason=category.value,
-                        request_status="failed",
+                        request_status="usage_unavailable" if category.value == "usage_unavailable" else "failed",
                     ))
                     if emitted_content or not is_fallback_eligible(category):
                         exc.attempts = tuple(attempts)

@@ -188,6 +188,52 @@ async def execute(central, tenant, user, conversation, query):
     )
 
 
+async def test_vertex_uses_central_registry_and_tenant_usage_ledger(db_session) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from sqlalchemy import select
+    from backend.app.ai.llm.circuit_breaker import ProviderCircuitBreaker
+    from backend.app.ai.llm.gateway import AvenqoAIGateway
+    from backend.app.ai.llm.health import ProviderHealthRegistry
+    from backend.app.ai.llm.model_registry import LLMRateCard, model_spec
+    from backend.app.ai.llm.vertex_provider import VertexProvider
+
+    spec = model_spec("vertex", "gemini-test", {"vertex:gemini-test": {
+        "input_cost_per_million_usd": "1", "cached_input_cost_per_million_usd": "0.5",
+        "output_cost_per_million_usd": "2", "reasoning_cost_per_million_usd": "0",
+    }}, {"capabilities": ["text", "tool_calling"], "context_window": 8192,
+         "max_output_tokens": 800, "pricing_source": "test-not-production-rates",
+         "pricing_version": "test", "pricing_effective_from": "2026-01-01"})
+    provider = VertexProvider("test-project", "europe-west4", "gemini-test", 0.2, 80, enabled=True)
+    generate = AsyncMock(return_value=SimpleNamespace(
+        text="Retail answer", model_version="gemini-test", response_id="vertex-request",
+        usage_metadata=SimpleNamespace(prompt_token_count=90, candidates_token_count=24, thoughts_token_count=6)))
+    provider._client_instance = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    gateway = AvenqoAIGateway([provider], circuit_breaker=ProviderCircuitBreaker(),
+                              health_registry=ProviderHealthRegistry(), rate_card=LLMRateCard.from_specs([spec]))
+    company, user = make_company(db_session)
+    central, conversations, usage, tenant = make_service(db_session, company, gateway, limit=5)
+    conversation = conversations.create(company.id, user.id, "Vertex audit test")
+
+    result = await execute(central, tenant, user, conversation, "Show sales trends")
+
+    assert result.status == "success"
+    assert result.selected_agent == "retail"
+    rows = db_session.scalars(select(TenantAIProviderAttempt).where(TenantAIProviderAttempt.company_id == company.id)).all()
+    assert len(rows) == 1
+    assert rows[0].provider == "vertex"
+    assert rows[0].provider_request_id == "vertex-request"
+    assert rows[0].output_tokens == 30
+    assert rows[0].provider_cost_usd == Decimal("0.000150000000")
+    assert rows[0].avenqo_credits_charged == 1
+
+    other_company, other_user = make_company(db_session, "other-tenant")
+    other_conversation = conversations.create(other_company.id, other_user.id, "Private")
+    with pytest.raises(ConversationNotFoundError):
+        await execute(central, tenant, user, other_conversation, "Show sales trends")
+    generate.assert_awaited_once()
+
+
 @pytest.mark.parametrize(
     "query",
     [

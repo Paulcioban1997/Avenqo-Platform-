@@ -41,5 +41,6 @@ DEFAULT_LLM_PROVIDER_REGISTRY = LLMProviderRegistry(
         LLMProviderDefinition("openai", "openai_api_key", "openai_model"),
         LLMProviderDefinition("anthropic", "anthropic_api_key", "anthropic_model"),
         LLMProviderDefinition("gemini", "google_ai_api_key", "gemini_model"),
+        LLMProviderDefinition("vertex", "vertex_enabled", "vertex_model"),
     )
 )

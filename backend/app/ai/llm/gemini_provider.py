@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -35,26 +36,28 @@ def _sanitize_schema_for_gemini(schema: Any) -> Any:
     return schema
 
 
-def _normalize_gemini_usage(response, fallback_model: str, *, tool_calls: int = 0) -> LLMUsage:
+def _normalize_gemini_usage(response, fallback_model: str, *, tool_calls: int = 0, provider: str = "gemini") -> LLMUsage:
     raw = getattr(response, "usage_metadata", None)
+    if raw is None or getattr(raw, "prompt_token_count", None) is None:
+        raise LLMProviderError("Provider usage metadata unavailable")
     return LLMUsage(
-        provider="gemini",
+        provider=provider,
         model=getattr(response, "model_version", None) or fallback_model,
         input_tokens=int(getattr(raw, "prompt_token_count", 0) or 0),
         cached_input_tokens=int(getattr(raw, "cached_content_token_count", 0) or 0),
-        output_tokens=int(getattr(raw, "candidates_token_count", 0) or 0),
+        output_tokens=int(getattr(raw, "candidates_token_count", 0) or 0) + int(getattr(raw, "thoughts_token_count", 0) or 0),
         reasoning_tokens=int(getattr(raw, "thoughts_token_count", 0) or 0),
         tool_calls=max(tool_calls, 0),
         provider_request_id=getattr(response, "response_id", None),
     )
 
 
-def _gemini_error_usage(exc: Exception, fallback_model: str) -> LLMUsage | None:
+def _gemini_error_usage(exc: Exception, fallback_model: str, *, provider: str = "gemini") -> LLMUsage | None:
     response = getattr(exc, "response", None)
     source = response if getattr(response, "usage_metadata", None) is not None else exc
     if getattr(source, "usage_metadata", None) is None:
         return None
-    return _normalize_gemini_usage(source, fallback_model)
+    return _normalize_gemini_usage(source, fallback_model, provider=provider)
 
 
 class GeminiProvider(LLMProvider):
@@ -85,6 +88,8 @@ class GeminiProvider(LLMProvider):
         except ImportError as exc:
             raise LLMProviderError("La dépendance Google GenAI n'est pas installée") from exc
         self._client_instance = genai.Client(
+            enterprise=False,
+            vertexai=False,
             api_key=self._api_key,
             http_options=types.HttpOptions(
                 timeout=max(1, int(self._request_timeout_seconds * 1000)),
@@ -92,13 +97,17 @@ class GeminiProvider(LLMProvider):
         )
         return self._client_instance
 
+    async def _async_client(self):
+        return await asyncio.to_thread(self._client)
+
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         try:
             from google.genai import types
-            response = await self._client().aio.models.generate_content(model=self._model, contents=prompt,
+            client = await self._async_client()
+            response = await client.aio.models.generate_content(model=self._model, contents=prompt,
                 config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=self._temperature,
                 max_output_tokens=self._max_tokens))
-            usage = _normalize_gemini_usage(response, self._model)
+            usage = _normalize_gemini_usage(response, self._model, provider=self.name)
             return LLMGeneration(
                 response.text or "",
                 self.name,
@@ -111,7 +120,7 @@ class GeminiProvider(LLMProvider):
         except Exception as exc:
             raise LLMProviderError(
                 "Le fournisseur IA est temporairement indisponible",
-                usage=_gemini_error_usage(exc, self._model),
+                usage=_gemini_error_usage(exc, self._model, provider=self.name),
             ) from exc
 
     async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
@@ -128,22 +137,23 @@ class GeminiProvider(LLMProvider):
         final_response = None
         try:
             from google.genai import types
-            stream = await self._client().aio.models.generate_content_stream(model=self._model, contents=prompt,
+            client = await self._async_client()
+            stream = await client.aio.models.generate_content_stream(model=self._model, contents=prompt,
                 config=types.GenerateContentConfig(system_instruction=system_instruction, temperature=self._temperature,
                 max_output_tokens=self._max_tokens))
             async for event in stream:
-                final_response = event
+                if getattr(event, "usage_metadata", None) is not None:
+                    final_response = event
                 if event.text:
                     yield LLMStreamChunk(content=event.text)
-            if final_response is not None:
-                yield LLMStreamChunk(usage=_normalize_gemini_usage(final_response, self._model))
+            yield LLMStreamChunk(usage=_normalize_gemini_usage(final_response, self._model, provider=self.name))
         except LLMProviderError:
             raise
         except Exception as exc:
             usage = (
-                _normalize_gemini_usage(final_response, self._model)
+                _normalize_gemini_usage(final_response, self._model, provider=self.name)
                 if final_response is not None and getattr(final_response, "usage_metadata", None) is not None
-                else _gemini_error_usage(exc, self._model)
+                else _gemini_error_usage(exc, self._model, provider=self.name)
             )
             raise LLMProviderError(
                 "Le fournisseur IA est temporairement indisponible",
@@ -192,9 +202,11 @@ class GeminiProvider(LLMProvider):
                 system_instruction=system_instruction,
                 temperature=self._temperature,
                 max_output_tokens=self._max_tokens,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                 tools=[types.Tool(function_declarations=declarations)] if declarations else None,
             )
-            response = await self._client().aio.models.generate_content(model=self._model, contents=contents, config=config)
+            client = await self._async_client()
+            response = await client.aio.models.generate_content(model=self._model, contents=contents, config=config)
 
             tool_calls: list[ToolCall] = []
             text_parts: list[str] = []
@@ -209,7 +221,7 @@ class GeminiProvider(LLMProvider):
                 elif getattr(part, "text", None):
                     text_parts.append(part.text)
 
-            usage = _normalize_gemini_usage(response, self._model, tool_calls=len(tool_calls))
+            usage = _normalize_gemini_usage(response, self._model, tool_calls=len(tool_calls), provider=self.name)
             return LLMToolResponse(
                 content="".join(text_parts) or None,
                 tool_calls=tuple(tool_calls),
@@ -223,5 +235,5 @@ class GeminiProvider(LLMProvider):
         except Exception as exc:
             raise LLMProviderError(
                 "Le fournisseur IA est temporairement indisponible",
-                usage=_gemini_error_usage(exc, self._model),
+                usage=_gemini_error_usage(exc, self._model, provider=self.name),
             ) from exc

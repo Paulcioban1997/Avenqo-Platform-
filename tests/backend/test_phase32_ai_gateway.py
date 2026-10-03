@@ -8,6 +8,8 @@ masquage, et le circuit breaker qui saute un fournisseur en échec répété.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.circuit_breaker import ProviderCircuitBreaker
@@ -27,6 +29,8 @@ from backend.app.ai.llm.router import (
 )
 from backend.app.ai.llm.provider_registry import DEFAULT_LLM_PROVIDER_REGISTRY
 from backend.app.ai.llm.schemas import LLMGeneration, LLMStreamChunk, LLMUsage
+from backend.app.ai.llm.schemas import LLMMessage, ToolDefinition
+from backend.app.ai.llm.vertex_provider import VertexProvider
 from backend.app.config.settings import Settings
 
 
@@ -73,6 +77,207 @@ def _gateway(providers: list[LLMProvider], **kwargs) -> AvenqoAIGateway:
         max_delay_seconds=0.0,
         **kwargs,
     )
+
+
+def test_vertex_is_registered_but_not_implicitly_enabled() -> None:
+    settings = Settings(_env_file=None, OPENAI_API_KEY="test", VERTEX_ENABLED=False)
+    assert DEFAULT_LLM_PROVIDER_REGISTRY.get("vertex") is not None
+    assert LLMProviderFactory._credential_for(settings, "vertex") is None
+    gateway = LLMProviderFactory.create_gateway(settings)
+    assert all(provider.name != "vertex" for provider in gateway._providers)
+
+
+@pytest.mark.asyncio
+async def test_unobserved_provider_health_is_unknown_not_healthy() -> None:
+    from backend.app.ai.tools.support.support_tools import GetAICapabilityStatusTool
+
+    result = await GetAICapabilityStatusTool(ProviderHealthRegistry()).run(Mock(), Mock())
+    assert result.data["status"] == "unknown"
+
+
+def test_supported_production_profiles_have_sourced_rates() -> None:
+    from decimal import Decimal
+
+    settings = Settings(_env_file=None)
+    rate_card = LLMRateCard.from_models({"anthropic": settings.anthropic_model, "gemini": settings.gemini_model})
+    assert rate_card.pricing_for("gemini", settings.gemini_model).output_cost_per_million_usd == Decimal("2.50")
+    assert rate_card.pricing_for("anthropic", settings.anthropic_model).input_cost_per_million_usd == Decimal("3.00")
+    assert rate_card.pricing_for("gemini", settings.gemini_model).source.startswith("https://")
+
+
+def test_vertex_requires_explicit_project_location_and_model() -> None:
+    settings = Settings(_env_file=None, VERTEX_ENABLED=True, VERTEX_PROJECT="test-project", VERTEX_LOCATION="", VERTEX_MODEL="test-model")
+    assert LLMProviderFactory._credential_for(settings, "vertex") is None
+    settings.vertex_location = "europe-west4"
+    assert LLMProviderFactory._credential_for(settings, "vertex") == "adc"
+
+
+def _vertex_settings(**overrides) -> Settings:
+    values = dict(
+        AI_PRIMARY_PROVIDER="vertex",
+        OPENAI_API_KEY=None,
+        ANTHROPIC_API_KEY=None,
+        GOOGLE_AI_API_KEY=None,
+        VERTEX_ENABLED=True,
+        VERTEX_PROJECT="test-project",
+        VERTEX_LOCATION="europe-west4",
+        VERTEX_MODEL="gemini-test",
+        AI_MODEL_CATALOG={"vertex:gemini-test": {
+            "capabilities": ["text", "tool_calling"],
+            "context_window": 8192,
+            "max_output_tokens": 800,
+            "pricing_source": "test-fixture-not-production-pricing",
+            "pricing_version": "test",
+            "pricing_effective_from": "2026-01-01",
+        }},
+        AI_MODEL_RATE_CARD={"vertex:gemini-test": {
+            "input_cost_per_million_usd": "1",
+            "cached_input_cost_per_million_usd": "0.5",
+            "output_cost_per_million_usd": "2",
+            "reasoning_cost_per_million_usd": "0",
+        }},
+    )
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+def _google_response(**overrides):
+    values = dict(text="bonjour", model_version="gemini-test-version", response_id="request-test",
+                  candidates=[], usage_metadata=SimpleNamespace(prompt_token_count=90,
+                  cached_content_token_count=15, candidates_token_count=24, thoughts_token_count=6))
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_vertex_client_uses_adc_and_preserves_explicit_region(monkeypatch) -> None:
+    credentials = Mock()
+    discover = Mock(return_value=(credentials, "ignored-project"))
+    client_builder = Mock()
+    monkeypatch.setattr("google.auth.default", discover)
+    monkeypatch.setattr("google.genai.Client", client_builder)
+    provider = LLMProviderFactory.create(_vertex_settings(LLM_PROVIDER="vertex"))
+    provider._client()
+    provider._client()
+    discover.assert_called_once_with(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    options = client_builder.call_args.kwargs
+    assert options["vertexai"] is True
+    assert options["enterprise"] is True
+    assert options["credentials"] is credentials
+    assert "api_key" not in options
+    assert options["project"] == "test-project"
+    assert options["location"] == "europe-west4"
+    assert options["http_options"].api_version == "v1"
+    assert options["http_options"].timeout == 60000
+    assert options["http_options"].retry_options.attempts == 1
+
+
+def test_google_backend_selection_ignores_environment_defaults(monkeypatch) -> None:
+    from google.auth.credentials import AnonymousCredentials
+    from backend.app.ai.llm.gemini_provider import GeminiProvider
+
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    monkeypatch.setenv("GOOGLE_GENAI_USE_ENTERPRISE", "true")
+    direct = GeminiProvider("test-key", "gemini-test", 0.2, 80)._client()
+    assert direct.vertexai is False
+    direct.close()
+    monkeypatch.setattr("google.auth.default", Mock(return_value=(AnonymousCredentials(), None)))
+    vertex = VertexProvider("test-project", "europe-west4", "gemini-test", 0.2, 80, enabled=True)._client()
+    assert vertex.vertexai is True
+    vertex.close()
+
+
+@pytest.mark.parametrize("overrides", [
+    {"AI_MODEL_RATE_CARD": {}},
+    {"AI_MODEL_CATALOG": {}},
+    {"VERTEX_ENABLED": False},
+])
+def test_vertex_invalid_primary_configuration_fails_closed(overrides) -> None:
+    settings = _vertex_settings(**overrides)
+    if not settings.vertex_enabled:
+        with pytest.raises(LLMProviderError):
+            LLMProviderFactory.create(settings.model_copy(update={"llm_provider": "vertex"}))._client()
+    else:
+        with pytest.raises(ValueError):
+            LLMProviderFactory.create_gateway(settings)
+
+
+@pytest.mark.asyncio
+async def test_vertex_gateway_attributes_usage_and_prices_reasoning_once() -> None:
+    from decimal import Decimal
+
+    gateway = LLMProviderFactory.create_gateway(_vertex_settings())
+    provider = gateway._providers[0]
+    provider._client_instance = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(
+        generate_content=AsyncMock(return_value=_google_response()))))
+    with gateway.routing(LLMRoutingContext(tenant_id="tenant-a", user_id="user-a", avenqo_request_id="avenqo-a")):
+        result = await gateway.generate(system_instruction="fr", prompt="bonjour")
+    assert result.provider == result.usage.provider == "vertex"
+    assert result.usage.tenant_id == "tenant-a"
+    assert result.usage.user_id == "user-a"
+    assert result.usage.output_tokens == 30
+    assert result.usage.reasoning_tokens == 6
+    assert result.usage.provider_request_id == "request-test"
+    assert result.usage.model == "gemini-test"
+    assert len(result.attempts) == 1
+    assert result.attempts[0].provider_cost_usd == Decimal("0.0001425")
+
+
+@pytest.mark.asyncio
+async def test_vertex_missing_usage_is_unknown_not_free_success() -> None:
+    gateway = LLMProviderFactory.create_gateway(_vertex_settings())
+    gateway._providers[0]._client_instance = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(
+        generate_content=AsyncMock(return_value=_google_response(usage_metadata=None)))))
+    with pytest.raises(LLMProviderError) as error:
+        await gateway.generate(system_instruction="fr", prompt="bonjour")
+    assert len(error.value.attempts) == 1
+    assert error.value.attempts[0].request_status == "usage_unavailable"
+    assert error.value.attempts[0].success is False
+
+
+@pytest.mark.asyncio
+async def test_vertex_stream_preserves_usage_before_trailing_empty_chunk() -> None:
+    async def chunks():
+        yield _google_response()
+        yield _google_response(text="", usage_metadata=None)
+
+    provider = VertexProvider("test-project", "europe-west4", "gemini-test", 0.2, 80, enabled=True)
+    provider._client_instance = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(
+        generate_content_stream=AsyncMock(return_value=chunks()))))
+    events = [event async for event in provider.stream_events(system_instruction="fr", prompt="bonjour")]
+    assert events[0].content == "bonjour"
+    assert events[-1].usage.provider == "vertex"
+    assert events[-1].usage.output_tokens == 30
+
+
+@pytest.mark.asyncio
+async def test_vertex_tools_return_calls_without_automatic_execution() -> None:
+    from google.genai import types
+
+    response = _google_response(candidates=[SimpleNamespace(content=SimpleNamespace(parts=[
+        types.Part(function_call=types.FunctionCall(name="retail_status", args={}), thought_signature=b"test")]))])
+    generate = AsyncMock(return_value=response)
+    provider = VertexProvider("test-project", "europe-west4", "gemini-test", 0.2, 80, enabled=True)
+    provider._client_instance = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    result = await provider.generate_with_tools(system_instruction="fr", messages=[LLMMessage(role="user", content="bonjour")],
+        tools=[ToolDefinition(name="retail_status", description="Read status", parameters_schema={"type": "object", "properties": {}})])
+    assert result.provider == result.usage.provider == "vertex"
+    assert result.tool_calls[0].name == "retail_status"
+    assert result.tool_calls[0].provider_metadata == b"test"
+    assert generate.call_args.kwargs["config"].automatic_function_calling.disable is True
+
+
+@pytest.mark.asyncio
+async def test_vertex_missing_adc_does_not_retry_or_leak_credentials(monkeypatch) -> None:
+    from google.auth.exceptions import DefaultCredentialsError
+
+    discover = Mock(side_effect=DefaultCredentialsError("private-test-value"))
+    monkeypatch.setattr("google.auth.default", discover)
+    gateway = LLMProviderFactory.create_gateway(_vertex_settings())
+    with pytest.raises(LLMProviderError) as error:
+        await gateway.generate(system_instruction="fr", prompt="bonjour")
+    assert "private-test-value" not in str(error.value)
+    assert error.value.attempts[0].failure_category == "auth_config"
+    discover.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -236,7 +441,7 @@ def test_llm_factory_rejects_unknown_model_without_catalog_metadata() -> None:
 
 
 def test_default_provider_registry_exposes_all_supported_provider_codes() -> None:
-    assert DEFAULT_LLM_PROVIDER_REGISTRY.codes() == ("openai", "anthropic", "gemini")
+    assert DEFAULT_LLM_PROVIDER_REGISTRY.codes() == ("openai", "anthropic", "gemini", "vertex")
     assert DEFAULT_LLM_PROVIDER_REGISTRY.get("OPENAI").model_setting == "openai_model"
 
 

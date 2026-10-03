@@ -72,7 +72,7 @@ def test_gemini_usage_normalization() -> None:
     assert usage.model == "gemini-2.0-flash-001"
     assert usage.input_tokens == 90
     assert usage.cached_input_tokens == 15
-    assert usage.output_tokens == 24
+    assert usage.output_tokens == 30
     assert usage.reasoning_tokens == 6
     assert usage.tool_calls == 3
     assert usage.provider_request_id == "gemini-123"

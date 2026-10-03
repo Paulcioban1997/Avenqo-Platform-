@@ -11,6 +11,7 @@ from backend.app.ai.llm.model_registry import LLMModelRegistry, LLMModelSpec, LL
 from backend.app.ai.llm.openai_provider import OpenAIProvider
 from backend.app.ai.llm.provider_registry import DEFAULT_LLM_PROVIDER_REGISTRY
 from backend.app.ai.llm.router import SmartModelRouter
+from backend.app.ai.llm.vertex_provider import VertexProvider
 from backend.app.config.settings import Settings
 
 logger = logging.getLogger("avenqo.ai.factory")
@@ -21,6 +22,7 @@ class LLMProviderFactory:
         "openai": lambda settings: OpenAIProvider(settings.openai_api_key, settings.openai_model, settings.llm_temperature, settings.llm_max_tokens),
         "anthropic": lambda settings: AnthropicProvider(settings.anthropic_api_key, settings.anthropic_model, settings.llm_temperature, settings.llm_max_tokens),
         "gemini": lambda settings: GeminiProvider(settings.google_ai_api_key, settings.gemini_model, settings.llm_temperature, settings.llm_max_tokens),
+        "vertex": lambda settings: VertexProvider(settings.vertex_project, settings.vertex_location, settings.vertex_model, settings.llm_temperature, settings.llm_max_tokens, enabled=settings.vertex_enabled),
     }
 
     @staticmethod
@@ -34,6 +36,8 @@ class LLMProviderFactory:
 
     @staticmethod
     def _credential_for(settings: Settings, provider_code: str) -> str | None:
+        if provider_code.casefold() == "vertex":
+            return "adc" if settings.vertex_enabled and all((settings.vertex_project.strip(), settings.vertex_location.strip(), settings.vertex_model.strip())) else None
         definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
         return getattr(settings, definition.credential_setting, None) if definition else None
 
@@ -66,6 +70,15 @@ class LLMProviderFactory:
                 settings.llm_temperature,
                 max_tokens,
                 spec.request_timeout_seconds,
+            ),
+            "vertex": lambda: VertexProvider(
+                settings.vertex_project,
+                settings.vertex_location,
+                spec.model_id,
+                settings.llm_temperature,
+                max_tokens,
+                spec.request_timeout_seconds,
+                enabled=settings.vertex_enabled,
             ),
         }
         try:
