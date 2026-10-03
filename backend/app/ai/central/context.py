@@ -27,6 +27,9 @@ class CentralAIContext:
     company_country: str
     company_currency: str
     company_timezone: str
+    language_source: str = "fallback"
+    language_confidence: float | None = None
+    language_auto_detect: bool = False
 
     def as_prompt_context(self) -> str:
         return json.dumps(
@@ -38,6 +41,10 @@ class CentralAIContext:
                 "remaining_module_slots": self.remaining_module_slots,
                 "ai_credit_balance": self.ai_credit_balance,
                 "premium_modules": self.premium_modules,
+                "conversation_language": self.user_language,
+                "language_source": self.language_source,
+                "language_confidence": self.language_confidence,
+                "language_auto_detect": self.language_auto_detect,
             },
             separators=(",", ":"),
         )
@@ -62,6 +69,9 @@ class CentralAIContextBuilder:
         company_country: str,
         company_currency: str,
         company_timezone: str,
+        language_source: str = "fallback",
+        language_confidence: float | None = None,
+        language_auto_detect: bool = False,
     ) -> CentralAIContext:
         summary = self._entitlements.summary(tenant)
         authorized = tuple(
@@ -87,6 +97,9 @@ class CentralAIContextBuilder:
             company_country=company_country,
             company_currency=company_currency,
             company_timezone=company_timezone,
+            language_source=language_source,
+            language_confidence=language_confidence,
+            language_auto_detect=language_auto_detect,
         )
 
 

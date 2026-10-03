@@ -35,19 +35,38 @@ def _localized_system_instruction(
     company_country: str,
     company_currency: str,
     company_timezone: str,
+    follow_latest_utterance_language: bool = False,
+    language_auto_detect: bool = False,
 ) -> str:
     """Ajoute le contexte de localisation métier — jamais de devise déduite de la langue."""
 
     locale = locale_info(user_language)
     language_name = locale.english_name
+    if language_auto_detect:
+        language_context = (
+            "Language detection was inconclusive. Infer the response language from the original, "
+            "untranslated latest user transcript. Do not use the UI/account/tenant locale to override it.\n"
+        )
+    else:
+        language_context = (
+            f"User language: {language_name}\n"
+            f"Canonical locale: {locale.locale} ({locale.bcp47})\n"
+        )
+    language_instruction = (
+        "Respond in the language used by the user's latest utterance unless they explicitly request another language. "
+        "Follow language changes within the same conversation; do not translate back to French or another fallback. "
+        "Treat tool results as source data; explain them in the active response language without changing factual values. "
+        if follow_latest_utterance_language
+        else "Respond in the user's selected language. "
+        "Treat tool results as source data; explain them in the active response language without changing factual values. "
+    )
     return (
         f"{base}\n"
-        f"User language: {language_name}\n"
-        f"Canonical locale: {locale.locale} ({locale.bcp47})\n"
+        f"{language_context}"
         f"Company country: {company_country}\n"
         f"Company currency: {company_currency}\n"
         f"Company timezone: {company_timezone}\n"
-        "Respond in the user's selected language. "
+        f"{language_instruction}"
         "All monetary business values must use the company's currency. "
         "Never infer currency from language. "
         "Do not convert values unless an explicit conversion rate/source is provided."
@@ -239,6 +258,8 @@ class ChatService:
         retrieve_tenant_data: bool = True,
         allow_existing_reservation: bool = False,
         attempt_sink: list[LLMProviderAttempt] | None = None,
+        follow_latest_utterance_language: bool = False,
+        language_auto_detect: bool = False,
     ):
         if self._usage_service is not None:
             if not allow_existing_reservation:
@@ -330,6 +351,8 @@ class ChatService:
                 company_country=company_country,
                 company_currency=company_currency,
                 company_timezone=company_timezone,
+                follow_latest_utterance_language=follow_latest_utterance_language,
+                language_auto_detect=language_auto_detect,
             )
             with self._provider.routing(routing_context):
                 if self._orchestrator is not None:

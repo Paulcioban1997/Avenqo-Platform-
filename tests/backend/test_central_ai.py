@@ -211,6 +211,84 @@ async def test_retail_intents_route_to_retail_intelligence(db_session, query) ->
     assert provider.calls == 1
 
 
+async def test_spoken_utterance_language_reaches_central_context_and_prompt(db_session) -> None:
+    company, user = make_company(db_session)
+    provider = StubProvider()
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=5)
+    conversation = conversations.create(company.id, user.id, "Voice")
+    context_builder = central._context_builder
+    original_build = context_builder.build
+    captured_context = {}
+
+    def capture_build(*args, **kwargs):
+        context = original_build(*args, **kwargs)
+        captured_context["value"] = context
+        return context
+
+    context_builder.build = capture_build
+    result = await central.execute(
+        tenant,
+        user.id,
+        conversation.id,
+        "What are the latest sales trends for this week?",
+        permissions=frozenset({"ai:use"}),
+        capabilities=frozenset(),
+        request_id="voice-language-request",
+        user_language="fr",
+        company_country="CA",
+        company_currency="CAD",
+        company_timezone="America/Toronto",
+        spoken_language_input=True,
+    )
+
+    context = captured_context["value"]
+    assert result.status == "success"
+    assert context.user_language == "en"
+    assert context.language_source == "detector"
+    assert context.language_confidence is not None and context.language_confidence >= 0.80
+    assert '"conversation_language":"en"' in context.as_prompt_context()
+    assert "User language: English" in provider.last_system_instruction
+    assert "Follow language changes within the same conversation" in provider.last_system_instruction
+
+
+async def test_undetermined_spoken_language_does_not_fall_back_to_account_locale(db_session) -> None:
+    company, user = make_company(db_session)
+    provider = StubProvider()
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=5)
+    conversation = conversations.create(company.id, user.id, "Voice")
+    context_builder = central._context_builder
+    original_build = context_builder.build
+    captured_context = {}
+
+    def capture_build(*args, **kwargs):
+        context = original_build(*args, **kwargs)
+        captured_context["value"] = context
+        return context
+
+    context_builder.build = capture_build
+    result = await central.execute(
+        tenant,
+        user.id,
+        conversation.id,
+        "qzx vvv jjj",
+        permissions=frozenset({"ai:use"}),
+        capabilities=frozenset(),
+        request_id="voice-language-unknown-request",
+        user_language="fr",
+        company_country="CA",
+        company_currency="CAD",
+        company_timezone="America/Toronto",
+        spoken_language_input=True,
+    )
+
+    context = captured_context["value"]
+    assert result.status == "success"
+    assert context.language_source == "undetermined"
+    assert context.language_auto_detect is True
+    assert "User language: French" not in provider.last_system_instruction
+    assert "Do not use the UI/account/tenant locale" in provider.last_system_instruction
+
+
 async def test_non_entitled_module_never_executes_and_unknown_intent_uses_general_fallback(db_session) -> None:
     company, user = make_company(db_session)
     provider = StubProvider()

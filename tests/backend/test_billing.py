@@ -239,6 +239,11 @@ def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
     login = create_owner(client, notifier, email="credit-period@acme.ca")
     company_id = UUID(login["company"]["id"])
     now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_attempts = (
+        max(today_start, now - timedelta(hours=1)),
+        max(today_start, now - timedelta(hours=2)),
+    )
     engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -266,8 +271,8 @@ def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
 
     with factory() as session:
         session.add_all([
-            attempt("generate_with_tools", 3, now - timedelta(hours=1)),
-            attempt("generate", 0, now - timedelta(hours=2)),
+            attempt("generate_with_tools", 3, today_attempts[0]),
+            attempt("generate", 0, today_attempts[1]),
             attempt("generate", 7, now - timedelta(days=40)),
         ])
         session.commit()

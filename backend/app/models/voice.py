@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,5 +103,9 @@ class VoiceCentralSession(TimestampMixin, Base):
     stt_input_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
     tts_output_seconds: Mapped[float] = mapped_column(nullable=False, default=0)
     last_audio_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=-1, server_default="-1")
+    detected_language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    detected_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    language_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    previous_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
     interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

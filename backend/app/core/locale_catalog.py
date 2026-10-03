@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 from pathlib import Path
+import re
+import unicodedata
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +24,14 @@ class LocaleInfo:
     country: str
     currency_code: str
     default_timezone: str
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageDetection:
+    locale: str | None
+    language_code: str | None
+    confidence: float | None
+    source: str
 
 
 _SOURCE = Path(__file__).resolve().parents[3] / "shared" / "locales" / "canonical_locales.json"
@@ -106,26 +117,131 @@ _LANGUAGE_SWITCHES = (
     ("pt", ("em português", "em portugues")),
     ("ro", ("în română", "in romana")),
 )
+_HAUSA_MARKERS = frozenset({
+    "yaya", "kake", "kike", "nake", "muke", "suke", "sannu", "lafiya",
+    "yanzu", "wannan", "menene", "taimako", "akwai", "yadda", "sayi",
+    "kaya", "odarka", "rubuta", "magana",
+})
+
+
+@lru_cache(maxsize=1)
+def _language_identifier():
+    from langid.langid import LanguageIdentifier, model
+
+    identifier = LanguageIdentifier.from_modelstring(model, norm_probs=True)
+    canonical_codes = {
+        item.bcp47.split("-", 1)[0].casefold()
+        for item in LOCALES
+    }
+    supported_codes = canonical_codes.intersection(identifier.nb_classes)
+    identifier.set_languages(sorted(supported_codes))
+    return identifier, frozenset(supported_codes)
+
+
+def _fold_language_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    without_marks = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return re.sub(r"[^\w]+", " ", without_marks, flags=re.UNICODE).strip()
+
+
+def _locale_for_language_code(language_code: str, preferred_locale: str | None = None) -> str | None:
+    normalized_code = language_code.casefold()
+    matches = tuple(
+        item for item in LOCALES
+        if item.locale.casefold() == normalized_code
+        or item.bcp47.split("-", 1)[0].casefold() == normalized_code
+    )
+    if not matches:
+        return None
+    if preferred_locale:
+        preferred = resolve_locale(preferred_locale)
+        if any(item.locale == preferred for item in matches):
+            return preferred
+    return next((item.locale for item in matches if item.locale.casefold() == normalized_code), matches[0].locale)
+
+
+def _explicit_language_override(text: str, preferred_locale: str | None) -> str | None:
+    folded = _fold_language_text(text)
+    for language_code, markers in _LANGUAGE_SWITCHES:
+        if any(_fold_language_text(marker) in folded for marker in markers):
+            return _locale_for_language_code(language_code, preferred_locale)
+
+    connectors = r"(?:in|en|em|auf|a|à|på|na|no|em|in|به زبان)"
+    commands = r"(?:answer|respond|reply|speak|continue|switch|change|use|responde|respondeme|reponde|raspunde|vorbeste|habla|contesta|cambia|parla|rispondi|sprechen)"
+    for info in LOCALES:
+        aliases = {
+            info.native_name.split("(", 1)[0].strip(),
+            info.english_name.split("(", 1)[0].strip(),
+            info.locale,
+            info.bcp47,
+        }
+        for alias in sorted(aliases, key=len, reverse=True):
+            folded_alias = _fold_language_text(alias)
+            if len(folded_alias) < 3:
+                continue
+            escaped = re.escape(folded_alias).replace(r"\ ", r"\s+")
+            if re.search(rf"\b{connectors}\s+{escaped}\b", folded):
+                return info.locale
+            if re.search(rf"\b{commands}\b.{{0,50}}\b{escaped}\b", folded):
+                return info.locale
+    return None
+
+
+def detect_spoken_language(text: str, *, preferred_locale: str | None = None) -> LanguageDetection:
+    """Detect each utterance locally; return unknown rather than guessing a fallback locale."""
+
+    normalized = (text or "").casefold().strip()
+    if not normalized:
+        return LanguageDetection(None, None, None, "empty")
+
+    explicit_locale = _explicit_language_override(normalized, preferred_locale)
+    if explicit_locale is not None:
+        return LanguageDetection(explicit_locale, explicit_locale.split("-", 1)[0], 1.0, "explicit_request")
+
+    if any("\u1000" <= char <= "\u109f" or "\ua9e0" <= char <= "\ua9ff" for char in normalized):
+        return LanguageDetection(_locale_for_language_code("my", preferred_locale), "my", 1.0, "script")
+    words = set(_fold_language_text(normalized).split())
+    if len(words.intersection(_HAUSA_MARKERS)) >= 2 or any(char in normalized for char in "ɓɗƙƴƁƊƘƳ"):
+        return LanguageDetection(_locale_for_language_code("ha", preferred_locale), "ha", 0.95, "lexical")
+    if any("\u3040" <= char <= "\u30ff" for char in normalized):
+        return LanguageDetection(_locale_for_language_code("ja", preferred_locale), "ja", 1.0, "script")
+    if any("\u4e00" <= char <= "\u9fff" for char in normalized):
+        return LanguageDetection(_locale_for_language_code("zh", preferred_locale), "zh", 1.0, "script")
+    if any("\uac00" <= char <= "\ud7af" for char in normalized):
+        return LanguageDetection(_locale_for_language_code("ko", preferred_locale), "ko", 1.0, "script")
+    if sum(char.isalpha() for char in normalized) < 5:
+        return LanguageDetection(None, None, None, "insufficient_text")
+
+    identifier, supported_codes = _language_identifier()
+    language_code, confidence = identifier.classify(normalized)
+    confidence = float(confidence)
+    if language_code not in supported_codes or confidence < 0.80:
+        return LanguageDetection(None, None, confidence, "undetermined")
+    locale = _locale_for_language_code(language_code, preferred_locale)
+    if locale is None:
+        return LanguageDetection(None, language_code, confidence, "unsupported")
+    return LanguageDetection(locale, language_code, confidence, "detector")
+
+
+def voice_language_detection_support() -> dict[str, str]:
+    """Per-canonical-locale detector path, derived from the single locale registry."""
+
+    _, supported_codes = _language_identifier()
+    return {
+        item.locale: (
+            "script" if item.bcp47.split("-", 1)[0].casefold() == "my"
+            else "lexical" if item.bcp47.split("-", 1)[0].casefold() == "ha"
+            else "detector" if item.bcp47.split("-", 1)[0].casefold() in supported_codes
+            else "fallback_required"
+        )
+        for item in LOCALES
+    }
 
 
 def detect_locale_from_text(text: str) -> str | None:
-    """Detect only reliable script/switch signals; ambiguous text returns None."""
+    """Compatibility wrapper returning only a confidently detected canonical locale."""
 
-    normalized = (text or "").casefold().strip()
-    if len(normalized) < 8:
-        return None
-    for locale, markers in _LANGUAGE_SWITCHES:
-        if any(marker in normalized for marker in markers):
-            return locale
-    if any("\u0600" <= char <= "\u06ff" for char in normalized):
-        return "ar"
-    if any("\u3040" <= char <= "\u30ff" for char in normalized):
-        return "ja"
-    if any("\u4e00" <= char <= "\u9fff" for char in normalized):
-        return "zh"
-    if any("\uac00" <= char <= "\ud7af" for char in normalized):
-        return "ko"
-    return None
+    return detect_spoken_language(text).locale
 
 
 def defaults_for_country(country: str) -> LocaleInfo | None:

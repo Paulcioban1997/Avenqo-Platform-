@@ -136,6 +136,8 @@ async def message(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    agent_registry: AssistantRegistry = Depends(get_assistant_registry),
     service: ChatService = Depends(get_chat_service),
     db: Session = Depends(get_db),
     prediction_service: PredictionService = Depends(get_prediction_service),

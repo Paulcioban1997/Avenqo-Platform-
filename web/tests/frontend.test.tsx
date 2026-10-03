@@ -56,6 +56,36 @@ describe("credit display", () => {
 });
 
 describe("Copilot production response", () => {
+  it("does not pin browser speech recognition to the account or browser locale", async () => {
+    const audioContext = {
+      resume: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+    };
+    vi.stubGlobal("AudioContext", class { constructor() { return audioContext; } });
+    vi.stubGlobal("navigator", { ...navigator, language: "fr-FR", mediaDevices: undefined });
+    const recognitions: Array<{ lang?: string; start: () => void; stop: () => void }> = [];
+    vi.stubGlobal("SpeechRecognition", class {
+      lang?: string;
+      start() {}
+      stop() {}
+      constructor() { recognitions.push(this); }
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/retail/sources")) return new Response("[]", { status: 200 });
+      if (url.endsWith("/ai/chat/conversations")) return Response.json({ id: "same-conversation" });
+      if (url.endsWith("/ai/voice/sessions")) return Response.json({ id: "voice-session" });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(<LocaleProvider><AvenqoCopilot isOpen onClose={vi.fn()} activeRoute="/retail" t={getAppTranslations("fr")} /></LocaleProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
+    await waitFor(() => expect(recognitions).toHaveLength(1));
+
+    expect(recognitions[0].lang).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
+  });
+
   it("streams microphone PCM and provider audio through the Voice session without an HTTP turn", async () => {
     const playbackStart = vi.fn();
     const playbackClose = vi.fn(async () => undefined);

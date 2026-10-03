@@ -4,7 +4,14 @@ import json
 from pathlib import Path
 import re
 
-from backend.app.core.locale_catalog import LOCALES, detect_locale_from_text, locale_info, resolve_locale
+from backend.app.core.locale_catalog import (
+    LOCALES,
+    detect_locale_from_text,
+    detect_spoken_language,
+    locale_info,
+    resolve_locale,
+    voice_language_detection_support,
+)
 from backend.app.ai.tools.natural_confirmation import (
     SUPPORTED_CONFIRMATION_LOCALES,
     is_natural_confirmation,
@@ -74,3 +81,72 @@ def test_free_text_detection_is_conservative_and_canonical() -> None:
     assert detect_locale_from_text("これは日本語の質問です") == "ja"
     assert detect_locale_from_text("OK") is None
     assert detect_locale_from_text("123") is None
+
+
+def test_spoken_language_detection_is_per_utterance_and_ignores_ui_locale() -> None:
+    utterances = (
+        ("fr", "Combien de commandes avons-nous ?"),
+        ("en", "How many orders do we have?"),
+        ("ro", "Câte comenzi avem?"),
+        ("es", "¿Cuántos pedidos tenemos?"),
+    )
+    previous = "fr"
+    for expected, transcript in utterances:
+        detection = detect_spoken_language(transcript, preferred_locale=previous)
+        assert detection.locale == expected
+        assert detection.language_code == expected
+        assert detection.confidence is not None and detection.confidence >= 0.80
+        previous = detection.locale
+
+    ui_french_spoken_english = detect_spoken_language(
+        "How many orders do we have?", preferred_locale="fr"
+    )
+    ui_english_spoken_french = detect_spoken_language(
+        "Combien de commandes avons-nous ?", preferred_locale="en"
+    )
+    assert ui_french_spoken_english.locale == "en"
+    assert ui_english_spoken_french.locale == "fr"
+
+    same_session = [
+        detect_spoken_language(text, preferred_locale=previous).locale
+        for previous, text in zip(
+            ("fr", "fr", "en", "ro"),
+            (
+                "Combien de commandes avons-nous ?",
+                "Now answer me in English.",
+                "Acum răspunde-mi în română.",
+                "Ahora respóndeme en español.",
+            ),
+        )
+    ]
+    assert same_session == ["fr", "en", "ro", "es"]
+
+
+def test_explicit_language_override_beats_detected_utterance_language() -> None:
+    detection = detect_spoken_language(
+        "Please answer me in Romanian.", preferred_locale="en"
+    )
+
+    assert detection.locale == "ro"
+    assert detection.source == "explicit_request"
+
+
+def test_spoken_language_audit_covers_canonical_locales_without_faking_detector_support() -> None:
+    support = voice_language_detection_support()
+
+    assert set(support) == {item.locale for item in LOCALES}
+    assert len(support) == 44
+    assert support["my"] == "script"
+    assert support["ha"] == "lexical"
+
+    hausa = detect_spoken_language(
+        "Yaya kake? Ina son taimako da bayanin odar.", preferred_locale="fr"
+    )
+    assert hausa.locale == "ha"
+    assert hausa.source == "lexical"
+
+    unsupported = detect_spoken_language(
+        "qzx vvv jjj", preferred_locale="fr"
+    )
+    assert unsupported.locale is None
+    assert unsupported.source == "undetermined"

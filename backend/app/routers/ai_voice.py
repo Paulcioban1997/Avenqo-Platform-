@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session
 from backend.app.ai.central.service import CentralAIService
 from backend.app.ai.request_identity import resolve_ai_request_id
 from backend.app.config.settings import get_settings
-from backend.app.core.locale_catalog import BY_BCP47, BY_LOCALE, resolve_locale
+from backend.app.core.locale_catalog import (
+    BY_BCP47,
+    BY_LOCALE,
+    detect_spoken_language,
+    resolve_locale,
+)
 from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
@@ -43,6 +48,9 @@ def _response(session: VoiceCentralSession) -> VoiceSessionResponse:
         id=session.id,
         conversation_id=session.conversation_id,
         locale=session.locale,
+        detected_language=session.detected_language,
+        detected_locale=session.detected_locale,
+        language_confidence=session.language_confidence,
         status=session.status,
         stt_provider="openai" if realtime else "browser_speech",
         tts_provider="openai" if realtime else None,
@@ -75,6 +83,22 @@ def _realtime_adapter() -> OpenAIRealtimeAudioAdapter:
     )
 
 
+def _resolve_voice_turn_language(
+    session: VoiceCentralSession,
+    transcript: str,
+    db: Session,
+):
+    detection = detect_spoken_language(transcript, preferred_locale=session.locale)
+    session.detected_language = detection.language_code
+    session.detected_locale = detection.locale
+    session.language_confidence = detection.confidence
+    if detection.locale is not None and detection.locale != session.locale:
+        session.previous_locale = session.locale
+        session.locale = detection.locale
+    db.commit()
+    return detection
+
+
 @router.post("/sessions", response_model=VoiceSessionResponse)
 def create_session(
     request: VoiceSessionCreate,
@@ -97,7 +121,7 @@ def create_session(
     )
     if existing is not None:
         return _response(existing)
-    requested_locale = request.locale or identity.user.company.preferred_language
+    requested_locale = identity.user.company.preferred_language or request.locale or "fr"
     normalized = requested_locale.casefold().replace("_", "-")
     locale = resolve_locale(requested_locale) if normalized in BY_LOCALE or normalized in BY_BCP47 else requested_locale
     realtime = _realtime_available(locale)
@@ -163,6 +187,7 @@ async def turn(
     )
     if session is None or session.status != "active":
         raise HTTPException(status_code=404, detail="Voice session not found")
+    detection = _resolve_voice_turn_language(session, request.transcript, db)
     request_id = resolve_ai_request_id(
         request.request_id,
         tenant_id=tenant.company_id,
@@ -177,11 +202,12 @@ async def turn(
         permissions=frozenset(permissions_for(membership.role)),
         capabilities=frozenset(),
         request_id=request_id,
-        user_language=session.locale,
+        user_language=detection.locale or session.locale,
         company_country=identity.user.company.country or "",
         company_currency=getattr(identity.user.company, "currency_code", None) or "USD",
         company_timezone=identity.user.company.timezone or "UTC",
-        locale_explicit=True,
+        locale_explicit=detection.locale is not None,
+        spoken_language_input=True,
     )
     return VoiceTurnResponse(
         session_id=session.id,
@@ -352,6 +378,7 @@ async def stream_session(
             if membership is None:
                 await websocket.close(code=4403)
                 return
+            detection = _resolve_voice_turn_language(session, transcript, db)
             await send({"type": "transcript", "transcript": transcript, "status": "final"})
             await send({"type": "lifecycle", "status": "thinking"})
             request_id = resolve_ai_request_id(
@@ -362,10 +389,12 @@ async def stream_session(
                 result = await service.execute(
                     TenantContext(company_id=tenant_id), user_id, session.conversation_id, transcript,
                     permissions=frozenset(permissions_for(membership.role)), capabilities=frozenset(),
-                    request_id=request_id, user_language=session.locale,
+                    request_id=request_id, user_language=detection.locale or session.locale,
                     company_country=user.company.country or "",
                     company_currency=getattr(user.company, "currency_code", None) or "USD",
-                    company_timezone=user.company.timezone or "UTC", locale_explicit=True,
+                    company_timezone=user.company.timezone or "UTC",
+                    locale_explicit=detection.locale is not None,
+                    spoken_language_input=True,
                     allow_existing_reservation=usage_ledger is not None,
                     attempt_sink=central_attempts,
                 )

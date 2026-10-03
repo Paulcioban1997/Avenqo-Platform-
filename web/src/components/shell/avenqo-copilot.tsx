@@ -222,7 +222,6 @@ export function AvenqoCopilot({
       return;
     }
     const recognition = new Recognition();
-    recognition.lang = locale;
     recognition.interimResults = true;
     recognition.continuous = false;
     let transcript = "";

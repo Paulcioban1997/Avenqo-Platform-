@@ -8,6 +8,8 @@ from typing import Protocol
 
 from openai import AsyncOpenAI
 
+from backend.app.core.locale_catalog import locale_info
+
 
 class SpeechToTextAdapter(Protocol):
     provider_id: str
@@ -64,7 +66,6 @@ class OpenAISpeechToTextAdapter:
         response = await client.audio.transcriptions.create(
             file=("voice-input", audio, content_type),
             model=self._config.stt_model,
-            language=locale.split("-")[0],
         )
         return str(getattr(response, "text", response) or "")
 
@@ -87,6 +88,7 @@ class OpenAITextToSpeechAdapter:
             model=self._config.tts_model,
             voice=self._config.tts_voice,
             response_format="opus",
+            instructions=f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate.",
         )
         return response.read()
 
@@ -133,12 +135,16 @@ class OpenAIRealtimeAudioAdapter:
             "type": "session.update",
             "session": {
                 "type": "realtime",
+                "instructions": (
+                    "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
+                    "When a new user utterance uses a different language, follow that language. Never translate to French by default."
+                ),
                 "output_modalities": ["audio"],
                 "tools": [],
                 "audio": {
                     "input": {
                         "format": {"type": "audio/pcm", "rate": 24000},
-                        "transcription": {"model": self._config.stt_model, "language": locale.split("-")[0]},
+                        "transcription": {"model": self._config.stt_model},
                         "turn_detection": {
                             "type": "server_vad", "create_response": False, "interrupt_response": False,
                         },
@@ -164,7 +170,7 @@ class OpenAIRealtimeAudioAdapter:
             "response": {
                 "conversation": "none",
                 "output_modalities": ["audio"],
-                "instructions": "Speak the supplied text verbatim. Do not answer or add information.",
+                "instructions": "Speak the supplied text verbatim in its existing language. Do not translate, answer, or add information.",
                 "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
             },
         })

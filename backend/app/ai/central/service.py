@@ -13,7 +13,7 @@ from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.service import AIUsageService
-from backend.app.core.locale_catalog import detect_locale_from_text, resolve_locale
+from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from shared.ai_engine.contracts import TenantContext
 
@@ -98,10 +98,23 @@ class CentralAIService:
         locale_explicit: bool = True,
         allow_existing_reservation: bool = False,
         attempt_sink: list[LLMProviderAttempt] | None = None,
+        spoken_language_input: bool = False,
     ) -> CentralAIResult:
         user_language = resolve_locale(user_language)
-        if not locale_explicit:
-            user_language = detect_locale_from_text(query) or user_language
+        language_source = "explicit" if locale_explicit else "fallback"
+        language_confidence = None
+        language_auto_detect = False
+        if spoken_language_input or not locale_explicit:
+            language_detection = detect_spoken_language(
+                query, preferred_locale=user_language
+            )
+            language_source = language_detection.source
+            language_confidence = language_detection.confidence
+            if language_detection.locale is not None:
+                user_language = language_detection.locale
+                locale_explicit = True
+            elif spoken_language_input:
+                language_auto_detect = True
         started_at = perf_counter()
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         context = self._context_builder.build(
@@ -112,6 +125,9 @@ class CentralAIService:
             company_country=company_country,
             company_currency=company_currency,
             company_timezone=company_timezone,
+            language_source=language_source,
+            language_confidence=language_confidence,
+            language_auto_detect=language_auto_detect,
         )
         if "ai:use" not in permissions:
             result = self._result(
@@ -194,6 +210,8 @@ class CentralAIService:
                 retrieve_tenant_data=agent is not None,
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
+                follow_latest_utterance_language=spoken_language_input,
+                language_auto_detect=language_auto_detect,
             )
         except AIQuotaExceededError:
             result = self._result(tenant.company_id, agent.slug if agent else None, "credits_exhausted", context.plan_code, "available")

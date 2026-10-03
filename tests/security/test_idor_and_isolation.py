@@ -23,7 +23,7 @@ from backend.app.config.settings import get_settings
 from backend.app.core.security import create_access_token
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
-from backend.app.models import AuthSession, Base, Company, User, UserRole
+from backend.app.models import AuthSession, Base, Company, CompanyMembership, User, UserRole
 from backend.main import create_application
 from tests.subscription_helpers import add_active_subscription
 
@@ -78,6 +78,13 @@ def _user(session, company: Company, *, role: UserRole = UserRole.OWNER) -> User
         email=f"user-{uuid4()}@example.com", password_hash="hash", role=role,
     )
     session.add(user)
+    session.flush()
+    session.add(CompanyMembership(
+        user_id=user.id,
+        company_id=company.id,
+        role=role,
+        is_active=True,
+    ))
     session.flush()
     return user
 

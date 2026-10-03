@@ -67,7 +67,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0034_voice_audio_frame_sequence"
+    assert current == "0035_voice_language_continuity"
     attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
     assert {
         "user_id",
@@ -91,6 +91,15 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
     assert "last_audio_sequence" in {
         column["name"] for column in inspector.get_columns("voice_central_sessions")
     }
+    voice_columns = {
+        column["name"] for column in inspector.get_columns("voice_central_sessions")
+    }
+    assert {
+        "detected_language",
+        "detected_locale",
+        "language_confidence",
+        "previous_locale",
+    }.issubset(voice_columns)
     receipt_columns = {
         column["name"]
         for column in inspector.get_columns("commerce_webhook_receipts")

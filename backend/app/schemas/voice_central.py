@@ -14,6 +14,9 @@ class VoiceSessionResponse(BaseModel):
     id: UUID
     conversation_id: UUID
     locale: str
+    detected_language: str | None = None
+    detected_locale: str | None = None
+    language_confidence: float | None = None
     status: str
     stt_provider: str | None
     tts_provider: str | None
