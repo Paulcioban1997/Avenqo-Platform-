@@ -160,6 +160,22 @@ def test_voice_language_instructions_follow_latest_utterance_and_auto_fallback()
     assert "do not translate back to French" in romanian_instruction
 
 
+def test_voice_response_instructions_cover_all_44_canonical_locales() -> None:
+    for locale in LOCALES:
+        instruction = _localized_system_instruction(
+            "Avenqo AI",
+            user_language=locale.locale,
+            company_country=locale.country,
+            company_currency=locale.currency_code,
+            company_timezone=locale.default_timezone,
+            follow_latest_utterance_language=True,
+        )
+
+        assert f"User language: {locale.english_name}" in instruction
+        assert f"Canonical locale: {locale.locale} ({locale.bcp47})" in instruction
+        assert "Follow language changes within the same conversation" in instruction
+
+
 def test_voice_session_language_resolution_switches_without_changing_identity() -> None:
     session = SimpleNamespace(
         locale="fr",
@@ -207,6 +223,29 @@ async def test_configured_adapter_contract_fails_closed_without_provider_credent
         await OpenAISpeechToTextAdapter(config).transcribe(b"audio", locale="fr", content_type="audio/webm")
     with pytest.raises(ExternalVoiceConfigurationRequired):
         await OpenAITextToSpeechAdapter(config).synthesize("hello", locale="fr")
+
+
+@pytest.mark.asyncio
+async def test_tts_preserves_the_active_language_for_all_44_canonical_locales() -> None:
+    requests = []
+
+    class Speech:
+        async def create(self, **kwargs):
+            requests.append(kwargs)
+            return SimpleNamespace(read=lambda: b"audio")
+
+    adapter = OpenAITextToSpeechAdapter(
+        OpenAIAudioConfig("test-key", "gpt-4o-mini-transcribe", "gpt-4o-mini-tts", "marin"),
+        client=SimpleNamespace(audio=SimpleNamespace(speech=Speech())),
+    )
+
+    for locale in LOCALES:
+        assert await adapter.synthesize("Keep this response in its language.", locale=locale.locale) == b"audio"
+
+    assert len(requests) == 44
+    for locale, request in zip(LOCALES, requests):
+        assert locale.english_name in request["instructions"]
+        assert "Preserve the input language; do not translate." in request["instructions"]
 
 
 @pytest.mark.asyncio

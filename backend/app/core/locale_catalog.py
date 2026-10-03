@@ -162,28 +162,43 @@ def _locale_for_language_code(language_code: str, preferred_locale: str | None =
 
 def _explicit_language_override(text: str, preferred_locale: str | None) -> str | None:
     folded = _fold_language_text(text)
-    for language_code, markers in _LANGUAGE_SWITCHES:
-        if any(_fold_language_text(marker) in folded for marker in markers):
-            return _locale_for_language_code(language_code, preferred_locale)
-
     connectors = r"(?:in|en|em|auf|a|à|på|na|no|em|in|به زبان)"
     commands = r"(?:answer|respond|reply|speak|continue|switch|change|use|responde|respondeme|reponde|raspunde|vorbeste|habla|contesta|cambia|parla|rispondi|sprechen)"
+    aliases: dict[str, set[str]] = {}
     for info in LOCALES:
-        aliases = {
+        locale_aliases = {
+            info.native_name,
+            info.english_name,
             info.native_name.split("(", 1)[0].strip(),
             info.english_name.split("(", 1)[0].strip(),
             info.locale,
             info.bcp47,
         }
-        for alias in sorted(aliases, key=len, reverse=True):
+        for alias in locale_aliases:
             folded_alias = _fold_language_text(alias)
-            if len(folded_alias) < 3:
+            if len(folded_alias) < 3 and alias not in {info.locale, info.bcp47}:
                 continue
             escaped = re.escape(folded_alias).replace(r"\ ", r"\s+")
-            if re.search(rf"\b{connectors}\s+{escaped}\b", folded):
-                return info.locale
-            if re.search(rf"\b{commands}\b.{{0,50}}\b{escaped}\b", folded):
-                return info.locale
+            aliases.setdefault(escaped, set()).add(info.locale)
+
+    for escaped in sorted(aliases, key=len, reverse=True):
+        alias_pattern = rf"\b{escaped}(?![\w-])"
+        if re.search(rf"\b{connectors}\s+{alias_pattern}", folded):
+            matching_locales = aliases[escaped]
+            preferred = resolve_locale(preferred_locale) if preferred_locale else None
+            if preferred in matching_locales:
+                return preferred
+            return next(info.locale for info in LOCALES if info.locale in matching_locales)
+        if re.search(rf"\b{commands}\b.{{0,50}}{alias_pattern}", folded):
+            matching_locales = aliases[escaped]
+            preferred = resolve_locale(preferred_locale) if preferred_locale else None
+            if preferred in matching_locales:
+                return preferred
+            return next(info.locale for info in LOCALES if info.locale in matching_locales)
+
+    for language_code, markers in _LANGUAGE_SWITCHES:
+        if any(_fold_language_text(marker) in folded for marker in markers):
+            return _locale_for_language_code(language_code, preferred_locale)
     return None
 
 

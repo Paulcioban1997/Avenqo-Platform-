@@ -150,3 +150,27 @@ def test_spoken_language_audit_covers_canonical_locales_without_faking_detector_
     )
     assert unsupported.locale is None
     assert unsupported.source == "undetermined"
+
+
+def test_every_canonical_voice_locale_has_an_explicit_language_switch_path() -> None:
+    support = voice_language_detection_support()
+    failures = []
+
+    for locale in LOCALES:
+        detection = detect_spoken_language(
+            f"Please respond in {locale.english_name}.", preferred_locale="fr"
+        )
+        expected_language = locale.bcp47.split("-", 1)[0].casefold()
+        canonical_detection = detect_spoken_language(
+            f"Please switch to {locale.locale}.", preferred_locale="fr"
+        )
+        if (
+            detection.source != "explicit_request"
+            or detection.language_code != expected_language
+            or canonical_detection.locale != locale.locale
+            or canonical_detection.source != "explicit_request"
+            or support[locale.locale] == "fallback_required"
+        ):
+            failures.append((locale.locale, detection, canonical_detection, support[locale.locale]))
+
+    assert not failures, failures
