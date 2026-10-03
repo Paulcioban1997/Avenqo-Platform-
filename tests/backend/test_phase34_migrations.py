@@ -67,7 +67,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0035_voice_language_continuity"
+    assert current == "0036_merge_sandbox_membership_ancestry"
     attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
     assert {
         "user_id",
@@ -106,6 +106,31 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
     }
     assert "source_record_id" in receipt_columns
     assert application_logger.disabled is False
+
+
+def test_sandbox_membership_revision_upgrades_to_current_head(temp_db_url: str) -> None:
+    config = _alembic_config(temp_db_url)
+    command.upgrade(config, "0019_company_memberships")
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(temp_db_url)
+    with engine.connect() as connection:
+        current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    assert current == "0036_merge_sandbox_membership_ancestry"
+    assert "company_memberships" in inspect(engine).get_table_names()
+
+
+def test_current_production_head_upgrades_through_compatibility_merge(temp_db_url: str) -> None:
+    config = _alembic_config(temp_db_url)
+    command.upgrade(config, "0035_voice_language_continuity")
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(temp_db_url)
+    with engine.connect() as connection:
+        current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    assert current == "0036_merge_sandbox_membership_ancestry"
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
