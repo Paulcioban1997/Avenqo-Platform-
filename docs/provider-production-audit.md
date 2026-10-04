@@ -197,3 +197,92 @@ LIVE INFERENCE VERIFIED PASS; AI CENTRAL ROUTING VERIFIED PASS; ACCOUNTING VERIF
 FALLBACK VERIFIED PASS; TENANT ATTRIBUTION VERIFIED PASS; PRODUCTION VERIFIED PASS
 for this bounded production text-inference path only. This is not a claim of universal
 Vertex availability, quota headroom, all-region support or multimodal capability.
+
+## Connector Cron Incident (2026-10-04)
+
+- Railway sandbox service: `avenqo-connector-ai-cron` (service ID
+	`00d0f7c9-fb7e-4de1-a5e9-515bc1bb60f8`). Its latest deployment status was SUCCESS;
+	`stopped=true` is expected for a one-shot scheduled service. It is a thin HTTP trigger,
+	not the evaluation worker process.
+- Railway itself does not currently show a failed cron deployment/execution: the latest
+	recorded cron cycles completed normally, and both explicit sandbox invocations below
+	exited 0. The UI failure corresponds to the persisted evaluation row, not process exit.
+- Trigger configuration: scheduler URL/token CONFIGURED. The URL host was compared in
+	memory against the sandbox API domain and matched. No URL or token value was printed.
+- Latest automated cycles: logs contained 67 completed trigger cycles; latest and six
+	preceding cycles all reported `claimed=0`; five earlier cycles reported positive
+	claims. Logs had no traceback/error-level entries. Thus the Railway cron execution
+	itself was not the failed component.
+- The UI's “Last run failed” corresponded to one persisted connector evaluation row:
+	status FAILED, decision `blocked`, reason `source_artifact_missing`, generation 2,
+	provider WooCommerce, attempt_count 2,581. Dataset/connection tenant references
+	matched. The WooCommerce connection was READY with historical successful sync.
+- Root cause was verified by sandbox runtime filesystem checks: `Dataset.source` and the
+	current `DatasetVersion.artifact_path` do not exist under the configured artifact root;
+	prepared/canonical copies were also absent. There is no recoverable source artifact in
+	the sandbox volume. The historical failure's raw exception stack/OS exit code was not
+	retained; the evaluation was caught and recorded as a terminal blocked state.
+- Fix already present and deployed at SHA `18b22ae44f4640984a43afa3919883b9f6ccc7a2`:
+	FileNotFoundError is recorded once as FAILED/blocked/source_artifact_missing, and
+	blocked failures are excluded from claims. Other transient evaluation failures remain
+	retryable. Regression tests cover both paths.
+- Backend CI run `37188506867` passed. Targeted connector/scheduler tests passed, and
+	313 broader backend tests passed. Auth/session, tenant context/isolation, central AI,
+	Agent Registry/tool security, credits/accounting, Voice, locales, Google Calendar,
+	CRM, Retail, WooCommerce and migrations were included in targeted suites. Flutter
+	connection/source tests passed (all tests in the two selected files).
+- Manual sandbox trigger was run twice using sandbox Railway variables. Both invocations
+	returned exit code 0 / `claimed=0`. Read-only before/after checks found one blocked
+	source-artifact row, attempt_count unchanged at 2,581, no claimable work, and no
+	additional evaluation or business records. This proves safe no-op/idempotency, NOT
+	successful completion of the failed business evaluation. No sync/reseed/recreation
+	was performed because the original WooCommerce source file is unavailable.
+- The prior evaluation did not retain an OS exit code or traceback: the service catches
+	FileNotFoundError and records a structured terminal decision. The exact verified
+	error category is `source_artifact_missing`; raw paths/IDs were not published.
+- Production was not targeted by either manual invocation and remained healthy/ready on
+	the deployed release; migrations were OK.
+
+### Current Provider Matrix (2026-10-04)
+
+- Vertex AI — LIVE VERIFIED (bounded production text inference and Central AI accounting
+	documented above; no universal/model-family availability claim).
+- Gemini direct — LIVE VERIFIED (107 successful production ledger attempts with response
+	IDs in the observed last-24-hours window; separate from the Vertex provider identity).
+- OpenAI — LIVE VERIFIED (153 successful production ledger attempts with response IDs
+	in the observed last-24-hours window; Voice-specific audio quality is not newly tested).
+- Anthropic — QUOTA/BILLING BLOCKED (latest production inference fallback attempt received
+	quota_problem; zero provider credits charged; fallback to Vertex succeeded).
+- Shopify — AUTH REQUIRED in production (`REAUTH_REQUIRED`, no successful production
+	sync); LIVE VERIFIED in sandbox by a successful sync at 2026-10-04 08:31 UTC.
+- WooCommerce — CONFIGURED NOT LIVE VERIFIED in production (no production connection
+	observed); LIVE VERIFIED in sandbox by successful sync at 2026-10-04 08:31 UTC.
+- Google Calendar — CONFIGURED NOT LIVE VERIFIED for current Calendar API access in
+	production. An OAuth exchange/token-storage event was observed at 2026-10-04 04:39
+	UTC, but this task did not perform a fresh authenticated Calendar API read; sandbox's
+	stored connection is DISCONNECTED.
+- Retell — NOT CONFIGURED (production API key missing; no call made).
+- Telnyx — NOT CONFIGURED (production API/webhook keys missing; no call/SMS made).
+- Outlook/Microsoft — BROKEN (current adapter is a placeholder: token exchange/refresh
+	unimplemented and reads return empty results).
+
+### Google Credential Rotation Check
+
+The configured sealed service-account JSON authenticated the direct and Central Vertex
+requests and matched the dedicated account in memory. A read-only IAM service-account
+key-list request returned NOT_AUTHORIZED; therefore the active Google key inventory and
+whether this exact key is a separately flagged rotation target are UNKNOWN. No key was
+rotated, created, revoked or printed. Safe zero-downtime sequence: create replacement
+key for the same least-privilege account; update the sealed Railway variable; deploy;
+verify real Vertex direct + AI Central + accounting; only then revoke the previous key.
+
+### Regression Evidence
+
+- Connector root fix and surrounding targeted suites: 313 passed; connector evaluation
+	and protected scheduler tests separately passed 9 tests.
+- Follow-up AI Central/Agent Registry/security/accounting/tool tests: 114 passed.
+- Auth/session, tenant isolation, locales, Voice/accounting, Calendar, Retail source ON/OFF,
+	CRM, Commerce/WooCommerce and usage suites: 198 passed; Flutter connection/source flow
+	and connector hub tests passed.
+- No OAuth credential, external provider setting, business record or production dataset
+	was changed by the connector incident check. Local worktree remained clean at report time.
