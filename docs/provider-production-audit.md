@@ -705,3 +705,12 @@ remain observable; the existing request-id logging is preserved. A synthetic log
 and Shopify/Google OAuth code regressions passed (66 tests); no real callback was run.
 The current subscription is also force-refreshed at each callback check instead of using
 a stale ORM instance. This final security follow-up is released through its own green CI.
+
+Final backend/security SHA `99af714603f4c7d8124355c53aa70f7dffb92425` passed CI
+`37235589237`: 409 backend tests, 97 web tests/build/catalog/typecheck and Flutter gate
+all succeeded. Production subsequently served this SHA with healthy/ready and migrations
+ok. Authenticated read-only Produits_Ero GETs to the deployed catalog/connections API
+both succeeded: Shopify AVAILABLE and CONFIGURED, zero tenant Shopify connections,
+zero writes. OAuth, shop identity and real sync remain NOT RUN / NOT VERIFIED.
+No OAuth callback, Shopify event, production dataset or provider inference was generated.
+Human owner consent is the next required step, not an outstanding engineering test.
