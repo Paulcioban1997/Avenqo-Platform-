@@ -117,7 +117,19 @@ def test_vertex_requires_explicit_project_location_and_model() -> None:
     settings = Settings(_env_file=None, VERTEX_ENABLED=True, VERTEX_PROJECT="test-project", VERTEX_LOCATION="", VERTEX_MODEL="test-model")
     assert LLMProviderFactory._credential_for(settings, "vertex") is None
     settings.vertex_location = "europe-west4"
-    assert LLMProviderFactory._credential_for(settings, "vertex") == "adc"
+    assert LLMProviderFactory._credential_for(settings, "vertex") is None
+    settings.google_service_account_json = "sealed-json-is-present"
+    assert LLMProviderFactory._credential_for(settings, "vertex") == "service_account_json"
+
+
+def test_vertex_fallback_is_skipped_when_auth_material_is_missing(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    settings = Settings(_env_file=None, AI_PRIMARY_PROVIDER="openai", OPENAI_API_KEY="test",
+        VERTEX_ENABLED=True, VERTEX_PROJECT="test-project", VERTEX_LOCATION="global",
+        VERTEX_MODEL="gemini-3.5-flash-lite")
+    assert LLMProviderFactory._credential_for(settings, "vertex") is None
+    gateway = LLMProviderFactory.create_gateway(settings)
+    assert all(provider.name != "vertex" for provider in gateway._providers)
 
 
 def _vertex_settings(**overrides) -> Settings:

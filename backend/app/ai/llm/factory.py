@@ -1,4 +1,5 @@
 import logging
+import os
 
 from backend.app.ai.llm.anthropic_provider import AnthropicProvider
 from backend.app.ai.llm.base import LLMProvider
@@ -46,7 +47,17 @@ class LLMProviderFactory:
     @staticmethod
     def _credential_for(settings: Settings, provider_code: str) -> str | None:
         if provider_code.casefold() == "vertex":
-            return "adc" if settings.vertex_enabled and all((settings.vertex_project.strip(), settings.vertex_location.strip(), settings.vertex_model.strip())) else None
+            if not settings.vertex_enabled or not all((
+                settings.vertex_project.strip(),
+                settings.vertex_location.strip(),
+                settings.vertex_model.strip(),
+            )):
+                return None
+            if settings.google_service_account_json:
+                return "service_account_json"
+            if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+                return "adc_file"
+            return None
         definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
         return getattr(settings, definition.credential_setting, None) if definition else None
 
@@ -130,7 +141,7 @@ class LLMProviderFactory:
                 continue
             if index > 0 and not LLMProviderFactory._credential_for(settings, code):
                 logger.info(
-                    "ai_provider_config provider=%s role=fallback position=%d api_key_configured=false model=%s included=false",
+                    "ai_provider_config provider=%s role=fallback position=%d credential_configured=false model=%s included=false",
                     code,
                     index,
                     LLMProviderFactory._model_for(settings, code),
@@ -152,7 +163,7 @@ class LLMProviderFactory:
                 continue
             model_lists[code] = model_ids
             logger.info(
-                "ai_provider_config provider=%s role=%s position=%d api_key_configured=%s models=%s included=true",
+                "ai_provider_config provider=%s role=%s position=%d credential_configured=%s models=%s included=true",
                 code,
                 "primary" if index == 0 else "fallback",
                 index,
