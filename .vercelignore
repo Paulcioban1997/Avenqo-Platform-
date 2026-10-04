@@ -18,3 +18,9 @@ __pycache__
 /frontend/windows
 /frontend/build
 /frontend/.dart_tool
+/.railway
+/.env*
+/web/.env*
+/frontend/.env*
+/scratch
+/.pytest_cache

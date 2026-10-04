@@ -445,7 +445,8 @@ This does not certify the complete CRM/Copilot scheduling workflow.
 
 ## Google-aware Availability Implementation (2026-10-04)
 
-Final status: PARTIALLY VERIFIED. Candidate implementation and regression are complete;
+Historical candidate status: PARTIALLY VERIFIED (superseded by the deployed release below).
+Candidate implementation and regression were complete;
 real production-data reads succeeded in an isolated candidate process, but serving code
 was not deployed and Produits_Ero lacks configured business opening hours. No hours,
 appointments, Google events, customers or notifications were manufactured to remove this
@@ -545,3 +546,57 @@ blocker. The previous authenticated Calendar read status remains LIVE VERIFIED.
 - API Git triggers in Railway production/sandbox have checkSuites enabled. Web main
 	automatic Git deployment is disabled so manual production promotion follows green CI.
 	Commit/deployment/live verification receipts are recorded only after completion below.
+
+## Deployed Availability Verification And Next Priority (2026-10-04)
+
+- Release SHA `60637dce56bcefb37336fd361ce214f49f57d341`; CI `37225671750` succeeded:
+	backend 295 tests including true PostgreSQL concurrency, web 95 tests/build/typecheck,
+	Flutter succeeded. Local broad backend regression passed 468 tests and final focused
+	scheduling/security/migration gate passed 109 tests with PostgreSQL enabled.
+- Next.js project `web` was deployed after CI and aliased to avenqo.ca; Vercel deployment
+	`EutWbGWmJTUG2YHNGN6vw3e3x7Ck`. Flutter's app.avenqo.ca project was not substituted
+	for the web target. Local environment files were excluded from manual web uploads.
+- Production and sandbox served the release, healthy/ready with migrations ok. Production
+	startup showed migration 0037 and no traceback. One transient 502 was observed during
+	the single-instance rollout; subsequent fresh checks were green, not stale cached values.
+- Produits_Ero's existing active session and current tenant membership were reused in
+	memory for normal authenticated CRM API requests. No token, account identity or session
+	credential was emitted or persisted by the probe.
+- GET/PUT business-hour settings returned 200. With no genuine schedule present, a schedule
+	explicitly marked verification_only applied to one future date and a two-hour range.
+	Two deployed canonical availability GETs returned 200, three available slots each,
+	with identical results. Real FreeBusy returned 401, refresh 200, then FreeBusy 200.
+- No Google busy interval was observed; exclusion/conflict behavior remains TEST VERIFIED.
+	Fingerprints of appointments, customers, communications/notifications and Calendar
+	connection records were unchanged. Zero appointment mutations, Google event mutations,
+	notifications or duplicate records were introduced.
+- The temporary schedule was restored through the normal PUT path. A fresh GET matched
+	the original settings exactly, and record fingerprints remained unchanged after cleanup.
+	The operating-hours UI remains functional for entering genuine hours later; removal of
+	the verification schedule is not disabling the feature.
+- A final small follow-up routes Voice's opening-window and naive-time prechecks through
+	the canonical service too, so tenant hours override legacy Voice fields consistently.
+	Its CI/deployment receipt is recorded after completion; no telephony call is claimed.
+- Availability TODOs have evidence for configuration, 44-locale UI/RTL, external fail-closed
+	reads, timezone/DST, tenant isolation, idempotency and PostgreSQL same-slot exclusion.
+	Earlier candidate-only limitations are historical, not open availability TODOs.
+
+### Shopify Owner Authorization Required
+
+Fresh tenant-scoped production audit: Shopify app/client/callback configuration present,
+HTTPS callback matched the production API host, but Produits_Ero had zero Shopify and
+zero WooCommerce connections. No shop authorization, sync or dataset write was attempted.
+No CONNECTED/LIVE VERIFIED status is claimed for this tenant. Shopify OAuth and tenant-
+security regression passed in the broad gate; no new code defect was established.
+
+Manual next action: sign into Avenqo, select Produits_Ero, open Connections, choose Shopify,
+enter the owner's actual myshopify.com shop, sign into Shopify as an authorized owner/admin,
+and approve the configured app scopes. Return through the Avenqo callback; verify the
+connection status before authorizing a legitimate sync. No credential should be sent in chat.
+
+Downstream external blockers remain truthful: WooCommerce requires owner connection/sync,
+its historical missing-artifact evaluation must remain blocked; Anthropic's last real quota/
+billing failure is not bypassed; RETELL_API_KEY is missing; TELNYX_API_KEY,
+TELNYX_PUBLIC_KEY and TELNYX_MESSAGING_PROFILE_ID are missing. Microsoft OAuth app
+credentials are absent and the Outlook provider remains the previously documented partial
+placeholder; no new implementation or authenticated Microsoft operation is claimed here.

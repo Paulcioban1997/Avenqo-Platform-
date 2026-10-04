@@ -341,27 +341,23 @@ class VoiceOrchestrator:
         return service
 
     def _opening_interval(self, config: VoiceBusinessConfig, day: date) -> tuple[datetime, datetime] | None:
-        local_zone = ZoneInfo(config.timezone_name)
-        record = (config.opening_hours or {}).get(_WEEKDAYS[day.weekday()])
-        if not isinstance(record, dict) or not record.get("open") or not record.get("close"):
+        windows = CRMService(self.db)._availability._windows(config.company_id, day)
+        if not windows:
             return None
-        start_hour, start_minute = map(int, str(record["open"]).split(":"))
-        end_hour, end_minute = map(int, str(record["close"]).split(":"))
-        local_start = datetime.combine(day, time(start_hour, start_minute), tzinfo=local_zone)
-        local_end = datetime.combine(day, time(end_hour, end_minute), tzinfo=local_zone)
-        return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
+        return min(window[0] for window in windows), max(window[1] for window in windows)
 
-    @staticmethod
-    def _utc_datetime(value: Any, config: VoiceBusinessConfig) -> datetime:
+    def _utc_datetime(self, value: Any, config: VoiceBusinessConfig) -> datetime:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=ZoneInfo(config.timezone_name))
-        return parsed.astimezone(timezone.utc)
+        return CRMService(self.db)._availability.normalize(config.company_id, parsed)
 
     async def _check_availability(self, config: VoiceBusinessConfig, args: dict[str, Any]) -> dict[str, Any]:
         service = self._service_config(config, str(args.get("service_name") or ""))
         day = date.fromisoformat(str(args["date"]))
-        interval = self._opening_interval(config, day)
+        from backend.app.services.crm_availability_service import AvailabilityUnavailable
+        try:
+            interval = self._opening_interval(config, day)
+        except AvailabilityUnavailable as exc:
+            return {"success": False, "state": str(exc), "available_slots": [], "take_message": True}
         now = datetime.now(timezone.utc)
         if interval is None:
             suggestion = self._next_opening(config, day + timedelta(days=1))
@@ -370,7 +366,6 @@ class VoiceOrchestrator:
         if now >= closing or day < now.astimezone(ZoneInfo(config.timezone_name)).date():
             suggestion = self._next_opening(config, day + timedelta(days=1))
             return {"success": True, "open": False, "available_slots": [], "next_opening": suggestion, "take_message": True}
-        from backend.app.services.crm_availability_service import AvailabilityUnavailable
         try:
             records = await CRMService(self.db)._availability.list_available_slots(
                 config.company_id, day, duration_minutes=int(service["duration_minutes"]),

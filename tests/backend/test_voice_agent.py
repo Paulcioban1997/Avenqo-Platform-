@@ -149,6 +149,21 @@ def test_voice_availability_reuses_canonical_service_and_fails_closed(tmp_path, 
         engine.dispose()
 
 
+def test_voice_opening_precheck_uses_tenant_hours_not_legacy_voice_hours(tmp_path):
+    engine, session, company, config, _, service = _voice_database(tmp_path)
+    try:
+        target = datetime(2027, 2, 8, tzinfo=timezone.utc).date()
+        company.business_hours = {"weekly": {"monday": [{"open": "10:00", "close": "12:00"}]}}
+        config.opening_hours = {}
+        session.commit()
+        opened, closed = service._opening_interval(config, target)
+        assert opened.hour == 15 and closed.hour == 17
+        assert service._utc_datetime("2027-02-08T10:00:00", config) == opened
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_duplicate_telnyx_inbound_event_reuses_single_call_row(tmp_path) -> None:
     engine, session, _, config, _, service = _voice_database(tmp_path)
     payload = {"call_control_id": "telnyx-replayed-call", "from": "+15145550120"}
