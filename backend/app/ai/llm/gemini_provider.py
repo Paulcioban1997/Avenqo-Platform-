@@ -93,6 +93,7 @@ class GeminiProvider(LLMProvider):
             api_key=self._api_key,
             http_options=types.HttpOptions(
                 timeout=max(1, int(self._request_timeout_seconds * 1000)),
+                retry_options=types.HttpRetryOptions(attempts=1),
             ),
         )
         return self._client_instance

@@ -20,7 +20,7 @@ READ_ONLY_SUCCESS is scoped to the named operation, not the complete integration
 - ADC environment declaration: MISSING. Workload identity, IAM, billing, API enablement, quotas and regional model availability remain UNVERIFIED.
 - Region: explicit operator choice, no default global-region substitution.
 - SDK: production google-genai 2.28.0 and google-auth 2.59.1 inspected; tests validated on the same Google versions.
-- API: stable v1 client, bounded timeout, one SDK attempt; retries remain owned by the existing gateway.
+- API: stable v1 client, bounded timeout, one SDK attempt for both Google transports; retries remain owned by the existing gateway.
 - AI Central and Agent Registry: IMPLEMENTATION VERIFIED with a mocked Vertex response through CentralAIService and the existing Retail agent.
 - Tenant isolation: foreign conversation rejected before provider execution in the new central regression test.
 - Accounting: one tenant ledger attempt and one credit charge verified in that test; real provider response IDs preserved.
@@ -111,3 +111,19 @@ https://platform.claude.com/docs/en/about-claude/models/overview;
 https://platform.claude.com/docs/en/about-claude/pricing;
 https://ai.google.dev/gemini-api/docs/models;
 https://ai.google.dev/gemini-api/docs/pricing.
+
+## Release Evidence
+
+The first implementation release eca1b0559d5b9a7bbc7f707246888de87196a6d0 passed
+CI run 37163052591 (backend, web and Flutter) and all three Vercel statuses.
+Railway production deployment ea0775a8-fc68-410c-abdb-21eb0b42d333 and sandbox
+deployment 3c00c853-371d-4ffa-b1d7-4f3cfbc3c8c1 succeeded at that SHA. Public production
+health/readiness and internal sandbox readiness matched the SHA; migrations and
+artifact storage were OK. The deployed read-only audit confirmed successful metadata
+access to both replacement model configurations, and Stripe/S3 read probes remained
+successful. No credentials or Vertex settings were changed.
+
+A final follow-up disables direct Gemini SDK retries as well as Vertex SDK retries;
+95 focused gateway, usage, Central AI and credit tests passed on Google SDK 2.28.0.
+This follow-up's exact final CI/deployment and minimal centralized inference results
+must be checked independently; the first release evidence does not establish them.

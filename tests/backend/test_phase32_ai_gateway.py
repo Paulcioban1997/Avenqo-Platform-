@@ -186,6 +186,18 @@ def test_google_backend_selection_ignores_environment_defaults(monkeypatch) -> N
     vertex.close()
 
 
+def test_direct_gemini_sdk_does_not_hide_retries_from_gateway(monkeypatch) -> None:
+    from backend.app.ai.llm.gemini_provider import GeminiProvider
+
+    builder = Mock()
+    monkeypatch.setattr("google.genai.Client", builder)
+    provider = GeminiProvider("test-key", "gemini-test", 0.2, 80)
+    provider._client()
+    provider._client()
+    builder.assert_called_once()
+    assert builder.call_args.kwargs["http_options"].retry_options.attempts == 1
+
+
 @pytest.mark.parametrize("overrides", [
     {"AI_MODEL_RATE_CARD": {}},
     {"AI_MODEL_CATALOG": {}},
