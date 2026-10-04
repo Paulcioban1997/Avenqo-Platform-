@@ -395,7 +395,7 @@ class CommerceConnectionService:
         ).execution_options(populate_existing=True))
         if actor is None or not actor.is_active or membership is None or "data:manage" not in permissions_for(membership.role):
             raise CommerceAuthorizationError("Shopify OAuth actor is no longer authorized")
-        account = self._db.scalar(select(BillingAccount).where(BillingAccount.company_id == oauth_state.company_id))
+        account = self._db.scalar(select(BillingAccount).where(BillingAccount.company_id == oauth_state.company_id).execution_options(populate_existing=True))
         if account is None or account.status.strip().lower() not in ALLOWED_SUBSCRIPTION_STATUSES:
             raise CommerceAuthorizationError("Shopify OAuth tenant subscription is not active")
 

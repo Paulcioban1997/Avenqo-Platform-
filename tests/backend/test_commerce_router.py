@@ -27,6 +27,20 @@ from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.exceptions import ConnectorNotRegisteredError
 
 
+def test_oauth_callback_query_is_not_logged_by_uvicorn_access():
+    import logging
+    from backend.app.core.logging import configure_logging
+    configure_logging()
+    record = logging.LogRecord("uvicorn.access", logging.INFO, "test", 1,
+        '%s - "%s %s HTTP/%s" %s',
+        ("test-client", "GET", "/api/v1/connectors/shopify/callback?code=test-code&state=test-state&hmac=test-hmac", "1.1", 303), None)
+    logging.getLogger("uvicorn.access").filter(record)
+    assert "test-code" not in record.getMessage()
+    assert "test-state" not in record.getMessage()
+    assert "/api/v1/connectors/shopify/callback" in record.getMessage()
+    assert "303" in record.getMessage()
+
+
 @pytest.mark.parametrize("connection_state", ["ERROR", "CONNECTING", "CONNECTED", "READY", "FAILED", "REAUTH_REQUIRED"])
 def test_failed_shopify_verification_is_not_connected_with_stored_credentials(connection_state):
     connection = SimpleNamespace(

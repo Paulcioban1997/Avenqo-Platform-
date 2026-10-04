@@ -690,3 +690,18 @@ client secret should be pasted into chat. Return through the Avenqo callback aft
 Stop here for human owner/admin authorization. Only after this genuine OAuth completion
 may bounded production sync, real shop identity and downstream Retail/Copilot consumption
 be verified. No Shopify LIVE VERIFIED or CONNECTED claim is made from code tests.
+
+### Publication And Callback Log Safety
+
+Candidate SHA `53ffed7a0b9a552f1e06244cb9b30c650c9ef935` passed CI `37234617850`
+for backend, web and Flutter. Web deployment `6gd3Tv5zx847yMfpWAwpTDUG2yCc` was promoted
+to avenqo.ca after CI; Flutter deployment `JBfuWYrCC9dXvGn9viEpQv7Ae2Ua` was promoted to
+its existing app.avenqo.ca project without changing its backend target. Backend deployment
+must be confirmed from fresh health/SHA before the owner proceeds.
+
+A final callback-security review found that Uvicorn access logs would retain OAuth query
+parameters. Callback queries are now removed from log records while method/path/status
+remain observable; the existing request-id logging is preserved. A synthetic log test
+and Shopify/Google OAuth code regressions passed (66 tests); no real callback was run.
+The current subscription is also force-refreshed at each callback check instead of using
+a stale ORM instance. This final security follow-up is released through its own green CI.
