@@ -45,7 +45,9 @@ class ConnectorAIEvaluationService:
                 .where(
                     ConnectorDatasetEvaluation.due_at <= now,
                     or_(
-                        ConnectorDatasetEvaluation.status == DatasetEvaluationStatus.PENDING,
+                        ConnectorDatasetEvaluation.status.in_(
+                            (DatasetEvaluationStatus.PENDING,)
+                        ),
                         (
                             (ConnectorDatasetEvaluation.status == DatasetEvaluationStatus.FAILED)
                             & (
@@ -53,13 +55,6 @@ class ConnectorAIEvaluationService:
                                 | (ConnectorDatasetEvaluation.decision != "blocked")
                             )
                         ),
-                                (
-                                    (ConnectorDatasetEvaluation.status == DatasetEvaluationStatus.FAILED)
-                                    & (
-                                        ConnectorDatasetEvaluation.decision.is_(None)
-                                        | (ConnectorDatasetEvaluation.decision != "blocked")
-                                    )
-                                ),
                         (
                             (ConnectorDatasetEvaluation.status == DatasetEvaluationStatus.CLAIMED)
                             & (ConnectorDatasetEvaluation.lease_expires_at < now)
@@ -128,17 +123,6 @@ class ConnectorAIEvaluationService:
                 generation,
                 connection_id,
             )
-        except FileNotFoundError:
-            logger.error("Connector AI evaluation blocked reason=source_artifact_missing")
-            self._finish(
-                evaluation_id,
-                lease_token,
-                status=DatasetEvaluationStatus.FAILED,
-                decision="blocked",
-                reason="source_artifact_missing",
-                retry=False,
-            )
-            return
         except FileNotFoundError:
             logger.error("Connector AI evaluation blocked reason=source_artifact_missing")
             self._finish(
