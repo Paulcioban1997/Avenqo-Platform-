@@ -714,3 +714,41 @@ both succeeded: Shopify AVAILABLE and CONFIGURED, zero tenant Shopify connection
 zero writes. OAuth, shop identity and real sync remain NOT RUN / NOT VERIFIED.
 No OAuth callback, Shopify event, production dataset or provider inference was generated.
 Human owner consent is the next required step, not an outstanding engineering test.
+
+## Shopify Pre-authorization TODO Closure (2026-10-04)
+
+All currently identified safe pre-authorization engineering/verification TODOs are
+COMPLETE. External status remains AUTH REQUIRED, not CONNECTED or LIVE VERIFIED.
+
+- Local hub verification COMPLETE: desktop 1440px/mobile 390px, French and Arabic RTL,
+	no document overflow, no runtime/console errors, explicit unverified-state rejection
+	and verified-fixture identity rendering. Exactly one synthetic Connect click reached
+	an intercepted synthetic consent screen. All APIs and the Shopify destination were
+	mocked; this is UI/handoff evidence only, not Shopify authentication evidence.
+- Automated regression COMPLETE: the entire isolated tests/backend and tests/ai_engine
+	directories passed 1,318 tests, one local PostgreSQL test skipped, 743 warnings
+	(principally existing ML convergence/deprecation warnings). No test failed. Live root
+	E2E scripts and destructive production workflows were intentionally excluded.
+- Web/localization COMPLETE: 97 tests passed, TypeScript, 44 generated catalogs and
+	production build passed. Flutter analysis clean; all 306 tests passed. The already
+	published CI also runs isolated PostgreSQL and the required Shopify/source suites.
+- Production routes/configuration COMPLETE: anonymous catalog/connections/authorization
+	requests returned 401; an empty callback returned 400 without consuming valid state;
+	authenticated retired token-only manual connection returned 410. No OAuth start or
+	Shopify callback parameters were submitted.
+- Authenticated Produits_Ero catalog and connection reads returned 200; the avenqo.ca
+	proxy returned 200 with the same tenant connections. Shopify AVAILABLE/CONFIGURED,
+	correct production callback/webhook hosts, requested read scopes confirmed, zero
+	Shopify connections. No secret/token/account data was emitted. No sync or business
+	mutation was performed, and no Vertex/Calendar live operation was repeated.
+- Tenant isolation, encrypted storage, callback authorization, source ON/OFF preservation,
+	disconnect retention, webhook/record/dataset/worker idempotency and Retail/Copilot data
+	contracts remain TEST VERIFIED by the full regression, not real Shopify data claims.
+
+The sole prerequisite for live verification is physical Shopify owner/admin login and
+consent through https://avenqo.ca/connections, Produits_Ero, Shopify, Connecter. After
+approval, the pending real callback/shop identity/tenant attribution, bounded sync,
+products/orders/customers/inventory, dataset/source, Retail/KPI/Copilot and repeated-sync
+duplicate checks must be completed using real evidence. They are AUTH BLOCKED, not
+forgotten engineering TODOs. No other integration should be marked live or advanced
+merely because these simulated/automated checks succeeded.
