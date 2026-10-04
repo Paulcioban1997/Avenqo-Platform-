@@ -23,11 +23,14 @@ from shared.ai_engine.contracts import TenantContext
 
 
 class _Dispatcher:
-    def __init__(self) -> None:
+    def __init__(self, failure: Exception | None = None) -> None:
         self.calls: list[tuple] = []
+        self.failure = failure
 
     def evaluate_connector_dataset(self, tenant, dataset_id, generation, connection_id):
         self.calls.append((tenant.company_id, connection_id, dataset_id, generation))
+        if self.failure is not None:
+            raise self.failure
         return {
             "decision": "no_action",
             "reason": "policy_threshold_not_met",
@@ -121,6 +124,56 @@ def test_expired_lease_is_retried_but_active_lease_is_not_reclaimed() -> None:
     assert service.run_due() == 1
     assert len(dispatcher.calls) == 1
     assert service.run_due() == 0
+
+
+def test_missing_connector_source_is_blocked_without_infinite_retry() -> None:
+    factory = _session_factory()
+    dispatcher = _Dispatcher(FileNotFoundError("source artifact missing"))
+    company_id, connection_id, dataset_id = uuid4(), uuid4(), uuid4()
+    with factory() as session:
+        session.add(_evaluation(
+            company_id=company_id,
+            connection_id=connection_id,
+            dataset_id=dataset_id,
+            generation=2,
+        ))
+        session.commit()
+
+    service = ConnectorAIEvaluationService(factory, dispatcher)
+    assert service.run_due() == 1
+    assert service.run_due() == 0
+    assert len(dispatcher.calls) == 1
+
+    with factory() as session:
+        evaluation = session.scalar(select(ConnectorDatasetEvaluation))
+        assert evaluation.status == DatasetEvaluationStatus.FAILED
+        assert evaluation.decision == "blocked"
+        assert evaluation.reason == "source_artifact_missing"
+        assert evaluation.attempt_count == 1
+
+
+def test_other_evaluation_errors_remain_retryable() -> None:
+    factory = _session_factory()
+    dispatcher = _Dispatcher(RuntimeError("temporary evaluation failure"))
+    company_id, connection_id, dataset_id = uuid4(), uuid4(), uuid4()
+    with factory() as session:
+        session.add(_evaluation(
+            company_id=company_id,
+            connection_id=connection_id,
+            dataset_id=dataset_id,
+            generation=1,
+        ))
+        session.commit()
+
+    service = ConnectorAIEvaluationService(factory, dispatcher)
+    assert service.run_due() == 1
+    assert service.run_due() == 0
+    with factory() as session:
+        evaluation = session.scalar(select(ConnectorDatasetEvaluation))
+        assert evaluation.status == DatasetEvaluationStatus.FAILED
+        assert evaluation.decision == "retry"
+        assert evaluation.reason == "evaluation_failed"
+        assert evaluation.attempt_count == 1
 
 
 @pytest.mark.parametrize("provider", ["shopify", "woocommerce"])
