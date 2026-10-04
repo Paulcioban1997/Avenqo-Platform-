@@ -317,6 +317,7 @@ Perform this zero-downtime sequence using the existing dedicated account
 9. Confirm the replacement secret never entered Git history, frontend configuration or
 	logs. If it did, stop and perform the applicable repository-history and secret cleanup.
 
+
 ### Separate Vercel OIDC Material Concern
 
 A separate concern was raised regarding Vercel OIDC credential material. No value is
@@ -595,6 +596,12 @@ tenant-name truncation and CRM header wrapping repaired it. Browser assertions n
 the whole document, not just the editor: 390px document/viewport on mobile, 1440px on
 desktop, FR/Arabic LTR/RTL, with zero runtime or console errors. This final web-only
 follow-up is promoted after its own CI gate; backend scheduling logic is unchanged.
+
+Final web receipt: SHA `b31cb00dca4f7fa143e59ec5b0ed8f683900b0c6`, CI `37227846756`
+PASS for all three jobs, Vercel production deployment `6Ajzf1fpS7WCQxt8qywtdADzmyqt`,
+aliased to avenqo.ca after CI. Post-fix browser measurements were 390/390 pixels for
+FR/Arabic mobile and 1440/1440 for desktop, with zero runtime/console errors. No backend
+or migration source changed between the fully verified backend SHA and this web receipt.
 
 ### Shopify Owner Authorization Required
 
