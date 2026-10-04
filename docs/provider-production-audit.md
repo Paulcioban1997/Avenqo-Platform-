@@ -576,10 +576,25 @@ blocker. The previous authenticated Calendar read status remains LIVE VERIFIED.
 	the verification schedule is not disabling the feature.
 - A final small follow-up routes Voice's opening-window and naive-time prechecks through
 	the canonical service too, so tenant hours override legacy Voice fields consistently.
-	Its CI/deployment receipt is recorded after completion; no telephony call is claimed.
+	Follow-up SHA `4e4496ca4ed819178a90aa469c16666fcf53bf04` deployed successfully after CI
+	`37226580021` passed all three jobs (295 backend tests, 95 web tests and Flutter gate).
+	No telephony call is claimed.
 - Availability TODOs have evidence for configuration, 44-locale UI/RTL, external fail-closed
 	reads, timezone/DST, tenant isolation, idempotency and PostgreSQL same-slot exclusion.
 	Earlier candidate-only limitations are historical, not open availability TODOs.
+
+Final availability status: GOOGLE-AWARE AVAILABILITY VERIFIED. The final deployed backend
+was reverified through normal authenticated tenant settings and availability APIs: two
+identical responses with three slots each, genuine FreeBusy 401/refresh 200/FreeBusy 200,
+zero busy periods observed, no record/event/notification mutations, and exact restoration
+of the explicitly temporary date-only schedule. The production web KPI proxy returned
+HTTP 200 with the expected real numeric contract; no metric values were published.
+
+Final mobile check identified a separate header-width issue; responsive control spacing,
+tenant-name truncation and CRM header wrapping repaired it. Browser assertions now check
+the whole document, not just the editor: 390px document/viewport on mobile, 1440px on
+desktop, FR/Arabic LTR/RTL, with zero runtime or console errors. This final web-only
+follow-up is promoted after its own CI gate; backend scheduling logic is unchanged.
 
 ### Shopify Owner Authorization Required
 

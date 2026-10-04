@@ -286,7 +286,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
       <div className="flex-1 min-w-0 space-y-6">
         {/* CRM HEADER */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-[#0B132B] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center gap-3.5">
+          <div className="min-w-0 flex items-center gap-3.5">
             <Image
               src="/brand/avenqo-icon.png"
               alt={t.crm.title}
@@ -294,8 +294,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
               height={42}
               className="rounded-xl object-contain shadow-sm shadow-blue-500/20 shrink-0"
             />
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <Building className="w-3.5 h-3.5 text-[#0076FF]" />
                 <span className="font-bold text-slate-700 dark:text-slate-200">{companyName || "Avenqo"}</span>
                 <span>•</span>
