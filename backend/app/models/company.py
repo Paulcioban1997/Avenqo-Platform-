@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum as SAEnum, String
+from sqlalchemy import Enum as SAEnum, JSON, String
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,7 @@ class Company(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    business_hours: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     industry: Mapped[str] = mapped_column(String(120), nullable=False)
     website: Mapped[str | None] = mapped_column(String(255), nullable=True)
     region: Mapped[str] = mapped_column(String(100), nullable=False, default="North America")

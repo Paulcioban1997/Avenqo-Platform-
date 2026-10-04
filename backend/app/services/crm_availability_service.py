@@ -1,210 +1,247 @@
-"""Availability and scheduling conflict engine for Avenqo CRM AI."""
+"""Canonical tenant scheduling reads shared by CRM, Copilot and Voice."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.models.crm import (
-    CRMAppointment,
-    CRMCalendarConnection,
-    CRMEmployee,
-    CRMService,
-)
-from backend.app.services.calendar.base import BusySlot
+from backend.app.config.settings import get_settings
+from backend.app.models.company import Company
+from backend.app.models.crm import CRMAppointment, CRMCalendarConnection, CRMEmployee, CRMService
+from backend.app.models.voice import VoiceBusinessConfig
+from backend.app.services.calendar.base import BusySlot, CalendarProviderError
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 
 
-class CRMAvailabilityService:
-    """Calculates available appointment slots and validates conflicts across CRM and external calendars."""
+class AvailabilityUnavailable(CalendarProviderError):
+    pass
 
+
+class CRMAvailabilityService:
     def __init__(self, session: Session, cipher: ConnectorSecretCipher | None = None) -> None:
         self._session = session
         self._cipher = cipher
 
-    def check_conflict(
-        self,
-        company_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-        employee_id: UUID | None = None,
-        exclude_appointment_id: UUID | None = None,
-    ) -> tuple[bool, str | None]:
-        """Verifies if the requested appointment window conflicts with existing active appointments.
+    def _zone(self, company_id: UUID) -> ZoneInfo:
+        company = self._session.get(Company, company_id)
+        if company is None or not company.timezone:
+            raise AvailabilityUnavailable("TENANT_TIMEZONE_UNAVAILABLE")
+        try:
+            return ZoneInfo(company.timezone)
+        except Exception as exc:
+            raise AvailabilityUnavailable("TENANT_TIMEZONE_UNAVAILABLE") from exc
 
-        Returns (True, reason) if a conflict exists, (False, None) if free.
-        """
+    def normalize(self, company_id: UUID, value: datetime) -> datetime:
+        zone = self._zone(company_id)
+        if value.tzinfo is None:
+            local = value.replace(tzinfo=zone)
+            roundtrip = local.astimezone(timezone.utc).astimezone(zone)
+            if roundtrip.replace(tzinfo=None) != value or local.utcoffset() != value.replace(tzinfo=zone, fold=1).utcoffset():
+                raise AvailabilityUnavailable("AMBIGUOUS_OR_NONEXISTENT_LOCAL_TIME")
+            value = local
+        return value.astimezone(timezone.utc)
+
+    def _resource(self, model, company_id: UUID, resource_id: UUID | None):
+        if resource_id is None:
+            return None
+        resource = self._session.get(model, resource_id)
+        if resource is None or resource.company_id != company_id or not resource.is_active:
+            raise AvailabilityUnavailable("RESOURCE_NOT_AUTHORIZED")
+        return resource
+
+    def check_conflict(self, company_id: UUID, start_time: datetime, end_time: datetime,
+                       employee_id: UUID | None = None, exclude_appointment_id: UUID | None = None) -> tuple[bool, str | None]:
+        start_time = self.normalize(company_id, start_time)
+        end_time = self.normalize(company_id, end_time)
+        self._resource(CRMEmployee, company_id, employee_id)
         if start_time >= end_time:
-            return True, "L'heure de début doit précéder l'heure de fin."
-
-        # Filter active appointments for the company (and specific employee if assigned)
+            return True, "INVALID_INTERVAL"
+        services = {service.id: service for service in self._session.scalars(select(CRMService).where(CRMService.company_id == company_id)).all()}
+        max_before = max((service.buffer_before_minutes for service in services.values()), default=0)
+        max_after = max((service.buffer_after_minutes for service in services.values()), default=0)
         query = select(CRMAppointment).where(
             CRMAppointment.company_id == company_id,
             CRMAppointment.is_deleted.is_(False),
-            CRMAppointment.status.in_(["confirmed", "pending"]),
-            and_(
-                CRMAppointment.start_time < end_time,
-                CRMAppointment.end_time > start_time,
-            ),
+            CRMAppointment.status.in_(("confirmed", "pending", "blocked")),
+            CRMAppointment.start_time < end_time + timedelta(minutes=max_before),
+            CRMAppointment.end_time > start_time - timedelta(minutes=max_after),
         )
         if employee_id is not None:
-            query = query.where(
-                (CRMAppointment.employee_id == employee_id) | (CRMAppointment.employee_id.is_(None))
-            )
+            query = query.where((CRMAppointment.employee_id == employee_id) | CRMAppointment.employee_id.is_(None))
         if exclude_appointment_id is not None:
             query = query.where(CRMAppointment.id != exclude_appointment_id)
-
-        conflicting = self._session.scalars(query).first()
-        if conflicting:
-            c_start = conflicting.start_time.strftime("%H:%M")
-            c_end = conflicting.end_time.strftime("%H:%M")
-            return True, f"Conflit de créneau avec un rendez-vous existant ({conflicting.title} de {c_start} à {c_end})."
-
+        for appointment in self._session.scalars(query).all():
+            service = services.get(appointment.service_id)
+            opened = appointment.start_time.replace(tzinfo=timezone.utc) if appointment.start_time.tzinfo is None else appointment.start_time.astimezone(timezone.utc)
+            closed = appointment.end_time.replace(tzinfo=timezone.utc) if appointment.end_time.tzinfo is None else appointment.end_time.astimezone(timezone.utc)
+            opened -= timedelta(minutes=service.buffer_before_minutes if service else 0)
+            closed += timedelta(minutes=service.buffer_after_minutes if service else 0)
+            if start_time < closed and end_time > opened:
+                return True, "Conflit CRM_BUSY"
         return False, None
 
-    async def list_available_slots(
-        self,
-        company_id: UUID,
-        target_date: date | datetime,
-        service_id: UUID | None = None,
-        employee_id: UUID | None = None,
-        duration_minutes: int = 60,
-        slot_interval_minutes: int = 30,
-    ) -> list[dict[str, Any]]:
-        """Computes bookable slots for a given day taking employee schedules, CRM appointments and Google Calendar into account."""
-        if isinstance(target_date, datetime):
-            target_date = target_date.date()
-
-        # 1. Determine duration & buffers
-        buffer_before = 0
-        buffer_after = 0
-        if service_id:
-            svc = self._session.get(CRMService, service_id)
-            if svc and svc.company_id == company_id and svc.is_active:
-                duration_minutes = svc.duration_minutes
-                buffer_before = svc.buffer_before_minutes
-                buffer_after = svc.buffer_after_minutes
-                duration_minutes = svc.duration_minutes
-                buffer_before = svc.buffer_before_minutes
-                buffer_after = svc.buffer_after_minutes
-
-        # 2. Determine working hours for the target day
-        day_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-        weekday_name = day_names[target_date.weekday()]
-
-        work_start = time(9, 0)
-        work_end = time(18, 0)
-        is_day_off = target_date.weekday() == 6  # Sunday off by default
-
-        emp_obj: CRMEmployee | None = None
-        if employee_id:
-            emp = self._session.get(CRMEmployee, employee_id)
-            if emp and emp.company_id == company_id and emp.is_active:
-                emp_obj = emp
-                sched = emp.working_hours.get(weekday_name) if emp.working_hours else None
-                if sched:
-                    if isinstance(sched, dict) and "start" in sched and "end" in sched:
-                        sh, sm = map(int, sched["start"].split(":"))
-                        eh, em = map(int, sched["end"].split(":"))
-                        work_start = time(sh, sm)
-                        work_end = time(eh, em)
-                        is_day_off = False
-                    elif isinstance(sched, list) and len(sched) > 0:
-                        first_shift = sched[0]
-                        sh, sm = map(int, first_shift["start"].split(":"))
-                        eh, em = map(int, first_shift["end"].split(":"))
-                        work_start = time(sh, sm)
-                        work_end = time(eh, em)
-                        is_day_off = False
-                elif emp.working_hours and weekday_name not in emp.working_hours:
-                    is_day_off = True
-
-        if is_day_off:
+    async def _external_busy(self, company_id: UUID, start: datetime, end: datetime) -> list[BusySlot]:
+        connections = self._session.scalars(select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == company_id,
+            CRMCalendarConnection.provider == "google",
+            CRMCalendarConnection.sync_status != "disconnected",
+        )).all()
+        if not connections:
             return []
+        try:
+            settings = get_settings()
+            cipher = self._cipher or ConnectorSecretCipher(settings.connector_encryption_keys)
+            provider = GoogleCalendarProvider(settings.google_calendar_client_id,
+                                              settings.google_calendar_client_secret,
+                                              settings.google_calendar_redirect_uri)
+            busy = []
+            for connection in connections:
+                if connection.sync_status != "connected":
+                    raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
+                credentials = cipher.decrypt(connection.encrypted_credentials)
+                try:
+                    periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
+                except CalendarProviderError as exc:
+                    if getattr(exc.__cause__, "code", None) != 401 or not credentials.get("refresh_token"):
+                        raise
+                    refreshed = await provider.refresh_access_token(str(credentials["refresh_token"]))
+                    credentials = {**credentials, **refreshed}
+                    periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
+                busy.extend(periods)
+            return busy
+        except Exception as exc:
+            raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from exc
 
-        day_start_dt = datetime.combine(target_date, work_start, tzinfo=timezone.utc)
-        day_end_dt = datetime.combine(target_date, work_end, tzinfo=timezone.utc)
+    def _windows(self, company_id: UUID, day: date, employee_id: UUID | None = None) -> list[tuple[datetime, datetime]]:
+        zone = self._zone(company_id)
+        employee = self._resource(CRMEmployee, company_id, employee_id)
+        config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        company = self._session.get(Company, company_id)
+        schedule = company.business_hours or {}
+        weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[day.weekday()]
+        if schedule:
+            records = schedule.get("date_overrides", {}).get(day.isoformat(), schedule.get("weekly", {}).get(weekday, []))
+        elif config and config.opening_hours:
+            records = [config.opening_hours[weekday]] if weekday in config.opening_hours else []
+        else:
+            raise AvailabilityUnavailable("BUSINESS_HOURS_UNAVAILABLE")
+        if not schedule and config.timezone_name != zone.key:
+            raise AvailabilityUnavailable("BUSINESS_TIMEZONE_MISMATCH")
+        if not records:
+            return []
+        def interval(record, start_key, end_key):
+            start = self.normalize(company_id, datetime.combine(day, time.fromisoformat(record[start_key])))
+            end = self.normalize(company_id, datetime.combine(day, time.fromisoformat(record[end_key])))
+            if start >= end:
+                raise AvailabilityUnavailable("INVALID_WORKING_HOURS")
+            return start, end
+        try:
+            business_windows = [interval(record, "open", "close") for record in records]
+            if employee is None:
+                return business_windows
+            shifts = employee.working_hours.get(weekday)
+            if not shifts:
+                return []
+            shifts = shifts if isinstance(shifts, list) else [shifts]
+            windows = []
+            for shift in shifts:
+                staff_start, staff_end = interval(shift, "start", "end")
+                for business_start, business_end in business_windows:
+                    start, end = max(business_start, staff_start), min(business_end, staff_end)
+                    if start < end:
+                        windows.append((start, end))
+            return windows
+        except AvailabilityUnavailable:
+            raise
+        except Exception as exc:
+            raise AvailabilityUnavailable("INVALID_WORKING_HOURS") from exc
 
-        # 3. Load active CRM appointments on that day
-        day_bounds_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_bounds_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+    async def check_combined_conflict(self, company_id: UUID, start_time: datetime, end_time: datetime,
+                                      employee_id: UUID | None = None, exclude_appointment_id: UUID | None = None) -> tuple[bool, str | None]:
+        start = self.normalize(company_id, start_time)
+        end = self.normalize(company_id, end_time)
+        conflict, reason = self.check_conflict(company_id, start, end, employee_id, exclude_appointment_id)
+        if conflict:
+            return conflict, reason
+        busy = await self._external_busy(company_id, start, end)
+        if any(start < period.end_time.astimezone(timezone.utc) and end > period.start_time.astimezone(timezone.utc) for period in busy):
+            return True, "GOOGLE_BUSY"
+        return False, None
 
-        apt_query = select(CRMAppointment).where(
-            CRMAppointment.company_id == company_id,
-            CRMAppointment.is_deleted.is_(False),
-            CRMAppointment.status.in_(["confirmed", "pending"]),
-            CRMAppointment.start_time >= day_bounds_start,
-            CRMAppointment.start_time <= day_bounds_end,
-        )
-        if employee_id:
-            apt_query = apt_query.where(
-                (CRMAppointment.employee_id == employee_id) | (CRMAppointment.employee_id.is_(None))
-            )
-        active_appointments = list(self._session.scalars(apt_query).all())
+    async def check_booking_conflict(self, company_id: UUID, start_time: datetime, end_time: datetime,
+                                     employee_id: UUID | None = None, service_id: UUID | None = None,
+                                     exclude_appointment_id: UUID | None = None) -> tuple[bool, str | None]:
+        start = self.normalize(company_id, start_time)
+        end = self.normalize(company_id, end_time)
+        if start >= end:
+            return True, "INVALID_INTERVAL"
+        service = self._resource(CRMService, company_id, service_id)
+        padded_start = start - timedelta(minutes=service.buffer_before_minutes if service else 0)
+        padded_end = end + timedelta(minutes=service.buffer_after_minutes if service else 0)
+        windows = self._windows(company_id, start.astimezone(self._zone(company_id)).date(), employee_id)
+        if not any(padded_start >= opened and padded_end <= closed for opened, closed in windows):
+            return True, "OUTSIDE_WORKING_HOURS"
+        return await self.check_combined_conflict(company_id, padded_start, padded_end, employee_id, exclude_appointment_id)
 
-        # 4. Query external calendar busy slots if connected
-        external_busy: list[BusySlot] = []
-        conn = self._session.scalars(
-            select(CRMCalendarConnection).where(
-                CRMCalendarConnection.company_id == company_id,
-                CRMCalendarConnection.sync_status == "connected",
-            )
-        ).first()
+    async def check_availability(self, company_id: UUID, start_time: datetime, duration_minutes: int = 60,
+                                 employee_id: UUID | None = None, service_id: UUID | None = None) -> dict[str, Any]:
+        try:
+            if not 1 <= duration_minutes <= 480:
+                raise AvailabilityUnavailable("INVALID_DURATION")
+            start = self.normalize(company_id, start_time)
+            if start <= datetime.now(timezone.utc):
+                return {"available": False, "state": "BUSY", "reason": "PAST_INTERVAL"}
+            service = self._resource(CRMService, company_id, service_id)
+            duration = service.duration_minutes if service else duration_minutes
+            end = start + timedelta(minutes=duration)
+            padded_start = start - timedelta(minutes=service.buffer_before_minutes if service else 0)
+            padded_end = end + timedelta(minutes=service.buffer_after_minutes if service else 0)
+            windows = self._windows(company_id, start.astimezone(self._zone(company_id)).date(), employee_id)
+            if not any(padded_start >= opened and padded_end <= closed for opened, closed in windows):
+                return {"available": False, "state": "BUSY", "reason": "OUTSIDE_WORKING_HOURS"}
+            conflict, reason = await self.check_combined_conflict(company_id, padded_start, padded_end, employee_id)
+            return {"available": not conflict, "state": "BUSY" if conflict else "AVAILABLE", "reason": reason,
+                    "start_time": start.astimezone(self._zone(company_id)).isoformat(),
+                    "end_time": end.astimezone(self._zone(company_id)).isoformat()}
+        except AvailabilityUnavailable as exc:
+            return {"available": False, "state": str(exc), "reason": str(exc)}
 
-        if conn and self._cipher:
-            try:
-                creds = self._cipher.decrypt(conn.encrypted_credentials)
-                if conn.provider == "google":
-                    provider = GoogleCalendarProvider()
-                    external_busy = await provider.check_busy_slots(
-                        creds, day_bounds_start, day_bounds_end, conn.calendar_id
-                    )
-            except Exception:
-                pass  # Fallback gracefully to internal availability
-
-        # 5. Generate and test candidate slots
-        available_slots: list[dict[str, Any]] = []
-        curr_dt = day_start_dt
-        total_duration = timedelta(minutes=duration_minutes + buffer_before + buffer_after)
-        step = timedelta(minutes=slot_interval_minutes)
-
-        while curr_dt + timedelta(minutes=duration_minutes) <= day_end_dt:
-            slot_start = curr_dt + timedelta(minutes=buffer_before)
-            slot_end = slot_start + timedelta(minutes=duration_minutes)
-
-            # Check overlap with existing appointments
-            has_apt_conflict = False
-            for apt in active_appointments:
-                apt_start = apt.start_time if apt.start_time.tzinfo else apt.start_time.replace(tzinfo=timezone.utc)
-                apt_end = apt.end_time if apt.end_time.tzinfo else apt.end_time.replace(tzinfo=timezone.utc)
-                if slot_start < apt_end and slot_end > apt_start:
-                    has_apt_conflict = True
-                    break
-
-            # Check overlap with external busy slots
-            has_ext_conflict = False
-            for busy in external_busy:
-                busy_start = busy.start_time if busy.start_time.tzinfo else busy.start_time.replace(tzinfo=timezone.utc)
-                busy_end = busy.end_time if busy.end_time.tzinfo else busy.end_time.replace(tzinfo=timezone.utc)
-                if slot_start < busy_end and slot_end > busy_start:
-                    has_ext_conflict = True
-                    break
-
-            if not has_apt_conflict and not has_ext_conflict:
-                available_slots.append({
-                    "start_time": slot_start.isoformat(),
-                    "end_time": slot_end.isoformat(),
-                    "display_time": f"{slot_start.strftime('%H:%M')} - {slot_end.strftime('%H:%M')}",
-                    "employee_id": str(emp_obj.id) if emp_obj else None,
-                    "employee_name": emp_obj.name if emp_obj else "Disponible",
-                    "duration_minutes": duration_minutes,
-                })
-
-            curr_dt += step
-
-        return available_slots
+    async def list_available_slots(self, company_id: UUID, target_date: date | datetime,
+                                   service_id: UUID | None = None, employee_id: UUID | None = None,
+                                   duration_minutes: int = 60, slot_interval_minutes: int = 30) -> list[dict[str, Any]]:
+        zone = self._zone(company_id)
+        if isinstance(target_date, datetime):
+            target_date = self.normalize(company_id, target_date).astimezone(zone).date()
+        if not 1 <= duration_minutes <= 480 or not 1 <= slot_interval_minutes <= 480:
+            raise AvailabilityUnavailable("INVALID_DURATION")
+        service = self._resource(CRMService, company_id, service_id)
+        employee = self._resource(CRMEmployee, company_id, employee_id)
+        duration_minutes = service.duration_minutes if service else duration_minutes
+        before = timedelta(minutes=service.buffer_before_minutes if service else 0)
+        after = timedelta(minutes=service.buffer_after_minutes if service else 0)
+        windows = self._windows(company_id, target_date, employee_id)
+        if not windows:
+            return []
+        busy = await self._external_busy(company_id, min(window[0] for window in windows), max(window[1] for window in windows))
+        slots = {}
+        for opened, closed in windows:
+            cursor = opened + before
+            while cursor + timedelta(minutes=duration_minutes) + after <= closed:
+                end = cursor + timedelta(minutes=duration_minutes)
+                padded_start, padded_end = cursor - before, end + after
+                conflict, _ = self.check_conflict(company_id, padded_start, padded_end, employee_id)
+                if cursor > datetime.now(timezone.utc) and not conflict and not any(padded_start < period.end_time and padded_end > period.start_time for period in busy):
+                    local_start, local_end = cursor.astimezone(zone), end.astimezone(zone)
+                    slots[cursor] = {"start_time": local_start.isoformat(), "end_time": local_end.isoformat(),
+                                     "display_time": f"{local_start:%H:%M} - {local_end:%H:%M}",
+                                     "employee_id": str(employee_id) if employee_id else None,
+                                     "employee_name": employee.name if employee else None,
+                                     "duration_minutes": duration_minutes}
+                cursor += timedelta(minutes=slot_interval_minutes)
+        return [slots[key] for key in sorted(slots)]

@@ -22,6 +22,7 @@ from backend.app.routers.crm import (
     google_calendar_callback,
 )
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
+from backend.app.services.calendar.base import CalendarProviderError
 
 
 def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
@@ -211,3 +212,23 @@ def test_google_calendar_list_response_is_normalized(monkeypatch: pytest.MonkeyP
         {"id": "primary", "summary": "Cabinet", "description": None, "time_zone": "America/Toronto", "primary": True, "access_role": "owner"},
         {"id": "other", "summary": "Équipe", "description": None, "time_zone": "America/Toronto", "primary": False, "access_role": "writer"},
     ]
+
+
+@pytest.mark.parametrize("payload", [{}, {"calendars": {"primary": {"errors": [{"reason": "forbidden"}]}}}, {"calendars": {"primary": {"busy": [{"start": "invalid", "end": "invalid"}]}}}])
+def test_google_freebusy_malformed_response_fails_closed(monkeypatch, payload):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Response())
+    now = datetime.now(timezone.utc)
+    with pytest.raises(CalendarProviderError, match="EXTERNAL_AVAILABILITY_UNAVAILABLE"):
+        asyncio.run(GoogleCalendarProvider().check_busy_slots({"access_token": "test"}, now, now + timedelta(hours=1)))

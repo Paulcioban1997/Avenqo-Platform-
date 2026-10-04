@@ -14,7 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,8 @@ from backend.app.models.crm import (
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
-from backend.app.services.crm_availability_service import CRMAvailabilityService
+from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
+from backend.app.models.company import Company
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
@@ -46,6 +47,79 @@ from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
+
+
+class BusinessHoursRequest(BaseModel):
+    timezone: str
+    hours: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
+    verification_date: date | None = None
+    employee_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        from datetime import time
+        from zoneinfo import ZoneInfo
+        try:
+            ZoneInfo(self.timezone)
+        except Exception as exc:
+            raise ValueError("Invalid timezone") from exc
+        days = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+        if not set(self.hours).issubset(days):
+            raise ValueError("Invalid weekday")
+        for periods in self.hours.values():
+            if len(periods) > 8 or any(set(period) != {"open", "close"} for period in periods):
+                raise ValueError("Invalid working periods")
+            previous = None
+            for period in periods:
+                opened, closed = time.fromisoformat(period["open"]), time.fromisoformat(period["close"])
+                if opened >= closed or (previous is not None and opened < previous):
+                    raise ValueError("Invalid or overlapping working hours")
+                previous = closed
+        if self.verification_date and not datetime.now(ZoneInfo(self.timezone)).date() < self.verification_date <= datetime.now(ZoneInfo(self.timezone)).date() + timedelta(days=14):
+            raise ValueError("Verification date must be bounded and future")
+        return self
+
+
+@router.get("/settings/business-hours")
+def get_business_hours(tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db), employee_id: UUID | None = None):
+    company = db.get(Company, tenant.company_id)
+    if employee_id:
+        from backend.app.models.crm import CRMEmployee
+        employee = db.get(CRMEmployee, employee_id)
+        if employee is None or employee.company_id != tenant.company_id or not employee.is_active:
+            raise HTTPException(status_code=404)
+        hours = {day: [{"open": period["start"], "close": period["end"]} for period in (periods if isinstance(periods, list) else [periods])]
+                 for day, periods in employee.working_hours.items()}
+        return {"timezone": company.timezone, "hours": hours}
+    return {"timezone": company.timezone, "hours": (company.business_hours or {}).get("weekly", {}),
+            "schedule": company.business_hours or {}}
+
+
+@router.put("/settings/business-hours")
+def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = Depends(get_tenant_context),
+                        identity: CurrentIdentity = Depends(get_current_identity),
+                        membership=Depends(get_active_ai_membership), db: Session = Depends(get_db)):
+    if "crm:appointments:write" not in permissions_for(membership.role) or membership.company_id != tenant.company_id or membership.user_id != identity.user.id:
+        raise HTTPException(status_code=403)
+    company = db.get(Company, tenant.company_id)
+    if payload.employee_id:
+        from backend.app.models.crm import CRMEmployee
+        employee = db.get(CRMEmployee, payload.employee_id)
+        if employee is None or employee.company_id != tenant.company_id or not employee.is_active:
+            raise HTTPException(status_code=404)
+        if payload.timezone != company.timezone or payload.verification_date:
+            raise HTTPException(status_code=422)
+        employee.working_hours = {day: [{"start": period["open"], "end": period["close"]} for period in periods] for day, periods in payload.hours.items()}
+        db.commit()
+        return get_business_hours(tenant, db, payload.employee_id)
+    company.timezone = payload.timezone
+    if payload.verification_date:
+        weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[payload.verification_date.weekday()]
+        company.business_hours = {"weekly": {}, "date_overrides": {payload.verification_date.isoformat(): payload.hours.get(weekday, [])}, "verification_only": True}
+    else:
+        company.business_hours = {"weekly": payload.hours} if payload.hours else {}
+    db.commit()
+    return get_business_hours(tenant, db)
 
 
 def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
@@ -527,9 +601,12 @@ async def get_available_slots(
     except Exception:
         pass
     avail = CRMAvailabilityService(db, cipher)
-    slots = await avail.list_available_slots(
-        tenant.company_id, target_date, service_id=service_id, employee_id=employee_id
-    )
+    try:
+        slots = await avail.list_available_slots(
+            tenant.company_id, target_date, service_id=service_id, employee_id=employee_id
+        )
+    except AvailabilityUnavailable as exc:
+        return {"target_date": target_date.isoformat(), "count": 0, "slots": [], "state": str(exc), "available": False}
     return {
         "target_date": target_date.isoformat(),
         "count": len(slots),
@@ -946,6 +1023,47 @@ async def crm_copilot_chat(
     if "ai:use" not in permissions or not ModuleEntitlementService(db).can_use_module(tenant, "crm"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     msg = req.message.strip().lower()
+
+    availability_words = ("disponib", "dispo", "créneau", "place", "available", "availability", "program liber", "disponibilidad")
+    if any(word in msg for word in availability_words):
+        from zoneinfo import ZoneInfo
+        company = db.get(Company, tenant.company_id)
+        zone = ZoneInfo(company.timezone)
+        today = datetime.now(zone).date()
+        target_day = today
+        if any(word in msg for word in ("demain", "tomorrow", "mâine", "mañana")):
+            target_day += timedelta(days=1)
+        weekdays = (("lundi", "monday", "luni", "lunes"), ("mardi", "tuesday", "marți", "martes"),
+                    ("mercredi", "wednesday", "miercuri", "miércoles"), ("jeudi", "thursday", "joi", "jueves"),
+                    ("vendredi", "friday", "vineri", "viernes"), ("samedi", "saturday", "sâmbătă", "sábado"),
+                    ("dimanche", "sunday", "duminică", "domingo"))
+        for weekday, names in enumerate(weekdays):
+            if any(name in msg for name in names):
+                target_day = today + timedelta(days=(weekday - today.weekday()) % 7 or 7)
+                break
+        hour_match = re.search(r"(?:à|at|la|a las)\s+(\d{1,2})(?:\s*[h:]\s*(\d{2}))?", msg)
+        availability = CRMAvailabilityService(db)
+        try:
+            if hour_match:
+                start = datetime.combine(target_day, datetime.min.time()).replace(hour=int(hour_match[1]), minute=int(hour_match[2] or 0))
+                result = await availability.check_availability(tenant.company_id, start)
+                slots = [result] if result["available"] else []
+                state = result["state"]
+            else:
+                slots = await availability.list_available_slots(tenant.company_id, target_day)
+                if any(word in msg for word in ("afternoon", "après-midi", "după-amiaz", "tarde")):
+                    slots = [slot for slot in slots if datetime.fromisoformat(slot["start_time"]).astimezone(zone).hour >= 12]
+                state = "AVAILABLE" if slots else "BUSY"
+        except (AvailabilityUnavailable, ValueError) as exc:
+            slots, state = [], str(exc) if isinstance(exc, AvailabilityUnavailable) else "INVALID_INTERVAL"
+        replies = {
+            "fr": "Disponibilités vérifiées." if slots else "Aucun créneau disponible ou vérification indisponible.",
+            "en": "Availability checked." if slots else "No available slot or availability could not be verified.",
+            "ro": "Disponibilitatea a fost verificată." if slots else "Nu există interval disponibil sau verificarea nu este disponibilă.",
+            "es": "Disponibilidad verificada." if slots else "No hay horario disponible o no se pudo verificar la disponibilidad.",
+        }
+        return {"reply": replies.get(req.locale.split("-")[0], replies["en"]), "status": "success" if state in ("AVAILABLE", "BUSY") else "unavailable",
+                "state": state, "slots": slots, "locale": req.locale}
 
     # 1. Natural Language Appointment Creation (Target workflow §12)
     # Example: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes."

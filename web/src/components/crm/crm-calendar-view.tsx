@@ -22,6 +22,7 @@ import {
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
+import { validDate } from "./crm-format";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda" | "list" | "kanban";
 
@@ -66,6 +67,7 @@ export function CRMCalendarView({
   // Filter appointments
   const filteredAppointments = useMemo(() => {
     return appointments.filter((app) => {
+      if (!validDate(app?.start_time) || !validDate(app?.end_time)) return false;
       if (selectedServiceId !== "all" && app.service_id !== selectedServiceId) return false;
       if (selectedEmployeeId !== "all" && app.employee_id !== selectedEmployeeId) return false;
       if (selectedStatus !== "all" && app.status !== selectedStatus) return false;
@@ -81,6 +83,8 @@ export function CRMCalendarView({
       return true;
     });
   }, [appointments, selectedServiceId, selectedEmployeeId, selectedStatus, searchQuery]);
+
+  if (!Number.isFinite(currentDate.getTime())) return <p>{t.common.insufficientData}</p>;
 
   // Date Nav Helpers
   const handlePrev = () => {

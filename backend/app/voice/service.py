@@ -313,7 +313,7 @@ class VoiceOrchestrator:
         if tool_name == "take_message":
             return self._take_message(config, call, args)
         if tool_name == "check_availability":
-            return self._check_availability(config, args)
+            return await self._check_availability(config, args)
         if tool_name == "book_appointment":
             return await self._book(config, call, args)
         if tool_name == "reschedule_appointment":
@@ -358,7 +358,7 @@ class VoiceOrchestrator:
             parsed = parsed.replace(tzinfo=ZoneInfo(config.timezone_name))
         return parsed.astimezone(timezone.utc)
 
-    def _check_availability(self, config: VoiceBusinessConfig, args: dict[str, Any]) -> dict[str, Any]:
+    async def _check_availability(self, config: VoiceBusinessConfig, args: dict[str, Any]) -> dict[str, Any]:
         service = self._service_config(config, str(args.get("service_name") or ""))
         day = date.fromisoformat(str(args["date"]))
         interval = self._opening_interval(config, day)
@@ -370,17 +370,15 @@ class VoiceOrchestrator:
         if now >= closing or day < now.astimezone(ZoneInfo(config.timezone_name)).date():
             suggestion = self._next_opening(config, day + timedelta(days=1))
             return {"success": True, "open": False, "available_slots": [], "next_opening": suggestion, "take_message": True}
-        duration = int(service["duration_minutes"])
-        slots: list[str] = []
-        cursor = opening
-        while cursor + timedelta(minutes=duration) <= closing:
-            if cursor > now:
-                conflict, _ = CRMService(self.db)._availability.check_conflict(
-                    config.company_id, cursor, cursor + timedelta(minutes=duration)
-                )
-                if not conflict:
-                    slots.append(cursor.astimezone(ZoneInfo(config.timezone_name)).isoformat())
-            cursor += timedelta(minutes=30)
+        from backend.app.services.crm_availability_service import AvailabilityUnavailable
+        try:
+            records = await CRMService(self.db)._availability.list_available_slots(
+                config.company_id, day, duration_minutes=int(service["duration_minutes"]),
+                service_id=UUID(str(service["crm_service_id"])) if service.get("crm_service_id") else None,
+            )
+        except AvailabilityUnavailable as exc:
+            return {"success": False, "state": str(exc), "available_slots": [], "take_message": True}
+        slots = [record["start_time"] for record in records]
         return {"success": True, "open": True, "available_slots": slots, "timezone": config.timezone_name}
 
     def _next_opening(self, config: VoiceBusinessConfig, from_day: date) -> str | None:

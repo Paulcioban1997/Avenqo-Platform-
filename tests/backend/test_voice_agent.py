@@ -125,6 +125,30 @@ def test_voice_api_key_is_tenant_scoped_and_not_stored_in_plaintext(tmp_path) ->
         engine.dispose()
 
 
+def test_voice_availability_reuses_canonical_service_and_fails_closed(tmp_path, monkeypatch):
+    from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
+    engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
+    calls = []
+
+    async def unavailable(service, tenant_id, day, **kwargs):
+        calls.append(tenant_id)
+        raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
+
+    monkeypatch.setattr(CRMAvailabilityService, "list_available_slots", unavailable)
+    try:
+        response = asyncio.run(orchestrator._check_availability(config, {
+            "service_name": "Consultation", "date": (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat(),
+        }))
+        assert calls == [company.id]
+        assert response["success"] is False
+        assert response["state"] == "EXTERNAL_AVAILABILITY_UNAVAILABLE"
+        assert response["available_slots"] == []
+        assert not session.new and not session.dirty
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_duplicate_telnyx_inbound_event_reuses_single_call_row(tmp_path) -> None:
     engine, session, _, config, _, service = _voice_database(tmp_path)
     payload = {"call_control_id": "telnyx-replayed-call", "from": "+15145550120"}

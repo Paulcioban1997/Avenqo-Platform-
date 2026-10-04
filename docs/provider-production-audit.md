@@ -257,10 +257,10 @@ Vertex availability, quota headroom, all-region support or multimodal capability
 	sync); LIVE VERIFIED in sandbox by a successful sync at 2026-10-04 08:31 UTC.
 - WooCommerce — CONFIGURED NOT LIVE VERIFIED in production (no production connection
 	observed); LIVE VERIFIED in sandbox by successful sync at 2026-10-04 08:31 UTC.
-- Google Calendar — CONFIGURED NOT LIVE VERIFIED for current Calendar API access in
-	production. An OAuth exchange/token-storage event was observed at 2026-10-04 04:39
-	UTC, but this task did not perform a fresh authenticated Calendar API read; sandbox's
-	stored connection is DISCONNECTED.
+- Google Calendar — LIVE VERIFIED for authenticated production Calendar list/event reads,
+	OAuth refresh and FreeBusy in the later Calendar-only verification below. This does not
+	certify CRM import or Google-aware Copilot availability. Sandbox connectivity was not
+	upgraded by these production checks.
 - Retell — NOT CONFIGURED (production API key missing; no call made).
 - Telnyx — NOT CONFIGURED (production API/webhook keys missing; no call/SMS made).
 - Outlook/Microsoft — BROKEN (current adapter is a placeholder: token exchange/refresh
@@ -286,3 +286,262 @@ verify real Vertex direct + AI Central + accounting; only then revoke the previo
 	and connector hub tests passed.
 - No OAuth credential, external provider setting, business record or production dataset
 	was changed by the connector incident check. Local worktree remained clean at report time.
+
+## Final Hardening Follow-up (2026-10-04)
+
+### Google Vertex Credential: Manual Rotation Required
+
+Status: DOCUMENTED / MANUAL ACTION REQUIRED. The existing production credential
+continues to authenticate Vertex, but a previously used service-account credential may
+have been exposed outside its intended secret store. Treat it as requiring rotation.
+No private key was revealed, inspected for identity, rotated, created, revoked or deleted
+during this follow-up. This report does not claim that rotation occurred.
+
+Perform this zero-downtime sequence using the existing dedicated account
+`avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com`:
+
+1. Create a replacement key for that service account without disabling the old key.
+2. Replace `GOOGLE_SERVICE_ACCOUNT_JSON` directly in the Railway sealed production
+	secret. Do not place it in a local file, command argument, Git, frontend setting,
+	terminal transcript or application log.
+3. Deploy the production backend with the replacement secret.
+4. Verify production `/health` and `/ready` return healthy/ready and migrations are OK.
+5. Perform one minimal real Vertex inference and confirm a successful authenticated
+	response without logging its prompt, response or credential material.
+6. Verify that AI Central routes a controlled request through Vertex as expected.
+7. Verify `AIUsageService` records exactly one logical charge for that request, with
+	one corresponding successful provider attempt/reservation/settlement and no duplicate.
+8. Only after all checks pass, revoke/delete the old Google key. If verification fails,
+	retain the old key while correcting the replacement deployment; do not report rotation
+	complete until the old key is revoked.
+9. Confirm the replacement secret never entered Git history, frontend configuration or
+	logs. If it did, stop and perform the applicable repository-history and secret cleanup.
+
+### Separate Vercel OIDC Material Concern
+
+A separate concern was raised regarding Vercel OIDC credential material. No value is
+included here, and this follow-up neither inspects nor changes Vercel credentials. Review
+the Vercel project/runtime secret configuration through its authorized control plane and
+rotate any material confirmed to be exposed. The tracked-file filename-only scan found no
+tracked frontend `.env` files under `frontend/` or `web`, and no credential-like
+assignments in such files; no matching lines or values were emitted. No tracked frontend
+file referenced Vercel OIDC token material. This scoped result is not a repository-wide
+secret scan and does not establish that external Vercel configuration is clear.
+
+### Final Regression Results
+
+- Backend targeted regression: 498 passed, 24 existing warnings. Coverage included
+  authentication/session/CSRF, tenant context/isolation, Retail active-source persistence,
+  CRM, Copilot/Central AI and execution security, usage/fallback/credits/reservation/
+  settlement, Voice, Calendar integration, Shopify/WooCommerce connection and sync state,
+  dataset/source state, billing/Stripe, locale and RTL contracts, and migrations.
+- Dedicated Assistant Registry, tool registry, and module entitlement suite: 49 passed,
+	6 existing warnings. Combined backend total across these focused groups: 547 passed,
+	30 existing warnings.
+- Read-only production membership check confirmed one active Produits_Ero member; the
+	query emitted an aggregate only and did not perform a login or tenant mutation.
+- Connector-specific tests are included in the 498 total: 9 passed. Missing-artifact
+  failures remain terminal and unreclaimable; transient failures remain retryable; source
+  generations coalesce to one evaluation. Sandbox read-only verification found exactly
+  one historical `FAILED/blocked/source_artifact_missing` evaluation, attempt count 2,581,
+  and zero due claimable rows. No artifact was manufactured/restored and no cron was
+  repeated because two prior manual no-op runs already established idempotency: both
+  returned `claimed=0`, with no duplicate evaluation/action or attempt-count change.
+- Web: 89 tests passed across 5 files, including session and all 44 locale catalogs.
+- Flutter: analysis reported no issues; 306 tests passed, including connector, source,
+	agent registry, routing, Retail, localization, and RTL/mobile-locale coverage.
+- GitHub Actions workflow-dispatch run `37208141393` on the deployed code SHA:
+	Frontend Web (catalog generation/check, typecheck, tests and production build) PASS;
+	Flutter analyze/tests PASS; Backend Core PASS. Overall CI PASS (all 3 jobs succeeded).
+- Production and sandbox `/health` both report `healthy`; `/ready` reports `ready` with
+	migrations `ok`, on deployed SHA `acf473d5211c6bf3d2f9b39e8c97f7606428a946`.
+- No destructive production mutation, provider call, credential operation, commerce sync,
+  payment, calendar write, or source-data mutation was performed. Vertex architecture and
+  provider routing were not altered.
+
+## Google Calendar Production Read Verification (2026-10-04)
+
+Final provider status: LIVE VERIFIED, scoped to genuine authenticated Google Calendar
+reads using the existing Produits_Ero OAuth connection. No new OAuth architecture,
+consent, calendar/event mutation, CRM import, notification or customer creation occurred.
+This does not certify the complete CRM/Copilot scheduling workflow.
+
+### Connection And Authentication
+
+- Exactly one tenant-owned Google connection was found, stored as connected; its linked
+	user had active Produits_Ero membership. Credentials decrypted successfully through the
+	existing server-side Fernet/MultiFernet cipher. No credential or encrypted blob was output.
+- Access and refresh tokens were present. Stored account identity matched the connection;
+	authenticated Google userinfo returned HTTP 200 and matched that same account in memory.
+	No account email was printed. No independent expected account address was supplied, so
+	identity verification is against the existing linked record, not a newly asserted account.
+- OAuth client ID, client secret and callback configuration were present. All configured
+	scopes were recorded: calendar.events, calendar.readonly and userinfo.email. These cover
+	the existing read/write product behavior, but calendar.events grants write capability
+	beyond this read-only audit; no scopes or consent were changed.
+- The stored access token received Calendar HTTP 401. The existing provider refresh method
+	returned token-endpoint HTTP 200; the refreshed token then received Calendar HTTP 200.
+	Refresh WORKS. Refreshed credentials remained in memory only; no production secret or
+	connection row was replaced. Absolute expiry is not stored, although relative expiry
+	metadata exists; exact token expiry cannot be established from that metadata alone.
+- Calendar list HTTP 200 returned four calendars. The selected calendar resolved and its
+	timezone metadata was present. This is genuine API evidence, not a configuration flag
+	or mock. Calendar list, selected identity and raw event payloads were not published.
+
+### Read-only Reconciliation And Idempotency
+
+- Two real events.list calls over the same fixed seven-day range both returned HTTP 200,
+	with two events and two unique provider IDs. Event identities were stable between calls.
+- Neither event had an existing tenant CRM appointment mapping. No unmatched/personal
+	event was imported. No claim of successful import or non-empty future mapping is made.
+- Read-only PostgreSQL transactions enforced zero writes. Two authorized Copilot appointment
+	reads for tomorrow both succeeded with zero appointments and stable results. In-memory
+	fingerprints of tenant appointments, customers, communications/notifications and Calendar
+	connection records were unchanged around the tool reads; no duplicate record was added.
+- Existing tenant data had zero duplicate external-event mapping groups and zero appointment
+	references to another tenant's clients. Existing provider-event IDs were compared in memory,
+	not printed. CRM stores the provider event ID on appointments and selected calendar ID on
+	the connection; it does not store a separate per-appointment external calendar ID, so
+	calendar-selection changes are not certified safe by this check.
+- No future Physiotherapy appointment exists in tenant CRM. One older Google-mapped
+	Physiotherapy appointment was checked in its own narrow interval: events.list HTTP 200
+	found its original event ID, not cancelled, with matching start/end instants and aware
+	timezone parsing. It was not recreated or represented as an upcoming appointment.
+- A genuine one-day Google FreeBusy request returned HTTP 200, zero calendar errors and
+	zero busy intervals. This is verified empty busy data for that calendar/range, not an
+	assumption of free time after a failed request or a guarantee for other intervals.
+
+### Copilot Availability Limitations
+
+- Existing `search_appointments` executed successfully through ToolExecutor and its
+	database-backed authorization policy. A foreign-tenant context was denied at execution.
+- `check_availability` executed, but checks CRM appointments only. Its result must not be
+	presented as verified Google availability. The slot-list tool constructs the availability
+	service without a credential cipher, bypassing the external Google busy-slot read.
+- Google FreeBusy failures currently fall back to an empty list, and the availability
+	service can silently fall back to CRM-only data. Working-hour generation also uses UTC
+	defaults rather than verified tenant-local hours. Therefore Google-aware Copilot
+	availability and the assertion that unavailable times are never offered are NOT VERIFIED.
+	These existing limitations were documented, not patched or deployed in this audit.
+- No LLM inference or full Copilot conversation was run; evidence concerns the existing
+	read-tool execution boundary, not an end-to-end conversational scheduling claim.
+
+### Security And Regression
+
+- OAuth credentials remain server-side; the Calendar connection response exposes metadata,
+	not tokens. The scoped scan of 628 tracked frontend files found no embedded Google
+	credential assignment matches. A 300-record production log slice had zero credential-value
+	pattern matches. Raw logs/values were withheld. These bounded checks do not establish a
+	repository/history-wide or all-log absence of secrets. Audit logging was disabled to
+	prevent provider error bodies and event/account data from being emitted by the probes.
+- Targeted Calendar OAuth, CRM/timezone/deduplication, Copilot tools, tenant context,
+	execution-time authorization, credential cipher and assistant registry tests: 73 passed.
+	Mocks in regression tests establish code behavior only; real HTTP evidence above establishes
+	Google access. Tests do not remove the documented availability limitations.
+- Production health was healthy; readiness ready; migrations ok, at deployed SHA
+	`acf473d5211c6bf3d2f9b39e8c97f7606428a946`. No deployment was performed.
+- Retail, Voice, Vertex, billing and datasets were untouched. Shopify/WooCommerce verification
+	was not started. Earlier audit edits were preserved.
+
+## Google-aware Availability Implementation (2026-10-04)
+
+Final status: PARTIALLY VERIFIED. Candidate implementation and regression are complete;
+real production-data reads succeeded in an isolated candidate process, but serving code
+was not deployed and Produits_Ero lacks configured business opening hours. No hours,
+appointments, Google events, customers or notifications were manufactured to remove this
+blocker. The previous authenticated Calendar read status remains LIVE VERIFIED.
+
+### Canonical Scheduling Contract
+
+- Extended the existing CRMAvailabilityService rather than adding a second scheduling
+	engine. CRM slot reads, Copilot point/slot tools, requested FR/EN/RO/ES read intents,
+	and Voice availability delegate to it. Existing conversation/Voice provider architecture
+	is retained; no LLM/provider routing changes were made.
+- Availability intersects existing business hours (VoiceBusinessConfig), staff shifts when
+	requested, CRM appointments/blocked status, selected tenant Google Calendar FreeBusy,
+	duration and configured service buffers. Missing business hours return
+	BUSINESS_HOURS_UNAVAILABLE instead of assumed 09:00-18:00 hours. No standalone blocked-
+	period schema was invented; CRM blocked appointments and Google busy periods are honored.
+- Google timeout, 403, malformed/calendar-error responses, decryption failure and failed
+	refresh fail closed as EXTERNAL_AVAILABILITY_UNAVAILABLE. A 401 permits one existing
+	OAuth refresh and retry. Credential refresh is in memory only; availability never commits
+	token or connection updates. Existing event/list read implementations are preserved.
+- Tenant-owned staff/services are validated. External reads select only that tenant's
+	Google connections; disconnected connections are not active sources, while errored active
+	connections prevent a free-slot claim. Caller authentication/membership/entitlement
+	enforcement remains at the existing CRM and tool-execution boundaries.
+- Tenant timezone is authoritative. Naive local inputs are normalized to UTC; ambiguous
+	or nonexistent DST inputs fail explicitly, offset-bearing inputs retain their real
+	instant, and slot generation traverses UTC instants while returning local offsets.
+	Conflicting business/tenant timezone configuration is unavailable rather than guessed.
+- Booking creation/rescheduling rechecks canonical business/staff hours, buffers and
+	Google/CRM conflicts under the existing tenant PostgreSQL advisory transaction lock.
+	Lock acquisition is off the API event loop; creation rechecks idempotency after acquiring
+	the lock. This protects Avenqo workers sharing PostgreSQL, not unrelated third-party
+	Google calendar writers; FreeBusy is not an atomic Google reservation.
+
+### Bounded Production-data Verification
+
+- Candidate provider and availability modules were loaded only into an isolated process
+	on the production container; no file, server process, deployment or environment setting
+	was changed. This is production-data candidate verification, NOT deployed API verification.
+- Active Produits_Ero membership and the existing tenant-owned encrypted connection were
+	used. A repeatable-read, read-only PostgreSQL transaction enforced zero database writes.
+- Two repeated fixed one-hour checks used real Google FreeBusy: stored access-token HTTP
+	401, existing OAuth refresh HTTP 200, then FreeBusy HTTP 200. CRM conflict reads succeeded;
+	Google busy count was zero and the combined conflict result was false in both checks.
+- Full bookable availability was false with BUSINESS_HOURS_UNAVAILABLE in both checks.
+	CRM-free plus Google-free is therefore not presented as a bookable slot. The operator
+	must configure genuine tenant opening hours before available slots can be offered.
+- Responses were stable, and fingerprints of tenant appointments, customers,
+	communications/notifications and Calendar connection records remained unchanged.
+	Zero appointment/event mutations, notifications or duplicate records were introduced.
+- No real busy interval was observed. Google/CRM conflict combinations are TEST VERIFIED,
+	not production-observed conflict demonstrations. No synthetic production booking was made.
+
+### Regression And Remaining Verification
+
+- Final targeted/surrounding regression: 225 passed, one existing pytest warning. Coverage
+	includes all four CRM/Google busy/free combinations, timeout, successful 401 refresh,
+	failed refresh, 403, malformed responses, resource and Google-connection tenant isolation,
+	business/staff constraints, existing/candidate buffers, timezone conversion, DST gap/fold
+	rejection and slot generation, repeated reads, multilingual Copilot read intents,
+	Voice reuse/fail-closed behavior, booking lock order and simultaneous local booking attempts.
+	Central AI, provider fallback/accounting, execution security and multilingual Voice
+	regression were also included. No claim of live concurrent PostgreSQL booking testing
+	is made; the simultaneous-attempt test uses isolated local test data.
+- Final production health was healthy; readiness ready; migrations ok, on serving SHA
+	`acf473d5211c6bf3d2f9b39e8c97f7606428a946`. The final candidate-source read-only probe
+	reproduced the same stable result and zero mutations. Deployment verification remains
+	required after operator-approved release and genuine opening-hours configuration.
+- No Shopify/WooCommerce work followed. Earlier audit edits and manual credential-rotation
+	requirements are preserved. No OAuth credential was printed, rotated or persisted by
+	the availability verification.
+
+## Availability Release Candidate And CRM Runtime Repair (2026-10-04)
+
+- Canonical hours now live on the existing tenant Company settings, independent of
+	Retell/Telnyx provisioning. Validated CRM GET/PUT settings support timezone, closed days,
+	split opening periods and tenant-owned staff shifts. Existing Voice hours remain a
+	compatibility source; the canonical service gives tenant settings precedence.
+- Temporary verification schedules are explicitly marked verification_only and apply
+	to one bounded future date, not weekly company operating hours. Production verification
+	must restore and verify the prior schedule; no genuine hours are invented.
+- CRM runtime regression root: incomplete KPI responses were assigned unchecked and
+	active_clients.toLocaleString threw on undefined. Appointment count/revenue and report
+	attendance formatting had the same unsafe contract. Initial fake zero KPIs were removed.
+- Numeric/date formatting now validates finite metrics and valid dates. Missing optional
+	values use existing localized unavailable states, while genuine API zeroes remain zero.
+	API/session failures clear stale data; tenant/source changes invalidate older requests.
+- Browser checks with deliberately absent KPI fields passed in FR/Arabic, desktop/mobile,
+	with no runtime or console errors. The shell main flex item gained min-width:0 to avoid
+	mobile/RTL expansion. Hours UI labels cover all 44 canonical locales.
+- Local release gates: 468 broad backend tests passed; 109 final focused scheduling,
+	Calendar/security/Voice/migration tests passed with PostgreSQL enabled; 95 web tests
+	passed, typecheck/build/catalog checks passed; Flutter analyze clean and 306 tests passed.
+- True isolated PostgreSQL concurrent test: two authorized sessions attempted the same
+	slot; exactly one success, one conflict and one appointment. No production booking
+	was used. CI now provisions PostgreSQL and runs this test continuously.
+- API Git triggers in Railway production/sandbox have checkSuites enabled. Web main
+	automatic Git deployment is disabled so manual production promotion follows green CI.
+	Commit/deployment/live verification receipts are recorded only after completion below.

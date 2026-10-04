@@ -19,6 +19,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { currencyText, dateText, metricText } from "./crm-format";
 
 export interface AppointmentItem {
   id: string;
@@ -67,11 +69,9 @@ export function AppointmentDetailsDrawer({
   const [isUpdating, setIsUpdating] = useState(false);
   const [pendingAction, setPendingAction] = useState<"cancel" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const { locale } = useLocale();
 
   if (!isOpen || !appointment) return null;
-
-  const startDt = new Date(appointment.start_time);
-  const endDt = new Date(appointment.end_time);
 
   const statusColors = {
     confirmed: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800",
@@ -152,11 +152,11 @@ export function AppointmentDetailsDrawer({
               <Calendar className="w-4 h-4 text-[#0076FF] mt-0.5" />
               <div>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  {startDt.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                  {dateText(appointment.start_time, locale, t.common.insufficientData, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-[#94A3B8] flex items-center gap-1 mt-0.5">
                   <Clock className="w-3.5 h-3.5" />
-                  {startDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - {endDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ({new Intl.NumberFormat(undefined, { style: "unit", unit: "minute", unitDisplay: "short" }).format(appointment.duration_minutes)})
+                  {dateText(appointment.start_time, locale, t.common.insufficientData, { hour: "2-digit", minute: "2-digit" })} - {dateText(appointment.end_time, locale, t.common.insufficientData, { hour: "2-digit", minute: "2-digit" })} ({metricText(appointment.duration_minutes, locale, t.common.insufficientData)})
                 </p>
               </div>
             </div>
@@ -192,7 +192,7 @@ export function AppointmentDetailsDrawer({
                   {appointment.service_name || t.crm.filters.service}
                 </p>
                 <p className="text-xs text-[#0076FF] font-bold mt-1">
-                  {appointment.price.toFixed(2)} {appointment.currency || "CAD"}
+                  {currencyText(appointment.price, appointment.currency, locale, t.common.insufficientData)}
                 </p>
               </div>
               <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#060B13]/40">

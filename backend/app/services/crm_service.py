@@ -33,7 +33,7 @@ from backend.app.models.company import Company
 from backend.app.services.calendar.base import CalendarEventData, CalendarProviderError
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
-from backend.app.services.crm_availability_service import CRMAvailabilityService
+from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.services.crm_notification_service import CRMNotificationService
 from backend.app.services.crm_recipient_policy import evaluate_crm_recipient, is_test_email
 
@@ -508,9 +508,9 @@ class CRMService:
         check_conflicts: bool = True,
     ) -> tuple[CRMAppointment | None, str | None]:
         """Creates appointment with conflict detection and external Google Calendar synchronization."""
-        start_time = data["start_time"]
+        start_time = self._availability.normalize(company_id, data["start_time"])
         duration = data.get("duration_minutes", 60)
-        end_time = data.get("end_time") or (start_time + timedelta(minutes=duration))
+        end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
         employee_id = data.get("employee_id")
 
         idempotency_key = str(data.get("idempotency_key") or "").strip() or None
@@ -525,12 +525,24 @@ class CRMService:
             if existing:
                 return existing, None
 
-        self._lock_appointment_writes(company_id)
+        await self._acquire_appointment_lock(company_id)
+
+        if idempotency_key:
+            existing = self._session.scalar(select(CRMAppointment).where(
+                CRMAppointment.company_id == company_id,
+                CRMAppointment.idempotency_key == idempotency_key,
+                CRMAppointment.is_deleted.is_(False),
+            ))
+            if existing:
+                return existing, None
 
         if check_conflicts:
-            has_conflict, reason = self._availability.check_conflict(
-                company_id, start_time, end_time, employee_id
-            )
+            try:
+                has_conflict, reason = await self._availability.check_booking_conflict(
+                    company_id, start_time, end_time, employee_id, data.get("service_id")
+                )
+            except AvailabilityUnavailable as exc:
+                return None, str(exc)
             if has_conflict:
                 return None, reason or "Conflit d'horaire détecté."
 
@@ -601,6 +613,13 @@ class CRMService:
                 {"lock_key": f"crm_appointments:{company_id}"},
             )
 
+    async def _acquire_appointment_lock(self, company_id: UUID) -> None:
+        if self._session.get_bind().dialect.name == "postgresql":
+            import asyncio
+            await asyncio.to_thread(self._lock_appointment_writes, company_id)
+        else:
+            self._lock_appointment_writes(company_id)
+
     async def update_appointment(
         self,
         company_id: UUID,
@@ -609,7 +628,7 @@ class CRMService:
         actor_name: str = "Utilisateur",
         check_conflicts: bool = True,
     ) -> tuple[CRMAppointment | None, str | None]:
-        self._lock_appointment_writes(company_id)
+        await self._acquire_appointment_lock(company_id)
         apt = self._session.scalars(
             select(CRMAppointment).where(
                 CRMAppointment.id == appointment_id,
@@ -620,15 +639,21 @@ class CRMService:
         if not apt:
             return None, "Rendez-vous introuvable."
 
-        start_time = data.get("start_time", apt.start_time)
+        supplied_start = data.get("start_time", apt.start_time)
+        if "start_time" not in data and supplied_start.tzinfo is None:
+            supplied_start = supplied_start.replace(tzinfo=timezone.utc)
+        start_time = self._availability.normalize(company_id, supplied_start)
         duration = data.get("duration_minutes", apt.duration_minutes)
-        end_time = data.get("end_time") or (start_time + timedelta(minutes=duration))
+        end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
         emp_id = data.get("employee_id", apt.employee_id)
 
         if check_conflicts and ("start_time" in data or "employee_id" in data or "duration_minutes" in data):
-            has_conflict, reason = self._availability.check_conflict(
-                company_id, start_time, end_time, emp_id, exclude_appointment_id=appointment_id
-            )
+            try:
+                has_conflict, reason = await self._availability.check_booking_conflict(
+                    company_id, start_time, end_time, emp_id, data.get("service_id", apt.service_id), exclude_appointment_id=appointment_id
+                )
+            except AvailabilityUnavailable as exc:
+                return None, str(exc)
             if has_conflict:
                 return None, reason or "Conflit d'horaire détecté pour ce déplacement."
 
@@ -681,7 +706,7 @@ class CRMService:
         appointment_id: UUID,
         actor_name: str = "Utilisateur",
     ) -> AppointmentMutationResult:
-        self._lock_appointment_writes(company_id)
+        await self._acquire_appointment_lock(company_id)
         apt = self._session.scalars(
             select(CRMAppointment).where(
                 CRMAppointment.id == appointment_id,
@@ -725,7 +750,7 @@ class CRMService:
         appointment_id: UUID,
         actor_name: str = "Utilisateur",
     ) -> AppointmentMutationResult:
-        self._lock_appointment_writes(company_id)
+        await self._acquire_appointment_lock(company_id)
         apt = self._session.scalars(
             select(CRMAppointment).where(
                 CRMAppointment.id == appointment_id,
@@ -813,7 +838,7 @@ class CRMService:
                 events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
 
             stats = {"fetched": len(events), "created": 0, "updated": 0, "cancelled": 0, "skipped": 0}
-            self._lock_appointment_writes(company_id)
+            await self._acquire_appointment_lock(company_id)
             for event in events:
                 event_id = str(event.get("id") or "").strip()
                 if not event_id:

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import {
   Calendar as CalendarIcon,
@@ -32,6 +32,8 @@ import { CRMClientsView } from "./crm-clients-view";
 import { CRMPipelinesView } from "./crm-pipelines-view";
 import { CRMAutomationsView } from "./crm-automations-view";
 import { CRMCalendarConnectionCard } from "./crm-calendar-connection-card";
+import { BusinessHoursSettings } from "./business-hours-settings";
+import { finiteMetric, validDate } from "./crm-format";
 import { CRMCampaignsView } from "./crm-campaigns-view";
 import { CRMReportsView } from "./crm-reports-view";
 import { CRMCopilotPanel } from "./crm-copilot-panel";
@@ -58,13 +60,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   const t = propT || getAppTranslations(locale);
   const [currentTab, setCurrentTab] = useState<CRMSubTab>(activeSubTab);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [kpis, setKpis] = useState<CRMKpis>({
-    active_clients: 0,
-    appointments_this_month: 0,
-    attendance_rate_percent: 0,
-    total_revenue_generated: 0,
-    currency: "CAD",
-  });
+  const [kpis, setKpis] = useState<CRMKpis>({});
+  const loadRevision = useRef(0);
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
   const [employees, setEmployees] = useState<
@@ -85,8 +82,12 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
 
   // Load CRM data from backend
   const loadCRMData = useCallback(async () => {
+    const revision = ++loadRevision.current;
     setIsLoading(true);
     setLoadError(null);
+    setKpis({});
+    setAppointments([]);
+    setCompanyName("");
     try {
       const headers = getAuthHeaders();
       const [kpiRes, appRes, srvRes, empRes, sumRes, googleRes] = await Promise.all([
@@ -97,18 +98,28 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         apiFetch("/api/v1/crm/summary", { headers }),
         apiFetch("/api/v1/crm/calendar/google/events", { headers }),
       ]);
+      if (revision !== loadRevision.current) return;
 
       if (kpiRes.ok) {
         const kData = await kpiRes.json();
-        setKpis(kData);
+        if (revision !== loadRevision.current) return;
+        setKpis({
+          active_clients: finiteMetric(kData?.active_clients),
+          appointments_this_month: finiteMetric(kData?.appointments_this_month),
+          attendance_rate_percent: finiteMetric(kData?.attendance_rate_percent),
+          total_revenue_generated: finiteMetric(kData?.total_revenue_generated),
+          currency: typeof kData?.currency === "string" ? kData.currency : undefined,
+        });
       }
       if (appRes.ok) {
         const aData = await appRes.json();
-        const crmAppointments: AppointmentItem[] = aData || [];
+        if (revision !== loadRevision.current) return;
+        const crmAppointments: AppointmentItem[] = Array.isArray(aData) ? aData.filter((item) => validDate(item?.start_time) && validDate(item?.end_time)) : [];
         const linkedEventIds = new Set(
           crmAppointments.map((appointment) => appointment.external_event_id).filter(Boolean),
         );
         const googleData = googleRes && googleRes.ok ? await googleRes.json() : { events: [] };
+        if (revision !== loadRevision.current) return;
         const externalEvents: AppointmentItem[] = (googleData.events || [])
           .filter((event: { external_event_id: string }) => !linkedEventIds.has(event.external_event_id))
           .map((event: { external_event_id: string; title: string; start_time: string; end_time: string; duration_minutes: number; location?: string | null }) => ({
@@ -131,27 +142,37 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
       }
       if (srvRes.ok) {
         const sData = await srvRes.json();
+        if (revision !== loadRevision.current) return;
         setServices(sData || []);
       }
       if (empRes.ok) {
         const eData = await empRes.json();
+        if (revision !== loadRevision.current) return;
         setEmployees(eData || []);
       }
       if (sumRes.ok) {
         const sumData = await sumRes.json();
+        if (revision !== loadRevision.current) return;
         if (sumData.company_name) {
           setCompanyName(sumData.company_name);
         }
       }
     } catch (error) {
-      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
+      if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
-      setIsLoading(false);
+      if (revision === loadRevision.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadCRMData();
+    const changed = () => { void loadCRMData(); };
+    const expired = () => { loadRevision.current++; setKpis({}); setAppointments([]); setCompanyName(""); setLoadError(new ApiRequestError("session_expired")); setIsLoading(false); };
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("avenqo-session") : null;
+    if (channel) channel.onmessage = changed;
+    window.addEventListener("avenqo:sources-changed", changed);
+    window.addEventListener("avenqo:session-expired", expired);
+    return () => { loadRevision.current++; channel?.close(); window.removeEventListener("avenqo:sources-changed", changed); window.removeEventListener("avenqo:session-expired", expired); };
   }, [loadCRMData]);
 
   // Listen for global entity select from search palette (Ctrl+K)
@@ -389,7 +410,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
 
         {currentTab === "reports" && <CRMReportsView t={t} />}
 
-        {currentTab === "connections" && <CRMCalendarConnectionCard t={t} />}
+        {currentTab === "connections" && <><BusinessHoursSettings /><CRMCalendarConnectionCard t={t} /></>}
       </div>
 
       {/* RIGHT: PERMANENT AVENQO COPILOT PANEL (Item 10, 11, 12) */}

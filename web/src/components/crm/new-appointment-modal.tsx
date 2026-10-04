@@ -14,6 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
+import { validDate, metricText } from "./crm-format";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
@@ -111,7 +112,13 @@ export function NewAppointmentModal({
       setPrice(initialAppointment.price || 0);
       setNotes(initialAppointment.notes || "");
 
-      const dt = new Date(initialAppointment.start_time);
+      const dt = validDate(initialAppointment.start_time);
+      if (!dt) {
+        setStartDate("");
+        setStartTime("");
+        setError(t.crm.modal.dateRequired);
+        return;
+      }
       const yyyy = dt.getFullYear();
       const mm = String(dt.getMonth() + 1).padStart(2, "0");
       const dd = String(dt.getDate()).padStart(2, "0");
@@ -248,7 +255,12 @@ export function NewAppointmentModal({
         return;
       }
 
-      const startIso = new Date(`${startDate}T${startTime}:00`).toISOString();
+      const submittedStart = new Date(`${startDate}T${startTime}:00`);
+      if (!Number.isFinite(submittedStart.getTime()) || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        setError(t.crm.modal.dateRequired);
+        return;
+      }
+      const startIso = submittedStart.toISOString();
       const endDt = new Date(new Date(startIso).getTime() + durationMinutes * 60000);
       const endIso = endDt.toISOString();
 
@@ -433,7 +445,7 @@ export function NewAppointmentModal({
                 <option value="">{t.crm.filters.service}</option>
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({new Intl.NumberFormat(locale, { style: "unit", unit: "minute", unitDisplay: "short" }).format(s.duration_minutes)} — {s.price} $)
+                    {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} — {metricText(s.price, locale, t.common.insufficientData, 2)})
                   </option>
                 ))}
               </select>

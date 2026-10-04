@@ -16,6 +16,10 @@ import { LocaleProvider, useLocale } from "@/lib/i18n/locale-context";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { LOCALES } from "@/lib/i18n/locales";
 import { getTranslations } from "@/lib/i18n/dictionary";
+import { BUSINESS_HOURS_COPY } from "@/lib/i18n/business-hours-copy";
+import { BusinessHoursSettings } from "@/components/crm/business-hours-settings";
+import { CRMKpiCards } from "@/components/crm/crm-kpi-cards";
+import { metricText, currencyText, dateText } from "@/components/crm/crm-format";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -36,6 +40,45 @@ afterEach(() => {
 });
 
 describe("public trust content", () => {
+  it("rejects invalid numeric/date formatting rather than fabricating metrics", () => {
+    for (const value of [null, undefined, NaN, Infinity, "12"]) expect(metricText(value, "fr", "unavailable")).toBe("unavailable");
+    expect(currencyText(12, null, "ar", "unavailable")).toBe("unavailable");
+    expect(dateText("invalid", "ar", "unavailable")).toBe("unavailable");
+    expect(metricText(0, "en", "unavailable")).toBe("0");
+  });
+  it("shows CRM loading state without presenting fabricated numeric values", () => {
+    render(<LocaleProvider><CRMKpiCards kpis={{}} isLoading t={getAppTranslations("fr")} /></LocaleProvider>);
+    expect(screen.getAllByText(getAppTranslations("fr").crm.calendar.loadingAppointments)).toHaveLength(4);
+  });
+  it("renders unavailable CRM metrics without inventing zeros", () => {
+    render(<LocaleProvider><CRMKpiCards kpis={{ active_clients: null, appointments_this_month: undefined, total_revenue_generated: null }} t={getAppTranslations("fr")} /></LocaleProvider>);
+    expect(screen.getAllByText(getAppTranslations("fr").common.insufficientData)).toHaveLength(4);
+  });
+  it("preserves legitimate authenticated zero CRM metrics", () => {
+    render(<LocaleProvider><CRMKpiCards kpis={{ active_clients: 0, appointments_this_month: 0, attendance_rate_percent: 0, total_revenue_generated: 0, currency: "CAD" }} t={getAppTranslations("fr")} /></LocaleProvider>);
+    expect(screen.queryByText(getAppTranslations("fr").common.insufficientData)).not.toBeInTheDocument();
+  });
+  it("loads and saves tenant business hours without losing closed days", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/employees")) return new Response("[]", { status: 200 });
+      if (init?.method === "PUT") {
+        expect(JSON.parse(String(init.body)).hours.monday).toEqual([{ open: "09:00", close: "17:00" }]);
+        return new Response("{}", { status: 200 });
+      }
+      return new Response(JSON.stringify({ timezone: "America/Toronto", hours: {} }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LocaleProvider><BusinessHoursSettings /></LocaleProvider>);
+    await waitFor(() => expect(screen.getByDisplayValue("America/Toronto")).toBeEnabled());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: getAppTranslations("fr").crm.actions.save }));
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PUT")).toBe(true));
+  });
+  it("has business-hours labels in every canonical locale", () => {
+    expect(Object.keys(BUSINESS_HOURS_COPY).sort()).toEqual(LOCALES.map((item) => item.code).sort());
+    for (const labels of Object.values(BUSINESS_HOURS_COPY)) expect(labels.every((label) => label.length > 0)).toBe(true);
+  });
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", class {
       observe() {}

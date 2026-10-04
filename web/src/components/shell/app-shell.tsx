@@ -509,7 +509,7 @@ export function AppShell({ children }: AppShellProps) {
         )}
 
         {/* Page Main Content Area */}
-        <main className="flex-1 overflow-y-auto focus:outline-none p-4 sm:p-6 lg:p-8">
+        <main className="min-w-0 flex-1 overflow-y-auto focus:outline-none p-4 sm:p-6 lg:p-8">
           {session.error ? <RequestFailure error={session.error} retry={() => { void session.reload(); }} />
             : session.identity ? <>
               {session.sourceError && <RequestFailure error={session.sourceError} retry={() => { void session.reload(); }} />}

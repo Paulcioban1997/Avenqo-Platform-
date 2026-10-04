@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { finiteMetric, metricText, validDate } from "./crm-format";
 
 interface OpportunityItem {
   id: string;
@@ -44,6 +46,7 @@ interface CRMPipelinesViewProps {
 }
 
 export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
+  const { locale } = useLocale();
   const [pipelines, setPipelines] = useState<PipelineItem[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -85,6 +88,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
   const handleCreateOpportunity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oppTitle || !oppStageId) return;
+    if (oppCloseDate && !validDate(oppCloseDate)) return;
 
     setIsSubmitting(true);
     try {
@@ -186,7 +190,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
           {activePipeline.stages.map((stage, sIdx) => {
             const opps = stage.opportunities || [];
-            const totalStageValue = opps.reduce((sum, o) => sum + (o.amount || 0), 0);
+            const totalStageValue = opps.every((item) => finiteMetric(item.amount) !== null) ? opps.reduce((sum, item) => sum + item.amount, 0) : null;
             return (
               <div
                 key={stage.id}
@@ -199,7 +203,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                       {stage.name}
                     </span>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {totalStageValue.toLocaleString()} $
+                      {metricText(totalStageValue, locale, t.common.insufficientData)}
                     </span>
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">

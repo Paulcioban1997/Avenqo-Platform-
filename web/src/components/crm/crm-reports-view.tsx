@@ -5,38 +5,40 @@ import { BarChart3, Users, CalendarCheck, TrendingUp, DollarSign, Download, Refr
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { type CRMKpis } from "./crm-kpi-cards";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { apiFetch } from "@/lib/api-request";
+import { currencyText, finiteMetric, metricText } from "./crm-format";
 
 interface CRMReportsViewProps {
   t: AppTranslations;
 }
 
 export function CRMReportsView({ t }: CRMReportsViewProps) {
-  const [kpis, setKpis] = useState<CRMKpis>({
-    active_clients: 0,
-    appointments_this_month: 0,
-    attendance_rate_percent: 0,
-    total_revenue_generated: 0,
-    currency: "CAD",
-  });
+  const { locale } = useLocale();
+  const [kpis, setKpis] = useState<CRMKpis>({});
   const [summary, setSummary] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   const fetchReportData = async () => {
     setIsLoading(true);
+    setKpis({});
+    setSummary(null);
+    setFailed(false);
     try {
       const headers = getAuthHeaders();
       const [kpiRes, sumRes] = await Promise.all([
-        fetch("/api/v1/crm/kpis", { headers }),
-        fetch("/api/v1/crm/summary", { headers }),
+        apiFetch("/api/v1/crm/kpis", { headers }),
+        apiFetch("/api/v1/crm/summary", { headers }),
       ]);
       if (kpiRes.ok) {
-        setKpis(await kpiRes.json());
+        setKpis(await kpiRes.json() ?? {});
       }
       if (sumRes.ok) {
         setSummary(await sumRes.json());
       }
     } catch {
-      // Keep real zeroes
+      setFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -46,13 +48,12 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
     fetchReportData();
   }, []);
 
-  const formattedRevenue = new Intl.NumberFormat("fr-CA", {
-    style: "currency",
-    currency: kpis.currency || "CAD",
-  }).format(kpis.total_revenue_generated);
+  const unavailable = t.common.insufficientData;
+  const formattedRevenue = currencyText(kpis.total_revenue_generated, kpis.currency, locale, unavailable);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {failed && <div role="alert">{t.common.errorTitle}</div>}
       {/* REPORTS HEADER */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-[#0B132B] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
@@ -82,7 +83,7 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
             <Users className="w-4 h-4 text-[#0076FF]" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {kpis.active_clients}
+            {isLoading ? t.crm.calendar.loadingAppointments : metricText(kpis.active_clients, locale, unavailable)}
           </div>
           <div className="text-[10px] text-slate-400">{t.crm.tabs.clients}</div>
         </div>
@@ -93,7 +94,7 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
             <CalendarCheck className="w-4 h-4 text-[#00D4FF]" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {kpis.appointments_this_month}
+            {isLoading ? t.crm.calendar.loadingAppointments : metricText(kpis.appointments_this_month, locale, unavailable)}
           </div>
           <div className="text-[10px] text-slate-400">{t.crm.status.confirmed}</div>
         </div>
@@ -104,7 +105,7 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {kpis.attendance_rate_percent.toFixed(1)} %
+            {finiteMetric(kpis.attendance_rate_percent) === null ? unavailable : `${metricText(kpis.attendance_rate_percent, locale, unavailable, 1)} %`}
           </div>
           <div className="text-[10px] text-slate-400">{t.crm.kpis.attendanceRate}</div>
         </div>
@@ -133,19 +134,19 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{t.crm.tabs.clients}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {summary?.total_leads ?? 0}
+              {metricText(summary?.total_leads, locale, unavailable)}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{t.crm.kpis.revenueGenerated}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {summary?.total_pipeline_value ?? 0} {kpis.currency}
+              {currencyText(summary?.total_pipeline_value, kpis.currency, locale, unavailable)}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{t.crm.actions.modify}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {summary?.pending_tasks_count ?? 0}
+              {metricText(summary?.pending_tasks_count, locale, unavailable)}
             </div>
           </div>
         </div>

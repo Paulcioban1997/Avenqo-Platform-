@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { dateText, metricText } from "./crm-format";
 
 export interface ClientItem {
   id: string;
@@ -44,6 +46,7 @@ interface CRMClientsViewProps {
 }
 
 export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsViewProps) {
+  const { locale } = useLocale();
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -263,14 +266,10 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
-                      <span className="font-medium">{client.appointments_count || 0}</span>
+                      <span className="font-medium">{metricText(client.appointments_count, locale, t.common.insufficientData)}</span>
                     </td>
                     <td className="py-3.5 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                      {(client.total_revenue || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}{" "}
-                      $
+                      {metricText(client.total_revenue, locale, t.common.insufficientData, 2)}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <button
@@ -334,11 +333,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                         {t.crm.kpis.revenueGenerated}
                       </span>
                       <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                        {(client360Data?.total_revenue || 0).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
-                        $
+                        {metricText(client360Data?.total_revenue, locale, t.common.insufficientData, 2)}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
@@ -346,7 +341,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                         {t.crm.tabs.appointments}
                       </span>
                       <span className="text-lg font-bold text-[#0076FF]">
-                        {client360Data?.appointments?.length || 0}
+                        {metricText(Array.isArray(client360Data?.appointments) ? client360Data.appointments.length : null, locale, t.common.insufficientData)}
                       </span>
                     </div>
                   </div>
@@ -395,11 +390,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                                 {app.title}
                               </div>
                               <div className="text-[11px] text-slate-400 mt-0.5">
-                                {new Date(app.start_time).toLocaleDateString("fr-CA")} à{" "}
-                                {new Date(app.start_time).toLocaleTimeString("fr-CA", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {dateText(app.start_time, locale, t.common.insufficientData, { dateStyle: "medium", timeStyle: "short" })}
                               </div>
                             </div>
                             <div className="text-right">
@@ -428,7 +419,7 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                           >
                             <p className="text-slate-800 dark:text-slate-200">{note.content}</p>
                             <span className="text-[10px] text-slate-400 mt-1 block">
-                              {new Date(note.created_at).toLocaleDateString("fr-CA")}
+                              {dateText(note.created_at, locale, t.common.insufficientData, { dateStyle: "medium" })}
                             </span>
                           </div>
                         ))}

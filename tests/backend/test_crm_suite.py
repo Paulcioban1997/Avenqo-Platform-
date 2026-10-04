@@ -13,7 +13,7 @@ Couvre:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -86,6 +86,7 @@ def _create_company(session, slug: str) -> Company:
     )
     session.add(co)
     session.flush()
+    _configure_availability_hours(session, co, full_day=True)
     return co
 
 
@@ -260,8 +261,11 @@ def test_appointment_crud_and_conflict_detection(db_session):
         },
     )
 
-    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-    slot1_start = now + timedelta(days=1, hours=10)
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo(company.timezone)).replace(hour=10, minute=0, second=0, microsecond=0)
+    slot1_start = now + timedelta(days=2)
+    if slot1_start.weekday() == 6:
+        slot1_start += timedelta(days=1)
     slot1_end = slot1_start + timedelta(minutes=60)
 
     # Créer le premier RDV
@@ -619,11 +623,15 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
             return {"access_token": "runtime-only"}
 
     class FakeProvider:
+        async def check_busy_slots(self, *args):
+            return []
+
         async def create_event(self, credentials, event, calendar_id):
             captured.append(event.attendee_email)
             return f"event-{len(captured)}"
 
     monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda: FakeProvider())
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: FakeProvider())
     crm_svc = CRMAppService(db_session, FakeCipher())
     alice = crm_svc.create_client(company.id, {
         "first_name": "Alice", "last_name": "Example", "email": "alice@customer.ca",
@@ -823,7 +831,7 @@ def test_create_appointment_accepts_null_industry_data(db_session):
             data={
                 "client_id": client.id,
                 "title": "Test production CRM",
-                "start_time": datetime.now(timezone.utc) + timedelta(days=2, hours=9),
+                "start_time": (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=15, minute=0, second=0, microsecond=0),
                 "duration_minutes": 30,
                 "industry_data": None,
             },
@@ -838,6 +846,7 @@ def test_create_appointment_accepts_null_industry_data(db_session):
 def test_availability_engine_open_slots(db_session):
     """Vérifie le calcul des créneaux libres sans double réservation."""
     company = _create_company(db_session, "tenant-availability")
+    _configure_availability_hours(db_session, company)
     crm_svc = CRMAppService(db_session)
     avail_svc = CRMAvailabilityService(db_session)
 
@@ -870,7 +879,8 @@ def test_availability_engine_open_slots(db_session):
     target_date = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    start_app = target_date.replace(hour=10)
+    from zoneinfo import ZoneInfo
+    start_app = target_date.replace(hour=10, tzinfo=ZoneInfo(company.timezone))
     end_app = start_app + timedelta(minutes=60)
 
     asyncio.run(
@@ -891,7 +901,7 @@ def test_availability_engine_open_slots(db_session):
     slots = asyncio.run(
         avail_svc.list_available_slots(
             company_id=company.id,
-            target_date=target_date,
+            target_date=target_date.date(),
             duration_minutes=60,
             employee_id=emp.id,
         )
@@ -905,6 +915,292 @@ def test_availability_engine_open_slots(db_session):
     assert 9 in available_starts
     assert 10 not in available_starts
     assert 11 in available_starts
+
+
+def _configure_availability_hours(session, company, full_day=False):
+    from backend.app.models.voice import VoiceBusinessConfig
+    from sqlalchemy import select
+    existing = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+    hours = {day: {"open": "00:00" if full_day else "09:00", "close": "23:59" if full_day else "18:00"} for day in (
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")}
+    if existing:
+        existing.opening_hours = hours
+        session.flush()
+        return existing
+    config = VoiceBusinessConfig(
+        company_id=company.id, business_name="Test business", timezone_name=company.timezone,
+        opening_hours=hours,
+        services=[], telnyx_phone_number=uuid4().hex, greeting_message="Test",
+        retell_agent_id=str(uuid4()), retell_sip_uri="sip:test", voice_api_key_hash=str(uuid4()),
+        voice_api_key_last4="test", enabled=False,
+    )
+    session.add(config)
+    session.flush()
+    return config
+
+
+@pytest.fixture
+def combined_availability(db_session, monkeypatch):
+    from zoneinfo import ZoneInfo
+    company = _create_company(db_session, "combined-availability")
+    config = _configure_availability_hours(db_session, company)
+    client = CRMAppService(db_session).create_client(company.id, {
+        "first_name": "Scheduling", "last_name": "Test", "email": "schedule@example.ca",
+    })
+    db_session.add(CRMCalendarConnection(company_id=company.id, provider="google",
+        account_email="calendar@example.ca", encrypted_credentials="encrypted", sync_status="connected"))
+    db_session.commit()
+    start = datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone))
+    state = {"busy": [], "error": None, "refreshed": False, "refresh_error": False, "calls": 0}
+
+    class Cipher:
+        def decrypt(self, value):
+            assert value == "encrypted"
+            return {"access_token": "test", "refresh_token": "refresh-test"}
+
+    class Provider:
+        async def check_busy_slots(self, credentials, begin, end, calendar_id):
+            state["calls"] += 1
+            if state["error"] and not state["refreshed"]:
+                raise state["error"]
+            return state["busy"]
+
+        async def refresh_access_token(self, refresh_token):
+            if state["refresh_error"]:
+                raise RuntimeError("refresh failed")
+            state["refreshed"] = True
+            return {"access_token": "new-test"}
+
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: Provider())
+    return company, client, config, start, state, CRMAvailabilityService(db_session, Cipher())
+
+
+@pytest.mark.parametrize("google_busy,crm_busy", [(True, False), (False, True), (True, True), (False, False)])
+def test_combined_authoritative_availability(db_session, combined_availability, google_busy, crm_busy):
+    from backend.app.services.calendar.base import BusySlot
+    company, client, _, start, state, service = combined_availability
+    end = start + timedelta(hours=1)
+    if google_busy:
+        state["busy"] = [BusySlot(start_time=start, end_time=end)]
+    if crm_busy:
+        db_session.add(CRMAppointment(company_id=company.id, client_id=client.id, title="Busy",
+            start_time=start.astimezone(timezone.utc), end_time=end.astimezone(timezone.utc), status="confirmed"))
+        db_session.commit()
+    first = asyncio.run(service.check_availability(company.id, start))
+    second = asyncio.run(service.check_availability(company.id, start))
+    assert first == second
+    assert first["available"] is not (google_busy or crm_busy)
+    assert not db_session.new and not db_session.dirty
+
+
+@pytest.mark.parametrize("failure", ["timeout", "403", "malformed", "refresh_failure", "401_refresh"])
+def test_external_availability_failure_and_refresh(combined_availability, failure):
+    import urllib.error
+    from backend.app.services.calendar.base import CalendarProviderError
+    company, _, _, start, state, service = combined_availability
+    error = CalendarProviderError("EXTERNAL_AVAILABILITY_UNAVAILABLE")
+    error.__cause__ = urllib.error.HTTPError("https://example.test", 401 if "refresh" in failure else 403, "test", {}, None)
+    state["error"] = TimeoutError() if failure == "timeout" else ValueError() if failure == "malformed" else error
+    state["refresh_error"] = failure == "refresh_failure"
+    result = asyncio.run(service.check_availability(company.id, start))
+    assert result["available"] is (failure == "401_refresh")
+    if failure != "401_refresh":
+        assert result["state"] == "EXTERNAL_AVAILABILITY_UNAVAILABLE"
+
+
+def test_availability_resource_isolation_and_missing_hours(db_session, combined_availability):
+    company, _, config, start, state, service = combined_availability
+    other = _create_company(db_session, "other-availability")
+    employee = CRMAppService(db_session).create_employee(other.id, {"name": "Other staff"})
+    result = asyncio.run(service.check_availability(company.id, start, employee_id=employee.id))
+    assert result["state"] == "RESOURCE_NOT_AUTHORIZED"
+    assert state["calls"] == 0
+    config.opening_hours = {}
+    db_session.commit()
+    assert asyncio.run(service.check_availability(company.id, start))["state"] == "BUSINESS_HOURS_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("value", [datetime(2027, 3, 14, 2, 30), datetime(2027, 11, 7, 1, 30)])
+def test_availability_rejects_dst_gap_and_ambiguous_local_time(combined_availability, value):
+    company, _, _, _, _, service = combined_availability
+    result = asyncio.run(service.check_availability(company.id, value))
+    assert result["available"] is False
+    assert result["state"] == "AMBIGUOUS_OR_NONEXISTENT_LOCAL_TIME"
+
+
+def test_availability_timezone_offsets_and_buffers(db_session, combined_availability):
+    company, _, _, start, _, service = combined_availability
+    assert service.normalize(company.id, start.replace(tzinfo=None)) == start.astimezone(timezone.utc)
+    summer = start.replace(month=7)
+    assert service.normalize(company.id, summer.replace(tzinfo=None)).hour == 14
+    assert service.normalize(company.id, start.replace(tzinfo=None)).hour == 15
+    model = CRMAppService(db_session).create_service(company.id, {"name": "Buffered", "duration_minutes": 60,
+        "buffer_before_minutes": 30, "buffer_after_minutes": 30})
+    result = asyncio.run(service.check_availability(company.id, start.replace(hour=9), service_id=model.id))
+    assert result["available"] is False
+
+
+def test_existing_appointment_buffers_and_timezone_mismatch(db_session, combined_availability):
+    company, client, config, start, _, availability = combined_availability
+    service = CRMAppService(db_session).create_service(company.id, {"name": "Existing buffered", "buffer_after_minutes": 30})
+    db_session.add(CRMAppointment(company_id=company.id, client_id=client.id, service_id=service.id,
+        title="Buffered", start_time=start.astimezone(timezone.utc),
+        end_time=(start + timedelta(hours=1)).astimezone(timezone.utc), status="confirmed"))
+    db_session.commit()
+    assert asyncio.run(availability.check_availability(company.id, start + timedelta(hours=1, minutes=15)))["available"] is False
+    config.timezone_name = "Europe/Paris"
+    db_session.commit()
+    assert asyncio.run(availability.check_availability(company.id, start))["state"] == "BUSINESS_TIMEZONE_MISMATCH"
+
+
+def test_availability_never_decrypts_other_tenant_calendar(db_session, combined_availability):
+    company, _, _, start, _, availability = combined_availability
+    other = _create_company(db_session, "foreign-google-availability")
+    db_session.add(CRMCalendarConnection(company_id=other.id, provider="google", account_email="other@example.ca",
+        encrypted_credentials="must-not-be-decrypted", sync_status="connected"))
+    db_session.commit()
+    assert asyncio.run(availability.check_availability(company.id, start))["available"] is True
+
+
+def test_tenant_business_hours_normal_configuration_path(db_session, combined_availability):
+    from types import SimpleNamespace
+    from backend.app.models import UserRole
+    from backend.app.routers.crm import BusinessHoursRequest, save_business_hours
+    company, _, _, start, _, availability = combined_availability
+    user_id = uuid4()
+    identity = SimpleNamespace(user=SimpleNamespace(id=user_id))
+    membership = SimpleNamespace(role=UserRole.OWNER, user_id=user_id, company_id=company.id)
+    payload = BusinessHoursRequest(timezone=company.timezone, hours={"monday": [{"open": "09:00", "close": "12:00"}, {"open": "13:00", "close": "17:00"}]})
+    result = save_business_hours(payload, TenantContext(company.id), identity, membership, db_session)
+    assert len(result["hours"]["monday"]) == 2
+    assert asyncio.run(availability.check_availability(company.id, start))["available"] is True
+    assert asyncio.run(availability.check_availability(company.id, start.replace(hour=12)))["available"] is False
+    with pytest.raises(Exception):
+        save_business_hours(payload, TenantContext(uuid4()), identity, membership, db_session)
+
+
+@pytest.mark.parametrize("target_day,expected_count", [(date(2027, 3, 14), 6), (date(2027, 11, 7), 10)])
+def test_slot_generation_spans_dst_in_real_instants(db_session, combined_availability, target_day, expected_count):
+    company, _, config, _, _, availability = combined_availability
+    config.opening_hours = {"sunday": {"open": "00:00", "close": "04:00"}}
+    db_session.commit()
+    slots = asyncio.run(availability.list_available_slots(company.id, target_day, duration_minutes=30))
+    assert len(slots) == expected_count
+    instants = [datetime.fromisoformat(slot["start_time"]).astimezone(timezone.utc) for slot in slots]
+    assert len(set(instants)) == len(slots)
+
+
+@pytest.mark.parametrize("locale,message", [
+    ("fr", "Est-ce que j'ai de la place demain à 14 h ?"),
+    ("en", "What's available Friday afternoon?"),
+    ("ro", "Am program liber mâine la 10?"),
+    ("es", "¿Hay disponibilidad el lunes?"),
+])
+def test_copilot_multilingual_availability_is_read_only(db_session, monkeypatch, combined_availability, locale, message):
+    from types import SimpleNamespace
+    from backend.app.routers.crm import CRMCopilotChatRequest, crm_copilot_chat
+    from backend.app.models import UserRole
+    company, _, _, _, _, service = combined_availability
+    monkeypatch.setattr("backend.app.routers.crm.CRMAvailabilityService", lambda session: service)
+    monkeypatch.setattr("backend.app.routers.crm.ModuleEntitlementService", lambda session: SimpleNamespace(can_use_module=lambda *args: True))
+    response = asyncio.run(crm_copilot_chat(CRMCopilotChatRequest(message=message, locale=locale),
+        TenantContext(company.id), SimpleNamespace(), SimpleNamespace(role=UserRole.OWNER), db_session, CRMAppService(db_session)))
+    assert response["locale"] == locale
+    assert response["status"] in ("success", "unavailable")
+    assert response.get("action") != "appointment_created"
+    assert not db_session.new and not db_session.dirty
+
+
+def test_booking_lock_precedes_combined_check(db_session, monkeypatch, combined_availability):
+    company, client, _, start, _, _ = combined_availability
+    service = CRMAppService(db_session)
+    order = []
+    monkeypatch.setattr(service, "_lock_appointment_writes", lambda tenant: order.append("lock"))
+
+    async def conflict(*args, **kwargs):
+        order.append("combined_read")
+        return True, "GOOGLE_BUSY"
+
+    monkeypatch.setattr(service._availability, "check_combined_conflict", conflict)
+    appointment, error = asyncio.run(service.create_appointment(company.id, {
+        "client_id": client.id, "start_time": start, "idempotency_key": "same-slot",
+    }))
+    assert order == ["lock", "combined_read"]
+    assert appointment is None and error == "GOOGLE_BUSY"
+
+
+def test_simultaneous_booking_attempts_do_not_duplicate_slot(db_session, monkeypatch, combined_availability):
+    from sqlalchemy import select
+    company, client, _, start, _, availability = combined_availability
+    service = CRMAppService(db_session)
+    service._availability = availability
+
+    async def no_external_write(*args, **kwargs):
+        return "not_configured", None
+
+    monkeypatch.setattr(service, "_sync_to_external_calendar", no_external_write)
+
+    async def attempts():
+        return await asyncio.gather(*[service.create_appointment(company.id, {
+            "client_id": client.id, "start_time": start, "idempotency_key": f"booking-{index}",
+        }) for index in range(2)])
+
+    results = asyncio.run(attempts())
+    assert sum(appointment is not None for appointment, error in results) == 1
+    assert sum(error is not None for appointment, error in results) == 1
+    assert len(db_session.scalars(select(CRMAppointment).where(CRMAppointment.company_id == company.id)).all()) == 1
+
+
+def test_postgresql_concurrent_authorized_same_slot(monkeypatch):
+    import os
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy import select
+    from backend.app.models import CompanyMembership, User, UserRole
+    url = os.environ.get("AVENQO_TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("Isolated PostgreSQL integration URL required")
+    engine = create_engine(url)
+    assert engine.dialect.name == "postgresql"
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _create_company(session, f"pg-concurrency-{uuid4()}")
+        user = User(company_id=company.id, first_name="Test", last_name="Owner", email=f"{uuid4()}@example.test",
+            password_hash="non-login-test-hash", role=UserRole.OWNER, is_active=True)
+        session.add(user)
+        session.flush()
+        session.add(CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True))
+        client = CRMAppService(session).create_client(company.id, {"first_name": "Test", "last_name": "Client", "email": f"{uuid4()}@example.test"})
+        company_id, user_id, client_id = company.id, user.id, client.id
+        session.commit()
+    barrier = threading.Barrier(2)
+    start = datetime(2027, 2, 8, 15, tzinfo=timezone.utc)
+
+    async def no_event_write(*args, **kwargs):
+        return "not_configured", None
+
+    monkeypatch.setattr(CRMAppService, "_sync_to_external_calendar", no_event_write)
+
+    def book(index):
+        with factory() as session:
+            membership = session.scalar(select(CompanyMembership).where(CompanyMembership.company_id == company_id,
+                CompanyMembership.user_id == user_id, CompanyMembership.is_active.is_(True)))
+            assert membership is not None and membership.role == UserRole.OWNER
+            barrier.wait(timeout=20)
+            result, error = asyncio.run(CRMAppService(session).create_appointment(company_id, {
+                "client_id": client_id, "start_time": start, "idempotency_key": f"pg-attempt-{index}",
+            }))
+            return result is not None, error
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(book, (1, 2)))
+    assert sum(success for success, _ in results) == 1
+    assert sum(error is not None for _, error in results) == 1
+    with factory() as session:
+        rows = session.scalars(select(CRMAppointment).where(CRMAppointment.company_id == company_id)).all()
+        assert len(rows) == 1
+    engine.dispose()
 
 
 def test_ai_copilot_crm_tools_execution(db_session):

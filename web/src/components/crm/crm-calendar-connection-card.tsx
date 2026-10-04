@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { dateText } from "./crm-format";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -35,6 +37,7 @@ interface CRMCalendarConnectionCardProps {
 }
 
 export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps) {
+  const { locale } = useLocale();
   const [googleStatus, setGoogleStatus] = useState<ConnectionStatus>({ connected: false });
   const [isLoading, setIsLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -189,7 +192,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                 {googleStatus.last_sync_at && (
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>{t.integrations.lastSynced}:</span>
-                    <span>{new Date(googleStatus.last_sync_at).toLocaleString("fr-CA")}</span>
+                    <span>{dateText(googleStatus.last_sync_at, locale, t.common.insufficientData, { dateStyle: "medium", timeStyle: "short" })}</span>
                   </div>
                 )}
                 {calendars.length > 0 && (

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.base import CRMAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
-from backend.app.services.crm_availability_service import CRMAvailabilityService
+from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
@@ -60,6 +60,7 @@ class CheckAvailabilityArgs(ToolArguments):
     start_time: str = Field(description="Date et heure de début souhaitée au format ISO (ex: 2026-09-20T14:30:00Z).")
     duration_minutes: int = Field(default=60, description="Durée de la prestation en minutes.")
     employee_id: str | None = Field(default=None, description="UUID optionnel du collaborateur/praticien.")
+    service_id: str | None = Field(default=None, description="UUID de la prestation avec ses marges configurées.")
 
 
 class ListAvailableSlotsArgs(ToolArguments):
@@ -326,21 +327,14 @@ class CheckAvailabilityTool(CRMAITool):
         except ValueError:
             return ToolResult(success=False, data={"error": "Format d'heure de début invalide."})
 
-        end_dt = start_dt + timedelta(minutes=arguments.duration_minutes)
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
 
-        has_conflict, reason = self._avail.check_conflict(
-            context.tenant.company_id, start_dt, end_dt, employee_id=emp_id
-        )
+        service_id = UUID(arguments.service_id) if arguments.service_id else None
+        result = await self._avail.check_availability(context.tenant.company_id, start_dt, arguments.duration_minutes, emp_id, service_id)
         return ToolResult(
-            success=True,
-            data={
-                "available": not has_conflict,
-                "start_time": start_dt.isoformat(),
-                "end_time": end_dt.isoformat(),
-                "conflict_reason": reason,
-            },
-            source_refs=("crm_appointments",),
+            success=result["state"] in ("AVAILABLE", "BUSY"),
+            data=result,
+            source_refs=("crm_appointments", "business_hours", "google_freebusy"),
         )
 
 
@@ -365,9 +359,12 @@ class ListAvailableSlotsTool(CRMAITool):
         svc_id = UUID(arguments.service_id) if arguments.service_id else None
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
 
-        slots = await self._avail.list_available_slots(
-            context.tenant.company_id, target_date, service_id=svc_id, employee_id=emp_id
-        )
+        try:
+            slots = await self._avail.list_available_slots(
+                context.tenant.company_id, target_date, service_id=svc_id, employee_id=emp_id
+            )
+        except AvailabilityUnavailable as exc:
+            return ToolResult(success=False, data={"state": str(exc), "slots": [], "available": False})
         return ToolResult(
             success=True,
             data={"target_date": arguments.target_date, "count": len(slots), "slots": slots},

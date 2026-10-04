@@ -338,17 +338,17 @@ class GoogleCalendarProvider(CalendarProvider):
         try:
             async with _open_response(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                cal_data = data.get("calendars", {}).get(calendar_id, {})
-                busy_list = cal_data.get("busy", [])
+                cal_data = data["calendars"][calendar_id]
+                if cal_data.get("errors") or not isinstance(cal_data.get("busy"), list):
+                    raise ValueError("Invalid calendar availability response")
+                busy_list = cal_data["busy"]
                 slots: list[BusySlot] = []
                 for b in busy_list:
-                    s_str = b.get("start", "")
-                    e_str = b.get("end", "")
-                    if s_str and e_str:
-                        s_dt = datetime.fromisoformat(s_str.replace("Z", "+00:00"))
-                        e_dt = datetime.fromisoformat(e_str.replace("Z", "+00:00"))
-                        slots.append(BusySlot(start_time=s_dt, end_time=e_dt))
+                    s_dt = datetime.fromisoformat(b["start"].replace("Z", "+00:00"))
+                    e_dt = datetime.fromisoformat(b["end"].replace("Z", "+00:00"))
+                    if s_dt.tzinfo is None or e_dt.tzinfo is None or s_dt >= e_dt:
+                        raise ValueError("Invalid calendar busy interval")
+                    slots.append(BusySlot(start_time=s_dt, end_time=e_dt))
                 return slots
         except Exception as exc:
-            logger.warning("Freebusy check failed, fallback to empty: %s", exc)
-            return []
+            raise CalendarProviderError("EXTERNAL_AVAILABILITY_UNAVAILABLE") from exc
