@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.app.connectors.shopify import ShopifyConnector
 from backend.app.connectors.woocommerce import WooCommerceConnector
-from backend.app.models import Base, Company, CommerceConnectionStatus, User, UserRole
+from backend.app.models import Base, Company, CompanyMembership, CommerceConnectionStatus, CommerceOAuthState, User, UserRole
 from backend.app.services.commerce_connection_service import (
     CommerceAuthorizationError,
     CommerceConnectionNotFound,
@@ -18,6 +18,7 @@ from backend.app.services.commerce_connection_service import (
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
+from tests.subscription_helpers import add_active_subscription
 
 
 class _TestShopifyConnector(ShopifyConnector):
@@ -34,6 +35,21 @@ class _TestShopifyConnector(ShopifyConnector):
             ),
         )
         self.disconnected = False
+        self.invalid_signature = False
+        self.refresh_rejected = False
+        self.refresh_calls = 0
+
+    def verify_callback_signature(self, parameters):
+        if self.invalid_signature:
+            from backend.app.connectors.shopify import ShopifyAuthenticationError
+            raise ShopifyAuthenticationError("Invalid signature")
+
+    async def refresh_credentials(self, **kwargs):
+        self.refresh_calls += 1
+        if self.refresh_rejected:
+            from backend.app.connectors.shopify import ShopifyAuthenticationError
+            raise ShopifyAuthenticationError("Revoked")
+        return {"access_token": "new-test-access", "refresh_token": "new-test-refresh", "expires_in": 3600, "refresh_token_expires_in": 86400}
 
     async def handle_oauth_callback(self, *, tenant_id, callback_parameters):
         return {
@@ -46,6 +62,9 @@ class _TestShopifyConnector(ShopifyConnector):
 
     async def test_connection(self, context):
         return True
+
+    async def get_shop_metadata(self, context):
+        return {"id": "gid://shopify/Shop/123", "name": "Verified test shop", "domain": context.external_account_id}
 
     async def disconnect(self, context):
         self.disconnected = True
@@ -91,6 +110,9 @@ def _company(session, name: str) -> tuple[Company, User]:
         email_verified_at=datetime.now(timezone.utc),
     )
     session.add(user)
+    session.flush()
+    session.add(CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True))
+    add_active_subscription(session, company)
     session.commit()
     return company, user
 
@@ -141,6 +163,8 @@ async def test_oauth_state_creates_encrypted_tenant_connection(connection_enviro
 
     assert connection.company_id == company.id
     assert connection.status == CommerceConnectionStatus.CONNECTING.value
+    assert connection.display_name == "Verified test shop"
+    assert connection.sync_cursor["shop"]["domain"] == "alpha-store.myshopify.com"
     assert "shpat_secret" not in (connection.encrypted_credentials or "")
     assert len(service.list_connections(tenant)) == 1
     completed = service.mark_setup_complete(tenant, connection.id)
@@ -149,6 +173,79 @@ async def test_oauth_state_creates_encrypted_tenant_connection(connection_enviro
         await service.complete_shopify_oauth(
             {"state": start.state, "shop": "alpha-store.myshopify.com"}
         )
+
+
+@pytest.mark.asyncio
+async def test_invalid_callback_does_not_consume_shopify_state(connection_environment):
+    session, service, connector, (company, user), _ = connection_environment
+    started = service.begin_shopify_oauth(TenantContext(company.id), actor_user_id=user.id, shop_domain="signature-test")
+    connector.invalid_signature = True
+    with pytest.raises(CommerceAuthorizationError, match="signature"):
+        await service.complete_shopify_oauth({"state": started.state, "shop": "signature-test.myshopify.com"})
+    assert session.query(CommerceOAuthState).one().consumed_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["inactive", "viewer"])
+async def test_shopify_callback_rechecks_current_membership(connection_environment, change):
+    session, service, _, (company, user), _ = connection_environment
+    started = service.begin_shopify_oauth(TenantContext(company.id), actor_user_id=user.id, shop_domain="membership-test")
+    membership = session.query(CompanyMembership).filter_by(user_id=user.id, company_id=company.id).one()
+    if change == "inactive":
+        membership.is_active = False
+    else:
+        membership.role = UserRole.VIEWER
+    session.commit()
+    with pytest.raises(CommerceAuthorizationError, match="no longer authorized"):
+        await service.complete_shopify_oauth({"state": started.state, "shop": "membership-test.myshopify.com"})
+    assert session.query(CommerceOAuthState).one().consumed_at is None
+
+
+@pytest.mark.asyncio
+async def test_shopify_callback_cannot_start_sync_with_revoked_subscription(connection_environment):
+    from backend.app.models import BillingAccount
+    session, service, _, (company, user), _ = connection_environment
+    started = service.begin_shopify_oauth(TenantContext(company.id), actor_user_id=user.id, shop_domain="subscription-test")
+    session.query(BillingAccount).filter_by(company_id=company.id).one().status = "inactive"
+    session.commit()
+    with pytest.raises(CommerceAuthorizationError, match="subscription"):
+        await service.complete_shopify_oauth({"state": started.state, "shop": "subscription-test.myshopify.com"})
+
+
+@pytest.mark.asyncio
+async def test_shopify_new_authorization_invalidates_old_same_store_state(connection_environment):
+    _, service, _, (company, user), _ = connection_environment
+    tenant = TenantContext(company.id)
+    old = service.begin_shopify_oauth(tenant, actor_user_id=user.id, shop_domain="reconnect-test")
+    current = service.begin_shopify_oauth(tenant, actor_user_id=user.id, shop_domain="reconnect-test")
+    with pytest.raises(CommerceAuthorizationError, match="invalid or expired"):
+        await service.complete_shopify_oauth({"state": old.state, "shop": "reconnect-test.myshopify.com"})
+    connection = await service.complete_shopify_oauth({"state": current.state, "shop": "reconnect-test.myshopify.com"})
+    service.mark_setup_complete(tenant, connection.id)
+    assert connection.sync_cursor["shop"]["setup_verified"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejected", [True, False])
+async def test_shopify_refresh_rotation_and_revocation(connection_environment, rejected):
+    _, service, connector, (company, user), _ = connection_environment
+    tenant = TenantContext(company.id)
+    started = service.begin_shopify_oauth(tenant, actor_user_id=user.id, shop_domain="refresh-test")
+    connection = await service.complete_shopify_oauth({"state": started.state, "shop": "refresh-test.myshopify.com"})
+    service.mark_setup_complete(tenant, connection.id)
+    connection.access_token_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    service._db.commit()
+    connector.refresh_rejected = rejected
+    if rejected:
+        with pytest.raises(CommerceAuthorizationError):
+            await service.sync_context(tenant, connection.id)
+        assert connection.status == "REAUTH_REQUIRED"
+    else:
+        await service.sync_context(tenant, connection.id)
+        assert connector.refresh_calls == 1
+        await service.sync_context(tenant, connection.id)
+        assert connector.refresh_calls == 1
+        assert "new-test-access" not in connection.encrypted_credentials
 
 
 @pytest.mark.asyncio
@@ -166,18 +263,13 @@ async def test_connection_is_tenant_isolated_and_shop_has_one_owner(connection_e
     with pytest.raises(CommerceConnectionNotFound):
         service.get_connection(tenant_b, connection.id)
 
-    second = service.begin_shopify_oauth(
-        tenant_b, actor_user_id=user_b.id, shop_domain="shared-store"
-    )
     with pytest.raises(CommerceAuthorizationError, match="another tenant"):
-        await service.complete_shopify_oauth(
-            {"state": second.state, "shop": "shared-store.myshopify.com"}
-        )
+        service.begin_shopify_oauth(tenant_b, actor_user_id=user_b.id, shop_domain="shared-store")
 
 
 @pytest.mark.asyncio
 async def test_tenant_can_connect_multiple_stores_and_disconnect_safely(connection_environment) -> None:
-    _, service, connector, (company, user), _ = connection_environment
+    session, service, connector, (company, user), _ = connection_environment
     tenant = TenantContext(company_id=company.id)
     connections = []
     for shop in ("first-store", "second-store"):
@@ -190,11 +282,20 @@ async def test_tenant_can_connect_multiple_stores_and_disconnect_safely(connecti
             )
         )
 
+    from backend.app.models import Dataset, DatasetStatus
+    dataset = Dataset(company_id=company.id, name="imported-test.csv", type="csv", source="test-only.csv",
+        rows_count=1, columns_count=1, status=DatasetStatus.READY)
+    session.add(dataset)
+    session.flush()
+    connections[0].dataset_ids = {"retail": str(dataset.id)}
+    session.commit()
     disconnected = await service.disconnect(
         tenant, connections[0].id, actor_user_id=user.id
     )
 
     assert len(service.list_connections(tenant)) == 2
+    assert session.get(Dataset, dataset.id) is not None
+    assert disconnected.dataset_ids["retail"] == str(dataset.id)
     assert disconnected.status == CommerceConnectionStatus.DISCONNECTED.value
     assert disconnected.encrypted_credentials is None
     assert connector.disconnected is True

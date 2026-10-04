@@ -56,6 +56,7 @@ interface CommerceConnectionItem {
   store_url?: string;
   status: string;
   is_active: boolean;
+  connection_status?: string;
   last_synced_at?: string | null;
   records_count?: number;
   sync_orders?: boolean;
@@ -109,6 +110,7 @@ export function ConnectionsView() {
   const [connections, setConnections] = useState<CommerceConnectionItem[]>([]);
   const [retailSources, setRetailSources] = useState<RetailSourceItem[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncLogItem[]>([]);
+  const loadRevision = useRef(0);
 
   // Preview & Delete Modals
   const [previewDataset, setPreviewDataset] = useState<DatasetItem | null>(null);
@@ -121,6 +123,7 @@ export function ConnectionsView() {
   const [wooSecret, setWooSecret] = useState("");
 
   const loadData = useCallback(async () => {
+    const revision = ++loadRevision.current;
     setLoading(true);
     setLoadError(null);
     try {
@@ -131,9 +134,11 @@ export function ConnectionsView() {
         apiFetch("/api/v1/connectors/sync/history?limit=10", { headers }),
         apiFetch("/api/v1/retail/sources", { headers }),
       ]);
+      if (revision !== loadRevision.current) return;
 
       if (dsRes && dsRes.ok) {
         const dsData = await dsRes.json();
+        if (revision !== loadRevision.current) return;
         if (Array.isArray(dsData)) {
           setDatasets(dsData);
         }
@@ -141,25 +146,35 @@ export function ConnectionsView() {
 
       if (connRes && connRes.ok) {
         const connData = await connRes.json();
+        if (revision !== loadRevision.current) return;
         if (Array.isArray(connData)) {
-          setConnections(connData);
+          setConnections(connData.map((item) => ({
+            ...item,
+            store_name: item.display_name || item.store_name,
+            store_url: item.external_account_id || item.store_url,
+            connection_status: item.connection_status,
+            is_active: item.connection_status === "CONNECTED",
+            last_synced_at: item.last_successful_sync || item.last_synced_at,
+          })));
         }
       }
 
       if (syncRes && syncRes.ok) {
         const sData = await syncRes.json();
+        if (revision !== loadRevision.current) return;
         if (Array.isArray(sData)) {
           setSyncHistory(sData);
         }
       }
       if (sourceRes && sourceRes.ok) {
         const sourceData = await sourceRes.json();
+        if (revision !== loadRevision.current) return;
         if (Array.isArray(sourceData)) setRetailSources(sourceData);
       }
     } catch (error) {
-      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
+      if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
-      setLoading(false);
+      if (revision === loadRevision.current) setLoading(false);
     }
   }, []);
 
@@ -214,6 +229,13 @@ export function ConnectionsView() {
 
   useEffect(() => {
     loadData();
+    const clear = () => { loadRevision.current++; setConnections([]); setDatasets([]); setRetailSources([]); setSyncHistory([]); setAlertSuccess(null); };
+    const changed = () => { clear(); void loadData(); };
+    const expired = () => { clear(); setLoadError(new ApiRequestError("session_expired")); setLoading(false); };
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("avenqo-session") : null;
+    if (channel) channel.onmessage = changed;
+    window.addEventListener("avenqo:session-expired", expired);
+    return () => { loadRevision.current++; channel?.close(); window.removeEventListener("avenqo:session-expired", expired); };
   }, [loadData]);
 
   // File Upload Handlers
@@ -607,9 +629,10 @@ export function ConnectionsView() {
           {/* Shopify */}
           {(() => {
             const conn = connections.find((c) => c.provider.toLowerCase() === "shopify");
-            const isSyncing = conn?.status === "syncing" || actionLoading;
-            const isError = conn && (conn.status === "error" || conn.status === "failed");
-            const isConnected = conn && (conn.is_active || conn.status === "active" || conn.status === "completed");
+            const state = conn?.status.toUpperCase();
+            const isSyncing = state === "SYNCING" || state === "PROCESSING";
+            const isError = conn && (state === "ERROR" || state === "FAILED" || state === "REAUTH_REQUIRED");
+            const isConnected = conn?.connection_status === "CONNECTED";
 
             return (
               <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
@@ -641,8 +664,9 @@ export function ConnectionsView() {
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                    {connector.providerDescription}
+                    {isConnected && conn?.store_name ? conn.store_name : connector.providerDescription}
                   </p>
+                  {isConnected && conn?.store_url && <p className="mt-1 break-all text-xs text-slate-500">{conn.store_url}</p>}
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">{connector.connection}</span>
@@ -661,7 +685,7 @@ export function ConnectionsView() {
                         if (!shop) return;
                         setActionLoading(true);
                         try {
-                          const res = await fetch("/api/v1/connectors/shopify/authorize", {
+                          const res = await apiFetch("/api/v1/connectors/shopify/authorize", {
                             method: "POST",
                             headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                             body: JSON.stringify({ shop_domain: shop.trim() }),
@@ -847,7 +871,7 @@ export function ConnectionsView() {
                 const source = retailSources.find((item) =>
                   item.source_type === "connector" && item.connection_id === conn.id,
                 );
-                const connected = ["ready", "connected", "active", "completed"].includes(conn.status.toLowerCase());
+                const connected = conn.connection_status === "CONNECTED";
                 return <div
                 key={conn.id}
                 className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06] space-y-3"

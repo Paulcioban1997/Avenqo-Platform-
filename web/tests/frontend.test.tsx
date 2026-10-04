@@ -40,6 +40,25 @@ afterEach(() => {
 });
 
 describe("public trust content", () => {
+  it("does not label unverified Shopify credentials as connected", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      const path = String(input);
+      const body = path.includes("/connectors/connections") ? [{ id: "test-shopify", provider: "shopify", status: "ERROR", connection_status: "CONNECTING", is_active: true, display_name: "Unverified shop", external_account_id: "test.myshopify.com" }] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
+    await screen.findByText("ERROR");
+    expect(screen.queryByText(getAppTranslations("fr").integrations.statusConnected)).not.toBeInTheDocument();
+  });
+  it("shows the Shopify-returned merchant identity after verified setup", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      const body = String(input).includes("/connectors/connections") ? [{ id: "verified-test", provider: "shopify", status: "READY", connection_status: "CONNECTED", display_name: "Verified merchant identity", external_account_id: "verified.myshopify.com" }] : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
+    expect((await screen.findAllByText("Verified merchant identity")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("verified.myshopify.com")).length).toBeGreaterThan(0);
+  });
   it("rejects invalid numeric/date formatting rather than fabricating metrics", () => {
     for (const value of [null, undefined, NaN, Infinity, "12"]) expect(metricText(value, "fr", "unavailable")).toBe("unavailable");
     expect(currencyText(12, null, "ar", "unavailable")).toBe("unavailable");

@@ -486,7 +486,7 @@ class _ConnectionRow extends StatelessWidget {
         'ERROR';
     final connectionStatus =
         connection['connection_status']?.toString().toUpperCase() ??
-        (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTED');
+      (status == 'DISCONNECTED' ? 'DISCONNECTED' : 'CONNECTING');
     final isStalled = connection['is_stalled'] == true;
     final currentEntity = connection['current_entity']?.toString();
     final recordsProcessed = connection['records_processed'];
@@ -537,15 +537,19 @@ class _ConnectionRow extends StatelessWidget {
                     _ => 'error',
                   })));
     final connectionLabel = switch (connectionStatus) {
+      'CONNECTED' => text('connected'),
       'DISCONNECTED' => text('disconnected'),
       'REAUTH_REQUIRED' => text('reauthorizationRequired'),
-      _ => text('connected'),
+      'AUTHORIZING' => text('authorizing'),
+      _ => text('connecting'),
     };
     final connectionColor = connectionStatus == 'REAUTH_REQUIRED'
         ? const Color(0xFFD1414B)
         : connectionStatus == 'DISCONNECTED'
         ? colors.muted
-        : const Color(0xFF1B9E5A);
+        : connectionStatus == 'CONNECTED'
+        ? const Color(0xFF1B9E5A)
+        : const Color(0xFF087CF0);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

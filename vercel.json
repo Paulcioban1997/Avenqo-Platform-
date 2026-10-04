@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": { "deploymentEnabled": { "main": false } },
   "rewrites": [
     {
       "source": "/((?!.*\\.(?:js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|json|ico|webmanifest)$).*)",

@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from backend.app.connectors.shopify import ShopifyConnector, ShopifyConnectorError
+from backend.app.connectors.shopify import ShopifyAuthenticationError, ShopifyConnector, ShopifyConnectorError
 from backend.app.connectors.woocommerce import (
     WooCommerceAuthenticationError,
     WooCommerceConnector,
@@ -21,6 +21,8 @@ from backend.app.connectors.woocommerce import (
     WooCommercePermissionError,
 )
 from backend.app.core.security import hash_token
+from backend.app.core.permissions import permissions_for
+from backend.app.dependencies.subscription import ALLOWED_SUBSCRIPTION_STATUSES
 from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
@@ -29,6 +31,9 @@ from backend.app.models import (
     Dataset,
     NormalizedCommerceRecord,
     RetailActiveSource,
+    CompanyMembership,
+    User,
+    BillingAccount,
 )
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -84,7 +89,21 @@ class CommerceConnectionService:
     ) -> CommerceAuthorizationStart:
         connector = self._shopify()
         shop = connector.normalize_shop_domain(shop_domain)
+        self._assert_store_tenant(tenant, "shopify", shop)
+        for previous in self._db.scalars(select(CommerceOAuthState).where(
+            CommerceOAuthState.company_id == tenant.company_id,
+            CommerceOAuthState.provider == "shopify",
+            CommerceOAuthState.external_account_id == shop,
+            CommerceOAuthState.consumed_at.is_(None),
+        )).all():
+            previous.consumed_at = self._now()
         raw_state = secrets.token_urlsafe(48)
+        try:
+            authorization_url = connector.authenticate(
+                tenant_id=tenant.company_id, configuration={"shop_domain": shop, "state": raw_state}
+            )
+        except ShopifyConnectorError as exc:
+            raise CommerceConnectionError("Shopify OAuth is not configured") from exc
         expires_at = self._now() + self._STATE_TTL
         oauth_state = CommerceOAuthState(
             company_id=tenant.company_id,
@@ -105,10 +124,7 @@ class CommerceConnectionService:
             metadata={"provider": "shopify"},
         )
         return CommerceAuthorizationStart(
-            authorization_url=connector.authenticate(
-                tenant_id=tenant.company_id,
-                configuration={"shop_domain": shop, "state": raw_state},
-            ),
+            authorization_url=authorization_url,
             state=raw_state,
             expires_at=expires_at,
         )
@@ -272,13 +288,18 @@ class CommerceConnectionService:
                 CommerceOAuthState.provider == "shopify",
                 CommerceOAuthState.state_hash == hash_token(raw_state),
                 CommerceOAuthState.consumed_at.is_(None),
-            )
+            ).with_for_update()
         )
         now = self._now()
         if oauth_state is None or not raw_state or self._as_utc(oauth_state.expires_at) <= now:
             raise CommerceAuthorizationError("OAuth state is invalid or expired")
 
         connector = self._shopify()
+        try:
+            connector.verify_callback_signature(callback_parameters)
+        except ShopifyConnectorError as exc:
+            raise CommerceAuthorizationError("Shopify OAuth signature is invalid") from exc
+        self._validate_shopify_actor(oauth_state)
         callback_shop = connector.normalize_shop_domain(
             callback_parameters.get("shop", "")
         )
@@ -293,6 +314,7 @@ class CommerceConnectionService:
             tenant_id=oauth_state.company_id,
             callback_parameters=callback_parameters,
         )
+        self._validate_shopify_actor(oauth_state)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.provider == "shopify",
@@ -336,6 +358,8 @@ class CommerceConnectionService:
         context = self._context(connection, secret_payload)
         try:
             connected = await connector.test_connection(context)
+            if connected:
+                shop_metadata = await connector.get_shop_metadata(context)
         except ShopifyConnectorError as exc:
             connection.status = CommerceConnectionStatus.ERROR.value
             connection.error_category = "connection_test_failed"
@@ -347,6 +371,11 @@ class CommerceConnectionService:
             self._db.commit()
             raise CommerceAuthorizationError("Shopify connection test failed")
 
+        connection.display_name = shop_metadata["name"]
+        connection.sync_cursor = {**dict(connection.sync_cursor or {}), "shop": dict(shop_metadata)}
+        self._validate_shopify_actor(oauth_state)
+        self._db.commit()
+
         self._audit.record(
             actor_user_id=oauth_state.actor_user_id,
             action="connector.connection_authorized",
@@ -357,6 +386,19 @@ class CommerceConnectionService:
         )
         return connection
 
+    def _validate_shopify_actor(self, oauth_state: CommerceOAuthState) -> None:
+        actor = self._db.scalar(select(User).where(User.id == oauth_state.actor_user_id).execution_options(populate_existing=True))
+        membership = self._db.scalar(select(CompanyMembership).where(
+            CompanyMembership.company_id == oauth_state.company_id,
+            CompanyMembership.user_id == oauth_state.actor_user_id,
+            CompanyMembership.is_active.is_(True),
+        ).execution_options(populate_existing=True))
+        if actor is None or not actor.is_active or membership is None or "data:manage" not in permissions_for(membership.role):
+            raise CommerceAuthorizationError("Shopify OAuth actor is no longer authorized")
+        account = self._db.scalar(select(BillingAccount).where(BillingAccount.company_id == oauth_state.company_id))
+        if account is None or account.status.strip().lower() not in ALLOWED_SUBSCRIPTION_STATUSES:
+            raise CommerceAuthorizationError("Shopify OAuth tenant subscription is not active")
+
     def mark_setup_complete(
         self, tenant: TenantContext, connection_id: UUID
     ) -> CommerceConnection:
@@ -365,6 +407,10 @@ class CommerceConnectionService:
             raise CommerceConnectionError("Commerce connection setup is not in progress")
         connection.status = CommerceConnectionStatus.CONNECTED.value
         connection.error_category = None
+        if connection.provider == "shopify":
+            cursor = dict(connection.sync_cursor or {})
+            cursor["shop"] = {**dict(cursor.get("shop") or {}), "setup_verified": True}
+            connection.sync_cursor = cursor
         self._db.commit()
         return connection
 
@@ -467,6 +513,16 @@ class CommerceConnectionService:
         self, tenant: TenantContext, connection_id: UUID
     ) -> ConnectorSyncContext:
         connection = self.get_connection(tenant, connection_id)
+        if connection.provider == "shopify":
+            import asyncio
+            connection = await asyncio.to_thread(self._db.scalar, select(CommerceConnection).where(
+                CommerceConnection.id == connection_id,
+                CommerceConnection.company_id == tenant.company_id,
+            ).with_for_update().execution_options(populate_existing=True))
+            if connection is None:
+                raise CommerceConnectionNotFound("Commerce connection not found")
+            if connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value:
+                raise CommerceAuthorizationError("Shopify reauthorization is required")
         if (
             connection.status == CommerceConnectionStatus.DISCONNECTED.value
             or not connection.encrypted_credentials
@@ -492,15 +548,30 @@ class CommerceConnectionService:
             and self._as_utc(connection.access_token_expires_at)
             <= self._now() + self._REFRESH_MARGIN
         ):
-            if not refresh_token:
+            if not refresh_token or (
+                connection.refresh_token_expires_at is not None
+                and self._as_utc(connection.refresh_token_expires_at) <= self._now()
+            ):
+                connection.status = CommerceConnectionStatus.REAUTH_REQUIRED.value
+                connection.error_category = "reauthorization_required"
+                self._db.commit()
                 raise CommerceAuthorizationError("Shopify reauthorization is required")
-            refreshed = await self._shopify().refresh_credentials(
-                shop=connection.external_account_id,
-                refresh_token=refresh_token,
-            )
+            try:
+                refreshed = await self._shopify().refresh_credentials(
+                    shop=connection.external_account_id,
+                    refresh_token=refresh_token,
+                )
+            except ShopifyAuthenticationError as exc:
+                connection.status = CommerceConnectionStatus.REAUTH_REQUIRED.value
+                connection.error_category = "reauthorization_required"
+                self._db.commit()
+                raise CommerceAuthorizationError("Shopify reauthorization is required") from exc
             access_token = str(refreshed.get("access_token") or "")
             refresh_token = str(refreshed.get("refresh_token") or "")
             if not access_token or not refresh_token:
+                connection.status = CommerceConnectionStatus.REAUTH_REQUIRED.value
+                connection.error_category = "reauthorization_required"
+                self._db.commit()
                 raise CommerceAuthorizationError("Shopify reauthorization is required")
             connection.encrypted_credentials = self._cipher.encrypt(
                 {"access_token": access_token, "refresh_token": refresh_token}
@@ -513,10 +584,12 @@ class CommerceConnectionService:
                 now, refreshed.get("refresh_token_expires_in")
             )
             self._db.commit()
-        return self._context(
+        context = self._context(
             connection,
             {"access_token": access_token, "refresh_token": refresh_token},
         )
+        self._db.commit()
+        return context
 
     async def disconnect(
         self,

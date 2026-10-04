@@ -40,6 +40,7 @@ from backend.app.models import (
     DatasetVersion,
     NormalizedCommerceRecord,
 )
+from backend.app.services.commerce_connection_service import CommerceAuthorizationError
 from shared.ai_engine.connectors.commerce import (
     ConnectorCapability,
     ConnectorSyncContext,
@@ -263,6 +264,8 @@ class CommerceSyncService:
         reserved: bool = False,
     ) -> CommerceSyncResult:
         connection = self._connections.get_connection(tenant, connection_id)
+        if connection.status in {CommerceConnectionStatus.DISCONNECTED.value, CommerceConnectionStatus.REAUTH_REQUIRED.value}:
+            raise CommerceSyncError("Commerce authorization is required before synchronization")
         if self._is_active_sync(connection) and not reserved:
             raise CommerceSyncAlreadyRunning("Commerce synchronization is already running")
         connector = self._registry.get(connection.provider)
@@ -366,6 +369,7 @@ class CommerceSyncService:
             connection.sync_cursor = {
                 "checkpoint": {"updated_since": self._isoformat(run.started_at)},
                 "modifications": final_mods,
+                **{key: run.state[key] for key in ("settings", "shop") if key in run.state},
             }
             self._db.commit()
             return CommerceSyncResult(
@@ -415,6 +419,8 @@ class CommerceSyncService:
         if connection is None:
             self._connections.get_connection(tenant, connection_id)
             raise CommerceSyncDataError("Commerce connection not found")
+        if connection.status in {CommerceConnectionStatus.DISCONNECTED.value, CommerceConnectionStatus.REAUTH_REQUIRED.value}:
+            raise CommerceSyncError("Commerce authorization is required before synchronization")
         if self._is_active_sync(connection):
             raise CommerceSyncAlreadyRunning("Commerce synchronization is already running")
         self._begin_or_resume(connection)
@@ -447,6 +453,7 @@ class CommerceSyncService:
             select(CommerceConnection).where(
                 CommerceConnection.provider == "shopify",
                 CommerceConnection.external_account_id == normalized_shop,
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
         tenant_id = connection.company_id if connection is not None else UUID(int=0)
@@ -474,7 +481,7 @@ class CommerceSyncService:
             )
         )
         if existing is not None:
-            if existing.payload_hash != payload_hash:
+            if existing.payload_hash != payload_hash or existing.connection_id != connection.id or existing.company_id != connection.company_id or existing.topic != topic:
                 raise CommerceSyncDataError("Shopify webhook identifier was reused")
             return CommerceWebhookAcceptance(
                 receipt_id=existing.id,
@@ -505,7 +512,7 @@ class CommerceSyncService:
                     CommerceWebhookReceipt.webhook_id == webhook_id,
                 )
             )
-            if existing is None or existing.payload_hash != payload_hash:
+            if existing is None or existing.payload_hash != payload_hash or existing.connection_id != connection.id or existing.company_id != connection.company_id or existing.topic != topic:
                 raise CommerceSyncDataError("Shopify webhook could not be recorded")
             return CommerceWebhookAcceptance(
                 receipt_id=existing.id,
@@ -736,6 +743,7 @@ class CommerceSyncService:
             )
             prior_mods = list((connection.sync_cursor or {}).get("modifications") or [])
             state = {
+                **{key: state[key] for key in ("settings", "shop") if key in state},
                 "_run": {
                     "started_at": self._isoformat(started_at),
                     "updated_since": updated_since,
@@ -1859,7 +1867,7 @@ class CommerceSyncService:
     def _error_category(exc: Exception) -> str:
         if isinstance(exc, PermissionError):
             return "storage_unavailable"
-        if isinstance(exc, ShopifyAuthenticationError):
+        if isinstance(exc, (ShopifyAuthenticationError, CommerceAuthorizationError)):
             return "reauthorization_required"
         if isinstance(exc, WooCommerceAuthenticationError):
             return "reauthorization_required"

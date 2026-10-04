@@ -43,6 +43,46 @@ async def _no_sleep(delay: float) -> None:
     return None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("returned_domain,success", [("verified.myshopify.com", True), ("foreign.myshopify.com", False)])
+async def test_shopify_metadata_requires_real_matching_shop_identity(returned_domain, success):
+    connector, client = _connector(lambda request: httpx.Response(200, json={"data": {"shop": {
+        "id": "gid://shopify/Shop/123", "name": "Actual test merchant", "myshopifyDomain": returned_domain,
+    }}}))
+    context = ConnectorSyncContext(tenant_id=uuid4(), connection_id=uuid4(), access_token="test-only", external_account_id="verified.myshopify.com")
+    try:
+        if success:
+            assert (await connector.get_shop_metadata(context))["name"] == "Actual test merchant"
+        else:
+            with pytest.raises(ShopifyAuthenticationError):
+                await connector.get_shop_metadata(context)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,payload", [(401, {}), (403, {}), (200, {"access_token": "test"}), (200, {"access_token": "test", "refresh_token": "test", "scope": "read_orders"})])
+async def test_shopify_refresh_rejects_revocation_and_incomplete_grants(status, payload):
+    connector, client = _connector(lambda request: httpx.Response(status, json=payload))
+    try:
+        with pytest.raises(ShopifyAuthenticationError):
+            await connector.refresh_credentials(shop="verified.myshopify.com", refresh_token="test")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data", [{}, {"orders": {}}, {"orders": {"nodes": [], "pageInfo": {}}}, {"orders": {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": None}}}])
+async def test_shopify_malformed_entity_response_is_not_an_empty_sync(data):
+    connector, client = _connector(lambda request: httpx.Response(200, json={"data": data}))
+    context = ConnectorSyncContext(tenant_id=uuid4(), connection_id=uuid4(), access_token="test", external_account_id="verified.myshopify.com")
+    try:
+        with pytest.raises(ShopifyConnectorError):
+            await connector.sync_orders(context)
+    finally:
+        await client.aclose()
+
+
 def test_shopify_authorization_url_is_tenant_state_bound() -> None:
     connector, _ = _connector(lambda request: httpx.Response(500))
 
@@ -57,6 +97,12 @@ def test_shopify_authorization_url_is_tenant_state_bound() -> None:
     assert query["client_id"] == ["client-id"]
     assert query["scope"] == ["read_orders,read_customers"]
     assert query["state"] == ["nonce"]
+
+
+def test_shopify_missing_oauth_configuration_does_not_issue_auth_url():
+    with pytest.raises(ShopifyAuthenticationError, match="not configured"):
+        ShopifyConnector(client_id="", client_secret="", redirect_uri="", api_version="2026-07", scopes=(), webhook_uri="").authenticate(
+            tenant_id=uuid4(), configuration={"shop_domain": "test-shop", "state": "test-state"})
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config.settings import get_settings
 from backend.app.connectors.shopify import ShopifyConnectorError
+from backend.app.routers.commerce import _connection_response
 from backend.app.dependencies.auth import get_current_identity
 from backend.app.dependencies.commerce import (
     get_commerce_connection_service,
@@ -24,6 +25,18 @@ from shared.ai_engine.connectors.commerce import ConnectorImplementationStatus
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.exceptions import ConnectorNotRegisteredError
+
+
+@pytest.mark.parametrize("connection_state", ["ERROR", "CONNECTING", "CONNECTED", "READY", "FAILED", "REAUTH_REQUIRED"])
+def test_failed_shopify_verification_is_not_connected_with_stored_credentials(connection_state):
+    connection = SimpleNamespace(
+        id=uuid4(), provider="shopify", external_account_id="test.myshopify.com",
+        display_name=None, status=connection_state, encrypted_credentials="encrypted",
+        dataset_ids={}, sync_cursor={}, capabilities=[], records_processed=0,
+        current_entity=None, error_category="connection_test_failed", last_successful_sync=None,
+        sync_started_at=None, disconnected_at=None, created_at=datetime.now(timezone.utc),
+    )
+    assert _connection_response(connection).connection_status != "CONNECTED"
 
 
 EXPECTED_COMMERCE_PROVIDERS = {
@@ -77,7 +90,7 @@ class _Connections:
             last_successful_sync=datetime.now(timezone.utc),
             sync_started_at=None,
             dataset_ids={},
-            sync_cursor={},
+            sync_cursor={"shop": {"id": "gid://shopify/Shop/123", "domain": "alpha.myshopify.com", "setup_verified": True}},
         )
 
     def list_connections(self, tenant):
@@ -335,11 +348,13 @@ def test_connector_catalog_and_manual_sync_routes(monkeypatch) -> None:
     with TestClient(app) as client:
         catalog = client.get("/api/v1/connectors")
         listed = client.get("/api/v1/connectors/connections")
+        manual = client.post("/api/v1/connectors/shopify/manual")
         started = client.post(
             f"/api/v1/connectors/connections/{connections.connection.id}/sync"
         )
 
     assert catalog.status_code == 200
+    assert manual.status_code == 410
     assert len(catalog.json()) == 30
     assert all("implementation_status" not in item for item in catalog.json())
     customer_statuses = {

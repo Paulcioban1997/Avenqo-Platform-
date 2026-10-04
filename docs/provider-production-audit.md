@@ -622,3 +622,71 @@ billing failure is not bypassed; RETELL_API_KEY is missing; TELNYX_API_KEY,
 TELNYX_PUBLIC_KEY and TELNYX_MESSAGING_PROFILE_ID are missing. Microsoft OAuth app
 credentials are absent and the Outlook provider remains the previously documented partial
 placeholder; no new implementation or authenticated Microsoft operation is claimed here.
+
+## Shopify Production Hardening (2026-10-04)
+
+External status: AUTH REQUIRED for Produits_Ero. Fresh read-only production audit found
+zero Shopify connections for this tenant. Client/callback/webhook configuration is present;
+both callback and webhook are HTTPS on the production API, frontend redirect host is
+avenqo.ca, and the configured stable API version is 2026-07. No credential value was
+printed, rotated or changed, and no OAuth state/connection/sync was created in production.
+
+### Code-only Findings And Repairs
+
+- Backend previously reported CONNECTED from encrypted-credential presence alone, and a
+	token-only manual endpoint persisted CONNECTED before any Shopify validation. That
+	endpoint now returns 410 and directs owners to existing OAuth; historical company data
+	is not deleted. Web and Flutter now use explicit backend verification state, never a
+	client is_active flag or default connected label.
+- OAuth verifies the Shopify HMAC before consuming state, serializes state consumption,
+	invalidates prior same-store attempts and rejects foreign-tenant shop claims before
+	token exchange. Actor membership, data-management permission and active subscription
+	are rechecked at callback/persistence time. Nonces remain hashed at rest.
+- Authenticated Shopify metadata supplies shop id, name and myshopifyDomain. The returned
+	domain must match the authorization request. The real name is persisted and displayed;
+	verified setup provenance is required for CONNECTED, including legacy status rows.
+- Expiring access/refresh credentials remain server-side encrypted. Renewal is serialized;
+	expired/revoked/malformed/reduced-scope refresh fails as REAUTH_REQUIRED, not success.
+	The transaction lock is released before subsequent Shopify network calls. Admin 401/403
+	requires authorization, while retryable vendor errors remain separate.
+- Entity responses missing nodes or valid pagination are errors, not fabricated empty
+	products/orders/customers/inventory. Existing entity/nested pagination, normalizers,
+	stable tenant dataset ingestion, canonical Retail projection and worker generation
+	deduplication are reused. Discounts/refunds are derived from authorized order data.
+- Sync checkpoints retain shop metadata and connection settings, including OFF state.
+	Disconnect keeps imported datasets/references; disconnected/reauthorization-required
+	sync starts are refused. Webhook retries are bound to tenant, connection, topic and
+	payload hash; disconnected deliveries cannot relaunch a sync.
+- Web tenant/session changes clear store/source data and reject stale API responses.
+	All new UI states reuse existing 44-locale catalogs; no new locale registry was added.
+
+### Verification Gates
+
+- Targeted Shopify/source/Retail/worker contract suite: 118 passed. Preservation backend
+	regression: 399 passed, one local PostgreSQL test skipped, two existing warnings.
+	Final transaction-boundary follow-up: 54 passed. CI continues the isolated PostgreSQL
+	gate and now also requires the Shopify/source/worker suites.
+- Web typecheck and generated 44-catalog check passed; 97 tests passed; production build
+	passed. Flutter analysis clean; 306 tests passed, including 38 focused connector flows.
+- These tests prove implementation, tenant isolation, normalized-record/dataset and
+	webhook retry contracts. They do NOT prove Shopify production authentication or real
+	store data. Products, orders, customers, inventory, real dataset ingestion and real
+	Retail/Copilot consumption remain NOT RUN until authorized consent.
+- The user authorized commit/push and deployment of these corrections only after green
+	CI, expressly without running real Shopify OAuth or sync. Publication gates require
+	CI before backend/UI promotion. Final CI/deployment receipts are recorded after success.
+
+### Exact Owner Step
+
+Open https://avenqo.ca/connections after signing in; select the Produits_Ero organization.
+In the Shopify card, click the localized Connecter/Connect button. The Connecter Shopify
+prompt requests only the actual permanent myshopify.com shop domain, never a secret.
+Expect Shopify login (if needed), followed by its app-install/authorization or permission-
+update screen for the configured Avenqo app and the correct store. Approve the requested
+read_orders, read_customers, read_products, read_inventory and read_locations access.
+Cancel if the displayed store/app is not the expected one. No access token, API key or
+client secret should be pasted into chat. Return through the Avenqo callback afterward.
+
+Stop here for human owner/admin authorization. Only after this genuine OAuth completion
+may bounded production sync, real shop identity and downstream Retail/Copilot consumption
+be verified. No Shopify LIVE VERIFIED or CONNECTED claim is made from code tests.

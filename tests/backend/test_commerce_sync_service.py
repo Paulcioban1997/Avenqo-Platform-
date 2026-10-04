@@ -424,6 +424,7 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
             encrypted_credentials="unused-by-test",
             status=CommerceConnectionStatus.CONNECTED.value,
             capabilities=["orders"],
+            sync_cursor={"settings": {"is_enabled": False}, "shop": {"name": "Verified test merchant"}},
         )
         session.add(connection)
         session.commit()
@@ -468,6 +469,8 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
         assert connection.records_processed == 0
         assert connection.last_successful_sync is not None
         assert "_run" not in connection.sync_cursor
+        assert connection.sync_cursor["settings"]["is_enabled"] is False
+        assert connection.sync_cursor["shop"]["name"] == "Verified test merchant"
         assert connector.updated_since[-1] is not None
         assert connection.last_successful_sync <= datetime.now(timezone.utc)
 
@@ -712,6 +715,9 @@ async def test_shopify_webhook_is_verified_and_deduplicated(tmp_path) -> None:
 
         accepted = await service.accept_shopify_webhook(headers=headers, body=body)
         duplicate = await service.accept_shopify_webhook(headers=headers, body=body)
+        from backend.app.services.commerce_sync_service import CommerceSyncDataError
+        with pytest.raises(CommerceSyncDataError, match="reused"):
+            await service.accept_shopify_webhook(headers={**headers, "X-Shopify-Topic": "orders/delete"}, body=body)
 
         deleted_body = b'{"id": 456}'
         deleted_headers = {
@@ -743,6 +749,11 @@ async def test_shopify_webhook_is_verified_and_deduplicated(tmp_path) -> None:
             receipts_by_id["delivery-2"].source_record_id
             == "gid://shopify/Order/456"
         )
+        connection.status = CommerceConnectionStatus.DISCONNECTED.value
+        session.commit()
+        ignored = await service.accept_shopify_webhook(headers={**headers, "X-Shopify-Webhook-Id": "late-delivery"}, body=body)
+        assert ignored.should_process is False
+        assert len(session.scalars(select(CommerceWebhookReceipt)).all()) == 2
 
 
 @pytest.mark.asyncio

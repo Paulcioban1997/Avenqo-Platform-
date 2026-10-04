@@ -34,7 +34,6 @@ from backend.app.schemas.commerce import (
     GenericSyncRequest,
     ShopifyAuthorizationRequest,
     ShopifyAuthorizationResponse,
-    ShopifyManualConnectionRequest,
     UpdateConnectorSettingsRequest,
     WooCommerceAuthorizationRequest,
     WooCommerceCallbackPayload,
@@ -89,13 +88,32 @@ def _connection_response(
         parsed_dataset_id = UUID(str(dataset_id)) if dataset_id else None
     except (TypeError, ValueError):
         parsed_dataset_id = None
+    shop_identity = (connection.sync_cursor or {}).get("shop") or {}
+    setup_verified = connection.provider != "shopify" or (
+        shop_identity.get("setup_verified") is True
+        and bool(shop_identity.get("id"))
+        and shop_identity.get("domain") == connection.external_account_id
+    )
     connection_status = (
         "DISCONNECTED"
         if connection.status == CommerceConnectionStatus.DISCONNECTED.value
         else "REAUTH_REQUIRED"
         if connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value
         else "CONNECTED"
-        if getattr(connection, "encrypted_credentials", None)
+        if getattr(connection, "encrypted_credentials", None) and setup_verified and (
+            connection.status in {
+                CommerceConnectionStatus.CONNECTED.value,
+                CommerceConnectionStatus.SYNCING.value,
+                CommerceConnectionStatus.PROCESSING.value,
+                CommerceConnectionStatus.READY.value,
+                CommerceConnectionStatus.COMPLETED.value,
+                CommerceConnectionStatus.DEGRADED.value,
+            }
+            or (connection.status == CommerceConnectionStatus.FAILED.value and (
+                connection.last_successful_sync is not None
+                or (connection.provider == "shopify" and (connection.sync_cursor or {}).get("shop", {}).get("setup_verified") is True)
+            ))
+        )
         else "CONNECTING"
     )
     sync_status = connection.status
@@ -521,63 +539,15 @@ async def connect_woocommerce_manual(
 
 @router.post(
     "/shopify/manual",
-    response_model=CommerceConnectionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
 )
 async def connect_shopify_manual(
-    request: ShopifyManualConnectionRequest,
-    background_tasks: BackgroundTasks,
     identity: CurrentIdentity = Depends(manage_connectors),
     _: TenantContext = Depends(require_active_subscription),
-    sync: CommerceSyncService = Depends(get_commerce_sync_service),
-    runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
     registry: CommerceConnectorRegistry = Depends(get_commerce_connector_registry),
-    cipher: ConnectorSecretCipher = Depends(get_connector_secret_cipher),
-    db: Session = Depends(get_db),
-) -> CommerceConnectionResponse:
+):
     _require_connector_launch_access(identity, registry, "shopify")
-    tenant = _tenant(identity)
-    domain = request.shop_domain.strip().lower()
-    if not domain.endswith(".myshopify.com") and "." not in domain:
-        domain = f"{domain}.myshopify.com"
-    token = request.access_token.get_secret_value().strip()
-
-    encrypted_creds = cipher.encrypt({"access_token": token, "shop_domain": domain})
-
-    connection = db.scalar(
-        select(CommerceConnection).where(
-            CommerceConnection.company_id == tenant.company_id,
-            CommerceConnection.provider == "shopify",
-            CommerceConnection.external_account_id == domain,
-        )
-    )
-
-    if not connection:
-        connection = CommerceConnection(
-            company_id=tenant.company_id,
-            provider="shopify",
-            external_account_id=domain,
-            display_name=domain,
-            status=CommerceConnectionStatus.CONNECTED.value,
-            encrypted_credentials=encrypted_creds,
-            capabilities=["orders", "products", "customers", "inventory"],
-        )
-        db.add(connection)
-    else:
-        connection.encrypted_credentials = encrypted_creds
-        connection.status = CommerceConnectionStatus.CONNECTED.value
-        connection.error_category = None
-        connection.disconnected_at = None
-
-    db.commit()
-    db.refresh(connection)
-
-    try:
-        sync.reserve(tenant, connection.id)
-        background_tasks.add_task(runner.run_reserved, tenant, connection.id)
-    except Exception:
-        pass
-    return _connection_response(connection)
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="Shopify owner OAuth authorization is required. Use /connectors/shopify/authorize.")
 
 
 @router.post(

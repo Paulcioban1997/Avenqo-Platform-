@@ -260,6 +260,9 @@ class ShopifyConnector(CommerceConnector):
         return normalized
 
     def authenticate(self, *, tenant_id, configuration: Mapping[str, str]) -> str:
+        callback = urlsplit(self._redirect_uri)
+        if not self._client_id or not self._client_secret or not self._scopes or callback.scheme != "https" or not callback.hostname:
+            raise ShopifyAuthenticationError("Shopify OAuth is not configured")
         shop = self.normalize_shop_domain(configuration.get("shop_domain", ""))
         state = configuration.get("state", "")
         if not state:
@@ -316,6 +319,9 @@ class ShopifyConnector(CommerceConnector):
             "shop": shop,
         }
 
+    def verify_callback_signature(self, parameters: Mapping[str, str]) -> None:
+        self._verify_callback_hmac(parameters)
+
     async def refresh_credentials(
         self, *, shop: str, refresh_token: str
     ) -> Mapping[str, Any]:
@@ -330,15 +336,32 @@ class ShopifyConnector(CommerceConnector):
             },
             headers={"Accept": "application/json"},
         )
-        if response.status_code == 401:
+        if response.status_code in {401, 403}:
             raise ShopifyAuthenticationError("Shopify reauthorization is required")
         if response.status_code >= 400:
             raise ShopifyConnectorError("Shopify token refresh failed")
-        return self._json_object(response)
+        payload = self._json_object(response)
+        if not payload.get("access_token") or not payload.get("refresh_token"):
+            raise ShopifyAuthenticationError("Shopify reauthorization is required")
+        if "scope" in payload:
+            granted = {scope.strip() for scope in str(payload["scope"]).split(",") if scope.strip()}
+            if not set(self._scopes).issubset(granted):
+                raise ShopifyAuthenticationError("Shopify reauthorization is required")
+        return payload
 
     async def test_connection(self, context: ConnectorSyncContext) -> bool:
         data = await self._graphql(context, "query AvenqoShop { shop { id } }")
         return bool((data.get("shop") or {}).get("id"))
+
+    async def get_shop_metadata(self, context: ConnectorSyncContext) -> Mapping[str, str]:
+        data = await self._graphql(context, "query AvenqoShopIdentity { shop { id name myshopifyDomain } }")
+        shop = data.get("shop")
+        if not isinstance(shop, Mapping) or not shop.get("id") or not isinstance(shop.get("name"), str) or not shop["name"].strip():
+            raise ShopifyAuthenticationError("Shopify shop identity is unavailable")
+        domain = self.normalize_shop_domain(str(shop.get("myshopifyDomain") or ""))
+        if not hmac.compare_digest(domain, self.normalize_shop_domain(context.external_account_id)):
+            raise ShopifyAuthenticationError("Shopify shop identity does not match the authorized store")
+        return {"id": str(shop["id"]), "name": shop["name"].strip(), "domain": domain}
 
     async def sync_orders(self, context: ConnectorSyncContext) -> ConnectorPage:
         page = await self._sync_connection(context, "orders", self._ORDERS_QUERY)
@@ -683,9 +706,15 @@ class ShopifyConnector(CommerceConnector):
             query,
             {"first": 50, "after": context.cursor, "query": updated_query},
         )
-        connection = data.get(field) or {}
-        page_info = connection.get("pageInfo") or {}
+        connection = data.get(field)
+        if not isinstance(connection, Mapping) or not isinstance(connection.get("nodes"), list):
+            raise ShopifyConnectorError("Shopify returned invalid entity data")
+        page_info = connection.get("pageInfo")
+        if not isinstance(page_info, Mapping) or not isinstance(page_info.get("hasNextPage"), bool):
+            raise ShopifyConnectorError("Shopify returned invalid entity pagination")
         next_cursor = page_info.get("endCursor") if page_info.get("hasNextPage") else None
+        if page_info["hasNextPage"] and not next_cursor:
+            raise ShopifyConnectorError("Shopify returned invalid entity pagination")
         return ConnectorPage(tuple(connection.get("nodes") or ()), next_cursor)
 
     async def _paginate_nested_connection(
@@ -743,7 +772,7 @@ class ShopifyConnector(CommerceConnector):
                     "X-Shopify-Access-Token": context.access_token,
                 },
             )
-            if response.status_code == 401:
+            if response.status_code in {401, 403}:
                 raise ShopifyAuthenticationError(
                     "Shopify reauthorization is required",
                     http_status=response.status_code,
