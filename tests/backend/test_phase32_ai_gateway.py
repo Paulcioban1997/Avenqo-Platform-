@@ -105,6 +105,14 @@ def test_supported_production_profiles_have_sourced_rates() -> None:
     assert rate_card.pricing_for("gemini", settings.gemini_model).source.startswith("https://")
 
 
+@pytest.mark.parametrize("code, category", [(403, FailureCategory.AUTH_CONFIG), (404, FailureCategory.MODEL_UNAVAILABLE), (429, FailureCategory.RATE_LIMITED), (500, FailureCategory.PROVIDER_5XX)])
+def test_google_http_status_is_classified_without_sensitive_message(code, category) -> None:
+    from google.genai.errors import ClientError
+    from backend.app.ai.llm.failure_classification import classify_exception
+
+    assert classify_exception(ClientError(code, {})) == category
+
+
 def test_vertex_requires_explicit_project_location_and_model() -> None:
     settings = Settings(_env_file=None, VERTEX_ENABLED=True, VERTEX_PROJECT="test-project", VERTEX_LOCATION="", VERTEX_MODEL="test-model")
     assert LLMProviderFactory._credential_for(settings, "vertex") is None

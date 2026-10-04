@@ -28,6 +28,7 @@ class FailureCategory(str, Enum):
     CONTENT_REJECTED = "content_rejected"
     QUOTA_PROBLEM = "quota_problem"
     USAGE_UNAVAILABLE = "usage_unavailable"
+    MODEL_UNAVAILABLE = "model_unavailable"
     UNKNOWN = "unknown"
 
 
@@ -46,6 +47,7 @@ _FALLBACK_ELIGIBLE = frozenset({
     FailureCategory.OVERLOADED,
     FailureCategory.QUOTA_PROBLEM,
     FailureCategory.UNKNOWN,
+    FailureCategory.MODEL_UNAVAILABLE,
 })
 
 # Catégories pour lesquelles réessayer le MÊME fournisseur peut résoudre le problème.
@@ -64,6 +66,19 @@ def classify_exception(exc: BaseException) -> FailureCategory:
 
     if "usage metadata unavailable" in text:
         return FailureCategory.USAGE_UNAVAILABLE
+    if any(marker in text for marker in ("credit balance", "insufficient balance", "insufficient_quota", "billing")):
+        return FailureCategory.QUOTA_PROBLEM
+    status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status_code in (401, 403):
+        return FailureCategory.AUTH_CONFIG
+    if status_code == 404:
+        return FailureCategory.MODEL_UNAVAILABLE
+    if status_code == 429:
+        return FailureCategory.RATE_LIMITED
+    if status_code == 503:
+        return FailureCategory.OVERLOADED
+    if isinstance(status_code, int) and 500 <= status_code <= 599:
+        return FailureCategory.PROVIDER_5XX
     if "timeout" in text or "timed out" in text:
         return FailureCategory.TIMEOUT
     if ("rate" in text and "limit" in text) or "429" in text or "ratelimit" in text:
@@ -81,6 +96,8 @@ def classify_exception(exc: BaseException) -> FailureCategory:
     if any(marker in text for marker in ("quota", "insufficient_quota", "billing")):
         return FailureCategory.QUOTA_PROBLEM
     if any(marker in text for marker in ("invalid", "400", "bad request", "validation")):
+        return FailureCategory.INVALID_REQUEST
+    if isinstance(status_code, int) and 400 <= status_code <= 499:
         return FailureCategory.INVALID_REQUEST
     return FailureCategory.UNKNOWN
 

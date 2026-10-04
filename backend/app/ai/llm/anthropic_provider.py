@@ -67,10 +67,10 @@ class AnthropicProvider(LLMProvider):
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         try:
             response = await self._client().messages.create(model=self._model, max_tokens=self._max_tokens,
-                temperature=self._temperature, system=system_instruction, messages=[{"role": "user", "content": prompt}])
+                system=system_instruction, messages=[{"role": "user", "content": prompt}])
             usage = _normalize_anthropic_usage(response, self._model)
             return LLMGeneration(
-                response.content[0].text,
+                "".join(block.text for block in response.content if getattr(block, "type", None) == "text"),
                 self.name,
                 usage.model,
                 usage.as_token_usage(),
@@ -98,7 +98,7 @@ class AnthropicProvider(LLMProvider):
         final_usage = None
         try:
             async with self._client().messages.stream(model=self._model, max_tokens=self._max_tokens,
-                temperature=self._temperature, system=system_instruction, messages=[{"role": "user", "content": prompt}]) as stream:
+                system=system_instruction, messages=[{"role": "user", "content": prompt}]) as stream:
                 async for text in stream.text_stream:
                     yield LLMStreamChunk(content=text)
                 response = await stream.get_final_message()
@@ -147,10 +147,9 @@ class AnthropicProvider(LLMProvider):
             response = await self._client().messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                temperature=self._temperature,
                 system=system_instruction,
                 messages=anthropic_messages,
-                tools=anthropic_tools or None,
+                **({"tools": anthropic_tools} if anthropic_tools else {}),
             )
             text_blocks = [block.text for block in response.content if getattr(block, "type", None) == "text"]
             tool_calls = tuple(

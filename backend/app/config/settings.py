@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # spécifiques par fournisseur pour éviter les erreurs "modèle inconnu".
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     anthropic_model: str = Field(default="claude-sonnet-4-6", alias="ANTHROPIC_MODEL")
-    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", alias="GEMINI_MODEL")
     vertex_enabled: bool = Field(default=False, alias="VERTEX_ENABLED")
     vertex_project: str = Field(default="", alias="VERTEX_PROJECT")
     vertex_location: str = Field(default="", alias="VERTEX_LOCATION")

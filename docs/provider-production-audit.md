@@ -33,8 +33,8 @@ READ_ONLY_SUCCESS is scoped to the named operation, not the complete integration
 ## Runtime Inventory
 
 - OpenAI text: IMPLEMENTED; CONFIGURED; model metadata READ_ONLY_SUCCESS. Recent production ledger contained 159 successful attempts with response IDs during the observed 24-hour window. Historical inference evidence, not a new audit prompt or a guarantee about every operation.
-- Gemini direct: IMPLEMENTED; CONFIGURED; model metadata READ_ONLY_SUCCESS. Recent ledger contained 112 successful attempts with response IDs and four failures. Dynamic alias pricing was not trustworthy; stable model profiles and reasoning-inclusive output accounting were added.
-- Anthropic: IMPLEMENTED; CONFIGURED; the previously configured model returned 404. Models-list authentication succeeded and a supported Sonnet replacement's limits were read from the API. Replacement inference/billing remains subject to a centralized live check after deployment.
+- Gemini direct: IMPLEMENTED; CONFIGURED; model metadata READ_ONLY_SUCCESS. Recent ledger contained 112 successful attempts with response IDs and four failures. Dynamic alias pricing was not trustworthy; current stable model profiles and reasoning-inclusive output accounting were added. An initial legacy stable candidate failed the centralized inference check; the current documented Flash-Lite replacement must be verified independently.
+- Anthropic: IMPLEMENTED; CONFIGURED; the previously configured model returned 404. Models-list authentication succeeded and a supported Sonnet replacement's limits were read from the API. A live centralized check exposed a pre-request TypeError: SDK 1.11.0 no longer accepts temperature on messages create/stream. That argument was removed from text/tools/stream paths, with tests bound to the installed SDK signatures. Replacement inference/billing remains subject to a centralized live check after deployment.
 - OpenAI Voice STT / TTS / Realtime: IMPLEMENTED; CONFIGURED via OpenAI. Existing voice tests and prior production stream-ticket evidence retained. No new microphone-to-STT-to-reasoning-to-TTS audio quality test; no 44/44 production semantic/audio claim. Models and voice unchanged.
 - Retell: IMPLEMENTED adapter; API key MISSING. Authentication, connection and live telephony NOT VERIFIED. No call initiated.
 - Telnyx: IMPLEMENTED call-control/SMS/webhook adapter; key and webhook public key MISSING. NOT VERIFIED. No SMS or call action performed.
@@ -85,6 +85,7 @@ implemented and tested. A registered source kind is not a functioning adapter.
 
 - Full backend run before the final stable-profile follow-up: 1069 passed, 732 warnings, 3804.87 seconds. That run used google-genai 1.75.0.
 - Final backend deployment slice on google-genai 2.28.0: 265 passed, 8 warnings, including Central AI, registry, execution security, accounting, gateway, Voice, locales and migrations.
+- Latest compatibility follow-up on google-genai 2.28.0 and Anthropic 1.11.0: 273 passed, 7 warnings in 143.71 seconds; 102 focused provider/Central/accounting checks also passed.
 - Web: 89 tests passed; TypeScript and production build passed.
 - Web lint: FAILED with 90 source errors; global traversal reported 5455 errors and 10603 warnings. These are pre-existing frontend surfaces, not changed by this provider release. No lint rules were disabled.
 - Flutter: analyze passed; 306 tests passed. Existing dependency/discontinued-package notices remain.
@@ -127,3 +128,12 @@ A final follow-up disables direct Gemini SDK retries as well as Vertex SDK retri
 95 focused gateway, usage, Central AI and credit tests passed on Google SDK 2.28.0.
 This follow-up's exact final CI/deployment and minimal centralized inference results
 must be checked independently; the first release evidence does not establish them.
+
+Centralized probes on the intermediate retry release recorded two failed classification
+attempts and two failed deterministic Retail attempts, with zero credits charged in the
+audit-prefix ledger. No successful inference was claimed from these failures. Sanitized
+cause types identified the Anthropic SDK argument defect and a Google ClientError; no
+credential, response text or tenant identity was printed. The compatibility follow-up
+uses a current documented Google model profile, removes the unsupported Anthropic argument,
+and classifies vendor errors by structured status codes. It requires fresh release/inference
+verification rather than reusing metadata evidence as a production success claim.

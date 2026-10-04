@@ -31,7 +31,7 @@ class ProviderHealthRegistry:
 
         if category == FailureCategory.RATE_LIMITED:
             self._status[provider] = ProviderHealthStatus.RATE_LIMITED
-        elif category in (FailureCategory.AUTH_CONFIG, FailureCategory.INVALID_REQUEST):
+        elif category in (FailureCategory.AUTH_CONFIG, FailureCategory.INVALID_REQUEST, FailureCategory.MODEL_UNAVAILABLE):
             self._status[provider] = ProviderHealthStatus.UNAVAILABLE
         else:
             self._status[provider] = ProviderHealthStatus.DEGRADED

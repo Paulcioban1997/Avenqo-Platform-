@@ -1,11 +1,16 @@
 from types import SimpleNamespace
 from decimal import Decimal
+import inspect
+from unittest.mock import AsyncMock
+import pytest
 
 from backend.app.ai.llm.anthropic_provider import _normalize_anthropic_usage
 from backend.app.ai.llm.gemini_provider import _normalize_gemini_usage
 from backend.app.ai.llm.openai_provider import _normalize_openai_usage
 from backend.app.ai.llm.model_registry import LLMRateCard
 from backend.app.ai.llm.schemas import LLMUsage
+from backend.app.ai.llm.schemas import LLMMessage, ToolDefinition
+from backend.app.ai.llm.anthropic_provider import AnthropicProvider
 
 
 def test_openai_usage_normalization() -> None:
@@ -100,3 +105,49 @@ def test_rate_card_uses_configured_alias_rates_for_versioned_model_response() ->
     )
 
     assert rate_card.cost_for(usage) == Decimal("0.0111")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["generate", "generate_with_tools", "stream_events"])
+async def test_anthropic_adapter_matches_installed_message_api(operation, monkeypatch) -> None:
+    from anthropic.resources.messages import AsyncMessages
+
+    response = SimpleNamespace(id="request-test", model="claude-sonnet-4-6",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=2),
+        content=[SimpleNamespace(type="thinking"), SimpleNamespace(type="text", text="OK")])
+    create_signature = inspect.signature(AsyncMessages.create)
+    stream_signature = inspect.signature(AsyncMessages.stream)
+    async def create(**kwargs):
+        create_signature.bind(object(), **kwargs)
+        assert "temperature" not in kwargs
+        assert kwargs.get("tools", []) is not None
+        return response
+    class Stream:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        @property
+        def text_stream(self):
+            async def chunks():
+                yield "OK"
+            return chunks()
+        async def get_final_message(self):
+            return response
+    def stream(**kwargs):
+        stream_signature.bind(object(), **kwargs)
+        assert "temperature" not in kwargs
+        return Stream()
+    provider = AnthropicProvider("test-key", "claude-sonnet-4-6", 0.2, 80)
+    monkeypatch.setattr(provider, "_client", lambda: SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=create), stream=stream)))
+    if operation == "generate":
+        result = await provider.generate(system_instruction="sys", prompt="hello")
+        assert result.content == "OK"
+    elif operation == "generate_with_tools":
+        result = await provider.generate_with_tools(system_instruction="sys", messages=[LLMMessage(role="user", content="hello")],
+            tools=[ToolDefinition(name="read_status", description="Read", parameters_schema={"type": "object", "properties": {}})])
+        assert result.content == "OK"
+    else:
+        events = [event async for event in provider.stream_events(system_instruction="sys", prompt="hello")]
+        assert events[0].content == "OK"
+        assert events[-1].usage.input_tokens == 10

@@ -72,6 +72,12 @@ class LLMModelSpec:
 
 
 _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
+    ("gemini", "gemini-3.5-flash-lite"): {
+        "input_cost_per_million_usd": "0.30",
+        "cached_input_cost_per_million_usd": "0.03",
+        "output_cost_per_million_usd": "2.50",
+        "tool_call_cost_usd": "0",
+    },
     ("anthropic", "claude-sonnet-4-6"): {
         "input_cost_per_million_usd": "3.00",
         "cached_input_cost_per_million_usd": "0.30",
@@ -105,6 +111,17 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
 }
 
 _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
+    ("gemini", "gemini-3.5-flash-lite"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "long_context", "reasoning"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 65_536,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration", "business_reasoning"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-3.5-flash-lite-standard-text-2026-10-03",
+        "pricing_effective_from": "2026-10-03",
+    },
     ("anthropic", "claude-sonnet-4-6"): {
         "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context"],
         "context_window": 1_000_000,
