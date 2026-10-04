@@ -102,6 +102,65 @@ Do not paste credentials into chat, commit service-account JSON or reuse a Gemin
 as evidence of ADC authentication. A single minimal real Vertex request must then pass
 through AI Central and AIUsageService, with provider/model, response ID and charge verified.
 
+## Railway Identity Finding (2026-10-03 follow-up)
+
+Classification: C for the inspected Railway runtime. The running container exposes
+Railway deployment/replica metadata and `RAILWAY_API_TOKEN` (a Railway control-plane
+credential), but no OIDC token, issuer or audience. Railway's documented provided
+runtime variables include deployment, environment, service and replica identifiers,
+not a signed workload identity assertion. The API token is not a Google principal and
+must not be exchanged or treated as one. The local frontend's Vercel OIDC setting, if
+present, is not an identity of the Railway backend. No workload-identity pool/provider
+can be safely configured without a verifiable issuer, token URL/source and claims.
+
+The dedicated Google service account and Vertex role/API/billing were user-confirmed,
+not independently queried: production has no Google ADC identity or credential path.
+Vertex variables for enable/project/location/model are present, but their values were
+not revealed or validated. No gcloud CLI or Google Cloud identity is available here.
+Google's current model documentation lists `gemini-3.5-flash-lite` as GA and supports
+the global, US and EU endpoints; project-specific access and quota remain unverified.
+
+Safe Railway alternative: store the existing dedicated service account JSON only as a
+sealed multiline variable `GOOGLE_SERVICE_ACCOUNT_JSON` on the production backend
+service, and set non-secret `VERTEX_SERVICE_ACCOUNT_EMAIL` to the exact dedicated
+service-account email. The adapter checks the JSON type, email and project against the
+configured Vertex project before constructing Google credentials; secrets are not
+logged or accepted from a request. Keep the account limited to `roles/aiplatform.user`.
+The credential must never be committed or added to frontend variables. Rotate by
+creating a replacement key, updating the sealed Railway variable, deploying and
+verifying one centrally metered request, then disabling/deleting the old key in Google
+Cloud IAM. Revoke immediately if exposed. This is a long-lived key and is less secure
+than workload identity federation; prefer WIF if Railway later provides a documented,
+verifiable runtime OIDC source.
+
+Railway production still needs `GOOGLE_SERVICE_ACCOUNT_JSON`. No key has been created
+and no live Vertex call has been attempted.
+
+Current Vertex-only production check: `VERTEX_ENABLED`, `VERTEX_PROJECT`,
+`VERTEX_LOCATION`, `VERTEX_MODEL` are CONFIGURED. The project matches the
+user-confirmed `avenqo-509823`; the model matches `gemini-3.5-flash-lite`; location is
+one of the documented `global`/`us`/`eu` endpoints. `VERTEX_SERVICE_ACCOUNT_EMAIL`,
+the model catalog entry and regional rate-card entry have now been staged as
+non-secret Railway variables, using the official Vertex rates for that endpoint class.
+`GOOGLE_SERVICE_ACCOUNT_JSON` is MISSING; `GOOGLE_APPLICATION_CREDENTIALS` is also
+MISSING and is NOT REQUIRED when the sealed-JSON branch is used. This blocker prevents
+ADC authentication and all live Vertex model/region/endpoint checks. The user confirms
+the project, API, billing and `roles/aiplatform.user`; no gcloud identity exists here to
+independently verify those Google Console settings. Quota availability remains MISSING
+until checked in Google Cloud Console.
+
+Manual stop point: in Google Cloud Console select `avenqo-509823` > IAM & Admin >
+Service Accounts > `avenqo-vertex-runtime` > Keys > Add key > Create new key > JSON.
+Download that key directly to the authorized operator workstation. In Railway open
+project `alert-tenderness` > Production > `Avenqo-Platform-` > Variables > New Variable;
+name it `GOOGLE_SERVICE_ACCOUNT_JSON`, enter the JSON directly in Railway (never chat,
+Git, logs or frontend), then use the variable's three-dot menu > Seal. Review and deploy
+the staged changes. The already-staged `VERTEX_SERVICE_ACCOUNT_EMAIL` must remain the
+dedicated account email. If organization policy prevents key creation, stop; do not
+weaken the policy. A Google-hosted workload with attached service identity or a
+separately provisioned, authenticated token broker is then required because Railway
+does not provide the verified OIDC issuer needed for direct WIF.
+
 Use `scripts/audit_provider_runtime.py` from the repository root for presence-only output;
 `--read-only-production --connectivity` enables safe aggregate and non-billable probes.
 It deliberately has no send, pay, sync, appointment-write, deletion or inference command.

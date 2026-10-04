@@ -114,6 +114,8 @@ class Settings(BaseSettings):
     vertex_project: str = Field(default="", alias="VERTEX_PROJECT")
     vertex_location: str = Field(default="", alias="VERTEX_LOCATION")
     vertex_model: str = Field(default="", alias="VERTEX_MODEL")
+    vertex_service_account_email: str = Field(default="", alias="VERTEX_SERVICE_ACCOUNT_EMAIL")
+    google_service_account_json: str | None = Field(default=None, alias="GOOGLE_SERVICE_ACCOUNT_JSON")
     llm_temperature: float = Field(default=0.2, ge=0.0, le=1.0, alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=800, ge=1, le=8192, alias="LLM_MAX_TOKENS")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

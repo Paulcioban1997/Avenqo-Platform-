@@ -1,3 +1,5 @@
+import json
+
 from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.gemini_provider import GeminiProvider
 
@@ -15,10 +17,14 @@ class VertexProvider(GeminiProvider):
         request_timeout_seconds: float = 60.0,
         *,
         enabled: bool = False,
+        service_account_email: str = "",
+        service_account_json: str | None = None,
     ) -> None:
         super().__init__(None, model, temperature, max_tokens, request_timeout_seconds)
         self._project, self._location = project, location
         self._enabled = enabled
+        self._service_account_email = service_account_email.strip()
+        self._service_account_json = service_account_json
 
     def _client(self):
         if not self._enabled or not all((self._project.strip(), self._location.strip(), self._model.strip())):
@@ -30,7 +36,23 @@ class VertexProvider(GeminiProvider):
             from google import genai
             from google.genai import types
 
-            credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+            if self._service_account_json:
+                info = json.loads(self._service_account_json)
+                if (
+                    info.get("type") != "service_account"
+                    or info.get("client_email") != self._service_account_email
+                    or info.get("project_id") != self._project
+                ):
+                    raise ValueError("Vertex service account configuration mismatch")
+                credentials, credential_project = google.auth.load_credentials_from_dict(
+                    info,
+                    scopes=scopes,
+                )
+                if credential_project and credential_project != self._project:
+                    raise ValueError("Vertex credential project mismatch")
+            else:
+                credentials, _ = google.auth.default(scopes=scopes)
             self._client_instance = genai.Client(
                 enterprise=True,
                 vertexai=True,

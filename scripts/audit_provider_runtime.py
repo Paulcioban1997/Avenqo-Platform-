@@ -18,6 +18,7 @@ def presence(settings: Settings) -> dict[str, str]:
     names = (
         "openai_api_key", "anthropic_api_key", "google_ai_api_key",
         "vertex_enabled", "vertex_project", "vertex_location", "vertex_model",
+        "vertex_service_account_email", "google_service_account_json",
         "retell_api_key", "telnyx_api_key", "telnyx_public_key",
         "stripe_secret_key", "stripe_webhook_secret",
         "google_calendar_client_id", "google_calendar_client_secret",

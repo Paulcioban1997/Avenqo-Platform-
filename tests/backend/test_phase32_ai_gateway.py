@@ -179,6 +179,54 @@ def test_vertex_client_uses_adc_and_preserves_explicit_region(monkeypatch) -> No
     assert options["http_options"].retry_options.attempts == 1
 
 
+def test_vertex_sealed_service_account_config_is_validated_and_never_logged(monkeypatch) -> None:
+    import json
+
+    credentials = Mock()
+    load_credentials = Mock(return_value=(credentials, "avenqo-509823"))
+    client_builder = Mock()
+    monkeypatch.setattr("google.auth.load_credentials_from_dict", load_credentials)
+    monkeypatch.setattr("google.auth.default", Mock(side_effect=AssertionError("ADC fallback must not be used")))
+    monkeypatch.setattr("google.genai.Client", client_builder)
+    secret_payload = json.dumps({
+        "type": "service_account",
+        "project_id": "avenqo-509823",
+        "client_email": "avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
+        "private_key": "never-print-this-test-marker",
+    })
+    provider = VertexProvider(
+        "avenqo-509823", "global", "gemini-3.5-flash-lite", 0.2, 80,
+        enabled=True,
+        service_account_email="avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
+        service_account_json=secret_payload,
+    )
+    provider._client()
+    load_credentials.assert_called_once()
+    assert load_credentials.call_args.kwargs["scopes"] == ["https://www.googleapis.com/auth/cloud-platform"]
+    options = client_builder.call_args.kwargs
+    assert options["credentials"] is credentials
+    assert "api_key" not in options
+    assert "never-print-this-test-marker" not in repr(options)
+
+
+def test_vertex_rejects_wrong_sealed_service_account_identity(monkeypatch) -> None:
+    import json
+    from backend.app.ai.llm.exceptions import LLMProviderError
+
+    load_credentials = Mock(side_effect=AssertionError("mismatched identity must be rejected before auth"))
+    monkeypatch.setattr("google.auth.load_credentials_from_dict", load_credentials)
+    provider = VertexProvider(
+        "avenqo-509823", "global", "gemini-3.5-flash-lite", 0.2, 80,
+        enabled=True,
+        service_account_email="avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
+        service_account_json=json.dumps({"type": "service_account", "project_id": "other-project", "client_email": "unexpected@example.com", "private_key": "secret-marker"}),
+    )
+    with pytest.raises(LLMProviderError) as error:
+        provider._client()
+    assert "secret-marker" not in str(error.value)
+    load_credentials.assert_not_called()
+
+
 def test_google_backend_selection_ignores_environment_defaults(monkeypatch) -> None:
     from google.auth.credentials import AnonymousCredentials
     from backend.app.ai.llm.gemini_provider import GeminiProvider

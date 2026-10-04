@@ -22,7 +22,16 @@ class LLMProviderFactory:
         "openai": lambda settings: OpenAIProvider(settings.openai_api_key, settings.openai_model, settings.llm_temperature, settings.llm_max_tokens),
         "anthropic": lambda settings: AnthropicProvider(settings.anthropic_api_key, settings.anthropic_model, settings.llm_temperature, settings.llm_max_tokens),
         "gemini": lambda settings: GeminiProvider(settings.google_ai_api_key, settings.gemini_model, settings.llm_temperature, settings.llm_max_tokens),
-        "vertex": lambda settings: VertexProvider(settings.vertex_project, settings.vertex_location, settings.vertex_model, settings.llm_temperature, settings.llm_max_tokens, enabled=settings.vertex_enabled),
+        "vertex": lambda settings: VertexProvider(
+            settings.vertex_project,
+            settings.vertex_location,
+            settings.vertex_model,
+            settings.llm_temperature,
+            settings.llm_max_tokens,
+            enabled=settings.vertex_enabled,
+            service_account_email=settings.vertex_service_account_email,
+            service_account_json=settings.google_service_account_json,
+        ),
     }
 
     @staticmethod
@@ -79,6 +88,8 @@ class LLMProviderFactory:
                 max_tokens,
                 spec.request_timeout_seconds,
                 enabled=settings.vertex_enabled,
+                service_account_email=settings.vertex_service_account_email,
+                service_account_json=settings.google_service_account_json,
             ),
         }
         try:
