@@ -27,6 +27,7 @@ class DashboardKPIResponse(BaseModel):
     change_percent: float | None = None
     currency: str | None = None
     available: bool
+    metric: dict[str, Any] | None = None
 
 
 class DashboardPriorityResponse(BaseModel):
@@ -75,6 +76,8 @@ class TenantDashboardResponse(BaseModel):
     period: DashboardPeriodResponse
     capabilities: list[str]
     kpis: list[DashboardKPIResponse]
+    metrics: list[dict[str, Any]] = Field(default_factory=list)
+    data_freshness: dict[str, Any] = Field(default_factory=dict)
     priorities: list[DashboardPriorityResponse]
     trend: DashboardTrendResponse = Field(default_factory=DashboardTrendResponse)
     connections: DashboardConnectionsResponse

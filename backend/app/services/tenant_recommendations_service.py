@@ -9,9 +9,12 @@ from backend.app.ai.tools.business.analytics import (
     compute_sales_summary,
     parse_business_datetime,
 )
+from backend.app.services.business_metrics_service import BusinessMetricsService
 from backend.app.services.prediction_runtime import build_decision_service, resolve_executor
 from backend.app.services.recommendation_severity import RecommendationSeverityPolicy
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService, TenantAnalyticsSnapshot
+from backend.app.services.data_freshness_service import DataFreshnessService
+from backend.app.services.business_metrics_service import BusinessMetricsService
 from backend.app.services.tenant_products_service import TenantProductsService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.decision_intelligence.contracts import (
@@ -49,6 +52,7 @@ class TenantRecommendationsService:
         snapshot: TenantAnalyticsSnapshot,
     ) -> dict[str, Any]:
         generated_at = datetime.now(timezone.utc)
+        freshness = DataFreshnessService().for_snapshot(snapshot, queried_at=generated_at)
         source = self._products.source_for(snapshot)
         order_count = self._distinct_order_count(snapshot)
         signals: list[BusinessSignal] = []
@@ -56,7 +60,11 @@ class TenantRecommendationsService:
         if order_count >= _MIN_RECOMMENDATION_ORDERS:
             self._sales_signal(tenant, snapshot, generated_at, signals, metadata_by_key)
         if source is not None:
-            products = self._products.portfolio(source)
+            products = self._products.portfolio(
+                BusinessMetricsService.normalize_source_timezone(
+                    source, getattr(snapshot.company, "timezone", None) or "UTC"
+                )
+            )
             if order_count >= _MIN_RECOMMENDATION_ORDERS:
                 self._product_signals(tenant, products, generated_at, signals, metadata_by_key)
             self._model_signal(tenant, snapshot, source, generated_at, signals, metadata_by_key)
@@ -67,6 +75,7 @@ class TenantRecommendationsService:
                 "currency": snapshot.currency,
                 "generated_at": generated_at,
                 "recommendation_state": "INSUFFICIENT_DATA" if order_count < _MIN_RECOMMENDATION_ORDERS else "NO_RECOMMENDATIONS",
+                "data_freshness": freshness.as_dict(),
                 "recommendations": [],
             }
 
@@ -110,6 +119,8 @@ class TenantRecommendationsService:
                     "metric": signal.metric,
                     "period": metadata["evidence"].get("period"),
                     "source": source_context,
+                    "freshness_status": freshness.freshness_status,
+                    "freshness_timestamp": freshness.last_updated_at,
                     "evidence": metadata["evidence"],
                     "affected_entity": signal.entity,
                     "confidence": signal.confidence,
@@ -128,6 +139,7 @@ class TenantRecommendationsService:
             "currency": snapshot.currency,
             "generated_at": generated_at,
             "recommendation_state": "READY",
+            "data_freshness": freshness.as_dict(),
             "recommendations": self._rank_and_limit(recommendations),
         }
 
@@ -143,29 +155,29 @@ class TenantRecommendationsService:
         })
 
     def _sales_signal(self, tenant, snapshot, generated_at, signals, metadata_by_key) -> None:
-        source = snapshot.source_for(frozenset({"total_amount"}))
+        source = snapshot.source_for(frozenset({"total_amount", "order_timestamp"}))
         if source is None:
             return
-        reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
-        date_column = reverse.get("order_timestamp")
-        if date_column is None:
-            return
-        timestamps = []
-        for row in source.rows:
-            timestamp = parse_business_datetime(row.get(date_column))
-            if timestamp is not None:
-                timestamps.append(timestamp)
-        if not timestamps:
-            return
-        current_end = max(timestamps)
-        current_start = current_end - timedelta(days=29)
-        previous_end = current_start - timedelta(microseconds=1)
-        previous_start = previous_end - timedelta(days=29)
-        current = compute_sales_summary(
-            source, date_from=current_start, date_to=current_end, product=None
+        metrics_service = BusinessMetricsService()
+        bounds = metrics_service.resolve_period(
+            "last_30_days",
+            timezone_name=getattr(snapshot.company, "timezone", None) or "UTC",
+            now=generated_at,
+            source=source,
         )
-        previous = compute_sales_summary(
-            source, date_from=previous_start, date_to=previous_end, product=None
+        current = metrics_service.sales_summary(
+            snapshot,
+            source,
+            period_start=bounds["start"],
+            period_end=bounds["end"],
+            queried_at=generated_at,
+        )
+        previous = metrics_service.sales_summary(
+            snapshot,
+            source,
+            period_start=bounds["comparison_start"],
+            period_end=bounds["comparison_end"],
+            queried_at=generated_at,
         )
         current_revenue = float(current["revenue"])
         previous_revenue = float(previous["revenue"])

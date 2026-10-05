@@ -22,6 +22,10 @@ from backend.app.ai.tools.base import RetailAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 from backend.app.models.commerce_connection import NormalizedCommerceRecord
+from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.data_freshness_service import DataFreshnessService
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.tenant_products_service import TenantProductsService
 
 logger = logging.getLogger("avenqo.ai.commerce_tools")
 
@@ -268,18 +272,66 @@ class GetInventorySummaryTool(RetailAITool):
     name = "get_inventory_summary"
     description = (
         "Return a summary of the current inventory levels for all products in the "
-        "tenant's connected commerce data (WooCommerce, Shopify, CSV). "
+        "tenant's currently selected business data (WooCommerce, Shopify or CSV snapshot). "
         "Shows total products, out-of-stock count, low-stock count, and lists "
-        "products needing attention. Always reads live data — never invents values."
+        "products needing attention. Reports the actual source freshness and never labels a sync snapshot as live."
     )
     input_schema = InventorySummaryArgs
     required_permissions = ("ai:use",)
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService | None = None) -> None:
         self._session = session
+        self._ingestion = ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: InventorySummaryArgs) -> ToolResult:
         company_id = context.tenant.company_id
+        if self._ingestion is not None:
+            snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
+            source = snapshot.source_for(frozenset({"product_id"})) or snapshot.source_for(frozenset({"product_name"}))
+            freshness = DataFreshnessService().for_snapshot(snapshot)
+            if source is None:
+                return ToolResult(success=False, data={
+                    "inventory_state": "UNAVAILABLE",
+                    "error": "No inventory-capable selected source is available.",
+                    "data_freshness": freshness.as_dict(),
+                })
+            products = TenantProductsService.portfolio(source)
+            threshold = max(0, arguments.low_stock_threshold)
+            out_of_stock, low_stock, healthy, unknown = [], [], [], []
+            for product in products:
+                stock = product.get("stock_level")
+                item = {
+                    "product_id": str(product["product_id"]),
+                    "name": product.get("name") or str(product["product_id"]),
+                    "inventory_level": stock,
+                }
+                if stock is None:
+                    unknown.append(item)
+                elif float(stock) <= 0:
+                    out_of_stock.append(item)
+                elif float(stock) <= threshold:
+                    low_stock.append(item)
+                else:
+                    healthy.append(item)
+            return ToolResult(
+                success=True,
+                data={
+                    "inventory_state": "READY" if not unknown else "PARTIAL",
+                    "total_products": len(products),
+                    "out_of_stock_count": len(out_of_stock),
+                    "low_stock_count": len(low_stock),
+                    "healthy_stock_count": len(healthy),
+                    "unknown_stock_count": len(unknown),
+                    "low_stock_threshold": threshold,
+                    "out_of_stock": out_of_stock[:20],
+                    "low_stock": low_stock[:20],
+                    "unknown_stock": unknown[:20],
+                    "source_ids": [str(source.dataset_id)],
+                    "source_type": snapshot.active_source_provider or snapshot.active_source_type or "dataset",
+                    "data_freshness": freshness.as_dict(),
+                },
+                source_refs=(str(source.dataset_id),),
+            )
         from backend.app.services.retail_source_service import RetailSourceService
 
         active_source = RetailSourceService(self._session).active_selection(context.tenant)

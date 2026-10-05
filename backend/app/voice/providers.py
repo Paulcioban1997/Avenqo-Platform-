@@ -94,12 +94,58 @@ class TelnyxClient:
         response = await self._request("POST", "/messages", json=payload)
         return str((response.get("data") or {}).get("id") or "accepted")
 
+    async def search_available_numbers(
+        self,
+        *,
+        country_code: str,
+        region: str | None = None,
+        locality: str | None = None,
+        number_type: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, object]]:
+        params: dict[str, object] = {"filter[limit]": max(1, min(limit, 100)), "filter[features]": "voice"}
+        if region:
+            params["filter[administrative_area]"] = region
+        if locality:
+            params["filter[locality]"] = locality
+        if number_type:
+            params["filter[phone_number_type]"] = number_type
+        response = await self._request(
+            "GET",
+            f"/available_phone_numbers/{country_code.upper()}",
+            params=params,
+        )
+        numbers = response.get("data") or []
+        return [item for item in numbers if isinstance(item, dict)]
+
+    async def order_phone_number(
+        self,
+        *,
+        phone_number: str,
+        connection_id: str,
+        messaging_profile_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "phone_numbers": [{"phone_number": phone_number}],
+            "connection_id": connection_id,
+        }
+        if messaging_profile_id:
+            payload["messaging_profile_id"] = messaging_profile_id
+        return await self._request("POST", "/number_orders", json=payload, idempotency_key=idempotency_key)
+
+    async def release_phone_number(self, provider_number_id: str) -> dict[str, object]:
+        return await self._request("DELETE", f"/phone_numbers/{provider_number_id}")
+
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         headers = self._headers()
+        idempotency_key = kwargs.pop("idempotency_key", None)
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         if self._client is not None:
             response = await self._client.request(method, f"{self.API_BASE}{path}", headers=headers, **kwargs)
         else:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 response = await client.request(method, f"{self.API_BASE}{path}", headers=headers, **kwargs)
         response.raise_for_status()
-        return response.json()
+        return response.json() if response.content else {}

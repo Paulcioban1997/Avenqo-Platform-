@@ -294,6 +294,23 @@ def test_tenant_owner_is_denied_admin_access(db_session, admin_client: TestClien
     assert response.status_code in (401, 403)
 
 
+def test_voice_health_admin_endpoint_is_platform_admin_only(db_session, admin_client: TestClient) -> None:
+    tenant = _company(db_session, slug="voice-health-admin-target")
+    owner = _user(db_session, tenant, platform_admin=False, role=UserRole.OWNER)
+    platform = _user(db_session, _company(db_session, slug="voice-health-platform-admin"), platform_admin=True)
+    db_session.commit()
+    owner_headers = {"Authorization": f"Bearer {_access_token(db_session, owner)}"}
+    platform_headers = {"Authorization": f"Bearer {_access_token(db_session, platform)}"}
+
+    denied = admin_client.get("/api/v1/admin/voice/health", headers=owner_headers)
+    allowed = admin_client.get("/api/v1/admin/voice/health", headers=platform_headers)
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+    assert allowed.json()["provider_configuration"]["health_probe"] == "NOT_CHECKED"
+    assert allowed.json()["tenants"] == []
+
+
 def test_admin_retail_context_requires_platform_admin_and_existing_company(
     db_session,
     admin_client: TestClient,

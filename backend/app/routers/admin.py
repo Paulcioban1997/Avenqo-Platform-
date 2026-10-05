@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
+from backend.app.config.settings import Settings, get_settings
 
 from backend.app.dependencies.admin import (
     get_admin_service,
@@ -71,6 +72,7 @@ from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.app.services.tenant_products_service import TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import TenantSalesService
+from backend.app.services.voice_health_service import VoiceHealthService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(
@@ -86,6 +88,14 @@ router = APIRouter(
 @router.get("/dashboard", response_model=DashboardResponse)
 def get_dashboard(service: AdminService = Depends(get_admin_service)) -> DashboardResponse:
     return DashboardResponse(**asdict(service.dashboard()))
+
+
+@router.get("/voice/health")
+def get_voice_health(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    return VoiceHealthService(db, settings).list_tenants()
 
 
 @router.get("/companies", response_model=list[CompanyDirectoryEntryResponse])

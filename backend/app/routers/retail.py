@@ -32,6 +32,7 @@ from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_products_service import TenantProductsService
 from backend.app.services.tenant_sales_service import TenantSalesService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from modules.entitlements import ModuleAccessDenied
 from modules.retailsense.assistant import RetailAssistantService
 from shared.ai_engine.contracts import TenantContext
@@ -240,6 +241,7 @@ def retail_status(
     connection = connection_sources[0] if len(connection_sources) == 1 else None
     selected_source = selected_sources[0] if len(selected_sources) == 1 else None
     source_state = source_context["state"]
+    freshness = DataFreshnessService().for_snapshot(snapshot)
 
     return {
         "is_connected": source_state == "READY" and bool(selected_sources),
@@ -254,6 +256,7 @@ def retail_status(
             "provider": selected_source.provider if selected_source else None,
             "dataset_id": str(selected_source.dataset_id) if selected_source and selected_source.dataset_id else None,
         },
+        "data_freshness": freshness.as_dict(),
         "records_count": (product_count + order_count + customer_count),
         "product_count": product_count,
         "order_count": order_count,
@@ -428,4 +431,5 @@ def list_retail_inventory(
         "anomaly_state": anomaly_state,
         "anomaly_sample_size": sample_size,
         "source": source_context,
+        "data_freshness": product_result.get("data_freshness"),
     }

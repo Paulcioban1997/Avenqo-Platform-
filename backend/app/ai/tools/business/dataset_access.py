@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 from backend.app.models import Dataset, DatasetStatus
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
-from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService, TenantAnalyticsSnapshot
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -42,10 +42,12 @@ def load_latest_prepared_dataset(
     ingestion: CompanyDatasetIngestionService,
     tenant: TenantContext,
     required_fields: frozenset[str] = frozenset(),
+    *,
+    snapshot: TenantAnalyticsSnapshot | None = None,
 ) -> PreparedCompanyDataset:
     """Charge la même vue READY composée que les pages Retail du tenant."""
 
-    snapshot = TenantAnalyticsService(session, ingestion).load(tenant)
+    snapshot = snapshot or TenantAnalyticsService(session, ingestion).load(tenant)
     source = snapshot.source_for(required_fields)
     if source is None:
         logger.warning(

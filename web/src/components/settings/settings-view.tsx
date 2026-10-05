@@ -18,10 +18,14 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
+  Phone,
+  Search,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
+import { VOICE_NUMBER_COPY } from "@/lib/i18n/voice-number-copy";
 
 interface ModuleItem {
   key: string;
@@ -60,11 +64,47 @@ interface OrgInfo {
   subscription_plan?: string;
 }
 
+interface VoiceSettingsStatus {
+  voice_status: string;
+  module_entitled: boolean;
+  number_status: string;
+  business_number?: string | null;
+  country?: string | null;
+  region?: string | null;
+  locality?: string | null;
+  provider?: string | null;
+  telnyx_status: string;
+  retell_status: string;
+  stt_status: string;
+  tts_status: string;
+  realtime_status: string;
+  crm_status: string;
+  calendar_status: string;
+  call_count: number;
+  call_minutes: number;
+  voice_ai_credits_charged: number;
+  retail_source_context?: { name?: string | null; provider?: string | null };
+  data_freshness?: { freshness_status?: string; last_updated_at?: string | null };
+}
+
+interface VoiceNumberOffer {
+  phone_number: string;
+  country_code: string;
+  region?: string | null;
+  locality?: string | null;
+  number_type: string;
+  monthly_cost: number | null;
+  monthly_cost_currency: string | null;
+  regulatory_requirements: string[];
+}
+
 export function SettingsView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const companyTranslations = getApplicationCatalog(locale).company;
   const connectorTranslations = companyTranslations.connectorHub;
+  const voiceHealthCopy = VOICE_HEALTH_COPY[locale as keyof typeof VOICE_HEALTH_COPY] ?? VOICE_HEALTH_COPY.en;
+  const voiceNumberCopy = VOICE_NUMBER_COPY[locale as keyof typeof VOICE_NUMBER_COPY] ?? VOICE_NUMBER_COPY.en;
 
   const [loading, setLoading] = useState(true);
   const [entitlements, setEntitlements] = useState<EntitlementsData | null>(null);
@@ -72,6 +112,11 @@ export function SettingsView() {
   const [company, setCompany] = useState<OrgInfo | null>(null);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceSettingsStatus | null>(null);
+  const [voiceOffers, setVoiceOffers] = useState<VoiceNumberOffer[]>([]);
+  const [voiceSearch, setVoiceSearch] = useState({ countryCode: "", region: "", locality: "" });
+  const [voiceNumberBusy, setVoiceNumberBusy] = useState(false);
+  const [voiceNumberNeedsAction, setVoiceNumberNeedsAction] = useState(false);
 
   const getHeaders = useCallback(() => {
     return {
@@ -92,6 +137,12 @@ export function SettingsView() {
         const userData = await userRes.json();
         setUser(userData.user);
         setCompany(userData.company);
+        const role = String(userData.user?.role || "").toLowerCase();
+        if (role === "owner" || role === "admin") {
+          const voiceRes = await fetch("/api/v1/voice/status", { headers, cache: "no-store" });
+          if (voiceRes.ok) setVoiceStatus(await voiceRes.json());
+          else setVoiceStatus(null);
+        }
       }
 
       if (entRes.ok) {
@@ -109,7 +160,9 @@ export function SettingsView() {
   }, [getHeaders, companyTranslations.connectionsGenericError]);
 
   useEffect(() => {
-    fetchData();
+    let disposed = false;
+    queueMicrotask(() => { if (!disposed) void fetchData(); });
+    return () => { disposed = true; };
   }, [fetchData]);
 
   const handleToggleModule = async (mod: ModuleItem) => {
@@ -144,6 +197,59 @@ export function SettingsView() {
       });
     } finally {
       setUpdatingKey(null);
+    }
+  };
+
+  const searchVoiceNumbers = async () => {
+    setVoiceNumberBusy(true);
+    setVoiceNumberNeedsAction(false);
+    setVoiceOffers([]);
+    try {
+      const query = new URLSearchParams({ country_code: voiceSearch.countryCode.trim() });
+      if (voiceSearch.region.trim()) query.set("region", voiceSearch.region.trim());
+      if (voiceSearch.locality.trim()) query.set("locality", voiceSearch.locality.trim());
+      const response = await fetch(`/api/v1/voice/numbers/search?${query}`, { headers: getHeaders(), cache: "no-store" });
+      if (!response.ok) throw new Error("number_search_unavailable");
+      const result = await response.json();
+      setVoiceOffers(Array.isArray(result.offers) ? result.offers : []);
+      setVoiceNumberNeedsAction(result.status === "READY_FOR_OWNER_ACTION");
+    } catch {
+      setVoiceNumberNeedsAction(true);
+    } finally {
+      setVoiceNumberBusy(false);
+    }
+  };
+
+  const purchaseVoiceNumber = async (offer: VoiceNumberOffer) => {
+    const monthlyPrice = offer.monthly_cost == null
+      ? voiceNumberCopy.monthlyPrice
+      : new Intl.NumberFormat(locale, { style: "currency", currency: offer.monthly_cost_currency || "USD" }).format(offer.monthly_cost);
+    if (!window.confirm(`${voiceNumberCopy.purchase}: ${offer.phone_number} · ${monthlyPrice}`)) return;
+    setVoiceNumberBusy(true);
+    try {
+      const response = await fetch("/api/v1/voice/numbers/provision", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          country_code: voiceSearch.countryCode.trim(),
+          region: voiceSearch.region.trim() || null,
+          locality: voiceSearch.locality.trim() || null,
+          number_type: offer.number_type,
+          phone_number: offer.phone_number,
+          confirmed: true,
+        }),
+      });
+      if (!response.ok) throw new Error("number_provision_unavailable");
+      const result = await response.json();
+      setVoiceNumberNeedsAction(result.status !== "ACTIVE");
+      if (result.status === "ACTIVE") {
+        setVoiceOffers([]);
+        void fetchData();
+      }
+    } catch {
+      setVoiceNumberNeedsAction(true);
+    } finally {
+      setVoiceNumberBusy(false);
     }
   };
 
@@ -260,6 +366,98 @@ export function SettingsView() {
           </div>
         </div>
       </div>
+
+      {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (
+        <section className="space-y-5 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">{t.navigation.voiceAi}</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{voiceHealthCopy.freshness}</p>
+            </div>
+            {voiceStatus && (
+              <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
+                <span>{t.integrations.title}: {voiceStatus.telnyx_status}</span>
+                <span>Retell: {voiceStatus.retell_status}</span>
+                <span>STT: {voiceStatus.stt_status}</span>
+                <span>TTS: {voiceStatus.tts_status}</span>
+                <span>Realtime: {voiceStatus.realtime_status}</span>
+              </div>
+            )}
+          </div>
+
+          {!voiceStatus ? (
+            <div role="status" className="text-xs text-slate-500">{companyTranslations.connectionsGenericError}</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
+                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.phone}</div>
+                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.business_number || t.integrations.statusDisconnected}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">{voiceStatus.country || "—"}{voiceStatus.region ? ` · ${voiceStatus.region}` : ""}{voiceStatus.locality ? ` · ${voiceStatus.locality}` : ""}</div>
+                </div>
+                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
+                  <div className="text-[10px] uppercase text-slate-500">{t.integrations.statusConnected}</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{voiceStatus.voice_status === "ENABLED" ? t.integrations.statusConnected : voiceStatus.voice_status === "NOT_CONFIGURED" ? t.integrations.statusDisconnected : t.integrations.statusNeedsAttention}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">CRM: {voiceStatus.crm_status} · {t.integrations.googleCalendar}: {voiceStatus.calendar_status}</div>
+                </div>
+                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
+                  <div className="text-[10px] uppercase text-slate-500">{t.navigation.retailAi}</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{voiceStatus.retail_source_context?.name || t.common.insufficientData}</div>
+                  <div className="mt-1 font-mono text-[10px] text-slate-500">{voiceStatus.retail_source_context?.provider || voiceStatus.data_freshness?.freshness_status || "UNAVAILABLE"}</div>
+                </div>
+                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
+                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.freshness}</div>
+                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.data_freshness?.freshness_status || "UNAVAILABLE"}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">{voiceStatus.data_freshness?.last_updated_at ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(voiceStatus.data_freshness.last_updated_at)) : "—"}</div>
+                </div>
+                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
+                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.calls} · {voiceHealthCopy.minutes}</div>
+                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.call_count} · {voiceStatus.call_minutes}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">{voiceHealthCopy.credits}: {voiceStatus.voice_ai_credits_charged}</div>
+                </div>
+              </div>
+
+              {voiceStatus.telnyx_status === "CONFIGURED" && !voiceStatus.module_entitled && (
+                <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t.integrations.statusNeedsAttention}</p>
+              )}
+              {voiceStatus.telnyx_status === "CONFIGURED" && voiceStatus.module_entitled && !voiceStatus.business_number && (
+                <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[120px_1fr_1fr_auto]">
+                    <label className="space-y-1 text-[10px] text-slate-500">
+                      <span>{voiceNumberCopy.country}</span>
+                      <input value={voiceSearch.countryCode} onChange={(event) => setVoiceSearch({ ...voiceSearch, countryCode: event.target.value.toUpperCase() })} maxLength={2} placeholder="CA" className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
+                    </label>
+                    <label className="space-y-1 text-[10px] text-slate-500">
+                      <span>{voiceNumberCopy.region}</span>
+                      <input value={voiceSearch.region} onChange={(event) => setVoiceSearch({ ...voiceSearch, region: event.target.value })} className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
+                    </label>
+                    <label className="space-y-1 text-[10px] text-slate-500">
+                      <span>{voiceNumberCopy.locality}</span>
+                      <input value={voiceSearch.locality} onChange={(event) => setVoiceSearch({ ...voiceSearch, locality: event.target.value })} className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
+                    </label>
+                    <button type="button" onClick={() => void searchVoiceNumbers()} disabled={voiceNumberBusy || voiceSearch.countryCode.length !== 2} className="inline-flex items-center justify-center gap-2 self-end rounded border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-50 dark:border-white/10">
+                      <Search className="h-3.5 w-3.5" />{voiceNumberCopy.search}
+                    </button>
+                  </div>
+                  {voiceNumberNeedsAction && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t.integrations.statusNeedsAttention}</p>}
+                  {voiceOffers.map((offer) => {
+                    const blocked = offer.monthly_cost == null || (offer.regulatory_requirements?.length ?? 0) > 0;
+                    const price = offer.monthly_cost == null ? t.common.insufficientData : new Intl.NumberFormat(locale, { style: "currency", currency: offer.monthly_cost_currency || "USD" }).format(offer.monthly_cost);
+                    return <div key={offer.phone_number} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3 dark:border-white/[0.06]">
+                      <div>
+                        <div className="font-mono text-sm font-semibold text-slate-900 dark:text-white">{offer.phone_number}</div>
+                        <div className="text-[10px] text-slate-500">{voiceNumberCopy.monthlyPrice}: {price}</div>
+                        {!!offer.regulatory_requirements?.length && <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">{voiceNumberCopy.regulatoryRequirements}: {offer.regulatory_requirements.join(", ")}</div>}
+                      </div>
+                      <button type="button" onClick={() => void purchaseVoiceNumber(offer)} disabled={blocked || voiceNumberBusy} className="rounded border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-40 dark:border-white/10">{blocked ? t.integrations.statusNeedsAttention : voiceNumberCopy.purchase}</button>
+                    </div>;
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
 
       {/* Module Entitlements Section */}
       <div className="bg-white dark:bg-[#0B132B] rounded-2xl border border-slate-200/80 dark:border-white/[0.08] p-6 shadow-xs space-y-6">

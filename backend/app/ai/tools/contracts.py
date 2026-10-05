@@ -28,6 +28,7 @@ class ToolExecutionContext:
     capabilities: frozenset[str] = frozenset()
     user_message: str = ""
     locale: str = "fr"
+    company_timezone: str = "UTC"
     authorized_tool_agents: Mapping[str, str] = field(default_factory=dict)
 
     @property

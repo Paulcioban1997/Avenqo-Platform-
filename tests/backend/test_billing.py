@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -236,12 +237,24 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
 def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
     billing_environment,
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
+    import backend.app.routers.billing as billing_router
+
+    now = datetime(2026, 10, 5, 16, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz) if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(billing_router, "datetime", FrozenDateTime)
     client, _, notifier = billing_environment
     login = create_owner(client, notifier, email="credit-period@acme.ca")
     company_id = UUID(login["company"]["id"])
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = now.astimezone(ZoneInfo("America/Toronto")).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    ).astimezone(timezone.utc)
     today_attempts = (
         max(today_start, now - timedelta(hours=1)),
         max(today_start, now - timedelta(hours=2)),

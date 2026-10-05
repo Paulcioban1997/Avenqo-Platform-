@@ -5,6 +5,8 @@ import base64
 import hashlib
 from datetime import datetime, timedelta, timezone
 from time import time
+from types import SimpleNamespace
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -17,19 +19,28 @@ from starlette.requests import Request
 from backend.app.config.settings import Settings
 from backend.app.models import (
     Base,
+    BillingAccount,
     CRMActivity,
     Company,
+    CompanyMembership,
     CompanyModule,
     CompanyModuleStatus,
     CRMAppointment,
+    CRMClient,
     CRMCommunication,
     CRMNote,
     Module,
     VoiceBusinessConfig,
     VoiceCall,
+    User,
+    UserRole,
+    VoicePhoneNumber,
 )
-from backend.app.routers.voice import _verify_telnyx_signature
+from backend.app.routers.voice import _verify_telnyx_signature, get_voice_status, voice_business_metrics
+from backend.app.schemas.voice import VoiceConfigRequest, VoiceToolRequest
 from backend.app.voice.service import VoiceOrchestrator, _api_key_hash
+from shared.ai_engine.contracts import TenantContext
+from backend.app.core.locale_catalog import BY_LOCALE, resolve_locale
 
 
 class _FakeVoiceProvider:
@@ -58,6 +69,115 @@ class _FakeTelnyx:
     async def send_sms(self, *, from_number: str, to_number: str, text: str) -> str:
         self.messages.append((to_number, text))
         return "msg-test"
+
+
+def test_voice_configuration_accepts_all_canonical_application_locales():
+    base = {
+        "business_name": "Test business",
+        "services": [{"name": "Consultation", "duration_minutes": 30}],
+        "transfer_phone": "+15145550199",
+        "telnyx_phone_number": "+15145550100",
+        "retell_agent_id": "agent-test",
+        "retell_sip_uri": "sip:agent-test@sip.retell.example",
+    }
+    for locale in BY_LOCALE:
+        request = VoiceConfigRequest(**base, preferred_language=locale)
+        assert request.preferred_language == resolve_locale(locale)
+
+    with pytest.raises(ValueError, match="existing Avenqo locale"):
+        VoiceConfigRequest(**base, preferred_language="xx-INVALID")
+
+
+def test_voice_config_cannot_claim_number_owned_by_another_tenant(tmp_path):
+    engine, session, company, config, _, _ = _voice_database(tmp_path)
+    try:
+        other_company = Company(
+            name="Other Voice Tenant",
+            slug="other-voice-tenant",
+            email="other-voice@example.com",
+            country="CA",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+        )
+        session.add(other_company)
+        session.flush()
+        module = session.query(Module).filter_by(code="voice").one()
+        session.add(CompanyModule(
+            company_id=other_company.id,
+            module_id=module.id,
+            activated_at=datetime.now(timezone.utc),
+            status=CompanyModuleStatus.ACTIVE,
+        ))
+        session.add(VoicePhoneNumber(
+            company_id=other_company.id,
+            phone_number="+14165550998",
+            country_code="CA",
+            provider="telnyx",
+            provider_number_id="owned-by-other-tenant",
+            number_type="local",
+            capabilities=["voice"],
+            status="ACTIVE",
+        ))
+        session.commit()
+        service = VoiceOrchestrator(
+            session,
+            Settings(TELNYX_API_KEY="configured"),
+            provider=_FakeVoiceProvider(),
+            telnyx=_FakeTelnyx(),
+        )
+
+        with pytest.raises(PermissionError, match="another tenant"):
+            asyncio.run(service.upsert_config(TenantContext(company.id), {
+                "business_name": config.business_name,
+                "timezone_name": config.timezone_name,
+                "opening_hours": config.opening_hours,
+                "services": config.services,
+                "transfer_phone": config.transfer_phone,
+                "telnyx_phone_number": "+14165550998",
+                "preferred_language": config.preferred_language,
+                "retell_agent_id": config.retell_agent_id,
+                "retell_sip_uri": config.retell_sip_uri,
+                "enabled": False,
+            }))
+        assert config.telnyx_phone_number == "+15145550100"
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_voice_status_is_visible_before_entitlement_or_provider_provisioning(tmp_path):
+    engine, session, company, config, _, _ = _voice_database(tmp_path)
+    try:
+        snapshot = SimpleNamespace(
+            active_source_provider=None,
+            active_source_name=None,
+            active_source_type=None,
+            active_source_selected=False,
+            active_source_last_updated_at=None,
+            active_source_last_event_received_at=None,
+            status="no_data",
+            prepared=(),
+            retail_summaries=(),
+        )
+
+        class _Analytics:
+            def load(self, _tenant):
+                return snapshot
+
+        identity = SimpleNamespace(user=SimpleNamespace(id=uuid4(), company_id=company.id, company=company))
+        status = get_voice_status(identity, session, Settings(), _Analytics())
+
+        assert status["voice_status"] == "ENABLED"
+        assert status["module_entitled"] is True
+        assert status["telnyx_status"] == "NOT_CONFIGURED"
+        assert status["retell_status"] == "NOT_CONFIGURED"
+        assert status["number_status"] == "READY_FOR_OWNER_ACTION"
+        assert "telnyx_api_key" not in str(status)
+        assert "voice_api_key_hash" not in str(status)
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def _voice_database(tmp_path):
@@ -120,6 +240,228 @@ def test_voice_api_key_is_tenant_scoped_and_not_stored_in_plaintext(tmp_path) ->
         assert service.config_from_api_key("avqv_other_tenant_key") is None
         assert key not in config.voice_api_key_hash
         assert config.voice_api_key_hash == hashlib.sha256(key.encode()).hexdigest()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_caller_id_alone_stays_unknown_and_cannot_reschedule_or_cancel(tmp_path):
+    engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
+    try:
+        call = orchestrator.record_inbound(config, {
+            "call_control_id": "spoofable-call-id",
+            "from": "+15145550123",
+        })
+        assert call.caller_type == "UNKNOWN"
+        result = asyncio.run(orchestrator._dispatch_tool(
+            config,
+            call,
+            "cancel_appointment",
+            {"appointment_id": str(uuid4()), "confirmed": True},
+        ))
+        assert result == {"success": False, "error": "caller_verification_required"}
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_voice_owner_requires_sms_otp_before_privileged_caller_type(tmp_path):
+    engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
+    try:
+        owner = User(
+            company_id=company.id,
+            first_name="Owner",
+            last_name="Example",
+            email="owner@example.com",
+            phone="+15145550123",
+            password_hash="test-hash",
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        session.add(owner)
+        session.flush()
+        session.add(CompanyMembership(
+            company_id=company.id,
+            user_id=owner.id,
+            role=UserRole.OWNER,
+            is_active=True,
+        ))
+        session.commit()
+        call = orchestrator.record_inbound(config, {
+            "call_control_id": "owner-otp-call",
+            "from": owner.phone,
+        })
+
+        assert call.caller_type == "UNKNOWN"
+        sent = asyncio.run(orchestrator._request_caller_verification(config, call))
+        sms_text = orchestrator.telnyx.messages[-1][1]
+        code = sms_text.split(": ", 1)[1].split(".", 1)[0]
+        assert sent == {"success": True, "verification_sent": True}
+        assert owner.phone in orchestrator.telnyx.messages[-1]
+        assert call.verification_code_hash is not None
+        assert code not in call.verification_code_hash
+
+        verified = orchestrator._verify_caller(config, call, code)
+
+        assert verified == {"success": True, "verified": True, "caller_type": "OWNER"}
+        assert call.authenticated_user_id == owner.id
+        assert call.caller_verified_at is not None
+        assert call.verification_code_hash is None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_voice_client_sms_verification_creates_client_scoped_identity(tmp_path):
+    engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
+    try:
+        client = CRMClient(
+            company_id=company.id,
+            first_name="Client",
+            last_name="Example",
+            email="client@example.com",
+            phone="+15145550124",
+        )
+        session.add(client)
+        session.commit()
+        call = orchestrator.record_inbound(config, {
+            "call_control_id": "verified-client-call",
+            "from": client.phone,
+        })
+
+        sent = asyncio.run(orchestrator._request_caller_verification(config, call))
+        code = orchestrator.telnyx.messages[-1][1].split(": ", 1)[1].split(".", 1)[0]
+        verified = orchestrator._verify_caller(config, call, code)
+
+        assert sent == {"success": True, "verification_sent": True}
+        assert verified == {"success": True, "verified": True, "caller_type": "CLIENT"}
+        assert call.verified_client_id == client.id
+        assert call.authenticated_user_id is None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_verified_client_cannot_reschedule_or_cancel_another_clients_appointment(tmp_path):
+    engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
+    try:
+        verified_client = CRMClient(
+            company_id=company.id,
+            first_name="Verified",
+            last_name="Client",
+            email="verified@example.com",
+            phone="+15145550125",
+        )
+        other_client = CRMClient(
+            company_id=company.id,
+            first_name="Other",
+            last_name="Client",
+            email="other@example.com",
+            phone="+15145550126",
+        )
+        session.add_all([verified_client, other_client])
+        session.flush()
+        appointment = CRMAppointment(
+            company_id=company.id,
+            client_id=other_client.id,
+            title="Private appointment",
+            start_time=datetime.now(timezone.utc) + timedelta(days=3),
+            end_time=datetime.now(timezone.utc) + timedelta(days=3, minutes=30),
+            duration_minutes=30,
+            status="confirmed",
+            price=80,
+            currency="CAD",
+        )
+        session.add(appointment)
+        session.commit()
+        call = orchestrator.record_inbound(config, {
+            "call_control_id": "verified-client-ownership-call",
+            "from": verified_client.phone,
+        })
+        call.caller_type = "CLIENT"
+        call.verified_client_id = verified_client.id
+        call.caller_verified_at = datetime.now(timezone.utc)
+        session.commit()
+
+        cancelled = asyncio.run(orchestrator._dispatch_tool(config, call, "cancel_appointment", {
+            "appointment_id": str(appointment.id), "confirmed": True,
+        }))
+        rescheduled = asyncio.run(orchestrator._dispatch_tool(config, call, "reschedule_appointment", {
+            "appointment_id": str(appointment.id), "starts_at": (datetime.now(timezone.utc) + timedelta(days=4)).isoformat(), "confirmed": True,
+        }))
+
+        assert cancelled == {"success": False, "error": "appointment_not_owned_by_verified_caller"}
+        assert rescheduled == {"success": False, "error": "appointment_not_owned_by_verified_caller"}
+        assert appointment.status == "confirmed"
+        assert appointment.start_time.date() == (datetime.now(timezone.utc) + timedelta(days=3)).date()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_verified_voice_metrics_reuse_central_ai_and_are_idempotent(tmp_path):
+    engine, session, company, config, api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        owner = User(
+            company_id=company.id,
+            first_name="Owner",
+            last_name="Example",
+            email="owner-metrics@example.com",
+            phone="+15145550123",
+            password_hash="test-hash",
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        session.add(owner)
+        session.flush()
+        session.add_all([
+            CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True),
+            BillingAccount(company_id=company.id, plan_code="professional", status="active"),
+        ])
+        session.commit()
+        call = orchestrator.record_inbound(config, {
+            "call_control_id": "verified-metrics-call",
+            "from": owner.phone,
+        })
+        call.caller_type = "OWNER"
+        call.authenticated_user_id = owner.id
+        call.caller_verified_at = datetime.now(timezone.utc)
+        session.commit()
+
+        class _CentralAI:
+            def __init__(self):
+                self.calls = []
+
+            async def execute(self, tenant, user_id, conversation_id, query, **kwargs):
+                self.calls.append((tenant, user_id, conversation_id, query, kwargs))
+                return SimpleNamespace(
+                    status="success",
+                    answer="Vous avez 12 commandes aujourd'hui.",
+                    selected_agent="retail",
+                    remaining_ai_credits=6499,
+                    tool_outcomes=({"tool": "get_sales_summary", "success": True, "confirmed": True},),
+                )
+
+        central = _CentralAI()
+        request = VoiceToolRequest(
+            call_id=call.telnyx_call_control_id,
+            action_id="metrics-action-once",
+            arguments={"question": "Combien de commandes aujourd'hui ?"},
+        )
+        first = asyncio.run(voice_business_metrics(
+            request, api_key, session, Settings(), central, None
+        ))
+        second = asyncio.run(voice_business_metrics(
+            request, api_key, session, Settings(), central, None
+        ))
+
+        assert first["success"] is True
+        assert first["selected_agent"] == "retail"
+        assert second == first
+        assert len(central.calls) == 1
+        assert central.calls[0][0] == TenantContext(company.id, owner.id)
+        assert central.calls[0][1] == owner.id
+        assert call.central_conversation_id is not None
     finally:
         session.close()
         engine.dispose()

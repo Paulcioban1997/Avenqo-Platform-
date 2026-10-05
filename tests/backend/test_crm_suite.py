@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
@@ -411,7 +412,7 @@ def test_appointment_idempotency_returns_one_record_and_is_tenant_scoped(db_sess
     client_b = crm_svc.create_client(company_b.id, {
         "first_name": "Alex", "last_name": "B", "email": "alex-b@example.com",
     })
-    start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
+    start = datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company_a.timezone))
     payload = {
         "client_id": client_a.id,
         "title": "Consultation",
@@ -572,7 +573,7 @@ def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
     appointment, error = asyncio.run(CRMAppService(db_session).create_appointment(company.id, {
         "client_id": client.id,
         "title": "Consultation",
-        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "start_time": datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone)),
     }))
     assert error is None and appointment is not None
     original_start = appointment.start_time
@@ -588,7 +589,7 @@ def test_copilot_destructive_appointment_tools_require_confirmation(db_session):
         context,
         CreateAppointmentArgs(
             client_name_or_id=str(client.id),
-            start_time=(datetime.now(timezone.utc) + timedelta(days=4)).isoformat(),
+            start_time=datetime(2027, 2, 10, 10, tzinfo=ZoneInfo(company.timezone)).isoformat(),
             title="Another consultation",
         ),
     ))
@@ -786,7 +787,7 @@ def test_appointment_search_filters_client_and_title(db_session):
     client = crm_svc.create_client(company.id, {
         "first_name": "Sarah", "last_name": "Martin", "email": "sarah@example.com",
     })
-    start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
+    start = datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone))
     appointment, error = asyncio.run(crm_svc.create_appointment(company.id, {
         "client_id": client.id,
         "title": "Physiothérapie",
@@ -814,7 +815,7 @@ def test_cancel_is_idempotent_and_preserves_history(db_session, monkeypatch):
     appointment, error = asyncio.run(crm_svc.create_appointment(company.id, {
         "client_id": client.id,
         "title": "Consultation",
-        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "start_time": datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone)),
         "duration_minutes": 30,
     }))
     assert error is None and appointment is not None
@@ -844,7 +845,7 @@ def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):
     appointment, error = asyncio.run(crm_svc.create_appointment(company_a.id, {
         "client_id": client_a.id,
         "title": "Delete test",
-        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "start_time": datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company_a.timezone)),
         "duration_minutes": 30,
     }))
     assert error is None and appointment is not None

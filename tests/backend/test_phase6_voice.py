@@ -58,6 +58,26 @@ def test_unconfigured_realtime_provider_is_not_claimed_as_available() -> None:
     assert registry.compatible("fr", "realtime_audio") == ()
 
 
+def test_realtime_audio_requires_an_explicit_provider_locale_allowlist(monkeypatch) -> None:
+    configured = SimpleNamespace(
+        voice_realtime_supported_locales=[],
+        voice_realtime_provider="openai",
+        voice_realtime_model="gpt-realtime-2.1",
+        voice_stt_provider="openai",
+        voice_stt_model="gpt-4o-mini-transcribe",
+        voice_tts_provider="openai",
+        voice_tts_model="gpt-4o-mini-tts",
+        voice_tts_voice="marin",
+        openai_api_key="configured-only",
+    )
+    monkeypatch.setattr(ai_voice, "get_settings", lambda: configured)
+    assert ai_voice._realtime_available("fr") is False
+
+    configured.voice_realtime_supported_locales = ["fr"]
+    assert ai_voice._realtime_available("fr") is True
+    assert ai_voice._realtime_available("ar") is False
+
+
 def test_voice_usage_normalizes_sdk_stt_and_cancelled_realtime_dimensions() -> None:
     catalog = voice_pricing_catalog()
     identity = {

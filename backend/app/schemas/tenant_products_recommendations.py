@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.schemas.tenant_business import PaginationResponse, SalesTrendResponse
 
@@ -51,6 +51,7 @@ class TenantProductsResponse(BaseModel):
     currency: str
     capabilities: list[str]
     source_context: dict[str, Any] | None = None
+    data_freshness: dict[str, Any] = Field(default_factory=dict)
     summary: ProductSummaryResponse | None
     categories: list[ProductCategoryResponse]
     trend: SalesTrendResponse
@@ -78,6 +79,8 @@ class RecommendationResponse(BaseModel):
     metric: str
     period: str | None
     source: dict[str, Any]
+    freshness_status: str
+    freshness_timestamp: datetime | None
     evidence: dict[str, Any]
     affected_entity: str | None
     confidence: float | None
@@ -96,4 +99,5 @@ class TenantRecommendationsResponse(BaseModel):
     currency: str
     generated_at: datetime
     recommendation_state: str = "READY"
+    data_freshness: dict[str, Any] = Field(default_factory=dict)
     recommendations: list[RecommendationResponse]

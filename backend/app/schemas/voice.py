@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.app.core.locale_catalog import BY_BCP47, BY_LOCALE, resolve_locale
+
 
 class VoiceServiceConfig(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -24,10 +26,18 @@ class VoiceConfigRequest(BaseModel):
     services: list[VoiceServiceConfig] = Field(min_length=1, max_length=100)
     transfer_phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
     telnyx_phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
-    preferred_language: str = Field(default="fr", pattern=r"^(fr|en)$")
+    preferred_language: str = Field(default="fr", min_length=2, max_length=16)
     retell_agent_id: str = Field(min_length=1, max_length=128)
     retell_sip_uri: str = Field(pattern=r"^sips?:[^\s]+$")
     enabled: bool = False
+
+    @field_validator("preferred_language")
+    @classmethod
+    def validate_preferred_language(cls, value: str) -> str:
+        normalized = value.strip().casefold().replace("_", "-")
+        if normalized not in BY_LOCALE and normalized not in BY_BCP47:
+            raise ValueError("Voice language must use an existing Avenqo locale")
+        return resolve_locale(value)
 
     @field_validator("opening_hours")
     @classmethod
@@ -77,6 +87,23 @@ class VoiceToolResponse(BaseModel):
     success: bool
     result: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+
+
+class VoiceNumberProvisionRequest(BaseModel):
+    country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
+    phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    region: str | None = Field(default=None, max_length=120)
+    locality: str | None = Field(default=None, max_length=120)
+    number_type: str | None = Field(default=None, max_length=32)
+    confirmed: bool = False
+
+
+class VoiceNumberReleaseRequest(BaseModel):
+    confirmed: bool = False
+
+
+class VoiceNumberAssignRequest(BaseModel):
+    confirmed: bool = False
 
 
 class CheckAvailabilityArguments(BaseModel):

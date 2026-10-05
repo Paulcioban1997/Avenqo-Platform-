@@ -27,8 +27,10 @@ from backend.app.core.security import decode_access_token
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.database import get_db
 from backend.app.models import AuthSession, CompanyMembership, User, VoiceCentralSession
+from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.voice.adapters import ExternalVoiceConfigurationRequired, OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
+from backend.app.voice.service import resolve_voice_source_context
 from backend.app.schemas.voice_central import (
     VoiceSessionCreate,
     VoiceSessionResponse,
@@ -64,8 +66,18 @@ def _response(session: VoiceCentralSession) -> VoiceSessionResponse:
 
 def _realtime_available(locale: str) -> bool:
     settings = get_settings()
+    requested = locale.casefold().replace("_", "-")
+    supported = {
+        value.casefold().replace("_", "-")
+        for value in settings.voice_realtime_supported_locales
+    }
+    try:
+        canonical = resolve_locale(locale).casefold().replace("_", "-")
+    except ValueError:
+        canonical = requested
     return bool(
-        locale in BY_LOCALE
+        (requested in BY_LOCALE or requested in BY_BCP47)
+        and (requested in supported or canonical in supported)
         and settings.voice_realtime_provider == "openai"
         and settings.voice_realtime_model
         and settings.voice_stt_provider == "openai"
@@ -99,6 +111,13 @@ def _resolve_voice_turn_language(
         session.locale = detection.locale
     db.commit()
     return detection
+
+
+def _audit_session_source(session: VoiceCentralSession, db: Session) -> None:
+    session.source_context = resolve_voice_source_context(
+        db, TenantContext(company_id=session.company_id, user_id=session.user_id)
+    )
+    db.commit()
 
 
 @router.post("/sessions", response_model=VoiceSessionResponse)
@@ -137,6 +156,9 @@ def create_session(
         stt_provider="openai" if realtime else "browser_speech",
         tts_provider="openai" if realtime else None,
         realtime_provider="openai" if realtime else None,
+        source_context=resolve_voice_source_context(
+            db, TenantContext(company_id=tenant.company_id, user_id=identity.user.id)
+        ),
     )
     db.add(session)
     db.commit()
@@ -203,6 +225,7 @@ async def turn(
     if session is None or session.status != "active":
         raise HTTPException(status_code=404, detail="Voice session not found")
     detection = _resolve_voice_turn_language(session, request.transcript, db)
+    _audit_session_source(session, db)
     request_id = resolve_ai_request_id(
         request.request_id,
         tenant_id=tenant.company_id,
@@ -326,6 +349,7 @@ async def stream_session(
         await websocket.close(code=4403)
         return
 
+    _audit_session_source(session, db)
     db.commit()
     await websocket.accept(subprotocol="avenqo.voice" if browser_ticket else None)
     adapter = None

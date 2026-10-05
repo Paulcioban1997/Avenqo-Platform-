@@ -14,6 +14,8 @@ from backend.app.services.portfolio_decision_service import (
     PortfolioAnalysisUnavailable,
     build_sales_forecast_signal,
 )
+from backend.app.services.business_metrics_service import BusinessMetricsService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
@@ -64,11 +66,20 @@ class TenantSalesService:
             and not self._has_shopify_orders(source)
         ):
             source = None
+        freshness = DataFreshnessService().for_snapshot(snapshot)
         base = {
             "status": snapshot.status,
             "available": source is not None,
             "currency": snapshot.currency,
             "capabilities": sorted(snapshot.capabilities),
+            "data_freshness": freshness.as_dict(),
+            "source_context": {
+                "selection": snapshot.active_source_type,
+                "provider": snapshot.active_source_provider,
+                "name": snapshot.active_source_name,
+                "dataset_id": str(snapshot.active_source_dataset_id)
+                if snapshot.active_source_dataset_id is not None else None,
+            },
         }
         if source is None:
             return {
@@ -79,20 +90,30 @@ class TenantSalesService:
                 "strongest_period": None,
                 "weakest_period": None,
                 "forecast": None,
+                "metrics": [],
             }
 
-        bounds = self._resolve_period(source, period_key, date_from, date_to)
-        current = compute_sales_summary(
-            source,
-            date_from=bounds["start"],
-            date_to=bounds["end"],
-            product=None,
+        metrics_service = BusinessMetricsService()
+        timezone_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        source = metrics_service.normalize_source_timezone(source, timezone_name)
+        bounds = self._resolve_period(
+            source, period_key, date_from, date_to, timezone_name=timezone_name
         )
+        current_result = metrics_service.sales_summary(
+            snapshot,
+            source,
+            period_start=bounds["start"],
+            period_end=bounds["end"],
+        )
+        current = {key: current_result[key] for key in (
+            "revenue", "orders", "average_order_value", "rows_considered"
+        )}
         previous = (
-            compute_sales_summary(
+            metrics_service.sales_summary(
+                snapshot,
                 source,
-                date_from=bounds["comparison_start"],
-                date_to=bounds["comparison_end"],
+                period_start=bounds["comparison_start"],
+                period_end=bounds["comparison_end"],
                 product=None,
             )
             if bounds["comparison_start"] is not None
@@ -108,6 +129,19 @@ class TenantSalesService:
         )
         current["previous_revenue"] = previous["revenue"] if previous is not None else None
         current["previous_orders"] = previous["orders"] if previous is not None else None
+        previous_values = {
+            "revenue": previous["revenue"] if previous is not None else None,
+            "orders": previous["orders"] if previous is not None else None,
+            "average_order_value": previous["average_order_value"] if previous is not None else None,
+        }
+        structured_metrics = []
+        for metric in current_result["metrics"]:
+            previous_value = previous_values.get(metric["metric_id"])
+            metric_value = metric["value"]
+            metric["previous_value"] = previous_value
+            metric["absolute_change"] = metric_value - previous_value if previous_value is not None else None
+            metric["change_percent"] = self._change(metric_value, previous_value) if previous_value is not None else None
+            structured_metrics.append(metric)
 
         trend = compute_sales_trend(
             source,
@@ -126,6 +160,7 @@ class TenantSalesService:
             "strongest_period": strongest,
             "weakest_period": weakest,
             "forecast": self._forecast(tenant, snapshot),
+            "metrics": structured_metrics,
         }
 
     @staticmethod
@@ -196,76 +231,27 @@ class TenantSalesService:
         }
 
     @staticmethod
-    def _resolve_period(source, key: str, date_from: date | None, date_to: date | None):
+    def _resolve_period(source, key: str, date_from: date | None, date_to: date | None, *, timezone_name: str = "UTC"):
+        resolved = BusinessMetricsService.resolve_period(
+            key,
+            timezone_name=timezone_name,
+            date_from=date_from,
+            date_to=date_to,
+            source=source,
+        )
         reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
         date_column = reverse.get("order_timestamp")
-        timestamps = []
-        if date_column is not None:
-            for row in source.rows:
-                timestamp = parse_business_datetime(row.get(date_column))
-                if timestamp is not None:
-                    timestamps.append(
-                        timestamp.replace(tzinfo=timezone.utc)
-                        if timestamp.tzinfo is None
-                        else timestamp.astimezone(timezone.utc)
-                    )
-        now = datetime.now(timezone.utc)
-        if key == "all":
-            return {
-                "start": min(timestamps) if timestamps else None,
-                "end": max(timestamps) if timestamps else None,
-                "comparison_start": None,
-                "comparison_end": None,
-                "date_filter_available": bool(timestamps),
-                "granularity": "month",
-            }
-
-        if key == "custom":
-            assert date_from is not None and date_to is not None
-            start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
-            end = datetime.combine(date_to, time.max, tzinfo=timezone.utc)
-        elif key == "last_7_days":
-            start = now - timedelta(days=7)
-            end = now
-        elif key == "last_30_days":
-            start = now - timedelta(days=30)
-            end = now
-        elif key == "current_quarter":
-            quarter_month = ((now.month - 1) // 3) * 3 + 1
-            start = now.replace(
-                month=quarter_month,
-                day=1,
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-            end = now
-        elif key == "current_month":
-            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        elif key == "last_90_days":
-            start = now - timedelta(days=90)
-            end = now
-        elif key == "year_to_date":
-            start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        else:
-            start = now - timedelta(days=30)
-        if key not in {"custom", "last_90_days"}:
-            end = now
-
-        start = TenantSalesService._as_utc(start)
-        end = TenantSalesService._as_utc(end)
-
-        duration = end - start
-        comparison_end = start - timedelta(microseconds=1)
-        comparison_start = comparison_end - duration
+        timestamps = [
+            value
+            for row in source.rows
+            if date_column and (value := parse_business_datetime(row.get(date_column))) is not None
+        ]
+        start, end = resolved["start"], resolved["end"]
+        duration = end - start if start is not None and end is not None else timedelta(0)
         days = max(1, duration.days + 1)
         granularity = "day" if days <= 31 else "week" if days <= 120 else "month"
         return {
-            "start": start,
-            "end": end,
-            "comparison_start": comparison_start,
-            "comparison_end": comparison_end,
+            **resolved,
             "date_filter_available": bool(date_column and timestamps),
             "granularity": granularity,
         }

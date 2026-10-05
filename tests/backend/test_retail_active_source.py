@@ -8,6 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.ai.tools.business.dataset_access import load_latest_prepared_dataset
+from backend.app.ai.tools.business.commerce_tools import GetInventorySummaryTool, InventorySummaryArgs
+from backend.app.ai.tools.contracts import ToolExecutionContext
 from backend.app.ai.tools.exceptions import ToolUnavailableError
 from backend.app.models import (
     Base,
@@ -18,6 +20,7 @@ from backend.app.models import (
     DatasetStatus,
     DatasetRelationship,
     Mapping,
+    User,
 )
 from backend.app.routers.retail import (
     _inventory_anomalies,
@@ -35,6 +38,7 @@ from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_products_service import TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import TenantSalesService
+from backend.app.voice.service import resolve_voice_source_context
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -478,6 +482,68 @@ def test_shopify_active_source_filters_all_retail_services(source_environment):
     assert recommendation_result["recommendations"] == []
 
 
+def test_voice_source_context_resolves_server_side_per_user_selection(source_environment):
+    session, company, _, _uploaded, shopify_dataset, connection, _prepared = source_environment
+    user = User(
+        company_id=company.id,
+        first_name="Voice",
+        last_name="Owner",
+        email=f"voice-{uuid4().hex}@example.com",
+        password_hash="test-hash",
+        role="owner",
+    )
+    session.add(user)
+    session.commit()
+    tenant = TenantContext(company.id, user_id=user.id)
+    RetailSourceService(session).select_source(
+        tenant, source_type="connector", source_id=connection.id
+    )
+
+    context = resolve_voice_source_context(session, tenant)
+
+    assert context["state"] == "READY"
+    assert context["selection"] == "connector"
+    assert context["sources"] == [{
+        "source_id": str(connection.id),
+        "dataset_id": str(shopify_dataset.id),
+        "source_type": "connector",
+        "provider": "shopify",
+        "name": connection.display_name,
+        "last_updated_at": connection.last_successful_sync.isoformat(),
+    }]
+
+
+@pytest.mark.asyncio
+async def test_central_inventory_tool_uses_only_selected_source_and_reports_stale_freshness(source_environment):
+    session, company, _, _uploaded, shopify_dataset, connection, prepared = source_environment
+    user = User(
+        company_id=company.id,
+        first_name="Voice",
+        last_name="Owner",
+        email=f"inventory-{uuid4().hex}@example.com",
+        password_hash="test-hash",
+        role="owner",
+    )
+    session.add(user)
+    session.commit()
+    tenant = TenantContext(company.id, user_id=user.id)
+    RetailSourceService(session).select_source(tenant, source_type="connector", source_id=connection.id)
+    context = ToolExecutionContext(
+        tenant=tenant,
+        user_id=user.id,
+        permissions=frozenset({"ai:use"}),
+        request_id="selected-shopify-inventory",
+    )
+    tool = GetInventorySummaryTool(session, _PreparedIngestion(prepared))
+
+    result = await tool.run(context, InventorySummaryArgs(low_stock_threshold=5))
+
+    assert result.success is True
+    assert result.data["source_ids"] == [str(shopify_dataset.id)]
+    assert result.data["inventory_state"] == "PARTIAL"
+    assert result.data["unknown_stock_count"] == 1
+    assert result.data["data_freshness"]["freshness_status"] == "STALE"
+    assert "SUPER" not in str(result.data)
 def test_inventory_anomaly_detection_requires_sufficient_complete_source_data():
     inventory = [
         {"id": str(index), "product_name": f"Product {index}", "sku": str(index), "stock_quantity": index}

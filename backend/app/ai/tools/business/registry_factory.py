@@ -77,7 +77,7 @@ def build_business_tool_registry(
     registry.register(GetCustomerSummaryTool(session, ingestion))
     registry.register(GetCustomerSegmentsTool(session, prediction_service))
     registry.register(GetProductDetailTool(session))
-    registry.register(GetInventorySummaryTool(session))
+    registry.register(GetInventorySummaryTool(session, ingestion))
     # Phase 31 — Avenqo Predictive Intelligence : réutilise EXACTEMENT le
     # même Model Registry/PredictionService, jamais un second moteur.
     registry.register(GetChurnRiskTool(session, prediction_service))

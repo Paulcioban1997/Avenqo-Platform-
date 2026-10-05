@@ -5,11 +5,41 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.models.base import Base, TimestampMixin
+
+
+class VoicePhoneNumber(TimestampMixin, Base):
+    __tablename__ = "voice_phone_numbers"
+    __table_args__ = (UniqueConstraint("phone_number", name="uq_voice_phone_number_e164"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    config_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("voice_business_configs.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    phone_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    region: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    locality: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="telnyx")
+    provider_number_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    number_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    capabilities: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    regulatory_status: Mapped[str] = mapped_column(String(48), nullable=False, default="unknown")
+    regulatory_requirements: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
+    monthly_cost: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    monthly_cost_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class VoiceBusinessConfig(TimestampMixin, Base):
@@ -51,6 +81,27 @@ class VoiceCall(TimestampMixin, Base):
     telnyx_call_control_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     retell_call_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     caller_phone: Mapped[str] = mapped_column(String(40), nullable=False)
+    caller_type: Mapped[str] = mapped_column(String(16), nullable=False, default="UNKNOWN", index=True)
+    authenticated_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    verified_client_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("crm_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    verification_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    verification_client_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("crm_clients.id", ondelete="SET NULL"), nullable=True
+    )
+    verification_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    caller_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    central_conversation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("ai_conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_context: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="incoming", index=True)
     uncertainty_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -107,5 +158,6 @@ class VoiceCentralSession(TimestampMixin, Base):
     detected_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
     language_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     previous_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_context: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -16,26 +16,61 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
+
+interface AdminUserRecord {
+  role?: string;
+  is_platform_admin?: boolean;
+}
+
+interface AdminCompanyRecord {
+  name?: string;
+  subscription_plan?: string;
+}
+
+interface PlatformVoiceTenant {
+  company_id: string;
+  company_name: string;
+  phone_number?: string | null;
+  calls_count?: number;
+  call_minutes?: number;
+  ai_credits_charged?: number;
+  last_successful_interaction_at?: string | null;
+  data_freshness?: { freshness_status?: string };
+}
+
+interface PlatformVoiceHealth {
+  provider_configuration?: Record<string, string>;
+  tenants: PlatformVoiceTenant[];
+}
 
 export default function AdminPage() {
   const { locale } = useLocale();
   const isFr = locale === "fr";
+  const t = getAppTranslations(locale);
+  const voiceCopy = VOICE_HEALTH_COPY[locale as keyof typeof VOICE_HEALTH_COPY] ?? VOICE_HEALTH_COPY.en;
 
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [company, setCompany] = useState<any>(null);
+  const [user, setUser] = useState<AdminUserRecord | null>(null);
+  const [company, setCompany] = useState<AdminCompanyRecord | null>(null);
+  const [voiceHealth, setVoiceHealth] = useState<PlatformVoiceHealth | null>(null);
+  const [voiceHealthError, setVoiceHealthError] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
       try {
         const res = await fetch("/api/v1/auth/me");
         if (res.ok) {
-          const data = await res.json();
-          setUser(data.user);
-          setCompany(data.company);
+          const data = await res.json() as { user?: AdminUserRecord; company?: AdminCompanyRecord };
+          setUser(data.user ?? null);
+          setCompany(data.company ?? null);
           if (data.user?.is_platform_admin || data.user?.role === "SUPER_ADMIN" || data.user?.role === "ADMIN") {
             setIsAdmin(true);
+            const healthResponse = await fetch("/api/v1/admin/voice/health", { credentials: "include", cache: "no-store" });
+            if (healthResponse.ok) setVoiceHealth(await healthResponse.json() as PlatformVoiceHealth);
+            else setVoiceHealthError(true);
           }
         }
       } catch {}
@@ -152,6 +187,60 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            <section className="space-y-4 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">{t.navigation.voiceAi}</h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{voiceCopy.freshness}</p>
+                </div>
+                {voiceHealth?.provider_configuration && (
+                  <div className="flex flex-wrap gap-2 text-[10px]">
+                    {Object.entries(voiceHealth.provider_configuration).map(([provider, state]) => (
+                      <span key={provider} className="rounded border border-slate-200 px-2 py-1 font-mono text-slate-600 dark:border-white/10 dark:text-slate-300">
+                        {provider}: {String(state)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {voiceHealthError ? (
+                <div role="alert" className="text-xs text-rose-600">{t.common.errorTitle}</div>
+              ) : !voiceHealth ? (
+                <div role="status" className="text-xs text-slate-500">{t.integrations.syncing}</div>
+              ) : voiceHealth.tenants?.length ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 text-[10px] uppercase text-slate-500 dark:border-white/10">
+                      <tr>
+                        <th className="py-2 pr-4">{t.shell.company}</th>
+                        <th className="py-2 pr-4">{voiceCopy.phone}</th>
+                        <th className="py-2 pr-4">{voiceCopy.calls}</th>
+                        <th className="py-2 pr-4">{voiceCopy.minutes}</th>
+                        <th className="py-2 pr-4">{voiceCopy.credits}</th>
+                        <th className="py-2 pr-4">{voiceCopy.lastActivity}</th>
+                        <th className="py-2 pr-4">{voiceCopy.freshness}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {voiceHealth.tenants.map((tenant) => (
+                        <tr key={tenant.company_id} className="border-b border-slate-100 last:border-0 dark:border-white/[0.06]">
+                          <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">{tenant.company_name}</td>
+                          <td className="py-3 pr-4 font-mono text-slate-600 dark:text-slate-300">{tenant.phone_number || "—"}</td>
+                          <td className="py-3 pr-4 tabular-nums">{tenant.calls_count ?? "—"}</td>
+                          <td className="py-3 pr-4 tabular-nums">{tenant.call_minutes ?? "—"}</td>
+                          <td className="py-3 pr-4 tabular-nums">{tenant.ai_credits_charged ?? "—"}</td>
+                          <td className="py-3 pr-4">{tenant.last_successful_interaction_at ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(tenant.last_successful_interaction_at)) : "—"}</td>
+                          <td className="py-3 pr-4 font-mono">{tenant.data_freshness?.freshness_status ?? "UNAVAILABLE"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">{t.common.insufficientData}</div>
+              )}
+            </section>
 
             {/* Admin Management Links */}
             <div className="bg-white dark:bg-[#0B132B] rounded-2xl p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">

@@ -6,9 +6,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import compute_customer_portfolio
+from backend.app.services.business_metrics_service import BusinessMetricsService
 from backend.app.models import ModelRegistry
 from backend.app.services.prediction_runtime import resolve_executor
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
@@ -47,16 +49,29 @@ class TenantCustomersService:
         sort_by: str = "total_value",
         sort_direction: str = "desc",
         exact_customer_id: str | None = None,
+        period_key: str = "last_30_days",
     ) -> dict[str, Any]:
         if sort_by not in _SORT_FIELDS or sort_direction not in {"asc", "desc"}:
             raise InvalidCustomerQuery("Unsupported customer sorting")
         snapshot = self._analytics.load(tenant)
         source = snapshot.source_for(_CUSTOMER_FIELDS)
+        if source is not None:
+            source = BusinessMetricsService.normalize_source_timezone(
+                source, getattr(snapshot.company, "timezone", None) or "UTC"
+            )
         base = {
             "status": snapshot.status,
             "available": source is not None,
             "currency": snapshot.currency,
             "capabilities": sorted(snapshot.capabilities),
+            "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
+            "source_context": {
+                "selection": snapshot.active_source_type,
+                "provider": snapshot.active_source_provider,
+                "name": snapshot.active_source_name,
+                "dataset_id": str(snapshot.active_source_dataset_id)
+                if snapshot.active_source_dataset_id is not None else None,
+            },
         }
         if source is None:
             return {
@@ -65,6 +80,7 @@ class TenantCustomersService:
                 "segments": [],
                 "risks": [],
                 "items": [],
+                "metrics": [],
                 "pagination": {"page": page, "page_size": page_size, "total": 0, "pages": 0},
             }
 
@@ -72,7 +88,28 @@ class TenantCustomersService:
         self._add_activity_status(customers)
         self._add_rule_based_intelligence(source, customers)
         self._add_model_outputs(tenant, source, snapshot.active_models, customers)
-        summary = self._summary(customers, "total_amount" in source.canonical_columns.values())
+        metrics_service = BusinessMetricsService()
+        try:
+            period = metrics_service.resolve_period(
+                period_key,
+                timezone_name=getattr(snapshot.company, "timezone", None) or "UTC",
+                source=source,
+            )
+        except ValueError as exc:
+            raise InvalidCustomerQuery("Unsupported customer metrics period") from exc
+        summary_result = metrics_service.customer_summary(
+            snapshot,
+            source,
+            period_start=period["start"],
+            period_end=period["end"],
+            comparison_start=period["comparison_start"],
+            comparison_end=period["comparison_end"],
+        )
+        summary = {
+            key: value
+            for key, value in summary_result.items()
+            if key not in {"metrics", "data_freshness"}
+        }
         segments = self._counts(customers, "segment")
         risks = self._counts(customers, "risk")
 
@@ -97,6 +134,7 @@ class TenantCustomersService:
         return {
             **base,
             "summary": summary,
+            "metrics": summary_result["metrics"],
             "segments": segments,
             "risks": risks,
             "items": items,

@@ -215,6 +215,7 @@ class Settings(BaseSettings):
         alias="WOOCOMMERCE_ALLOW_INSECURE_LOCALHOST",
     )
     telnyx_api_key: str | None = Field(default=None, alias="TELNYX_API_KEY")
+    telnyx_voice_connection_id: str | None = Field(default=None, alias="TELNYX_VOICE_CONNECTION_ID")
     telnyx_public_key: str | None = Field(default=None, alias="TELNYX_PUBLIC_KEY")
     telnyx_messaging_profile_id: str | None = Field(default=None, alias="TELNYX_MESSAGING_PROFILE_ID")
     retell_api_key: str | None = Field(default=None, alias="RETELL_API_KEY")
@@ -227,6 +228,7 @@ class Settings(BaseSettings):
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
+    voice_realtime_supported_locales: list[str] = Field(default_factory=list, alias="VOICE_REALTIME_SUPPORTED_LOCALES")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")

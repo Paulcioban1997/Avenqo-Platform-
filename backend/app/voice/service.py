@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
+import logging
+import re
 import secrets
+from time import perf_counter
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -21,19 +25,25 @@ from backend.app.models import (
     CRMCommunication,
     CRMNote,
     CRMService as CRMServiceModel,
+    CompanyMembership,
+    User,
+    UserRole,
     VoiceBusinessConfig,
     VoiceCall,
+    VoicePhoneNumber,
     VoiceToolAction,
 )
 from backend.app.services.crm_service import CRMService
+from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
-from backend.app.services.retail_source_service import RetailSourceNotFound
+from backend.app.services.retail_source_service import RetailSourceNotFound, RetailSourceService
 from backend.app.voice.providers import RetellVoiceProvider, TelnyxClient, VoiceProvider
 from shared.ai_engine.contracts import TenantContext
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 _tenant_async_locks: dict[UUID, asyncio.Lock] = {}
 _tenant_lock_guard = asyncio.Lock()
+_logger = logging.getLogger("avenqo.voice")
 
 
 def _api_key_hash(value: str) -> str:
@@ -47,6 +57,46 @@ def new_voice_api_key() -> str:
 async def _tenant_lock(company_id: UUID) -> asyncio.Lock:
     async with _tenant_lock_guard:
         return _tenant_async_locks.setdefault(company_id, asyncio.Lock())
+
+
+def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str, Any]:
+    """Resolve selected sources from authenticated server identity, never call/browser fields."""
+    if not hasattr(db, "scalars"):
+        return {
+            "state": "UNAVAILABLE",
+            "selection": None,
+            "sources": [],
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+        }
+    context = RetailSourceService(db).context(tenant)
+    if context["source_type"] == "all":
+        selected = [
+            source for source in context["sources"]
+            if source.enabled and source.status.upper() == "READY"
+        ]
+    else:
+        selected = [
+            source for source in context["sources"]
+            if source.source_type == context["source_type"]
+            and str(source.source_id) == str(context["source_id"])
+            and source.status.upper() == "READY"
+        ]
+    return {
+        "state": context["state"] if selected else "SOURCE_UNAVAILABLE" if context["source_type"] else context["state"],
+        "selection": context["source_type"],
+        "sources": [
+            {
+                "source_id": str(source.source_id),
+                "dataset_id": str(source.dataset_id) if source.dataset_id else None,
+                "source_type": source.source_type,
+                "provider": source.provider,
+                "name": source.display_name,
+                "last_updated_at": source.last_synchronized_at.isoformat() if source.last_synchronized_at else None,
+            }
+            for source in selected
+        ],
+        "resolved_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 class VoiceOrchestrator:
@@ -108,6 +158,18 @@ class VoiceOrchestrator:
         await self.provider.validate_agent(values["retell_agent_id"])
 
         config = self.config_for_tenant(tenant)
+        number = self.db.scalar(select(VoicePhoneNumber).where(
+            VoicePhoneNumber.phone_number == values["telnyx_phone_number"]
+        ))
+        if number is not None:
+            if number.company_id != tenant.company_id:
+                raise PermissionError("This number belongs to another tenant.")
+            if number.status != "ACTIVE":
+                raise ValueError("Only an active, provider-confirmed number can be assigned to Voice.")
+            if number.config_id not in {None, config.id if config is not None else None}:
+                raise ValueError("This number is already assigned to another Voice configuration.")
+        elif self.settings.telnyx_api_key:
+            raise ValueError("Search and provision a tenant-owned Voice number before configuring inbound calls.")
         if config is not None and create_only:
             raise ValueError("La configuration Voice existe déjà; utilisez la mise à jour.")
         if config is None:
@@ -119,12 +181,20 @@ class VoiceOrchestrator:
                 **values,
             )
             self.db.add(config)
+            self.db.flush()
         else:
+            previous_number = self.db.scalar(select(VoicePhoneNumber).where(
+                VoicePhoneNumber.config_id == config.id
+            ))
+            if previous_number is not None and previous_number.phone_number != values["telnyx_phone_number"]:
+                previous_number.config_id = None
             api_key = None
             for field, value in values.items():
                 setattr(config, field, value)
         config.greeting_message = self.greeting_for(config.business_name)
         self.provider.inbound_target(config)
+        if number is not None:
+            number.config_id = config.id
         self.db.commit()
         self.db.refresh(config)
         return config, api_key
@@ -243,6 +313,7 @@ class VoiceOrchestrator:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> dict[str, Any]:
+        started_at = perf_counter()
         lock = await _tenant_lock(config.company_id)
         async with lock:
             if self.db.get_bind().dialect.name == "postgresql":
@@ -257,6 +328,15 @@ class VoiceOrchestrator:
                 )
             )
             if existing_action:
+                _logger.info(
+                    "voice_tool_result tenant_id=%s call_id=%s action_id=%s tool_name=%s success=%s replay=true latency_ms=%d",
+                    config.company_id,
+                    call_id,
+                    action_id,
+                    tool_name,
+                    str(existing_action.result.get("success", False)).lower(),
+                    int((perf_counter() - started_at) * 1000),
+                )
                 return existing_action.result
 
             call = self._resolve_call(config, call_id)
@@ -288,6 +368,15 @@ class VoiceOrchestrator:
             if action:
                 action.result = result
                 self.db.commit()
+            _logger.info(
+                "voice_tool_result tenant_id=%s call_id=%s action_id=%s tool_name=%s success=%s replay=false latency_ms=%d",
+                config.company_id,
+                call_id,
+                action_id,
+                tool_name,
+                str(result.get("success", False)).lower(),
+                int((perf_counter() - started_at) * 1000),
+            )
             return result
 
     async def _dispatch_tool(
@@ -299,6 +388,21 @@ class VoiceOrchestrator:
     ) -> dict[str, Any]:
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected"}:
             raise ValueError("L'appel est terminé; aucune action ne peut être exécutée.")
+        if tool_name == "request_caller_verification":
+            return await self._request_caller_verification(config, call)
+        if tool_name == "verify_caller":
+            return self._verify_caller(config, call, str(args.get("code") or ""))
+        if tool_name in {"reschedule_appointment", "cancel_appointment"}:
+            if call.caller_type in {"OWNER", "EMPLOYEE"}:
+                membership = self.db.scalar(select(CompanyMembership).where(
+                    CompanyMembership.company_id == config.company_id,
+                    CompanyMembership.user_id == call.authenticated_user_id,
+                    CompanyMembership.is_active.is_(True),
+                ))
+                if membership is None or "crm:appointments:write" not in permissions_for(membership.role):
+                    return {"success": False, "error": "not_authorized"}
+            elif call.caller_type != "CLIENT" or call.verified_client_id is None:
+                return {"success": False, "error": "caller_verification_required"}
         if tool_name == "get_business_info":
             return {
                 "success": True,
@@ -329,6 +433,150 @@ class VoiceOrchestrator:
                     return {"success": True, "transfer": False, "action": "clarify_once", "uncertainty_count": 1}
             return await self._transfer(config, call, reason)
         raise ValueError("Outil vocal inconnu")
+
+    @staticmethod
+    def _normalized_phone(value: str | None) -> str | None:
+        if not value:
+            return None
+        normalized = re.sub(r"[^0-9+]", "", value)
+        return normalized if re.fullmatch(r"\+[1-9]\d{7,14}", normalized) else None
+
+    def _verification_hash(self, config: VoiceBusinessConfig, call: VoiceCall, code: str) -> str:
+        payload = f"{config.id}:{call.id}:{code}".encode("utf-8")
+        return hmac.new(self.settings.auth_jwt_secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    async def _request_caller_verification(
+        self,
+        config: VoiceBusinessConfig,
+        call: VoiceCall,
+    ) -> dict[str, Any]:
+        if call.caller_type in {"OWNER", "EMPLOYEE", "CLIENT"} and call.caller_verified_at is not None:
+            return {"success": True, "verified": True, "caller_type": call.caller_type}
+        now = datetime.now(timezone.utc)
+        expires = call.verification_expires_at
+        if expires is not None and expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if call.verification_code_hash and expires and expires > now:
+            return {"success": True, "verification_sent": True}
+
+        caller_phone = self._normalized_phone(call.caller_phone)
+        if caller_phone is None:
+            return {"success": False, "error": "verification_unavailable"}
+        matching_users = []
+        users = self.db.scalars(select(User).where(
+            User.company_id == config.company_id,
+            User.is_active.is_(True),
+        )).all()
+        for user in users:
+            if self._normalized_phone(user.phone) != caller_phone:
+                continue
+            membership = self.db.scalar(select(CompanyMembership).where(
+                CompanyMembership.company_id == config.company_id,
+                CompanyMembership.user_id == user.id,
+                CompanyMembership.is_active.is_(True),
+            ))
+            if membership is not None:
+                matching_users.append((user, membership))
+
+        client = None
+        if not matching_users:
+            clients = self.db.scalars(select(CRMClient).where(
+                CRMClient.company_id == config.company_id,
+                CRMClient.is_deleted.is_(False),
+            )).all()
+            matching_clients = [item for item in clients if self._normalized_phone(item.phone) == caller_phone]
+            client = matching_clients[0] if len(matching_clients) == 1 else None
+
+        if len(matching_users) != 1 and client is None:
+            return {"success": False, "error": "verification_unavailable"}
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        call.verification_code_hash = self._verification_hash(config, call, code)
+        call.verification_expires_at = now + timedelta(minutes=5)
+        call.verification_attempts = 0
+        call.verification_user_id = matching_users[0][0].id if matching_users else None
+        call.verification_client_id = client.id if client is not None else None
+        self.db.commit()
+        message = (
+            f"Code de vérification Avenqo : {code}. Il expire dans 5 minutes."
+            if config.preferred_language.startswith("fr")
+            else f"Your Avenqo verification code is {code}. It expires in 5 minutes."
+        )
+        try:
+            await self.telnyx.send_sms(
+                from_number=config.telnyx_phone_number,
+                to_number=caller_phone,
+                text=message,
+            )
+        except Exception:
+            call.verification_code_hash = None
+            call.verification_expires_at = None
+            call.verification_user_id = None
+            call.verification_client_id = None
+            self.db.commit()
+            logger.warning("Voice caller verification SMS delivery failed", extra={"company_id": str(config.company_id)})
+            return {"success": False, "error": "verification_delivery_unavailable"}
+        return {"success": True, "verification_sent": True}
+
+    def _verify_caller(
+        self,
+        config: VoiceBusinessConfig,
+        call: VoiceCall,
+        code: str,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        expiry = call.verification_expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if not call.verification_code_hash or expiry is None or expiry <= now:
+            return {"success": False, "error": "verification_expired"}
+        call.verification_attempts += 1
+        if call.verification_attempts > 5:
+            call.verification_code_hash = None
+            call.verification_user_id = None
+            call.verification_client_id = None
+            self.db.commit()
+            return {"success": False, "error": "verification_attempts_exceeded"}
+        candidate_hash = self._verification_hash(config, call, code)
+        if not hmac.compare_digest(candidate_hash, call.verification_code_hash):
+            self.db.commit()
+            return {"success": False, "error": "verification_code_invalid"}
+
+        if call.verification_user_id is not None:
+            user = self.db.scalar(select(User).where(
+                User.id == call.verification_user_id,
+                User.company_id == config.company_id,
+                User.is_active.is_(True),
+            ))
+            membership = self.db.scalar(select(CompanyMembership).where(
+                CompanyMembership.company_id == config.company_id,
+                CompanyMembership.user_id == call.verification_user_id,
+                CompanyMembership.is_active.is_(True),
+            ))
+            if user is None or membership is None or self._normalized_phone(user.phone) != self._normalized_phone(call.caller_phone):
+                return {"success": False, "error": "verification_identity_unavailable"}
+            role = membership.role if isinstance(membership.role, UserRole) else UserRole(membership.role)
+            call.authenticated_user_id = user.id
+            call.caller_type = "OWNER" if role == UserRole.OWNER else "EMPLOYEE"
+        elif call.verification_client_id is not None:
+            client = self.db.scalar(select(CRMClient).where(
+                CRMClient.id == call.verification_client_id,
+                CRMClient.company_id == config.company_id,
+                CRMClient.is_deleted.is_(False),
+            ))
+            if client is None or self._normalized_phone(client.phone) != self._normalized_phone(call.caller_phone):
+                return {"success": False, "error": "verification_identity_unavailable"}
+            call.verified_client_id = client.id
+            call.caller_type = "CLIENT"
+        else:
+            return {"success": False, "error": "verification_identity_unavailable"}
+
+        call.caller_verified_at = now
+        call.verification_code_hash = None
+        call.verification_expires_at = None
+        call.verification_user_id = None
+        call.verification_client_id = None
+        self.db.commit()
+        return {"success": True, "verified": True, "caller_type": call.caller_type}
 
     def _service_config(self, config: VoiceBusinessConfig, service_name: str) -> dict[str, Any]:
         target = service_name.strip().casefold()
@@ -497,6 +745,8 @@ class VoiceOrchestrator:
         ))
         if not appointment:
             raise LookupError("Rendez-vous introuvable.")
+        if call.caller_type == "CLIENT" and appointment.client_id != call.verified_client_id:
+            return {"success": False, "error": "appointment_not_owned_by_verified_caller"}
         start = self._utc_datetime(args["starts_at"], config)
         end = start + timedelta(minutes=appointment.duration_minutes)
         interval = self._opening_interval(config, start.astimezone(ZoneInfo(config.timezone_name)).date())
@@ -521,6 +771,8 @@ class VoiceOrchestrator:
         ))
         if not appointment:
             raise LookupError("Rendez-vous introuvable.")
+        if call.caller_type == "CLIENT" and appointment.client_id != call.verified_client_id:
+            return {"success": False, "error": "appointment_not_owned_by_verified_caller"}
         if not await CRMService(self.db).cancel_appointment(config.company_id, appointment_id, actor_name="Avenqo Voice"):
             raise LookupError("Rendez-vous introuvable.")
         call.appointment_id = appointment_id

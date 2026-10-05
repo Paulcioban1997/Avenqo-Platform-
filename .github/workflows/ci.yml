@@ -92,6 +92,22 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
 
+      - name: Run Voice Master contract suite
+        run: >-
+          python -m pytest
+          tests/backend/test_voice_agent.py
+          tests/backend/test_voice_number_service.py
+          tests/backend/test_voice_health_service.py
+          tests/backend/test_data_freshness_service.py
+          tests/backend/test_phase33_billing_admin.py
+          tests/backend/test_billing.py
+          -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+
   frontend-flutter:
     name: Frontend App (Flutter)
     runs-on: ubuntu-latest

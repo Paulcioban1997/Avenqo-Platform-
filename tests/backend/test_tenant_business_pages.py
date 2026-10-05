@@ -34,13 +34,19 @@ from backend.app.models import (
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import CustomerNotFound, TenantCustomersService
+from backend.app.schemas.tenant_business import TenantCustomersResponse
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.app.services.tenant_products_service import ProductNotFound, TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
 from backend.app.services.tenant_sales_service import InvalidSalesPeriod, TenantSalesService
 from backend.main import create_application
 from shared.ai_engine.contracts import TenantContext
-from backend.app.ai.tools.business.sales_tools import BusinessOverviewArgs, GetBusinessOverviewTool
+from backend.app.ai.tools.business.sales_tools import (
+    BusinessOverviewArgs,
+    GetBusinessOverviewTool,
+    GetSalesSummaryTool,
+    SalesSummaryArgs,
+)
 from backend.app.ai.tools.contracts import ToolExecutionContext
 
 
@@ -411,6 +417,50 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     assert all(item.get("revenue") != 9999.0 for item in product_result["items"])
 
 
+@pytest.mark.asyncio
+async def test_dashboard_retail_copilot_metric_tool_share_selected_source_calculation(business_environment):
+    session, company, _company_b, dataset, prepared = business_environment
+    now = datetime.now(timezone.utc)
+    prepared[dataset.id] = _prepared(
+        company,
+        dataset,
+        [
+            {"date": (now - timedelta(days=2)).isoformat(), "sale": "TODAY-1", "client": "C1", "amount": 120},
+            {"date": (now - timedelta(days=20)).isoformat(), "sale": "TODAY-2", "client": "C2", "amount": 80},
+            {"date": (now - timedelta(days=45)).isoformat(), "sale": "PREVIOUS", "client": "C1", "amount": 50},
+        ],
+    )
+    tenant = TenantContext(company.id)
+    ingestion = _PreparedIngestion(prepared)
+    analytics = TenantAnalyticsService(session, ingestion)
+    predictions = _PredictionService()
+    products = TenantProductsService(analytics)
+    recommendations = TenantRecommendationsService(analytics, products, None)
+    retail_sales = TenantSalesService(session, analytics, predictions).build(
+        tenant, period_key="last_30_days"
+    )
+    dashboard = TenantDashboardService(analytics, recommendations).build(
+        tenant, period_key="last_30_days"
+    )
+    copilot_tool = GetSalesSummaryTool(session, ingestion)
+    tool_result = await copilot_tool.run(
+        ToolExecutionContext(
+            tenant=tenant,
+            user_id=uuid4(),
+            permissions=frozenset({"ai:use"}),
+            request_id="shared-selected-source-metrics",
+            company_timezone=company.timezone,
+        ),
+        SalesSummaryArgs(period_key="last_30_days"),
+    )
+
+    dashboard_revenue = next(item["value"] for item in dashboard["kpis"] if item["key"] == "revenue")
+    dashboard_orders = next(item["value"] for item in dashboard["kpis"] if item["key"] == "orders")
+    assert retail_sales["summary"]["revenue"] == dashboard_revenue == tool_result.data["revenue"] == 200
+    assert retail_sales["summary"]["orders"] == dashboard_orders == tool_result.data["orders"] == 2
+    assert retail_sales["metrics"][0]["source_ids"] == dashboard["metrics"][0]["source_ids"] == tool_result.data["metrics"][0]["source_ids"]
+
+
 def test_line_quantity_and_unit_price_derive_real_zero_revenue(
     business_environment,
 ):
@@ -600,11 +650,18 @@ def test_customers_real_summary_pagination_search_and_tenant_lookup(business_env
     assert first["summary"] == {
         "total_customers": 3,
         "active_customers": 3,
-        "new_customers": 2,
+        "new_customers": 0,
+        "previous_new_customers": 2,
         "repeat_customers": 1,
+        "returning_customers": 1,
         "purchase_frequency": 1.33,
         "average_customer_value": 75.0,
     }
+    serialized = TenantCustomersResponse.model_validate(first).model_dump()
+    assert serialized["summary"] == first["summary"]
+    assert serialized["metrics"] == first["metrics"]
+    assert serialized["data_freshness"] == first["data_freshness"]
+    assert serialized["source_context"] == first["source_context"]
     assert first["pagination"] == {"page": 1, "page_size": 2, "total": 3, "pages": 2}
     assert all(item["segment_status"] == "available" for item in first["items"])
     assert all(item["risk_status"] == "available" for item in first["items"])

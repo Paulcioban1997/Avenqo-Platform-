@@ -13,6 +13,8 @@ from backend.app.services.tenant_analytics_service import (
     TenantAnalyticsService,
     TenantAnalyticsSnapshot,
 )
+from backend.app.services.business_metrics_service import BusinessMetricsService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -81,11 +83,16 @@ class TenantProductsService:
             raise InvalidProductQuery("Unsupported product status filter")
 
         source = self.source_for(snapshot)
+        if source is not None:
+            source = BusinessMetricsService.normalize_source_timezone(
+                source, getattr(snapshot.company, "timezone", None) or "UTC"
+            )
         base = {
             "status": snapshot.status,
             "available": source is not None,
             "currency": snapshot.currency,
             "capabilities": sorted(snapshot.capabilities),
+            "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
             "source_context": {
                 "selection": snapshot.active_source_type,
                 "provider": snapshot.active_source_provider,
@@ -147,6 +154,9 @@ class TenantProductsService:
         source = self.source_for(snapshot)
         if source is None:
             raise ProductNotFound("Product not found")
+        source = BusinessMetricsService.normalize_source_timezone(
+            source, getattr(snapshot.company, "timezone", None) or "UTC"
+        )
         match = next(
             (item for item in self.portfolio(source) if item["product_id"] == product_id),
             None,

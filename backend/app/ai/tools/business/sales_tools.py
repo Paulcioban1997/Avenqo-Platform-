@@ -18,12 +18,13 @@ from backend.app.ai.tools.business.analytics import (
     compute_sales_comparison,
     compute_sales_summary,
     compute_sales_trend,
-    compute_top_products,
 )
 from backend.app.ai.tools.business.dataset_access import load_latest_prepared_dataset
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.models import Company
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.business_metrics_service import BusinessMetricsService
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 
 
 def _to_datetime(value: date | None, *, end_of_day: bool) -> datetime | None:
@@ -64,19 +65,22 @@ class GetBusinessOverviewTool(RetailAITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: BusinessOverviewArgs) -> ToolResult:
+        snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
         prepared = load_latest_prepared_dataset(
             self._session,
             self._ingestion,
             context.tenant,
             frozenset({"total_amount", "order_id", "customer_id"}),
+            snapshot=snapshot,
         )
-        data = compute_business_overview(prepared)
+        data = BusinessMetricsService().business_overview(snapshot, prepared)
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
 
 class SalesSummaryArgs(ToolArguments):
     date_from: date | None = None
     date_to: date | None = None
+    period_key: str | None = None
     location: str | None = None
     category: str | None = None
     product: str | None = None
@@ -87,7 +91,9 @@ class GetSalesSummaryTool(RetailAITool):
     description = (
         "Return the sales revenue, order count and average order value for the "
         "tenant's business data, optionally filtered by date range or product. "
-        "Use date_from/date_to as real calendar dates, never free text."
+        "Use period_key for today, yesterday, this_week, last_week, last_7_days, last_30_days, "
+        "current_month, last_month, current_quarter, last_quarter or year_to_date. "
+        "The server interprets these in the company's timezone. Use date_from/date_to for a custom range."
     )
     input_schema = SalesSummaryArgs
     required_permissions = ("ai:use",)
@@ -96,16 +102,32 @@ class GetSalesSummaryTool(RetailAITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesSummaryArgs) -> ToolResult:
+        snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
         prepared = load_latest_prepared_dataset(
             self._session,
             self._ingestion,
             context.tenant,
             frozenset({"total_amount", "order_id"}),
+            snapshot=snapshot,
         )
-        data = compute_sales_summary(
+        metrics_service = BusinessMetricsService()
+        period_key = (
+            "custom"
+            if arguments.date_from is not None or arguments.date_to is not None
+            else arguments.period_key or "all"
+        )
+        bounds = metrics_service.resolve_period(
+            period_key,
+            timezone_name=context.company_timezone,
+            date_from=arguments.date_from,
+            date_to=arguments.date_to,
+            source=prepared,
+        )
+        data = metrics_service.sales_summary(
+            snapshot,
             prepared,
-            date_from=_to_datetime(arguments.date_from, end_of_day=False),
-            date_to=_to_datetime(arguments.date_to, end_of_day=True),
+            period_start=bounds["start"],
+            period_end=bounds["end"],
             product=arguments.product,
         )
         unsupported = [name for name, value in (("location", arguments.location), ("category", arguments.category)) if value is not None]
@@ -114,12 +136,14 @@ class GetSalesSummaryTool(RetailAITool):
 
 
 class SalesTrendArgs(ToolArguments):
-    pass
+    period_key: str | None = None
+    granularity: str = "month"
+    product: str | None = None
 
 
 class GetSalesTrendTool(RetailAITool):
     name = "get_sales_trend"
-    description = "Return the monthly revenue trend as a structured time series for the tenant's business data."
+    description = "Return a structured sales trend for the selected tenant source and company-local period."
     input_schema = SalesTrendArgs
     required_permissions = ("ai:use",)
 
@@ -127,13 +151,29 @@ class GetSalesTrendTool(RetailAITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesTrendArgs) -> ToolResult:
+        snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
         prepared = load_latest_prepared_dataset(
             self._session,
             self._ingestion,
             context.tenant,
             frozenset({"total_amount", "order_timestamp"}),
+            snapshot=snapshot,
         )
-        data = compute_sales_trend(prepared)
+        metrics_service = BusinessMetricsService()
+        bounds = metrics_service.resolve_period(
+            arguments.period_key or "all",
+            timezone_name=context.company_timezone,
+            source=prepared,
+        )
+        granularity = arguments.granularity if arguments.granularity in {"day", "week", "month"} else "month"
+        data = metrics_service.sales_trend(
+            snapshot,
+            prepared,
+            period_start=bounds["start"],
+            period_end=bounds["end"],
+            granularity=granularity,
+            product=arguments.product,
+        )
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),))
 
 
@@ -157,18 +197,34 @@ class GetSalesComparisonTool(RetailAITool):
         self._session, self._ingestion = session, ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: SalesComparisonArgs) -> ToolResult:
+        snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
         prepared = load_latest_prepared_dataset(
             self._session,
             self._ingestion,
             context.tenant,
             frozenset({"total_amount", "order_timestamp"}),
+            snapshot=snapshot,
         )
-        data = compute_sales_comparison(
+        metrics_service = BusinessMetricsService()
+        current_bounds = metrics_service.resolve_period(
+            "custom",
+            timezone_name=context.company_timezone,
+            date_from=arguments.current_from,
+            date_to=arguments.current_to,
+        )
+        previous_bounds = metrics_service.resolve_period(
+            "custom",
+            timezone_name=context.company_timezone,
+            date_from=arguments.previous_from,
+            date_to=arguments.previous_to,
+        )
+        data = metrics_service.sales_comparison(
+            snapshot,
             prepared,
-            current_from=_to_datetime(arguments.current_from, end_of_day=False),
-            current_to=_to_datetime(arguments.current_to, end_of_day=True),
-            previous_from=_to_datetime(arguments.previous_from, end_of_day=False),
-            previous_to=_to_datetime(arguments.previous_to, end_of_day=True),
+            current_start=current_bounds["start"],
+            current_end=current_bounds["end"],
+            previous_start=previous_bounds["start"],
+            previous_end=previous_bounds["end"],
         )
         return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),))
 
@@ -178,6 +234,7 @@ class TopProductsArgs(ToolArguments):
     metric: str = "revenue"
     date_from: date | None = None
     date_to: date | None = None
+    period_key: str | None = None
     category: str | None = None
 
 
@@ -205,18 +262,34 @@ class GetTopProductsTool(RetailAITool):
             "quantity": "quantity",
             "orders": "order_id",
         }[arguments.metric]
+        snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
         prepared = load_latest_prepared_dataset(
             self._session,
             self._ingestion,
             context.tenant,
             frozenset({"product_id", metric_field}),
+            snapshot=snapshot,
         )
-        data = compute_top_products(
+        metrics_service = BusinessMetricsService()
+        period_key = (
+            "custom"
+            if arguments.date_from is not None or arguments.date_to is not None
+            else arguments.period_key or "all"
+        )
+        bounds = metrics_service.resolve_period(
+            period_key,
+            timezone_name=context.company_timezone,
+            date_from=arguments.date_from,
+            date_to=arguments.date_to,
+            source=prepared,
+        )
+        data = metrics_service.top_products(
+            snapshot,
             prepared,
             top_n=top_n,
             metric=arguments.metric,
-            date_from=_to_datetime(arguments.date_from, end_of_day=False),
-            date_to=_to_datetime(arguments.date_to, end_of_day=True),
+            period_start=bounds["start"],
+            period_end=bounds["end"],
         )
         metadata = {"unsupported_filters": ["category"]} if arguments.category is not None else {}
         return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),), metadata=metadata)

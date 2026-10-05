@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import hmac
 import logging
 import time
@@ -14,7 +15,7 @@ from uuid import UUID
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
@@ -22,11 +23,45 @@ from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
 from backend.app.dependencies.subscription import require_active_subscription
-from backend.app.models import BillingAccount, VoiceBusinessConfig, VoiceCall
+from backend.app.dependencies.tenant_business import get_tenant_analytics_service
+from backend.app.models import (
+    BillingAccount,
+    Company,
+    CompanyMembership,
+    TenantAIProviderAttempt,
+    User,
+    VoiceBusinessConfig,
+    VoiceCall,
+    VoiceCentralSession,
+    VoicePhoneNumber,
+    VoiceToolAction,
+)
+from backend.app.ai.chat.conversation_service import ConversationService
+from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
+from backend.app.dependencies.ai_engine import get_prediction_service
+from backend.app.dependencies.central_ai import get_central_ai_service
+from backend.app.ai.central.service import CentralAIService
+from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
-from backend.app.schemas.voice import VoiceConfigCreatedResponse, VoiceConfigRequest, VoiceConfigResponse, VoiceToolRequest
+from backend.app.schemas.voice import (
+    VoiceConfigCreatedResponse,
+    VoiceConfigRequest,
+    VoiceConfigResponse,
+    VoiceNumberProvisionRequest,
+    VoiceNumberReleaseRequest,
+    VoiceNumberAssignRequest,
+    VoiceToolRequest,
+)
 from backend.app.voice.providers import RetellVoiceProvider, TelnyxClient
-from backend.app.voice.service import VoiceOrchestrator, _api_key_hash
+from backend.app.voice.service import VoiceOrchestrator, _api_key_hash, resolve_voice_source_context
+from backend.app.services.voice_number_service import (
+    PhoneNumberSearch,
+    VoiceNumberManagementService,
+    VoiceNumberOwnerActionRequired,
+)
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.data_freshness_service import DataFreshnessService
+from backend.app.models import CRMCalendarConnection
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
@@ -40,6 +75,321 @@ def _orchestrator(db: Session, settings: Settings) -> VoiceOrchestrator:
 
 def _config_response(config: VoiceBusinessConfig) -> VoiceConfigResponse:
     return VoiceConfigResponse.model_validate(VoiceOrchestrator.public_config(config))
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+@router.get("/status", dependencies=[Depends(require_active_subscription)])
+def get_voice_status(
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
+) -> dict[str, Any]:
+    company_id = identity.user.company_id
+    voice_module_active = ModuleEntitlementService(db).can_use_module(TenantContext(company_id), "voice")
+    config = VoiceOrchestrator(db, settings).config_for_tenant(TenantContext(company_id))
+    active_number = db.scalar(select(VoicePhoneNumber).where(
+        VoicePhoneNumber.company_id == company_id,
+        VoicePhoneNumber.status == "ACTIVE",
+        VoicePhoneNumber.config_id == (config.id if config is not None else None),
+    )) if config is not None else db.scalar(select(VoicePhoneNumber).where(
+        VoicePhoneNumber.company_id == company_id,
+        VoicePhoneNumber.status == "ACTIVE",
+        VoicePhoneNumber.config_id.is_(None),
+    ))
+    snapshot = analytics.load(TenantContext(company_id, identity.user.id))
+    calendar_connected = db.scalar(select(CRMCalendarConnection.id).where(
+        CRMCalendarConnection.company_id == company_id,
+        CRMCalendarConnection.sync_status == "connected",
+    ).limit(1)) is not None
+    calls = db.scalars(select(VoiceCall).where(VoiceCall.company_id == company_id)).all()
+    call_minutes = round(sum(
+        max(0.0, (
+            _as_utc(call.ended_at or datetime.now(timezone.utc))
+            - _as_utc(call.started_at or datetime.now(timezone.utc))
+        ).total_seconds())
+        for call in calls
+    ) / 60, 2)
+    session_ids = {
+        item.conversation_id
+        for item in db.scalars(select(VoiceCentralSession).where(VoiceCentralSession.company_id == company_id)).all()
+    }
+    voice_attempts = db.scalars(select(TenantAIProviderAttempt).where(
+        TenantAIProviderAttempt.company_id == company_id,
+        TenantAIProviderAttempt.conversation_id.in_(session_ids),
+    )).all() if session_ids else []
+    voice_ai_credits = sum(int(item.avenqo_credits_charged or 0) for item in voice_attempts)
+    telnyx_configured = bool(settings.telnyx_api_key and settings.telnyx_public_key and settings.telnyx_voice_connection_id)
+    return {
+        "voice_status": "ENABLED" if config is not None and config.enabled else "DISABLED" if config is not None else "NOT_CONFIGURED",
+        "module_entitled": voice_module_active,
+        "number_status": active_number.status if active_number is not None else "READY_FOR_OWNER_ACTION" if not telnyx_configured else "NO_NUMBER_ASSIGNED",
+        "business_number": active_number.phone_number if active_number is not None else config.telnyx_phone_number if config is not None else None,
+        "country": active_number.country_code if active_number is not None else None,
+        "region": active_number.region if active_number is not None else None,
+        "locality": active_number.locality if active_number is not None else None,
+        "provider": active_number.provider if active_number is not None else "telnyx" if telnyx_configured else None,
+        "voice_capability": "voice" in (active_number.capabilities or []) if active_number is not None else False,
+        "sms_capability": "sms" in (active_number.capabilities or []) if active_number is not None else False,
+        "telnyx_status": "CONFIGURED" if telnyx_configured else "NOT_CONFIGURED",
+        "retell_status": "CONFIGURED" if settings.retell_api_key else "NOT_CONFIGURED",
+        "stt_status": "CONFIGURED" if settings.voice_stt_provider and settings.openai_api_key else "NOT_CONFIGURED",
+        "tts_status": "CONFIGURED" if settings.voice_tts_provider and settings.openai_api_key else "NOT_CONFIGURED",
+        "realtime_status": "CONFIGURED" if settings.voice_realtime_provider and settings.voice_realtime_model and settings.openai_api_key and settings.voice_realtime_supported_locales else "NOT_CONFIGURED",
+        "realtime_supported_locales": sorted(settings.voice_realtime_supported_locales),
+        "preferred_language": config.preferred_language if config is not None else identity.user.company.preferred_language,
+        "auto_language_detection": True,
+        "crm_status": "CONFIGURED",
+        "calendar_status": "CONNECTED" if calendar_connected else "NOT_CONNECTED",
+        "retail_source_context": {
+            "selection": snapshot.active_source_type,
+            "provider": snapshot.active_source_provider,
+            "name": snapshot.active_source_name,
+        },
+        "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
+        "authorized_members_count": int(db.scalar(select(func.count(CompanyMembership.id)).where(
+            CompanyMembership.company_id == company_id,
+            CompanyMembership.is_active.is_(True),
+        )) or 0),
+        "call_count": len(calls),
+        "call_minutes": call_minutes,
+        "voice_ai_credits_charged": voice_ai_credits,
+    }
+
+
+def _voice_number_service(settings: Settings) -> VoiceNumberManagementService:
+    return VoiceNumberManagementService(TelnyxClient(settings))
+
+
+def _voice_number_response(number: VoicePhoneNumber) -> dict[str, Any]:
+    return {
+        "id": str(number.id),
+        "phone_number": number.phone_number,
+        "country_code": number.country_code,
+        "region": number.region,
+        "locality": number.locality,
+        "provider": number.provider,
+        "number_type": number.number_type,
+        "capabilities": number.capabilities,
+        "regulatory_status": number.regulatory_status,
+        "regulatory_requirements": number.regulatory_requirements,
+        "monthly_cost": float(number.monthly_cost) if number.monthly_cost is not None else None,
+        "monthly_cost_currency": number.monthly_cost_currency,
+        "status": number.status,
+        "purchased_at": number.purchased_at,
+        "released_at": number.released_at,
+        "assigned": number.config_id is not None,
+    }
+
+
+@router.get(
+    "/numbers/search",
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_search", "rate_limit_ai_per_minute"))],
+)
+async def search_voice_numbers(
+    country_code: str,
+    region: str | None = None,
+    locality: str | None = None,
+    number_type: str | None = None,
+    limit: int = 20,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    try:
+        return await _voice_number_service(settings).search(
+            PhoneNumberSearch(country_code, region, locality, number_type, limit)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Telnyx number search is not configured") from exc
+    except Exception as exc:
+        logger.exception("Telnyx number search failed", extra={"company_id": str(identity.user.company_id)})
+        raise HTTPException(status_code=502, detail="Voice number search is temporarily unavailable") from exc
+
+
+@router.post(
+    "/numbers/provision",
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_provision", "rate_limit_ai_per_minute"))],
+)
+async def provision_voice_number(
+    request: VoiceNumberProvisionRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    company_id = identity.user.company_id
+    _ensure_voice_access(db, company_id)
+    existing = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == request.phone_number))
+    if existing is not None:
+        if existing.company_id != company_id:
+            raise HTTPException(status_code=409, detail="This number is assigned to another tenant")
+        state = "ALREADY_ASSIGNED" if existing.status == "ACTIVE" else "READY_FOR_OWNER_ACTION"
+        return {"status": state, "number": _voice_number_response(existing)}
+    if not request.confirmed:
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "explicit_purchase_confirmation_required"}
+    if not settings.telnyx_voice_connection_id:
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "TELNYX_VOICE_CONNECTION_ID_required"}
+    manager = _voice_number_service(settings)
+    try:
+        search = await manager.search(PhoneNumberSearch(
+            request.country_code, request.region, request.locality, request.number_type, 100
+        ))
+        offer = next((item for item in search["offers"] if item["phone_number"] == request.phone_number), None)
+        if offer is None:
+            raise HTTPException(status_code=409, detail="The selected number is no longer available")
+        if offer.get("monthly_cost") is None:
+            return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_price_unavailable_no_order_placed"}
+        if offer.get("regulatory_requirements"):
+            return {
+                "status": "READY_FOR_OWNER_ACTION",
+                "reason": "regulatory_documents_required_no_order_placed",
+                "regulatory_requirements": offer["regulatory_requirements"],
+            }
+        reservation = VoicePhoneNumber(
+            company_id=company_id,
+            phone_number=offer["phone_number"],
+            country_code=offer["country_code"],
+            region=offer.get("region"),
+            locality=offer.get("locality"),
+            provider="telnyx",
+            number_type=offer["number_type"],
+            capabilities=[name for name in ("voice", "sms") if offer.get(f"{name}_capability")],
+            regulatory_status=offer["regulatory_status"],
+            regulatory_requirements=offer["regulatory_requirements"],
+            status="ORDERING",
+            monthly_cost=offer["monthly_cost"],
+            monthly_cost_currency=offer["monthly_cost_currency"],
+        )
+        db.add(reservation)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            existing = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == request.phone_number))
+            if existing is not None:
+                if existing.company_id != company_id:
+                    raise HTTPException(status_code=409, detail="This number is assigned to another tenant")
+                return {"status": "READY_FOR_OWNER_ACTION", "number": _voice_number_response(existing)}
+            raise
+        db.refresh(reservation)
+        order = await manager.provision(
+            offer=offer,
+            confirmed=True,
+            connection_id=settings.telnyx_voice_connection_id,
+            messaging_profile_id=settings.telnyx_messaging_profile_id,
+            idempotency_key=hashlib.sha256(f"{company_id}:{request.phone_number}".encode()).hexdigest(),
+        )
+    except HTTPException:
+        raise
+    except VoiceNumberOwnerActionRequired as exc:
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": str(exc)}
+    except Exception as exc:
+        reservation.status = "OUTCOME_UNKNOWN"
+        db.commit()
+        logger.exception("Telnyx number order failed", extra={"company_id": str(company_id)})
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_order_outcome_unknown", "number": _voice_number_response(reservation)}
+
+    order_data = order.get("data") if isinstance(order.get("data"), dict) else {}
+    returned_numbers = order_data.get("phone_numbers") or []
+    number_data = returned_numbers[0] if returned_numbers and isinstance(returned_numbers[0], dict) else {}
+    provider_number_id = number_data.get("id")
+    order_status = str(number_data.get("status") or order_data.get("status") or "order_outcome_unknown").upper()
+    reservation.provider_number_id = str(provider_number_id) if provider_number_id else None
+    reservation.status = "ACTIVE" if order_status in {"SUCCESS", "ACTIVE", "COMPLETED"} else (
+        "PENDING_REGULATORY" if reservation.regulatory_requirements else order_status
+    )
+    reservation.purchased_at = datetime.now(timezone.utc) if reservation.status == "ACTIVE" else None
+    db.commit()
+    db.refresh(reservation)
+    return {"status": reservation.status, "number": _voice_number_response(reservation)}
+
+
+@router.post(
+    "/numbers/{number_id}/release",
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_release", "rate_limit_ai_per_minute"))],
+)
+async def release_voice_number(
+    number_id: UUID,
+    request: VoiceNumberReleaseRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    company_id = identity.user.company_id
+    _ensure_voice_access(db, company_id)
+    number = db.scalar(select(VoicePhoneNumber).where(
+        VoicePhoneNumber.id == number_id,
+        VoicePhoneNumber.company_id == company_id,
+    ))
+    if number is None:
+        raise HTTPException(status_code=404, detail="Voice number not found")
+    if number.status == "RELEASED":
+        return {"status": "RELEASED", "number": _voice_number_response(number)}
+    if number.status != "ACTIVE":
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "number_lifecycle_outcome_requires_reconciliation", "number": _voice_number_response(number)}
+    if number.config_id is not None:
+        raise HTTPException(status_code=409, detail="Unassign the active Voice configuration before release")
+    if not request.confirmed:
+        return {"status": "READY_FOR_OWNER_ACTION", "number": _voice_number_response(number)}
+    if not number.provider_number_id:
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_number_id_missing_manual_reconciliation_required"}
+    number.status = "RELEASING"
+    db.commit()
+    try:
+        await _voice_number_service(settings).release(
+            provider_number_id=number.provider_number_id,
+            confirmed=True,
+        )
+    except Exception as exc:
+        number.status = "RELEASE_OUTCOME_UNKNOWN"
+        db.commit()
+        logger.exception("Telnyx number release failed", extra={"company_id": str(company_id)})
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_release_outcome_unknown", "number": _voice_number_response(number)}
+    number.status = "RELEASED"
+    number.released_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(number)
+    return {"status": "RELEASED", "number": _voice_number_response(number)}
+
+
+@router.post(
+    "/numbers/{number_id}/assign",
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_assign", "rate_limit_ai_per_minute"))],
+)
+def assign_voice_number(
+    number_id: UUID,
+    request: VoiceNumberAssignRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    company_id = identity.user.company_id
+    _ensure_voice_access(db, company_id)
+    number = db.scalar(select(VoicePhoneNumber).where(
+        VoicePhoneNumber.id == number_id,
+        VoicePhoneNumber.company_id == company_id,
+        VoicePhoneNumber.status == "ACTIVE",
+    ))
+    if number is None:
+        raise HTTPException(status_code=404, detail="Active tenant voice number not found")
+    if not request.confirmed:
+        return {"status": "READY_FOR_OWNER_ACTION", "number": _voice_number_response(number)}
+    config = _orchestrator(db, settings).config_for_tenant(TenantContext(company_id))
+    if config is None:
+        raise HTTPException(status_code=404, detail="Create the tenant Voice configuration before assigning a number")
+    if number.config_id not in {None, config.id}:
+        raise HTTPException(status_code=409, detail="Voice number is already assigned to another tenant configuration")
+    config.telnyx_phone_number = number.phone_number
+    number.config_id = config.id
+    db.commit()
+    db.refresh(number)
+    return {"status": "ASSIGNED", "number": _voice_number_response(number)}
 
 
 def _verify_telnyx_signature(request: Request, raw_body: bytes, settings: Settings) -> None:
@@ -291,3 +641,143 @@ router.add_api_route("/tools/get_business_info", _tool_route("get_business_info"
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
 router.add_api_route("/tools/take_message", _tool_route("take_message"), methods=["POST"],
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
+router.add_api_route("/tools/request_caller_verification", _tool_route("request_caller_verification"), methods=["POST"],
+                     dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
+router.add_api_route("/tools/verify_caller", _tool_route("verify_caller"), methods=["POST"],
+                     dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
+
+
+@router.post(
+    "/tools/business_metrics",
+    dependencies=[Depends(rate_limit("voice_business_metrics", "rate_limit_ai_per_minute"))],
+)
+async def voice_business_metrics(
+    request: VoiceToolRequest,
+    x_avenqo_voice_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    central_ai: CentralAIService = Depends(get_central_ai_service),
+    prediction_service=Depends(get_prediction_service),
+) -> dict[str, Any]:
+    config, orchestrator = _authenticated_voice_config(db, settings, x_avenqo_voice_key)
+    call = orchestrator._resolve_call(config, request.call_id)
+    if call.ended_at is not None or call.status in {"ended", "failed", "rejected"}:
+        return {"success": False, "status": "call_ended", "error": "voice_call_not_active"}
+    if call.caller_type not in {"OWNER", "EMPLOYEE"} or call.authenticated_user_id is None:
+        return {"success": False, "status": "not_authorized", "error": "caller_verification_required"}
+    membership = db.scalar(select(CompanyMembership).where(
+        CompanyMembership.company_id == config.company_id,
+        CompanyMembership.user_id == call.authenticated_user_id,
+        CompanyMembership.is_active.is_(True),
+    ))
+    user = db.scalar(select(User).where(
+        User.id == call.authenticated_user_id,
+        User.company_id == config.company_id,
+        User.is_active.is_(True),
+    ))
+    company = db.get(Company, config.company_id)
+    if membership is None or user is None or company is None:
+        return {"success": False, "status": "not_authorized", "error": "caller_membership_unavailable"}
+    permissions = frozenset(permissions_for(membership.role))
+    if "ai:use" not in permissions:
+        return {"success": False, "status": "not_authorized", "error": "ai_permission_required"}
+
+    question = str(request.arguments.get("question") or request.arguments.get("transcript") or "").strip()
+    if not question or len(question) > 12_000:
+        raise HTTPException(status_code=422, detail="A valid business metrics question is required")
+
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import text
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"voice_metrics:{config.company_id}:{request.action_id}"},
+        )
+    existing = db.scalar(select(VoiceToolAction).where(
+        VoiceToolAction.config_id == config.id,
+        VoiceToolAction.action_id == request.action_id,
+    ))
+    if existing is not None:
+        return existing.result
+    action = VoiceToolAction(
+        company_id=config.company_id,
+        config_id=config.id,
+        action_id=request.action_id,
+        tool_name="get_business_metrics",
+        result={"status": "in_progress"},
+    )
+    db.add(action)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        existing = db.scalar(select(VoiceToolAction).where(
+            VoiceToolAction.config_id == config.id,
+            VoiceToolAction.action_id == request.action_id,
+        ))
+        if existing is not None:
+            return existing.result
+        raise
+
+    tenant = TenantContext(company_id=config.company_id, user_id=user.id)
+    call.source_context = resolve_voice_source_context(db, tenant)
+    db.commit()
+    if call.central_conversation_id is None:
+        conversation = ConversationService(db).create(
+            config.company_id,
+            user.id,
+            f"Voice call {call.id}",
+            config.preferred_language,
+        )
+        call.central_conversation_id = conversation.id
+        db.commit()
+    request_id = hashlib.sha256(
+        f"avenqo-voice:{config.company_id}:{call.id}:{request.action_id}".encode("utf-8")
+    ).hexdigest()
+    try:
+        result = await central_ai.execute(
+            tenant,
+            user.id,
+            call.central_conversation_id,
+            question,
+            permissions=permissions,
+            capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
+            request_id=request_id,
+            user_language=config.preferred_language,
+            company_country=company.country or "",
+            company_currency=company.currency_code,
+            company_timezone=company.timezone or config.timezone_name,
+            page_context="/voice",
+            locale_explicit=False,
+            spoken_language_input=True,
+        )
+        metrics_tools = {
+            "get_business_overview",
+            "get_sales_summary",
+            "get_sales_trend",
+            "get_sales_comparison",
+            "get_top_products",
+            "get_inventory_summary",
+        }
+        grounded_metrics = any(
+            outcome.get("tool") in metrics_tools and outcome.get("success") is True
+            for outcome in result.tool_outcomes
+        )
+        safe_result = {
+            "success": result.status == "success" and bool(result.answer) and grounded_metrics,
+            "status": result.status,
+            "answer": result.answer,
+            "selected_agent": result.selected_agent,
+            "remaining_ai_credits": result.remaining_ai_credits,
+            "tool_outcomes": list(result.tool_outcomes),
+        }
+    except Exception:
+        logger.exception("Central AI voice metrics execution failed", extra={"company_id": str(config.company_id), "call_id": str(call.id)})
+        safe_result = {"success": False, "status": "error", "error": "voice_metrics_unavailable"}
+    action = db.scalar(select(VoiceToolAction).where(
+        VoiceToolAction.config_id == config.id,
+        VoiceToolAction.action_id == request.action_id,
+    ))
+    if action is not None:
+        action.result = safe_result
+        db.commit()
+    return safe_result

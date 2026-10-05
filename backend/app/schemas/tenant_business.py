@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalyticsPeriodResponse(BaseModel):
@@ -56,6 +57,9 @@ class TenantSalesResponse(BaseModel):
     available: bool
     currency: str
     capabilities: list[str]
+    metrics: list[dict[str, Any]] = Field(default_factory=list)
+    data_freshness: dict[str, Any] = Field(default_factory=dict)
+    source_context: dict[str, Any] = Field(default_factory=dict)
     period: AnalyticsPeriodResponse
     summary: SalesSummaryResponse | None
     trend: SalesTrendResponse
@@ -68,7 +72,9 @@ class CustomerSummaryResponse(BaseModel):
     total_customers: int
     active_customers: int | None
     new_customers: int | None
+    previous_new_customers: int | None
     repeat_customers: int
+    returning_customers: int
     purchase_frequency: float
     average_customer_value: float | None
 
@@ -113,6 +119,9 @@ class TenantCustomersResponse(BaseModel):
     available: bool
     currency: str
     capabilities: list[str]
+    metrics: list[dict[str, Any]] = Field(default_factory=list)
+    data_freshness: dict[str, Any] = Field(default_factory=dict)
+    source_context: dict[str, Any] = Field(default_factory=dict)
     summary: CustomerSummaryResponse | None
     segments: list[CustomerGroupResponse]
     risks: list[CustomerGroupResponse]

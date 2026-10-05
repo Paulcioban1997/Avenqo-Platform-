@@ -472,6 +472,7 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
         assert connection.status == CommerceConnectionStatus.READY.value
         assert connection.records_processed == 0
         assert connection.last_successful_sync is not None
+        assert connection.last_successful_sync == connection.sync_completed_at
         assert "_run" not in connection.sync_cursor
         assert connection.sync_cursor["settings"]["is_enabled"] is False
         assert connection.sync_cursor["shop"]["name"] == "Verified test merchant"

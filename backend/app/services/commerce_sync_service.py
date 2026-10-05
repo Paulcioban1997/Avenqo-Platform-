@@ -364,7 +364,7 @@ class CommerceSyncService:
             connection.status = CommerceConnectionStatus.READY.value
             connection.current_entity = None
             connection.error_category = None
-            connection.last_successful_sync = run.started_at
+            connection.last_successful_sync = now_completed
             connection.sync_started_at = None
             connection.sync_completed_at = now_completed
             connection.last_heartbeat = now_completed

@@ -247,6 +247,12 @@ class CentralAIService:
     @staticmethod
     def _safe_tool_outcomes(tool_call_results) -> tuple[dict[str, object], ...]:
         relevant_tools = {
+            "get_business_overview",
+            "get_sales_summary",
+            "get_sales_trend",
+            "get_sales_comparison",
+            "get_top_products",
+            "get_inventory_summary",
             "check_availability",
             "list_available_slots",
             "create_appointment",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.models import (
     Company,
     CommerceConnection,
+    CommerceWebhookReceipt,
     Dataset,
     DatasetRelationship,
     DatasetStatus,
@@ -61,6 +63,8 @@ class TenantAnalyticsSnapshot:
     active_source_provider: str | None = None
     active_source_type: str | None = None
     active_source_name: str | None = None
+    active_source_last_updated_at: datetime | None = None
+    active_source_last_event_received_at: datetime | None = None
 
     @property
     def currency(self) -> str:
@@ -352,18 +356,45 @@ class TenantAnalyticsService:
         active_source = RetailSourceService(self._session).active_selection(tenant)
         active_source_provider = None
         active_source_name = None
+        active_source_last_updated_at = None
+        active_source_last_event_received_at = None
         active_source_type = active_source.source_type if active_source is not None else None
         if active_source is not None and active_source.connection_id is not None:
             connection = self._session.get(CommerceConnection, active_source.connection_id)
             active_source_provider = connection.provider if connection is not None else None
             active_source_name = connection.display_name if connection is not None else None
+            active_source_last_updated_at = connection.last_successful_sync if connection is not None else None
+            if connection is not None:
+                active_source_last_event_received_at = self._session.scalar(
+                    select(CommerceWebhookReceipt.created_at)
+                    .where(
+                        CommerceWebhookReceipt.company_id == tenant.company_id,
+                        CommerceWebhookReceipt.connection_id == connection.id,
+                        CommerceWebhookReceipt.status == "PROCESSED",
+                        CommerceWebhookReceipt.processed_at.is_not(None),
+                    )
+                    .order_by(CommerceWebhookReceipt.created_at.desc())
+                    .limit(1)
+                )
         elif active_source is not None and active_source.source_type == "dataset":
             selected_dataset = next(
                 (item for item in datasets if item.id == active_source.dataset_id), None
             )
             active_source_name = selected_dataset.name if selected_dataset is not None else None
+            active_source_last_updated_at = selected_dataset.uploaded_at if selected_dataset is not None else None
         elif active_source is not None and active_source.source_type == "all":
             active_source_name = "all_active"
+            active_sources = [
+                item
+                for item in RetailSourceService(self._session).list_sources(tenant)
+                if item.enabled and item.status.upper() == "READY"
+            ]
+            source_updates = [item.last_synchronized_at for item in active_sources]
+            active_source_last_updated_at = (
+                min(source_updates)
+                if source_updates and all(value is not None for value in source_updates)
+                else None
+            )
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
         if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
@@ -453,6 +484,8 @@ class TenantAnalyticsService:
             active_source_provider=active_source_provider,
             active_source_type=active_source_type,
             active_source_name=active_source_name,
+            active_source_last_updated_at=active_source_last_updated_at,
+            active_source_last_event_received_at=active_source_last_event_received_at,
         )
         return replace(
             snapshot,

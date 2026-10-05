@@ -22,8 +22,11 @@ import { CRMKpiCards } from "@/components/crm/crm-kpi-cards";
 import { metricText, currencyText, dateText } from "@/components/crm/crm-format";
 import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
 import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
+import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
+import { VOICE_NUMBER_COPY } from "@/lib/i18n/voice-number-copy";
 import { GlobalSourceSelector } from "@/components/shell/global-source-selector";
 import { CRMCopilotPanel } from "@/components/crm/crm-copilot-panel";
+import { SettingsView } from "@/components/settings/settings-view";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -48,7 +51,15 @@ describe("public trust content", () => {
   it("has source-selector labels in all 44 canonical catalogs", () => {
     expect(Object.keys(SOURCE_SELECTOR_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
     expect(Object.keys(RETAIL_ANOMALY_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.keys(VOICE_HEALTH_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.keys(VOICE_NUMBER_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
     for (const copy of Object.values(RETAIL_ANOMALY_COPY)) {
+      expect(Object.values(copy).every(value => value.trim().length > 0)).toBe(true);
+    }
+    for (const copy of Object.values(VOICE_HEALTH_COPY)) {
+      expect(Object.values(copy).every(value => value.trim().length > 0)).toBe(true);
+    }
+    for (const copy of Object.values(VOICE_NUMBER_COPY)) {
       expect(Object.values(copy).every(value => value.trim().length > 0)).toBe(true);
     }
   });
@@ -518,6 +529,26 @@ describe("CRM Copilot speech transcription", () => {
     fireEvent.submit(input.closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent(getAppTranslations("fr").copilot.errorPrompt);
     expect(screen.queryByText("Votre rendez-vous a été créé.")).not.toBeInTheDocument();
+  });
+});
+
+describe("Voice settings provisioning safety", () => {
+  it("does not search or purchase a phone number when Telnyx is not configured", async () => {
+    const paths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      paths.push(path);
+      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "owner", first_name: "Voice", last_name: "Owner", role: "owner" }, company: { id: "tenant", name: "Tenant", subscription_plan: "professional" } });
+      if (path.endsWith("/modules/entitlements")) return Response.json({ company_id: "tenant", plan_code: "professional", active_modules: ["voice"], modules: [] });
+      if (path.endsWith("/voice/status")) return Response.json({ voice_status: "NOT_CONFIGURED", telnyx_status: "NOT_CONFIGURED", retell_status: "NOT_CONFIGURED", stt_status: "NOT_CONFIGURED", tts_status: "NOT_CONFIGURED", realtime_status: "NOT_CONFIGURED", number_status: "READY_FOR_OWNER_ACTION", data_freshness: { freshness_status: "UNAVAILABLE" } });
+      throw new Error(`Unexpected fetch: ${path}`);
+    }));
+
+    render(<LocaleProvider><SettingsView /></LocaleProvider>);
+
+    expect(await screen.findByText(getAppTranslations("fr").navigation.voiceAi)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rechercher des numéros/ })).not.toBeInTheDocument();
+    expect(paths.some(path => path.includes("/voice/numbers/search") || path.includes("/voice/numbers/provision"))).toBe(false);
   });
 });
 

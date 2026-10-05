@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import (
-    compute_business_overview,
-    compute_sales_trend,
     parse_business_datetime,
 )
+from backend.app.services.business_metrics_service import BusinessMetricsService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from backend.app.services.tenant_analytics_service import (
     BUSINESS_METRIC_FIELDS,
     TenantAnalyticsSnapshot,
@@ -29,6 +29,7 @@ class DashboardKPI:
     change_percent: float | None
     currency: str | None
     available: bool
+    metric: dict[str, object] | None = None
 
 
 class TenantDashboardService:
@@ -44,7 +45,17 @@ class TenantDashboardService:
 
     def build(self, tenant: TenantContext, period_key: str | None = None) -> dict[str, Any]:
         snapshot = self._analytics.load_for_dashboard(tenant)
-        period = self._period(snapshot.prepared, period_key)
+        metrics_service = BusinessMetricsService()
+        timezone_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        period_source = snapshot.source_for(
+            BUSINESS_METRIC_FIELDS["revenue"] | BUSINESS_METRIC_FIELDS["orders"]
+        )
+        period = metrics_service.resolve_period(
+            period_key,
+            timezone_name=timezone_name,
+            now=datetime.now(timezone.utc),
+            source=period_source,
+        )
         if period_key == "all" and snapshot.retail_summaries:
             cached_periods = [
                 summary.get("period", {}) for summary in snapshot.retail_summaries
@@ -62,7 +73,7 @@ class TenantDashboardService:
             period["start"] = min(starts) if starts else None
             period["end"] = max(ends) if ends else None
         kpis = [
-            self._kpi(key, snapshot, snapshot.currency, period, period_key)
+            self._kpi(key, snapshot, snapshot.currency, period, period_key, metrics_service)
             for key in BUSINESS_METRIC_FIELDS
         ]
         recommendations = self._recommendations.build_from_snapshot(tenant, snapshot)[
@@ -77,10 +88,11 @@ class TenantDashboardService:
             for summary in snapshot.retail_summaries
             for point in (summary.get("period_trends", {}).get(period_key or "last_30_days") or [])
         ]
-        trend = compute_sales_trend(
+        trend = metrics_service.sales_trend(
+            snapshot,
             trend_source,
-            date_from=None if period_key == "all" else period["start"],
-            date_to=None if period_key == "all" else period["end"],
+            period_start=None if period_key == "all" else period["start"],
+            period_end=None if period_key == "all" else period["end"],
             granularity=granularity,
         ) if trend_source is not None else {"points": []}
         if not trend.get("points") and cached_trend_points:
@@ -108,6 +120,8 @@ class TenantDashboardService:
             "period": period,
             "capabilities": sorted(snapshot.capabilities),
             "kpis": [asdict(kpi) for kpi in kpis],
+            "metrics": [kpi.metric for kpi in kpis if kpi.metric is not None],
+            "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
             "priorities": [
                 {
                     "id": item["id"],
@@ -158,6 +172,7 @@ class TenantDashboardService:
         currency: str,
         period: dict[str, datetime | None],
         period_key: str | None,
+        metrics_service: BusinessMetricsService,
     ) -> DashboardKPI:
         summary_key = period_key or "last_30_days"
         for summary in snapshot.retail_summaries:
@@ -169,6 +184,17 @@ class TenantDashboardService:
             if metrics is not None and key in metrics:
                 current = metrics[key]
                 monetary = key in {"revenue", "average_order_value"}
+                metric = metrics_service.metric_envelope(
+                    snapshot,
+                    None,
+                    key,
+                    current,
+                    "currency" if monetary else "count",
+                    period.get("start"),
+                    period.get("end"),
+                    int(metrics.get("orders") or 0),
+                    state="AVAILABLE",
+                )
                 return DashboardKPI(
                     key,
                     "AVAILABLE",
@@ -178,6 +204,7 @@ class TenantDashboardService:
                     None,
                     currency if monetary else None,
                     True,
+                    metric,
                 )
         required = BUSINESS_METRIC_FIELDS[key]
         source = snapshot.source_for(required)
@@ -188,6 +215,10 @@ class TenantDashboardService:
                 status in {"preparing_data", "training_ai"}
                 for status in snapshot.training_statuses
             )
+            metric = metrics_service.metric_envelope(
+                snapshot, None, key, None, "currency" if key in {"revenue", "average_order_value"} else "count",
+                period.get("start"), period.get("end"), 0, state="SOURCE_UNAVAILABLE" if "SOURCE_UNAVAILABLE" in snapshot.retail_states else "UNAVAILABLE",
+            )
             return DashboardKPI(
                 key,
                 "SOURCE_UNAVAILABLE" if "SOURCE_UNAVAILABLE" in snapshot.retail_states else "PROCESSING" if processing or "PROCESSING" in snapshot.retail_states else "UNAVAILABLE",
@@ -197,18 +228,30 @@ class TenantDashboardService:
                 None,
                 None,
                 False,
+                metric,
             )
 
-        current_rows, previous_rows = self._period_rows(source, period, period_key)
-        current = compute_business_overview(self._with_rows(source, current_rows))[key]
-        previous = (
-            compute_business_overview(self._with_rows(source, previous_rows))[key]
-            if previous_rows
-            else None
+        current_overview = metrics_service.business_overview(
+            snapshot,
+            source,
+            period_start=period.get("start"),
+            period_end=period.get("end"),
         )
+        current = current_overview[key]
+        previous_overview = None
+        if period.get("comparison_start") is not None and period.get("comparison_end") is not None:
+            previous_overview = metrics_service.business_overview(
+                snapshot,
+                source,
+                period_start=period["comparison_start"],
+                period_end=period["comparison_end"],
+            )
+        previous_sample_size = int(previous_overview["orders"]) if previous_overview else 0
+        previous = previous_overview[key] if previous_sample_size else None
         absolute = current - previous if previous is not None else None
         change = round((absolute / previous) * 100, 2) if previous not in {None, 0} else None
         monetary = key in {"revenue", "average_order_value"}
+        metric = next(item for item in current_overview["metrics"] if item["metric_id"] == key)
         return DashboardKPI(
             key,
             "AVAILABLE",
@@ -218,6 +261,7 @@ class TenantDashboardService:
             change,
             currency if monetary else None,
             True,
+            metric,
         )
 
     @staticmethod
