@@ -834,3 +834,11 @@ Next incomplete integration priority: WooCommerce production. Existing audit fou
 Produits_Ero production WooCommerce connection, so genuine store-owner authorization is
 required before a legitimate production sync. The historical sandbox missing-artifact
 evaluation must remain blocked; never rebuild that missing historical source as a test.
+
+Final selector UI receipt: `3ff5c6a08cf375a05715c897acd6e26dd4c4ddbf`, CI
+`37248568491` PASS on all jobs; Vercel `7tvHj3kRvhubUwFnokMZDrNDqQ2B` promoted to
+avenqo.ca. The selected-source trigger now displays real provider/name and file/store/all
+icons, never technical identifiers. The final browser fixture measurements matched the
+viewport on desktop/tablet/mobile and RTL; only source-selection requests were made.
+Production /health and /ready returned healthy/ready with migrations ok after promotion.
+No further Shopify sync or Copilot request was repeated for this UI-only follow-up.
