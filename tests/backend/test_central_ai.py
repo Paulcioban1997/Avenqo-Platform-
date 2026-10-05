@@ -18,6 +18,7 @@ from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.schemas import LLMGeneration, LLMProviderAttempt, LLMUsage
 from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.ai.usage.service import AIUsageService
+from backend.app.ai.tools.contracts import ToolCall, ToolCallResult, ToolResult
 from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
 from backend.app.assistants.registry import AssistantRegistry, build_default_assistant_registry
 from backend.app.config.settings import Settings
@@ -27,6 +28,28 @@ from backend.app.services.module_entitlement_service import ModuleEntitlementSer
 from shared.ai_engine.contracts import TenantContext
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_central_ai_returns_only_safe_confirmed_crm_tool_outcomes():
+    tool_results = (
+        ToolCallResult(
+            ToolCall(id="create", name="create_appointment", arguments={}),
+            ToolResult(success=True, data={"id": "private-appointment-id", "calendar_synced": False, "client_name": "Private Client"}),
+        ),
+        ToolCallResult(
+            ToolCall(id="availability", name="check_availability", arguments={}),
+            ToolResult(success=True, data={"state": "BUSY", "available": False}),
+        ),
+    )
+
+    outcomes = CentralAIService._safe_tool_outcomes(tool_results)
+
+    assert outcomes == (
+        {"tool": "create_appointment", "success": True, "confirmed": False},
+        {"tool": "check_availability", "success": True, "confirmed": False},
+    )
+    assert "private-appointment-id" not in str(outcomes)
+    assert "Private Client" not in str(outcomes)
 
 
 @pytest.fixture

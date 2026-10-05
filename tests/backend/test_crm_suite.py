@@ -664,6 +664,50 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     assert captured == ["alice@customer.ca", None]
 
 
+def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_session, monkeypatch):
+    company = _create_company(db_session, "tenant-calendar-create-failure")
+
+    class FakeCipher:
+        def decrypt(self, value):
+            return {"access_token": "runtime-only"}
+
+    class FailingProvider:
+        async def check_busy_slots(self, *args):
+            return []
+
+        async def create_event(self, credentials, event, calendar_id):
+            raise RuntimeError("provider rejected event")
+
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda: FailingProvider())
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: FailingProvider())
+    crm_svc = CRMAppService(db_session, FakeCipher())
+    client = crm_svc.create_client(company.id, {
+        "first_name": "Taylor", "last_name": "Example", "email": "taylor@customer.ca",
+    })
+    db_session.add(CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="organizer@avenqo.ca",
+        encrypted_credentials="encrypted",
+        sync_status="connected",
+    ))
+    db_session.commit()
+    start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=15, minute=0, second=0, microsecond=0
+    )
+    while start.weekday() >= 5:
+        start += timedelta(days=1)
+
+    appointment, error = asyncio.run(crm_svc.create_appointment(
+        company.id,
+        {"client_id": client.id, "title": "Unconfirmed booking", "start_time": start},
+    ))
+
+    assert appointment is None
+    assert error and "Synchronisation Google Calendar impossible" in error
+    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 0
+
+
 def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
     company = _create_company(db_session, "tenant-google-inbound")
     alice = CRMAppService(db_session).create_client(company.id, {

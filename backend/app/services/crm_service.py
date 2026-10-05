@@ -586,7 +586,12 @@ class CRMService:
         self._session.flush()
 
         # External Calendar Sync (Google Calendar)
-        await self._sync_to_external_calendar(company_id, appointment, client, action="create")
+        calendar_sync, sync_error = await self._sync_to_external_calendar(
+            company_id, appointment, client, action="create"
+        )
+        if calendar_sync == "failed":
+            self._session.rollback()
+            return None, sync_error or "Google Calendar did not confirm the appointment."
         await CRMNotificationService(self._session).record_appointment_event(
             company_id, appointment, client, "created"
         )
@@ -675,7 +680,12 @@ class CRMService:
 
         client = self.get_client(company_id, apt.client_id)
         if client:
-            await self._sync_to_external_calendar(company_id, apt, client, action="update")
+            calendar_sync, sync_error = await self._sync_to_external_calendar(
+                company_id, apt, client, action="update"
+            )
+            if calendar_sync == "failed":
+                self._session.rollback()
+                return None, sync_error or "Google Calendar did not confirm the update."
             await CRMNotificationService(self._session).record_appointment_event(
                 company_id, apt, client, "updated"
             )
@@ -698,7 +708,7 @@ class CRMService:
         actor_name: str = "Utilisateur",
     ) -> bool:
         result = await self.cancel_appointment_detailed(company_id, appointment_id, actor_name)
-        return result.appointment is not None
+        return result.appointment is not None and result.calendar_sync != "failed"
 
     async def cancel_appointment_detailed(
         self,
@@ -729,6 +739,9 @@ class CRMService:
             calendar_sync, sync_error = await self._sync_to_external_calendar(
                 company_id, apt, client, action="delete"
             )
+            if calendar_sync == "failed":
+                self._session.rollback()
+                return AppointmentMutationResult(None, calendar_sync, sync_error)
             await CRMNotificationService(self._session).record_appointment_event(
                 company_id, apt, client, "cancelled"
             )

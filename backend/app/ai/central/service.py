@@ -28,6 +28,7 @@ class CentralAIResult:
     answer: str | None
     remaining_ai_credits: int | None
     agent_availability: str
+    tool_outcomes: tuple[dict[str, object], ...] = ()
 
 
 class CentralAIService:
@@ -222,7 +223,18 @@ class CentralAIService:
         except AIQuotaExceededError:
             result = self._result(tenant.company_id, agent.slug if agent else None, "credits_exhausted", context.plan_code, "available")
         else:
-            result = self._result(tenant.company_id, agent.slug if agent else None, "success", context.plan_code, "available", message.content)
+            outcomes = self._safe_tool_outcomes(
+                getattr(self._chat, "last_tool_call_results", ())
+            )
+            result = self._result(
+                tenant.company_id,
+                agent.slug if agent else None,
+                "success",
+                context.plan_code,
+                "available",
+                message.content,
+                outcomes,
+            )
         self._log_result(
             tenant.company_id,
             agent.module_code if agent else None,
@@ -231,6 +243,35 @@ class CentralAIService:
             "deterministic_module" if agent else "general_fallback",
         )
         return result
+
+    @staticmethod
+    def _safe_tool_outcomes(tool_call_results) -> tuple[dict[str, object], ...]:
+        relevant_tools = {
+            "check_availability",
+            "list_available_slots",
+            "create_appointment",
+            "update_appointment",
+            "cancel_appointment",
+        }
+        outcomes = []
+        for call_result in tool_call_results:
+            tool_name = call_result.call.name
+            if tool_name not in relevant_tools:
+                continue
+            tool_result = call_result.result
+            confirmed = bool(tool_result.success)
+            if tool_name == "check_availability":
+                confirmed = confirmed and tool_result.data.get("state") == "AVAILABLE"
+            elif tool_name == "create_appointment":
+                confirmed = (
+                    confirmed
+                    and bool(tool_result.data.get("id"))
+                    and tool_result.data.get("calendar_synced") is True
+                )
+            elif tool_name == "list_available_slots":
+                confirmed = confirmed and isinstance(tool_result.data.get("slots"), list)
+            outcomes.append({"tool": tool_name, "success": bool(tool_result.success), "confirmed": confirmed})
+        return tuple(outcomes)
 
     def _log_result(
         self,
@@ -259,7 +300,8 @@ class CentralAIService:
         plan_code: str,
         availability: str,
         answer: str | None = None,
+        tool_outcomes: tuple[dict[str, object], ...] = (),
     ) -> CentralAIResult:
         balance = self._usage.get_credit_balance(company_id, plan_code)
         remaining = balance["total_remaining"]
-        return CentralAIResult(selected_agent, status, answer, remaining, availability)
+        return CentralAIResult(selected_agent, status, answer, remaining, availability, tool_outcomes)

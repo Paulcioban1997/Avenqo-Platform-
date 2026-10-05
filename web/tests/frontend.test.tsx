@@ -496,6 +496,29 @@ describe("CRM Copilot speech transcription", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(getAppTranslations("fr").copilot.errorPrompt);
     expect(screen.queryByText(/Vérification des disponibilités & exécution/)).not.toBeInTheDocument();
   });
+
+  it("does not display an appointment success claim unless Calendar confirms the tool result", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    window.localStorage.setItem("avenqo-locale", "fr");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/ai/chat/conversations")) return Response.json({ id: "crm-calendar-conversation" });
+      if (url.includes("/ai/central/conversations/")) {
+        return Response.json({
+          status: "success",
+          answer: "Votre rendez-vous a été créé.",
+          tool_outcomes: [{ tool: "create_appointment", success: true, confirmed: false }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+    render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations("fr")} /></LocaleProvider>);
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]')!;
+    fireEvent.change(input, { target: { value: "Crée un rendez-vous demain à 14 h." } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByRole("alert")).toHaveTextContent(getAppTranslations("fr").copilot.errorPrompt);
+    expect(screen.queryByText("Votre rendez-vous a été créé.")).not.toBeInTheDocument();
+  });
 });
 
 describe("Copilot production response", () => {

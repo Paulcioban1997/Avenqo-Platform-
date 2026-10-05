@@ -23,3 +23,4 @@ class CentralAIResponse(BaseModel):
     conversation_id: UUID
     grounded_source: str | None = None
     source_id: str | None = None
+    tool_outcomes: list[dict[str, str | bool]] = Field(default_factory=list)

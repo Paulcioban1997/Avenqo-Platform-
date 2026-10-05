@@ -304,7 +304,12 @@ export function CRMCopilotPanel({
 
       if (res.ok) {
         const data = await res.json();
-        const confirmedSuccess = data.status === "success" && typeof data.answer === "string" && data.answer.trim().length > 0;
+        const unconfirmedAction = Array.isArray(data.tool_outcomes)
+          && data.tool_outcomes.some((outcome: { success?: boolean; confirmed?: boolean }) => !outcome.success || !outcome.confirmed);
+        const confirmedSuccess = data.status === "success"
+          && !unconfirmedAction
+          && typeof data.answer === "string"
+          && data.answer.trim().length > 0;
         if (confirmedSuccess) pendingRequestRef.current = null;
         const copilotMsg: Message = {
           id: messageId("c"),
