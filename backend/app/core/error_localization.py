@@ -23,6 +23,55 @@ _MESSAGE_KEYS = (
     "internal_error",
 )
 
+_AGENT_UPGRADE_MESSAGES = {
+    "en": "This agent is not enabled for your account. Review your modules and plan options in Billing.",
+    "fr": "Cet agent n’est pas activé pour votre compte. Consultez vos modules et les offres dans Facturation.",
+    "es": "Este agente no está activado para tu cuenta. Consulta los módulos y planes en Facturación.",
+    "pt": "Este agente não está ativo na sua conta. Consulte os módulos e planos em Faturação.",
+    "ro": "Acest agent nu este activat pentru contul dvs. Consultați modulele și planurile în Facturare.",
+    "de": "Dieser Agent ist für Ihr Konto nicht aktiviert. Prüfen Sie Module und Tarife unter Abrechnung.",
+    "it": "Questo agente non è attivo per il tuo account. Consulta moduli e piani in Fatturazione.",
+    "nl": "Deze agent is niet geactiveerd voor uw account. Bekijk modules en abonnementen bij Facturering.",
+    "pl": "Ten agent nie jest aktywny na Twoim koncie. Sprawdź moduły i plany w Rozliczeniach.",
+    "ru": "Этот агент не активирован для вашей учётной записи. Посмотрите модули и тарифы в разделе оплаты.",
+    "uk": "Цей агент не активований для вашого облікового запису. Перегляньте модулі й тарифи в розділі оплати.",
+    "el": "Αυτός ο πράκτορας δεν είναι ενεργός για τον λογαριασμό σας. Δείτε τις ενότητες και τα πακέτα στη Χρέωση.",
+    "sv": "Denna agent är inte aktiverad för ditt konto. Se moduler och abonnemang under Fakturering.",
+    "tr": "Bu aracı hesabınızda etkin değil. Faturalandırma bölümünde modülleri ve planları inceleyin.",
+    "cs": "Tento agent není pro váš účet aktivní. Zkontrolujte moduly a tarify ve Fakturaci.",
+    "ar": "هذا الوكيل غير مفعّل لحسابك. راجع الوحدات والخطط في الفوترة.",
+    "he": "סוכן זה אינו מופעל בחשבונך. בדוק מודולים ותוכניות בחיוב.",
+    "fa": "این عامل برای حساب شما فعال نیست. ماژول‌ها و طرح‌ها را در صورتحساب بررسی کنید.",
+    "ja": "このエージェントはアカウントで有効になっていません。請求画面でモジュールとプランを確認してください。",
+    "ko": "이 에이전트는 계정에서 활성화되지 않았습니다. 청구에서 모듈과 요금제를 확인하세요.",
+    "zh": "此代理尚未在您的账户中启用。请在账单中查看模块和套餐。",
+    "ka": "ეს აგენტი თქვენი ანგარიშისთვის აქტიური არ არის. მოდულები და გეგმები ნახეთ ანგარიშსწორებაში.",
+    "hy": "Այս գործակալը ձեր հաշվի համար ակտիվ չէ։ Դիտեք մոդուլներն ու պլանները Վճարումներում։",
+    "sw": "Wakala huyu hajawezeshwa kwa akaunti yako. Angalia moduli na mipango kwenye Malipo.",
+    "am": "ይህ ወኪል ለመለያዎ አልነቃም። ሞጁሎችንና ዕቅዶችን በክፍያ ይመልከቱ።",
+    "af": "Hierdie agent is nie vir jou rekening geaktiveer nie. Sien modules en planne onder Fakturering.",
+    "ha": "Ba a kunna wannan wakili don asusunka ba. Duba kayayyaki da tsare-tsare a sashen Biyan kuɗi.",
+    "hi": "यह एजेंट आपके खाते के लिए सक्रिय नहीं है। बिलिंग में मॉड्यूल और योजनाएँ देखें।",
+    "bn": "এই এজেন্ট আপনার অ্যাকাউন্টে সক্রিয় নয়। বিলিংয়ে মডিউল এবং পরিকল্পনা দেখুন।",
+    "ur": "یہ ایجنٹ آپ کے اکاؤنٹ کے لیے فعال نہیں ہے۔ بلنگ میں ماڈیولز اور منصوبے دیکھیں۔",
+    "ta": "இந்த முகவர் உங்கள் கணக்கில் செயல்படுத்தப்படவில்லை. கட்டணப் பகுதியில் தொகுதிகளையும் திட்டங்களையும் பார்க்கவும்.",
+    "pa": "ਇਹ ਏਜੰਟ ਤੁਹਾਡੇ ਖਾਤੇ ਲਈ ਸਰਗਰਮ ਨਹੀਂ ਹੈ। ਬਿਲਿੰਗ ਵਿੱਚ ਮੋਡੀਊਲ ਅਤੇ ਯੋਜਨਾਵਾਂ ਦੇਖੋ।",
+    "ne": "यो एजेन्ट तपाईंको खातामा सक्रिय छैन। बिलिङमा मोड्युल र योजनाहरू हेर्नुहोस्।",
+    "vi": "Tác nhân này chưa được bật cho tài khoản. Xem mô-đun và gói trong Thanh toán.",
+    "th": "เอเจนต์นี้ยังไม่เปิดใช้งานสำหรับบัญชีของคุณ ตรวจสอบโมดูลและแพ็กเกจในการเรียกเก็บเงิน",
+    "id": "Agen ini belum diaktifkan untuk akun Anda. Lihat modul dan paket di Penagihan.",
+    "ms": "Ejen ini belum diaktifkan untuk akaun anda. Semak modul dan pelan dalam Pengebilan.",
+    "tl": "Hindi pa aktibo ang agent na ito sa iyong account. Tingnan ang mga module at plano sa Pagsingil.",
+    "my": "ဤအေးဂျင့်ကို သင့်အကောင့်အတွက် မဖွင့်ထားပါ။ ငွေတောင်းခံမှုတွင် မော်ဂျူးများနှင့် အစီအစဉ်များကို ကြည့်ပါ။",
+    "km": "ភ្នាក់ងារនេះមិនទាន់សកម្មសម្រាប់គណនីអ្នកទេ។ ពិនិត្យម៉ូឌុលនិងគម្រោងក្នុងការចេញវិក្កយបត្រ។",
+    "mn": "Энэ агент таны дансанд идэвхжээгүй байна. Төлбөр хэсгээс модулиуд болон багцуудыг үзнэ үү.",
+}
+
+
+def agent_upgrade_message(locale: str) -> str:
+    language = resolve_api_locale(locale).split("-")[0]
+    return _AGENT_UPGRADE_MESSAGES[language] + " /billing"
+
 _MESSAGES_BY_LANGUAGE: dict[str, tuple[str, ...]] = {
     "en": (
         "The request could not be processed. Check the submitted information.",

@@ -23,10 +23,11 @@ import { metricText, currencyText, dateText } from "@/components/crm/crm-format"
 import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
 import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
-import { VOICE_NUMBER_COPY } from "@/lib/i18n/voice-number-copy";
+import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
 import { GlobalSourceSelector } from "@/components/shell/global-source-selector";
 import { CRMCopilotPanel } from "@/components/crm/crm-copilot-panel";
 import { SettingsView } from "@/components/settings/settings-view";
+import { VoiceModuleView } from "@/components/settings/voice-module-view";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -53,6 +54,10 @@ describe("public trust content", () => {
     expect(Object.keys(RETAIL_ANOMALY_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
     expect(Object.keys(VOICE_HEALTH_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
     expect(Object.keys(VOICE_NUMBER_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.keys(VOICE_SELECTION_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.keys(VOICE_NUMBER_TYPE_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    for (const copy of Object.values(VOICE_NUMBER_TYPE_COPY)) expect(copy.every(value => value.trim().length > 0)).toBe(true);
+    for (const copy of Object.values(VOICE_SELECTION_COPY)) expect(copy.every(value => value.trim().length > 0)).toBe(true);
     for (const copy of Object.values(RETAIL_ANOMALY_COPY)) {
       expect(Object.values(copy).every(value => value.trim().length > 0)).toBe(true);
     }
@@ -188,6 +193,64 @@ describe("public trust content", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Trust Center" })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/AES-256|TLS 1\.3|\bSOC\b|ISO 27001|30 days|6 years/i);
     expect(screen.getAllByRole("link", { name: "Contact us" }).every((link) => link.getAttribute("href") === "/contact")).toBe(true);
+  });
+});
+
+describe("native Voice module read-only selection", () => {
+  const offer = {
+    phone_number: "+14386075162", country_code: "CA", region: "PQ", locality: "MONTREAL",
+    number_type: "local", is_orderable: true, capabilities: ["voice", "sms", "mms"],
+    cost_information: { upfront_cost: "1.00", monthly_cost: "1.00", currency: "USD" },
+    regulatory_requirements: [], regulatory_status: "unknown",
+  };
+
+  function mockVoice(enabled: boolean) {
+    const calls: { path: string; method: string }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input, options) => {
+      const path = String(input); calls.push({ path, method: options?.method ?? "GET" });
+      if (path.endsWith('/auth/me')) return Response.json({ user: { id: 'owner', role: 'owner' }, company: { id: 'voice-tenant', name: 'Voice Company' } });
+      if (path.endsWith('/voice/capabilities')) return Response.json({ tenant_id: 'voice-tenant', subscription_plan: 'base', subscription_status: 'active', enabled_modules: enabled ? ['voice', 'retail'] : ['retail'], plan_compatible_modules: ['voice', 'retail'], available_agents: ['retail'], permissions: ['ai:use', 'modules:manage'], locale: 'fr', timezone: 'America/Toronto', authorized_sources: { sources: [] }, language_matrix: LOCALES.map(item => ({ locale: item.code, UI_TRANSLATION_SUPPORTED: true, STT_SUPPORTED: null, LLM_LANGUAGE_SUPPORTED: null, TTS_SUPPORTED: null, LIVE_AUDIO_VALIDATED: false, FULLY_SUPPORTED: false })) });
+      if (path.endsWith('/voice/status')) return Response.json({ voice_status: 'NOT_CONFIGURED', business_number: null, call_count: 0, call_minutes: 0, voice_ai_credits_charged: 0, recent_calls: [], data_freshness: { freshness_status: 'SYNCED' } });
+      if (path.includes('/voice/numbers/search?')) return Response.json({ offers: [offer] });
+      if (path.endsWith('/sources/context')) return Response.json({ state: 'NO_SOURCE_SELECTED', sources: [] });
+      if (path.endsWith('/sources')) return Response.json([]);
+      return Response.json({});
+    }));
+    return calls;
+  }
+
+  it.each(['fr', 'en', 'ro', 'es'] as const)("searches generic market filters and selects without purchase in %s", async (locale) => {
+    window.localStorage.setItem('avenqo-locale', locale);
+    const calls = mockVoice(true);
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    await screen.findByRole('button', { name: VOICE_NUMBER_COPY[locale].search });
+    fireEvent.change(screen.getByLabelText(VOICE_NUMBER_COPY[locale].country), { target: { value: 'CA' } });
+    fireEvent.change(screen.getByLabelText(VOICE_NUMBER_COPY[locale].locality), { target: { value: 'Montreal' } });
+    fireEvent.change(screen.getByLabelText(VOICE_SELECTION_COPY[locale][1]), { target: { value: '438' } });
+    fireEvent.click(screen.getByRole('button', { name: VOICE_NUMBER_COPY[locale].search }));
+    const radio = await screen.findByRole('radio', { name: `${VOICE_SELECTION_COPY[locale][3]} ${offer.phone_number}` });
+    fireEvent.click(radio);
+    expect(radio).toBeChecked();
+    const request = calls.find(item => item.path.includes('/voice/numbers/search?'));
+    expect(request?.method).toBe('GET');
+    const params = new URL(request!.path, 'https://avenqo.test').searchParams;
+    expect(params.get('country_code')).toBe('CA');
+    expect(params.get('locality')).toBe('Montreal');
+    expect(params.get('area_code')).toBe('438');
+    expect(params.has('organization_id')).toBe(false);
+    expect(calls.every(item => item.method === 'GET')).toBe(true);
+    expect(calls.some(item => /provision|number_orders|reserve|release/.test(item.path))).toBe(false);
+    act(() => window.dispatchEvent(new Event('avenqo:session-expired')));
+    await waitFor(() => expect(screen.queryByText(offer.phone_number)).not.toBeInTheDocument());
+  });
+
+  it("shows configuration without querying inventory for an inactive Voice module", async () => {
+    const calls = mockVoice(false);
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    await screen.findByText(VOICE_SELECTION_COPY.fr[0], { selector: 'h2' });
+    expect(screen.queryByRole('button', { name: VOICE_NUMBER_COPY.fr.search })).not.toBeInTheDocument();
+    expect(calls.some(item => item.path.includes('/voice/numbers/search'))).toBe(false);
+    expect(calls.every(item => item.method === 'GET')).toBe(true);
   });
 });
 

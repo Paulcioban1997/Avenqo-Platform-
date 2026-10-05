@@ -56,7 +56,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [isCopilotOpen, setIsCopilotOpen] = useState(() => pathname === "/voice");
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const session = useSession();
   const currentUser = session.identity?.user ?? null;
   const activeTenant = session.identity?.company.name ?? "";
@@ -358,7 +358,7 @@ export function AppShell({ children }: AppShellProps) {
                       href={item.href}
                       onClick={() => {
                         setIsSidebarOpen(false);
-                        if (item.href === "/voice") setIsCopilotOpen(true);
+                        if (item.href === "/voice") setIsCopilotOpen(false);
                       }}
                       className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                         isActive

@@ -74,6 +74,7 @@ class VoiceHealthService:
             select(VoiceCentralSession).where(VoiceCentralSession.company_id == config.company_id)
         ).all()
         conversation_ids = {item.conversation_id for item in central_sessions}
+        conversation_ids.update(item.central_conversation_id for item in calls if item.central_conversation_id is not None)
         attempts = self._session.scalars(
             select(TenantAIProviderAttempt).where(
                 TenantAIProviderAttempt.company_id == config.company_id,

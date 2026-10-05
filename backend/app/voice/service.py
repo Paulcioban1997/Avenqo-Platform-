@@ -59,6 +59,10 @@ async def _tenant_lock(company_id: UUID) -> asyncio.Lock:
         return _tenant_async_locks.setdefault(company_id, asyncio.Lock())
 
 
+def voice_action_key(config_id: UUID, call_id: UUID, tool_name: str, action_id: str) -> str:
+    return hashlib.sha256(f"avenqo-voice-action:{config_id}:{call_id}:{tool_name}:{action_id}".encode("utf-8")).hexdigest()
+
+
 def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str, Any]:
     """Resolve selected sources from authenticated server identity, never call/browser fields."""
     if not hasattr(db, "scalars"):
@@ -314,8 +318,16 @@ class VoiceOrchestrator:
         arguments: dict[str, Any],
     ) -> dict[str, Any]:
         started_at = perf_counter()
+        call = self._resolve_call(config, call_id)
+        scoped_action_id = voice_action_key(config.id, call.id, tool_name, action_id)
         lock = await _tenant_lock(config.company_id)
         async with lock:
+            legacy = self.db.scalar(select(VoiceToolAction).where(
+                VoiceToolAction.config_id == config.id, VoiceToolAction.action_id == action_id,
+            ))
+            if legacy is not None:
+                return {"success": False, "error": "legacy_action_context_unavailable"}
+            action_id = scoped_action_id
             if self.db.get_bind().dialect.name == "postgresql":
                 self.db.execute(
                     text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
@@ -339,7 +351,6 @@ class VoiceOrchestrator:
                 )
                 return existing_action.result
 
-            call = self._resolve_call(config, call_id)
             action = VoiceToolAction(
                 company_id=config.company_id,
                 config_id=config.id,

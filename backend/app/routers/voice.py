@@ -42,6 +42,10 @@ from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabi
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.ai.central.service import CentralAIService
+from backend.app.core.locale_catalog import resolve_locale
+from backend.app.dependencies.ai_authorization import get_active_ai_membership
+from backend.app.voice.languages import voice_language_matrix
+from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.schemas.voice import (
@@ -68,6 +72,27 @@ from shared.ai_engine.contracts import TenantContext
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
 manage_voice = require_permission("modules:manage")
 logger = logging.getLogger("avenqo.voice")
+
+
+@router.get("/capabilities", dependencies=[Depends(require_active_subscription)])
+def get_voice_capabilities(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    central_ai: CentralAIService = Depends(get_central_ai_service),
+) -> dict[str, Any]:
+    company = identity.user.company
+    permissions = frozenset(permissions_for(membership.role))
+    if "ai:use" not in permissions:
+        raise HTTPException(status_code=403, detail="AI permission is required")
+    context = central_ai.capability_context(
+        TenantContext(company_id=company.id, user_id=identity.user.id), identity.user.id,
+        permissions=permissions,
+        user_language=resolve_locale(company.preferred_language or "fr"),
+        company_country=company.country or "",
+        company_currency=company.currency_code,
+        company_timezone=company.timezone or "UTC",
+    )
+    return {**context.as_capabilities(), "language_matrix": voice_language_matrix()}
 
 
 def _orchestrator(db: Session, settings: Settings) -> VoiceOrchestrator:
@@ -118,6 +143,7 @@ def get_voice_status(
         item.conversation_id
         for item in db.scalars(select(VoiceCentralSession).where(VoiceCentralSession.company_id == company_id)).all()
     }
+    session_ids.update(call.central_conversation_id for call in calls if call.central_conversation_id is not None)
     voice_attempts = db.scalars(select(TenantAIProviderAttempt).where(
         TenantAIProviderAttempt.company_id == company_id,
         TenantAIProviderAttempt.conversation_id.in_(session_ids),
@@ -156,6 +182,12 @@ def get_voice_status(
             CompanyMembership.is_active.is_(True),
         )) or 0),
         "call_count": len(calls),
+        "recent_calls": [{
+            "id": str(call.id),
+            "status": call.status,
+            "started_at": _as_utc(call.started_at).isoformat() if call.started_at else None,
+            "ended_at": _as_utc(call.ended_at).isoformat() if call.ended_at else None,
+        } for call in sorted(calls, key=lambda item: _as_utc(item.started_at) if item.started_at else datetime.min.replace(tzinfo=timezone.utc), reverse=True)[:20]],
         "call_minutes": call_minutes,
         "voice_ai_credits_charged": voice_ai_credits,
     }
@@ -658,17 +690,15 @@ router.add_api_route("/tools/verify_caller", _tool_route("verify_caller"), metho
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
 
 
-@router.post(
-    "/tools/business_metrics",
-    dependencies=[Depends(rate_limit("voice_business_metrics", "rate_limit_ai_per_minute"))],
-)
-async def voice_business_metrics(
+async def _voice_central_execute(
     request: VoiceToolRequest,
     x_avenqo_voice_key: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     central_ai: CentralAIService = Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
+    *,
+    metrics_only: bool = True,
 ) -> dict[str, Any]:
     config, orchestrator = _authenticated_voice_config(db, settings, x_avenqo_voice_key)
     call = orchestrator._resolve_call(config, request.call_id)
@@ -697,23 +727,30 @@ async def voice_business_metrics(
     if not question or len(question) > 12_000:
         raise HTTPException(status_code=422, detail="A valid business metrics question is required")
 
+    action_key = voice_action_key(config.id, call.id, "get_business_metrics" if metrics_only else "central_ai", request.action_id)
+    legacy = db.scalar(select(VoiceToolAction).where(
+        VoiceToolAction.config_id == config.id, VoiceToolAction.action_id == request.action_id,
+    ))
+    if legacy is not None:
+        return {"success": False, "status": "not_authorized", "error": "legacy_action_context_unavailable"}
+
     if db.get_bind().dialect.name == "postgresql":
         from sqlalchemy import text
         db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-            {"lock_key": f"voice_metrics:{config.company_id}:{request.action_id}"},
+            {"lock_key": f"voice_metrics:{config.company_id}:{action_key}"},
         )
     existing = db.scalar(select(VoiceToolAction).where(
         VoiceToolAction.config_id == config.id,
-        VoiceToolAction.action_id == request.action_id,
+        VoiceToolAction.action_id == action_key,
     ))
     if existing is not None:
         return existing.result
     action = VoiceToolAction(
         company_id=config.company_id,
         config_id=config.id,
-        action_id=request.action_id,
-        tool_name="get_business_metrics",
+        action_id=action_key,
+        tool_name="get_business_metrics" if metrics_only else "central_ai",
         result={"status": "in_progress"},
     )
     db.add(action)
@@ -723,7 +760,7 @@ async def voice_business_metrics(
         db.rollback()
         existing = db.scalar(select(VoiceToolAction).where(
             VoiceToolAction.config_id == config.id,
-            VoiceToolAction.action_id == request.action_id,
+            VoiceToolAction.action_id == action_key,
         ))
         if existing is not None:
             return existing.result
@@ -774,7 +811,12 @@ async def voice_business_metrics(
             for outcome in result.tool_outcomes
         )
         safe_result = {
-            "success": result.status == "success" and bool(result.answer) and grounded_metrics,
+            "success": result.status == "success" and bool(result.answer) and (
+                grounded_metrics if metrics_only else any(
+                    outcome.get("success") is True and outcome.get("confirmed") is True
+                    for outcome in result.tool_outcomes
+                )
+            ),
             "status": result.status,
             "answer": result.answer,
             "selected_agent": result.selected_agent,
@@ -786,9 +828,35 @@ async def voice_business_metrics(
         safe_result = {"success": False, "status": "error", "error": "voice_metrics_unavailable"}
     action = db.scalar(select(VoiceToolAction).where(
         VoiceToolAction.config_id == config.id,
-        VoiceToolAction.action_id == request.action_id,
+        VoiceToolAction.action_id == action_key,
     ))
     if action is not None:
         action.result = safe_result
         db.commit()
     return safe_result
+
+
+@router.post("/tools/business_metrics", dependencies=[Depends(rate_limit("voice_business_metrics", "rate_limit_ai_per_minute"))])
+async def voice_business_metrics(
+    request: VoiceToolRequest,
+    x_avenqo_voice_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    central_ai: CentralAIService = Depends(get_central_ai_service),
+    prediction_service=Depends(get_prediction_service),
+) -> dict[str, Any]:
+    return await _voice_central_execute(request, x_avenqo_voice_key, db, settings, central_ai, prediction_service)
+
+
+@router.post("/tools/central_ai", dependencies=[Depends(rate_limit("voice_central_ai", "rate_limit_ai_per_minute"))])
+async def voice_central_agent(
+    request: VoiceToolRequest,
+    x_avenqo_voice_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    central_ai: CentralAIService = Depends(get_central_ai_service),
+    prediction_service=Depends(get_prediction_service),
+) -> dict[str, Any]:
+    return await _voice_central_execute(
+        request, x_avenqo_voice_key, db, settings, central_ai, prediction_service, metrics_only=False,
+    )

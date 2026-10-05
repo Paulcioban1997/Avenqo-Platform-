@@ -34,6 +34,12 @@ class CentralAIIntentRouter:
             definition for definition in self._registry.list_all()
             if "business" in definition.entrypoints
         )
+        capability_agent = next((item for item in definitions if item.slug == "tenant_capabilities"), None)
+        if capability_agent is not None and words.intersection(capability_agent.intent_keywords):
+            explicit_subscription = words.intersection(capability_agent.intent_keywords - {"plan"})
+            other_domain = any(words.intersection(item.intent_keywords) for item in definitions if item is not capability_agent)
+            if explicit_subscription or not other_domain:
+                return capability_agent
         if page_context:
             contextual = next(
                 (
@@ -48,7 +54,7 @@ class CentralAIIntentRouter:
         matches = [
             (len(words & definition.intent_keywords), definition)
             for definition in definitions
-            if words & definition.intent_keywords
+            if definition is not capability_agent and words & definition.intent_keywords
         ]
         aggregate = next((definition for definition in definitions if definition.aggregate), None)
         aggregate_match = next(

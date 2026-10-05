@@ -89,6 +89,28 @@ def build_default_assistant_registry(*tool_registries) -> AssistantRegistry:
 
     definitions = (
         AssistantDefinition(
+            slug="tenant_capabilities",
+            name_key="navigation.billing",
+            description_key="settings.billing",
+            status=AssistantStatus.AVAILABLE,
+            category="platform",
+            allowed_tool_names=allowed_tools.get("tenant_capabilities", frozenset()),
+            intent_keywords=frozenset({"subscription", "abonnement", "upgrade", "plan", "abonament", "suscripcion"}),
+            routing_priority=100,
+            supported_operations=frozenset({"read"}),
+        ),
+        AssistantDefinition(
+            slug="voice",
+            name_key="navigation.voiceAi",
+            description_key="copilot.subtitle",
+            status=AssistantStatus.AVAILABLE,
+            category="communication",
+            module_code="voice",
+            allowed_tool_names=allowed_tools.get("voice", frozenset()),
+            supported_operations=frozenset({"read"}),
+            entrypoints=frozenset({"voice"}),
+        ),
+        AssistantDefinition(
             slug=RETAIL_MODULE_CODE,
             name_key="assistant.retail.name",
             description_key="assistant.retail.description",

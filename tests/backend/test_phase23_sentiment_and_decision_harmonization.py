@@ -134,14 +134,14 @@ def _sentiment_csv(
     return ("\n".join(rows) + "\n").encode("utf-8")
 
 
-def _churn_segmentation_csv(company_bias: int) -> bytes:
+def _churn_segmentation_csv(company_bias: int, *, learnable: bool = False) -> bytes:
     """Même dataset canonique que Phase 22 : déclenche churn + segmentation."""
 
     rows = ["customer_id,tenure,monthly_spend,churn"]
     for i in range(24):
         tenure = i + 1
         monthly_spend = round(20 + i * 1.5 + company_bias, 2)
-        churn = 1 if (i + company_bias) % 4 == 0 else 0
+        churn = int(i >= 12) if learnable else int((i + company_bias) % 4 == 0)
         rows.append(f"C{i},{tenure},{monthly_spend},{churn}")
     return ("\n".join(rows) + "\n").encode("utf-8")
 
@@ -547,7 +547,7 @@ def test_non_regression_churn_segmentation_portfolio_decision_still_generated(ph
     upload = client.post(
         "/api/v1/datasets/csv",
         data={"module_code": "retail"},
-        files={"file": ("customers.csv", _churn_segmentation_csv(company_bias=0), "text/csv")},
+        files={"file": ("customers.csv", _churn_segmentation_csv(company_bias=0, learnable=True), "text/csv")},
     )
     assert upload.status_code == 201
 

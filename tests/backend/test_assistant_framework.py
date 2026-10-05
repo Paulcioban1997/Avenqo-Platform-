@@ -59,7 +59,7 @@ def test_registry_contains_only_implemented_agents_and_future_placeholders() -> 
 def test_unavailable_assistant_cannot_execute() -> None:
     registry = build_default_assistant_registry()
 
-    for slug in ("marketing", "ocr", "voice", "media", "legal", "workflow", "ai_agents"):
+    for slug in ("marketing", "ocr", "media", "legal", "workflow", "ai_agents"):
         assert registry.get(slug) is None
 
 
@@ -74,8 +74,12 @@ def test_list_available_contains_only_implemented_agents() -> None:
 
     available_slugs = {item.slug for item in registry.list_available()}
 
-    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support"}
+    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities"}
     assert available_slugs == expected
+    voice = registry.get("voice")
+    assert voice.module_code == "voice"
+    assert voice.entrypoints == frozenset({"voice"})
+    assert registry.get("tenant_capabilities").supported_operations == frozenset({"read"})
 
 
 def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_session) -> None:

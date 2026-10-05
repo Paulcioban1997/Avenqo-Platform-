@@ -26,8 +26,10 @@ from backend.app.dependencies.auth import CurrentIdentity, get_current_identity,
 from backend.app.core.security import decode_access_token
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.database import get_db
-from backend.app.models import AuthSession, CompanyMembership, User, VoiceCentralSession
+from backend.app.models import AuthSession, BillingAccount, CompanyMembership, User, VoiceCentralSession
 from backend.app.services.retail_source_service import RetailSourceService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.voice.adapters import ExternalVoiceConfigurationRequired, OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
@@ -44,6 +46,26 @@ router = APIRouter(
     prefix="/ai/voice",
     tags=["ai-voice"],
 )
+
+
+def _enforce_voice_access(db: Session, tenant: TenantContext, membership: CompanyMembership) -> None:
+    if "ai:use" not in permissions_for(membership.role):
+        raise HTTPException(status_code=403, detail="AI permission is required")
+    account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == tenant.company_id))
+    if account is not None:
+        db.refresh(account)
+    require_active_subscription(tenant, db)
+    if not ModuleEntitlementService(db).can_use_module(tenant, "voice"):
+        raise HTTPException(status_code=403, detail="Voice module is not active for this tenant")
+
+
+def get_voice_membership(
+    tenant: TenantContext = Depends(get_tenant_context),
+    membership: CompanyMembership = Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+) -> CompanyMembership:
+    _enforce_voice_access(db, tenant, membership)
+    return membership
 
 
 def _response(session: VoiceCentralSession) -> VoiceSessionResponse:
@@ -126,7 +148,7 @@ def create_session(
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
-    membership: CompanyMembership = Depends(get_active_ai_membership),
+    membership: CompanyMembership = Depends(get_voice_membership),
 ) -> VoiceSessionResponse:
     request_id = resolve_ai_request_id(
         request.request_id,
@@ -142,7 +164,7 @@ def create_session(
     )
     if existing is not None:
         return _response(existing)
-    requested_locale = identity.user.company.preferred_language or request.locale or "fr"
+    requested_locale = request.locale if "locale" in request.model_fields_set else identity.user.company.preferred_language or "fr"
     normalized = requested_locale.casefold().replace("_", "-")
     locale = resolve_locale(requested_locale) if normalized in BY_LOCALE or normalized in BY_BCP47 else requested_locale
     realtime = _realtime_available(locale)
@@ -175,7 +197,7 @@ def stream_ticket(
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
-    membership: CompanyMembership = Depends(get_active_ai_membership),
+    membership: CompanyMembership = Depends(get_voice_membership),
 ) -> VoiceStreamTicketResponse:
     session = db.scalar(select(VoiceCentralSession).where(
         VoiceCentralSession.id == session_id,
@@ -211,7 +233,7 @@ async def turn(
     request: VoiceTurnRequest,
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
-    membership=Depends(get_active_ai_membership),
+    membership=Depends(get_voice_membership),
     service: CentralAIService = Depends(get_central_ai_service),
     db: Session = Depends(get_db),
 ) -> VoiceTurnResponse:
@@ -335,6 +357,8 @@ async def stream_session(
             CompanyMembership.company_id == tenant_id,
             CompanyMembership.is_active.is_(True),
         ))
+        if membership is not None:
+            db.refresh(membership)
         db.refresh(session)
         if (
             user is None or not user.is_active or user.company_id != tenant_id
@@ -342,6 +366,12 @@ async def stream_session(
             or auth_session.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)
             or session.status != "active"
         ):
+            return None
+        if membership is None or not membership.is_active:
+            return None
+        try:
+            _enforce_voice_access(db, TenantContext(tenant_id, user_id), membership)
+        except HTTPException:
             return None
         return membership
 
@@ -367,7 +397,7 @@ async def stream_session(
                     company_id=tenant_id,
                     user_id=user_id,
                     conversation_id=session.conversation_id,
-                    plan_code=getattr(user.company, "subscription_plan", "base"),
+                    plan_code=ModuleEntitlementService(db).get_company_plan(TenantContext(tenant_id)).code.value,
                 )
                 failed_item = f"realtime-connect-{uuid4().hex}"
                 ledger.record_provider_failure(
@@ -388,7 +418,7 @@ async def stream_session(
             company_id=tenant_id,
             user_id=user_id,
             conversation_id=session.conversation_id,
-            plan_code=getattr(user.company, "subscription_plan", "base"),
+            plan_code=ModuleEntitlementService(db).get_company_plan(TenantContext(tenant_id)).code.value,
         )
     await websocket.send_json({
         "type": "lifecycle", "status": "listening", "session_id": str(session.id),

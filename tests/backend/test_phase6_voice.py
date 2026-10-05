@@ -23,6 +23,7 @@ from backend.app.schemas.voice_central import VoiceStreamTicketResponse
 from backend.app.models import (
     AuthSession,
     Base,
+    BillingAccount,
     Company,
     CompanyMembership,
     TenantAICreditLedgerEntry,
@@ -373,26 +374,54 @@ async def until(predicate):
             await asyncio.sleep(0)
     await asyncio.wait_for(wait(), timeout=2)
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("denial", ["module", "subscription", "permission"])
+async def test_native_browser_voice_denies_missing_capability_before_audio(voice_route, denial):
+    if denial == "module":
+        voice_route.active_modules.clear()
+    elif denial == "subscription":
+        voice_route.account.status = "past_due"
+    else:
+        voice_route.membership.role = "viewer"
+    socket = FakeSocket()
+    await ai_voice.stream_session(socket, voice_route.voice.id, voice_route.db, voice_route.service)
+    assert socket.closed == 4403
+    assert voice_route.adapter.opened is False
+    assert voice_route.calls == []
+
 
 @pytest.fixture
 def voice_route(monkeypatch):
     company_id, user_id, conversation_id, session_id, auth_id = (uuid4() for _ in range(5))
     voice = SimpleNamespace(id=session_id, company_id=company_id, user_id=user_id, conversation_id=conversation_id,
                             locale="fr", status="active", interruption_count=0, ended_at=None)
-    company = SimpleNamespace(country="CA", currency_code="CAD", timezone="America/Toronto")
+    company = SimpleNamespace(id=company_id, country="CA", currency_code="CAD", timezone="America/Toronto", subscription_plan="base")
+    account = SimpleNamespace(company_id=company_id, plan_code="professional", status="active")
+    active_modules = ["voice"]
     user = SimpleNamespace(id=user_id, company_id=company_id, is_active=True, company=company)
     membership = SimpleNamespace(role="owner", is_active=True)
     auth = SimpleNamespace(id=auth_id, revoked_at=None, expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
 
+    class ScalarResult(list):
+        def all(self):
+            return list(self)
+
     class DB:
         def scalar(self, query):
             entity = query.column_descriptions[0]["entity"]
+            if entity is BillingAccount:
+                return account
             if entity is CompanyMembership:
                 return membership if membership.is_active else None
             return voice
 
         def get(self, entity, key):
+            if entity is Company:
+                return company
             return user if entity is User else auth
+
+        def scalars(self, query):
+            return ScalarResult(active_modules)
 
         def refresh(self, _item):
             pass
@@ -444,10 +473,13 @@ def voice_route(monkeypatch):
     monkeypatch.setattr(ai_voice, "decode_access_token", lambda _token: {
         "sub": str(user_id), "tenant_id": str(company_id), "session_id": str(auth_id),
     })
+    monkeypatch.setattr(ai_voice, "resolve_voice_source_context", lambda _db, tenant: {
+        "state": "UNAVAILABLE", "selection": None, "sources": [], "tenant_id": str(tenant.company_id),
+    })
     adapter = FakeRealtime()
     monkeypatch.setattr(ai_voice, "_realtime_available", lambda _locale: True)
     monkeypatch.setattr(ai_voice, "_realtime_adapter", lambda: adapter)
-    return SimpleNamespace(voice=voice, membership=membership, db=DB(), service=Service(), adapter=adapter, calls=calls)
+    return SimpleNamespace(voice=voice, membership=membership, db=DB(), service=Service(), adapter=adapter, calls=calls, account=account, active_modules=active_modules)
 
 
 @pytest.mark.asyncio

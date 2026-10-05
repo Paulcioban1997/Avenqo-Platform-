@@ -8,6 +8,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.ai_chat import get_ai_usage_service, get_chat_service
 from backend.app.dependencies.assistants import get_assistant_registry
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.voice.service import resolve_voice_source_context
 
 
 def get_central_ai_service(
@@ -20,5 +21,8 @@ def get_central_ai_service(
         registry,
         chat_service,
         usage_service,
-        CentralAIContextBuilder(ModuleEntitlementService(db), usage_service),
+        CentralAIContextBuilder(
+            ModuleEntitlementService(db), usage_service, registry,
+            lambda tenant: resolve_voice_source_context(db, tenant),
+        ),
     )

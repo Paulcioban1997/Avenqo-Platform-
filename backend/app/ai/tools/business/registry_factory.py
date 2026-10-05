@@ -18,6 +18,7 @@ from backend.app.ai.tools.business.accounting_tools import (
     GetUnpaidInvoicesTool,
 )
 from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusinessHealthTool
+from backend.app.ai.tools.business.capability_tools import GetSubscriptionOptionsTool
 from backend.app.ai.tools.business.crm_tools import (
     CancelAppointmentTool,
     CheckAvailabilityTool,
@@ -69,6 +70,7 @@ def build_business_tool_registry(
     """Enregistre tous les outils métier Avenqo, y compris ceux non disponibles."""
 
     registry = ToolRegistry()
+    registry.register(GetSubscriptionOptionsTool(session))
     registry.register(GetBusinessOverviewTool(session, ingestion))
     registry.register(GetSalesSummaryTool(session, ingestion))
     registry.register(GetSalesTrendTool(session, ingestion))

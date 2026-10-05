@@ -37,6 +37,8 @@ from backend.app.models import (
     VoicePhoneNumber,
 )
 from backend.app.routers.voice import _verify_telnyx_signature, get_voice_status, voice_business_metrics
+from backend.app.routers.voice import voice_central_agent
+from backend.app.routers.voice import get_voice_capabilities
 from backend.app.schemas.voice import VoiceConfigRequest, VoiceToolRequest
 from backend.app.voice.service import VoiceOrchestrator, _api_key_hash
 from shared.ai_engine.contracts import TenantContext
@@ -53,6 +55,59 @@ class _FakeVoiceProvider:
 
     def agent_instructions(self, config: VoiceBusinessConfig) -> str:
         return f"Bonjour, {config.business_name}, assistant virtuel, cet appel peut être enregistré."
+
+
+@pytest.mark.parametrize("caller_type,role,agent,tool,allowed,confirmed", [
+    ("OWNER", UserRole.OWNER, "retail", "get_sales_summary", True, True),
+    ("OWNER", UserRole.OWNER, "crm", "get_crm_metrics", True, True),
+    ("OWNER", UserRole.OWNER, "accounting", "get_unpaid_invoices", True, True),
+    ("OWNER", UserRole.OWNER, "crm", "create_appointment", True, False),
+    ("EMPLOYEE", UserRole.ANALYST, "retail", "get_sales_summary", True, True),
+    ("EMPLOYEE", UserRole.VIEWER, "accounting", "get_unpaid_invoices", False, True),
+    ("CLIENT", UserRole.OWNER, "retail", "get_sales_summary", False, True),
+    ("CUSTOMER", UserRole.OWNER, "tenant_capabilities", "get_subscription_options", False, True),
+    ("UNKNOWN", UserRole.OWNER, "crm", "get_crm_metrics", False, True),
+])
+def test_native_voice_bridge_uses_membership_permissions_and_blocks_customers(tmp_path, caller_type, role, agent, tool, allowed, confirmed):
+    engine, session, company, config, api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        user = User(company_id=company.id, first_name="Verified", last_name="Caller",
+            email="verified-native@example.com", password_hash="test", role=role, is_active=True)
+        session.add(user); session.flush()
+        session.add_all([
+            CompanyMembership(company_id=company.id, user_id=user.id, role=role, is_active=True),
+            BillingAccount(company_id=company.id, plan_code="professional", status="active"),
+        ])
+        session.commit()
+        call = orchestrator.record_inbound(config, {"call_control_id": "native-agent-call", "from": "+15145550123"})
+        call.caller_type = caller_type; call.authenticated_user_id = user.id
+        call.caller_verified_at = datetime.now(timezone.utc); session.commit()
+
+        class Central:
+            calls = []
+
+            async def execute(self, tenant, user_id, conversation_id, query, **kwargs):
+                self.calls.append((tenant, user_id, conversation_id, kwargs))
+                return SimpleNamespace(status="success", answer="Backend-grounded answer", selected_agent=agent,
+                    remaining_ai_credits=100, tool_outcomes=({"tool": tool, "success": True, "confirmed": confirmed},))
+
+        central = Central()
+        request = VoiceToolRequest(call_id=call.telnyx_call_control_id, action_id="native-once",
+            arguments={"question": "Business question", "plan": "enterprise", "tenant_id": str(uuid4()), "permissions": ["billing:manage"]})
+        result = asyncio.run(voice_central_agent(request, api_key, session, Settings(), central, None))
+        assert result["success"] is (allowed and confirmed)
+        if allowed:
+            from backend.app.core.permissions import permissions_for
+            assert result["selected_agent"] == agent
+            assert central.calls[0][0] == TenantContext(company.id, user.id)
+            assert central.calls[0][3]["permissions"] == frozenset(permissions_for(role))
+            replay = asyncio.run(voice_central_agent(request, api_key, session, Settings(), central, None))
+            assert replay == result and len(central.calls) == 1
+        else:
+            assert central.calls == []
+            assert "answer" not in result and "remaining_ai_credits" not in result
+    finally:
+        session.close(); engine.dispose()
 
 
 class _FakeTelnyx:
@@ -86,6 +141,83 @@ def test_voice_configuration_accepts_all_canonical_application_locales():
 
     with pytest.raises(ValueError, match="existing Avenqo locale"):
         VoiceConfigRequest(**base, preferred_language="xx-INVALID")
+
+
+def test_voice_action_replay_is_bound_to_call_and_tool_and_preserves_legacy_history(tmp_path, monkeypatch):
+    from backend.app.models import VoiceToolAction
+    engine, session, _company, config, _, orchestrator = _voice_database(tmp_path)
+    try:
+        first_call = orchestrator.record_inbound(config, {"call_control_id": "call-first", "from": "+15145550123"})
+        second_call = orchestrator.record_inbound(config, {"call_control_id": "call-second", "from": "+15145550124"})
+        dispatched = []
+
+        async def dispatch(_config, call, tool, arguments):
+            dispatched.append((call.id, tool))
+            return {"success": True, "call_id": str(call.id), "tool": tool}
+
+        monkeypatch.setattr(orchestrator, "_dispatch_tool", dispatch)
+        first = asyncio.run(orchestrator.execute_tool(config, "call-first", "shared-id", "get_business_info", {}))
+        replay = asyncio.run(orchestrator.execute_tool(config, "call-first", "shared-id", "get_business_info", {}))
+        other_call = asyncio.run(orchestrator.execute_tool(config, "call-second", "shared-id", "get_business_info", {}))
+        other_tool = asyncio.run(orchestrator.execute_tool(config, "call-first", "shared-id", "take_message", {}))
+        assert replay == first
+        assert first["call_id"] == str(first_call.id) and other_call["call_id"] == str(second_call.id)
+        assert other_tool["tool"] == "take_message" and len(dispatched) == 3
+        legacy = VoiceToolAction(company_id=config.company_id, config_id=config.id,
+            action_id="legacy-unbound", tool_name="get_business_info", result={"success": True, "private": "do-not-replay"})
+        session.add(legacy); session.commit()
+        denied = asyncio.run(orchestrator.execute_tool(config, "call-second", "legacy-unbound", "get_business_info", {}))
+        assert denied == {"success": False, "error": "legacy_action_context_unavailable"}
+        assert legacy.result == {"success": True, "private": "do-not-replay"}
+        assert len(dispatched) == 3
+    finally:
+        session.close(); engine.dispose()
+
+
+@pytest.mark.parametrize("role", [UserRole.OWNER, UserRole.ANALYST, UserRole.VIEWER])
+def test_native_capabilities_handler_uses_server_identity_and_membership(tmp_path, role):
+    from fastapi import HTTPException
+    from backend.app.ai.central.context import CentralAIContextBuilder
+    from backend.app.ai.usage.service import AIUsageService
+    from backend.app.ai.usage.policy import AIQuotaPolicy
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    from backend.app.assistants.registry import build_default_assistant_registry
+    from backend.app.core.permissions import permissions_for
+    engine, session, company, _config, _, _ = _voice_database(tmp_path)
+    try:
+        user = User(company_id=company.id, first_name="Capability", last_name="Owner", email="capability-owner@example.com",
+            password_hash="test", role=UserRole.OWNER, is_active=True)
+        session.add(user)
+        session.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
+        session.commit()
+        builder = CentralAIContextBuilder(ModuleEntitlementService(session),
+            AIUsageService(session, AIQuotaPolicy(Settings(AUTH_JWT_SECRET="a" * 32))),
+            build_default_assistant_registry(), lambda tenant: {"tenant_id": str(tenant.company_id), "sources": []})
+
+        class Central:
+            calls = []
+
+            def capability_context(self, tenant, user_id, **kwargs):
+                self.calls.append((tenant, user_id, kwargs))
+                return builder.build(tenant, user_id, **kwargs)
+
+        central = Central()
+        if role == UserRole.VIEWER:
+            with pytest.raises(HTTPException) as denied:
+                get_voice_capabilities(SimpleNamespace(user=user), SimpleNamespace(role=role), central)
+            assert denied.value.status_code == 403
+            assert central.calls == []
+        else:
+            data = get_voice_capabilities(SimpleNamespace(user=user), SimpleNamespace(role=role), central)
+            assert data["tenant_id"] == str(company.id)
+            assert data["subscription_plan"] == "professional"
+            assert data["permissions"] == sorted(permissions_for(role))
+            assert data["locale"] == company.preferred_language
+            assert data["timezone"] == company.timezone
+            assert len(data["language_matrix"]) == 44
+            assert data["authorized_sources"]["tenant_id"] == str(company.id)
+    finally:
+        session.close(); engine.dispose()
 
 
 def test_voice_config_cannot_claim_number_owned_by_another_tenant(tmp_path):

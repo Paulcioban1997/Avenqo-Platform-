@@ -593,6 +593,26 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
         assert set(selected_modules) == available_selected_modules
 
 
+@pytest.mark.parametrize("plan", ["base", "professional", "enterprise"])
+@pytest.mark.parametrize("selected", [["voice"], ["retail"]])
+def test_native_voice_onboarding_never_requires_phone_setup(auth_environment, plan, selected) -> None:
+    from backend.app.models import VoiceBusinessConfig, VoicePhoneNumber
+    client, session_factory, _ = auth_environment
+    payload = registration_payload(f"native-{plan}-{selected[0]}@acme.ca", "Native Voice Company") | {
+        "plan_code": plan, "selected_modules": selected,
+    }
+    response = client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 201
+    with session_factory() as session:
+        company = session.scalar(select(Company).where(Company.name == "Native Voice Company"))
+        assert company is not None
+        modules = session.scalars(select(Module.code).join(CompanyModule, CompanyModule.module_id == Module.id)
+            .where(CompanyModule.company_id == company.id)).all()
+        assert set(modules) == set(selected)
+        assert session.scalar(select(VoiceBusinessConfig.id).where(VoiceBusinessConfig.company_id == company.id)) is None
+        assert session.scalar(select(VoicePhoneNumber.id).where(VoicePhoneNumber.company_id == company.id)) is None
+
+
 def test_inscription_sans_site_web_est_valide(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     payload = registration_payload("no-site@acme.ca", "No Site Company")

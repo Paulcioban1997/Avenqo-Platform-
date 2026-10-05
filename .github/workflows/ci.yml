@@ -101,6 +101,7 @@ jobs:
           tests/backend/test_data_freshness_service.py
           tests/backend/test_phase33_billing_admin.py
           tests/backend/test_billing.py
+          tests/backend/test_auth.py
           -q
         env:
           PYTHONPATH: .

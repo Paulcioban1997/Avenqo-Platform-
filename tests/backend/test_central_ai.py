@@ -30,6 +30,151 @@ from shared.ai_engine.contracts import TenantContext
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.parametrize("plan", ["base", "professional", "enterprise"])
+@pytest.mark.parametrize("module", ["retail", "crm", "accounting"])
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_native_voice_capability_context_uses_real_plan_and_authorized_agents(db_session, plan, module, enabled):
+    from backend.app.core.permissions import permissions_for
+    from backend.app.ai.tools.business.capability_tools import GetSubscriptionOptionsTool
+    from backend.app.ai.tools.base import ToolArguments
+    from backend.app.ai.tools.contracts import ToolExecutionContext
+    from payments.plans import PUBLIC_PLANS, get_plan
+
+    company, user = make_company(db_session, plan="enterprise")
+    account = BillingAccount(company_id=company.id, plan_code=plan, status="active")
+    db_session.add(account)
+    db_session.flush()
+    tenant = TenantContext(company.id, user.id)
+    entitlements = ModuleEntitlementService(db_session)
+    entitlements.activate_module(tenant, "voice")
+    if enabled:
+        entitlements.activate_module(tenant, module)
+    usage = AIUsageService(db_session, AIQuotaPolicy(Settings(AUTH_JWT_SECRET="a" * 32)))
+    builder = CentralAIContextBuilder(
+        entitlements, usage, build_default_assistant_registry(),
+        lambda source_tenant: {"tenant_id": str(source_tenant.company_id), "sources": []},
+    )
+    permissions = frozenset(permissions_for(UserRole.OWNER))
+    context = builder.build(tenant, user.id, permissions=permissions, user_language="fr",
+        company_country="CA", company_currency="CAD", company_timezone="America/Toronto")
+    data = context.as_capabilities()
+    assert data["subscription_plan"] == plan
+    assert data["subscription_status"] == "active"
+    assert "voice" in data["enabled_modules"] and "voice" in data["available_agents"]
+    assert (module in data["available_agents"]) is enabled
+    assert data["authorized_sources"]["tenant_id"] == str(company.id)
+    assert data["permissions"] == sorted(permissions)
+    assert data["timezone"] == "America/Toronto"
+    assert data["paid_changes_require_confirmation"] is True
+    assert [item["code"] for item in data["plan_options"]] == [item.code.value for item in PUBLIC_PLANS]
+    assert context.module_limit == get_plan(plan).max_selectable_modules
+    tool = GetSubscriptionOptionsTool(db_session)
+    result = await tool.run(ToolExecutionContext(tenant, user.id, permissions, "upgrade-read"), ToolArguments())
+    assert result.data["subscription_plan"] == plan
+    assert result.data["subscription_changed"] is False
+    assert result.data["paid_changes_require_confirmation"] is True
+    assert tool.read_only is True and tool.mutates is False
+    assert account.plan_code == plan and account.status == "active"
+    with pytest.raises(ValueError):
+        ToolArguments.model_validate({"plan": "enterprise", "confirmed": True, "tenant_id": str(company.id)})
+
+
+@pytest.mark.parametrize("locale", ["fr", "en", "ro", "es"])
+async def test_upgrade_refusal_is_localized_and_never_executes_blocked_agent(db_session, locale):
+    from backend.app.core.error_localization import agent_upgrade_message
+    company, user = make_company(db_session)
+    provider = StubProvider()
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=5, retail_entitled=False)
+    conversation = conversations.create(company.id, user.id, "Blocked accounting")
+    result = await central.execute(tenant, user.id, conversation.id, "invoice",
+        permissions=frozenset({"ai:use"}), capabilities=frozenset(), request_id="denied-upgrade",
+        user_language=locale, company_country="CA", company_currency="CAD", company_timezone="America/Toronto")
+    assert result.status == "not_entitled"
+    assert result.answer == agent_upgrade_message(locale)
+    assert "/billing" in result.answer
+    assert provider.calls == 0
+
+
+async def test_language_matrix_has_44_ui_locales_but_no_invented_audio_validation():
+    from backend.app.voice.languages import voice_language_matrix
+    from backend.app.core.locale_catalog import BY_LOCALE
+    from backend.app.core.error_localization import agent_upgrade_message
+    matrix = voice_language_matrix()
+    assert {row["locale"] for row in matrix} == set(BY_LOCALE)
+    assert len(matrix) == 44
+    for row in matrix:
+        assert row["UI_TRANSLATION_SUPPORTED"] is True
+        assert row["STT_SUPPORTED"] is None and row["LLM_LANGUAGE_SUPPORTED"] is None and row["TTS_SUPPORTED"] is None
+        assert row["LIVE_AUDIO_VALIDATED"] is False and row["FULLY_SUPPORTED"] is False
+        assert row["fallback"] == "text"
+        assert agent_upgrade_message(row["locale"]).endswith("/billing")
+
+
+async def test_authenticated_sms_and_web_share_the_same_central_handler():
+    from backend.app.routers.central_ai import router
+    paths = {route.path: route for route in router.routes}
+    web = paths["/ai/central/conversations/{conversation_id}/messages"]
+    sms = paths["/ai/central/conversations/{conversation_id}/sms"]
+    assert web.endpoint is sms.endpoint
+    assert web.dependant.dependencies and sms.dependant.dependencies
+    assert len(web.dependant.dependencies) == len(sms.dependant.dependencies)
+
+
+@pytest.mark.parametrize("query,page,expected", [
+    ("What subscription plan do I have?", "/crm", "tenant_capabilities"),
+    ("Quel abonnement est disponible ?", "/crm", "tenant_capabilities"),
+    ("Plan an appointment tomorrow", None, "crm"),
+])
+async def test_native_plan_routing_preserves_crm_intent(query, page, expected):
+    router = CentralAIIntentRouter(build_default_assistant_registry())
+    assert router.select(query, page_context=page).slug == expected
+
+async def test_voice_language_changes_keep_the_same_conversation_fr_en_ro_es(db_session):
+    company, user = make_company(db_session)
+    provider = StubProvider(classification="retail")
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=20)
+    conversation = conversations.create(company.id, user.id, "Same multilingual conversation")
+    turns = [
+        ("fr", "French", "Please reply in French: sales summary"),
+        ("en", "English", "Please reply in English: sales summary"),
+        ("ro", "Romanian", "Please reply in Romanian: sales summary"),
+        ("es", "Spanish", "Please reply in Spanish: sales summary"),
+    ]
+    for locale, language, transcript in turns:
+        result = await central.execute(tenant, user.id, conversation.id, transcript,
+            permissions=frozenset({"ai:use"}), capabilities=frozenset(), request_id=f"voice-switch-{locale}",
+            user_language=locale, company_country="CA", company_currency="CAD", company_timezone="America/Toronto",
+            spoken_language_input=True)
+        assert result.status == "success"
+        assert language in provider.last_system_instruction
+        assert conversations.get(company.id, user.id, conversation.id).id == conversation.id
+    messages = conversations.messages(company.id, conversation.id)
+    assert len(messages) == 8
+    assert all(any(item.content == transcript for item in messages) for _, _, transcript in turns)
+
+
+@pytest.mark.parametrize("aggregate", [False, True])
+async def test_registry_agent_permissions_block_before_model_and_retrieval(db_session, aggregate):
+    company, user = make_company(db_session)
+    provider = StubProvider()
+    central, conversations, _, tenant = make_service(db_session, company, provider, limit=5)
+    ModuleEntitlementService(db_session).activate_module(tenant, "accounting")
+    registry = AssistantRegistry()
+    registry.register(AssistantDefinition(slug="retail", name_key="retail", description_key="retail",
+        status=AssistantStatus.AVAILABLE, category="commerce", module_code="retail", intent_keywords=frozenset({"sales"})))
+    registry.register(AssistantDefinition(slug="private_finance", name_key="finance", description_key="finance",
+        status=AssistantStatus.AVAILABLE, category="finance", module_code="accounting",
+        intent_keywords=frozenset({"invoice"}), required_permissions=frozenset({"ai:use", "billing:manage"})))
+    if aggregate:
+        registry.register(AssistantDefinition(slug="cross_agent", name_key="cross", description_key="cross",
+            status=AssistantStatus.AVAILABLE, category="intelligence", aggregate=True))
+    central._router = CentralAIIntentRouter(registry)
+    conversation = conversations.create(company.id, user.id, "Restricted registry")
+    result = await execute(central, tenant, user, conversation, "sales invoice" if aggregate else "invoice")
+    assert result.status == "not_authorized"
+    assert provider.calls == 0
+
+
 async def test_central_ai_returns_only_safe_confirmed_crm_tool_outcomes():
     tool_results = (
         ToolCallResult(

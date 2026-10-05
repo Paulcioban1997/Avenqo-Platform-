@@ -16,6 +16,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
+from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.schemas.central_ai import CentralAIRequest, CentralAIResponse
 from shared.ai_engine.contracts import TenantContext
@@ -24,10 +25,15 @@ from shared.ai_engine.prediction.service import PredictionService
 router = APIRouter(
     prefix="/ai/central",
     tags=["central-ai"],
-    dependencies=[Depends(get_active_ai_membership)],
+    dependencies=[Depends(get_active_ai_membership), Depends(require_active_subscription)],
 )
 
 
+@router.post(
+    "/conversations/{conversation_id}/sms",
+    response_model=CentralAIResponse,
+    dependencies=[Depends(rate_limit("central_ai_sms", "rate_limit_ai_per_minute"))],
+)
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=CentralAIResponse,

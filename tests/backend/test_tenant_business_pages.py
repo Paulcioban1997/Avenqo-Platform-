@@ -443,10 +443,11 @@ async def test_dashboard_retail_copilot_metric_tool_share_selected_source_calcul
         tenant, period_key="last_30_days"
     )
     copilot_tool = GetSalesSummaryTool(session, ingestion)
+    shared_user_id = uuid4()
     tool_result = await copilot_tool.run(
         ToolExecutionContext(
             tenant=tenant,
-            user_id=uuid4(),
+            user_id=shared_user_id,
             permissions=frozenset({"ai:use"}),
             request_id="shared-selected-source-metrics",
             company_timezone=company.timezone,
@@ -459,6 +460,18 @@ async def test_dashboard_retail_copilot_metric_tool_share_selected_source_calcul
     assert retail_sales["summary"]["revenue"] == dashboard_revenue == tool_result.data["revenue"] == 200
     assert retail_sales["summary"]["orders"] == dashboard_orders == tool_result.data["orders"] == 2
     assert retail_sales["metrics"][0]["source_ids"] == dashboard["metrics"][0]["source_ids"] == tool_result.data["metrics"][0]["source_ids"]
+    channel_results = []
+    for channel in ("web", "voice", "sms"):
+        result = await copilot_tool.run(
+            ToolExecutionContext(tenant=tenant, user_id=shared_user_id, permissions=frozenset({"ai:use"}),
+                request_id=f"same-business-metrics-{channel}", company_timezone=company.timezone),
+            SalesSummaryArgs(period_key="last_30_days"),
+        )
+        channel_results.append(result.data)
+    assert {result["revenue"] for result in channel_results} == {200}
+    assert {result["orders"] for result in channel_results} == {2}
+    assert all(result["metrics"][0]["source_ids"] == tool_result.data["metrics"][0]["source_ids"] for result in channel_results)
+    assert all(result["data_freshness"]["freshness_status"] == tool_result.data["data_freshness"]["freshness_status"] for result in channel_results)
 
 
 def test_line_quantity_and_unit_price_derive_real_zero_revenue(

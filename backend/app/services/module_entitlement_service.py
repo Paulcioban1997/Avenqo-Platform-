@@ -66,6 +66,7 @@ class CompanyEntitlements:
     module_limit: int | None
     remaining_module_slots: int | None
     modules: tuple[ModuleEntitlement, ...]
+    subscription_status: str = "inactive"
 
 
 class ModuleEntitlementService:
@@ -188,6 +189,9 @@ class ModuleEntitlementService:
 
     def summary(self, tenant: TenantContext) -> CompanyEntitlements:
         plan = self.get_company_plan(tenant)
+        account = self._session.scalar(select(BillingAccount).where(
+            BillingAccount.company_id == tenant.company_id,
+        ))
         active_modules = self.get_active_modules(tenant)
         limit = self.get_module_limit(tenant)
         remaining = None if limit is None else max(limit - len(active_modules), 0)
@@ -213,6 +217,7 @@ class ModuleEntitlementService:
             module_limit=limit,
             remaining_module_slots=remaining,
             modules=modules,
+            subscription_status=account.status if account is not None else "inactive",
         )
 
     def _calculate_state(

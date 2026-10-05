@@ -15,6 +15,7 @@ from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.service import AIUsageService
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
+from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from shared.ai_engine.contracts import TenantContext
 
@@ -47,6 +48,9 @@ class CentralAIService:
     @property
     def usage_service(self) -> AIUsageService:
         return self._usage
+
+    def capability_context(self, tenant: TenantContext, user_id: UUID, **kwargs):
+        return self._context_builder.build(tenant, user_id, **kwargs)
 
     def _tool_scope_for_request(
         self,
@@ -180,6 +184,11 @@ class CentralAIService:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
             return result
+        scoped_agents = (agent, *self._router.select_matching_agents(query, page_context=page_context)) if agent is not None and agent.aggregate else (agent,)
+        if any(item is not None and not item.required_permissions.issubset(permissions) for item in scoped_agents):
+            result = self._result(tenant.company_id, agent.slug, "not_authorized", context.plan_code, "unavailable")
+            self._log_result(tenant.company_id, agent.module_code, result, started_at, "agent_permission_denied")
+            return result
         tool_scope = self._tool_scope_for_request(
             agent,
             query,
@@ -187,7 +196,10 @@ class CentralAIService:
             frozenset(context.active_modules),
         )
         if tool_scope is None:
-            result = self._result(tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled")
+            result = self._result(
+                tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled",
+                answer=agent_upgrade_message(user_language),
+            )
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_inactive")
             return result
         allowed_tool_names, authorized_tool_agents = tool_scope
@@ -213,7 +225,7 @@ class CentralAIService:
                 module_id=agent.module_code if agent is not None else None,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=agent is not None,
+                retrieve_tenant_data=agent is not None and agent.slug not in {"tenant_capabilities", "voice"},
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
                 follow_latest_utterance_language=spoken_language_input,
@@ -246,24 +258,9 @@ class CentralAIService:
 
     @staticmethod
     def _safe_tool_outcomes(tool_call_results) -> tuple[dict[str, object], ...]:
-        relevant_tools = {
-            "get_business_overview",
-            "get_sales_summary",
-            "get_sales_trend",
-            "get_sales_comparison",
-            "get_top_products",
-            "get_inventory_summary",
-            "check_availability",
-            "list_available_slots",
-            "create_appointment",
-            "update_appointment",
-            "cancel_appointment",
-        }
         outcomes = []
         for call_result in tool_call_results:
             tool_name = call_result.call.name
-            if tool_name not in relevant_tools:
-                continue
             tool_result = call_result.result
             confirmed = bool(tool_result.success)
             if tool_name == "check_availability":
