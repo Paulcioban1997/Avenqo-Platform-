@@ -67,17 +67,18 @@ async def message(
             src = source_service.select_source(
                 tenant, source_type=request.source_type, source_id=PyUUID(request.active_source_id)
             )
-            if src.enabled:
-                active_source_name = src.display_name
-                active_source_id_str = str(src.source_id)
-        except Exception:
-            pass
+            active_source_name = src.display_name
+            active_source_id_str = str(src.source_id)
+        except (ValueError, LookupError) as exc:
+            raise HTTPException(status_code=404, detail="Retail source not found") from exc
 
     if not active_source_name:
-        enabled_sources = [
-            source for source in source_service.list_sources(tenant) if source.enabled
-        ]
-        if enabled_sources:
+        source_context = source_service.context(tenant)
+        enabled_sources = [source for source in source_context["sources"] if (
+            source.enabled if source_context["source_type"] == "all"
+            else source.source_type == source_context["source_type"] and source.source_id == source_context["source_id"]
+        )]
+        if enabled_sources and source_context["state"] == "READY":
             active_source_name = ", ".join(
                 source.display_name for source in enabled_sources
             )

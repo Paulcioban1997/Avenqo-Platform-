@@ -752,3 +752,43 @@ products/orders/customers/inventory, dataset/source, Retail/KPI/Copilot and repe
 duplicate checks must be completed using real evidence. They are AUTH BLOCKED, not
 forgotten engineering TODOs. No other integration should be marked live or advanced
 merely because these simulated/automated checks succeeded.
+
+## Global User Source Context And Real Shopify Sync (2026-10-04)
+
+- Source-selector candidate `77078c0f4b2edded9a83727856b92e261fa99f07` passed CI
+	`37246751657` for backend/web/Flutter. Migration 0038 adds one source preference per
+	tenant/user, independent of source activation; no dataset/source/connection is deleted.
+	Web deployment `DDZ1mDq2PbvZP5deBushq2uMPETd` promoted the selector to avenqo.ca.
+- The top control lists real tenant file/commerce sources plus all-active mode, using
+	44 canonical locale labels. Non-ready/disconnected/errored sources are not selectable;
+	a lost selection remains explicitly unavailable rather than falling back to another
+	source's KPIs. Browser fixture checks passed desktop/tablet/mobile, light/dark, FR/ar
+	RTL, without overflow/runtime errors; selection calls did not activate or sync sources.
+- Authenticated user scope reaches analytics, Dashboard, Retail, recommendations, chat
+	tools and retrieval. All-active mode deduplicates logical commerce order-line identities
+	and refuses mixed monetary currencies. A final route-level Central grounding follow-up
+	removes old enabled-source-label fallback and rejects foreign source IDs; 70 focused
+	authorization/source/chat tests passed. Its final production Copilot receipt follows.
+- Production OAuth is now real: Avenqo Retail Test, avenqo-retail-test.myshopify.com,
+	correct Produits_Ero connection, verified provider shop id, matching real metadata and
+	valid server-side encrypted credentials. No token/account data was printed.
+- Two real syncs through the deployed authenticated job route used max_pages_per_entity=2.
+	Both returned HTTP 202 and completed READY without error. Real normalized counts:
+	products 17, orders 5, customers 3, inventory records 26. A real bounded locations query
+	returned two locations with no further page. No absent categories were manufactured.
+- External-ID fingerprint stable, zero duplicate entity/ID groups, stable dataset ID and
+	generation 1, no new connector evaluations across the repeats. No reset/reseed or
+	historical missing-artifact recovery occurred. Superstore-utf8-cleaned.csv (normalized
+	casing) remains present and unchanged; the initial exact-name mismatch was not data loss.
+- Production PUT source-context requests selected Shopify and Superstore successfully;
+	both contexts were READY. Shopify Retail/status/products/sales/Dashboard returned 200,
+	and Superstore sales remained accessible. All-active selection/sales returned 200; the
+	original user's context was restored. Foreign/missing source selection was rejected 404.
+- Retail's 28 portfolio entries are not 28 Shopify parent products: the actual records
+	reconcile to 26 current catalog variants plus two order-only identities outside the
+	current catalog. The Shopify product count stays 17; no KPI was forced to match a
+	different entity grain. Revenue values/customer payloads were not published.
+- Local gates: 273 preservation tests, 198 final ownership-slice tests, 25 migration/API
+	tests, 99 web tests/typecheck/build/catalog checks, 306 Flutter tests/analyze passed.
+	Test counts overlap and must not be summed as unique tests. Final LIVE VERIFIED status
+	is awarded only after deployed Copilot source attribution is verified below.
