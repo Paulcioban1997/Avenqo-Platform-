@@ -38,7 +38,8 @@ export function GlobalSourceSelector() {
   const selected = context?.sources.find(source => source.source_type === context.source_type && source.source_id === context.source_id);
   const ready = context?.sources.filter(source => source.status.toUpperCase() === "READY" && !!source.dataset_id) || [];
   const state = session.loading || !context && !session.sourceError ? "LOADING" : session.sourceError ? "SOURCE_ERROR" : context?.state || "NO_SOURCES";
-  const label = state === "LOADING" ? catalog.connectionsLoading : context?.source_type === "all" ? all : selected?.display_name || (state === "NO_SOURCES" ? t.common.insufficientData : labels.unavailable);
+  const label = state === "LOADING" ? catalog.connectionsLoading : context?.source_type === "all" ? all : selected?.display_name ? `${selected.provider ? `${selected.provider} — ` : ""}${selected.display_name}` : (state === "NO_SOURCES" ? t.common.insufficientData : labels.unavailable);
+  const SourceIcon = context?.source_type === "all" ? Globe : selected?.source_type === "connector" ? Store : selected?.source_type === "dataset" ? File : Database;
   const status = state === "READY" ? labels.ready : state === "SOURCE_DISCONNECTED" ? labels.disconnected : state === "SOURCE_ERROR" ? labels.error : labels.unavailable;
   const choose = async (type: string, id: string | null) => {
     setBusy(true); setFailed(false);
@@ -48,7 +49,7 @@ export function GlobalSourceSelector() {
   };
   return <div ref={container} className="relative min-w-0" data-source-state={state}>
     <button type="button" aria-label={title} aria-expanded={open} aria-haspopup="menu" title={`${title}: ${label} — ${status}`} onClick={() => setOpen(value => !value)} className="flex h-9 max-w-[80px] sm:max-w-[220px] items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 text-xs dark:border-emerald-900 dark:bg-emerald-950/30">
-      {busy || state === "LOADING" ? <LoaderCircle size={15} className="shrink-0 animate-spin" /> : <Database size={15} className="shrink-0" />}<span className="min-w-0 truncate">{label}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${state === "READY" ? "bg-emerald-600" : "bg-amber-600"}`} /><ChevronDown size={13} className="shrink-0" />
+      {busy || state === "LOADING" ? <LoaderCircle size={15} className="shrink-0 animate-spin" /> : <SourceIcon size={15} className="shrink-0" />}<span className="min-w-0 truncate">{label}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${state === "READY" ? "bg-emerald-600" : "bg-amber-600"}`} /><ChevronDown size={13} className="shrink-0" />
     </button>
     {open && <div role="menu" aria-label={title} className="fixed start-4 top-16 z-50 max-h-[65vh] w-[min(340px,calc(100vw-32px))] overflow-y-auto rounded-md border border-gray-200 bg-white p-2 shadow-lg sm:absolute sm:start-0 sm:top-auto sm:mt-2 dark:border-gray-700 dark:bg-[#0B132B]">
       <div className="px-2 py-2 text-xs font-semibold">{title}</div>

@@ -792,3 +792,45 @@ merely because these simulated/automated checks succeeded.
 	tests, 99 web tests/typecheck/build/catalog checks, 306 Flutter tests/analyze passed.
 	Test counts overlap and must not be summed as unique tests. Final LIVE VERIFIED status
 	is awarded only after deployed Copilot source attribution is verified below.
+
+### Shopify Live Verification: 7/7 Complete
+
+Final Shopify status: LIVE VERIFIED for the bounded production path. Central-source
+follow-up `3b26999ebd094ccae983b82065892f2086046a6d` passed CI `37247902704`
+(413 backend tests, 99 web tests/build/catalog/typecheck, Flutter gate) and deployed
+healthy/ready with migrations ok. No provider configuration was changed.
+
+- Real existing OAuth and provider metadata: Avenqo Retail Test,
+	avenqo-retail-test.myshopify.com, verified provider shop id, Produits_Ero attribution,
+	encrypted access/refresh storage. Zero credential fields appeared in real connection,
+	source-context or frontend-proxy responses checked by a structured field scan.
+- Real bounded sync and categories: two successful max-two-page syncs, 17 parent products,
+	5 orders, 3 customers, 26 inventory records, 2 actual locations. These are records returned
+	by Shopify, not fixtures or guessed missing categories. No further page in locations.
+- Idempotency/data preservation: stable external IDs, zero duplicate entity-ID groups,
+	stable dataset/generation 1, no additional connector evaluations, original Superstore
+	metadata unchanged. No destructive source/dataset action or historical-artifact recovery.
+- Global selector and analytics: authenticated Shopify/Superstore/all-active preferences
+	selected successfully; the original user's preference restored. Shopify Retail/status,
+	products, sales and Dashboard returned actual data; Superstore remained usable. Explicit
+	missing/foreign source selection was denied, never silently substituted.
+- Real Copilot: one authenticated Central request selected Retail, returned success/200,
+	explicitly attributed Avenqo Retail Test and its selected source, and contained the
+	actual sales total from the Shopify-only sales API. No Superstore content in its answer.
+	Prompt, answer, tenant/user/conversation identifiers and actual revenue were withheld.
+- Accounting: two successful provider turns belonged to exactly one logical request,
+	one settled reservation and one ai_settlement. A diagnostic SQL column error was repaired
+	by a read-only ledger query; the real request was not repeated or refactored into fake
+	accounting, and no second charge was introduced.
+- Source UI: 44 canonical locale parity, real tenant names/types, desktop/tablet/mobile,
+	light/dark/RTL tests and fixture browser checks passed. Selection is independent from
+	activation, disconnect and synchronization. Missing selected sources remain explicit.
+
+Shopify TODOs: 7/7 supported by the evidence above. Broader Shopify features, unlimited
+history, live webhook delivery from Shopify and stock mutation are outside this bounded
+verification; no claim was inferred for them. Completed Vertex/Calendar work was not redone.
+
+Next incomplete integration priority: WooCommerce production. Existing audit found no
+Produits_Ero production WooCommerce connection, so genuine store-owner authorization is
+required before a legitimate production sync. The historical sandbox missing-artifact
+evaluation must remain blocked; never rebuild that missing historical source as a test.
