@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
-import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
 
 interface Message {
@@ -29,8 +29,40 @@ interface Message {
   timestamp: string;
   action?: string;
   status?: "success" | "conflict" | "error";
-  details?: any;
+  details?: unknown;
 }
+
+interface SpeechRecognitionResultLike {
+  0?: { transcript?: string };
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex?: number;
+  results?: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort?: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+const messageId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+const messageTimestamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 interface CRMCopilotPanelProps {
   t: AppTranslations;
@@ -45,7 +77,6 @@ export function CRMCopilotPanel({
   t,
   userName = "Utilisateur",
   onAppointmentCreated,
-  onSelectAction,
   onClose,
   isFloating = false,
 }: CRMCopilotPanelProps) {
@@ -65,45 +96,97 @@ export function CRMCopilotPanel({
         : isEnglish
           ? `${t.copilot.title}: ${userName}`
           : `${t.copilot.title}: ${userName}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: messageTimestamp(),
     },
   ]);
   const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
+  const sendLockRef = useRef(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const recognitionGenerationRef = useRef(0);
+  const dictationBaseRef = useRef("");
+  const finalSegmentsRef = useRef(new Map<number, string>());
+  const interimSegmentsRef = useRef(new Map<number, string>());
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const toggleDictation = () => {
-    if (isListening) {
+    if (recognitionRef.current) {
       recognitionRef.current?.stop();
       return;
     }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    const { SpeechRecognition, webkitSpeechRecognition } = window as SpeechRecognitionWindow;
+    const Recognition = SpeechRecognition || webkitSpeechRecognition;
+    if (!Recognition) {
       setMessages((prev) => [...prev, {
-        id: `c-${Date.now()}`,
+        id: messageId("c"),
         sender: "copilot",
         content: isRomanian ? "Dictarea vocală nu este disponibilă în acest browser." : locale.startsWith("fr") ? "La dictée vocale n'est pas disponible dans ce navigateur." : "Voice dictation is not available in this browser.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: messageTimestamp(),
         status: "error",
       }]);
       return;
     }
-    const recognition = new SpeechRecognition();
+    const recognition = new Recognition();
+    const generation = ++recognitionGenerationRef.current;
+    dictationBaseRef.current = input.trimEnd();
+    finalSegmentsRef.current = new Map();
+    interimSegmentsRef.current = new Map();
     recognition.lang = locale;
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript;
-      if (transcript) setInput((current) => `${current}${current ? " " : ""}${transcript}`);
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.onstart = () => {
+      if (generation === recognitionGenerationRef.current) setIsListening(true);
     };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
+      if (generation !== recognitionGenerationRef.current) return;
+      const results = event.results;
+      const firstChanged = typeof event.resultIndex === "number" && Number.isInteger(event.resultIndex)
+        ? event.resultIndex
+        : 0;
+      for (let index = firstChanged; results && index < results.length; index += 1) {
+        const result = results[index];
+        const transcript = String(result?.[0]?.transcript ?? "").trim();
+        if (!transcript) continue;
+        if (result.isFinal) {
+          if (!finalSegmentsRef.current.has(index)) finalSegmentsRef.current.set(index, transcript);
+          interimSegmentsRef.current.delete(index);
+        } else if (!finalSegmentsRef.current.has(index)) {
+          interimSegmentsRef.current.set(index, transcript);
+        }
+      }
+      const transcript = [...new Set([...finalSegmentsRef.current.keys(), ...interimSegmentsRef.current.keys()])]
+        .sort((left, right) => left - right)
+        .map((index) => finalSegmentsRef.current.get(index) ?? interimSegmentsRef.current.get(index) ?? "")
+        .filter(Boolean)
+        .join(" ");
+      const base = dictationBaseRef.current;
+      setInput(`${base}${base && transcript ? " " : ""}${transcript}`);
+    };
+    recognition.onerror = () => {
+      if (generation === recognitionGenerationRef.current) setIsListening(false);
+    };
+    recognition.onend = () => {
+      if (generation !== recognitionGenerationRef.current) return;
+      const transcript = [...finalSegmentsRef.current.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, text]) => text)
+        .join(" ");
+      const base = dictationBaseRef.current;
+      setInput(`${base}${base && transcript ? " " : ""}${transcript}`);
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
   };
 
   const suggestedActions = isSpanish
@@ -146,19 +229,43 @@ export function CRMCopilotPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      recognitionGenerationRef.current += 1;
+      const recognition = recognitionRef.current;
+      recognitionRef.current = null;
+      if (recognition) {
+        recognition.onresult = null;
+        recognition.onend = null;
+        recognition.onerror = null;
+        recognition.onstart = null;
+        recognition.abort?.();
+      }
+      requestControllerRef.current?.abort();
+    };
+  }, []);
+
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
-    if (!query || isThinking) return;
+    if (!query || sendLockRef.current) return;
+    sendLockRef.current = true;
     const pendingRequest = pendingRequestRef.current?.content === query
       ? pendingRequestRef.current
       : { content: query, key: crypto.randomUUID() };
     pendingRequestRef.current = pendingRequest;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+    }, 45_000);
 
     const userMsg: Message = {
-      id: `u-${Date.now()}`,
+      id: messageId("u"),
       sender: "user",
       content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: messageTimestamp(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -172,6 +279,7 @@ export function CRMCopilotPanel({
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ title: query.slice(0, 54) }),
+          signal: controller.signal,
         });
         if (!conversationResponse.ok) throw new Error("Conversation creation failed");
         const conversation = await conversationResponse.json();
@@ -191,17 +299,19 @@ export function CRMCopilotPanel({
           locale,
           page_context: "/crm",
         }),
+        signal: controller.signal,
       });
 
       if (res.ok) {
         const data = await res.json();
-        pendingRequestRef.current = null;
+        const confirmedSuccess = data.status === "success" && typeof data.answer === "string" && data.answer.trim().length > 0;
+        if (confirmedSuccess) pendingRequestRef.current = null;
         const copilotMsg: Message = {
-          id: `c-${Date.now()}`,
+          id: messageId("c"),
           sender: "copilot",
-          content: data.answer || (isRomanian ? "Procesare finalizată." : isEnglish ? "Processing complete." : "Traitement terminé."),
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          status: data.status === "success" ? "success" : "error",
+          content: confirmedSuccess ? data.answer : t.copilot.errorPrompt,
+          timestamp: messageTimestamp(),
+          status: confirmedSuccess ? "success" : "error",
           details: data,
         };
         setMessages((prev) => [...prev, copilotMsg]);
@@ -212,25 +322,29 @@ export function CRMCopilotPanel({
         }
       } else {
         const copilotMsg: Message = {
-          id: `c-${Date.now()}`,
+          id: messageId("c"),
           sender: "copilot",
-          content: isRomanian ? "A apărut o eroare la comunicarea cu serviciul CRM AI. Încearcă din nou." : isEnglish ? "An error occurred while contacting the CRM AI service. Please try again." : "Une erreur est survenue lors de la communication avec le service CRM AI. Veuillez réessayer.",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          content: t.copilot.errorPrompt,
+          timestamp: messageTimestamp(),
           status: "error",
         };
         setMessages((prev) => [...prev, copilotMsg]);
       }
     } catch {
+      if (!mountedRef.current) return;
       const copilotMsg: Message = {
-        id: `c-${Date.now()}`,
+        id: messageId("c"),
         sender: "copilot",
-        content: isRomanian ? "Serverul CRM nu poate fi contactat. Verifică conexiunea." : isEnglish ? "Unable to reach the CRM server. Check your connection." : "Impossible de joindre le serveur CRM. Vérifiez votre connexion.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          content: t.copilot.errorPrompt,
+        timestamp: messageTimestamp(),
         status: "error",
       };
       setMessages((prev) => [...prev, copilotMsg]);
     } finally {
-      setIsThinking(false);
+      window.clearTimeout(timeout);
+      if (requestControllerRef.current === controller) requestControllerRef.current = null;
+      sendLockRef.current = false;
+      if (mountedRef.current) setIsThinking(false);
     }
   };
 
@@ -316,6 +430,7 @@ export function CRMCopilotPanel({
             className={`flex flex-col ${m.sender === "user" ? "items-end" : "items-start"} space-y-1 animate-in fade-in duration-200`}
           >
             <div
+              role={m.status === "error" ? "alert" : undefined}
               className={`max-w-[90%] p-3 rounded-2xl ${
                 m.sender === "user"
                   ? "bg-gradient-to-r from-[#0076FF] to-[#005bd3] text-white rounded-br-xs shadow-xs"

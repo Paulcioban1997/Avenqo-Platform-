@@ -23,6 +23,7 @@ from shared.ai_engine.prediction.service import PredictionService
 
 
 _MAX_SYNCHRONOUS_RECOMMENDATION_CUSTOMERS = 25
+_MIN_RECOMMENDATION_ORDERS = 10
 
 
 class TenantRecommendationsService:
@@ -49,12 +50,15 @@ class TenantRecommendationsService:
     ) -> dict[str, Any]:
         generated_at = datetime.now(timezone.utc)
         source = self._products.source_for(snapshot)
+        order_count = self._distinct_order_count(snapshot)
         signals: list[BusinessSignal] = []
         metadata_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-        self._sales_signal(tenant, snapshot, generated_at, signals, metadata_by_key)
+        if order_count >= _MIN_RECOMMENDATION_ORDERS:
+            self._sales_signal(tenant, snapshot, generated_at, signals, metadata_by_key)
         if source is not None:
             products = self._products.portfolio(source)
-            self._product_signals(tenant, products, generated_at, signals, metadata_by_key)
+            if order_count >= _MIN_RECOMMENDATION_ORDERS:
+                self._product_signals(tenant, products, generated_at, signals, metadata_by_key)
             self._model_signal(tenant, snapshot, source, generated_at, signals, metadata_by_key)
 
         if not signals:
@@ -62,6 +66,7 @@ class TenantRecommendationsService:
                 "status": snapshot.status,
                 "currency": snapshot.currency,
                 "generated_at": generated_at,
+                "recommendation_state": "INSUFFICIENT_DATA" if order_count < _MIN_RECOMMENDATION_ORDERS else "NO_RECOMMENDATIONS",
                 "recommendations": [],
             }
 
@@ -70,6 +75,13 @@ class TenantRecommendationsService:
             signals,
         ).decisions
         recommendations = []
+        source_context = {
+            "selection": snapshot.active_source_type,
+            "provider": snapshot.active_source_provider,
+            "name": snapshot.active_source_name,
+            "dataset_id": str(snapshot.active_source_dataset_id)
+            if snapshot.active_source_dataset_id is not None else None,
+        }
         seen: set[tuple[str, str]] = set()
         for decision in decisions:
             signal = decision.insight.signals[0]
@@ -83,7 +95,9 @@ class TenantRecommendationsService:
                 {
                     "id": f"{signal.task_code}:{signal.entity}",
                     "type": signal.task_code,
+                    "severity": assessment.severity if assessment is not None else decision.priority.value,
                     "title": metadata["title"],
+                    "description": metadata["explanation"],
                     "explanation": metadata["explanation"],
                     "priority": assessment.severity if assessment is not None else decision.priority.value,
                     "severity_reason": assessment.reason if assessment is not None else "decision_intelligence_policy",
@@ -93,12 +107,16 @@ class TenantRecommendationsService:
                         "revenue_share": assessment.revenue_share,
                     } if assessment is not None else {},
                     "source_capability": signal.capability,
+                    "metric": signal.metric,
+                    "period": metadata["evidence"].get("period"),
+                    "source": source_context,
                     "evidence": metadata["evidence"],
                     "affected_entity": signal.entity,
                     "confidence": signal.confidence,
                     "estimated_impact": metadata.get("estimated_impact"),
                     "affected_product": metadata.get("affected_product"),
                     "suggested_action": metadata["suggested_action"],
+                    "recommended_action": metadata["suggested_action"],
                     "action_route": metadata["action_route"],
                     "generated_at": generated_at,
                     "source_model_version": metadata.get("source_model_version"),
@@ -109,8 +127,20 @@ class TenantRecommendationsService:
             "status": snapshot.status,
             "currency": snapshot.currency,
             "generated_at": generated_at,
+            "recommendation_state": "READY",
             "recommendations": self._rank_and_limit(recommendations),
         }
+
+    @staticmethod
+    def _distinct_order_count(snapshot: TenantAnalyticsSnapshot) -> int:
+        source = snapshot.source_for(frozenset({"order_id"}))
+        if source is None:
+            return 0
+        return len({
+            str(row["order_id"]).strip()
+            for row in snapshot._canonical_rows(source)
+            if row.get("order_id") is not None and str(row["order_id"]).strip()
+        })
 
     def _sales_signal(self, tenant, snapshot, generated_at, signals, metadata_by_key) -> None:
         source = snapshot.source_for(frozenset({"total_amount"}))

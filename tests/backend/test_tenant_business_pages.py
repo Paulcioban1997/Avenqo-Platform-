@@ -399,12 +399,9 @@ async def test_related_ready_datasets_feed_retail_and_central_ai_without_tenant_
     assert product_result["summary"]["units"] == 5.0
     assert sum(item["revenue"] for item in product_result["items"]) == 320.0
     assert {item["average_price"] for item in product_result["items"]} == {76.67, 45.0}
-    growth = next(
-        item
-        for item in recommendation_result["recommendations"]
-        if item["type"] == "revenue_growth"
-    )
-    assert growth["evidence"]["current"] == 220.0
+    assert recommendation_result["recommendation_state"] == "INSUFFICIENT_DATA"
+    assert recommendation_result["recommendations"] == []
+    assert dashboard_result["priorities"] == []
     kpis = {item["key"]: item for item in dashboard_result["kpis"]}
     assert kpis["revenue"]["value"] == 220.0
     assert kpis["average_order_value"]["value"] == 110.0
@@ -455,6 +452,10 @@ def _product_prepared(company, dataset):
         {"date": "2026-08-20", "sale": "O1", "client": "C1", "product": "P1", "name": "Coffee", "category": "Drinks", "quantity": 1, "amount": 50, "stock": 7},
         {"date": "2026-08-25", "sale": "O2", "client": "C1", "product": "P2", "name": "Tea", "category": "Drinks", "quantity": 3, "amount": 90, "stock": 0},
         {"date": "2026-08-28", "sale": "O3", "client": "C2", "product": "P2", "name": "Tea", "category": "Drinks", "quantity": 2, "amount": 60, "stock": 0},
+        *[
+            {"date": "2026-08-28", "sale": f"O{index}", "client": "C2", "product": "P2", "name": "Tea", "category": "Drinks", "quantity": 0, "amount": 0, "stock": 0}
+            for index in range(4, 10)
+        ],
     ]
     return _prepared(
         company,

@@ -59,6 +59,8 @@ class TenantAnalyticsSnapshot:
     active_source_selected: bool = False
     active_source_dataset_id: object | None = None
     active_source_provider: str | None = None
+    active_source_type: str | None = None
+    active_source_name: str | None = None
 
     @property
     def currency(self) -> str:
@@ -349,9 +351,19 @@ class TenantAnalyticsService:
         tenant_datasets = datasets
         active_source = RetailSourceService(self._session).active_selection(tenant)
         active_source_provider = None
+        active_source_name = None
+        active_source_type = active_source.source_type if active_source is not None else None
         if active_source is not None and active_source.connection_id is not None:
             connection = self._session.get(CommerceConnection, active_source.connection_id)
             active_source_provider = connection.provider if connection is not None else None
+            active_source_name = connection.display_name if connection is not None else None
+        elif active_source is not None and active_source.source_type == "dataset":
+            selected_dataset = next(
+                (item for item in datasets if item.id == active_source.dataset_id), None
+            )
+            active_source_name = selected_dataset.name if selected_dataset is not None else None
+        elif active_source is not None and active_source.source_type == "all":
+            active_source_name = "all_active"
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
         if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
@@ -439,6 +451,8 @@ class TenantAnalyticsService:
                 active_source.dataset_id if active_source is not None else None
             ),
             active_source_provider=active_source_provider,
+            active_source_type=active_source_type,
+            active_source_name=active_source_name,
         )
         return replace(
             snapshot,

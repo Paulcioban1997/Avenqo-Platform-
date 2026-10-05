@@ -86,6 +86,13 @@ class TenantProductsService:
             "available": source is not None,
             "currency": snapshot.currency,
             "capabilities": sorted(snapshot.capabilities),
+            "source_context": {
+                "selection": snapshot.active_source_type,
+                "provider": snapshot.active_source_provider,
+                "name": snapshot.active_source_name,
+                "dataset_id": str(snapshot.active_source_dataset_id)
+                if snapshot.active_source_dataset_id is not None else None,
+            },
         }
         if source is None:
             return {

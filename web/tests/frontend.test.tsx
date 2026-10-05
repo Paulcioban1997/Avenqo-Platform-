@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +21,9 @@ import { BusinessHoursSettings } from "@/components/crm/business-hours-settings"
 import { CRMKpiCards } from "@/components/crm/crm-kpi-cards";
 import { metricText, currencyText, dateText } from "@/components/crm/crm-format";
 import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
+import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { GlobalSourceSelector } from "@/components/shell/global-source-selector";
+import { CRMCopilotPanel } from "@/components/crm/crm-copilot-panel";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -36,6 +38,7 @@ vi.mock("next/link", () => ({
 }));
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
@@ -44,6 +47,10 @@ afterEach(() => {
 describe("public trust content", () => {
   it("has source-selector labels in all 44 canonical catalogs", () => {
     expect(Object.keys(SOURCE_SELECTOR_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.keys(RETAIL_ANOMALY_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    for (const copy of Object.values(RETAIL_ANOMALY_COPY)) {
+      expect(Object.values(copy).every(value => value.trim().length > 0)).toBe(true);
+    }
   });
   it("selects real context sources without touching activation or sync", async () => {
     const sources = [{ source_type: "dataset", source_id: "file-test", dataset_id: "file-test", display_name: "Uploaded test", status: "READY", enabled: true }, { source_type: "connector", source_id: "shop-test", dataset_id: "shop-data", display_name: "Verified merchant", provider: "shopify", status: "READY", enabled: true }];
@@ -274,12 +281,13 @@ describe("Retail inventory rendering", () => {
             status: "unknown",
           }],
           anomalies: [],
+          anomaly_state: "insufficient_data",
         });
       }
       if (url.endsWith("/sales/summary?period=last_30_days")) {
         return Response.json({ currency: "CAD", summary: null, forecast: null });
       }
-      if (url.endsWith("/recommendations")) return Response.json({ recommendations: [] });
+      if (url.endsWith("/recommendations")) return Response.json({ recommendation_state: "INSUFFICIENT_DATA", recommendations: [] });
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
@@ -292,6 +300,9 @@ describe("Retail inventory rendering", () => {
     expect(await screen.findByText("SKU-UNKNOWN")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Anomalies" }));
+    expect(await screen.findByText(getAppTranslations("fr").common.insufficientData)).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: /Vue d.ensemble/ }));
     expect(screen.queryByText(/\d{2} \/ 100/)).not.toBeInTheDocument();
 
@@ -301,7 +312,7 @@ describe("Retail inventory rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
     expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
-    expect(await screen.findByText(/Aucune recommandation n’a été générée/i)).toBeInTheDocument();
+    expect(await screen.findByText(getAppTranslations("fr").common.insufficientData)).toBeInTheDocument();
   });
 
   it("renders forecast and recommendation data returned by their tenant APIs", async () => {
@@ -342,10 +353,17 @@ describe("Retail inventory rendering", () => {
         });
       }
       if (url.endsWith("/recommendations")) {
-        return Response.json({ recommendations: [{
+        return Response.json({ currency: "CAD", recommendation_state: "READY", recommendations: [{
           id: "recommendation-1",
-          title: "Review the seasonal stock plan",
-          explanation: "The active sales model detected a change in demand.",
+          type: "product_growth",
+          severity: "medium",
+          title: "product_growth",
+          description: "product_revenue_changed",
+          metric: "product_revenue",
+          period: "last_30_days_vs_previous",
+          source: { selection: "connector", provider: "shopify", name: "Avenqo Retail Test" },
+          evidence: { current: 120, change_percent: 20 },
+          affected_product: { name: "Seasonal item" },
           suggested_action: "Review the next purchase order",
           action_route: null,
         }] });
@@ -362,8 +380,121 @@ describe("Retail inventory rendering", () => {
     expect(await screen.findByText("Moyenne historique hebdomadaire")).toBeInTheDocument();
     expect(screen.getByText("Week A")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
-    expect(await screen.findByText("Review the seasonal stock plan")).toBeInTheDocument();
-    expect(screen.getByText(/Review the next purchase order/)).toBeInTheDocument();
+    expect(await screen.findByText("Produits: Seasonal item")).toBeInTheDocument();
+    expect(screen.getByText("Shopify · Avenqo Retail Test")).toBeInTheDocument();
+    expect(screen.queryByText(/product_growth|product_revenue_changed|Review the next purchase order/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CRM Copilot speech transcription", () => {
+  it.each([
+    ["fr", ["ça", "ça va", "ça va bien"], "ça va bien"],
+    ["en", ["I'm", "I'm doing", "I'm doing well"], "I'm doing well"],
+    ["es", ["estoy", "estoy muy", "estoy muy bien"], "estoy muy bien"],
+    ["ro", ["sunt", "sunt foarte", "sunt foarte bine"], "sunt foarte bine"],
+  ] as const)("replaces interim text and commits one final transcript in %s", async (locale, partials, finalText) => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    window.localStorage.setItem("avenqo-locale", locale);
+    const recognitions: Array<{ onresult?: (event: unknown) => void; start: () => void; stop: () => void }> = [];
+    vi.stubGlobal("SpeechRecognition", class {
+      onresult?: (event: unknown) => void;
+      start() {}
+      stop() {}
+      constructor() { recognitions.push(this); }
+    });
+
+    render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations(locale)} /></LocaleProvider>);
+    fireEvent.click(document.querySelector("button[aria-label]")!);
+    await waitFor(() => expect(recognitions).toHaveLength(1));
+
+    await act(async () => {
+      for (const [index, transcript] of partials.entries()) {
+        recognitions[0].onresult?.({
+          resultIndex: index === 0 ? 0 : 0,
+          results: [{ 0: { transcript }, isFinal: transcript === finalText }],
+        });
+      }
+      recognitions[0].onresult?.({ resultIndex: 0, results: [{ 0: { transcript: finalText }, isFinal: true }] });
+    });
+
+    expect(document.querySelector<HTMLInputElement>('input[type="text"]')).toHaveValue(finalText);
+  });
+
+  it("preserves words genuinely repeated by the speaker", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    window.localStorage.setItem("avenqo-locale", "en");
+    const recognitions: Array<{ onresult?: (event: unknown) => void }> = [];
+    vi.stubGlobal("SpeechRecognition", class {
+      onresult?: (event: unknown) => void;
+      start() {}
+      stop() {}
+      constructor() { recognitions.push(this); }
+    });
+    render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations("en")} /></LocaleProvider>);
+    fireEvent.click(document.querySelector("button[aria-label]")!);
+    await act(async () => recognitions[0].onresult?.({ resultIndex: 0, results: [{ 0: { transcript: "no no" }, isFinal: true }] }));
+    expect(document.querySelector<HTMLInputElement>('input[type="text"]')).toHaveValue("no no");
+  });
+
+  it("stops the prior recognition instance when CRM unmounts and ignores stale results after remount", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    window.localStorage.setItem("avenqo-locale", "fr");
+    const recognitions: Array<{ onresult?: (event: unknown) => void; start: () => void; stop: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal("SpeechRecognition", class {
+      onresult?: (event: unknown) => void;
+      start() {}
+      stop = vi.fn();
+      abort = vi.fn();
+      constructor() { recognitions.push(this); }
+    });
+    const first = render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations("fr")} /></LocaleProvider>);
+    const microphone = () => screen.getByRole("button", { name: "Dicter une commande" });
+    fireEvent.click(microphone());
+    fireEvent.click(microphone());
+    expect(recognitions).toHaveLength(1);
+    const staleResult = recognitions[0].onresult;
+    first.unmount();
+    expect(recognitions[0].abort).toHaveBeenCalledOnce();
+
+    render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations("fr")} /></LocaleProvider>);
+    fireEvent.click(microphone());
+    expect(recognitions).toHaveLength(2);
+    await act(async () => staleResult?.({ resultIndex: 0, results: [{ 0: { transcript: "ancien" }, isFinal: true }] }));
+    expect(document.querySelector<HTMLInputElement>('input[type="text"]')).toHaveValue("");
+    await act(async () => recognitions[1].onresult?.({ resultIndex: 0, results: [{ 0: { transcript: "nouveau" }, isFinal: true }] }));
+    expect(document.querySelector<HTMLInputElement>('input[type="text"]')).toHaveValue("nouveau");
+  });
+
+  it("prevents a double Copilot submission and reports a bounded timeout", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    vi.useFakeTimers();
+    window.localStorage.setItem("avenqo-locale", "fr");
+    let centralRequests = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/ai/chat/conversations")) return Promise.resolve(Response.json({ id: "crm-conversation" }));
+      if (url.includes("/ai/central/conversations/")) {
+        centralRequests += 1;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LocaleProvider><CRMCopilotPanel t={getAppTranslations("fr")} /></LocaleProvider>);
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]')!;
+    fireEvent.change(input, { target: { value: "Vérifie la disponibilité demain." } });
+    const form = input.closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+    });
+    expect(centralRequests).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
+    expect(screen.getByRole("alert")).toHaveTextContent(getAppTranslations("fr").copilot.errorPrompt);
+    expect(screen.queryByText(/Vérification des disponibilités & exécution/)).not.toBeInTheDocument();
   });
 });
 

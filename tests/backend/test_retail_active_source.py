@@ -20,6 +20,7 @@ from backend.app.models import (
     Mapping,
 )
 from backend.app.routers.retail import (
+    _inventory_anomalies,
     list_retail_customers,
     list_retail_inventory,
     list_retail_orders,
@@ -297,6 +298,24 @@ def test_source_enabled_state_persists_and_is_tenant_scoped(source_environment):
     }
 
 
+def test_retail_status_reports_selected_shopify_even_when_activation_is_disabled(source_environment):
+    from backend.app.routers.retail import retail_status
+
+    session, company, _, _, shopify_dataset, connection, prepared = source_environment
+    tenant = TenantContext(company.id, user_id=uuid4())
+    source_service = RetailSourceService(session)
+    source_service.select_source(tenant, source_type="connector", source_id=connection.id)
+    source_service.set_source_enabled(tenant, source_type="connector", source_id=connection.id, enabled=False)
+
+    status = retail_status(tenant, session, TenantAnalyticsService(session, _PreparedIngestion(prepared)))
+
+    assert status["is_connected"] is True
+    assert status["provider"] == "shopify"
+    assert status["source_context"]["name"] == connection.display_name
+    assert status["source_context"]["dataset_id"] == str(shopify_dataset.id)
+    assert status["product_count"] == 1
+
+
 def test_enabled_sources_reconcile_and_deduplicate_identical_rows(source_environment):
     session, company, _, uploaded, shopify_dataset, connection, prepared = source_environment
     tenant = TenantContext(company.id)
@@ -452,6 +471,56 @@ def test_shopify_active_source_filters_all_retail_services(source_environment):
     assert [item["customer_id"] for item in customer_result["items"]] == ["SHOPIFY-CUSTOMER"]
     assert [item["product_id"] for item in product_result["items"]] == ["SHOPIFY-PRODUCT"]
     assert "SUPER" not in str(recommendation_result)
+    assert all(item["source"]["provider"] == "shopify" for item in recommendation_result["recommendations"])
+    assert all(item["metric"] and item["period"] for item in recommendation_result["recommendations"])
+    assert all(item["recommended_action"] == item["suggested_action"] for item in recommendation_result["recommendations"])
+    assert recommendation_result["recommendation_state"] == "INSUFFICIENT_DATA"
+    assert recommendation_result["recommendations"] == []
+
+
+def test_inventory_anomaly_detection_requires_sufficient_complete_source_data():
+    inventory = [
+        {"id": str(index), "product_name": f"Product {index}", "sku": str(index), "stock_quantity": index}
+        for index in range(1, 30)
+    ]
+    anomalies, state, sample_size = _inventory_anomalies(
+        inventory,
+        source={"provider": "shopify", "name": "Avenqo Retail Test"},
+        population_complete=True,
+        detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
+    )
+    assert (anomalies, state, sample_size) == ([], "insufficient_data", 29)
+
+
+def test_inventory_anomaly_detection_returns_quantitative_provenance():
+    inventory = [
+        {"id": str(index), "product_name": f"Product {index}", "sku": str(index), "stock_quantity": index}
+        for index in range(1, 31)
+    ]
+    inventory.append({"id": "outlier", "product_name": "Outlier", "sku": "OUT", "stock_quantity": 1000})
+    anomalies, state, sample_size = _inventory_anomalies(
+        inventory,
+        source={"provider": "shopify", "name": "Avenqo Retail Test"},
+        population_complete=True,
+        detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
+    )
+    assert state == "detected" and sample_size == 31
+    assert anomalies == [{
+        "id": "inventory-iqr:outlier",
+        "type": "inventory_outlier",
+        "product": "Outlier",
+        "sku": "OUT",
+        "metric": "inventory_stock_quantity",
+        "period": "current_snapshot",
+        "expected_value": None,
+        "expected_range": {"lower": 0.0, "upper": 46.0},
+        "observed_value": 1000.0,
+        "delta": 954.0,
+        "severity": "critical",
+        "source": {"provider": "shopify", "name": "Avenqo Retail Test"},
+        "detected_at": "2026-10-04T00:00:00+00:00",
+        "explanation": "inventory_stock_outside_iqr_range",
+    }]
 
 
 def test_woocommerce_active_source_filters_all_retail_services(source_environment):

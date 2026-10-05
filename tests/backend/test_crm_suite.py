@@ -647,7 +647,11 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
         sync_status="connected",
     ))
     db_session.commit()
-    start = datetime.now(timezone.utc) + timedelta(days=2)
+    start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=14, minute=0, second=0, microsecond=0
+    )
+    while start.weekday() >= 5:
+        start += timedelta(days=1)
     first, first_error = asyncio.run(crm_svc.create_appointment(
         company.id, {"client_id": alice.id, "title": "Alice booking", "start_time": start},
     ))

@@ -1,5 +1,8 @@
 """Façade HTTP orientée métier du module RetailSense."""
 
+from datetime import datetime, timezone
+from math import ceil, floor, isfinite
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -34,6 +37,64 @@ from modules.retailsense.assistant import RetailAssistantService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/retail", tags=["retail"])
+_MIN_INVENTORY_ANOMALY_SAMPLE = 30
+
+
+def _inventory_anomalies(
+    inventory: list[dict],
+    *,
+    source: dict,
+    population_complete: bool,
+    detected_at: datetime | None = None,
+) -> tuple[list[dict], str, int]:
+    observations = [
+        (item, float(item["stock_quantity"]))
+        for item in inventory
+        if isinstance(item.get("stock_quantity"), (int, float))
+        and isfinite(float(item["stock_quantity"]))
+        and float(item["stock_quantity"]) >= 0
+    ]
+    sample_size = len(observations)
+    if not population_complete or sample_size < _MIN_INVENTORY_ANOMALY_SAMPLE:
+        return [], "insufficient_data", sample_size
+
+    values = sorted(value for _, value in observations)
+
+    def quantile(fraction: float) -> float:
+        position = (len(values) - 1) * fraction
+        lower, upper = floor(position), ceil(position)
+        if lower == upper:
+            return values[lower]
+        return values[lower] + (values[upper] - values[lower]) * (position - lower)
+
+    first_quartile, third_quartile = quantile(0.25), quantile(0.75)
+    interquartile_range = third_quartile - first_quartile
+    lower_bound = max(0.0, first_quartile - 1.5 * interquartile_range)
+    upper_bound = third_quartile + 1.5 * interquartile_range
+    timestamp = (detected_at or datetime.now(timezone.utc)).isoformat()
+    anomalies = []
+    for item, observed in observations:
+        if lower_bound <= observed <= upper_bound:
+            continue
+        boundary = lower_bound if observed < lower_bound else upper_bound
+        extreme_boundary = max(0.0, first_quartile - 3 * interquartile_range) if observed < lower_bound else third_quartile + 3 * interquartile_range
+        anomalies.append({
+            "id": f"inventory-iqr:{item['id']}",
+            "type": "inventory_outlier",
+            "product": item["product_name"],
+            "sku": item["sku"],
+            "metric": "inventory_stock_quantity",
+            "period": "current_snapshot",
+            "expected_value": None,
+            "expected_range": {"lower": round(lower_bound, 2), "upper": round(upper_bound, 2)},
+            "observed_value": observed,
+            "delta": round(observed - boundary, 2),
+            "severity": "critical" if (observed < extreme_boundary if observed < lower_bound else observed > extreme_boundary) else "medium",
+            "source": source,
+            "detected_at": timestamp,
+            "explanation": "inventory_stock_outside_iqr_range",
+        })
+    return anomalies, "detected" if anomalies else "no_anomalies", sample_size
 
 
 @router.get("/sources", response_model=list[RetailSourceResponse])
@@ -143,10 +204,22 @@ def retail_status(
     db: Session = Depends(get_db),
     analytics: TenantAnalyticsService = Depends(get_tenant_analytics_service),
 ):
-    """Report only tenant sources enabled for shared Retail analytics."""
+    """Report the authenticated user's selected source and its scoped metrics."""
     from backend.app.services.tenant_products_service import TenantProductsService
 
-    sources = [source for source in RetailSourceService(db).list_sources(tenant) if source.enabled]
+    source_service = RetailSourceService(db)
+    source_context = source_service.context(tenant)
+    if source_context["source_type"] == "all":
+        selected_sources = [
+            source for source in source_context["sources"]
+            if source.enabled and source.status.upper() == "READY"
+        ]
+    else:
+        selected_sources = [
+            source for source in source_context["sources"]
+            if source.source_type == source_context["source_type"]
+            and str(source.source_id) == str(source_context["source_id"])
+        ]
     snapshot = analytics.load(tenant)
     product_source = snapshot.source_for(frozenset({"product_id"})) or snapshot.source_for(
         frozenset({"product_name"})
@@ -163,15 +236,24 @@ def retail_status(
         len(compute_customer_portfolio(customer_source))
         if customer_source else 0
     )
-    connection_sources = [source for source in sources if source.source_type == "connector"]
+    connection_sources = [source for source in selected_sources if source.source_type == "connector"]
     connection = connection_sources[0] if len(connection_sources) == 1 else None
+    selected_source = selected_sources[0] if len(selected_sources) == 1 else None
+    source_state = source_context["state"]
 
     return {
-        "is_connected": bool(sources),
+        "is_connected": source_state == "READY" and bool(selected_sources),
         "provider": connection.provider if connection else None,
         "store_url": connection.display_name if connection else None,
-        "status": connection.status if connection else ("READY" if sources else "DISCONNECTED"),
-        "last_synced_at": connection.last_synchronized_at.isoformat() if connection and connection.last_synchronized_at else None,
+        "status": selected_source.status if selected_source else source_state,
+        "last_synced_at": selected_source.last_synchronized_at.isoformat() if selected_source and selected_source.last_synchronized_at else None,
+        "source_context": {
+            "state": source_state,
+            "selection": source_context["source_type"],
+            "name": selected_source.display_name if selected_source else None,
+            "provider": selected_source.provider if selected_source else None,
+            "dataset_id": str(selected_source.dataset_id) if selected_source and selected_source.dataset_id else None,
+        },
         "records_count": (product_count + order_count + customer_count),
         "product_count": product_count,
         "order_count": order_count,
@@ -309,7 +391,6 @@ def list_retail_inventory(
     )
 
     items = []
-    anomalies = []
     for product in product_result["items"]:
         stock_value = product.get("stock_level")
         name = str(product.get("name") or product["product_id"])
@@ -333,31 +414,18 @@ def list_retail_inventory(
         }
         items.append(item)
 
-        if stock is not None and stock <= 5:
-            anomalies.append({
-                "id": f"crit-{product_id}",
-                "product": name,
-                "sku": sku,
-                "currentStock": stock,
-                "safetyThreshold": 15,
-                "type": "stockout_risk",
-                "severity": "critical",
-                "message": f"Rupture imminente : seulement {stock} unités restantes en stock.",
-            })
-        elif stock is not None and stock > 200:
-            anomalies.append({
-                "id": f"over-{product_id}",
-                "product": name,
-                "sku": sku,
-                "currentStock": stock,
-                "safetyThreshold": 50,
-                "type": "overstock",
-                "severity": "medium",
-                "message": f"Surstock détecté : {stock} unités disponibles. Risque d'immobilisation de trésorerie.",
-            })
+    source_context = product_result.get("source_context") or {}
+    anomalies, anomaly_state, sample_size = _inventory_anomalies(
+        items,
+        source=source_context,
+        population_complete=product_result["pagination"]["total"] == len(product_result["items"]),
+    )
 
     return {
         "inventory": items,
         "total": len(items),
         "anomalies": anomalies,
+        "anomaly_state": anomaly_state,
+        "anomaly_sample_size": sample_size,
+        "source": source_context,
     }

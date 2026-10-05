@@ -31,6 +31,8 @@ import { EmptyState } from "@/components/ui/status-states";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
+import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 
@@ -91,6 +93,17 @@ interface InventoryItem {
   status: "critical" | "warning" | "normal" | "unknown";
 }
 
+interface RetailInventoryAnomaly {
+  id: string;
+  product: string;
+  sku: string;
+  expected_range: { lower: number; upper: number };
+  observed_value: number;
+  delta: number;
+  severity: string;
+  source: { selection?: string | null; provider?: string | null; name?: string | null };
+}
+
 interface RetailSalesSummary {
   currency: string;
   summary: { revenue: number; orders: number } | null;
@@ -104,9 +117,15 @@ interface RetailSalesSummary {
 
 interface RetailRecommendation {
   id: string;
+  type: string;
+  severity: string;
   title: string;
-  explanation: string;
-  suggested_action: string;
+  description: string;
+  metric: string;
+  period: string | null;
+  source: { selection: string | null; provider: string | null; name: string | null };
+  evidence: Record<string, unknown>;
+  affected_product: { name?: string | null } | null;
   action_route: string | null;
 }
 
@@ -120,6 +139,13 @@ interface RetailStatus {
   product_count: number;
   order_count: number;
   customer_count: number;
+  source_context?: {
+    state: string;
+    selection: string | null;
+    name: string | null;
+    provider: string | null;
+    dataset_id: string | null;
+  };
 }
 
 export function RetailIntelligenceView({
@@ -144,9 +170,12 @@ export function RetailIntelligenceView({
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [stockAnomalies, setStockAnomalies] = useState<any[]>([]);
+  const [stockAnomalies, setStockAnomalies] = useState<RetailInventoryAnomaly[]>([]);
+  const [anomalyState, setAnomalyState] = useState("insufficient_data");
   const [salesSummary, setSalesSummary] = useState<RetailSalesSummary | null>(null);
   const [recommendations, setRecommendations] = useState<RetailRecommendation[]>([]);
+  const [recommendationsCurrency, setRecommendationsCurrency] = useState<string | null>(null);
+  const [recommendationState, setRecommendationState] = useState<string | null>(null);
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
@@ -197,6 +226,7 @@ export function RetailIntelligenceView({
         if (revision !== loadRevision.current) return;
         setInventory(iData.inventory || []);
         setStockAnomalies(iData.anomalies || []);
+        setAnomalyState(iData.anomaly_state || (iData.anomalies?.length ? "detected" : "insufficient_data"));
       }
 
       if (salesRes && salesRes.ok) {
@@ -211,8 +241,12 @@ export function RetailIntelligenceView({
         const rData = await recommendationsRes.json();
         if (revision !== loadRevision.current) return;
         setRecommendations(rData.recommendations || []);
+        setRecommendationsCurrency(typeof rData.currency === "string" ? rData.currency : null);
+        setRecommendationState(typeof rData.recommendation_state === "string" ? rData.recommendation_state : null);
       } else {
         setRecommendations([]);
+        setRecommendationsCurrency(null);
+        setRecommendationState(null);
       }
     } catch (error) {
       if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
@@ -222,10 +256,11 @@ export function RetailIntelligenceView({
   }, []);
 
   useEffect(() => {
-    loadData();
+    let disposed = false;
+    queueMicrotask(() => { if (!disposed) void loadData(); });
     const changed = () => { void loadData(); };
     window.addEventListener("avenqo:sources-changed", changed);
-    return () => { loadRevision.current++; window.removeEventListener("avenqo:sources-changed", changed); };
+    return () => { disposed = true; loadRevision.current++; window.removeEventListener("avenqo:sources-changed", changed); };
   }, [loadData, tenantName]);
 
   const navTabs = [
@@ -258,6 +293,60 @@ export function RetailIntelligenceView({
   const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
   const forecast = salesSummary?.forecast ?? null;
   const forecastPoints = forecast?.points ?? [];
+  const catalog = getApplicationCatalog(locale);
+  const anomalyCopy = RETAIL_ANOMALY_COPY[locale];
+
+  const recommendationTitle = (recommendation: RetailRecommendation) => {
+    if (recommendation.type === "revenue_decline") return catalog.dashboardHome.revenueDeclineTitle;
+    if (recommendation.type === "revenue_growth") return catalog.dashboardHome.revenueGrowthTitle;
+    const productName = recommendation.affected_product?.name;
+    return productName ? `${retail.products}: ${productName}` : retail.recommendations;
+  };
+  const recommendationDescription = (recommendation: RetailRecommendation) =>
+    recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth"
+      ? catalog.dashboardHome.revenueChangedExplanation
+      : retail.recommendationsDescription;
+  const recommendationSource = (recommendation: RetailRecommendation) => {
+    if (recommendation.source?.selection === "all") return SOURCE_SELECTOR_COPY[locale][1];
+    const provider = recommendation.source?.provider === "shopify" ? "Shopify"
+      : recommendation.source?.provider === "woocommerce" ? "WooCommerce"
+      : null;
+    return [provider, recommendation.source?.name].filter(Boolean).join(" · ");
+  };
+  const recommendationEvidence = (recommendation: RetailRecommendation) => {
+    const current = recommendation.evidence?.current;
+    if (typeof current !== "number" || !Number.isFinite(current)) return null;
+    const isRevenue = recommendation.metric === "revenue" || recommendation.metric === "product_revenue";
+    const formatted = isRevenue && recommendationsCurrency
+      ? new Intl.NumberFormat(locale, { style: "currency", currency: recommendationsCurrency, maximumFractionDigits: 2 }).format(current)
+      : recommendation.metric === "revenue_share"
+        ? `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(current)}%`
+        : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(current);
+    const metricLabel = recommendation.metric === "revenue_share"
+      ? ""
+      : isRevenue ? t.dashboard.revenue : retail.products;
+    const change = recommendation.evidence?.change_percent;
+    const changeLabel = typeof change === "number" && Number.isFinite(change)
+      ? ` · ${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(change)}%`
+      : "";
+    return `${metricLabel ? `${metricLabel}: ` : ""}${formatted}${changeLabel}`;
+  };
+  const sourceLabel = (source: RetailInventoryAnomaly["source"]) => {
+    if (source?.selection === "all") return SOURCE_SELECTOR_COPY[locale][1];
+    const provider = source?.provider === "shopify" ? "Shopify"
+      : source?.provider === "woocommerce" ? "WooCommerce"
+      : null;
+    return [provider, source?.name].filter(Boolean).join(" · ");
+  };
+  const selectedSourceName = retailStatus?.source_context?.selection === "all"
+    ? SOURCE_SELECTOR_COPY[locale][1]
+    : [
+        retailStatus?.source_context?.provider === "shopify" ? "Shopify"
+          : retailStatus?.source_context?.provider === "woocommerce" ? "WooCommerce" : null,
+        retailStatus?.source_context?.name,
+      ].filter(Boolean).join(" · ");
+  const formatStock = (value: number) =>
+    new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
   const maxForecastValue = Math.max(1, ...forecastPoints.map((point) => Math.abs(point.value)));
   const forecastMethodLabel = forecast?.method === "trained_model"
     ? retail.forecastMethodModel
@@ -295,6 +384,11 @@ export function RetailIntelligenceView({
           <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
             {t.retail.forecastDescription}
           </p>
+          {retailStatus?.source_context?.state === "READY" && selectedSourceName && (
+            <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              {SOURCE_SELECTOR_COPY[locale][0]}: {selectedSourceName}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -789,7 +883,7 @@ export function RetailIntelligenceView({
                   <div
                     key={anom.id}
                     className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                      anom.type === "stockout_risk"
+                      anom.severity === "critical"
                         ? "bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50"
                         : "bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50"
                     }`}
@@ -797,7 +891,7 @@ export function RetailIntelligenceView({
                     <div className="flex items-start gap-3">
                       <div
                         className={`p-2 rounded-xl text-white ${
-                          anom.type === "stockout_risk" ? "bg-rose-600" : "bg-amber-600"
+                          anom.severity === "critical" ? "bg-rose-600" : "bg-amber-600"
                         }`}
                       >
                         <AlertTriangle className="w-5 h-5" />
@@ -810,18 +904,26 @@ export function RetailIntelligenceView({
                           <span className="text-[10px] font-mono text-slate-400">({anom.sku})</span>
                         </div>
                         <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-1">
-                          {anom.message}
+                          {anomalyCopy.explanation}
                         </p>
+                        {sourceLabel(anom.source) && (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            {sourceLabel(anom.source)}
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {retail.stock}: {anom.currentStock.toLocaleString(locale)} {retail.unit}
+                          {anomalyCopy.observed}: {formatStock(anom.observed_value)} {retail.unit}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {retail.safetyThreshold}: {anom.safetyThreshold.toLocaleString(locale)} {retail.unit}
+                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}–{formatStock(anom.expected_range.upper)} {retail.unit}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {anomalyCopy.difference}: {formatStock(anom.delta)} {retail.unit}
                         </div>
                       </div>
                       <button
@@ -835,9 +937,9 @@ export function RetailIntelligenceView({
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  {inventory.length > 0 && !inventoryHasStockData
+                  {anomalyState === "insufficient_data" || (inventory.length > 0 && !inventoryHasStockData)
                     ? t.common.insufficientData
-                    : retail.noAnomaliesMessage}
+                    : anomalyCopy.none}
                 </div>
               )}
             </div>
@@ -863,14 +965,19 @@ export function RetailIntelligenceView({
                   <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[#0076FF]" />
                   <div>
                     <h4 className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                      {recommendation.title}
+                      {recommendationTitle(recommendation)}
                     </h4>
                     <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      {recommendation.explanation}
+                      {recommendationDescription(recommendation)}
                     </p>
-                    {recommendation.suggested_action && (
-                      <p className="mt-2 text-xs font-semibold text-[#0076FF]">
-                        {recommendation.suggested_action}
+                    {recommendationSource(recommendation) && (
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        {recommendationSource(recommendation)}
+                      </p>
+                    )}
+                    {recommendationEvidence(recommendation) && (
+                      <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                        {recommendationEvidence(recommendation)}
                       </p>
                     )}
                     {recommendation.action_route?.startsWith("/") && (
@@ -881,6 +988,8 @@ export function RetailIntelligenceView({
                   </div>
                 </div>
               ))
+            ) : recommendationState === "INSUFFICIENT_DATA" ? (
+              <EmptyState title={retail.recommendations} description={t.common.insufficientData} />
             ) : inventory.length === 0 || !inventoryHasStockData ? (
               <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             ) : (

@@ -50,6 +50,7 @@ class TenantProductsResponse(BaseModel):
     available: bool
     currency: str
     capabilities: list[str]
+    source_context: dict[str, Any] | None = None
     summary: ProductSummaryResponse | None
     categories: list[ProductCategoryResponse]
     trend: SalesTrendResponse
@@ -65,19 +66,25 @@ class ProductDetailResponse(ProductListItemResponse):
 class RecommendationResponse(BaseModel):
     id: str
     type: str
+    severity: str
     title: str
+    description: str
     explanation: str
     priority: str
     severity_reason: str
     severity_score: float | None
     severity_factors: dict[str, float]
     source_capability: str
+    metric: str
+    period: str | None
+    source: dict[str, Any]
     evidence: dict[str, Any]
     affected_entity: str | None
     confidence: float | None
     estimated_impact: float | None
     affected_product: dict[str, Any] | None
     suggested_action: str
+    recommended_action: str
     action_route: str | None
     generated_at: datetime
     source_model_version: str | None
@@ -88,4 +95,5 @@ class TenantRecommendationsResponse(BaseModel):
     status: str
     currency: str
     generated_at: datetime
+    recommendation_state: str = "READY"
     recommendations: list[RecommendationResponse]

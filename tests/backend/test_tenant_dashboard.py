@@ -199,7 +199,7 @@ def test_dashboard_uses_processed_tenant_data_and_safe_period_comparison(tmp_pat
     assert all(item["state"] == "UNAVAILABLE" for item in dashboard_b["kpis"])
 
 
-def test_dashboard_compares_non_iso_csv_dates_and_restores_recommendations(tmp_path) -> None:
+def test_dashboard_compares_non_iso_csv_dates_and_suppresses_low_sample_recommendations(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-csv-dates.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
@@ -222,8 +222,7 @@ def test_dashboard_compares_non_iso_csv_dates_and_restores_recommendations(tmp_p
     assert revenue["value"] == 200
     assert revenue["previous_value"] == 100
     assert revenue["change_percent"] == 100
-    assert dashboard["priorities"][0]["type"] == "revenue_growth"
-    assert dashboard["priorities"][0]["evidence"]["change_percent"] == 100
+    assert dashboard["priorities"] == []
 
 
 def test_dashboard_periods_filter_rows_and_compute_aov_from_distinct_orders(tmp_path) -> None:
