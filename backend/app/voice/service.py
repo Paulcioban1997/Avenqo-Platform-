@@ -240,6 +240,8 @@ class VoiceOrchestrator:
             select(VoiceCall).where(VoiceCall.telnyx_call_control_id == control_id)
         )
         if existing:
+            if existing.company_id != config.company_id or existing.config_id != config.id:
+                raise PermissionError("Call is not owned by this tenant configuration")
             return existing
         now = datetime.now(timezone.utc)
         call = VoiceCall(
@@ -260,6 +262,8 @@ class VoiceOrchestrator:
             )
             if existing is None:
                 raise
+            if existing.company_id != config.company_id or existing.config_id != config.id:
+                raise PermissionError("Call is not owned by this tenant configuration")
             return existing
         self.db.refresh(call)
         return call
@@ -319,6 +323,8 @@ class VoiceOrchestrator:
     ) -> dict[str, Any]:
         started_at = perf_counter()
         call = self._resolve_call(config, call_id)
+        if call.ended_at is not None or call.status in {"ended", "failed", "rejected", "routing_outcome_unknown"}:
+            return {"success": False, "error": "voice_call_not_active"}
         scoped_action_id = voice_action_key(config.id, call.id, tool_name, action_id)
         lock = await _tenant_lock(config.company_id)
         async with lock:
@@ -343,7 +349,7 @@ class VoiceOrchestrator:
                 _logger.info(
                     "voice_tool_result tenant_id=%s call_id=%s action_id=%s tool_name=%s success=%s replay=true latency_ms=%d",
                     config.company_id,
-                    call_id,
+                    call.id,
                     action_id,
                     tool_name,
                     str(existing_action.result.get("success", False)).lower(),
@@ -382,7 +388,7 @@ class VoiceOrchestrator:
             _logger.info(
                 "voice_tool_result tenant_id=%s call_id=%s action_id=%s tool_name=%s success=%s replay=false latency_ms=%d",
                 config.company_id,
-                call_id,
+                call.id,
                 action_id,
                 tool_name,
                 str(result.get("success", False)).lower(),

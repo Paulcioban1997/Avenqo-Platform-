@@ -4,7 +4,13 @@ Cette phase relie les numéros Telnyx des commerces aux agents Retell et réutil
 
 ## Prérequis fournisseurs
 
-1. Créer un compte Telnyx et acheter un numéro canadien dédié pour chaque commerce. Créer une Call Control Application par commerce et la configurer pour envoyer les webhooks signés à `https://api.avenqo.ca/api/v1/voice/telnyx/webhook`.
+La préparation Call Control ne nécessite aucun achat, réservation ni appel de test. Le webhook entrant et les événements `call.initiated`, `call.answered`, `call.bridged`, `call.hangup` partagent `POST https://api.avenqo.ca/api/v1/voice/telnyx/webhook`, au format Telnyx API v2. Une application Call Control Avenqo peut servir plusieurs tenants: seul le numéro appelé, lié à un `VoicePhoneNumber` Telnyx ACTIVE et à sa configuration du même tenant, détermine le tenant. `TELNYX_VOICE_CONNECTION_ID` doit correspondre à la connexion signée reçue.
+
+Signature Ed25519, timestamp fini et fenêtre anti-replay sont vérifiés avant traitement. Les événements sont dédupliqués par ID dans le journal Voice, sans corps brut. Un appel entrant n'attribue jamais un rôle à partir du Caller ID. Sans destination vocale prête, la réception est acquittée `READY_FOR_OWNER_ACTION`, sans commande Telnyx. Une fois configuré, `call.initiated` demande `answer` avec un `command_id` stable; seul `call.answered` permet le transfert, également dédupliqué. Un hangup termine l'accès aux outils sans écraser le résultat métier d'un rendez-vous.
+
+Il n'existe pas encore de WebSocket média Telnyx, de collecteur DTMF/NIP ou de webhook SMS opérateur. Ces événements sont acquittés sans stockage ni transmission au LLM. Le WebSocket `/api/v1/ai/voice/sessions/{id}/stream` est celui du navigateur authentifié, pas un endpoint média à fournir à Telnyx. Les appels récents sont lisibles côté tenant dans `GET /api/v1/voice/status`. Ne pas inventer de callback supplémentaire.
+
+1. Créer manuellement une application Voice API / Call Control et lui donner le webhook ci-dessus, méthode POST, API version 2. Ne pas associer ou acheter de numéro pendant cette préparation. Tout numéro sélectionné ultérieurement devra appartenir exactement à un tenant et être assigné explicitement dans Avenqo.
 2. Créer un agent entrant Retell pour chaque commerce. Configurer son SIP trunk d'entrée vers le numéro Telnyx et récupérer l'URI SIP de terminaison Retell.
 3. Configurer dans l'agent Retell les six fonctions `check_availability`, `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `transfer_to_human` et `get_business_info`, plus `take_message` pour enregistrer les messages hors horaires. Les POST vont vers les chemins correspondants ci-dessous et envoient `X-Avenqo-Voice-Key` avec la clé dédiée du tenant. Le JSON commun est `{ "call_id": "...", "action_id": "...", "arguments": { ... } }`.
 4. Dans le prompt Retell, utiliser les instructions renvoyées par `get_business_info`, annoncer le message de consentement avant l'enregistrement, demander une confirmation explicite de la réservation, et utiliser `transfer_to_human` avec `uncertain: true` après une deuxième incertitude consécutive.
@@ -15,6 +21,7 @@ Ajouter dans les variables du service backend, sans les committer :
 
 - `TELNYX_API_KEY` : clé API Telnyx avec Call Control et Messaging.
 - `TELNYX_PUBLIC_KEY` : clé publique Ed25519 du webhook Telnyx, encodée en Base64.
+- `TELNYX_VOICE_CONNECTION_ID` : ID de l'application Call Control autorisée pour les numéros Avenqo.
 - `TELNYX_MESSAGING_PROFILE_ID` : profil SMS si l'expéditeur l'exige.
 - `RETELL_API_KEY` : clé API Retell.
 - `RETELL_API_BASE_URL` : optionnel, défaut `https://api.retellai.com`.

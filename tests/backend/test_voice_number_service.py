@@ -70,6 +70,25 @@ async def test_telnyx_search_uses_v2_read_only_country_filter():
 
 
 @pytest.mark.asyncio
+async def test_telnyx_call_control_command_paths_and_ids_use_mock_transport_only():
+    captured = []
+
+    def handler(request):
+        captured.append(request)
+        return httpx.Response(200, json={"data": {"result": "ok"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = TelnyxClient(Settings(TELNYX_API_KEY="test-key-only"), client=client)
+        await provider.answer_call("control-test", command_id="answer-command")
+        await provider.transfer_call("control-test", "sip:agent@sip.retell.example", "+15145550100", command_id="transfer-command")
+    import json
+    assert [item.method for item in captured] == ["POST", "POST"]
+    assert [item.url.path for item in captured] == ["/v2/calls/control-test/actions/answer", "/v2/calls/control-test/actions/transfer"]
+    assert json.loads(captured[0].content) == {"command_id": "answer-command"}
+    assert json.loads(captured[1].content) == {"to": "sip:agent@sip.retell.example", "from": "+15145550100", "timeout_secs": 30, "command_id": "transfer-command"}
+
+
+@pytest.mark.asyncio
 async def test_international_number_search_preserves_only_provider_returned_fields():
     provider = _FakeTelecomProvider()
     service = VoiceNumberManagementService(provider)

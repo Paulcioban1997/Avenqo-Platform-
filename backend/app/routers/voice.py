@@ -15,6 +15,7 @@ from uuid import UUID
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from math import isfinite
 from httpx import HTTPStatusError, TimeoutException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -442,7 +443,7 @@ def _verify_telnyx_signature(request: Request, raw_body: bytes, settings: Settin
         raise HTTPException(status_code=401, detail="Telnyx webhook signature is not configured")
     try:
         timestamp_float = float(timestamp)
-        if abs(time.time() - timestamp_float) > settings.telnyx_webhook_max_age_seconds:
+        if not isfinite(timestamp_float) or abs(time.time() - timestamp_float) > settings.telnyx_webhook_max_age_seconds:
             raise ValueError("expired signature")
         public_bytes = base64.b64decode(settings.telnyx_public_key, validate=True)
         signature_bytes = base64.b64decode(signature, validate=True)
@@ -565,20 +566,32 @@ async def telnyx_webhook(
         envelope = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid webhook JSON") from exc
+    if not isinstance(envelope, dict):
+        raise HTTPException(status_code=400, detail="Invalid webhook envelope")
     data, call_payload = _call_event_data(envelope)
     event_type = str(data.get("event_type") or "")
     call_control_id = str(call_payload.get("call_control_id") or "")
-    if event_type != "call.initiated":
-        if event_type == "call.hangup" and call_control_id:
-            call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
-            if call and call.status not in {"ended", "appointment_booked", "appointment_cancelled", "transferred"}:
-                call.status = "ended"
-                call.ended_at = datetime.now(timezone.utc)
-                db.commit()
-        return {"received": True}
+    if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup"}:
+        return {"received": True, "handled": False}
+    event_id = str(data.get("id") or "")
+    if not event_id or len(event_id) > 255 or not call_control_id or len(call_control_id) > 255:
+        raise HTTPException(status_code=422, detail="Telnyx event and call identifiers are required")
+    if not settings.telnyx_voice_connection_id or str(call_payload.get("connection_id") or "") != settings.telnyx_voice_connection_id:
+        return {"received": True, "routed": False}
+    if event_type == "call.initiated" and call_payload.get("direction") != "incoming":
+        return {"received": True, "routed": False}
     destination = str(call_payload.get("to") or "")
+    binding = db.scalar(select(VoicePhoneNumber).where(
+        VoicePhoneNumber.phone_number == destination,
+        VoicePhoneNumber.provider == "telnyx",
+        VoicePhoneNumber.status == "ACTIVE",
+    ))
+    if binding is None or binding.config_id is None or "voice" not in (binding.capabilities or []):
+        return {"received": True, "routed": False}
     config = db.scalar(select(VoiceBusinessConfig).where(
-        VoiceBusinessConfig.telnyx_phone_number == destination,
+        VoiceBusinessConfig.id == binding.config_id,
+        VoiceBusinessConfig.company_id == binding.company_id,
+        VoiceBusinessConfig.telnyx_phone_number == binding.phone_number,
         VoiceBusinessConfig.enabled.is_(True),
     ))
     if config is None:
@@ -588,7 +601,73 @@ async def telnyx_webhook(
         _ensure_voice_access(db, config.company_id)
     except HTTPException:
         return {"received": True, "routed": False}
-    call = service.record_inbound(config, call_payload)
+    event_key = hashlib.sha256(f"telnyx-event:{event_id}".encode("utf-8")).hexdigest()
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import text
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": f"telnyx_event:{event_key}"})
+    receipt = db.scalar(select(VoiceToolAction).where(
+        VoiceToolAction.action_id == event_key, VoiceToolAction.tool_name == "telnyx_event",
+    ))
+    if receipt is not None:
+        matching = (
+            receipt.company_id == config.company_id and receipt.config_id == config.id
+            and receipt.result.get("call_control_id") == call_control_id
+            and receipt.result.get("event_type") == event_type
+        )
+        return {"received": True, "duplicate": True, "routed": matching and receipt.result.get("routed") is True}
+    try:
+        call = service.record_inbound(config, call_payload) if event_type == "call.initiated" else db.scalar(select(VoiceCall).where(
+            VoiceCall.telnyx_call_control_id == call_control_id,
+            VoiceCall.company_id == config.company_id,
+            VoiceCall.config_id == config.id,
+        ))
+    except PermissionError:
+        return {"received": True, "routed": False}
+    if call is None:
+        return {"received": True, "routed": False}
+    if event_type == "call.initiated" and (call.ended_at is not None or call.status != "incoming"):
+        return {"received": True, "routed": call.status in {"routing", "routed", "in_progress"}, "duplicate": True}
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": f"telnyx_event:{event_key}"})
+        existing = db.scalar(select(VoiceToolAction).where(
+            VoiceToolAction.action_id == event_key, VoiceToolAction.tool_name == "telnyx_event",
+        ))
+        if existing is not None:
+            return {"received": True, "duplicate": True, "routed": False}
+    receipt = VoiceToolAction(company_id=config.company_id, config_id=config.id, action_id=event_key,
+        tool_name="telnyx_event", result={"event_type": event_type, "call_control_id": call_control_id, "routed": False})
+    db.add(receipt)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        existing = db.scalar(select(VoiceToolAction).where(VoiceToolAction.config_id == config.id, VoiceToolAction.action_id == event_key))
+        if existing is not None:
+            return {"received": True, "duplicate": True, "routed": existing.result.get("routed") is True}
+        raise HTTPException(status_code=503, detail="Webhook receipt is temporarily unavailable") from None
+    if event_type == "call.hangup":
+        call.ended_at = call.ended_at or datetime.now(timezone.utc)
+        if call.status not in {"appointment_booked", "appointment_cancelled", "transferred"}:
+            call.status = "ended"
+        db.commit()
+        return {"received": True}
+    if event_type == "call.bridged":
+        if call.ended_at is None and call.status in {"routed", "routing", "in_progress"}:
+            call.status = "in_progress"
+            db.commit()
+        return {"received": True}
+    if event_type == "call.answered" and (call.ended_at is not None or call.status != "answering"):
+        return {"received": True, "routed": False}
+    if not settings.retell_api_key:
+        call.status = "awaiting_configuration"
+        db.commit()
+        return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
+    try:
+        target = service.provider.inbound_target(config)
+    except ValueError:
+        call.status = "awaiting_configuration"
+        db.commit()
+        return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
     claim = db.scalar(
         select(VoiceCall)
         .where(VoiceCall.id == call.id)
@@ -596,19 +675,29 @@ async def telnyx_webhook(
     )
     if claim is None:
         raise HTTPException(status_code=500, detail="Inbound call record could not be claimed")
-    if claim.status != "incoming":
+    expected_status = "incoming" if event_type == "call.initiated" else "answering"
+    if claim.status != expected_status or claim.ended_at is not None:
         return {"received": True, "routed": claim.status in {"routing", "routed", "in_progress"}, "duplicate": True}
-    claim.status = "routing"
+    claim.status = "answering" if event_type == "call.initiated" else "routing"
     db.commit()
-    target = service.provider.inbound_target(config)
     try:
-        await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number)
+        if event_type == "call.initiated":
+            command_id = str(UUID(hashlib.sha256(f"answer:{call.id}".encode("utf-8")).hexdigest()[:32]))
+            await service.telnyx.answer_call(call.telnyx_call_control_id, command_id=command_id)
+            return {"received": True, "routed": False, "status": "answering"}
+        command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
+        await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number, command_id=command_id)
     except Exception as exc:
-        call.status = "failed"
+        db.refresh(call)
+        if call.ended_at is None:
+            call.status = "routing_outcome_unknown"
         db.commit()
-        logger.exception("Telnyx inbound routing failed for voice call %s", call.id)
+        logger.warning("Telnyx inbound routing failed for voice call %s", call.id)
         raise HTTPException(status_code=502, detail="Unable to route inbound call") from exc
-    call.status = "routed"
+    db.refresh(call)
+    if call.ended_at is None:
+        call.status = "routed"
+    receipt.result = {**receipt.result, "routed": True}
     db.commit()
     return {"received": True, "routed": True}
 

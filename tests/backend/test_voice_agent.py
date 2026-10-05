@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from time import time
 from types import SimpleNamespace
@@ -43,6 +44,12 @@ from backend.app.schemas.voice import VoiceConfigRequest, VoiceToolRequest
 from backend.app.voice.service import VoiceOrchestrator, _api_key_hash
 from shared.ai_engine.contracts import TenantContext
 from backend.app.core.locale_catalog import BY_LOCALE, resolve_locale
+from backend.app.core.rate_limit import reset_rate_limiter
+from backend.app.config.settings import get_settings
+from backend.app.database import get_db
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+import backend.app.routers.voice as voice_router
 
 
 class _FakeVoiceProvider:
@@ -114,9 +121,17 @@ class _FakeTelnyx:
     def __init__(self) -> None:
         self.transfers: list[tuple[str, str]] = []
         self.messages: list[tuple[str, str]] = []
+        self.commands = []
+        self.fail_transfer = False
 
-    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None) -> None:
+    async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
+        self.commands.append(("answer", call_control_id, command_id))
+
+    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None) -> None:
+        if self.fail_transfer:
+            raise RuntimeError("test-secret-never-log")
         self.transfers.append((call_control_id, destination))
+        self.commands.append(("transfer", call_control_id, command_id))
 
     async def hangup(self, call_control_id: str) -> None:
         return None
@@ -842,3 +857,183 @@ def test_telnyx_signature_accepts_signed_body_and_rejects_body_changes() -> None
     _verify_telnyx_signature(request, body, settings)
     with pytest.raises(Exception):
         _verify_telnyx_signature(request, body + b" ", settings)
+
+
+@pytest.fixture
+def signed_telnyx_webhook(tmp_path, monkeypatch):
+    engine, session, company, config, _, service = _voice_database(tmp_path)
+    private_key = Ed25519PrivateKey.generate()
+    public = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    settings = Settings(_env_file=None, TELNYX_API_KEY="test-secret-never-log",
+        TELNYX_PUBLIC_KEY=base64.b64encode(public).decode(), TELNYX_VOICE_CONNECTION_ID="test-connection",
+        RATE_LIMIT_ENABLED=True, RATE_LIMIT_WEBHOOK_PER_MINUTE=100)
+    binding = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
+        country_code="CA", provider="telnyx", number_type="local", status="ACTIVE", capabilities=["voice"])
+    session.add_all([binding, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+    session.commit()
+    app = FastAPI()
+    app.include_router(voice_router.router, prefix="/api/v1")
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr(voice_router, "_orchestrator", lambda _db, _settings: service)
+    reset_rate_limiter()
+
+    def event(kind="call.initiated", event_id=None, **payload):
+        return {"data": {"id": event_id or str(uuid4()), "event_type": kind, "payload": {
+            "call_control_id": "inbound-control", "connection_id": "test-connection", "direction": "incoming",
+            "from": "+15145550123", "to": config.telnyx_phone_number, **payload,
+        }}}
+
+    with TestClient(app) as client:
+        def send(envelope, timestamp=None, valid=True, raw=None):
+            body = raw if raw is not None else json.dumps(envelope).encode()
+            stamp = timestamp if timestamp is not None else str(int(time()))
+            signature = private_key.sign(stamp.encode() + b"|" + body)
+            if not valid:
+                signature = bytes(64)
+            return client.post("/api/v1/voice/telnyx/webhook", content=body, headers={
+                "content-type": "application/json", "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(signature).decode(),
+            })
+        yield SimpleNamespace(send=send, event=event, session=session, settings=settings, config=config,
+            binding=binding, company=company, service=service)
+    reset_rate_limiter()
+    session.close(); engine.dispose()
+
+
+def test_signed_telnyx_called_number_routes_tenant_not_caller_and_no_unconfigured_commands(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    owner = User(company_id=env.company.id, first_name="Owner", last_name="Example", email="called-owner@example.com",
+        password_hash="test", role=UserRole.OWNER, is_active=True, phone="+15145550123")
+    env.session.add(owner); env.session.commit()
+    result = env.send(env.event(tenant_id=str(uuid4()), caller_type="OWNER"))
+    assert result.status_code == 200 and result.json()["status"] == "READY_FOR_OWNER_ACTION"
+    call = env.session.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == "inbound-control"))
+    assert call.company_id == env.company.id and call.config_id == env.config.id
+    assert call.caller_type == "UNKNOWN" and call.authenticated_user_id is None
+    assert call.status == "awaiting_configuration"
+    assert env.service.telnyx.commands == []
+
+
+@pytest.mark.parametrize("case", ["unknown_number", "wrong_connection", "outgoing", "inactive_binding", "unassigned", "wrong_config", "no_voice", "inactive_subscription", "inactive_module"])
+def test_telnyx_readiness_rejects_wrong_binding_or_access_without_commands(signed_telnyx_webhook, case):
+    env = signed_telnyx_webhook
+    payload = {}
+    if case == "unknown_number": payload["to"] = "+14165550999"
+    elif case == "wrong_connection": payload["connection_id"] = "other-connection"
+    elif case == "outgoing": payload["direction"] = "outgoing"
+    elif case == "inactive_binding": env.binding.status = "RELEASED"
+    elif case == "unassigned": env.binding.config_id = None
+    elif case == "wrong_config": env.binding.config_id = uuid4()
+    elif case == "no_voice": env.binding.capabilities = ["sms"]
+    elif case == "inactive_subscription": env.session.scalar(select(BillingAccount)).status = "past_due"
+    else: env.session.scalar(select(CompanyModule)).status = CompanyModuleStatus.INACTIVE
+    env.session.commit()
+    response = env.send(env.event(**payload))
+    assert response.status_code == 200 and response.json()["routed"] is False
+    assert env.session.scalar(select(func.count(VoiceCall.id))) == 0
+    assert env.service.telnyx.commands == []
+
+
+@pytest.mark.parametrize("timestamp,valid,expected", [(None, False, 401), ("nan", True, 401), ("inf", True, 401), ("expired", True, 401), ("future", True, 401)])
+def test_signed_webhook_signature_and_replay_fail_closed(signed_telnyx_webhook, timestamp, valid, expected):
+    env = signed_telnyx_webhook
+    if timestamp == "expired": timestamp = str(int(time()) - 3600)
+    if timestamp == "future": timestamp = str(int(time()) + 3600)
+    response = env.send(env.event(), timestamp=timestamp, valid=valid)
+    assert response.status_code == expected
+    assert env.session.scalar(select(func.count(VoiceCall.id))) == 0
+    assert env.service.telnyx.commands == []
+
+
+def test_telnyx_event_idempotency_answer_then_transfer_and_terminal_lifecycle(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    initiated = env.event()
+    assert env.send(initiated).json()["status"] == "answering"
+    assert env.send(initiated).json()["duplicate"] is True
+    assert env.send(env.event()).json()["duplicate"] is True
+    assert [item[0] for item in env.service.telnyx.commands] == ["answer"]
+    answered = env.event("call.answered")
+    assert env.send(answered).json()["routed"] is True
+    assert env.send(answered).json()["duplicate"] is True
+    assert [item[0] for item in env.service.telnyx.commands] == ["answer", "transfer"]
+    assert len({item[2] for item in env.service.telnyx.commands}) == 2
+    call = env.session.scalar(select(VoiceCall))
+    env.send(env.event("call.bridged"))
+    env.session.refresh(call); assert call.status == "in_progress"
+    hangup = env.event("call.hangup")
+    assert env.send(hangup).status_code == 200
+    env.session.refresh(call); ended_at = call.ended_at
+    assert ended_at is not None and call.status == "ended"
+    assert env.send(hangup).json()["duplicate"] is True
+    env.send(env.event("call.answered")); env.send(env.event("call.bridged")); env.send(env.event())
+    env.session.refresh(call)
+    assert call.ended_at == ended_at and call.status == "ended"
+    assert len(env.service.telnyx.commands) == 2
+
+
+def test_telnyx_hangup_preserves_booking_state_but_ends_private_call_access(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.send(env.event())
+    call = env.session.scalar(select(VoiceCall))
+    call.status = "appointment_booked"; env.session.commit()
+    assert env.send(env.event("call.hangup")).status_code == 200
+    env.session.refresh(call)
+    assert call.status == "appointment_booked" and call.ended_at is not None
+    result = asyncio.run(env.service.execute_tool(env.config, "inbound-control", "after-hangup", "get_business_info", {}))
+    assert result == {"success": False, "error": "voice_call_not_active"}
+
+
+def test_telnyx_event_collision_and_call_collision_do_not_cross_context(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    original = env.event()
+    env.send(original)
+    reused = env.event(event_id=original["data"]["id"], call_control_id="other-control")
+    assert env.send(reused).json()["routed"] is False
+    assert env.session.scalar(select(func.count(VoiceCall.id))) == 1
+    other_company = Company(name="Other Telnyx Tenant", slug="other-telnyx", email="other-telnyx@example.com",
+        country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="professional")
+    env.session.add(other_company); env.session.flush()
+    foreign = VoiceCall(company_id=other_company.id, config_id=env.config.id,
+        telnyx_call_control_id="foreign-control", caller_phone="unknown", status="incoming")
+    env.session.add(foreign); env.session.commit()
+    assert env.send(env.event(call_control_id="foreign-control")).json()["routed"] is False
+    env.session.refresh(foreign)
+    assert foreign.company_id == other_company.id and foreign.status == "incoming"
+
+
+def test_telnyx_unknown_dtmf_media_sms_are_not_forwarded_or_persisted(signed_telnyx_webhook, caplog):
+    from backend.app.models import VoiceToolAction
+    env = signed_telnyx_webhook
+    for kind in ("call.dtmf.received", "call.gather.ended", "streaming.started", "message.received"):
+        response = env.send(env.event(kind, digits="test-pin-never-log", transcript="test-pin-never-log"))
+        assert response.status_code == 200 and response.json()["handled"] is False
+        assert "test-pin-never-log" not in response.text
+    assert env.session.scalar(select(func.count(VoiceCall.id))) == 0
+    assert env.session.scalar(select(func.count(VoiceToolAction.id))) == 0
+    assert env.service.telnyx.commands == []
+    assert "test-pin-never-log" not in caplog.text
+
+
+def test_telnyx_rate_limit_and_malformed_envelope(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    assert env.send({}, raw=b"invalid-json").status_code == 400
+    assert env.send([]).status_code == 400
+    env.settings.rate_limit_webhook_per_minute = 2
+    assert env.send(env.event()).status_code == 429
+    assert env.service.telnyx.commands == []
+
+
+def test_telnyx_provider_failure_is_generic_and_not_retried(signed_telnyx_webhook, caplog):
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    env.send(env.event())
+    env.service.telnyx.fail_transfer = True
+    answered = env.event("call.answered")
+    response = env.send(answered)
+    assert response.status_code == 502
+    assert "test-secret-never-log" not in response.text + caplog.text
+    assert env.send(answered).json()["duplicate"] is True
+    call = env.session.scalar(select(VoiceCall))
+    assert call.status == "routing_outcome_unknown"

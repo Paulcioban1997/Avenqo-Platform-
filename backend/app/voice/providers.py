@@ -86,10 +86,15 @@ class TelnyxClient:
             raise RuntimeError("TELNYX_API_KEY is not configured")
         return {"Authorization": f"Bearer {self._settings.telnyx_api_key}", "Content-Type": "application/json"}
 
-    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None) -> None:
+    async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
+        await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
+
+    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None) -> None:
         payload: dict[str, object] = {"to": destination, "timeout_secs": 30}
         if caller_id:
             payload["from"] = caller_id
+        if command_id:
+            payload["command_id"] = command_id
         await self._request("POST", f"/calls/{call_control_id}/actions/transfer", json=payload)
 
     async def hangup(self, call_control_id: str) -> None:
