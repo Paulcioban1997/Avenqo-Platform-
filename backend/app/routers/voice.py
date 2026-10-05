@@ -14,7 +14,8 @@ from uuid import UUID
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from httpx import HTTPStatusError, TimeoutException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -195,6 +196,10 @@ async def search_voice_numbers(
     locality: str | None = None,
     number_type: str | None = None,
     limit: int = 20,
+    area_code: str | None = None,
+    prefix: str | None = None,
+    capabilities: list[str] = Query(default=["voice"]),
+    offset: int = 0,
     identity: CurrentIdentity = Depends(manage_voice),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -202,14 +207,20 @@ async def search_voice_numbers(
     _ensure_voice_access(db, identity.user.company_id)
     try:
         return await _voice_number_service(settings).search(
-            PhoneNumberSearch(country_code, region, locality, number_type, limit)
+            PhoneNumberSearch(country_code, region, locality, number_type, limit, area_code, prefix, tuple(capabilities), offset)
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Telnyx number search is not configured") from exc
+    except TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Voice number search timed out") from exc
+    except HTTPStatusError as exc:
+        if exc.response.status_code in {400, 422}:
+            raise HTTPException(status_code=422, detail="Telnyx rejected the search filters") from exc
+        raise HTTPException(status_code=502, detail="Voice number search provider is unavailable") from exc
     except Exception as exc:
-        logger.exception("Telnyx number search failed", extra={"company_id": str(identity.user.company_id)})
+        logger.warning("Telnyx number search failed", extra={"company_id": str(identity.user.company_id)})
         raise HTTPException(status_code=502, detail="Voice number search is temporarily unavailable") from exc
 
 

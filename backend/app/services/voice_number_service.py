@@ -26,6 +26,10 @@ class PhoneNumberSearch:
     locality: str | None = None
     number_type: str | None = None
     limit: int = 20
+    area_code: str | None = None
+    prefix: str | None = None
+    capabilities: tuple[str, ...] = ("voice",)
+    offset: int = 0
 
 
 class VoiceNumberManagementService:
@@ -38,20 +42,38 @@ class VoiceNumberManagementService:
         country_code = request.country_code.upper()
         if not _COUNTRY_CODE.fullmatch(country_code):
             raise ValueError("country_code must be a two-letter ISO country code")
-        if request.number_type not in {None, "local", "mobile", "toll_free", "national"}:
+        if request.number_type not in {None, "local", "mobile", "toll_free", "national", "shared_cost"}:
             raise ValueError("Unsupported international phone number type")
+        if not 1 <= request.limit <= 100 or not 0 <= request.offset < 100 or request.offset + request.limit > 100:
+            raise ValueError("Search window must be within 100 results")
+        for value in (request.area_code, request.prefix):
+            if value is not None and not re.fullmatch(r"\d{1,15}", value):
+                raise ValueError("Area code and prefix must contain digits only")
+        if not set(request.capabilities) <= {"voice", "sms", "mms", "fax", "emergency", "hd_voice", "international_sms", "local_calling"}:
+            raise ValueError("Unsupported number capability")
         raw_numbers = await self._provider.search_available_numbers(
             country_code=country_code,
             region=request.region,
             locality=request.locality,
             number_type=request.number_type,
-            limit=max(1, min(request.limit, 100)),
+            limit=request.offset + request.limit,
+            area_code=request.area_code,
+            prefix=request.prefix,
+            capabilities=request.capabilities,
         )
-        offers = [self._offer(country_code, item) for item in raw_numbers]
+        offers = [offer for item in raw_numbers[request.offset:request.offset + request.limit] if (offer := self._offer(country_code, item))]
         return {
             "status": "READY_FOR_OWNER_ACTION" if offers else "NO_NUMBERS_AVAILABLE",
             "country_code": country_code,
             "offers": offers,
+            "pagination": {
+                "offset": request.offset,
+                "limit": request.limit,
+                "returned": len(offers),
+                "mode": "bounded_inventory_window",
+                "provider_pagination_supported": False,
+                "total_available": None,
+            },
         }
 
     async def provision(
@@ -94,9 +116,13 @@ class VoiceNumberManagementService:
     @staticmethod
     def _offer(country_code: str, raw: dict[str, object]) -> dict[str, Any]:
         phone_number = str(raw.get("phone_number") or raw.get("number") or "")
-        if not re.fullmatch(r"\+[1-9]\d{7,14}", phone_number):
+        orderable = bool(re.fullmatch(r"\+[1-9]\d{7,14}", phone_number))
+        if not orderable and not re.fullmatch(r"\+[1-9]\d*-+", phone_number):
             return {}
-        features = {str(value).casefold() for value in (raw.get("features") or [])}
+        features = {
+            str(value.get("name", "") if isinstance(value, dict) else value).casefold()
+            for value in (raw.get("features") or [])
+        }
         cost_info = raw.get("cost_information") if isinstance(raw.get("cost_information"), dict) else {}
         monthly_cost = cost_info.get("monthly_cost")
         try:
@@ -105,21 +131,27 @@ class VoiceNumberManagementService:
             monthly_cost = None
         locations = raw.get("region_information") or []
         location = locations[0] if isinstance(locations, list) and locations and isinstance(locations[0], dict) else {}
+        regions = {item.get("region_type"): item.get("region_name") for item in locations if isinstance(item, dict)}
         requirements = raw.get("regulatory_requirements") or raw.get("requirements") or []
         return {
             "phone_number": phone_number,
-            "country_code": country_code,
-            "region": location.get("region") or location.get("administrative_area"),
-            "locality": location.get("locality"),
+            "country_code": regions.get("country_code") or raw.get("country_code"),
+            "region": regions.get("state") or location.get("region") or location.get("administrative_area"),
+            "locality": regions.get("location") or location.get("locality"),
+            "region_information": locations,
             "provider": "telnyx",
             "provider_number_id": raw.get("id"),
             "number_type": raw.get("phone_number_type") or "unknown",
-            "voice_capability": "voice" in features,
-            "sms_capability": "sms" in features,
+            "voice_capability": "voice" in features if "features" in raw else None,
+            "sms_capability": "sms" in features if "features" in raw else None,
+            "mms_capability": "mms" in features if "features" in raw else None,
+            "capabilities": sorted(features),
+            "cost_information": {key: cost_info[key] for key in ("monthly_cost", "upfront_cost", "currency") if key in cost_info},
             "monthly_cost": monthly_cost,
             "monthly_cost_currency": cost_info.get("currency") if monthly_cost is not None else None,
             "regulatory_status": "requirements_required" if requirements else "unknown",
             "regulatory_requirements": requirements,
             "status": "AVAILABLE",
             "provisioning_state": "READY_FOR_OWNER_ACTION",
+            "is_orderable": orderable,
         }

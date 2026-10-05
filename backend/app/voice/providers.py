@@ -102,19 +102,41 @@ class TelnyxClient:
         locality: str | None = None,
         number_type: str | None = None,
         limit: int = 20,
+        area_code: str | None = None,
+        prefix: str | None = None,
+        capabilities: tuple[str, ...] = ("voice",),
     ) -> list[dict[str, object]]:
-        params: dict[str, object] = {"filter[limit]": max(1, min(limit, 100)), "filter[features]": "voice"}
+        params: dict[str, object] = {
+            "filter[limit]": max(1, min(limit, 100)),
+            "filter[features]": list(capabilities),
+            "filter[country_code]": country_code.upper(),
+            "filter[best_effort]": "false",
+        }
         if region:
             params["filter[administrative_area]"] = region
         if locality:
             params["filter[locality]"] = locality
         if number_type:
             params["filter[phone_number_type]"] = number_type
-        response = await self._request(
-            "GET",
-            f"/available_phone_numbers/{country_code.upper()}",
-            params=params,
-        )
+        if area_code:
+            params["filter[national_destination_code]"] = area_code
+        if prefix:
+            params["filter[phone_number][starts_with]"] = prefix
+        try:
+            response = await self._request("GET", "/available_phone_numbers", params=params)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400:
+                try:
+                    errors = exc.response.json().get("errors", [])
+                except ValueError:
+                    errors = []
+                if any(
+                    item.get("code") == "10031"
+                    and str(item.get("detail", "")).startswith("No numbers found for the given filters.")
+                    for item in errors if isinstance(item, dict)
+                ):
+                    return []
+            raise
         numbers = response.get("data") or []
         return [item for item in numbers if isinstance(item, dict)]
 
