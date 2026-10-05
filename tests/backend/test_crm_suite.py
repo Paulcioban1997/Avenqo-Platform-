@@ -1281,7 +1281,9 @@ def test_ai_copilot_crm_tools_execution(db_session):
 
     # 2. Création de rendez-vous par l'IA
     create_tool = CreateAppointmentTool(db_session)
-    future_time = datetime.now(timezone.utc) + timedelta(days=3, hours=14)
+    future_time = datetime.now(timezone.utc).replace(
+        hour=15, minute=0, second=0, microsecond=0
+    ) + timedelta(days=3)
 
     create_res = asyncio.run(
         create_tool.run(
@@ -1291,7 +1293,7 @@ def test_ai_copilot_crm_tools_execution(db_session):
                 title="Consultation IA",
                 start_time=future_time.isoformat(),
                 duration_minutes=45,
-                    confirmed=True,
+                confirmed=True,
             ),
         )
     )
