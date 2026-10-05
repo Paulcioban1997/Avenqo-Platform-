@@ -26,6 +26,7 @@ class TenantContext:
     """Contexte d'entreprise vérifié transmis par le code de confiance."""
 
     company_id: UUID
+    user_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

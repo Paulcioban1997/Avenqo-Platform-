@@ -186,6 +186,72 @@ def test_uploaded_source_selection_persists(source_environment):
     assert next(source for source in reloaded if source.active).source_id == uploaded.id
 
 
+def test_user_data_context_isolated_and_does_not_change_activation(source_environment):
+    from uuid import uuid4
+    session, company, other, uploaded, shopify_dataset, connection, prepared = source_environment
+    user_a, user_b = uuid4(), uuid4()
+    tenant_a, tenant_b = TenantContext(company.id, user_a), TenantContext(company.id, user_b)
+    service = RetailSourceService(session)
+    before = [(source.source_id, source.enabled) for source in service.list_sources(TenantContext(company.id))]
+    service.select_source(tenant_a, source_type="dataset", source_id=uploaded.id)
+    service.select_source(tenant_b, source_type="connector", source_id=connection.id)
+    assert service.active_selection(tenant_a).dataset_id == uploaded.id
+    assert service.active_selection(tenant_b).connection_id == connection.id
+    assert [(source.source_id, source.enabled) for source in service.list_sources(TenantContext(company.id))] == before
+    with pytest.raises(RetailSourceNotFound):
+        service.select_source(TenantContext(other.id, user_a), source_type="connector", source_id=connection.id)
+    connection.status = "DISCONNECTED"
+    session.commit()
+    assert service.active_selection(tenant_b).connection_id == connection.id
+    snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant_b)
+    assert snapshot.status == "source_unavailable"
+    assert snapshot.prepared == ()
+    assert service.context(tenant_b)["state"] == "SOURCE_DISCONNECTED"
+    session.expire_all()
+    assert RetailSourceService(session).active_selection(tenant_a).dataset_id == uploaded.id
+    assert RetailSourceService(session).active_selection(tenant_b).connection_id == connection.id
+
+
+def test_user_all_mode_and_selection_do_not_toggle_sources(source_environment):
+    from uuid import uuid4
+    session, company, _, uploaded, _, connection, _ = source_environment
+    tenant = TenantContext(company.id, uuid4())
+    service = RetailSourceService(session)
+    baseline = {source.source_id: source.enabled for source in service.list_sources(tenant)}
+    service.select_source(tenant, source_type="all", source_id=None)
+    assert service.context(tenant)["source_type"] == "all"
+    assert {source.source_id: source.enabled for source in service.list_sources(tenant)} == baseline
+
+
+def test_source_context_api_contract_and_untrusted_identity_fields(source_environment):
+    from backend.app.routers.retail import data_source_context, select_retail_source
+    from backend.app.schemas.retail_sources import RetailSourceSelectionRequest
+    from pydantic import ValidationError
+    session, company, _, _, _, _, _ = source_environment
+    tenant = TenantContext(company.id, uuid4())
+    response = select_retail_source(RetailSourceSelectionRequest(source_type="all"), tenant, session)
+    assert response.source_type == "all"
+    context = data_source_context(tenant, session)
+    assert context["source_type"] == "all"
+    assert context["source_id"] is None
+    with pytest.raises(ValidationError):
+        RetailSourceSelectionRequest(source_type="all", tenant_id=str(uuid4()), user_id=str(uuid4()))
+
+
+def test_all_sources_deduplicates_logical_commerce_rows(source_environment):
+    from dataclasses import replace
+    session, company, _, uploaded, shopify_dataset, _, prepared = source_environment
+    row = {"order_id": "order-1", "total_amount": 12, "source_provider": "shopify", "source_store": "verified.myshopify.com", "source_order_id": "order-1", "source_line_item_id": "line-1", "currency": "CAD"}
+    first = SimpleNamespace(**{**vars(prepared[uploaded.id]), "canonical_columns": {key: key for key in row}, "rows": (row,)})
+    second = SimpleNamespace(**{**vars(prepared[shopify_dataset.id]), "canonical_columns": {key: key for key in row}, "rows": ({**row, "technical_representation": "copy"},)})
+    snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(TenantContext(company.id))
+    snapshot = replace(snapshot, prepared=(first, second), relationships=())
+    assert len(snapshot.source_for(frozenset({"order_id", "total_amount"})).rows) == 1
+    second = SimpleNamespace(**{**vars(second), "rows": ({**row, "currency": "USD", "source_line_item_id": "line-2"},)})
+    with pytest.raises(ValueError, match="INCOMPATIBLE_SOURCE_CURRENCIES"):
+        replace(snapshot, prepared=(first, second)).source_for(frozenset({"total_amount"}))
+
+
 def test_source_enabled_state_persists_and_is_tenant_scoped(source_environment):
     session, company, other_company, uploaded, shopify_dataset, _, prepared = source_environment
     tenant = TenantContext(company.id)

@@ -441,7 +441,11 @@ async def test_sync_upserts_pages_and_reuses_stable_retail_snapshot(tmp_path) ->
         )
         tenant = TenantContext(company_id=company.id)
 
-        initial = await service.synchronize(tenant, connection.id)
+        with pytest.raises(Exception, match="page limit reached"):
+            await service.synchronize(tenant, connection.id, max_pages_per_entity=1)
+        assert connection.status == "FAILED"
+        assert ingestion.uploads == []
+        initial = await service.synchronize(tenant, connection.id, max_pages_per_entity=2)
         incremental = await service.synchronize(tenant, connection.id)
 
         records = session.scalars(select(NormalizedCommerceRecord)).all()

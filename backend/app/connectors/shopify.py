@@ -363,6 +363,13 @@ class ShopifyConnector(CommerceConnector):
             raise ShopifyAuthenticationError("Shopify shop identity does not match the authorized store")
         return {"id": str(shop["id"]), "name": shop["name"].strip(), "domain": domain}
 
+    async def list_locations(self, context: ConnectorSyncContext) -> Mapping[str, Any]:
+        data = await self._graphql(context, "query AvenqoLocations { locations(first: 50) { nodes { id name isActive } pageInfo { hasNextPage endCursor } } }")
+        locations = data.get("locations")
+        if not isinstance(locations, Mapping) or not isinstance(locations.get("nodes"), list):
+            raise ShopifyConnectorError("Shopify locations are unavailable")
+        return locations
+
     async def sync_orders(self, context: ConnectorSyncContext) -> ConnectorPage:
         page = await self._sync_connection(context, "orders", self._ORDERS_QUERY)
         records: list[Mapping[str, Any]] = []

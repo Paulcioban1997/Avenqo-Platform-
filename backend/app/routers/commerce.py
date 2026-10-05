@@ -639,6 +639,7 @@ def synchronize_connection(
     _: TenantContext = Depends(require_active_subscription),
     sync: CommerceSyncService = Depends(get_commerce_sync_service),
     runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
+    max_pages_per_entity: int | None = Query(default=None, ge=1, le=20),
 ) -> CommerceSyncAcceptedResponse:
     tenant = _tenant(identity)
     try:
@@ -649,7 +650,10 @@ def synchronize_connection(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except CommerceConnectionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    background_tasks.add_task(runner.run_reserved, tenant, connection_id)
+    if max_pages_per_entity is None:
+        background_tasks.add_task(runner.run_reserved, tenant, connection_id)
+    else:
+        background_tasks.add_task(runner.run_reserved, tenant, connection_id, max_pages_per_entity=max_pages_per_entity)
     return CommerceSyncAcceptedResponse(
         connection_id=connection_id,
         status="SYNCING",

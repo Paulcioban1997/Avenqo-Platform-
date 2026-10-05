@@ -20,6 +20,7 @@ from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services import retail_kpi_cache
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.retail_source_service import RetailSourceService
+from backend.app.models import CommerceConnectionStatus
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -125,14 +126,29 @@ class TenantAnalyticsSnapshot:
         if len(components) == 1:
             return selected
 
+        if "total_amount" in required_fields or "unit_price" in required_fields:
+            currencies = {str(row["currency"]).upper() for item in components for row in self._canonical_rows(item) if row.get("currency")}
+            if len(currencies) > 1:
+                raise ValueError("INCOMPATIBLE_SOURCE_CURRENCIES")
+
         canonical_fields = set().union(
             *(set(item.canonical_columns.values()) for item in components)
         )
         reconciled_rows: list[dict[str, object]] = []
         seen_rows: set[tuple[tuple[str, str], ...]] = set()
+        seen_commerce: set[tuple] = set()
         for item in components:
             for row in self._canonical_rows(item):
                 normalized = {field: row.get(field) for field in canonical_fields}
+                provider = row.get("source_provider")
+                store = row.get("source_store") or row.get("source_connection_id")
+                record = row.get("source_order_id") or row.get("shopify_order_gid")
+                line = row.get("source_line_item_id") or row.get("shopify_line_item_gid")
+                if provider and store and record:
+                    identity = (str(provider), str(store), str(record), str(line or ""))
+                    if identity in seen_commerce:
+                        continue
+                    seen_commerce.add(identity)
                 fingerprint = tuple(
                     sorted((field, repr(value)) for field, value in normalized.items())
                 )
@@ -338,7 +354,14 @@ class TenantAnalyticsService:
             active_source_provider = connection.provider if connection is not None else None
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
-        if enabled_dataset_ids is not None:
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
+            selected_id = active_source.dataset_id
+            if active_source.connection_id is not None:
+                connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
+                selected_id = RetailSourceService._connection_dataset_id(connection) if connection is not None and connection.status == CommerceConnectionStatus.READY.value else None
+            source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
+            datasets = source_datasets
+        elif enabled_dataset_ids is not None:
             source_datasets = tuple(
                 dataset for dataset in datasets if dataset.id in enabled_dataset_ids
             )
@@ -387,6 +410,8 @@ class TenantAnalyticsService:
         status = self._status(
             tenant_datasets, statuses, prepared, deferred_dataset_ids
         )
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+            status = "source_unavailable"
         if enabled_dataset_ids == frozenset() and not retail_states:
             status = "no_data"
         if retail_states:
@@ -394,6 +419,8 @@ class TenantAnalyticsService:
                 status = "partial_ready" if deferred_dataset_ids or any(s != "ready" for s in source_statuses) else "ready"
             else:
                 status = "source_unavailable" if "SOURCE_UNAVAILABLE" in retail_states else "processing"
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+            status = "source_unavailable"
         snapshot = TenantAnalyticsSnapshot(
             company=company,
             datasets=datasets,

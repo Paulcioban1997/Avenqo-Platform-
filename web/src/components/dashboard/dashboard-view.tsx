@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   DollarSign,
   ShoppingCart,
@@ -76,6 +76,7 @@ export function DashboardView({
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
   const session = useSession();
+  const loadRevision = useRef(0);
   const userFirstName = session.identity?.user.first_name ?? userName;
   const currentTenant = session.identity?.company.name ?? tenantName;
 
@@ -91,6 +92,7 @@ export function DashboardView({
   }, [t.dashboard.greetingAfternoon, t.dashboard.greetingEvening, t.dashboard.greetingMorning]);
 
   const fetchDashboardData = async () => {
+    const revision = ++loadRevision.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -105,6 +107,7 @@ export function DashboardView({
 
       if (res.ok) {
         const data = await res.json();
+        if (revision !== loadRevision.current) return;
         setCurrency(data.company?.currency || "CAD");
         if (Array.isArray(data.kpis)) {
           const mapped: Record<string, DashboardKPI> = {};
@@ -120,15 +123,16 @@ export function DashboardView({
         setTrendPoints(Array.isArray(points) ? points : []);
       }
     } catch (error) {
-      setError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
+      if (revision === loadRevision.current) setError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
-      setIsLoading(false);
+      if (revision === loadRevision.current) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDashboardData();
-  }, [dateRange]);
+    return () => { loadRevision.current++; };
+  }, [dateRange, session.sourceRevision, session.identity?.company.id]);
 
   // Unified chart timeline points derived strictly from actual data availability
   const hasData = Object.keys(kpis).length > 0 && Object.values(kpis).some((k) => k.available);

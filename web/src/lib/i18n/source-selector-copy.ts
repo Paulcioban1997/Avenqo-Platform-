@@ -1,0 +1,26 @@
+import type { LocaleCode } from "./types";
+
+export const SOURCE_SELECTOR_COPY: Record<LocaleCode, readonly [string, string]> = {
+  en: ["Data source", "All active sources"], "en-GB": ["Data source", "All active sources"],
+  fr: ["Source de données", "Toutes les sources actives"], "fr-FR": ["Source de données", "Toutes les sources actives"],
+  es: ["Fuente de datos", "Todas las fuentes activas"], pt: ["Fonte de dados", "Todas as fontes ativas"],
+  ro: ["Sursă de date", "Toate sursele active"], de: ["Datenquelle", "Alle aktiven Quellen"],
+  it: ["Origine dati", "Tutte le origini attive"], nl: ["Gegevensbron", "Alle actieve bronnen"],
+  pl: ["Źródło danych", "Wszystkie aktywne źródła"], ru: ["Источник данных", "Все активные источники"],
+  uk: ["Джерело даних", "Усі активні джерела"], el: ["Πηγή δεδομένων", "Όλες οι ενεργές πηγές"],
+  sv: ["Datakälla", "Alla aktiva källor"], tr: ["Veri kaynağı", "Tüm etkin kaynaklar"],
+  cs: ["Zdroj dat", "Všechny aktivní zdroje"], ar: ["مصدر البيانات", "جميع المصادر النشطة"],
+  "ar-EG": ["مصدر البيانات", "جميع المصادر النشطة"], he: ["מקור נתונים", "כל המקורות הפעילים"],
+  fa: ["منبع داده", "همه منابع فعال"], ja: ["データソース", "すべての有効なソース"],
+  ko: ["데이터 소스", "모든 활성 소스"], zh: ["数据源", "所有活动数据源"],
+  ka: ["მონაცემთა წყარო", "ყველა აქტიური წყარო"], hy: ["Տվյալների աղբյուր", "Բոլոր ակտիվ աղբյուրները"],
+  sw: ["Chanzo cha data", "Vyanzo vyote vinavyotumika"], am: ["የውሂብ ምንጭ", "ሁሉም ንቁ ምንጮች"],
+  af: ["Databron", "Alle aktiewe bronne"], ha: ["Tushen bayanai", "Dukkan tushe masu aiki"],
+  hi: ["डेटा स्रोत", "सभी सक्रिय स्रोत"], bn: ["ডেটা উৎস", "সমস্ত সক্রিয় উৎস"],
+  ur: ["ڈیٹا کا ماخذ", "تمام فعال ماخذ"], ta: ["தரவு மூலம்", "அனைத்து செயலில் உள்ள மூலங்கள்"],
+  pa: ["ਡਾਟਾ ਸਰੋਤ", "ਸਾਰੇ ਸਰਗਰਮ ਸਰੋਤ"], ne: ["डेटा स्रोत", "सबै सक्रिय स्रोतहरू"],
+  vi: ["Nguồn dữ liệu", "Tất cả nguồn đang hoạt động"], th: ["แหล่งข้อมูล", "แหล่งข้อมูลที่ใช้งานทั้งหมด"],
+  id: ["Sumber data", "Semua sumber aktif"], ms: ["Sumber data", "Semua sumber aktif"],
+  tl: ["Pinagmulan ng data", "Lahat ng aktibong pinagmulan"], my: ["ဒေတာရင်းမြစ်", "အသုံးပြုနေသော ရင်းမြစ်အားလုံး"],
+  km: ["ប្រភពទិន្នន័យ", "ប្រភពសកម្មទាំងអស់"], mn: ["Өгөгдлийн эх үүсвэр", "Бүх идэвхтэй эх үүсвэр"],
+};

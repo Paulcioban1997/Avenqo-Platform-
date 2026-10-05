@@ -53,12 +53,16 @@ class CommerceSyncRunner:
         self,
         tenant: TenantContext,
         connection_id: UUID,
+        max_pages_per_entity: int | None = None,
     ) -> None:
         with self._session_factory() as session:
             service = self._service_factory(session)
             try:
-                await service.synchronize(tenant, connection_id, reserved=True)
-                await self._drain_pending_webhooks(session, service, tenant, connection_id)
+                if max_pages_per_entity is None:
+                    await service.synchronize(tenant, connection_id, reserved=True)
+                    await self._drain_pending_webhooks(session, service, tenant, connection_id)
+                else:
+                    await service.synchronize(tenant, connection_id, reserved=True, max_pages_per_entity=max_pages_per_entity)
             except Exception:
                 session.rollback()
                 logger.exception(

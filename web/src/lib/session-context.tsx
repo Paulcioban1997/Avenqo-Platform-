@@ -22,7 +22,13 @@ interface SessionState {
   activeDataSources: string[];
   sourceError: ApiRequestError | null;
   reload: () => Promise<void>;
+  sourceContext: SourceContext | null;
+  sourceRevision: number;
+  selectSource: (sourceType: string, sourceId: string | null) => Promise<void>;
 }
+export interface ContextSource { source_type: string; source_id: string; dataset_id: string | null; display_name: string; provider: string | null; status: string; active: boolean; enabled: boolean; }
+export interface SourceContext { state: string; source_type: string | null; source_id: string | null; sources: ContextSource[]; }
+const namesForContext = (context: SourceContext) => context.state === "READY" ? context.sources.filter(source => context.source_type === "all" ? source.enabled : source.source_type === context.source_type && source.source_id === context.source_id).map(source => source.display_name) : [];
 const SessionContext = createContext<SessionState | null>(null);
 const unknownCredits = { remaining: null, limit: null, used: null };
 const publicRoutes = new Set(["/", "/login", "/register", "/signup", "/forgot-password", "/reset-password", "/pricing", "/contact", "/privacy", "/terms", "/docs"]);
@@ -37,6 +43,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [creditError, setCreditError] = useState<ApiRequestError | null>(null);
   const [activeDataSources, setActiveDataSources] = useState<string[]>([]);
   const [sourceError, setSourceError] = useState<ApiRequestError | null>(null);
+  const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const pending = useRef<Promise<void> | null>(null);
   const creditPending = useRef<Promise<void> | null>(null);
   const creditVersion = useRef(-1);
@@ -76,7 +84,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (version !== revision.current) return;
         if (!data.user?.id || !data.company?.id || !data.company.name) throw new ApiRequestError("tenant_unresolved");
         if (tenantId.current !== data.company.id) {
-          setCredits(unknownCredits); setActiveDataSources([]);
+          setCredits(unknownCredits); setActiveDataSources([]); setSourceContext(null);
           tenantId.current = data.company.id;
         }
         setIdentity(data); setError(null);
@@ -90,6 +98,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 setActiveDataSources(sources.filter(source => source.enabled).map(source => source.display_name));
                 setSourceError(null);
               }
+              const contextResponse = await apiFetch("/api/v1/retail/sources/context");
+              const context = await contextResponse.json();
+              if (version === revision.current && context && !Array.isArray(context) && Array.isArray(context.sources)) { setSourceContext(context); setActiveDataSources(namesForContext(context)); }
             } catch (error) {
               if (version === revision.current) setSourceError(asError(error));
             }
@@ -105,16 +116,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return pending.current;
   }, [refreshCredits]);
 
+  const selectSource = async (sourceType: string, sourceId: string | null) => {
+    const version = revision.current;
+    await apiFetch("/api/v1/retail/sources/active", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_type: sourceType, source_id: sourceId }) });
+    const response = await apiFetch("/api/v1/retail/sources/context");
+    const context = await response.json();
+    if (version !== revision.current) return;
+    setSourceContext(context); setSourceError(null); setSourceRevision(value => value + 1);
+    setActiveDataSources(namesForContext(context));
+    window.dispatchEvent(new Event("avenqo:sources-changed"));
+  };
+
   useEffect(() => {
     if (protectedPage && !identity && !error) void reload();
   }, [protectedPage, identity, error, reload]);
 
   useEffect(() => {
     if (!protectedPage) return;
-    const expired = () => { revision.current++; setIdentity(null); setCredits(unknownCredits); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
+    const expired = () => { revision.current++; setIdentity(null); setCredits(unknownCredits); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
     const changed = () => {
       revision.current++; tenantId.current = null;
       setIdentity(null); setCredits(unknownCredits); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(null);
+      setSourceContext(null); setSourceRevision(value => value + 1);
       const previous = pending.current;
       if (previous) void previous.finally(() => { void reload(); });
       else void reload();
@@ -128,7 +151,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { channel?.close(); window.clearInterval(timer); window.removeEventListener("avenqo:session-expired", expired); window.removeEventListener("avenqo:ai-credits-updated", creditUpdated); };
   }, [protectedPage, reload, refreshCredits]);
 
-  return <SessionContext.Provider value={{ identity, error, loading, credits, creditError, activeDataSources, sourceError, reload }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ identity, error, loading, credits, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, selectSource }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

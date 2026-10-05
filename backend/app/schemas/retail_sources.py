@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RetailSourceResponse(BaseModel):
@@ -18,8 +18,9 @@ class RetailSourceResponse(BaseModel):
 
 
 class RetailSourceSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     source_type: str
-    source_id: UUID
+    source_id: UUID | None = None
 
 
 class RetailSourceStateRequest(BaseModel):

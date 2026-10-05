@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   ShoppingBag,
@@ -136,6 +136,7 @@ export function RetailIntelligenceView({
   const [activeTab, setActiveTab] = useState<RetailSubTab>(defaultTab);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
+  const loadRevision = useRef(0);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -151,6 +152,7 @@ export function RetailIntelligenceView({
   const [searchFilter, setSearchFilter] = useState("");
 
   const loadData = useCallback(async () => {
+    const revision = ++loadRevision.current;
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -164,54 +166,66 @@ export function RetailIntelligenceView({
         apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
         apiFetch("/api/v1/recommendations", { headers }),
       ]);
+      if (revision !== loadRevision.current) return;
 
       if (statusRes && statusRes.ok) {
         const sData = await statusRes.json();
+        if (revision !== loadRevision.current) return;
         setRetailStatus(sData);
       }
 
       if (prodRes && prodRes.ok) {
         const pData = await prodRes.json();
+        if (revision !== loadRevision.current) return;
         setProducts(pData.products || []);
       }
 
       if (ordRes && ordRes.ok) {
         const oData = await ordRes.json();
+        if (revision !== loadRevision.current) return;
         setOrders(oData.orders || []);
       }
 
       if (custRes && custRes.ok) {
         const cData = await custRes.json();
+        if (revision !== loadRevision.current) return;
         setCustomers(cData.customers || []);
       }
 
       if (invRes && invRes.ok) {
         const iData = await invRes.json();
+        if (revision !== loadRevision.current) return;
         setInventory(iData.inventory || []);
         setStockAnomalies(iData.anomalies || []);
       }
 
       if (salesRes && salesRes.ok) {
-        setSalesSummary(await salesRes.json());
+        const summary = await salesRes.json();
+        if (revision !== loadRevision.current) return;
+        setSalesSummary(summary);
       } else {
         setSalesSummary(null);
       }
 
       if (recommendationsRes && recommendationsRes.ok) {
         const rData = await recommendationsRes.json();
+        if (revision !== loadRevision.current) return;
         setRecommendations(rData.recommendations || []);
       } else {
         setRecommendations([]);
       }
     } catch (error) {
-      setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
+      if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
     } finally {
-      setIsLoading(false);
+      if (revision === loadRevision.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadData();
+    const changed = () => { void loadData(); };
+    window.addEventListener("avenqo:sources-changed", changed);
+    return () => { loadRevision.current++; window.removeEventListener("avenqo:sources-changed", changed); };
   }, [loadData, tenantName]);
 
   const navTabs = [

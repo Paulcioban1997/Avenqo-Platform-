@@ -262,6 +262,7 @@ class CommerceSyncService:
         connection_id: UUID,
         *,
         reserved: bool = False,
+        max_pages_per_entity: int | None = None,
     ) -> CommerceSyncResult:
         connection = self._connections.get_connection(tenant, connection_id)
         if connection.status in {CommerceConnectionStatus.DISCONNECTED.value, CommerceConnectionStatus.REAUTH_REQUIRED.value}:
@@ -288,7 +289,11 @@ class CommerceSyncService:
                 self._db.commit()
                 cursor = self._optional_text(entity_state.get("next_cursor"))
                 method = getattr(connector, method_name)
+                pages = 0
                 while True:
+                    if max_pages_per_entity is not None and pages >= max_pages_per_entity:
+                        raise CommerceSyncError("Bounded synchronization page limit reached")
+                    pages += 1
                     page = await method(
                         replace(
                             base_context,

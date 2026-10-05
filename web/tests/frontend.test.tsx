@@ -20,6 +20,8 @@ import { BUSINESS_HOURS_COPY } from "@/lib/i18n/business-hours-copy";
 import { BusinessHoursSettings } from "@/components/crm/business-hours-settings";
 import { CRMKpiCards } from "@/components/crm/crm-kpi-cards";
 import { metricText, currencyText, dateText } from "@/components/crm/crm-format";
+import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
+import { GlobalSourceSelector } from "@/components/shell/global-source-selector";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -40,6 +42,28 @@ afterEach(() => {
 });
 
 describe("public trust content", () => {
+  it("has source-selector labels in all 44 canonical catalogs", () => {
+    expect(Object.keys(SOURCE_SELECTOR_COPY).sort()).toEqual(LOCALES.map(item => item.code).sort());
+  });
+  it("selects real context sources without touching activation or sync", async () => {
+    const sources = [{ source_type: "dataset", source_id: "file-test", dataset_id: "file-test", display_name: "Uploaded test", status: "READY", enabled: true }, { source_type: "connector", source_id: "shop-test", dataset_id: "shop-data", display_name: "Verified merchant", provider: "shopify", status: "READY", enabled: true }];
+    let selected = "file-test";
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input, init) => {
+      const path = String(input); requests.push(path);
+      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "user" }, company: { id: "tenant", name: "Tenant" } });
+      if (path.endsWith("/ai-credits")) return Response.json({});
+      if (path.endsWith("/sources/active")) { selected = JSON.parse(String(init.body)).source_id; return Response.json({}); }
+      if (path.endsWith("/sources/context")) return Response.json({ state: "READY", source_type: selected === "file-test" ? "dataset" : "connector", source_id: selected, sources });
+      return Response.json(sources);
+    }));
+    render(<LocaleProvider><SessionProvider><GlobalSourceSelector /></SessionProvider></LocaleProvider>);
+    await screen.findByText("Uploaded test");
+    fireEvent.click(screen.getByRole("button", { name: SOURCE_SELECTOR_COPY.fr[0] }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Verified merchant/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: SOURCE_SELECTOR_COPY.fr[0] })).toHaveTextContent("Verified merchant"));
+    expect(requests.some(path => /enabled|sync|disconnect/.test(path))).toBe(false);
+  });
   it("does not label unverified Shopify credentials as connected", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input) => {
       const path = String(input);
@@ -454,6 +478,9 @@ describe("Copilot production response", () => {
       if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
       if (url.endsWith("/retail/sources")) {
         return new Response(JSON.stringify([{ source_id: "dataset-1", display_name: "Superstore-utf8-cleaned.csv", enabled: true }]), { status: 200 });
+      }
+      if (url.endsWith("/retail/sources/context")) {
+        return Response.json({ state: "READY", source_type: "dataset", source_id: "dataset-1", sources: [{ source_type: "dataset", source_id: "dataset-1", dataset_id: "dataset-1", display_name: "Superstore-utf8-cleaned.csv", status: "READY", enabled: true }] });
       }
       if (url.endsWith("/ai/chat/conversations")) {
         return new Response(JSON.stringify({ id: "conversation-1" }), { status: 201 });

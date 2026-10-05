@@ -40,6 +40,7 @@ import { CommandPalette } from "./command-palette";
 import { AvenqoCopilot } from "./avenqo-copilot";
 import { CreditMeter } from "./credit-meter";
 import { useSession, type OrganizationItem } from "@/lib/session-context";
+import { GlobalSourceSelector } from "./global-source-selector";
 import { apiFetch } from "@/lib/api-request";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
@@ -221,22 +222,7 @@ export function AppShell({ children }: AppShellProps) {
           )}
 
           {/* Dynamic Active Data Sources Pill (Only shown if live connection exists) */}
-          {activeDataSources.length > 0 && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              {activeDataSources.map((src) => (
-                <div
-                  key={src}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-[10px] font-bold text-emerald-700 dark:text-emerald-400"
-                >
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                  </span>
-                  <span className="capitalize">{src}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <GlobalSourceSelector />
         </div>
 
         {/* Center: Command Palette Input Trigger */}

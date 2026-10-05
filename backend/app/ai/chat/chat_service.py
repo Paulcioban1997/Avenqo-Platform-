@@ -295,6 +295,11 @@ class ChatService:
             explicit=locale_explicit,
         )
         sources = self._retrieval.retrieve_context(tenant_id, query) if retrieve_tenant_data else []
+        if selected_agent_id == "retail" and isinstance(self._retrieval, RetrievalService):
+            from backend.app.services.retail_source_service import RetailSourceService
+            scoped = RetailSourceService(self._retrieval._db).context(TenantContext(tenant_id, user_id))
+            ids = {str(source.dataset_id) for source in scoped["sources"] if source.dataset_id and (source.enabled if scoped["source_type"] == "all" else source.source_type == scoped["source_type"] and str(source.source_id) == str(scoped["source_id"]))}
+            sources = [source for source in sources if source.identifier in ids] if scoped["state"] == "READY" else []
         history = "\n".join(f"{message.role.value}: {message.content}" for message in self._conversations.messages(tenant_id, conversation_id))
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
         prompt = f"<trusted_server_context>{trusted_context}</trusted_server_context>\n<client_context untrusted=\"true\">{client_context}</client_context>\n<conversation>{history}</conversation>\n<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
@@ -308,7 +313,7 @@ class ChatService:
             len(available_tools),
         )
         tool_context = ToolExecutionContext(
-            tenant=TenantContext(company_id=tenant_id),
+            tenant=TenantContext(company_id=tenant_id, user_id=user_id),
             user_id=user_id,
             permissions=permissions,
             request_id=request_id or str(uuid4()),
@@ -489,6 +494,11 @@ class ChatService:
 
         self._conversations.get(tenant_id, user_id, conversation_id)
         sources = self._retrieval.retrieve_context(tenant_id, query) if retrieve_tenant_data else []
+        if selected_agent_id == "retail" and isinstance(self._retrieval, RetrievalService):
+            from backend.app.services.retail_source_service import RetailSourceService
+            scoped = RetailSourceService(self._retrieval._db).context(TenantContext(tenant_id, user_id))
+            ids = {str(source.dataset_id) for source in scoped["sources"] if source.dataset_id and (source.enabled if scoped["source_type"] == "all" else source.source_type == scoped["source_type"] and str(source.source_id) == str(scoped["source_id"]))}
+            sources = [source for source in sources if source.identifier in ids] if scoped["state"] == "READY" else []
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
         prompt = f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
 
@@ -587,7 +597,7 @@ class ChatService:
                     content = "".join(chunks)
                 else:
                     tool_context = ToolExecutionContext(
-                        tenant=TenantContext(company_id=tenant_id),
+                        tenant=TenantContext(company_id=tenant_id, user_id=user_id),
                         user_id=user_id,
                         permissions=permissions,
                         request_id=avenqo_request_id,

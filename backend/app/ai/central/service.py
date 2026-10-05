@@ -121,6 +121,7 @@ class CentralAIService:
                 language_auto_detect = True
         started_at = perf_counter()
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
+        tenant = type(tenant)(company_id=tenant.company_id, user_id=user_id)
         context = self._context_builder.build(
             tenant,
             user_id,

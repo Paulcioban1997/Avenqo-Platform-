@@ -67,6 +67,12 @@ def select_retail_source(
     return RetailSourceResponse.model_validate(source, from_attributes=True)
 
 
+@router.get("/sources/context")
+def data_source_context(tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)):
+    context = RetailSourceService(db).context(tenant)
+    return {**context, "sources": [RetailSourceResponse.model_validate(source, from_attributes=True).model_dump(mode="json") for source in context["sources"]]}
+
+
 @router.put("/sources/enabled", response_model=RetailSourceResponse)
 def set_retail_source_enabled(
     request: RetailSourceStateRequest,
@@ -107,8 +113,8 @@ def ask_retail_assistant(
             )
             active_source_name = source.display_name
             active_source_id_str = str(source.id)
-        except Exception:
-            pass
+        except RetailSourceNotFound as exc:
+            raise HTTPException(status_code=404, detail="Retail source not found") from exc
 
     if not active_source_name:
         sources = RetailSourceService(db).list_sources(tenant)

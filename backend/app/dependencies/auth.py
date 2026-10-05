@@ -133,7 +133,7 @@ def get_tenant_context(
 ) -> TenantContext:
     """Construit le contexte AI Engine depuis l'identité authentifiée."""
 
-    return TenantContext(company_id=identity.user.company_id)
+    return TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
 
 
 def require_permission(permission: str) -> Callable[..., CurrentIdentity]:

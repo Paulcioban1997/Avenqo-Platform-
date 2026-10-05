@@ -15,6 +15,7 @@ from backend.app.models import (
     DatasetStatus,
     RetailActiveSource,
     RetailSourceState,
+    UserSourceSelection,
 )
 from shared.ai_engine.contracts import TenantContext
 
@@ -75,7 +76,8 @@ class RetailSourceService:
             for connection in connections
             if (dataset_id := self._connection_dataset_id(connection)) is not None
         }
-        active = self._resolve_active(tenant, connections, datasets)
+        active = self._user_selection(tenant) or self._resolve_active(TenantContext(tenant.company_id), connections, datasets)
+        activation_default = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
         states = {
             state.source_key: state.enabled
             for state in self._session.scalars(
@@ -99,15 +101,15 @@ class RetailSourceService:
                 enabled=states.get(
                     self._source_key(source.source_type, source.source_id),
                     bool(
-                        active
+                        activation_default
                         and (
-                            active.source_type == "all"
+                            activation_default.source_type == "all"
                             or (
-                                active.source_type == source.source_type
+                                activation_default.source_type == source.source_type
                                 and (
-                                    active.connection_id == source.connection_id
+                                    activation_default.connection_id == source.connection_id
                                     if source.source_type == "connector"
-                                    else active.dataset_id == source.dataset_id
+                                    else activation_default.dataset_id == source.dataset_id
                                 )
                             )
                         )
@@ -250,7 +252,7 @@ class RetailSourceService:
             tenant_cache.invalidate_tenant(tenant.company_id)
             return RetailSource(
                 source_type="all",
-                source_id=source_id,
+                source_id=source_id or UUID(int=0),
                 dataset_id=None,
                 connection_id=None,
                 display_name="Toutes les sources",
@@ -271,6 +273,11 @@ class RetailSourceService:
             )
             if connection is None:
                 raise RetailSourceNotFound("Retail source not found")
+            if tenant.user_id is not None:
+                dataset_id = self._connection_dataset_id(connection)
+                dataset = self._session.scalar(select(Dataset).where(Dataset.id == dataset_id, Dataset.company_id == tenant.company_id, Dataset.status == DatasetStatus.READY))
+                if connection.status != CommerceConnectionStatus.READY.value or dataset is None or self._dataset_source(dataset, None).status.upper() != "READY":
+                    raise RetailSourceNotFound("Retail source is unavailable")
             selection = self._store_selection(
                 tenant,
                 source_type="connector",
@@ -289,6 +296,8 @@ class RetailSourceService:
             )
             if dataset is None:
                 raise RetailSourceNotFound("Retail source not found")
+            if tenant.user_id is not None and self._dataset_source(dataset, None).status.upper() != "READY":
+                raise RetailSourceNotFound("Retail source is unavailable")
             selection = self._store_selection(
                 tenant,
                 source_type="dataset",
@@ -300,6 +309,16 @@ class RetailSourceService:
         raise RetailSourceNotFound("Retail source not found")
 
     def active_selection(self, tenant: TenantContext) -> RetailActiveSource | None:
+        user_selection = self._user_selection(tenant)
+        if user_selection is not None:
+            return user_selection
+        if tenant.user_id is not None:
+            inherited = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
+            if inherited is None:
+                inherited = self.active_selection(TenantContext(tenant.company_id))
+            if inherited is not None:
+                return self._store_selection(tenant, source_type=inherited.source_type, dataset_id=inherited.dataset_id, connection_id=inherited.connection_id)
+            return None
         selection = self._session.scalar(
             select(RetailActiveSource).where(
                 RetailActiveSource.company_id == tenant.company_id
@@ -458,6 +477,16 @@ class RetailSourceService:
         dataset_id: UUID | None,
         connection_id: UUID | None,
     ) -> RetailActiveSource:
+        if tenant.user_id is not None:
+            selection = self._user_selection(tenant)
+            if selection is None:
+                selection = UserSourceSelection(company_id=tenant.company_id, user_id=tenant.user_id, source_type=source_type)
+                self._session.add(selection)
+            selection.source_type = source_type
+            selection.dataset_id = dataset_id
+            selection.connection_id = connection_id
+            self._session.commit()
+            return selection
         selection = self._session.scalar(
             select(RetailActiveSource).where(
                 RetailActiveSource.company_id == tenant.company_id
@@ -474,6 +503,29 @@ class RetailSourceService:
         selection.connection_id = connection_id
         self._session.commit()
         return selection
+
+    def _user_selection(self, tenant: TenantContext):
+        if tenant.user_id is None:
+            return None
+        return self._session.get(UserSourceSelection, (tenant.company_id, tenant.user_id))
+
+    def context(self, tenant: TenantContext) -> dict:
+        selection = self.active_selection(tenant)
+        sources = self.list_sources(tenant)
+        if selection is None:
+            return {"state": "NO_SOURCES", "source_type": None, "source_id": None, "sources": sources}
+        if selection.source_type == "all":
+            return {"state": "READY" if any(source.enabled and source.status.upper() == "READY" for source in sources) else "NO_SOURCES", "source_type": "all", "source_id": None, "sources": sources}
+        source_id = selection.connection_id if selection.source_type == "connector" else selection.dataset_id
+        source = next((item for item in sources if item.source_type == selection.source_type and item.source_id == source_id), None)
+        state = "READY" if source is not None and source.dataset_id is not None and source.status.upper() == "READY" else "SOURCE_UNAVAILABLE"
+        if selection.source_type == "connector":
+            connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == selection.connection_id, CommerceConnection.company_id == tenant.company_id))
+            if connection is not None and connection.status == "DISCONNECTED":
+                state = "SOURCE_DISCONNECTED"
+            elif connection is not None and connection.status in {"ERROR", "FAILED", "REAUTH_REQUIRED"}:
+                state = "SOURCE_ERROR"
+        return {"state": state, "source_type": selection.source_type, "source_id": source_id, "sources": sources}
 
     @staticmethod
     def _source_key(source_type: str, source_id: UUID) -> str:
@@ -494,6 +546,12 @@ class RetailSourceService:
         connection: CommerceConnection,
         active: RetailActiveSource | None,
     ) -> RetailSource:
+        status = connection.status
+        dataset_id = self._connection_dataset_id(connection)
+        if status == CommerceConnectionStatus.READY.value:
+            dataset = self._session.scalar(select(Dataset).where(Dataset.id == dataset_id, Dataset.company_id == connection.company_id))
+            if dataset is None or self._dataset_source(dataset, None).status.upper() != "READY":
+                status = "SOURCE_UNAVAILABLE"
         return RetailSource(
             source_type="connector",
             source_id=connection.id,
@@ -501,7 +559,7 @@ class RetailSourceService:
             connection_id=connection.id,
             display_name=connection.display_name or connection.external_account_id,
             provider=connection.provider,
-            status=connection.status,
+            status=status,
             last_synchronized_at=connection.last_successful_sync,
             active=bool(
                 active
@@ -515,6 +573,9 @@ class RetailSourceService:
         dataset: Dataset,
         active: RetailActiveSource | None,
     ) -> RetailSource:
+        from pathlib import Path
+        version = next((version for version in dataset.versions if version.is_current), None)
+        unavailable = bool(version and version.artifact_path and not Path(version.artifact_path).is_file())
         return RetailSource(
             source_type="dataset",
             source_id=dataset.id,
@@ -522,7 +583,7 @@ class RetailSourceService:
             connection_id=None,
             display_name=dataset.name,
             provider=None,
-            status=dataset.status.value,
+            status="SOURCE_UNAVAILABLE" if unavailable else dataset.status.value,
             last_synchronized_at=dataset.uploaded_at,
             active=bool(
                 active
