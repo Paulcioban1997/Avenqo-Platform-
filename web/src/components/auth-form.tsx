@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, AlertCircle } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
@@ -8,6 +9,17 @@ import { RegionLanguageSelector } from "./region-language-selector";
 import { ThemeToggle } from "./theme-toggle";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAuthStrings } from "@/lib/i18n/auth-dictionary";
+import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { CANONICAL_LOCALES } from "@/lib/i18n/canonical-locales.generated";
+
+interface RegistrationPlan {
+  code: string;
+  name: string;
+  module_limit: number | null;
+  requires_sales_contact: boolean;
+  monthly_price_usd: number | null;
+  modules: { key: string; display_name: string; description: string; selectable: boolean }[];
+}
 
 export type AuthMode = "login" | "register" | "forgot-password" | "reset-password";
 
@@ -33,6 +45,7 @@ function isPasswordStrong(pw: string): boolean {
 }
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
+  const router = useRouter();
   const isRegister = mode === "register";
   const isForgot = mode === "forgot-password";
   const isReset = mode === "reset-password";
@@ -41,23 +54,42 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [tokenFromUrl, setTokenFromUrl] = useState("");
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const t = new URLSearchParams(window.location.search).get("token") || "";
-      setTokenFromUrl(t);
+      window.setTimeout(() => setTokenFromUrl(new URLSearchParams(window.location.search).get("token") || ""), 0);
     }
   }, []);
 
   const { locale } = useLocale();
   const s = getAuthStrings(locale);
-  const regionNames = new Intl.DisplayNames([locale], { type: "region" });
-  const currencyExample = (currency: string) =>
-    new Intl.NumberFormat(locale, { style: "currency", currency }).format(0);
-
+  const t = getAppTranslations(locale);
+  const localeDefaults = CANONICAL_LOCALES.find(item => item.code === locale);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [isError, setIsError] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [plans, setPlans] = useState<RegistrationPlan[]>([]);
+  const [chosenPlan, setChosenPlan] = useState("");
+  const [chosenModules, setChosenModules] = useState<string[]>([]);
+  const [timezone, setTimezone] = useState("");
+  useEffect(() => {
+    if (!isRegister) return;
+    const controller = new AbortController();
+    queueMicrotask(async () => {
+      if (controller.signal.aborted) return;
+      setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      try {
+        const response = await fetch('/api/v1/billing/plans', { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error('catalog_unavailable');
+        const data = await response.json();
+        if (!controller.signal.aborted) { setPlans(data); setChosenPlan(data[0]?.code ?? ''); }
+      } catch { if (!controller.signal.aborted) { setIsError(true); setMessage(s.genericError); } }
+    });
+    return () => controller.abort();
+  }, [isRegister, s.genericError]);
+  const registrationPlan = plans.find(plan => plan.code === chosenPlan);
+  const currencyExample = (currency: string) =>
+    new Intl.NumberFormat(locale, { style: "currency", currency }).format(0);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -93,6 +125,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
     let payload: Record<string, unknown>;
     if (isRegister) {
+      if (!registrationPlan || registrationPlan.requires_sales_contact || registrationPlan.module_limit != null && chosenModules.length > registrationPlan.module_limit) {
+        setIsError(true); setMessage(s.genericError); setBusy(false); return;
+      }
       payload = {
         company_name: form.get("company_name"),
         company_email: form.get("company_email") || email,
@@ -100,13 +135,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         last_name: form.get("last_name"),
         email: email,
         password: password,
-        country: form.get("country") || "Canada",
-        timezone: "America/Toronto",
+        country: form.get("country") || localeDefaults?.bcp47.split('-').at(-1),
+        timezone: timezone,
         industry: form.get("industry") || "Commerce",
-        currency_code: form.get("currency_code") || "CAD",
+        currency_code: form.get("currency_code") || localeDefaults?.currency,
+        preferred_language: locale,
         company_size: form.get("company_size") || "1-10",
         billing_email: form.get("company_email") || email,
-        plan_code: form.get("plan_code") || "base",
+        plan_code: chosenPlan,
+        selected_modules: chosenModules,
       };
     } else if (isForgot) {
       payload = { email: email };
@@ -174,7 +211,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       }
 
       if (isLogin) {
-        window.location.href = "/dashboard";
+        router.push("/dashboard");
         return;
       }
 
@@ -321,22 +358,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                   </div>
                   <div className="auth-field-row">
                     <label className="auth-field">
-                      <span>{locale === "en" ? "Country" : "Pays"}</span>
-                      <select name="country" defaultValue="Canada" required>
-                        <option value="Canada">{regionNames.of("CA") ?? "Canada"}</option>
-                        <option value="France">{regionNames.of("FR") ?? "France"}</option>
-                        <option value="États-Unis">{regionNames.of("US") ?? "États-Unis"}</option>
-                        <option value="Belgique">{regionNames.of("BE") ?? "Belgique"}</option>
-                        <option value="Suisse">{regionNames.of("CH") ?? "Suisse"}</option>
-                        <option value="Autre">{locale === "en" ? "Other" : "Autre"}</option>
-                      </select>
+                      <span>{locale === "en" ? "Country code (ISO)" : "Code pays (ISO)"}</span>
+                      <input name="country" defaultValue={localeDefaults?.bcp47.split('-').at(-1)} maxLength={2} minLength={2} required />
                     </label>
                     <label className="auth-field">
                       <span>{locale === "en" ? "Currency" : "Devise"}</span>
-                      <select name="currency_code" defaultValue="CAD" required>
-                        <option value="CAD">{currencyExample("CAD")}</option>
-                        <option value="USD">{currencyExample("USD")}</option>
-                        <option value="EUR">{currencyExample("EUR")}</option>
+                      <select name="currency_code" defaultValue={localeDefaults?.currency} required>
+                        {[...new Set(CANONICAL_LOCALES.map(item => item.currency))].map(currency => <option key={currency} value={currency}>{currencyExample(currency)}</option>)}
                       </select>
                     </label>
                   </div>
@@ -344,12 +372,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <AuthField name="company_email" label={s.billingEmail} type="email" autoComplete="email" placeholder={s.billingEmail} />
                     <label className="auth-field">
                       <span>{locale === "en" ? "Formula / Plan" : "Formule d'abonnement"}</span>
-                      <select name="plan_code" defaultValue="base" required>
-                        <option value="base">{locale === "en" ? "Base ($29.99/mo - 6,500 credits)" : "Base (29.99 $/mois - 6 500 crédits)"}</option>
-                        <option value="professional">{locale === "en" ? "Professional ($49.99/mo - 25,000 credits)" : "Professional (49.99 $/mois - 25 000 crédits)"}</option>
+                      <select name="plan_code" value={chosenPlan} onChange={event => { setChosenPlan(event.target.value); setChosenModules([]); }} required>
+                        {plans.map(plan => <option key={plan.code} value={plan.code}>{plan.name} · {plan.requires_sales_contact ? (locale === "en" ? "Contact sales" : "Contacter les ventes") : plan.monthly_price_usd == null ? t.navigation.billing : `${new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(plan.monthly_price_usd)} USD/${locale === "en" ? "month" : "mois"}`}</option>)}
                       </select>
                     </label>
                   </div>
+                  {registrationPlan?.requires_sales_contact && <Link href="/contact" className="text-sm underline">{locale === "en" ? "Contact sales" : "Contacter les ventes"}</Link>}
+                  <label className="auth-field"><span>{locale === "en" ? "Timezone" : "Fuseau horaire"}</span><input name="timezone" value={timezone} onChange={event => setTimezone(event.target.value)} required /></label>
+                  <fieldset className="space-y-2"><legend className="text-sm font-semibold">{t.navigation.agentsAi} · {chosenModules.length}/{registrationPlan?.module_limit ?? '∞'}</legend><div className="grid gap-2 sm:grid-cols-2">{registrationPlan?.modules.map(module => <label key={module.key} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={chosenModules.includes(module.key)} disabled={!module.selectable || !chosenModules.includes(module.key) && registrationPlan.module_limit != null && chosenModules.length >= registrationPlan.module_limit} onChange={event => setChosenModules(event.target.checked ? [...chosenModules, module.key] : chosenModules.filter(key => key !== module.key))} /><span>{module.display_name}</span></label>)}</div></fieldset>
                 </>
               )}
 
@@ -461,7 +491,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               )}
 
               {(!isSuccess || isLogin) && (
-                <button className="auth-submit" type="submit" disabled={busy}>
+                <button className="auth-submit" type="submit" disabled={busy || isRegister && (!registrationPlan || registrationPlan.requires_sales_contact)}>
                   {busy ? (
                     <LoaderCircle className="spin" size={18} />
                   ) : (

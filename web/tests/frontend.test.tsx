@@ -204,7 +204,7 @@ describe("native Voice module read-only selection", () => {
     regulatory_requirements: [], regulatory_status: "unknown",
   };
 
-  function mockVoice(enabled: boolean) {
+  function mockVoice(enabled: boolean, purchaseAllowed = false) {
     const calls: { path: string; method: string }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input, options) => {
       const path = String(input); calls.push({ path, method: options?.method ?? "GET" });
@@ -212,6 +212,8 @@ describe("native Voice module read-only selection", () => {
       if (path.endsWith('/voice/capabilities')) return Response.json({ tenant_id: 'voice-tenant', subscription_plan: 'base', subscription_status: 'active', enabled_modules: enabled ? ['voice', 'retail'] : ['retail'], plan_compatible_modules: ['voice', 'retail'], available_agents: ['retail'], permissions: ['ai:use', 'modules:manage'], locale: 'fr', timezone: 'America/Toronto', authorized_sources: { sources: [] }, language_matrix: LOCALES.map(item => ({ locale: item.code, UI_TRANSLATION_SUPPORTED: true, STT_SUPPORTED: null, LLM_LANGUAGE_SUPPORTED: null, TTS_SUPPORTED: null, LIVE_AUDIO_VALIDATED: false, FULLY_SUPPORTED: false })) });
       if (path.endsWith('/voice/status')) return Response.json({ voice_status: 'NOT_CONFIGURED', business_number: null, call_count: 0, call_minutes: 0, voice_ai_credits_charged: 0, recent_calls: [], data_freshness: { freshness_status: 'SYNCED' } });
       if (path.includes('/voice/numbers/search?')) return Response.json({ offers: [offer] });
+      if (path.includes('/voice/numbers/quote?')) return Response.json({ offer, quote_token: 'tenant-scoped-signed-quote', purchase_allowed: purchaseAllowed, expires_in_seconds: 300 });
+      if (path.endsWith('/voice/numbers/provision')) return Response.json({ status: 'ACTIVE', number: { id: 'owned-number' } });
       if (path.endsWith('/sources/context')) return Response.json({ state: 'NO_SOURCE_SELECTED', sources: [] });
       if (path.endsWith('/sources')) return Response.json([]);
       return Response.json({});
@@ -251,6 +253,27 @@ describe("native Voice module read-only selection", () => {
     expect(screen.queryByRole('button', { name: VOICE_NUMBER_COPY.fr.search })).not.toBeInTheDocument();
     expect(calls.some(item => item.path.includes('/voice/numbers/search'))).toBe(false);
     expect(calls.every(item => item.method === 'GET')).toBe(true);
+  });
+
+  it("requires a current quote and explicit confirmation before provisioning", async () => {
+    window.localStorage.setItem('avenqo-locale', 'en');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const calls = mockVoice(true, true);
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    await screen.findByRole('button', { name: VOICE_NUMBER_COPY.en.search });
+    fireEvent.change(screen.getByLabelText(VOICE_NUMBER_COPY.en.country), { target: { value: 'CA' } });
+    fireEvent.click(screen.getByRole('button', { name: VOICE_NUMBER_COPY.en.search }));
+    fireEvent.click(await screen.findByRole('radio', { name: `${VOICE_SELECTION_COPY.en[3]} ${offer.phone_number}` }));
+    fireEvent.click(screen.getByRole('button', { name: VOICE_SELECTION_COPY.en[0] }));
+    await screen.findByText(/300s/);
+    const quoteCall = calls.find(item => item.path.includes('/voice/numbers/quote?'));
+    expect(quoteCall?.method).toBe('GET');
+    expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: VOICE_NUMBER_COPY.en.purchase }));
+    await waitFor(() => expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(true));
+    const purchase = calls.find(item => item.path.endsWith('/voice/numbers/provision'));
+    expect(purchase?.method).toBe('POST');
+    expect(confirm).toHaveBeenCalledTimes(1);
   });
 });
 

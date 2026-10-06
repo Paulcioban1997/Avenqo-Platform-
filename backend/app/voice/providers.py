@@ -100,15 +100,38 @@ class TelnyxClient:
             "id", "phone_number", "status", "country_iso_alpha2", "phone_number_type", "connection_id", "purchased_at",
         ) if key in raw}
 
+    async def number_requirements(self, phone_number: str, country_code: str, number_type: str) -> dict[str, object]:
+        response = await self._request("GET", "/regulatory_requirements", params={
+            "filter[phone_number]": phone_number, "filter[country_code]": country_code,
+            "filter[phone_number_type]": number_type, "filter[action]": "ordering",
+        })
+        matches = [item for item in response.get("data", []) if isinstance(item, dict)
+            and item.get("country_code") == country_code and item.get("phone_number_type") == number_type and item.get("action") == "ordering"]
+        if len(matches) != 1 or not isinstance(matches[0].get("regulatory_requirements"), list):
+            return {"status": "unknown", "requirements": []}
+        requirements = [{key: item[key] for key in ("id", "name", "description", "field_type", "acceptance_criteria") if key in item}
+            for item in matches[0]["regulatory_requirements"] if isinstance(item, dict)]
+        return {"status": "requirements_required" if requirements else "verified_no_requirements", "requirements": requirements}
+
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
 
-    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None) -> None:
+    async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
+        await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
+            "command_id": command_id, "client_state": client_state,
+            "minimum_digits": 6, "maximum_digits": 12, "maximum_tries": 1,
+            "terminating_digit": "#", "valid_digits": "0123456789", "timeout_millis": 30000,
+        })
+
+    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         payload: dict[str, object] = {"to": destination, "timeout_secs": 30}
         if caller_id:
             payload["from"] = caller_id
         if command_id:
             payload["command_id"] = command_id
+        if call_reference:
+            payload["custom_headers"] = [{"name": "X-Avenqo-Call-ID", "value": call_reference}]
+            payload["mute_dtmf"] = "both"
         await self._request("POST", f"/calls/{call_control_id}/actions/transfer", json=payload)
 
     async def hangup(self, call_control_id: str) -> None:

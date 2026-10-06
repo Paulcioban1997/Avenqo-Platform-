@@ -95,6 +95,7 @@ class VoiceNumberManagementService:
             company_id=tenant.company_id, config_id=config.id if config is not None else None,
             phone_number=phone_number, country_code=country, number_type=number_type, provider="telnyx",
             provider_number_id=str(record["id"]), status="ACTIVE", capabilities=["voice"],
+            provider_connection_id=str(record["connection_id"]),
             regulatory_status="unknown", regulatory_requirements=[],
             purchased_at=datetime.fromisoformat(str(purchased_at).replace("Z", "+00:00")) if purchased_at else None,
         )
@@ -154,7 +155,7 @@ class VoiceNumberManagementService:
         if not connection_id:
             raise VoiceNumberOwnerActionRequired("Configure a Telnyx Call Control connection before purchasing a number.")
         phone_number = str(offer.get("phone_number") or "")
-        if not phone_number.startswith("+") or not offer.get("provider_number_id"):
+        if not re.fullmatch(r"\+[1-9]\d{7,14}", phone_number) or offer.get("is_orderable") is False:
             raise ValueError("A provider-verified E.164 number offer is required")
         order = {
             "phone_number": phone_number,

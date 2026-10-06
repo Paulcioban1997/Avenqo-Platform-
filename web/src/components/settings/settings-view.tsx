@@ -10,15 +10,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
-  Zap,
   CreditCard,
-  Plug,
-  Database,
   RefreshCw,
-  ExternalLink,
   ChevronRight,
-  Info,
-  Phone,
   Search,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -220,39 +214,6 @@ export function SettingsView() {
     }
   };
 
-  const purchaseVoiceNumber = async (offer: VoiceNumberOffer) => {
-    const monthlyPrice = offer.monthly_cost == null
-      ? voiceNumberCopy.monthlyPrice
-      : new Intl.NumberFormat(locale, { style: "currency", currency: offer.monthly_cost_currency || "USD" }).format(offer.monthly_cost);
-    if (!window.confirm(`${voiceNumberCopy.purchase}: ${offer.phone_number} · ${monthlyPrice}`)) return;
-    setVoiceNumberBusy(true);
-    try {
-      const response = await fetch("/api/v1/voice/numbers/provision", {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
-          country_code: voiceSearch.countryCode.trim(),
-          region: voiceSearch.region.trim() || null,
-          locality: voiceSearch.locality.trim() || null,
-          number_type: offer.number_type,
-          phone_number: offer.phone_number,
-          confirmed: true,
-        }),
-      });
-      if (!response.ok) throw new Error("number_provision_unavailable");
-      const result = await response.json();
-      setVoiceNumberNeedsAction(result.status !== "ACTIVE");
-      if (result.status === "ACTIVE") {
-        setVoiceOffers([]);
-        void fetchData();
-      }
-    } catch {
-      setVoiceNumberNeedsAction(true);
-    } finally {
-      setVoiceNumberBusy(false);
-    }
-  };
-
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -441,7 +402,6 @@ export function SettingsView() {
                   </div>
                   {voiceNumberNeedsAction && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t.integrations.statusNeedsAttention}</p>}
                   {voiceOffers.map((offer) => {
-                    const blocked = offer.monthly_cost == null || (offer.regulatory_requirements?.length ?? 0) > 0;
                     const price = offer.monthly_cost == null ? t.common.insufficientData : new Intl.NumberFormat(locale, { style: "currency", currency: offer.monthly_cost_currency || "USD" }).format(offer.monthly_cost);
                     return <div key={offer.phone_number} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3 dark:border-white/[0.06]">
                       <div>
@@ -449,7 +409,7 @@ export function SettingsView() {
                         <div className="text-[10px] text-slate-500">{voiceNumberCopy.monthlyPrice}: {price}</div>
                         {!!offer.regulatory_requirements?.length && <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">{voiceNumberCopy.regulatoryRequirements}: {offer.regulatory_requirements.join(", ")}</div>}
                       </div>
-                      <button type="button" onClick={() => void purchaseVoiceNumber(offer)} disabled={blocked || voiceNumberBusy} className="rounded border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-40 dark:border-white/10">{blocked ? t.integrations.statusNeedsAttention : voiceNumberCopy.purchase}</button>
+                      <Link href="/voice" className="rounded border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-white/10">{t.navigation.voiceAi}</Link>
                     </div>;
                   })}
                 </div>

@@ -13,6 +13,8 @@ class PlanResponse(BaseModel):
     monthly_price_usd: float | int | None
     monthly_price: float | int | None = None
     currency: str = "CAD"
+    module_limit: int | None = None
+    modules: list[dict[str, str | bool]] = Field(default_factory=list)
 
 
 class CheckoutRequest(BaseModel):

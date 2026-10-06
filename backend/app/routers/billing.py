@@ -50,6 +50,7 @@ from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
 from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAIProviderAttempt
 from payments import PLANS
+from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,11 @@ def plans() -> list[PlanResponse]:
         monthly_price_usd=plan.monthly_price_usd,
         monthly_price=plan.monthly_price_usd,
         currency="CAD",
+        module_limit=plan.max_selectable_modules,
+        modules=[{"key": module.key, "display_name": module.display_name,
+            "description": module.description, "availability": module.availability.value,
+            "selectable": module.is_available and module.availability == ModuleAvailability.AVAILABLE}
+            for module in BUSINESS_MODULE_REGISTRY if plan.allows_module(module.key)],
     ) for plan in PLANS]
 
 

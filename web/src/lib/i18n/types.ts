@@ -179,9 +179,12 @@ export type RegionCode =
 
 export type LocaleDefinition = {
   code: LocaleCode;
+  bcp47: string;
   region: RegionCode;
   flag: string;
   nativeName: string;
   englishName: string;
   direction: "ltr" | "rtl";
+  currency: string;
+  timezone: string;
 };

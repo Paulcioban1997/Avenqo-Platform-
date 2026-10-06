@@ -17,7 +17,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from math import isfinite
 from httpx import HTTPStatusError, TimeoutException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
@@ -43,9 +44,14 @@ from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabi
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.ai.central.service import CentralAIService
-from backend.app.core.locale_catalog import resolve_locale
+from backend.app.core.locale_catalog import resolve_locale, detect_spoken_language
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.voice.languages import voice_language_matrix
+from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
+from backend.app.voice.quotes import signed_number_quote, verify_number_quote, valid_cost
+from backend.app.schemas.voice import VoicePinRequest
+from backend.app.schemas.voice import VoiceSetupRequest, VoiceOwnedNumberRequest
+from backend.app.services.audit_log_service import AuditLogService
 from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
@@ -73,6 +79,113 @@ from shared.ai_engine.contracts import TenantContext
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
 manage_voice = require_permission("modules:manage")
 logger = logging.getLogger("avenqo.voice")
+
+
+@router.post("/setup", dependencies=[Depends(require_active_subscription)])
+async def setup_tenant_voice(
+    request: VoiceSetupRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    if "modules:manage" not in permissions_for(membership.role):
+        raise HTTPException(status_code=403, detail="Module management permission is required")
+    if not request.confirmed:
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "explicit_setup_confirmation_required"}
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"voice_setup:{identity.user.company_id}"})
+    number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.id == request.number_id,
+        VoicePhoneNumber.company_id == identity.user.company_id, VoicePhoneNumber.status == "ACTIVE"))
+    if number is None:
+        raise HTTPException(status_code=404, detail="Active tenant number not found")
+    service = _orchestrator(db, settings)
+    existing = service.config_for_tenant(TenantContext(identity.user.company_id))
+    if existing is not None:
+        if existing.telnyx_phone_number != number.phone_number or number.config_id not in {None, existing.id}:
+            raise HTTPException(status_code=409, detail="Existing Voice configuration conflicts with this number")
+        if number.config_id is None:
+            number.config_id = existing.id; db.commit()
+        return {"status": "CONFIGURED" if existing.enabled else "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(existing).model_dump(mode="json")}
+    company = identity.user.company
+    values = VoiceConfigRequest(business_name=company.name, timezone_name=company.timezone or "UTC",
+        preferred_language=company.preferred_language or "fr", telnyx_phone_number=number.phone_number,
+        opening_hours={}, services=[], enabled=False).model_dump(mode="json")
+    try:
+        config, _one_time_secret = await service.upsert_config(TenantContext(company.id, identity.user.id), values)
+    except IntegrityError:
+        db.rollback()
+        existing = service.config_for_tenant(TenantContext(company.id))
+        if existing is None or existing.telnyx_phone_number != number.phone_number:
+            raise HTTPException(status_code=409, detail="Voice configuration changed; reload setup") from None
+        return {"status": "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(existing).model_dump(mode="json")}
+    AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_setup_created", target_type="voice_configuration",
+        target_id=str(config.id), company_id=company.id, metadata={"audio_provider_configured": False})
+    return {"status": "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(config).model_dump(mode="json")}
+
+
+@router.post("/numbers/import", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_import", "rate_limit_ai_per_minute"))])
+async def import_owned_voice_number(
+    request: VoiceOwnedNumberRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    try:
+        number = await _voice_number_service(settings).register_owned_number(db,
+            TenantContext(identity.user.company_id, identity.user.id), request.phone_number, confirmed=request.confirmed)
+        db.commit(); db.refresh(number)
+        return {"status": "ACTIVE", "number": _voice_number_response(number)}
+    except (ValueError, PermissionError):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Owned number cannot be imported in this tenant state") from None
+
+
+@router.put("/auth/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
+def set_user_voice_pin(
+    request: VoicePinRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    if "ai:use" not in permissions_for(membership.role):
+        raise HTTPException(status_code=403, detail="AI permission is required")
+    try:
+        VoiceCallerAuth(db, settings).set_pin(TenantContext(identity.user.company_id, identity.user.id),
+            "USER", identity.user.id, request.pin.get_secret_value())
+        AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_pin_updated", target_type="user",
+            target_id=str(identity.user.id), company_id=identity.user.company_id, metadata={"credential_type": "USER"}, commit=False)
+        db.commit()
+    except (ValueError, PermissionError):
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Voice credential setup is unavailable") from None
+    return {"status": "CONFIGURED"}
+
+
+@router.put("/auth/customers/{customer_id}/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_customer_pin_setup", "rate_limit_ai_per_minute"))])
+def set_customer_voice_pin(
+    customer_id: UUID,
+    request: VoicePinRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    try:
+        VoiceCallerAuth(db, settings).set_pin(TenantContext(identity.user.company_id, identity.user.id),
+            "CUSTOMER", customer_id, request.pin.get_secret_value())
+        AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_customer_pin_updated", target_type="crm_client",
+            target_id=str(customer_id), company_id=identity.user.company_id, metadata={"credential_type": "CUSTOMER"}, commit=False)
+        db.commit()
+    except (ValueError, PermissionError):
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Voice credential setup is unavailable") from None
+    return {"status": "CONFIGURED"}
 
 
 @router.get("/capabilities", dependencies=[Depends(require_active_subscription)])
@@ -156,6 +269,8 @@ def get_voice_status(
         "module_entitled": voice_module_active,
         "number_status": active_number.status if active_number is not None else "READY_FOR_OWNER_ACTION" if not telnyx_configured else "NO_NUMBER_ASSIGNED",
         "business_number": active_number.phone_number if active_number is not None else config.telnyx_phone_number if config is not None else None,
+        "number_id": str(active_number.id) if active_number is not None else None,
+        "configuration_status": "AUDIO_READY" if config is not None and config.enabled else "AUDIO_CONFIGURATION_REQUIRED" if config is not None else "NOT_CONFIGURED",
         "country": active_number.country_code if active_number is not None else None,
         "region": active_number.region if active_number is not None else None,
         "locality": active_number.locality if active_number is not None else None,
@@ -257,6 +372,43 @@ async def search_voice_numbers(
         raise HTTPException(status_code=502, detail="Voice number search is temporarily unavailable") from exc
 
 
+@router.get("/numbers/quote", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_quote", "rate_limit_ai_per_minute"))])
+async def quote_voice_number(
+    phone_number: str,
+    country_code: str,
+    number_type: str | None = None,
+    region: str | None = None,
+    locality: str | None = None,
+    identity: CurrentIdentity = Depends(manage_voice),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    if "modules:manage" not in permissions_for(membership.role):
+        raise HTTPException(status_code=403, detail="Module management permission is required")
+    try:
+        search = await _voice_number_service(settings).search(PhoneNumberSearch(country_code, region, locality, number_type, 100))
+        offer = next((item for item in search["offers"] if item["phone_number"] == phone_number), None)
+        if offer is None:
+            raise HTTPException(status_code=409, detail="The selected number is not currently available")
+        try:
+            regulatory = await TelnyxClient(settings).number_requirements(phone_number, country_code.upper(), offer["number_type"])
+        except Exception:
+            regulatory = {"status": "unknown", "requirements": []}
+        offer.update(regulatory_status=regulatory["status"], regulatory_requirements=regulatory["requirements"])
+        token = signed_number_quote(settings, identity.user.company_id, identity.user.id, offer)
+        return {"offer": offer, "quote_token": token, "expires_in_seconds": 300,
+            "purchase_allowed": regulatory["status"] == "verified_no_requirements"}
+    except HTTPException:
+        raise
+    except (ValueError, RuntimeError, TimeoutException, HTTPStatusError):
+        raise HTTPException(status_code=422, detail="A complete provider number quote is unavailable") from None
+    except Exception:
+        logger.warning("Telnyx number quote failed", extra={"company_id": str(identity.user.company_id)})
+        raise HTTPException(status_code=502, detail="Voice number quote is temporarily unavailable") from None
+
+
 @router.post(
     "/numbers/provision",
     dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_provision", "rate_limit_ai_per_minute"))],
@@ -266,9 +418,12 @@ async def provision_voice_number(
     identity: CurrentIdentity = Depends(manage_voice),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    membership=Depends(get_active_ai_membership),
 ) -> dict[str, Any]:
     company_id = identity.user.company_id
     _ensure_voice_access(db, company_id)
+    if "modules:manage" not in permissions_for(membership.role):
+        raise HTTPException(status_code=403, detail="Module management permission is required")
     existing = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == request.phone_number))
     if existing is not None:
         if existing.company_id != company_id:
@@ -279,7 +434,14 @@ async def provision_voice_number(
         return {"status": "READY_FOR_OWNER_ACTION", "reason": "explicit_purchase_confirmation_required"}
     if not settings.telnyx_voice_connection_id:
         return {"status": "READY_FOR_OWNER_ACTION", "reason": "TELNYX_VOICE_CONNECTION_ID_required"}
+    try:
+        quote = verify_number_quote(settings, request.quote_token, company_id, identity.user.id, request.phone_number)
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=409, detail="A current tenant-owned confirmed quote is required") from None
+    if quote.get("regulatory_status") != "verified_no_requirements":
+        return {"status": "READY_FOR_OWNER_ACTION", "reason": "regulatory_verification_required_no_order_placed"}
     manager = _voice_number_service(settings)
+    reservation = None
     try:
         search = await manager.search(PhoneNumberSearch(
             request.country_code, request.region, request.locality, request.number_type, 100
@@ -287,6 +449,13 @@ async def provision_voice_number(
         offer = next((item for item in search["offers"] if item["phone_number"] == request.phone_number), None)
         if offer is None:
             raise HTTPException(status_code=409, detail="The selected number is no longer available")
+        costs = offer.get("cost_information") or {}
+        if quote["country_code"] != request.country_code.upper() or quote["number_type"] != offer["number_type"] or quote["currency"] != str(costs.get("currency") or "").upper() or quote["monthly_cost"] != valid_cost(costs.get("monthly_cost")) or quote["upfront_cost"] != valid_cost(costs.get("upfront_cost")):
+            raise HTTPException(status_code=409, detail="The provider quote changed; confirm a new quote")
+        regulatory = await TelnyxClient(settings).number_requirements(request.phone_number, request.country_code.upper(), offer["number_type"])
+        if regulatory["status"] != "verified_no_requirements":
+            return {"status": "READY_FOR_OWNER_ACTION", "reason": "regulatory_verification_required_no_order_placed"}
+        offer["regulatory_status"] = regulatory["status"]
         if offer.get("monthly_cost") is None:
             return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_price_unavailable_no_order_placed"}
         if offer.get("regulatory_requirements"):
@@ -309,6 +478,7 @@ async def provision_voice_number(
             status="ORDERING",
             monthly_cost=offer["monthly_cost"],
             monthly_cost_currency=offer["monthly_cost_currency"],
+            upfront_cost=quote["upfront_cost"], provider_connection_id=settings.telnyx_voice_connection_id,
         )
         db.add(reservation)
         try:
@@ -334,20 +504,30 @@ async def provision_voice_number(
     except VoiceNumberOwnerActionRequired as exc:
         return {"status": "READY_FOR_OWNER_ACTION", "reason": str(exc)}
     except Exception as exc:
+        if reservation is None:
+            raise HTTPException(status_code=502, detail="Number offer verification is unavailable; no order placed") from None
         reservation.status = "OUTCOME_UNKNOWN"
         db.commit()
-        logger.exception("Telnyx number order failed", extra={"company_id": str(company_id)})
+        logger.warning("Telnyx number order outcome requires reconciliation", extra={"company_id": str(company_id)})
         return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_order_outcome_unknown", "number": _voice_number_response(reservation)}
 
     order_data = order.get("data") if isinstance(order.get("data"), dict) else {}
+    reservation.provider_order_id = str(order_data["id"]) if order_data.get("id") else None
     returned_numbers = order_data.get("phone_numbers") or []
     number_data = returned_numbers[0] if returned_numbers and isinstance(returned_numbers[0], dict) else {}
-    provider_number_id = number_data.get("id")
+    provider_number_id = None
     order_status = str(number_data.get("status") or order_data.get("status") or "order_outcome_unknown").upper()
     reservation.provider_number_id = str(provider_number_id) if provider_number_id else None
-    reservation.status = "ACTIVE" if order_status in {"SUCCESS", "ACTIVE", "COMPLETED"} else (
+    reservation.status = "VERIFYING" if order_status in {"SUCCESS", "ACTIVE", "COMPLETED"} else (
         "PENDING_REGULATORY" if reservation.regulatory_requirements else order_status
     )
+    if reservation.status == "VERIFYING":
+        try:
+            owned = await TelnyxClient(settings).get_owned_number(request.phone_number)
+            reservation.provider_number_id = str(owned["id"])
+            reservation.status = "ACTIVE"
+        except Exception:
+            reservation.status = "VERIFYING"
     reservation.purchased_at = datetime.now(timezone.utc) if reservation.status == "ACTIVE" else None
     db.commit()
     db.refresh(reservation)
@@ -571,7 +751,7 @@ async def telnyx_webhook(
     data, call_payload = _call_event_data(envelope)
     event_type = str(data.get("event_type") or "")
     call_control_id = str(call_payload.get("call_control_id") or "")
-    if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup"}:
+    if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup", "call.gather.ended"}:
         return {"received": True, "handled": False}
     event_id = str(data.get("id") or "")
     if not event_id or len(event_id) > 255 or not call_control_id or len(call_control_id) > 255:
@@ -651,6 +831,23 @@ async def telnyx_webhook(
             call.status = "ended"
         db.commit()
         return {"received": True}
+    if event_type == "call.gather.ended":
+        if call.ended_at is not None or call.status not in {"routed", "in_progress"}:
+            return {"received": True, "authenticated": False}
+        auth_controller = VoiceCallerAuth(db, settings)
+        if not auth_controller.valid_challenge(call, str(call_payload.get("client_state") or "")):
+            return {"received": True, "authenticated": False}
+        call.pin_challenge_hash = None
+        call.pin_challenge_expires_at = None
+        digits = call_payload.get("digits")
+        result = auth_controller.verify_gather(call, digits if isinstance(digits, str) else "")
+        receipt.result = {**receipt.result, "authenticated": result["authenticated"]}
+        AuditLogService(db).record(actor_user_id=call.authenticated_user_id if result["authenticated"] else None,
+            action="voice_pin_authentication_succeeded" if result["authenticated"] else "voice_pin_authentication_failed",
+            target_type="voice_call", target_id=str(call.id), company_id=call.company_id,
+            metadata={"authenticated": result["authenticated"]}, commit=False)
+        db.commit()
+        return {"received": True, "authenticated": result["authenticated"]}
     if event_type == "call.bridged":
         if call.ended_at is None and call.status in {"routed", "routing", "in_progress"}:
             call.status = "in_progress"
@@ -686,7 +883,7 @@ async def telnyx_webhook(
             await service.telnyx.answer_call(call.telnyx_call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
         command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
-        await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number, command_id=command_id)
+        await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
     except Exception as exc:
         db.refresh(call)
         if call.ended_at is None:
@@ -725,7 +922,22 @@ async def retell_webhook(
     if not call_id:
         raise HTTPException(status_code=422, detail="Retell call_id is required")
     caller_phone = str(call_data.get("from_number") or call_data.get("from") or "") or None
-    call = service._resolve_call(config, call_id, caller_phone=caller_phone)
+    sip_headers = call_data.get("custom_sip_headers") if isinstance(call_data.get("custom_sip_headers"), dict) else {}
+    reference = next((value for key, value in sip_headers.items() if key.casefold() == "x-avenqo-call-id"), None)
+    if reference is None:
+        call = db.scalar(select(VoiceCall).where(VoiceCall.config_id == config.id, VoiceCall.retell_call_id == call_id))
+    else:
+        try:
+            reference_id = UUID(str(reference))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid call correlation") from None
+        call = db.scalar(select(VoiceCall).where(VoiceCall.id == reference_id, VoiceCall.company_id == config.company_id, VoiceCall.config_id == config.id))
+        if call is not None and call.retell_call_id not in {None, call_id}:
+            raise HTTPException(status_code=409, detail="Call correlation conflict")
+        if call is not None:
+            call.retell_call_id = call_id
+    if call is None:
+        raise HTTPException(status_code=404, detail="Correlated tenant call not found")
     if event in {"call_started", "call_connected"}:
         call.status = "in_progress"
         db.commit()
@@ -775,6 +987,8 @@ router.add_api_route("/tools/take_message", _tool_route("take_message"), methods
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
 router.add_api_route("/tools/request_caller_verification", _tool_route("request_caller_verification"), methods=["POST"],
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
+router.add_api_route("/tools/request_pin_authentication", _tool_route("request_pin_authentication"), methods=["POST"],
+                     dependencies=[Depends(rate_limit("voice_pin_request", "rate_limit_ai_per_minute"))])
 router.add_api_route("/tools/verify_caller", _tool_route("verify_caller"), methods=["POST"],
                      dependencies=[Depends(rate_limit("voice_tool", "rate_limit_ai_per_minute"))])
 
@@ -811,12 +1025,20 @@ async def _voice_central_execute(
     permissions = frozenset(permissions_for(membership.role))
     if "ai:use" not in permissions:
         return {"success": False, "status": "not_authorized", "error": "ai_permission_required"}
+    auth_session = VoiceCallerAuth(db, settings).valid_session(call)
+    if auth_session is None:
+        return {"success": False, "status": "not_authorized", "error": "caller_verification_required"}
+    permissions = permissions.intersection(auth_session.permissions)
 
-    question = str(request.arguments.get("question") or request.arguments.get("transcript") or "").strip()
+    question = redact_voice_secrets(request.arguments.get("question") or request.arguments.get("transcript") or "").strip()
     if not question or len(question) > 12_000:
         raise HTTPException(status_code=422, detail="A valid business metrics question is required")
+    detection = detect_spoken_language(question, preferred_locale=call.locale or config.preferred_language)
+    if detection.locale is not None:
+        call.locale = detection.locale
 
-    action_key = voice_action_key(config.id, call.id, "get_business_metrics" if metrics_only else "central_ai", request.action_id)
+    action_key = voice_action_key(config.id, call.id, "get_business_metrics" if metrics_only else "central_ai", request.action_id,
+        f"{auth_session.principal_id}:{auth_session.authenticated_at.isoformat()}")
     legacy = db.scalar(select(VoiceToolAction).where(
         VoiceToolAction.config_id == config.id, VoiceToolAction.action_id == request.action_id,
     ))
@@ -863,7 +1085,7 @@ async def _voice_central_execute(
             config.company_id,
             user.id,
             f"Voice call {call.id}",
-            config.preferred_language,
+            call.locale or config.preferred_language,
         )
         call.central_conversation_id = conversation.id
         db.commit()
@@ -879,7 +1101,7 @@ async def _voice_central_execute(
             permissions=permissions,
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=request_id,
-            user_language=config.preferred_language,
+            user_language=call.locale or config.preferred_language,
             company_country=company.country or "",
             company_currency=company.currency_code,
             company_timezone=company.timezone or config.timezone_name,

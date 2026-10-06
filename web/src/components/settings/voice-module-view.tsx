@@ -9,6 +9,7 @@ import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
+import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 
 interface Capabilities {
   tenant_id: string;
@@ -25,6 +26,8 @@ interface Capabilities {
 }
 interface VoiceStatus {
   voice_status: string;
+  number_id: string | null;
+  configuration_status: string;
   business_number: string | null;
   country: string | null;
   region: string | null;
@@ -47,6 +50,7 @@ interface Offer {
   regulatory_requirements: unknown[];
   regulatory_status: string;
 }
+interface NumberQuote { offer: Offer; quote_token: string; purchase_allowed: boolean; expires_in_seconds: number }
 
 export function VoiceModuleView() {
   const { identity, sourceRevision } = useSession();
@@ -66,6 +70,9 @@ export function VoiceModuleView() {
   const [status, setStatus] = useState<{ tenant: string; data: VoiceStatus } | null>(null);
   const [result, setResult] = useState<{ tenant: string; offers: Offer[] } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [quote, setQuote] = useState<NumberQuote | null>(null);
+  const [ownedNumber, setOwnedNumber] = useState("");
+  const [pinMessage, setPinMessage] = useState("");
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({ country_code: "", region: "", locality: "", area_code: "", prefix: "", number_type: "local" });
@@ -77,6 +84,7 @@ export function VoiceModuleView() {
     queueMicrotask(async () => {
       if (controller.signal.aborted) return;
       setContext(null); setResult(null); setSelected(null); setStatus(null); setError(false); setBusy(false);
+      setQuote(null); setOwnedNumber(""); setPinMessage("");
       if (!tenantId) return;
       try {
         const response = await fetch("/api/v1/voice/capabilities", { signal: controller.signal, cache: "no-store" });
@@ -109,13 +117,74 @@ export function VoiceModuleView() {
       ? new Intl.NumberFormat(locale, { style: "currency", currency: offer.cost_information.currency }).format(Number(value))
       : t.common.insufficientData;
   };
+  const messages = VOICE_AUTH_MESSAGES[locale] ?? VOICE_AUTH_MESSAGES.en;
+
+  async function refreshVoiceStatus() {
+    const response = await fetch("/api/v1/voice/status", { cache: "no-store" });
+    if (!response.ok) throw new Error("voice_status_unavailable");
+    setStatus({ tenant: tenantId ?? "", data: await response.json() });
+  }
+
+  async function importOwnedNumber() {
+    if (!tenantId || !ownedNumber || !window.confirm(`${ownedNumber} · ${messages[6]}`)) return;
+    setBusy(true); setError(false);
+    try {
+      const response = await fetch("/api/v1/voice/numbers/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone_number: ownedNumber, confirmed: true }) });
+      if (!response.ok) throw new Error("owned_number_import_unavailable");
+      setOwnedNumber(""); await refreshVoiceStatus();
+    } catch { setError(true); } finally { setBusy(false); }
+  }
+
+  async function configureOwnedNumber() {
+    if (!currentStatus?.number_id || !window.confirm(`${currentStatus.business_number} · ${messages[6]}`)) return;
+    setBusy(true); setError(false);
+    try {
+      const response = await fetch("/api/v1/voice/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ number_id: currentStatus.number_id, confirmed: true }) });
+      if (!response.ok) throw new Error("voice_setup_unavailable");
+      await refreshVoiceStatus();
+    } catch { setError(true); } finally { setBusy(false); }
+  }
+
+  async function saveVoicePin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const input = event.currentTarget.elements.namedItem("voice-pin") as HTMLInputElement;
+    const pin = input.value;
+    setPinMessage("");
+    try {
+      const response = await fetch("/api/v1/voice/auth/pin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
+      if (!response.ok) throw new Error("voice_pin_unavailable");
+      setPinMessage(messages[5]);
+    } catch { setPinMessage(company.connectionsGenericError); } finally { input.value = ""; }
+  }
+
+  async function requestQuote() {
+    const offer = offers.find(item => item.phone_number === selected);
+    if (!offer) return;
+    setQuote(null); setBusy(true); setError(false);
+    const params = new URLSearchParams({ phone_number: offer.phone_number, country_code: offer.country_code ?? filters.country_code, number_type: offer.number_type, ...(offer.region ? { region: offer.region } : {}), ...(offer.locality ? { locality: offer.locality } : {}) });
+    try {
+      const response = await fetch(`/api/v1/voice/numbers/quote?${params}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("number_quote_unavailable");
+      setQuote(await response.json());
+    } catch { setError(true); } finally { setBusy(false); }
+  }
+
+  async function confirmNumberPurchase() {
+    if (!quote || !quote.purchase_allowed || !window.confirm(`${quote.offer.phone_number} · ${selectionCopy[4]}: ${price(quote.offer, "upfront_cost")} · ${copy.monthlyPrice}: ${price(quote.offer, "monthly_cost")}`)) return;
+    setBusy(true); setError(false);
+    try {
+      const response = await fetch("/api/v1/voice/numbers/provision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone_number: quote.offer.phone_number, country_code: quote.offer.country_code ?? filters.country_code, region: quote.offer.region, locality: quote.offer.locality, number_type: quote.offer.number_type, confirmed: true, quote_token: quote.quote_token }) });
+      if (!response.ok) throw new Error("number_provision_unavailable");
+      setQuote(null); setSelected(null); setResult(null); await refreshVoiceStatus();
+    } catch { setError(true); } finally { setBusy(false); }
+  }
 
   async function search(event: React.FormEvent) {
     event.preventDefault();
     if (!tenantId || !enabled || !canManageVoice) return;
     searchAbort.current?.abort();
     const controller = new AbortController(); searchAbort.current = controller;
-    setBusy(true); setError(false); setSelected(null); setResult(null);
+    setBusy(true); setError(false); setSelected(null); setQuote(null); setResult(null);
     const params = new URLSearchParams({ country_code: filters.country_code.toUpperCase(), number_type: filters.number_type, limit: "10" });
     for (const key of ["region", "locality", "area_code", "prefix"] as const) if (filters[key].trim()) params.set(key, filters[key].trim());
     for (const feature of features) params.append("capabilities", feature);
@@ -149,6 +218,19 @@ export function VoiceModuleView() {
         <div className="text-slate-500">{active.locale} · {active.timezone} · {health.freshness}: {currentStatus?.data_freshness?.freshness_status ?? t.common.insufficientData}</div>
         <div className="text-xs text-slate-500">{active.authorized_sources.sources?.map(source => source.display_name ?? source.name ?? source.source_id).join(' · ')}</div>
       </section>
+      {enabled && canManageVoice && !currentStatus?.number_id && <form onSubmit={event => { event.preventDefault(); void importOwnedNumber(); }} className="flex flex-wrap items-end gap-3 border-t border-slate-200 pt-4 dark:border-white/10">
+        <label className="min-w-56 flex-1 space-y-1 text-xs"><span>{health.phone}</span><input aria-label={health.phone} value={ownedNumber} onChange={event => setOwnedNumber(event.target.value)} placeholder="+..." autoComplete="tel" className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
+        <button type="submit" disabled={busy || !ownedNumber} className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-40 dark:border-white/20">{messages[5]}</button>
+      </form>}
+      {enabled && canManageVoice && currentStatus?.number_id && currentStatus.configuration_status === "NOT_CONFIGURED" && <section className="space-y-3 border-t border-slate-200 pt-4 text-sm dark:border-white/10">
+        <p>{currentStatus.business_number} · {messages[6]}</p>
+        <button type="button" disabled={busy} onClick={() => void configureOwnedNumber()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{selectionCopy[0]}</button>
+      </section>}
+      {enabled && <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3 border-t border-slate-200 pt-4 dark:border-white/10">
+        <label className="min-w-48 space-y-1 text-xs"><span>{messages[4]}</span><input aria-label={messages[4]} name="voice-pin" type="password" inputMode="numeric" pattern="[0-9]{6,12}" minLength={6} maxLength={12} autoComplete="new-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
+        <button type="submit" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-white/20">{messages[5]}</button>
+        {pinMessage && <span role="status" className="text-xs">{pinMessage}</span>}
+      </form>}
       {!!currentStatus?.recent_calls?.length && <section className="space-y-2 text-sm"><h2 className="font-semibold">{health.calls}</h2>{currentStatus.recent_calls.map(call => <div key={call.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-white/10"><span>{call.started_at ? new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short', timeZone: active.timezone }).format(new Date(call.started_at)) : t.common.insufficientData}</span><span>{call.status}</span></div>)}</section>}
       <section className="space-y-4 border-t border-slate-200 pt-5 dark:border-white/10">
         <h2 className="font-semibold">{selectionCopy[0]}</h2>
@@ -164,6 +246,12 @@ export function VoiceModuleView() {
             <input type="radio" name="voice-number" aria-label={`${selectionCopy[3]} ${offer.phone_number}`} checked={selected === offer.phone_number} disabled={!offer.is_orderable} onChange={() => setSelected(offer.phone_number)} className="mt-1" />
             <div className="min-w-0 space-y-1 break-words"><div className="font-mono font-semibold">{offer.phone_number}</div><div>{[offer.country_code, offer.region, offer.locality, numberTypeLabel(offer.number_type)].filter(Boolean).join(' · ')}</div><div>{offer.capabilities.join(' · ')}</div><div>{selectionCopy[4]}: {price(offer, 'upfront_cost')} · {copy.monthlyPrice}: {price(offer, 'monthly_cost')}</div><div className="text-xs text-slate-500">{copy.regulatoryRequirements}: {offer.regulatory_status === 'unknown' ? t.common.insufficientData : JSON.stringify(offer.regulatory_requirements)}</div></div>
           </label>)}</div>
+          {selected && <button type="button" disabled={busy} onClick={() => void requestQuote()} className="rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-40 dark:border-white/20">{selectionCopy[0]}</button>}
+          {quote && <section className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-white/10">
+            <p>{quote.offer.phone_number} · {selectionCopy[4]}: {price(quote.offer, "upfront_cost")} · {copy.monthlyPrice}: {price(quote.offer, "monthly_cost")} · {quote.expires_in_seconds}s</p>
+            <p>{copy.regulatoryRequirements}: {quote.offer.regulatory_status === "verified_no_requirements" ? "0" : t.common.insufficientData}</p>
+            {quote.purchase_allowed && <button type="button" disabled={busy} onClick={() => void confirmNumberPurchase()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{copy.purchase}</button>}
+          </section>}
         </>}
       </section>
       <details className="border-t border-slate-200 pt-4 dark:border-white/10"><summary className="cursor-pointer text-sm font-semibold">{t.navigation.voiceAi} · STT / LLM / TTS</summary><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[650px] text-left text-xs"><thead><tr><th className="p-2">Locale</th>{['UI_TRANSLATION_SUPPORTED', 'STT_SUPPORTED', 'LLM_LANGUAGE_SUPPORTED', 'TTS_SUPPORTED', 'LIVE_AUDIO_VALIDATED'].map(field => <th key={field} className="p-2" title={field}>{field.replace('_SUPPORTED', '').replace('_TRANSLATION', '')}</th>)}</tr></thead><tbody>{active.language_matrix.map(item => <tr key={item.locale} className="border-b border-slate-100 dark:border-white/10"><td className="p-2">{item.locale}</td>{(['UI_TRANSLATION_SUPPORTED', 'STT_SUPPORTED', 'LLM_LANGUAGE_SUPPORTED', 'TTS_SUPPORTED', 'LIVE_AUDIO_VALIDATED'] as const).map(field => <td key={field} className="p-2">{item[field] === true ? <Check size={14} aria-label={billing.statusActive} /> : t.common.insufficientData}</td>)}</tr>)}</tbody></table></div></details>

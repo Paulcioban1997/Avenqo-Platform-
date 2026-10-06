@@ -36,11 +36,14 @@ def generate(locales: list[dict[str, str]]) -> None:
     web_entries = [
         {
             "code": locale["code"],
+            "bcp47": locale["bcp47"],
             "region": locale["region"],
             "flag": locale["flag"],
             "nativeName": locale["nativeName"],
             "englishName": locale["englishName"],
             "direction": locale["direction"],
+            "currency": locale["currency"],
+            "timezone": locale["timezone"],
         }
         for locale in locales
     ]
@@ -55,11 +58,14 @@ def generate(locales: list[dict[str, str]]) -> None:
             [
                 {
                     "code": locale["code"],
+                    "bcp47": locale["bcp47"],
                     "region": locale["region"],
                     "flag": locale["flag"],
                     "nativeName": locale["nativeName"],
                     "englishName": locale["englishName"],
                     "direction": locale["direction"],
+                    "currency": locale["currency"],
+                    "timezone": locale["timezone"],
                 }
                 for locale in locales
             ],

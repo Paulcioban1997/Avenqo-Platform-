@@ -38,6 +38,11 @@ from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.retail_source_service import RetailSourceNotFound, RetailSourceService
 from backend.app.voice.providers import RetellVoiceProvider, TelnyxClient, VoiceProvider
+from backend.app.voice.messages import voice_greeting
+from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
+from backend.app.voice.messages import voice_auth_message
+from backend.app.assistants.registry import build_default_assistant_registry, agent_entitlements
+from backend.app.ai.tools.business.crm_tools import CreateAppointmentTool, UpdateAppointmentTool, CancelAppointmentTool
 from shared.ai_engine.contracts import TenantContext
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -59,8 +64,9 @@ async def _tenant_lock(company_id: UUID) -> asyncio.Lock:
         return _tenant_async_locks.setdefault(company_id, asyncio.Lock())
 
 
-def voice_action_key(config_id: UUID, call_id: UUID, tool_name: str, action_id: str) -> str:
-    return hashlib.sha256(f"avenqo-voice-action:{config_id}:{call_id}:{tool_name}:{action_id}".encode("utf-8")).hexdigest()
+def voice_action_key(config_id: UUID, call_id: UUID, tool_name: str, action_id: str, actor_scope: str = "") -> str:
+    payload = f"avenqo-voice-action:{config_id}:{call_id}:{tool_name}:{action_id}"
+    return hashlib.sha256((payload + f":{actor_scope}" if actor_scope else payload).encode("utf-8")).hexdigest()
 
 
 def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str, Any]:
@@ -117,8 +123,8 @@ class VoiceOrchestrator:
         self.telnyx = telnyx or TelnyxClient(settings)
 
     @staticmethod
-    def greeting_for(business_name: str) -> str:
-        return f"Bonjour, {business_name.strip()}, assistant virtuel, cet appel peut être enregistré."
+    def greeting_for(business_name: str, locale: str = "fr") -> str:
+        return voice_greeting(locale, business_name)
 
     def active_module(self, tenant: TenantContext) -> bool:
         return ModuleEntitlementService(self.db).can_use_module(tenant, "voice")
@@ -159,7 +165,12 @@ class VoiceOrchestrator:
             ZoneInfo(values["timezone_name"])
         except ZoneInfoNotFoundError as exc:
             raise ValueError("Fuseau horaire IANA inconnu") from exc
-        await self.provider.validate_agent(values["retell_agent_id"])
+        agent_id = values.get("retell_agent_id")
+        sip_uri = values.get("retell_sip_uri")
+        if bool(agent_id) != bool(sip_uri) or values.get("enabled") and not agent_id:
+            raise ValueError("A real conversation provider is required to enable inbound audio")
+        if agent_id:
+            await self.provider.validate_agent(agent_id)
 
         config = self.config_for_tenant(tenant)
         number = self.db.scalar(select(VoicePhoneNumber).where(
@@ -182,6 +193,7 @@ class VoiceOrchestrator:
                 company_id=tenant.company_id,
                 voice_api_key_hash=_api_key_hash(api_key),
                 voice_api_key_last4=api_key[-4:],
+                greeting_message=self.greeting_for(values["business_name"], values.get("preferred_language", "fr")),
                 **values,
             )
             self.db.add(config)
@@ -195,8 +207,9 @@ class VoiceOrchestrator:
             api_key = None
             for field, value in values.items():
                 setattr(config, field, value)
-        config.greeting_message = self.greeting_for(config.business_name)
-        self.provider.inbound_target(config)
+        config.greeting_message = self.greeting_for(config.business_name, config.preferred_language)
+        if agent_id:
+            self.provider.inbound_target(config)
         if number is not None:
             number.config_id = config.id
         self.db.commit()
@@ -325,7 +338,26 @@ class VoiceOrchestrator:
         call = self._resolve_call(config, call_id)
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected", "routing_outcome_unknown"}:
             return {"success": False, "error": "voice_call_not_active"}
-        scoped_action_id = voice_action_key(config.id, call.id, tool_name, action_id)
+        mutations = {"book_appointment": CreateAppointmentTool, "reschedule_appointment": UpdateAppointmentTool, "cancel_appointment": CancelAppointmentTool}
+        actor_scope = ""
+        if tool_name in mutations:
+            if arguments.get("confirmed") is not True:
+                return {"success": False, "confirmation_required": True}
+            authenticated = VoiceCallerAuth(self.db, self.settings).valid_session(call)
+            if authenticated is None:
+                return {"success": False, "error": "caller_verification_required"}
+            actor_scope = f"{authenticated.principal_id}:{authenticated.authenticated_at.isoformat()}"
+            registry = build_default_assistant_registry()
+            active = frozenset(ModuleEntitlementService(self.db).get_active_modules(TenantContext(config.company_id)))
+            tool = mutations[tool_name](self.db)
+            if any(registry.get(agent_id) is None or not agent_entitlements(registry.get(agent_id)).issubset(active) for agent_id in tool.agent_ids):
+                return {"success": False, "error": "agent_not_available"}
+            if authenticated.caller_type != "CUSTOMER":
+                membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.company_id == config.company_id,
+                    CompanyMembership.user_id == authenticated.principal_id, CompanyMembership.is_active.is_(True)))
+                if membership is None or "crm:appointments:write" not in permissions_for(membership.role):
+                    return {"success": False, "error": "not_authorized"}
+        scoped_action_id = voice_action_key(config.id, call.id, tool_name, action_id, actor_scope)
         lock = await _tenant_lock(config.company_id)
         async with lock:
             legacy = self.db.scalar(select(VoiceToolAction).where(
@@ -407,6 +439,20 @@ class VoiceOrchestrator:
             raise ValueError("L'appel est terminé; aucune action ne peut être exécutée.")
         if tool_name == "request_caller_verification":
             return await self._request_caller_verification(config, call)
+        if tool_name == "request_pin_authentication":
+            controller = VoiceCallerAuth(self.db, self.settings)
+            if controller.valid_session(call) is not None:
+                return {"success": True, "authenticated": True, "message": voice_auth_message(call.locale or config.preferred_language, 1)}
+            if call.verification_attempts >= getattr(self.settings, "voice_pin_max_attempts", 5):
+                return {"success": False, "error": "caller_authentication_failed", "message": voice_auth_message(call.locale or config.preferred_language, 2)}
+            client_state = controller.challenge(call)
+            self.db.commit()
+            try:
+                await self.telnyx.gather_pin(call.telnyx_call_control_id, command_id=str(UUID(args["_action_id"][:32])), client_state=client_state)
+            except Exception:
+                call.pin_challenge_hash = None; call.pin_challenge_expires_at = None; self.db.commit()
+                return {"success": False, "error": "caller_authentication_unavailable", "message": voice_auth_message(call.locale or config.preferred_language, 2)}
+            return {"success": True, "authentication_pending": True, "message": voice_auth_message(call.locale or config.preferred_language, 0)}
         if tool_name == "verify_caller":
             return self._verify_caller(config, call, str(args.get("code") or ""))
         if tool_name in {"reschedule_appointment", "cancel_appointment"}:
@@ -429,7 +475,6 @@ class VoiceOrchestrator:
                 "transfer_phone": config.transfer_phone,
                 "timezone": config.timezone_name,
                 "greeting_message": config.greeting_message,
-                "instructions": self.provider.agent_instructions(config),
             }
         if tool_name == "take_message":
             return self._take_message(config, call, args)
@@ -467,7 +512,7 @@ class VoiceOrchestrator:
         config: VoiceBusinessConfig,
         call: VoiceCall,
     ) -> dict[str, Any]:
-        if call.caller_type in {"OWNER", "EMPLOYEE", "CLIENT"} and call.caller_verified_at is not None:
+        if VoiceCallerAuth(self.db, self.settings).valid_session(call) is not None:
             return {"success": True, "verified": True, "caller_type": call.caller_type}
         now = datetime.now(timezone.utc)
         expires = call.verification_expires_at
@@ -592,6 +637,7 @@ class VoiceOrchestrator:
         call.verification_expires_at = None
         call.verification_user_id = None
         call.verification_client_id = None
+        VoiceCallerAuth(self.db, self.settings).establish(call)
         self.db.commit()
         return {"success": True, "verified": True, "caller_type": call.caller_type}
 
@@ -719,7 +765,13 @@ class VoiceOrchestrator:
         if interval is None or start < interval[0] or end > interval[1]:
             return {"success": False, "outside_opening_hours": True, "take_message": True}
         crm_service = self._resolve_crm_service(config, service_cfg)
-        client = self._resolve_client(config, str(args["caller_name"]), str(args["caller_phone"]))
+        if call.caller_type == "CLIENT":
+            client = self.db.scalar(select(CRMClient).where(CRMClient.company_id == config.company_id,
+                CRMClient.id == call.verified_client_id, CRMClient.is_deleted.is_(False)))
+            if client is None or self._normalized_phone(str(args.get("caller_phone") or "")) != self._normalized_phone(client.phone):
+                return {"success": False, "error": "customer_identity_mismatch"}
+        else:
+            client = self._resolve_client(config, str(args["caller_name"]), str(args["caller_phone"]))
         appointment, error = await CRMService(self.db).create_appointment(
             config.company_id,
             {
@@ -739,7 +791,6 @@ class VoiceOrchestrator:
         if error:
             return {"success": False, "conflict": True, "message": error}
         call.appointment_id = appointment.id
-        call.caller_phone = str(args["caller_phone"])
         call.status = "appointment_booked"
         self.db.commit()
         return {
@@ -825,7 +876,7 @@ class VoiceOrchestrator:
             sent_at=datetime.now(timezone.utc),
         ))
         call.caller_phone = str(args["caller_phone"])
-        call.summary = message
+        call.summary = redact_voice_secrets(message)
         call.status = "message_taken"
         self.db.commit()
         return {"success": True, "message_recorded": True}
@@ -834,9 +885,9 @@ class VoiceOrchestrator:
         call = self._resolve_call(config, call_id)
         call.status = "ended"
         call.ended_at = datetime.now(timezone.utc)
-        call.transcript = str(call_data.get("transcript") or "") or None
+        call.transcript = redact_voice_secrets(call_data.get("transcript")) or None
         analysis = call_data.get("call_analysis") or {}
-        call.summary = str(analysis.get("call_summary") or call_data.get("summary") or "") or None
+        call.summary = redact_voice_secrets(analysis.get("call_summary") or call_data.get("summary")) or None
         activity_subject = f"Appel entrant Avenqo Voice {call.id}"
         activity = self.db.scalar(select(CRMActivity).where(
             CRMActivity.company_id == config.company_id,

@@ -6,6 +6,8 @@ import { TRANSLATIONS } from "../src/lib/i18n/dictionary";
 import { getAppTranslations } from "../src/lib/i18n/app-dictionary";
 import { APP_LOCALE_WORDS } from "../src/lib/i18n/app-locale-overrides";
 import { APPLICATION_CATALOGS } from "../src/lib/i18n/generated-app-catalogs";
+import { CANONICAL_LOCALES } from "../src/lib/i18n/canonical-locales.generated";
+import { VOICE_AUTH_MESSAGES } from "../src/lib/i18n/voice-auth-messages.generated";
 
 const requiredAppPaths = [
   "navigation.dashboard",
@@ -59,6 +61,10 @@ describe("Avenqo canonical localization", () => {
       expect(TRANSLATIONS[locale.code], locale.code).toBeDefined();
       expect(APP_LOCALE_WORDS[locale.code], locale.code).toBeDefined();
     }
+    expect(CANONICAL_LOCALES).toHaveLength(44);
+    expect(Object.keys(VOICE_AUTH_MESSAGES).sort()).toEqual(LOCALES.map(item => item.code).sort());
+    expect(Object.values(VOICE_AUTH_MESSAGES).every(messages => messages.length === 7 && messages.every(message => message.trim()))).toBe(true);
+    expect(CANONICAL_LOCALES.every(item => item.bcp47 && item.currency.length === 3 && item.timezone)).toBe(true);
   });
 
   it("reports 44/44 complete application catalogs with valid placeholders", () => {

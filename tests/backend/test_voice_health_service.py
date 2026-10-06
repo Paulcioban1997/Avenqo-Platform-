@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
-from backend.app.models import Base, Company, VoiceBusinessConfig, VoiceCall
+from backend.app.models import Base, BillingAccount, Company, CompanyModule, CompanyModuleStatus, Module, VoiceBusinessConfig, VoiceCall, VoicePhoneNumber
 from backend.app.services.voice_health_service import VoiceHealthService
 
 
@@ -52,15 +52,33 @@ def test_voice_health_reports_safe_config_and_call_metadata_without_provider_pro
             started_at=now - timedelta(minutes=3),
             ended_at=now,
         ))
+        unconfigured = Company(name="Unconfigured Voice", slug="unconfigured-voice", email="unconfigured@example.com",
+            country="CA", timezone="America/Toronto", industry="Retail", subscription_plan="base", currency_code="CAD")
+        module = Module(name="Voice AI", code="voice", is_active=True)
+        session.add_all([unconfigured, module]); session.flush()
+        session.add_all([
+            BillingAccount(company_id=unconfigured.id, plan_code="base", status="active"),
+            CompanyModule(company_id=unconfigured.id, module_id=module.id, activated_at=now, status=CompanyModuleStatus.ACTIVE),
+            VoicePhoneNumber(company_id=unconfigured.id, phone_number="+14386075438", country_code="CA",
+                provider="telnyx", provider_number_id="owned-number-id", provider_connection_id="connection-id",
+                number_type="local", status="ACTIVE", capabilities=["voice"]),
+        ])
         session.commit()
 
         result = VoiceHealthService(session, Settings()).list_tenants()
 
     assert result["provider_configuration"]["health_probe"] == "NOT_CHECKED"
-    assert result["tenants"][0]["voice_status"] == "ENABLED"
-    assert result["tenants"][0]["calls_count"] == 1
-    assert result["tenants"][0]["call_minutes"] == 3
-    assert result["tenants"][0]["last_successful_interaction_at"] is not None
+    configured_health = next(item for item in result["tenants"] if item["company_name"] == "Health Tenant")
+    unconfigured_health = next(item for item in result["tenants"] if item["company_name"] == "Unconfigured Voice")
+    assert configured_health["voice_status"] == "ENABLED"
+    assert configured_health["calls_count"] == 1
+    assert configured_health["call_minutes"] == 3
+    assert configured_health["last_successful_interaction_at"] is not None
+    assert unconfigured_health["voice_entitled"] is True
+    assert unconfigured_health["plan_code"] == "base" and unconfigured_health["subscription_status"] == "active"
+    assert unconfigured_health["number_status"] == "ACTIVE"
+    assert unconfigured_health["configuration_status"] == "AUDIO_CONFIGURATION_REQUIRED"
+    assert unconfigured_health["phone_number"] == "+14386075438"
     serialized = str(result)
     assert "voice_api_key_hash" not in serialized
     assert "retell_sip_uri" not in serialized

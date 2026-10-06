@@ -70,6 +70,20 @@ def test_new_company_defaults_to_pending(onboarding_environment) -> None:
     assert body["team_size"] is None
 
 
+def test_public_plan_catalog_uses_canonical_module_limits_and_available_modules(onboarding_environment) -> None:
+    client, _notifier, _ = onboarding_environment
+    response = client.get("/api/v1/billing/plans")
+    assert response.status_code == 200
+    plans = response.json()
+    assert [(item["code"], item["module_limit"]) for item in plans] == [
+        ("base", 3), ("professional", 6), ("enterprise", None)
+    ]
+    assert all(module["availability"] == "available"
+        for plan in plans for module in plan["modules"] if module["selectable"])
+    assert all(next(module for module in plan["modules"] if module["key"] == "workflow")["selectable"] is False
+        for plan in plans)
+
+
 def test_complete_onboarding_persists_answers(onboarding_environment) -> None:
     client, notifier, _ = onboarding_environment
     token = _register_and_login(client, notifier)

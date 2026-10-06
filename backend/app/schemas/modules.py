@@ -20,6 +20,7 @@ class ModuleEntitlementResponse(BaseModel):
 class CompanyEntitlementsResponse(BaseModel):
     company_id: UUID
     plan_code: str
+    subscription_status: str = "inactive"
     active_modules: tuple[str, ...]
     module_limit: int | None
     remaining_module_slots: int | None

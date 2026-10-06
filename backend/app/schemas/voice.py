@@ -6,7 +6,7 @@ from datetime import date, datetime, time as datetime_time
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from backend.app.core.locale_catalog import BY_BCP47, BY_LOCALE, resolve_locale
 
@@ -23,13 +23,21 @@ class VoiceConfigRequest(BaseModel):
     business_name: str = Field(min_length=1, max_length=255)
     timezone_name: str = Field(default="America/Toronto", min_length=1, max_length=80)
     opening_hours: dict[str, Any] = Field(default_factory=dict)
-    services: list[VoiceServiceConfig] = Field(min_length=1, max_length=100)
-    transfer_phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    services: list[VoiceServiceConfig] = Field(default_factory=list, max_length=100)
+    transfer_phone: str | None = Field(default=None, pattern=r"^\+[1-9]\d{7,14}$")
     telnyx_phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
     preferred_language: str = Field(default="fr", min_length=2, max_length=16)
-    retell_agent_id: str = Field(min_length=1, max_length=128)
-    retell_sip_uri: str = Field(pattern=r"^sips?:[^\s]+$")
+    retell_agent_id: str | None = Field(default=None, min_length=1, max_length=128)
+    retell_sip_uri: str | None = Field(default=None, pattern=r"^sips?:[^\s]+$")
     enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_audio_configuration(self):
+        if bool(self.retell_agent_id) != bool(self.retell_sip_uri):
+            raise ValueError("Conversation provider agent and target must be configured together")
+        if self.enabled and not self.retell_agent_id:
+            raise ValueError("Inbound calls cannot be enabled without a real conversation provider")
+        return self
 
     @field_validator("preferred_language")
     @classmethod
@@ -65,8 +73,8 @@ class VoiceConfigResponse(BaseModel):
     telnyx_phone_number: str
     preferred_language: str
     greeting_message: str
-    retell_agent_id: str
-    retell_sip_uri: str
+    retell_agent_id: str | None
+    retell_sip_uri: str | None
     voice_api_key_last4: str
     enabled: bool
 
@@ -96,6 +104,7 @@ class VoiceNumberProvisionRequest(BaseModel):
     locality: str | None = Field(default=None, max_length=120)
     number_type: str | None = Field(default=None, max_length=32)
     confirmed: bool = False
+    quote_token: str | None = Field(default=None, max_length=12000)
 
 
 class VoiceNumberReleaseRequest(BaseModel):
@@ -104,6 +113,31 @@ class VoiceNumberReleaseRequest(BaseModel):
 
 class VoiceNumberAssignRequest(BaseModel):
     confirmed: bool = False
+
+
+class VoiceSetupRequest(BaseModel):
+    number_id: UUID
+    confirmed: bool = False
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceOwnedNumberRequest(BaseModel):
+    phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    confirmed: bool = False
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoicePinRequest(BaseModel):
+    pin: SecretStr
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("pin")
+    @classmethod
+    def valid_pin(cls, value):
+        import re
+        if not re.fullmatch(r"\d{6,12}", value.get_secret_value()):
+            raise ValueError("PIN must contain 6 to 12 digits")
+        return value
 
 
 class CheckAvailabilityArguments(BaseModel):

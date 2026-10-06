@@ -4,354 +4,486 @@ import type { LocaleDefinition } from "./types";
 export const CANONICAL_LOCALES: LocaleDefinition[] = [
   {
     "code": "fr",
+    "bcp47": "fr-CA",
     "region": "americas",
     "flag": "🇨🇦",
     "nativeName": "Français (Canada)",
     "englishName": "French (Canada)",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "CAD",
+    "timezone": "America/Toronto"
   },
   {
     "code": "en",
+    "bcp47": "en-US",
     "region": "americas",
     "flag": "🇺🇸",
     "nativeName": "English (US)",
     "englishName": "English (US)",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "USD",
+    "timezone": "America/New_York"
   },
   {
     "code": "es",
+    "bcp47": "es-ES",
     "region": "americas",
     "flag": "🇪🇸",
     "nativeName": "Español",
     "englishName": "Spanish",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Madrid"
   },
   {
     "code": "pt",
+    "bcp47": "pt-BR",
     "region": "americas",
     "flag": "🇧🇷",
     "nativeName": "Português",
     "englishName": "Portuguese",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "BRL",
+    "timezone": "America/Sao_Paulo"
   },
   {
     "code": "fr-FR",
+    "bcp47": "fr-FR",
     "region": "europe",
     "flag": "🇫🇷",
     "nativeName": "Français (France)",
     "englishName": "French (France)",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Paris"
   },
   {
     "code": "en-GB",
+    "bcp47": "en-GB",
     "region": "europe",
     "flag": "🇬🇧",
     "nativeName": "English (UK)",
     "englishName": "English (UK)",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "GBP",
+    "timezone": "Europe/London"
   },
   {
     "code": "ro",
+    "bcp47": "ro-RO",
     "region": "europe",
     "flag": "🇷🇴",
     "nativeName": "Română",
     "englishName": "Romanian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "RON",
+    "timezone": "Europe/Bucharest"
   },
   {
     "code": "de",
+    "bcp47": "de-DE",
     "region": "europe",
     "flag": "🇩🇪",
     "nativeName": "Deutsch",
     "englishName": "German",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Berlin"
   },
   {
     "code": "it",
+    "bcp47": "it-IT",
     "region": "europe",
     "flag": "🇮🇹",
     "nativeName": "Italiano",
     "englishName": "Italian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Rome"
   },
   {
     "code": "nl",
+    "bcp47": "nl-NL",
     "region": "europe",
     "flag": "🇳🇱",
     "nativeName": "Nederlands",
     "englishName": "Dutch",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Amsterdam"
   },
   {
     "code": "pl",
+    "bcp47": "pl-PL",
     "region": "europe",
     "flag": "🇵🇱",
     "nativeName": "Polski",
     "englishName": "Polish",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "PLN",
+    "timezone": "Europe/Warsaw"
   },
   {
     "code": "ru",
+    "bcp47": "ru-RU",
     "region": "europe",
     "flag": "🇷🇺",
     "nativeName": "Русский",
     "englishName": "Russian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "RUB",
+    "timezone": "Europe/Moscow"
   },
   {
     "code": "uk",
+    "bcp47": "uk-UA",
     "region": "europe",
     "flag": "🇺🇦",
     "nativeName": "Українська",
     "englishName": "Ukrainian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "UAH",
+    "timezone": "Europe/Kyiv"
   },
   {
     "code": "el",
+    "bcp47": "el-GR",
     "region": "europe",
     "flag": "🇬🇷",
     "nativeName": "Ελληνικά",
     "englishName": "Greek",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "EUR",
+    "timezone": "Europe/Athens"
   },
   {
     "code": "sv",
+    "bcp47": "sv-SE",
     "region": "europe",
     "flag": "🇸🇪",
     "nativeName": "Svenska",
     "englishName": "Swedish",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "SEK",
+    "timezone": "Europe/Stockholm"
   },
   {
     "code": "tr",
+    "bcp47": "tr-TR",
     "region": "europe",
     "flag": "🇹🇷",
     "nativeName": "Türkçe",
     "englishName": "Turkish",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "TRY",
+    "timezone": "Europe/Istanbul"
   },
   {
     "code": "cs",
+    "bcp47": "cs-CZ",
     "region": "europe",
     "flag": "🇨🇿",
     "nativeName": "Čeština",
     "englishName": "Czech",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "CZK",
+    "timezone": "Europe/Prague"
   },
   {
     "code": "ka",
+    "bcp47": "ka-GE",
     "region": "europe",
     "flag": "🇬🇪",
     "nativeName": "ქართული",
     "englishName": "Georgian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "GEL",
+    "timezone": "Asia/Tbilisi"
   },
   {
     "code": "hy",
+    "bcp47": "hy-AM",
     "region": "europe",
     "flag": "🇦🇲",
     "nativeName": "Հայերեն",
     "englishName": "Armenian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "AMD",
+    "timezone": "Asia/Yerevan"
   },
   {
     "code": "ar",
+    "bcp47": "ar-SA",
     "region": "middle-east-africa",
     "flag": "🇸🇦",
     "nativeName": "العربية",
     "englishName": "Arabic",
-    "direction": "rtl"
+    "direction": "rtl",
+    "currency": "SAR",
+    "timezone": "Asia/Riyadh"
   },
   {
     "code": "ar-EG",
+    "bcp47": "ar-EG",
     "region": "middle-east-africa",
     "flag": "🇪🇬",
     "nativeName": "العربية (مصر)",
     "englishName": "Arabic (Egypt)",
-    "direction": "rtl"
+    "direction": "rtl",
+    "currency": "EGP",
+    "timezone": "Africa/Cairo"
   },
   {
     "code": "he",
+    "bcp47": "he-IL",
     "region": "middle-east-africa",
     "flag": "🇮🇱",
     "nativeName": "עברית",
     "englishName": "Hebrew",
-    "direction": "rtl"
+    "direction": "rtl",
+    "currency": "ILS",
+    "timezone": "Asia/Jerusalem"
   },
   {
     "code": "fa",
+    "bcp47": "fa-IR",
     "region": "middle-east-africa",
     "flag": "🇮🇷",
     "nativeName": "فارسی",
     "englishName": "Persian",
-    "direction": "rtl"
+    "direction": "rtl",
+    "currency": "IRR",
+    "timezone": "Asia/Tehran"
   },
   {
     "code": "sw",
+    "bcp47": "sw-KE",
     "region": "middle-east-africa",
     "flag": "🇰🇪",
     "nativeName": "Kiswahili",
     "englishName": "Swahili",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "KES",
+    "timezone": "Africa/Nairobi"
   },
   {
     "code": "am",
+    "bcp47": "am-ET",
     "region": "middle-east-africa",
     "flag": "🇪🇹",
     "nativeName": "አማርኛ",
     "englishName": "Amharic",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "ETB",
+    "timezone": "Africa/Addis_Ababa"
   },
   {
     "code": "af",
+    "bcp47": "af-ZA",
     "region": "middle-east-africa",
     "flag": "🇿🇦",
     "nativeName": "Afrikaans",
     "englishName": "Afrikaans",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "ZAR",
+    "timezone": "Africa/Johannesburg"
   },
   {
     "code": "ha",
+    "bcp47": "ha-NG",
     "region": "middle-east-africa",
     "flag": "🇳🇬",
     "nativeName": "Hausa",
     "englishName": "Hausa",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "NGN",
+    "timezone": "Africa/Lagos"
   },
   {
     "code": "zh",
+    "bcp47": "zh-CN",
     "region": "asia-pacific",
     "flag": "🇨🇳",
     "nativeName": "中文",
     "englishName": "Chinese",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "CNY",
+    "timezone": "Asia/Shanghai"
   },
   {
     "code": "ja",
+    "bcp47": "ja-JP",
     "region": "asia-pacific",
     "flag": "🇯🇵",
     "nativeName": "日本語",
     "englishName": "Japanese",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "JPY",
+    "timezone": "Asia/Tokyo"
   },
   {
     "code": "ko",
+    "bcp47": "ko-KR",
     "region": "asia-pacific",
     "flag": "🇰🇷",
     "nativeName": "한국어",
     "englishName": "Korean",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "KRW",
+    "timezone": "Asia/Seoul"
   },
   {
     "code": "hi",
+    "bcp47": "hi-IN",
     "region": "asia-pacific",
     "flag": "🇮🇳",
     "nativeName": "हिन्दी",
     "englishName": "Hindi",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata"
   },
   {
     "code": "bn",
+    "bcp47": "bn-BD",
     "region": "asia-pacific",
     "flag": "🇧🇩",
     "nativeName": "বাংলা",
     "englishName": "Bengali",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "BDT",
+    "timezone": "Asia/Dhaka"
   },
   {
     "code": "ur",
+    "bcp47": "ur-PK",
     "region": "asia-pacific",
     "flag": "🇵🇰",
     "nativeName": "اردو",
     "englishName": "Urdu",
-    "direction": "rtl"
+    "direction": "rtl",
+    "currency": "PKR",
+    "timezone": "Asia/Karachi"
   },
   {
     "code": "ta",
+    "bcp47": "ta-LK",
     "region": "asia-pacific",
     "flag": "🇱🇰",
     "nativeName": "தமிழ்",
     "englishName": "Tamil",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "LKR",
+    "timezone": "Asia/Colombo"
   },
   {
     "code": "pa",
+    "bcp47": "pa-IN",
     "region": "asia-pacific",
     "flag": "🇮🇳",
     "nativeName": "ਪੰਜਾਬੀ",
     "englishName": "Punjabi",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata"
   },
   {
     "code": "ne",
+    "bcp47": "ne-NP",
     "region": "asia-pacific",
     "flag": "🇳🇵",
     "nativeName": "नेपाली",
     "englishName": "Nepali",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "NPR",
+    "timezone": "Asia/Kathmandu"
   },
   {
     "code": "vi",
+    "bcp47": "vi-VN",
     "region": "asia-pacific",
     "flag": "🇻🇳",
     "nativeName": "Tiếng Việt",
     "englishName": "Vietnamese",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "VND",
+    "timezone": "Asia/Ho_Chi_Minh"
   },
   {
     "code": "th",
+    "bcp47": "th-TH",
     "region": "asia-pacific",
     "flag": "🇹🇭",
     "nativeName": "ไทย",
     "englishName": "Thai",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "THB",
+    "timezone": "Asia/Bangkok"
   },
   {
     "code": "id",
+    "bcp47": "id-ID",
     "region": "asia-pacific",
     "flag": "🇮🇩",
     "nativeName": "Bahasa Indonesia",
     "englishName": "Indonesian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "IDR",
+    "timezone": "Asia/Jakarta"
   },
   {
     "code": "ms",
+    "bcp47": "ms-MY",
     "region": "asia-pacific",
     "flag": "🇲🇾",
     "nativeName": "Bahasa Melayu",
     "englishName": "Malay",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "MYR",
+    "timezone": "Asia/Kuala_Lumpur"
   },
   {
     "code": "tl",
+    "bcp47": "tl-PH",
     "region": "asia-pacific",
     "flag": "🇵🇭",
     "nativeName": "Filipino",
     "englishName": "Filipino",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "PHP",
+    "timezone": "Asia/Manila"
   },
   {
     "code": "my",
+    "bcp47": "my-MM",
     "region": "asia-pacific",
     "flag": "🇲🇲",
     "nativeName": "မြန်မာ",
     "englishName": "Burmese",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "MMK",
+    "timezone": "Asia/Yangon"
   },
   {
     "code": "km",
+    "bcp47": "km-KH",
     "region": "asia-pacific",
     "flag": "🇰🇭",
     "nativeName": "ខ្មែរ",
     "englishName": "Khmer",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "KHR",
+    "timezone": "Asia/Phnom_Penh"
   },
   {
     "code": "mn",
+    "bcp47": "mn-MN",
     "region": "asia-pacific",
     "flag": "🇲🇳",
     "nativeName": "Монгол",
     "englishName": "Mongolian",
-    "direction": "ltr"
+    "direction": "ltr",
+    "currency": "MNT",
+    "timezone": "Asia/Ulaanbaatar"
   }
 ];

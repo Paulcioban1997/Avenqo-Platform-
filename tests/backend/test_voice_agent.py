@@ -45,6 +45,7 @@ from backend.app.voice.service import VoiceOrchestrator, _api_key_hash
 from shared.ai_engine.contracts import TenantContext
 from backend.app.core.locale_catalog import BY_LOCALE, resolve_locale
 from backend.app.core.rate_limit import reset_rate_limiter
+from backend.app.voice.auth import VoiceCallerAuth
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from fastapi import FastAPI
@@ -79,7 +80,7 @@ def test_native_voice_bridge_uses_membership_permissions_and_blocks_customers(tm
     engine, session, company, config, api_key, orchestrator = _voice_database(tmp_path)
     try:
         user = User(company_id=company.id, first_name="Verified", last_name="Caller",
-            email="verified-native@example.com", password_hash="test", role=role, is_active=True)
+            email="verified-native@example.com", password_hash="test", role=role, phone="+15145550123", is_active=True)
         session.add(user); session.flush()
         session.add_all([
             CompanyMembership(company_id=company.id, user_id=user.id, role=role, is_active=True),
@@ -89,6 +90,9 @@ def test_native_voice_bridge_uses_membership_permissions_and_blocks_customers(tm
         call = orchestrator.record_inbound(config, {"call_control_id": "native-agent-call", "from": "+15145550123"})
         call.caller_type = caller_type; call.authenticated_user_id = user.id
         call.caller_verified_at = datetime.now(timezone.utc); session.commit()
+        if caller_type in {"OWNER", "EMPLOYEE"}:
+            VoiceCallerAuth(session, Settings()).establish(call)
+            session.commit()
 
         class Central:
             calls = []
@@ -121,13 +125,14 @@ class _FakeTelnyx:
     def __init__(self) -> None:
         self.transfers: list[tuple[str, str]] = []
         self.messages: list[tuple[str, str]] = []
+        self.gathers = []
         self.commands = []
         self.fail_transfer = False
 
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         self.commands.append(("answer", call_control_id, command_id))
 
-    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None) -> None:
+    async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         if self.fail_transfer:
             raise RuntimeError("test-secret-never-log")
         self.transfers.append((call_control_id, destination))
@@ -135,6 +140,9 @@ class _FakeTelnyx:
 
     async def hangup(self, call_control_id: str) -> None:
         return None
+
+    async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
+        self.gathers.append((call_control_id, command_id, client_state))
 
     async def send_sms(self, *, from_number: str, to_number: str, text: str) -> str:
         self.messages.append((to_number, text))
@@ -156,6 +164,99 @@ def test_voice_configuration_accepts_all_canonical_application_locales():
 
     with pytest.raises(ValueError, match="existing Avenqo locale"):
         VoiceConfigRequest(**base, preferred_language="xx-INVALID")
+
+
+def test_voice_greeting_uses_every_canonical_locale_without_claiming_audio_support():
+    greetings = {locale: VoiceOrchestrator.greeting_for("Tenant Example", locale) for locale in BY_LOCALE}
+    assert len(greetings) == len(BY_LOCALE)
+    assert all("Tenant Example" in greeting and greeting.strip() for greeting in greetings.values())
+    assert greetings["en"].startswith("Hello, Tenant Example.")
+    assert greetings["fr"].startswith("Bonjour, Tenant Example.")
+    assert greetings["ro"].startswith("Bună ziua, Tenant Example.")
+
+
+@pytest.mark.parametrize("principal_type", ["USER", "CUSTOMER"])
+def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path, principal_type, caplog):
+    from backend.app.models import VoiceAuthSession, VoiceCallerCredential
+    engine, session, company, config, _key, orchestrator = _voice_database(tmp_path)
+    try:
+        if principal_type == "USER":
+            principal = User(company_id=company.id, first_name="Owner", last_name="Pin", email="pin-owner@example.com",
+                password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+            session.add(principal); session.flush()
+            session.add(CompanyMembership(company_id=company.id, user_id=principal.id, role=UserRole.OWNER, is_active=True))
+        else:
+            principal = CRMClient(company_id=company.id, first_name="Client", last_name="Pin", email="pin-client@example.com", phone="+15145550123")
+            session.add(principal); session.flush()
+        controller = VoiceCallerAuth(session, Settings(AUTH_JWT_SECRET="test-pepper-at-least-32-characters"))
+        credential = controller.set_pin(TenantContext(company.id), principal_type, principal.id, "654321")
+        session.commit()
+        assert credential.pin_hash.startswith("$argon2") and "654321" not in credential.pin_hash
+        call = orchestrator.record_inbound(config, {"call_control_id": "pin-call", "from": principal.phone})
+        assert controller.valid_session(call) is None
+        assert controller.verify_gather(call, "123456") == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
+        assert controller.verify_gather(call, 654321) == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
+        assert controller.valid_session(call) is None
+        result = controller.verify_gather(call, "654321"); session.commit()
+        assert result == {"success": True, "authenticated": True}
+        authenticated = controller.valid_session(call)
+        assert authenticated.call_id == call.id and authenticated.company_id == company.id
+        assert authenticated.principal_id == principal.id
+        if principal_type == "CUSTOMER":
+            assert authenticated.permissions == ["customer:self"] and authenticated.caller_type == "CUSTOMER"
+            call.verified_client_id = uuid4()
+            assert controller.valid_session(call) is None
+            call.verified_client_id = principal.id
+        another = orchestrator.record_inbound(config, {"call_control_id": "pin-other-call", "from": principal.phone})
+        assert controller.valid_session(another) is None
+        authenticated.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1); session.flush()
+        assert controller.valid_session(call) is None
+        for _attempt in range(5): controller.verify_gather(another, "111111")
+        session.commit()
+        assert credential.locked_until is not None
+        third = orchestrator.record_inbound(config, {"call_control_id": "pin-third-call", "from": principal.phone})
+        assert controller.verify_gather(third, "654321")["authenticated"] is False
+        assert "654321" not in caplog.text + str(result) + str(authenticated.permissions)
+        assert session.scalar(select(func.count(VoiceCallerCredential.id))) == 1
+        assert session.scalar(select(func.count(VoiceAuthSession.id))) == 1
+    finally:
+        session.close(); engine.dispose()
+
+
+@pytest.mark.parametrize("state", [None, "bad-base64", "A" * 1025, "W10=", "bnVsbA==", "MQ==", "eyJ2b2ljZV9waW5fY2hhbGxlbmdlIjoxfQ=="])
+def test_pin_challenge_malformed_values_fail_closed(tmp_path, state):
+    engine, session, _company, config, _key, orchestrator = _voice_database(tmp_path)
+    try:
+        call = orchestrator.record_inbound(config, {"call_control_id": "malformed-pin-call", "from": "+15145550123"})
+        call.status = "routed"
+        auth = VoiceCallerAuth(session, Settings())
+        valid = auth.challenge(call)
+        assert auth.valid_challenge(call, valid)
+        assert auth.valid_challenge(call, state) is False
+        assert auth.valid_session(call) is None
+    finally:
+        session.close(); engine.dispose()
+
+
+def test_tenant_configuration_can_exist_without_fabricated_retell(tmp_path):
+    engine, session, company, config, _key, orchestrator = _voice_database(tmp_path)
+    try:
+        session.delete(config); session.commit()
+        number = VoicePhoneNumber(company_id=company.id, phone_number="+14385550123", country_code="CA",
+            provider="telnyx", provider_number_id="owned-number", number_type="local", status="ACTIVE", capabilities=["voice"])
+        session.add(number); session.commit()
+        request = VoiceConfigRequest(business_name=company.name, timezone_name=company.timezone,
+            telnyx_phone_number=number.phone_number, preferred_language="ro")
+        result, _secret = asyncio.run(orchestrator.upsert_config(TenantContext(company.id), request.model_dump(mode="json")))
+        assert result.retell_agent_id is None and result.retell_sip_uri is None and result.enabled is False
+        assert number.config_id == result.id
+        same, revealed = asyncio.run(orchestrator.upsert_config(TenantContext(company.id), request.model_dump(mode="json")))
+        assert same.id == result.id and revealed is None
+        assert session.scalar(select(func.count(VoiceBusinessConfig.id))) == 1
+        with pytest.raises(ValueError):
+            VoiceConfigRequest(business_name=company.name, telnyx_phone_number=number.phone_number, enabled=True)
+    finally:
+        session.close(); engine.dispose()
 
 
 def test_voice_action_replay_is_bound_to_call_and_tool_and_preserves_legacy_history(tmp_path, monkeypatch):
@@ -291,6 +392,52 @@ def test_voice_config_cannot_claim_number_owned_by_another_tenant(tmp_path):
     finally:
         session.close()
         engine.dispose()
+
+
+def test_pin_authentication_tool_requests_keypad_without_returning_or_forwarding_a_pin(tmp_path):
+    engine, session, _company, config, _key, orchestrator = _voice_database(tmp_path)
+    try:
+        call = orchestrator.record_inbound(config, {"call_control_id": "pin-tool-call", "from": "+15145550123"})
+        call.status = "in_progress"; session.commit()
+        result = asyncio.run(orchestrator._dispatch_tool(config, call, "request_pin_authentication", {"_action_id": "a" * 32}))
+        assert result["success"] is True and result["authentication_pending"] is True
+        assert len(orchestrator.telnyx.gathers) == 1
+        control_id, command_id, state = orchestrator.telnyx.gathers[0]
+        assert control_id == "pin-tool-call" and len(command_id) == 36
+        assert VoiceCallerAuth(session, Settings()).valid_challenge(call, state)
+        assert "pin" not in str(result).casefold() and "digits" not in str(result).casefold()
+    finally:
+        session.close(); engine.dispose()
+
+
+def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path):
+    from backend.app.models import VoiceCallerCredential
+    engine, session, company, _config, _key, _service = _voice_database(tmp_path)
+    try:
+        user = User(company_id=company.id, first_name="Owner", last_name="PIN", email="pin-http@example.com",
+            password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+        session.add(user); session.flush()
+        membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
+        session.add_all([membership, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+        session.commit()
+        identity = SimpleNamespace(user=user)
+        app = FastAPI(); app.include_router(voice_router.router, prefix="/api/v1")
+        app.dependency_overrides[get_db] = lambda: session
+        app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, AUTH_JWT_SECRET="test-pin-endpoint-secret-long-enough")
+        app.dependency_overrides[voice_router.get_current_identity] = lambda: identity
+        app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: membership
+        secret = "908172"
+        with TestClient(app) as client:
+            response = client.put("/api/v1/voice/auth/pin", json={"pin": secret})
+            assert response.status_code == 200 and response.json() == {"status": "CONFIGURED"}
+            assert secret not in response.text
+            malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "company_id": str(uuid4())})
+            assert malformed.status_code == 422 and secret not in malformed.text
+        credential = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == company.id))
+        assert credential.principal_id == user.id and credential.pin_hash.startswith("$argon2")
+        assert secret not in credential.pin_hash
+    finally:
+        session.close(); engine.dispose()
 
 
 def test_voice_status_is_visible_before_entitlement_or_provider_provisioning(tmp_path):
@@ -589,6 +736,8 @@ def test_verified_voice_metrics_reuse_central_ai_and_are_idempotent(tmp_path):
                     tool_outcomes=({"tool": "get_sales_summary", "success": True, "confirmed": True},),
                 )
 
+            VoiceCallerAuth(session, Settings()).establish(call)
+            session.commit()
         central = _CentralAI()
         request = VoiceToolRequest(
             call_id=call.telnyx_call_control_id,
@@ -692,6 +841,22 @@ def test_unconfirmed_voice_booking_does_not_create_appointment(tmp_path) -> None
         engine.dispose()
 
 
+def _authenticated_booking_calls(session, company, config, service, call_ids):
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    owner = User(company_id=company.id, first_name="Verified", last_name="Scheduler", email="scheduler@example.com",
+        password_hash="test", phone="+15145550123", role=UserRole.OWNER, is_active=True)
+    session.add(owner); session.flush()
+    session.add_all([CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True),
+        BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+    session.flush()
+    ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm")
+    for call_id in call_ids:
+        call = service._resolve_call(config, call_id, caller_phone=owner.phone)
+        call.caller_type = "OWNER"; call.authenticated_user_id = owner.id; call.caller_verified_at = datetime.now(timezone.utc)
+        VoiceCallerAuth(session, Settings()).establish(call)
+    session.commit()
+
+
 def test_retried_voice_booking_action_creates_one_appointment(tmp_path) -> None:
     engine, session, company, config, _, service = _voice_database(tmp_path)
     starts_at = (datetime.now(ZoneInfo("America/Toronto")) + timedelta(days=2)).replace(
@@ -705,6 +870,7 @@ def test_retried_voice_booking_action_creates_one_appointment(tmp_path) -> None:
         "starts_at": starts_at,
     }
     try:
+        _authenticated_booking_calls(session, company, config, service, ["retell-retry-call"])
         first = asyncio.run(service.execute_tool(
             config, "retell-retry-call", "same-booking-action", "book_appointment", arguments
         ))
@@ -741,6 +907,7 @@ def test_one_hundred_parallel_confirmed_calls_cannot_double_book(tmp_path) -> No
         )
 
     try:
+        _authenticated_booking_calls(session, company, config, service, [f"retell-call-{index}" for index in range(100)])
         async def run_all() -> list[dict]:
             return await asyncio.gather(*(reserve(i) for i in range(100)))
 
@@ -896,7 +1063,7 @@ def signed_telnyx_webhook(tmp_path, monkeypatch):
                 "telnyx-signature-ed25519": base64.b64encode(signature).decode(),
             })
         yield SimpleNamespace(send=send, event=event, session=session, settings=settings, config=config,
-            binding=binding, company=company, service=service)
+            binding=binding, company=company, service=service, client=client)
     reset_rate_limiter()
     session.close(); engine.dispose()
 
@@ -1006,14 +1173,73 @@ def test_telnyx_event_collision_and_call_collision_do_not_cross_context(signed_t
 def test_telnyx_unknown_dtmf_media_sms_are_not_forwarded_or_persisted(signed_telnyx_webhook, caplog):
     from backend.app.models import VoiceToolAction
     env = signed_telnyx_webhook
-    for kind in ("call.dtmf.received", "call.gather.ended", "streaming.started", "message.received"):
+    for kind in ("call.dtmf.received", "streaming.started", "message.received"):
         response = env.send(env.event(kind, digits="test-pin-never-log", transcript="test-pin-never-log"))
         assert response.status_code == 200 and response.json()["handled"] is False
         assert "test-pin-never-log" not in response.text
+    gather = env.send(env.event("call.gather.ended", digits="test-pin-never-log"))
+    assert gather.status_code == 200 and gather.json()["routed"] is False
     assert env.session.scalar(select(func.count(VoiceCall.id))) == 0
     assert env.session.scalar(select(func.count(VoiceToolAction.id))) == 0
     assert env.service.telnyx.commands == []
     assert "test-pin-never-log" not in caplog.text
+
+
+def test_signed_dtmf_gather_authenticates_customer_once_without_persisting_digits(signed_telnyx_webhook, caplog):
+    from backend.app.models import VoiceAuthSession, VoiceToolAction
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    client = CRMClient(company_id=env.company.id, first_name="Scoped", last_name="Customer",
+        email="dtmf@example.com", phone="+15145550123")
+    env.session.add(client); env.session.flush()
+    controller = VoiceCallerAuth(env.session, env.settings)
+    controller.set_pin(TenantContext(env.company.id), "CUSTOMER", client.id, "765432")
+    env.session.commit()
+    env.send(env.event()); env.send(env.event("call.answered"))
+    call = env.session.scalar(select(VoiceCall))
+    challenge = controller.challenge(call); env.session.commit()
+    gathered = env.event("call.gather.ended", digits="765432", client_state=challenge)
+    assert env.send(gathered).json()["authenticated"] is True
+    assert env.send(gathered).json()["duplicate"] is True
+    env.session.refresh(call)
+    auth = controller.valid_session(call)
+    assert auth.principal_id == client.id and auth.permissions == ["customer:self"]
+    assert call.caller_type == "CLIENT" and call.authenticated_user_id is None
+    receipts = env.session.scalars(select(VoiceToolAction)).all()
+    assert "765432" not in str([item.result for item in receipts]) + caplog.text + str(call.transcript) + str(call.summary)
+    assert env.session.scalar(select(func.count(VoiceAuthSession.id))) == 1
+    assert call.pin_challenge_hash is None
+
+
+def test_signed_dtmf_without_matching_challenge_never_authenticates(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    env.send(env.event()); env.send(env.event("call.answered"))
+    response = env.send(env.event("call.gather.ended", digits="765432", client_state="foreign-challenge"))
+    assert response.json()["authenticated"] is False
+    call = env.session.scalar(select(VoiceCall))
+    assert call.caller_type == "UNKNOWN" and VoiceCallerAuth(env.session, env.settings).valid_session(call) is None
+
+
+def test_retell_webhook_correlates_only_to_existing_tenant_telnyx_call(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.send(env.event())
+    call = env.session.scalar(select(VoiceCall))
+    payload = {"event": "call_started", "call": {"agent_id": env.config.retell_agent_id,
+        "call_id": "retell-correlated-call", "from_number": "+15145550123",
+        "custom_sip_headers": {"x-avenqo-call-id": str(call.id)}}}
+    headers = {"x-avenqo-voice-key": "avqv_test_key_do_not_use_outside_tests"}
+    response = env.client.post("/api/v1/voice/retell/webhook", json=payload, headers=headers)
+    assert response.status_code == 200 and response.json() == {"received": True}
+    env.session.refresh(call)
+    assert call.retell_call_id == "retell-correlated-call" and call.status == "in_progress"
+    unrelated = {"event": "call_started", "call": {"agent_id": env.config.retell_agent_id,
+        "call_id": "retell-no-correlation", "from_number": call.caller_phone}}
+    missing = env.client.post("/api/v1/voice/retell/webhook", json=unrelated, headers=headers)
+    assert missing.status_code == 404
+    foreign = dict(payload)
+    foreign["call"] = {**payload["call"], "call_id": "retell-foreign-call", "custom_sip_headers": {"X-Avenqo-Call-ID": str(uuid4())}}
+    assert env.client.post("/api/v1/voice/retell/webhook", json=foreign, headers=headers).status_code == 404
 
 
 def test_telnyx_rate_limit_and_malformed_envelope(signed_telnyx_webhook):

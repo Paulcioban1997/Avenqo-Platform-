@@ -69,6 +69,76 @@ class OwnedProvider:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('scenario', ['unconfirmed', 'missing_quote', 'expired', 'wrong_actor', 'wrong_tenant', 'price_changed', 'unknown_requirements', 'requirements_changed', 'pending', 'ambiguous', 'verified'])
+async def test_number_purchase_requires_current_actor_quote_and_truthful_provider_verification(owned_binding_db, monkeypatch, scenario):
+    import jwt
+    from backend.app.schemas.voice import VoiceNumberProvisionRequest
+    from backend.app.voice.quotes import signed_number_quote
+
+    db, tenant, other, _entry_id = owned_binding_db
+    entitlements = ModuleEntitlementService(db)
+    entitlements.deactivate_module(tenant, 'accounting'); entitlements.activate_module(tenant, 'voice')
+    db.commit()
+    user = db.get(User, tenant.user_id)
+    membership = db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == tenant.user_id))
+    identity = SimpleNamespace(user=user)
+    settings = Settings(AUTH_JWT_SECRET='quote-test-secret-at-least-32-characters', TELNYX_VOICE_CONNECTION_ID='verified-connection')
+    offer = {'phone_number': '+14385550123', 'country_code': 'CA', 'number_type': 'local',
+        'is_orderable': True, 'cost_information': {'upfront_cost': '1.00', 'monthly_cost': '1.00', 'currency': 'USD'},
+        'monthly_cost': 1.0, 'monthly_cost_currency': 'USD', 'voice_capability': True,
+        'regulatory_status': 'unknown' if scenario == 'unknown_requirements' else 'verified_no_requirements', 'regulatory_requirements': []}
+    token = signed_number_quote(settings, other.company_id if scenario == 'wrong_tenant' else tenant.company_id,
+        uuid4() if scenario == 'wrong_actor' else tenant.user_id, offer)
+    if scenario == 'expired':
+        claims = jwt.decode(token, settings.auth_jwt_secret, algorithms=[settings.auth_jwt_algorithm], audience=settings.auth_jwt_audience)
+        claims['exp'] = 1
+        token = jwt.encode(claims, settings.auth_jwt_secret, algorithm=settings.auth_jwt_algorithm)
+    orders = []
+
+    async def search(_filters):
+        refreshed = dict(offer)
+        if scenario == 'price_changed': refreshed['cost_information'] = dict(offer['cost_information'], monthly_cost='2.00')
+        return {'offers': [refreshed]}
+
+    async def provision(**kwargs):
+        orders.append(kwargs)
+        if scenario == 'ambiguous': raise TimeoutError('provider-secret-must-not-leak')
+        return {'data': {'id': 'order-test-id', 'status': 'pending' if scenario == 'pending' else 'success'}}
+
+    class Telecom:
+        async def number_requirements(self, *args):
+            return {'status': 'unknown' if scenario == 'requirements_changed' else 'verified_no_requirements', 'requirements': []}
+
+        async def get_owned_number(self, number):
+            return {'id': 'verified-owned-id', 'phone_number': number, 'status': 'active', 'connection_id': 'verified-connection'}
+
+    monkeypatch.setattr(voice_router, '_voice_number_service', lambda _: SimpleNamespace(search=search, provision=provision))
+    monkeypatch.setattr(voice_router, 'TelnyxClient', lambda _: Telecom())
+    request = VoiceNumberProvisionRequest(phone_number=offer['phone_number'], country_code='CA',
+        confirmed=scenario != 'unconfirmed', quote_token=None if scenario == 'missing_quote' else token)
+    blocked = scenario in {'missing_quote', 'expired', 'wrong_actor', 'wrong_tenant', 'price_changed'}
+    if blocked:
+        with pytest.raises(HTTPException) as failure:
+            await voice_router.provision_voice_number(request, identity, db, settings, membership)
+        assert failure.value.status_code == 409
+    else:
+        result = await voice_router.provision_voice_number(request, identity, db, settings, membership)
+        assert result['status'] == {'pending': 'PENDING', 'verified': 'ACTIVE'}.get(scenario, 'READY_FOR_OWNER_ACTION')
+        assert 'provider-secret-must-not-leak' not in str(result)
+    paid_path = scenario in {'pending', 'ambiguous', 'verified'}
+    assert len(orders) == int(paid_path)
+    binding = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == offer['phone_number']))
+    if paid_path:
+        assert binding.status == {'pending': 'PENDING', 'ambiguous': 'OUTCOME_UNKNOWN', 'verified': 'ACTIVE'}[scenario]
+        if scenario != 'ambiguous': assert binding.provider_order_id == 'order-test-id'
+        replay = await voice_router.provision_voice_number(request, identity, db, settings, membership)
+        assert replay['number']['id'] == str(binding.id)
+        assert len(orders) == 1
+    else:
+        assert binding is None
+
+
+@pytest.mark.asyncio
 async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and_tenants(owned_binding_db):
     db, tenant, other, entry_id = owned_binding_db
     provider = OwnedProvider()
@@ -86,6 +156,7 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
         replay = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
         assert replay.id == number_id
         assert replay.company_id == tenant.company_id and replay.config_id is None
+        assert replay.provider_connection_id == "verified-connection"
         assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 1
         assert db.get(AccountingTransaction, entry_id).amount == 123
         assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'crm', 'accounting'}
@@ -207,12 +278,49 @@ async def test_telnyx_call_control_command_paths_and_ids_use_mock_transport_only
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = TelnyxClient(Settings(TELNYX_API_KEY="test-key-only"), client=client)
         await provider.answer_call("control-test", command_id="answer-command")
-        await provider.transfer_call("control-test", "sip:agent@sip.retell.example", "+15145550100", command_id="transfer-command")
+        await provider.transfer_call("control-test", "sip:agent@sip.retell.example", "+15145550100", command_id="transfer-command", call_reference="internal-call-uuid")
     import json
     assert [item.method for item in captured] == ["POST", "POST"]
     assert [item.url.path for item in captured] == ["/v2/calls/control-test/actions/answer", "/v2/calls/control-test/actions/transfer"]
     assert json.loads(captured[0].content) == {"command_id": "answer-command"}
-    assert json.loads(captured[1].content) == {"to": "sip:agent@sip.retell.example", "from": "+15145550100", "timeout_secs": 30, "command_id": "transfer-command"}
+    assert json.loads(captured[1].content) == {"to": "sip:agent@sip.retell.example", "from": "+15145550100", "timeout_secs": 30, "command_id": "transfer-command", "custom_headers": [{"name": "X-Avenqo-Call-ID", "value": "internal-call-uuid"}], "mute_dtmf": "both"}
+
+
+@pytest.mark.asyncio
+async def test_telnyx_gather_and_regulatory_lookup_are_scoped_and_whitelisted():
+    captured = []
+
+    def handler(request):
+        captured.append(request)
+        if request.url.path.endswith("/regulatory_requirements"):
+            return httpx.Response(200, json={"data": [{"country_code": "CA", "phone_number_type": "local", "action": "ordering",
+                "regulatory_requirements": [{"id": "proof-of-address", "name": "Address", "description": "Provide address", "field_type": "address", "acceptance_criteria": ["residential"], "secret": "must-not-leak"}]}]})
+        return httpx.Response(200, json={"data": {"result": "ok"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = TelnyxClient(Settings(TELNYX_API_KEY="test-key-only"), client=client)
+        await provider.gather_pin("control-test", command_id="gather-command", client_state="opaque-challenge")
+        result = await provider.number_requirements("+14165550123", "CA", "local")
+    import json
+    gather = json.loads(captured[0].content)
+    assert captured[0].method == "POST" and captured[0].url.path.endswith("/actions/gather")
+    assert "digits" not in gather and "pin" not in str(gather).lower()
+    assert gather["maximum_digits"] == 12 and gather["maximum_tries"] == 1
+    assert captured[1].url.params["filter[phone_number]"] == "+14165550123"
+    assert captured[1].url.params["filter[action]"] == "ordering"
+    assert result["status"] == "requirements_required"
+    assert "secret" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_telnyx_regulatory_lookup_unknown_is_not_treated_as_empty_requirements():
+    def handler(_request):
+        return httpx.Response(200, json={"data": [{"country_code": "US", "phone_number_type": "local", "action": "ordering", "regulatory_requirements": []}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = TelnyxClient(Settings(TELNYX_API_KEY="test-key-only"), client=client)
+        result = await provider.number_requirements("+14165550123", "CA", "local")
+    assert result == {"status": "unknown", "requirements": []}
 
 
 @pytest.mark.asyncio
