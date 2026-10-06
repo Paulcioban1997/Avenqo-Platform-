@@ -86,6 +86,20 @@ class TelnyxClient:
             raise RuntimeError("TELNYX_API_KEY is not configured")
         return {"Authorization": f"Bearer {self._settings.telnyx_api_key}", "Content-Type": "application/json"}
 
+    async def get_owned_number(self, phone_number: str) -> dict[str, object]:
+        response = await self._request("GET", "/phone_numbers", params={
+            "filter[phone_number]": phone_number.removeprefix("+"), "page[size]": 2,
+        })
+        matches = [item for item in response.get("data", []) if item.get("phone_number") == phone_number]
+        if len(matches) != 1:
+            raise ValueError("The exact owned number was not found uniquely")
+        raw = matches[0]
+        if raw.get("status") != "active" or not self._settings.telnyx_voice_connection_id or str(raw.get("connection_id") or "") != self._settings.telnyx_voice_connection_id:
+            raise ValueError("The owned number is not active on the configured Voice connection")
+        return {key: raw[key] for key in (
+            "id", "phone_number", "status", "country_iso_alpha2", "phone_number_type", "connection_id", "purchased_at",
+        ) if key in raw}
+
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
 

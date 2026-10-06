@@ -21,6 +21,112 @@ from backend.app.services.voice_number_service import (
 )
 from backend.app.config.settings import Settings
 from backend.app.voice.providers import TelnyxClient
+from sqlalchemy import create_engine, select, func
+from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+from backend.app.models import Base, Company, User, CompanyMembership, BillingAccount, VoicePhoneNumber, VoiceBusinessConfig
+from backend.app.models.accounting import AccountingTransaction
+from backend.app.services.module_entitlement_service import ModuleEntitlementService, ModuleLimitReached
+from shared.ai_engine.contracts import TenantContext
+
+
+@pytest.fixture
+def owned_binding_db(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'owned-binding.db'}")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        tenants = []
+        for slug in ('target-binding', 'other-binding'):
+            company = Company(name=slug, slug=slug, email=f'{slug}@example.com', country='CA',
+                timezone='America/Toronto', industry='Retail', subscription_plan='base')
+            db.add(company); db.flush()
+            owner = User(company_id=company.id, first_name='Owner', last_name='Test', email=f'owner-{slug}@example.com',
+                password_hash='test', role=UserRole.OWNER, is_active=True)
+            db.add(owner); db.flush()
+            db.add_all([BillingAccount(company_id=company.id, plan_code='base', status='active'),
+                CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)])
+            db.flush()
+            tenant = TenantContext(company.id, owner.id)
+            entitlements = ModuleEntitlementService(db)
+            for key in ('retail', 'crm', 'accounting'):
+                entitlements.activate_module(tenant, key)
+            tenants.append(tenant)
+        entry = AccountingTransaction(company_id=tenants[0].company_id, transaction_date=datetime.now(timezone.utc),
+            transaction_type='revenue', category='sales', description='preserve existing accounting', amount=123, currency='CAD')
+        db.add(entry); db.commit()
+        yield db, tenants[0], tenants[1], entry.id
+    engine.dispose()
+
+
+class OwnedProvider:
+    def __init__(self):
+        self.reads = 0
+
+    async def get_owned_number(self, phone_number):
+        self.reads += 1
+        return {'id': 'provider-owned-id', 'phone_number': phone_number, 'status': 'active',
+            'country_iso_alpha2': 'CA', 'phone_number_type': 'local', 'connection_id': 'verified-connection'}
+
+
+@pytest.mark.asyncio
+async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and_tenants(owned_binding_db):
+    db, tenant, other, entry_id = owned_binding_db
+    provider = OwnedProvider()
+    manager = VoiceNumberManagementService(provider)
+    with db.begin():
+        entitlements = ModuleEntitlementService(db)
+        with pytest.raises(ModuleLimitReached):
+            entitlements.activate_module(tenant, 'voice')
+        entitlements.deactivate_module(tenant, 'accounting')
+        state = entitlements.activate_module(tenant, 'voice')
+        assert set(state.active_modules) == {'retail', 'crm', 'voice'} and state.module_limit == 3
+        number = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
+        number_id = number.id
+    with db.begin():
+        replay = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
+        assert replay.id == number_id
+        assert replay.company_id == tenant.company_id and replay.config_id is None
+        assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 1
+        assert db.get(AccountingTransaction, entry_id).amount == 123
+        assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'crm', 'accounting'}
+        assert db.scalar(select(func.count(VoiceBusinessConfig.id))) == 0
+        assert db.scalar(select(BillingAccount.plan_code).where(BillingAccount.company_id == tenant.company_id)) == 'base'
+
+
+@pytest.mark.asyncio
+async def test_owned_number_conflict_rolls_back_whole_module_swap(owned_binding_db):
+    db, tenant, other, _entry_id = owned_binding_db
+    db.add(VoicePhoneNumber(company_id=other.company_id, phone_number='+14385550123', country_code='CA',
+        provider='telnyx', provider_number_id='provider-owned-id', number_type='local', status='ACTIVE', capabilities=['voice']))
+    db.commit()
+    with pytest.raises(PermissionError):
+        with db.begin():
+            service = ModuleEntitlementService(db)
+            service.deactivate_module(tenant, 'accounting'); service.activate_module(tenant, 'voice')
+            await VoiceNumberManagementService(OwnedProvider()).register_owned_number(db, tenant, '+14385550123', confirmed=True)
+    assert set(ModuleEntitlementService(db).get_active_modules(tenant)) == {'retail', 'crm', 'accounting'}
+    number = db.scalar(select(VoicePhoneNumber))
+    assert number.company_id == other.company_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('denial', ['unconfirmed', 'no_entitlement', 'inactive_subscription', 'wrong_actor', 'insufficient_role'])
+async def test_owned_import_denied_before_provider_read(owned_binding_db, denial):
+    db, tenant, _other, _entry_id = owned_binding_db
+    if denial != 'no_entitlement':
+        service = ModuleEntitlementService(db)
+        service.deactivate_module(tenant, 'accounting'); service.activate_module(tenant, 'voice')
+    if denial == 'inactive_subscription':
+        db.scalar(select(BillingAccount).where(BillingAccount.company_id == tenant.company_id)).status = 'past_due'
+    if denial == 'wrong_actor': tenant = TenantContext(tenant.company_id, uuid4())
+    if denial == 'insufficient_role':
+        db.scalar(select(CompanyMembership).where(CompanyMembership.company_id == tenant.company_id)).role = UserRole.VIEWER
+    db.commit()
+    provider = OwnedProvider()
+    with pytest.raises((ValueError, PermissionError)):
+        await VoiceNumberManagementService(provider).register_owned_number(db, tenant, '+14385550123', confirmed=denial != 'unconfirmed')
+    assert provider.reads == 0
+    assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 0
 
 
 class _FakeTelecomProvider:
@@ -49,6 +155,27 @@ class _FakeTelecomProvider:
     async def release_phone_number(self, provider_number_id):
         self.releases.append(provider_number_id)
         return {"status": "released"}
+
+
+@pytest.mark.asyncio
+async def test_owned_number_read_is_exact_get_only_and_never_returns_porting_pin():
+    captured = []
+
+    def handler(request):
+        captured.append(request)
+        return httpx.Response(200, json={"data": [{
+            "id": "owned-id", "phone_number": "+14386075438", "status": "active",
+            "connection_id": "configured-connection", "country_iso_alpha2": "CA", "phone_number_type": "local",
+            "external_pin": "porting-secret-not-to-return",
+        }]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = TelnyxClient(Settings(TELNYX_API_KEY="test-key", TELNYX_VOICE_CONNECTION_ID="configured-connection"), client)
+        record = await provider.get_owned_number("+14386075438")
+    assert len(captured) == 1 and captured[0].method == "GET"
+    assert captured[0].url.params["filter[phone_number]"] == "14386075438"
+    assert record["phone_number"] == "+14386075438"
+    assert "external_pin" not in record and "porting-secret-not-to-return" not in str(record)
 
 
 @pytest.mark.asyncio

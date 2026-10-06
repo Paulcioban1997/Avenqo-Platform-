@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Any, Protocol
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from backend.app.core.permissions import permissions_for
+from backend.app.models import BillingAccount, CompanyMembership, User, VoiceBusinessConfig, VoicePhoneNumber
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from shared.ai_engine.contracts import TenantContext
 
 _COUNTRY_CODE = re.compile(r"^[A-Z]{2}$")
 
 
 class TelecomProvider(Protocol):
+    async def get_owned_number(self, phone_number: str) -> dict[str, object]: ...
     async def search_available_numbers(self, **kwargs) -> list[dict[str, object]]: ...
 
     async def order_phone_number(self, **kwargs) -> dict[str, object]: ...
@@ -37,6 +46,61 @@ class VoiceNumberManagementService:
 
     def __init__(self, provider: TelecomProvider) -> None:
         self._provider = provider
+
+    async def register_owned_number(
+        self, session: Session, tenant: TenantContext, phone_number: str, *, confirmed: bool,
+    ) -> VoicePhoneNumber:
+        if not confirmed or not re.fullmatch(r"\+[1-9]\d{7,14}", phone_number):
+            raise ValueError("Explicit confirmation and an E.164 number are required")
+        membership = session.scalar(select(CompanyMembership).where(
+            CompanyMembership.company_id == tenant.company_id, CompanyMembership.user_id == tenant.user_id,
+            CompanyMembership.is_active.is_(True),
+        ))
+        user = session.scalar(select(User).where(User.id == tenant.user_id,
+            User.company_id == tenant.company_id, User.is_active.is_(True)))
+        if membership is None or user is None or "modules:manage" not in permissions_for(membership.role):
+            raise PermissionError("Active tenant membership and module management permission are required")
+        account = session.scalar(select(BillingAccount).where(BillingAccount.company_id == tenant.company_id))
+        if account is None or account.status.strip().lower() not in {"active", "trialing"}:
+            raise PermissionError("An active subscription is required")
+        if not ModuleEntitlementService(session).can_use_module(tenant, "voice"):
+            raise PermissionError("Voice module must be active")
+        record = await self._provider.get_owned_number(phone_number)
+        if record.get("phone_number") != phone_number or record.get("status") != "active" or not record.get("id"):
+            raise ValueError("An active provider-owned number is required")
+        country = str(record.get("country_iso_alpha2") or "").upper()
+        number_type = str(record.get("phone_number_type") or "")
+        if not _COUNTRY_CODE.fullmatch(country) or not number_type or not record.get("connection_id"):
+            raise ValueError("Provider number country, type and Voice connection are required")
+        if session.get_bind().dialect.name == "postgresql":
+            session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": f"voice_number:{phone_number}"})
+        existing = session.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == phone_number))
+        configs = session.scalars(select(VoiceBusinessConfig).where(VoiceBusinessConfig.telnyx_phone_number == phone_number)).all()
+        if any(item.company_id != tenant.company_id for item in configs) or existing is not None and existing.company_id != tenant.company_id:
+            raise PermissionError("This number is already bound to another tenant")
+        config = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id))
+        if config is not None and config.telnyx_phone_number != phone_number:
+            raise ValueError("Existing Voice configuration uses a different number")
+        if existing is not None:
+            if existing.provider != "telnyx" or existing.status != "ACTIVE" or existing.provider_number_id != str(record["id"]):
+                raise ValueError("Existing number lifecycle requires owner reconciliation")
+            if existing.config_id not in {None, config.id if config is not None else None}:
+                raise PermissionError("Number configuration binding does not match tenant")
+            if config is not None:
+                existing.config_id = config.id
+            session.flush()
+            return existing
+        purchased_at = record.get("purchased_at")
+        number = VoicePhoneNumber(
+            company_id=tenant.company_id, config_id=config.id if config is not None else None,
+            phone_number=phone_number, country_code=country, number_type=number_type, provider="telnyx",
+            provider_number_id=str(record["id"]), status="ACTIVE", capabilities=["voice"],
+            regulatory_status="unknown", regulatory_requirements=[],
+            purchased_at=datetime.fromisoformat(str(purchased_at).replace("Z", "+00:00")) if purchased_at else None,
+        )
+        session.add(number)
+        session.flush()
+        return number
 
     async def search(self, request: PhoneNumberSearch) -> dict[str, Any]:
         country_code = request.country_code.upper()
