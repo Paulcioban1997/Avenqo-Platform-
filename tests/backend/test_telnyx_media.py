@@ -1894,6 +1894,7 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
     env = authorized_media_call
     env.settings.telnyx_media_inbound_enabled = True
     env.settings.voice_realtime_supported_locales = ["fr"]
+    env.settings.openai_api_key = "fake-key"
     env.call.caller_type = "UNKNOWN"
     env.call.authenticated_user_id = None
     env.auth.revoked_at = datetime.now(timezone.utc)
