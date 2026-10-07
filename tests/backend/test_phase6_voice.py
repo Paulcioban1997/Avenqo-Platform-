@@ -315,7 +315,7 @@ async def test_realtime_adapter_never_creates_autonomous_agent_response(monkeypa
     assert sent[2]["type"] == "response.create"
     assert sent[2]["response"]["input"][0]["content"][0]["text"] == "Authorized answer"
     assert sent[3] == {"type": "input_audio_buffer.clear"}
-    assert [event["type"] for event in sent[-2:]] == ["response.cancel", "output_audio_buffer.clear"]
+    assert sent[4] == {"type": "response.cancel"}
 
 
 class FakeSocket:

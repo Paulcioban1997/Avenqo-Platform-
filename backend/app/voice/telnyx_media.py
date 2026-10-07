@@ -480,6 +480,21 @@ class TelnyxMediaBridge:
         self.tts_timeout = 10.0
         self.central_ai_timeout = 15.0
         self.inbound_audio_timeout = 5.0
+        # Safe call telemetry (no raw audio, no secrets)
+        self.telemetry: dict[str, Any] = {
+            "call_answered": True,
+            "media_connected": False,
+            "inbound_frames": 0,
+            "inbound_audio_ms": 0,
+            "speech_detected": False,
+            "stt_audio_sent": False,
+            "transcription_received": False,
+            "central_ai_called": False,
+            "tts_generated": False,
+            "outbound_frames": 0,
+            "final_state": "CONNECTING",
+            "provider_error": None,
+        }
 
     def _clear_all_buffers(self) -> None:
         self.reorder_buffer.reset()
@@ -540,6 +555,7 @@ class TelnyxMediaBridge:
             if epoch != self.epoch or self.input_paused:
                 return
             await self.authorize()
+            self.telemetry["central_ai_called"] = True
             try:
                 result = await asyncio.wait_for(
                     self.execute_turn(item_id, redact_voice_secrets(transcript)),
@@ -570,6 +586,8 @@ class TelnyxMediaBridge:
                 self.pending_epoch = speak_epoch
                 self._pending_speech.append((item_id, speak_epoch, turn_ledger))
                 requested_audio = True
+                self.telemetry["tts_generated"] = True
+                self.telemetry["final_state"] = "RESPONDING"
                 try:
                     await asyncio.wait_for(
                         self.adapter.speak(redact_voice_secrets(result["answer"])),
@@ -633,6 +651,7 @@ class TelnyxMediaBridge:
                         await self.socket.send_json(raw)
                     else:
                         await self.socket.send_json({"event": "media", "media": {"payload": base64.b64encode(raw).decode("ascii")}})
+                        self.telemetry["outbound_frames"] += 1
             if isinstance(raw, bytes):
                 now = loop.time()
                 if next_send_time is None or next_send_time < now - 0.1:
@@ -649,13 +668,19 @@ class TelnyxMediaBridge:
             kind = getattr(event, "type", "")
             if kind == "session.updated":
                 logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
+                self.telemetry["final_state"] = "LISTENING"
             elif kind == "input_audio_buffer.speech_started" and not self.input_paused:
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
+                self.telemetry["speech_detected"] = True
+                self.telemetry["final_state"] = "USER_SPEAKING"
                 await self.interrupt()
                 item_id = getattr(event, "item_id", "")
                 if self.usage is not None and isinstance(item_id, str) and item_id:
                     if not self.usage.reserve(item_id):
                         raise PermissionError("Voice usage quota unavailable")
+            elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
+                logger.info("Caller speech stopped (epoch=%s)", self.epoch)
+                self.telemetry["final_state"] = "PROCESSING"
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
@@ -667,6 +692,8 @@ class TelnyxMediaBridge:
                 if len(self._seen_items) >= 1000:
                     raise InvalidMediaFrame("Call turn capacity exceeded")
                 self._seen_items.add(item_id)
+                self.telemetry["transcription_received"] = True
+                self.telemetry["final_state"] = "PROCESSING"
                 if self.usage is not None:
                     if not self.usage.reserve(item_id):
                         raise PermissionError("Voice usage quota unavailable")
@@ -676,6 +703,7 @@ class TelnyxMediaBridge:
                 except asyncio.QueueFull:
                     raise InvalidMediaFrame("Pending turn capacity exceeded") from None
             elif kind == "response.created":
+                self.telemetry["final_state"] = "RESPONDING"
                 self.response_id = getattr(getattr(event, "response", None), "id", None)
                 if self._pending_speech:
                     item_id, response_epoch, response_ledger = self._pending_speech.popleft()
@@ -688,6 +716,7 @@ class TelnyxMediaBridge:
                 if self.response_epoch == self.epoch and self.response_id == getattr(event, "response_id", None):
                     self._enqueue(self.codec.outbound_pcm(getattr(event, "delta", None)))
             elif kind == "response.done":
+                self.telemetry["final_state"] = "LISTENING"
                 completed_id = getattr(getattr(event, "response", None), "id", None)
                 completed = self._responses.pop(completed_id, None)
                 if completed is not None and completed[2] is not None:
@@ -704,6 +733,17 @@ class TelnyxMediaBridge:
                     self.response_id = None
                     self.response_epoch = None
             elif kind == "error":
+                err = getattr(event, "error", None)
+                code = getattr(err, "code", "") if err is not None else ""
+                message = str(getattr(err, "message", "") or getattr(event, "message", "") or err or event)
+                if (
+                    code in ("response_cancel_not_active", "conversation_already_has_active_response")
+                    or "no active response" in message.lower()
+                    or "cancellation failed" in message.lower()
+                ):
+                    logger.info("Benign audio provider event (ignored): code=%s message=%s", code, message)
+                    continue
+                self.telemetry["provider_error"] = str(code or "unknown")
                 logger.error("Audio provider error event: %s", getattr(event, "error", event))
                 raise InvalidMediaFrame("Audio provider unavailable")
 
@@ -712,6 +752,7 @@ class TelnyxMediaBridge:
             return
         try:
             await asyncio.wait_for(self.adapter.send_audio(pcm), timeout=self.inbound_audio_timeout)
+            self.telemetry["stt_audio_sent"] = True
         except asyncio.TimeoutError:
             self.dropped_inbound_frames += 1
 
@@ -754,6 +795,8 @@ class TelnyxMediaBridge:
             number = int(chunk)
             self._last_chunk = max(self._last_chunk, number)
             if not self.input_paused:
+                self.telemetry["inbound_frames"] += 1
+                self.telemetry["inbound_audio_ms"] += 20
                 pcm_frames = self.reorder_buffer.push(number, self.codec.inbound_pcm(media.get("payload")))
                 for pcm in pcm_frames:
                     await self._send_inbound_audio(pcm)
@@ -763,6 +806,7 @@ class TelnyxMediaBridge:
             raise PermissionError("Voice usage quota unavailable")
         self.pending_epoch = self.epoch
         self._pending_speech.append((item_id, self.epoch, self.usage))
+        self.telemetry["tts_generated"] = True
         await self.adapter.speak(redact_voice_secrets(answer))
 
     async def _finish_pin(self, status: str) -> None:
@@ -811,9 +855,11 @@ class TelnyxMediaBridge:
             if enc != "PCMU" or rate != 8000 or channels != 1:
                 raise InvalidMediaFrame("Unsupported media format")
             await self.validate_start(event["start"])
+            self.telemetry["media_connected"] = True
             await self.authorize()
             await self.adapter.open(locale=self.locale)
             if self.initial_answer:
+                self.telemetry["final_state"] = "GREETING"
                 await self._speak_system("inbound-greeting", self.initial_answer)
             reader = asyncio.create_task(self._read_audio())
             self._background = [reader, asyncio.create_task(self._provider_events()), asyncio.create_task(self._write_audio()), asyncio.create_task(self._execute_turns()), asyncio.create_task(self._periodic_auth())]
@@ -823,6 +869,22 @@ class TelnyxMediaBridge:
             for task in done:
                 task.result()
         finally:
+            logger.info(
+                "Call %s session telemetry: call_answered=%s media_connected=%s inbound_frames=%d inbound_audio_ms=%d speech_detected=%s stt_audio_sent=%s transcription_received=%s central_ai_called=%s tts_generated=%s outbound_frames=%d final_state=%s provider_error=%s",
+                self.stream_id,
+                self.telemetry.get("call_answered"),
+                self.telemetry.get("media_connected"),
+                self.telemetry.get("inbound_frames"),
+                self.telemetry.get("inbound_audio_ms"),
+                self.telemetry.get("speech_detected"),
+                self.telemetry.get("stt_audio_sent"),
+                self.telemetry.get("transcription_received"),
+                self.telemetry.get("central_ai_called"),
+                self.telemetry.get("tts_generated"),
+                self.telemetry.get("outbound_frames"),
+                self.telemetry.get("final_state"),
+                self.telemetry.get("provider_error"),
+            )
             for task in self._background:
                 task.cancel()
             await asyncio.gather(*self._background, return_exceptions=True)

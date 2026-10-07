@@ -1698,4 +1698,186 @@ async def test_openai_realtime_adapter_schema_for_gpt_realtime_2_1():
     assert payload["audio"]["input"]["transcription"]["model"] == "gpt-4o-mini-transcribe"
     assert payload["audio"]["input"]["turn_detection"]["type"] == "server_vad"
 
+
+@pytest.mark.asyncio
+async def test_realistic_end_to_end_pcmu_frames_multi_turn_and_benign_cancel_errors():
+    import audioop
+
+    socket = FakeMediaSocket()
+
+    class RealisticAdapter:
+        def __init__(self):
+            self.opened = False
+            self.incoming = asyncio.Queue()
+            self.received_audio_bytes = 0
+            self.spoken_texts = []
+            self.cancelled = 0
+
+        async def open(self, locale="fr"):
+            self.opened = True
+            await self.incoming.put(SimpleNamespace(type="session.updated"))
+
+        async def send_audio(self, pcm: bytes):
+            self.received_audio_bytes += len(pcm)
+
+        async def speak(self, text: str):
+            self.spoken_texts.append(text)
+            resp_id = f"resp-{len(self.spoken_texts)}"
+            # Emit standard Realtime response events
+            await self.incoming.put(SimpleNamespace(type="response.created", response=SimpleNamespace(id=resp_id)))
+            # 24kHz PCM chunk
+            fake_24k_pcm = b"\x01\x02" * 480
+            delta_b64 = base64.b64encode(fake_24k_pcm).decode("ascii")
+            await self.incoming.put(SimpleNamespace(type="response.output_audio.delta", response_id=resp_id, delta=delta_b64))
+            await self.incoming.put(SimpleNamespace(type="response.done", response=SimpleNamespace(id=resp_id)))
+
+        async def interrupt(self):
+            self.cancelled += 1
+            # Simulate OpenAI returning benign response_cancel_not_active error
+            await self.incoming.put(SimpleNamespace(
+                type="error",
+                error=SimpleNamespace(
+                    code="response_cancel_not_active",
+                    message="Cancellation failed: no active response found"
+                )
+            ))
+
+        async def clear_input(self):
+            pass
+
+        async def close(self):
+            self.opened = False
+
+        async def events(self):
+            while True:
+                item = await self.incoming.get()
+                if item is None:
+                    break
+                yield item
+
+    adapter = RealisticAdapter()
+    turn_transcripts = []
+
+    async def validate(_event):
+        return None
+
+    async def authorize():
+        return None
+
+    async def execute(item_id, transcript):
+        turn_transcripts.append(transcript)
+        return {"status": "success", "answer": f"Reponse pour: {transcript}"}
+
+    bridge = TelnyxMediaBridge(
+        socket, adapter, locale="fr",
+        validate_start=validate, authorize=authorize, execute_turn=execute,
+        initial_answer="Bonjour et bienvenue chez Avenqo."
+    )
+
+    # 1. Send start event
+    await socket.incoming.put({
+        "event": "start",
+        "stream_id": "stream-e2e-test",
+        "start": {
+            "media_format": {"encoding": "PCMU", "sample_rate": 8000, "channels": 1},
+            "call_control_id": "cc-e2e",
+            "to": "+14386075438",
+            "client_state": "valid-state",
+        }
+    })
+
+    running = asyncio.create_task(bridge.run())
+    await eventually(lambda: adapter.opened)
+    await eventually(lambda: len(adapter.spoken_texts) >= 1)
+    assert adapter.spoken_texts[0] == "Bonjour et bienvenue chez Avenqo."
+    assert bridge.telemetry["media_connected"] is True
+
+    # 2. TURN 1: Caller sends realistic G.711u audio frames
+    pcm_20ms = b"\x20\x10" * 160
+    ulaw_20ms = audioop.lin2ulaw(pcm_20ms, 2)
+    for i in range(1, 4):
+        await socket.incoming.put({
+            "event": "media",
+            "stream_id": "stream-e2e-test",
+            "media": {
+                "track": "inbound",
+                "chunk": str(i),
+                "payload": base64.b64encode(ulaw_20ms).decode("ascii"),
+            }
+        })
+
+    # Simulate VAD & transcription for Turn 1
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_stopped"))
+    await adapter.incoming.put(SimpleNamespace(
+        type="conversation.item.input_audio_transcription.completed",
+        item_id="item-turn-1",
+        transcript="Allô bonjour"
+    ))
+
+    await eventually(lambda: len(turn_transcripts) == 1)
+    assert turn_transcripts[0] == "Allô bonjour"
+    await eventually(lambda: len(adapter.spoken_texts) == 2)
+    assert "Reponse pour: Allô bonjour" in adapter.spoken_texts[1]
+    assert bridge.telemetry["speech_detected"] is True
+    assert bridge.telemetry["transcription_received"] is True
+
+    # 3. TURN 2: Caller asks for appointment
+    for i in range(4, 7):
+        await socket.incoming.put({
+            "event": "media",
+            "stream_id": "stream-e2e-test",
+            "media": {
+                "track": "inbound",
+                "chunk": str(i),
+                "payload": base64.b64encode(ulaw_20ms).decode("ascii"),
+            }
+        })
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_stopped"))
+    await adapter.incoming.put(SimpleNamespace(
+        type="conversation.item.input_audio_transcription.completed",
+        item_id="item-turn-2",
+        transcript="J'aimerais prendre un rendez-vous"
+    ))
+
+    await eventually(lambda: len(turn_transcripts) == 2)
+    assert turn_transcripts[1] == "J'aimerais prendre un rendez-vous"
+    await eventually(lambda: len(adapter.spoken_texts) == 3)
+    assert "Reponse pour: J'aimerais prendre un rendez-vous" in adapter.spoken_texts[2]
+
+    # 4. TURN 3: Caller asks retail question
+    for i in range(7, 10):
+        await socket.incoming.put({
+            "event": "media",
+            "stream_id": "stream-e2e-test",
+            "media": {
+                "track": "inbound",
+                "chunk": str(i),
+                "payload": base64.b64encode(ulaw_20ms).decode("ascii"),
+            }
+        })
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
+    await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_stopped"))
+    await adapter.incoming.put(SimpleNamespace(
+        type="conversation.item.input_audio_transcription.completed",
+        item_id="item-turn-3",
+        transcript="Est-ce que vous avez ce produit en stock ?"
+    ))
+
+    await eventually(lambda: len(turn_transcripts) == 3)
+    assert turn_transcripts[2] == "Est-ce que vous avez ce produit en stock ?"
+    await eventually(lambda: len(adapter.spoken_texts) == 4)
+    assert "Reponse pour: Est-ce que vous avez ce produit en stock ?" in adapter.spoken_texts[3]
+
+    # Verify outbound audio was generated and transmitted to socket
+    assert any(m.get("event") == "media" for m in socket.sent)
+    assert bridge.telemetry["outbound_frames"] > 0
+    assert bridge.telemetry["central_ai_called"] is True
+    assert bridge.telemetry["final_state"] == "LISTENING"
+
+    # Stop session cleanly
+    await socket.incoming.put({"event": "stop", "stream_id": "stream-e2e-test"})
+    await running
+
 

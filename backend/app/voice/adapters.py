@@ -211,8 +211,7 @@ class OpenAIRealtimeAudioAdapter:
 
     async def interrupt(self) -> None:
         if self._connection is not None:
-            await self._connection.send({"type": "response.cancel"})
-            await self._connection.send({"type": "output_audio_buffer.clear"})
+            await self._connection.send(cast(Any, {"type": "response.cancel"}))
 
     async def clear_input(self) -> None:
         if self._connection is not None:
