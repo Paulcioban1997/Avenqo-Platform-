@@ -58,7 +58,7 @@ class OnboardingService:
         return record
 
     def activate_selected_modules(
-        self, tenant: TenantContext, module_codes: tuple[str, ...]
+        self, tenant: TenantContext, module_codes: tuple[str, ...], *, auto_init_voice: bool = False
     ) -> tuple[str, ...]:
         """Active les modules optionnels choisis, en respectant le plan.
 
@@ -73,7 +73,7 @@ class OnboardingService:
             if code not in BUSINESS_MODULES_BY_KEY:
                 continue
             try:
-                entitlements.activate_module(tenant, code, auto_init_voice=True)
+                entitlements.activate_module(tenant, code, auto_init_voice=auto_init_voice)
             except ModuleEntitlementError:
                 unavailable.append(code)
         return tuple(unavailable)
