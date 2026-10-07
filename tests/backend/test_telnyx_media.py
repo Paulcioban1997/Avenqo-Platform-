@@ -1666,8 +1666,8 @@ async def test_openai_realtime_adapter_schema_for_gpt_realtime_2_1():
         realtime_model="gpt-realtime-2.1"
     )
     fake_conn = FakeConnection()
-    adapter._manager = FakeManager(fake_conn)
-    adapter._connection = fake_conn
+    adapter._manager = cast(Any, FakeManager(fake_conn))
+    adapter._connection = cast(Any, fake_conn)
 
     # Check open payload
     is_preview = "preview" in (adapter._model or "").lower()
@@ -1879,5 +1879,173 @@ async def test_realistic_end_to_end_pcmu_frames_multi_turn_and_benign_cancel_err
     # Stop session cleanly
     await socket.incoming.put({"event": "stop", "stream_id": "stream-e2e-test"})
     await running
+
+
+@pytest.mark.asyncio
+async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conversation_context(authorized_media_call, monkeypatch):
+    """Verifies that an unauthenticated public caller can have a natural 5-turn conversation
+
+    (greeting, appointment request, time selection, confirmation, business follow-up question)
+    where Central AI is called for each turn, the same conversation context is preserved,
+    and no repetitive fallback phrases are emitted.
+    """
+    from backend.app.routers.voice import router
+
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.settings.voice_realtime_supported_locales = ["fr"]
+    env.call.caller_type = "UNKNOWN"
+    env.call.authenticated_user_id = None
+    env.auth.revoked_at = datetime.now(timezone.utc)
+    env.db.commit()
+
+    captured_turns = []
+    captured_conversations = []
+    turn_queue = asyncio.Queue()
+
+    for phrase in [
+        "Bonjour",
+        "Je voudrais prendre un rendez-vous",
+        "Demain vers 14 heures",
+        "Oui, ça me convient",
+        "Quels sont vos horaires d'ouverture ?",
+    ]:
+        await turn_queue.put(phrase)
+
+    class MultiTurnLoopbackAdapter(FakeAudioAdapter):
+        def __init__(self):
+            super().__init__()
+            self.turn_count = 0
+
+        async def send_audio(self, audio):
+            await super().send_audio(audio)
+            if not turn_queue.empty():
+                self.turn_count += 1
+                text = await turn_queue.get()
+                await self.incoming.put(SimpleNamespace(
+                    type="conversation.item.input_audio_transcription.completed",
+                    item_id=f"turn-{self.turn_count}",
+                    event_id=f"evt-{self.turn_count}",
+                    transcript=text,
+                    usage=None,
+                ))
+
+        async def speak(self, text):
+            await super().speak(text)
+            resp_id = f"resp-{len(self.spoken)}"
+            await self.incoming.put(SimpleNamespace(type="response.created", response=SimpleNamespace(id=resp_id)))
+            await self.incoming.put(SimpleNamespace(
+                type="response.output_audio.delta",
+                response_id=resp_id,
+                delta=base64.b64encode(b"\x00\x00" * 480).decode(),
+            ))
+            await self.incoming.put(SimpleNamespace(
+                type="response.done",
+                event_id=f"done-{resp_id}",
+                response=SimpleNamespace(id=resp_id, status="completed", usage=SimpleNamespace(input_tokens=10, output_tokens=10)),
+            ))
+
+    class MockCentralAI:
+        def __init__(self):
+            self.usage_service = FakeUsageService()
+
+        async def execute(self, *args, **kwargs):
+            tenant = args[0]
+            user_id = args[1]
+            conversation_id = args[2]
+            transcript = args[3]
+            captured_turns.append(transcript)
+            captured_conversations.append(conversation_id)
+            if "bonjour" in transcript.lower():
+                ans = "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+            elif "rendez-vous" in transcript.lower():
+                ans = "Certainement. Pour quel jour et quelle heure souhaitez-vous votre rendez-vous ?"
+            elif "14 heures" in transcript.lower():
+                ans = "J'ai bien une disponibilité demain à 14h00. Est-ce que ce créneau vous convient ?"
+            elif "convient" in transcript.lower():
+                ans = "Parfait, votre rendez-vous est confirmé pour demain à 14h00. Avez-vous une autre question ?"
+            elif "horaires" in transcript.lower():
+                ans = "Nous sommes ouverts du lundi au vendredi de 9h à 18h."
+            else:
+                ans = "Je suis à votre écoute."
+            return SimpleNamespace(status="success", answer=ans, selected_agent="crm")
+
+    adapter = MultiTurnLoopbackAdapter()
+    central = MockCentralAI()
+
+    monkeypatch.setattr(media_module, "OpenAIRealtimeAudioAdapter", lambda *_args: adapter)
+    monkeypatch.setattr(media_module, "resolve_tenant_capabilities", lambda *_args: frozenset({"crm:read", "crm:write"}))
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_db] = lambda: env.db
+    app.dependency_overrides[get_settings] = lambda: env.settings
+    app.dependency_overrides[get_central_ai_service] = lambda: central
+    app.dependency_overrides[get_prediction_service] = lambda: object()
+
+    state = issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True)
+    start_payload = {
+        "event": "start",
+        "stream_id": "stream-public-multi",
+        "start": {
+            "media_format": {"encoding": "PCMU", "sample_rate": 8000, "channels": 1},
+            "call_control_id": env.call.telnyx_call_control_id,
+            "to": env.config.telnyx_phone_number,
+            "client_state": state,
+        },
+    }
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(start_payload)
+
+            # Send audio frames for 5 turns and receive responses
+            for i in range(1, 6):
+                socket.send_json({
+                    "event": "media",
+                    "stream_id": "stream-public-multi",
+                    "media": {
+                        "track": "inbound",
+                        "chunk": str(i),
+                        "payload": base64.b64encode(b"\xff" * 160).decode(),
+                    },
+                })
+                # Receive outbound audio response frame
+                resp = socket.receive_json()
+                assert resp.get("event") == "media"
+
+            socket.send_json({"event": "stop", "stream_id": "stream-public-multi"})
+            with pytest.raises(WebSocketDisconnect):
+                while True:
+                    socket.receive_json()
+
+    # Verify all 5 conversational turns were executed by Central AI
+    assert len(captured_turns) == 5
+    assert captured_turns[0] == "Bonjour"
+    assert captured_turns[1] == "Je voudrais prendre un rendez-vous"
+    assert captured_turns[2] == "Demain vers 14 heures"
+    assert captured_turns[3] == "Oui, ça me convient"
+    assert captured_turns[4] == "Quels sont vos horaires d'ouverture ?"
+
+    # Verify that conversation_id is persistent across all 5 turns
+    assert len(captured_conversations) == 5
+    first_conv_id = captured_conversations[0]
+    assert first_conv_id is not None
+    assert all(c_id == first_conv_id for c_id in captured_conversations)
+
+    # Verify spoken responses are natural and follow the dialogue context (initial greeting + 5 turns)
+    assert len(adapter.spoken) == 6
+    assert "Comment puis-je vous aider" in adapter.spoken[0]
+    assert "Comment puis-je vous aider" in adapter.spoken[1]
+    assert "rendez-vous" in adapter.spoken[2]
+    assert "14h00" in adapter.spoken[3]
+    assert "confirmé" in adapter.spoken[4]
+    assert "ouverts" in adapter.spoken[5]
+
+    # Verify that the conversation was created in DB and associated with the call
+    env.db.expire_all()
+    updated_call = env.db.get(VoiceCall, env.call.id)
+    assert updated_call.central_conversation_id == first_conv_id
+
 
 

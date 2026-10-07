@@ -33,7 +33,18 @@ from backend.app.database import get_db
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
-from backend.app.models import BillingAccount, Company, CompanyMembership, User, VoiceBusinessConfig, VoiceCall, VoicePhoneNumber, VoiceToolAction
+from backend.app.models import (
+    AIMessageRole,
+    BillingAccount,
+    Company,
+    CompanyMembership,
+    User,
+    UserRole,
+    VoiceBusinessConfig,
+    VoiceCall,
+    VoicePhoneNumber,
+    VoiceToolAction,
+)
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
@@ -194,6 +205,26 @@ class PublicInboundConversation:
         if resolve_locale(config.preferred_language).startswith("fr"):
             return "Créez ou modifiez votre NIP Voice depuis votre espace Avenqo authentifié, dans Voice AI, Sécurité. Ne dites jamais votre NIP à voix haute."
         return "Create or change your Voice PIN in your authenticated Avenqo workspace, under Voice AI, Security. Never say your PIN aloud."
+
+    def security_gate(self, transcript: str) -> dict | None:
+        """Inspects transcript for security restrictions (PIN modification, owner auth, private client data).
+
+        Returns a dict action if a security gate applies, or None to allow natural conversational AI.
+        """
+        call, config, _company = self.context()
+        safe = redact_voice_secrets(transcript)
+        normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
+        french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
+        if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
+            return {"status": "success", "answer": self.portal_message(), "public": True}
+        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|comptabilite|accounting|dashboard|factures|invoices)\b|mes clients|autres clients|internal|internes", normalized)
+        if private:
+            prompt = voice_auth_message(call.locale or config.preferred_language, 0)
+            return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
+        if re.search(r"mes rendez.vous|my appointments|mon dossier client|my record", normalized):
+            answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
+            return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
+        return None
 
     def public_answer(self, transcript: str) -> dict:
         call, config, _company = self.context()
@@ -553,6 +584,8 @@ class TelnyxMediaBridge:
         turn_ledger = self.usage
         try:
             if epoch != self.epoch or self.input_paused:
+                return
+            if not transcript or not transcript.strip():
                 return
             await self.authorize()
             self.telemetry["central_ai_called"] = True
@@ -997,28 +1030,110 @@ async def telnyx_media_socket(
         await authorize()
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
+        nonlocal ledger
         if public_conversation is not None and principal_id is None:
-            return public_conversation.public_answer(transcript)
-        current_call, _config, current_company, current_user, permissions, _auth = media_call_context(db, settings, call_id)
+            security_check = public_conversation.security_gate(transcript)
+            if security_check is not None:
+                return security_check
+
+        if principal_id is not None:
+            current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(db, settings, call_id)
+        else:
+            current_call, current_config, current_company = media_transport_context(db, settings, call_id)
+            owner_membership = db.scalar(
+                select(CompanyMembership)
+                .where(
+                    CompanyMembership.company_id == current_company.id,
+                    CompanyMembership.is_active.is_(True),
+                    CompanyMembership.role.in_([UserRole.OWNER, UserRole.ADMIN]),
+                )
+                .order_by(CompanyMembership.created_at.asc())
+            )
+            if owner_membership is None:
+                owner_membership = db.scalar(
+                    select(CompanyMembership)
+                    .where(CompanyMembership.company_id == current_company.id, CompanyMembership.is_active.is_(True))
+                )
+            if owner_membership is None:
+                return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            current_user = db.get(User, owner_membership.user_id)
+            if current_user is None:
+                return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            permissions = frozenset({"ai:use", "crm:appointments:write", "data:read"})
+
+        if current_call.central_conversation_id is None:
+            conv = ConversationService(db).create(
+                current_company.id,
+                current_user.id,
+                f"Voice call {current_call.id}",
+                current_call.locale or locale,
+            )
+            conv_id = conv.id
+            db.execute(
+                update(VoiceCall)
+                .where(VoiceCall.id == current_call.id)
+                .values(central_conversation_id=conv_id)
+            )
+            db.commit()
+            db.refresh(current_call)
+            if public_conversation is not None:
+                greeting_text = public_conversation.greeting()
+                ConversationService(db).add_message(
+                    current_company.id,
+                    conv_id,
+                    AIMessageRole.ASSISTANT,
+                    greeting_text,
+                    provider="openai",
+                    model=settings.voice_realtime_model,
+                )
+
         detection = detect_spoken_language(transcript, preferred_locale=current_call.locale or locale)
         current_call.locale = detection.locale or current_call.locale or locale
         tenant = TenantContext(current_company.id, current_user.id)
         current_call.source_context = resolve_voice_source_context(db, tenant)
         db.commit()
-        if ledger is None:
-            raise PermissionError("Media ledger uninitialized")
+
+        if ledger is None or ledger._user_id is None or ledger._conversation_id is None:
+            ledger = VoiceUsageLedger(
+                service.usage_service,
+                voice_pricing_catalog(settings.ai_model_rate_card),
+                company_id=current_company.id,
+                user_id=current_user.id,
+                conversation_id=current_call.central_conversation_id,
+                plan_code=plan,
+                request_namespace=current_call.id,
+            )
+            bridge.use_ledger(ledger)
+
         attempts = []
         try:
-            result = await service.execute(tenant, current_user.id, current_call.central_conversation_id, transcript,
-                permissions=permissions, capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
-                request_id=ledger.request_id_for(item_id), user_language=current_call.locale,
-                company_country=current_company.country or "", company_currency=current_company.currency_code,
-                company_timezone=current_company.timezone or config.timezone_name, page_context="/voice",
-                locale_explicit=False, spoken_language_input=True, allow_existing_reservation=True, attempt_sink=attempts)
+            result = await service.execute(
+                tenant,
+                current_user.id,
+                current_call.central_conversation_id,
+                transcript,
+                permissions=permissions,
+                capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
+                request_id=ledger.request_id_for(item_id),
+                user_language=current_call.locale,
+                company_country=current_company.country or "",
+                company_currency=current_company.currency_code,
+                company_timezone=current_company.timezone or current_config.timezone_name,
+                page_context="/voice",
+                locale_explicit=False,
+                spoken_language_input=True,
+                allow_existing_reservation=True,
+                attempt_sink=attempts,
+            )
+            ledger.attribute(item_id, result.selected_agent, result.selected_agent)
+            return {"status": result.status, "answer": result.answer}
+        except Exception as exc:
+            if principal_id is None and public_conversation is not None:
+                logger.warning("Central AI execute error for public voice call, falling back: %s", exc)
+                return public_conversation.public_answer(transcript)
+            raise
         finally:
             ledger.add_attempts(item_id, attempts)
-        ledger.attribute(item_id, result.selected_agent, result.selected_agent)
-        return {"status": result.status, "answer": result.answer}
 
     async def begin_pin(item_id: str) -> dict:
         if public_conversation is None:
