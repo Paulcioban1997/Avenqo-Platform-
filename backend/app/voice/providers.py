@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 import httpx
@@ -43,6 +43,8 @@ class RetellVoiceProvider:
         response.raise_for_status()
 
     def inbound_target(self, config: VoiceBusinessConfig) -> str:
+        if not config.retell_sip_uri:
+            raise ValueError("The tenant Retell SIP target is not configured")
         parsed = urlsplit(config.retell_sip_uri)
         host = (parsed.hostname or "").lower().rstrip(".")
         allowed_domain = self._settings.retell_sip_domain.lower().strip().rstrip(".")
@@ -167,7 +169,8 @@ class TelnyxClient:
         area_code: str | None = None,
         prefix: str | None = None,
         capabilities: tuple[str, ...] = ("voice",),
-    ) -> list[dict[str, object]]:
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
         params: dict[str, object] = {
             "filter[limit]": max(1, min(limit, 100)),
             "filter[features]": list(capabilities),
@@ -209,7 +212,8 @@ class TelnyxClient:
         connection_id: str,
         messaging_profile_id: str | None = None,
         idempotency_key: str | None = None,
-    ) -> dict[str, object]:
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         payload: dict[str, object] = {
             "phone_numbers": [{"phone_number": phone_number}],
             "connection_id": connection_id,
@@ -218,7 +222,7 @@ class TelnyxClient:
             payload["messaging_profile_id"] = messaging_profile_id
         return await self._request("POST", "/number_orders", json=payload, idempotency_key=idempotency_key)
 
-    async def release_phone_number(self, provider_number_id: str) -> dict[str, object]:
+    async def release_phone_number(self, provider_number_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/phone_numbers/{provider_number_id}")
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:

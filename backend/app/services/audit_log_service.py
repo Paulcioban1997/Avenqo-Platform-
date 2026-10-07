@@ -23,7 +23,7 @@ class AuditLogService:
     def record(
         self,
         *,
-        actor_user_id: UUID,
+        actor_user_id: UUID | None = None,
         action: str,
         target_type: str,
         target_id: str | None = None,

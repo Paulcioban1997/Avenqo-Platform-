@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from time import time
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from backend.app.config.settings import Settings
+from backend.app.dependencies.auth import CurrentIdentity
 from backend.app.models import (
     Base,
     BillingAccount,
@@ -59,7 +61,7 @@ class _FakeVoiceProvider:
             raise ValueError("unknown agent")
 
     def inbound_target(self, config: VoiceBusinessConfig) -> str:
-        return config.retell_sip_uri
+        return config.retell_sip_uri or ""
 
     def agent_instructions(self, config: VoiceBusinessConfig) -> str:
         return f"Bonjour, {config.business_name}, assistant virtuel, cet appel peut être enregistré."
@@ -103,16 +105,16 @@ def test_native_voice_bridge_uses_membership_permissions_and_blocks_customers(tm
                     remaining_ai_credits=100, tool_outcomes=({"tool": tool, "success": True, "confirmed": confirmed},))
 
         central = Central()
-        request = VoiceToolRequest(call_id=call.telnyx_call_control_id, action_id="native-once",
+        request = VoiceToolRequest(call_id=str(call.telnyx_call_control_id or ""), action_id="native-once",
             arguments={"question": "Business question", "plan": "enterprise", "tenant_id": str(uuid4()), "permissions": ["billing:manage"]})
-        result = asyncio.run(voice_central_agent(request, api_key, session, Settings(), central, None))
+        result = asyncio.run(voice_central_agent(request, api_key, session, Settings(), cast(Any, central), None))
         assert result["success"] is (allowed and confirmed)
         if allowed:
             from backend.app.core.permissions import permissions_for
             assert result["selected_agent"] == agent
             assert central.calls[0][0] == TenantContext(company.id, user.id)
             assert central.calls[0][3]["permissions"] == frozenset(permissions_for(role))
-            replay = asyncio.run(voice_central_agent(request, api_key, session, Settings(), central, None))
+            replay = asyncio.run(voice_central_agent(request, api_key, session, Settings(), cast(Any, central), None))
             assert replay == result and len(central.calls) == 1
         else:
             assert central.calls == []
@@ -204,6 +206,7 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
         result = controller.verify_gather(call, "907182"); session.commit()
         assert result == {"success": True, "authenticated": True}
         authenticated = controller.valid_session(call)
+        assert authenticated is not None
         assert authenticated.call_id == call.id and authenticated.company_id == company.id
         assert authenticated.principal_id == principal.id
         if principal_type == "CUSTOMER":
@@ -322,13 +325,16 @@ def test_native_capabilities_handler_uses_server_identity_and_membership(tmp_pat
                 return builder.build(tenant, user_id, **kwargs)
 
         central = Central()
+        identity_cap = cast(CurrentIdentity, SimpleNamespace(user=user))
+        membership_cap = cast(Any, SimpleNamespace(role=role))
+        central_cap = cast(Any, central)
         if role == UserRole.VIEWER:
             with pytest.raises(HTTPException) as denied:
-                get_voice_capabilities(SimpleNamespace(user=user), SimpleNamespace(role=role), central)
+                get_voice_capabilities(identity_cap, membership_cap, central_cap)
             assert denied.value.status_code == 403
             assert central.calls == []
         else:
-            data = get_voice_capabilities(SimpleNamespace(user=user), SimpleNamespace(role=role), central)
+            data = get_voice_capabilities(identity_cap, membership_cap, central_cap)
             assert data["tenant_id"] == str(company.id)
             assert data["subscription_plan"] == "professional"
             assert data["permissions"] == sorted(permissions_for(role))
@@ -376,7 +382,7 @@ def test_voice_config_cannot_claim_number_owned_by_another_tenant(tmp_path):
             session,
             Settings(TELNYX_API_KEY="configured"),
             provider=_FakeVoiceProvider(),
-            telnyx=_FakeTelnyx(),
+            telnyx=cast(Any, _FakeTelnyx()),
         )
 
         with pytest.raises(PermissionError, match="another tenant"):
@@ -405,8 +411,8 @@ def test_pin_authentication_tool_requests_keypad_without_returning_or_forwarding
         call.status = "in_progress"; session.commit()
         result = asyncio.run(orchestrator._dispatch_tool(config, call, "request_pin_authentication", {"_action_id": "a" * 32}))
         assert result["success"] is True and result["authentication_pending"] is True
-        assert len(orchestrator.telnyx.gathers) == 1
-        control_id, command_id, state = orchestrator.telnyx.gathers[0]
+        assert len(cast(Any, orchestrator.telnyx).gathers) == 1
+        control_id, command_id, state = cast(Any, orchestrator.telnyx).gathers[0]
         assert control_id == "pin-tool-call" and len(command_id) == 36
         assert VoiceCallerAuth(session, Settings()).valid_challenge(call, state)
         assert "pin" not in str(result).casefold() and "digits" not in str(result).casefold()
@@ -427,7 +433,7 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
         identity = SimpleNamespace(user=user)
         app = FastAPI(); app.include_router(voice_router.router, prefix="/api/v1")
         app.dependency_overrides[get_db] = lambda: session
-        app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, AUTH_JWT_SECRET="test-pin-endpoint-secret-long-enough")
+        app.dependency_overrides[get_settings] = lambda: Settings(AUTH_JWT_SECRET="test-pin-endpoint-secret-long-enough")
         app.dependency_overrides[voice_router.get_current_identity] = lambda: identity
         app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: membership
         secret = "908172"
@@ -438,8 +444,8 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
             malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "company_id": str(uuid4())})
             assert malformed.status_code == 422 and secret not in malformed.text
         credential = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == company.id))
-        assert credential.principal_id == user.id and credential.pin_hash.startswith("$argon2")
-        assert secret not in credential.pin_hash
+        assert credential is not None and credential.principal_id == user.id and credential.pin_hash.startswith("$argon2")
+        assert credential is not None and secret not in credential.pin_hash
     finally:
         session.close(); engine.dispose()
 
@@ -464,7 +470,7 @@ def test_voice_status_is_visible_before_entitlement_or_provider_provisioning(tmp
                 return snapshot
 
         identity = SimpleNamespace(user=SimpleNamespace(id=uuid4(), company_id=company.id, company=company))
-        status = get_voice_status(identity, session, Settings(), _Analytics())
+        status = get_voice_status(cast(CurrentIdentity, identity), session, Settings(), cast(Any, _Analytics()))
 
         assert status["voice_status"] == "ENABLED"
         assert status["module_entitled"] is True
@@ -526,7 +532,7 @@ def _voice_database(tmp_path):
         session,
         Settings(),
         provider=_FakeVoiceProvider(),
-        telnyx=_FakeTelnyx(),
+        telnyx=cast(Any, _FakeTelnyx()),
     )
     return engine, session, company, config, api_key, service
 
@@ -534,7 +540,8 @@ def _voice_database(tmp_path):
 def test_voice_api_key_is_tenant_scoped_and_not_stored_in_plaintext(tmp_path) -> None:
     engine, session, _, config, key, service = _voice_database(tmp_path)
     try:
-        assert service.config_from_api_key(key).id == config.id
+        resolved = service.config_from_api_key(key)
+        assert resolved is not None and resolved.id == config.id
         assert service.config_from_api_key("avqv_other_tenant_key") is None
         assert key not in config.voice_api_key_hash
         assert config.voice_api_key_hash == hashlib.sha256(key.encode()).hexdigest()
@@ -592,10 +599,10 @@ def test_voice_owner_requires_sms_otp_before_privileged_caller_type(tmp_path):
 
         assert call.caller_type == "UNKNOWN"
         sent = asyncio.run(orchestrator._request_caller_verification(config, call))
-        sms_text = orchestrator.telnyx.messages[-1][1]
+        sms_text = cast(Any, orchestrator.telnyx).messages[-1][1]
         code = sms_text.split(": ", 1)[1].split(".", 1)[0]
         assert sent == {"success": True, "verification_sent": True}
-        assert owner.phone in orchestrator.telnyx.messages[-1]
+        assert owner.phone in cast(Any, orchestrator.telnyx).messages[-1]
         assert call.verification_code_hash is not None
         assert code not in call.verification_code_hash
 
@@ -628,7 +635,7 @@ def test_voice_client_sms_verification_creates_client_scoped_identity(tmp_path):
         })
 
         sent = asyncio.run(orchestrator._request_caller_verification(config, call))
-        code = orchestrator.telnyx.messages[-1][1].split(": ", 1)[1].split(".", 1)[0]
+        code = cast(Any, orchestrator.telnyx).messages[-1][1].split(": ", 1)[1].split(".", 1)[0]
         verified = orchestrator._verify_caller(config, call, code)
 
         assert sent == {"success": True, "verification_sent": True}
@@ -744,15 +751,15 @@ def test_verified_voice_metrics_reuse_central_ai_and_are_idempotent(tmp_path):
             session.commit()
         central = _CentralAI()
         request = VoiceToolRequest(
-            call_id=call.telnyx_call_control_id,
+            call_id=str(call.telnyx_call_control_id or ""),
             action_id="metrics-action-once",
             arguments={"question": "Combien de commandes aujourd'hui ?"},
         )
         first = asyncio.run(voice_business_metrics(
-            request, api_key, session, Settings(), central, None
+            request, api_key, session, Settings(), cast(Any, central), None
         ))
         second = asyncio.run(voice_business_metrics(
-            request, api_key, session, Settings(), central, None
+            request, api_key, session, Settings(), cast(Any, central), None
         ))
 
         assert first["success"] is True
@@ -798,7 +805,9 @@ def test_voice_opening_precheck_uses_tenant_hours_not_legacy_voice_hours(tmp_pat
         company.business_hours = {"weekly": {"monday": [{"open": "10:00", "close": "12:00"}]}}
         config.opening_hours = {}
         session.commit()
-        opened, closed = service._opening_interval(config, target)
+        interval = service._opening_interval(config, target)
+        assert interval is not None
+        opened, closed = interval
         assert opened.hour == 15 and closed.hour == 17
         assert service._utc_datetime("2027-02-08T10:00:00", config) == opened
     finally:
@@ -968,7 +977,7 @@ def test_two_consecutive_uncertainties_transfer_to_human(tmp_path) -> None:
         ))
         assert first["action"] == "clarify_once"
         assert second["transfer"] is True
-        assert telnyx.transfers == [("telnyx-control-test", "+15145550199")]
+        assert cast(Any, telnyx).transfers == [("telnyx-control-test", "+15145550199")]
     finally:
         session.close()
         engine.dispose()
@@ -995,6 +1004,7 @@ def test_call_transcript_and_summary_are_idempotently_saved_to_crm(tmp_path) -> 
 
         activities = list(session.scalars(select(CRMActivity).where(CRMActivity.company_id == company.id)).all())
         assert len(activities) == 1
+        assert activities[0].notes is not None
         assert "Asked for a callback." in activities[0].notes
         assert "Caller asked about a service" in activities[0].notes
     finally:
@@ -1035,9 +1045,12 @@ def signed_telnyx_webhook(tmp_path, monkeypatch):
     engine, session, company, config, _, service = _voice_database(tmp_path)
     private_key = Ed25519PrivateKey.generate()
     public = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    settings = Settings(_env_file=None, TELNYX_API_KEY="test-secret-never-log",
-        TELNYX_PUBLIC_KEY=base64.b64encode(public).decode(), TELNYX_VOICE_CONNECTION_ID="test-connection",
-        RATE_LIMIT_ENABLED=True, RATE_LIMIT_WEBHOOK_PER_MINUTE=100)
+    settings = Settings()
+    settings.telnyx_api_key = "test-secret-never-log"
+    settings.telnyx_public_key = base64.b64encode(public).decode()
+    settings.telnyx_voice_connection_id = "test-connection"
+    settings.rate_limit_enabled = True
+    settings.rate_limit_webhook_per_minute = 100
     binding = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
         country_code="CA", provider="telnyx", number_type="local", status="ACTIVE", capabilities=["voice"])
     session.add_all([binding, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
@@ -1207,7 +1220,7 @@ def test_signed_dtmf_gather_authenticates_customer_once_without_persisting_digit
     assert env.send(gathered).json()["duplicate"] is True
     env.session.refresh(call)
     auth = controller.valid_session(call)
-    assert auth.principal_id == client.id and auth.permissions == ["customer:self"]
+    assert auth is not None and auth.principal_id == client.id and auth.permissions == ["customer:self"]
     assert call.caller_type == "CLIENT" and call.authenticated_user_id is None
     receipts = env.session.scalars(select(VoiceToolAction)).all()
     assert "908271" not in str([item.result for item in receipts]) + caplog.text + str(call.transcript) + str(call.summary)

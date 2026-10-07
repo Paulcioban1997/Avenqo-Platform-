@@ -25,7 +25,7 @@ class VoiceConfigRequest(BaseModel):
     opening_hours: dict[str, Any] = Field(default_factory=dict)
     services: list[VoiceServiceConfig] = Field(default_factory=list, max_length=100)
     transfer_phone: str | None = Field(default=None, pattern=r"^\+[1-9]\d{7,14}$")
-    telnyx_phone_number: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    telnyx_phone_number: str | None = Field(default=None, pattern=r"^\+[1-9]\d{7,14}$")
     preferred_language: str = Field(default="fr", min_length=2, max_length=16)
     retell_agent_id: str | None = Field(default=None, min_length=1, max_length=128)
     retell_sip_uri: str | None = Field(default=None, pattern=r"^sips?:[^\s]+$")
@@ -70,7 +70,7 @@ class VoiceConfigResponse(BaseModel):
     opening_hours: dict[str, Any]
     services: list[dict[str, Any]]
     transfer_phone: str | None
-    telnyx_phone_number: str
+    telnyx_phone_number: str | None = None
     preferred_language: str
     greeting_message: str
     retell_agent_id: str | None
@@ -116,7 +116,7 @@ class VoiceNumberAssignRequest(BaseModel):
 
 
 class VoiceSetupRequest(BaseModel):
-    number_id: UUID
+    number_id: UUID | None = None
     confirmed: bool = False
     model_config = ConfigDict(extra="forbid")
 

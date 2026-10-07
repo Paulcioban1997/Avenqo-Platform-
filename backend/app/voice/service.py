@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.models import (
+    Company,
     CRMActivity,
     CRMClient,
     CRMCommunication,
@@ -134,6 +135,56 @@ class VoiceOrchestrator:
             select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id)
         )
 
+    def ensure_config(
+        self,
+        tenant: TenantContext,
+        phone_number: str | None = None,
+    ) -> VoiceBusinessConfig:
+        """Idempotently ensure a VoiceBusinessConfig exists for tenant and binds any active number."""
+        config = self.config_for_tenant(tenant)
+        company = self.db.scalar(select(Company).where(Company.id == tenant.company_id))
+
+        active_number = self.db.scalar(
+            select(VoicePhoneNumber).where(
+                VoicePhoneNumber.company_id == tenant.company_id,
+                VoicePhoneNumber.status == "ACTIVE",
+            )
+        )
+        resolved_number = phone_number or (active_number.phone_number if active_number is not None else None)
+
+        if config is None:
+            api_key = new_voice_api_key()
+            business_name = company.name if company is not None else "Avenqo Business"
+            pref_lang = (company.preferred_language if company is not None else None) or "fr"
+            timezone_name = (company.timezone if company is not None else None) or "America/Toronto"
+
+            config = VoiceBusinessConfig(
+                company_id=tenant.company_id,
+                business_name=business_name,
+                timezone_name=timezone_name,
+                preferred_language=pref_lang,
+                telnyx_phone_number=resolved_number,
+                opening_hours={},
+                services=[],
+                greeting_message=self.greeting_for(business_name, pref_lang),
+                voice_api_key_hash=_api_key_hash(api_key),
+                voice_api_key_last4=api_key[-4:],
+                enabled=False,
+            )
+            self.db.add(config)
+            self.db.flush()
+        else:
+            if resolved_number and config.telnyx_phone_number != resolved_number:
+                config.telnyx_phone_number = resolved_number
+                self.db.flush()
+
+        if active_number is not None and config.telnyx_phone_number == active_number.phone_number:
+            if active_number.config_id != config.id:
+                active_number.config_id = config.id
+                self.db.flush()
+
+        return config
+
     @staticmethod
     def public_config(config: VoiceBusinessConfig) -> dict[str, Any]:
         return {
@@ -173,18 +224,21 @@ class VoiceOrchestrator:
             await self.provider.validate_agent(agent_id)
 
         config = self.config_for_tenant(tenant)
-        number = self.db.scalar(select(VoicePhoneNumber).where(
-            VoicePhoneNumber.phone_number == values["telnyx_phone_number"]
-        ))
-        if number is not None:
-            if number.company_id != tenant.company_id:
-                raise PermissionError("This number belongs to another tenant.")
-            if number.status != "ACTIVE":
-                raise ValueError("Only an active, provider-confirmed number can be assigned to Voice.")
-            if number.config_id not in {None, config.id if config is not None else None}:
-                raise ValueError("This number is already assigned to another Voice configuration.")
-        elif self.settings.telnyx_api_key:
-            raise ValueError("Search and provision a tenant-owned Voice number before configuring inbound calls.")
+        requested_number = values.get("telnyx_phone_number")
+        number = None
+        if requested_number:
+            number = self.db.scalar(select(VoicePhoneNumber).where(
+                VoicePhoneNumber.phone_number == requested_number
+            ))
+            if number is not None:
+                if number.company_id != tenant.company_id:
+                    raise PermissionError("This number belongs to another tenant.")
+                if number.status != "ACTIVE":
+                    raise ValueError("Only an active, provider-confirmed number can be assigned to Voice.")
+                if number.config_id not in {None, config.id if config is not None else None}:
+                    raise ValueError("This number is already assigned to another Voice configuration.")
+            elif self.settings.telnyx_api_key:
+                raise ValueError("Search and provision a tenant-owned Voice number before configuring inbound calls.")
         if config is not None and create_only:
             raise ValueError("La configuration Voice existe déjà; utilisez la mise à jour.")
         if config is None:
@@ -202,7 +256,7 @@ class VoiceOrchestrator:
             previous_number = self.db.scalar(select(VoicePhoneNumber).where(
                 VoicePhoneNumber.config_id == config.id
             ))
-            if previous_number is not None and previous_number.phone_number != values["telnyx_phone_number"]:
+            if previous_number is not None and requested_number and previous_number.phone_number != requested_number:
                 previous_number.config_id = None
             api_key = None
             for field, value in values.items():
@@ -350,7 +404,13 @@ class VoiceOrchestrator:
             registry = build_default_assistant_registry()
             active = frozenset(ModuleEntitlementService(self.db).get_active_modules(TenantContext(config.company_id)))
             tool = mutations[tool_name](self.db)
-            if any(registry.get(agent_id) is None or not agent_entitlements(registry.get(agent_id)).issubset(active) for agent_id in tool.agent_ids):
+            agent_unavailable = False
+            for agent_id in tool.agent_ids:
+                agent = registry.get(agent_id)
+                if agent is None or not agent_entitlements(agent).issubset(active):
+                    agent_unavailable = True
+                    break
+            if agent_unavailable:
                 return {"success": False, "error": "agent_not_available"}
             if authenticated.caller_type != "CUSTOMER":
                 membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.company_id == config.company_id,
@@ -443,12 +503,15 @@ class VoiceOrchestrator:
             controller = VoiceCallerAuth(self.db, self.settings)
             if controller.valid_session(call) is not None:
                 return {"success": True, "authenticated": True, "message": voice_auth_message(call.locale or config.preferred_language, 1)}
+            call_control_id = call.telnyx_call_control_id
+            if not call_control_id:
+                return {"success": False, "error": "caller_authentication_unavailable", "message": voice_auth_message(call.locale or config.preferred_language, 2)}
             if call.verification_attempts >= getattr(self.settings, "voice_pin_max_attempts", 5):
                 return {"success": False, "error": "caller_authentication_failed", "message": voice_auth_message(call.locale or config.preferred_language, 2)}
             client_state = controller.challenge(call)
             self.db.commit()
             try:
-                await self.telnyx.gather_pin(call.telnyx_call_control_id, command_id=str(UUID(args["_action_id"][:32])), client_state=client_state)
+                await self.telnyx.gather_pin(call_control_id, command_id=str(UUID(args["_action_id"][:32])), client_state=client_state)
             except Exception:
                 call.pin_challenge_hash = None; call.pin_challenge_expires_at = None; self.db.commit()
                 return {"success": False, "error": "caller_authentication_unavailable", "message": voice_auth_message(call.locale or config.preferred_language, 2)}
@@ -522,7 +585,8 @@ class VoiceOrchestrator:
             return {"success": True, "verification_sent": True}
 
         caller_phone = self._normalized_phone(call.caller_phone)
-        if caller_phone is None:
+        from_phone = config.telnyx_phone_number
+        if caller_phone is None or not from_phone:
             return {"success": False, "error": "verification_unavailable"}
         matching_users = []
         users = self.db.scalars(select(User).where(
@@ -565,7 +629,7 @@ class VoiceOrchestrator:
         )
         try:
             await self.telnyx.send_sms(
-                from_number=config.telnyx_phone_number,
+                from_number=from_phone,
                 to_number=caller_phone,
                 text=message,
             )
@@ -575,7 +639,7 @@ class VoiceOrchestrator:
             call.verification_user_id = None
             call.verification_client_id = None
             self.db.commit()
-            logger.warning("Voice caller verification SMS delivery failed", extra={"company_id": str(config.company_id)})
+            _logger.warning("Voice caller verification SMS delivery failed", extra={"company_id": str(config.company_id)})
             return {"success": False, "error": "verification_delivery_unavailable"}
         return {"success": True, "verification_sent": True}
 
@@ -788,8 +852,8 @@ class VoiceOrchestrator:
             },
             actor_name="Avenqo Voice",
         )
-        if error:
-            return {"success": False, "conflict": True, "message": error}
+        if error or appointment is None:
+            return {"success": False, "conflict": True, "message": error or "appointment_creation_failed"}
         call.appointment_id = appointment.id
         call.status = "appointment_booked"
         self.db.commit()
@@ -823,8 +887,8 @@ class VoiceOrchestrator:
         updated, error = await CRMService(self.db).update_appointment(
             config.company_id, appointment_id, {"start_time": start, "duration_minutes": appointment.duration_minutes}, actor_name="Avenqo Voice"
         )
-        if error:
-            return {"success": False, "conflict": True, "message": error}
+        if error or updated is None:
+            return {"success": False, "conflict": True, "message": error or "appointment_update_failed"}
         call.appointment_id = updated.id
         self.db.commit()
         return {"success": True, "appointment_id": str(updated.id), "starts_at": updated.start_time.isoformat(), "ends_at": updated.end_time.isoformat()}
@@ -849,9 +913,10 @@ class VoiceOrchestrator:
         return {"success": True, "appointment_id": str(appointment_id), "status": "cancelled"}
 
     async def _transfer(self, config: VoiceBusinessConfig, call: VoiceCall, reason: str) -> dict[str, Any]:
-        if not config.transfer_phone or not call.telnyx_call_control_id:
+        call_control_id = call.telnyx_call_control_id
+        if not config.transfer_phone or not call_control_id:
             return {"success": False, "transfer": False, "message": "Aucun transfert humain n'est configuré."}
-        await self.telnyx.transfer_call(call.telnyx_call_control_id, config.transfer_phone, config.telnyx_phone_number)
+        await self.telnyx.transfer_call(call_control_id, config.transfer_phone, config.telnyx_phone_number)
         call.status = "transferred"
         self.db.commit()
         return {"success": True, "transfer": True, "reason": reason}
@@ -937,13 +1002,14 @@ class VoiceOrchestrator:
         return call
 
     async def _send_confirmation(self, config: VoiceBusinessConfig, call: VoiceCall) -> None:
+        from_number = config.telnyx_phone_number
         appointment = self.db.get(CRMAppointmentModel, call.appointment_id)
-        if not appointment or call.caller_phone == "unknown":
+        if not appointment or call.caller_phone == "unknown" or not from_number:
             return
         local_time = appointment.start_time.astimezone(ZoneInfo(config.timezone_name)).strftime("%Y-%m-%d %H:%M")
         message = f"{config.business_name} : votre rendez-vous est confirmé le {local_time} ({config.timezone_name})."
         try:
-            await self.telnyx.send_sms(from_number=config.telnyx_phone_number, to_number=call.caller_phone, text=message)
+            await self.telnyx.send_sms(from_number=from_number, to_number=call.caller_phone, text=message)
             call.sms_status = "sent"
             status_value = "sent"
         except Exception:
@@ -966,3 +1032,15 @@ class VoiceOrchestrator:
 
 # Kept local to avoid a broad public re-export change in the CRM package.
 from backend.app.models.crm import CRMAppointment as CRMAppointmentModel
+
+
+def ensure_voice_business_config(
+    db: Session,
+    company_id: UUID,
+    phone_number: str | None = None,
+) -> VoiceBusinessConfig:
+    """Generic idempotent helper ensuring VoiceBusinessConfig exists for any company."""
+    from backend.app.config.settings import get_settings
+    settings = get_settings()
+    orchestrator = VoiceOrchestrator(db, settings, RetellVoiceProvider(settings), TelnyxClient(settings))
+    return orchestrator.ensure_config(TenantContext(company_id), phone_number)

@@ -99,33 +99,39 @@ async def setup_tenant_voice(
     if db.get_bind().dialect.name == "postgresql":
         db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
             {"lock_key": f"voice_setup:{identity.user.company_id}"})
-    number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.id == request.number_id,
-        VoicePhoneNumber.company_id == identity.user.company_id, VoicePhoneNumber.status == "ACTIVE"))
-    if number is None:
-        raise HTTPException(status_code=404, detail="Active tenant number not found")
+    number = None
+    if request.number_id is not None:
+        number = db.scalar(select(VoicePhoneNumber).where(
+            VoicePhoneNumber.id == request.number_id,
+            VoicePhoneNumber.company_id == identity.user.company_id,
+            VoicePhoneNumber.status == "ACTIVE",
+        ))
+        if number is None:
+            raise HTTPException(status_code=404, detail="Active tenant number not found")
+    else:
+        number = db.scalar(select(VoicePhoneNumber).where(
+            VoicePhoneNumber.company_id == identity.user.company_id,
+            VoicePhoneNumber.status == "ACTIVE",
+        ))
     service = _orchestrator(db, settings)
-    existing = service.config_for_tenant(TenantContext(identity.user.company_id))
-    if existing is not None:
-        if existing.telnyx_phone_number != number.phone_number or number.config_id not in {None, existing.id}:
-            raise HTTPException(status_code=409, detail="Existing Voice configuration conflicts with this number")
-        if number.config_id is None:
-            number.config_id = existing.id; db.commit()
-        return {"status": "CONFIGURED" if existing.enabled else "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(existing).model_dump(mode="json")}
-    company = identity.user.company
-    values = VoiceConfigRequest(business_name=company.name, timezone_name=company.timezone or "UTC",
-        preferred_language=company.preferred_language or "fr", telnyx_phone_number=number.phone_number,
-        opening_hours={}, services=[], enabled=False).model_dump(mode="json")
-    try:
-        config, _one_time_secret = await service.upsert_config(TenantContext(company.id, identity.user.id), values)
-    except IntegrityError:
-        db.rollback()
-        existing = service.config_for_tenant(TenantContext(company.id))
-        if existing is None or existing.telnyx_phone_number != number.phone_number:
-            raise HTTPException(status_code=409, detail="Voice configuration changed; reload setup") from None
-        return {"status": "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(existing).model_dump(mode="json")}
-    AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_setup_created", target_type="voice_configuration",
-        target_id=str(config.id), company_id=company.id, metadata={"audio_provider_configured": False})
-    return {"status": "AUDIO_CONFIGURATION_REQUIRED", "configuration": _config_response(config).model_dump(mode="json")}
+    config = service.ensure_config(TenantContext(identity.user.company_id), number.phone_number if number is not None else None)
+    if number is not None:
+        number.config_id = config.id
+        config.telnyx_phone_number = number.phone_number
+    db.commit()
+    db.refresh(config)
+    AuditLogService(db).record(
+        actor_user_id=identity.user.id,
+        action="voice_setup_created",
+        target_type="voice_configuration",
+        target_id=str(config.id),
+        company_id=identity.user.company_id,
+        metadata={"audio_provider_configured": config.enabled, "number_assigned": number is not None},
+    )
+    return {
+        "status": "CONFIGURED" if config.enabled else "AUDIO_CONFIGURATION_REQUIRED",
+        "configuration": _config_response(config).model_dump(mode="json"),
+    }
 
 
 @router.post("/numbers/import", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_number_import", "rate_limit_ai_per_minute"))])
@@ -162,6 +168,9 @@ def set_user_voice_pin(
             "USER", identity.user.id, request.pin.get_secret_value())
         AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_pin_updated", target_type="user",
             target_id=str(identity.user.id), company_id=identity.user.company_id, metadata={"credential_type": "USER"}, commit=False)
+        config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+        if config is not None and config.telnyx_phone_number:
+            config.enabled = True
         db.commit()
     except (ValueError, PermissionError):
         db.rollback()
@@ -505,6 +514,14 @@ async def provision_voice_number(
         raise
     except VoiceNumberOwnerActionRequired as exc:
         return {"status": "READY_FOR_OWNER_ACTION", "reason": str(exc)}
+    except (ValueError, HTTPStatusError) as exc:
+        if reservation is not None:
+            db.delete(reservation)
+            db.commit()
+        logger.warning("Telnyx number order rejected and cleanly rolled back", extra={"company_id": str(company_id)})
+        if isinstance(exc, HTTPStatusError) and exc.response.status_code in {400, 422}:
+            raise HTTPException(status_code=422, detail="Provider rejected number purchase") from exc
+        raise HTTPException(status_code=502, detail="Provider number order failed; no number was purchased") from exc
     except Exception as exc:
         if reservation is None:
             raise HTTPException(status_code=502, detail="Number offer verification is unavailable; no order placed") from None
@@ -513,10 +530,13 @@ async def provision_voice_number(
         logger.warning("Telnyx number order outcome requires reconciliation", extra={"company_id": str(company_id)})
         return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_order_outcome_unknown", "number": _voice_number_response(reservation)}
 
-    order_data = order.get("data") if isinstance(order.get("data"), dict) else {}
-    reservation.provider_order_id = str(order_data["id"]) if order_data.get("id") else None
-    returned_numbers = order_data.get("phone_numbers") or []
-    number_data = returned_numbers[0] if returned_numbers and isinstance(returned_numbers[0], dict) else {}
+    raw_data = order.get("data") if isinstance(order, dict) else None
+    order_data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    reservation.provider_order_id = str(order_data["id"]) if "id" in order_data and order_data["id"] else None
+    raw_numbers = order_data.get("phone_numbers")
+    returned_numbers = raw_numbers if isinstance(raw_numbers, list) else []
+    raw_first = returned_numbers[0] if returned_numbers else None
+    number_data: dict[str, Any] = raw_first if isinstance(raw_first, dict) else {}
     provider_number_id = None
     order_status = str(number_data.get("status") or order_data.get("status") or "order_outcome_unknown").upper()
     reservation.provider_number_id = str(provider_number_id) if provider_number_id else None
@@ -530,7 +550,12 @@ async def provision_voice_number(
             reservation.status = "ACTIVE"
         except Exception:
             reservation.status = "VERIFYING"
-    reservation.purchased_at = datetime.now(timezone.utc) if reservation.status == "ACTIVE" else None
+    if reservation.status == "ACTIVE":
+        reservation.purchased_at = datetime.now(timezone.utc)
+        orchestrator = _orchestrator(db, settings)
+        config = orchestrator.ensure_config(TenantContext(company_id), reservation.phone_number)
+        reservation.config_id = config.id
+        config.telnyx_phone_number = reservation.phone_number
     db.commit()
     db.refresh(reservation)
     return {"status": reservation.status, "number": _voice_number_response(reservation)}
@@ -658,9 +683,11 @@ def _ensure_voice_access(db: Session, company_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Voice module is not active for this tenant")
 
 
-def _call_event_data(payload: dict[str, Any]) -> dict[str, Any]:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    body = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+def _call_event_data(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    raw_data = payload.get("data") if isinstance(payload, dict) else None
+    data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    raw_body = data.get("payload")
+    body: dict[str, Any] = raw_body if isinstance(raw_body, dict) else {}
     return data, body
 
 
@@ -794,7 +821,6 @@ async def telnyx_webhook(
         return {"received": True, "routed": False}
     event_key = hashlib.sha256(f"telnyx-event:{event_id}".encode("utf-8")).hexdigest()
     if db.get_bind().dialect.name == "postgresql":
-        from sqlalchemy import text
         db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": f"telnyx_event:{event_key}"})
     receipt = db.scalar(select(VoiceToolAction).where(
         VoiceToolAction.action_id == event_key, VoiceToolAction.tool_name == "telnyx_event",
@@ -890,22 +916,28 @@ async def telnyx_webhook(
         return {"received": True, "routed": claim.status in {"routing", "routed", "in_progress"}, "duplicate": True}
     claim.status = "answering" if event_type == "call.initiated" else "in_progress" if media_mode else "routing"
     db.commit()
+    call_control_id = call.telnyx_call_control_id
+    if not call_control_id:
+        raise HTTPException(status_code=500, detail="Missing call control id")
     try:
         if event_type == "call.initiated":
             command_id = str(UUID(hashlib.sha256(f"answer:{call.id}".encode("utf-8")).hexdigest()[:32]))
-            await service.telnyx.answer_call(call.telnyx_call_control_id, command_id=command_id)
+            await service.telnyx.answer_call(call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
         if media_mode:
             client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
-            stream_url = settings.telnyx_media_stream_base_url.rstrip("/") + "/" + str(call.id)
+            base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
+            stream_url = f"{base_url}/{call.id}"
             command_id = str(UUID(hashlib.sha256(f"media:{call.id}".encode()).hexdigest()[:32]))
-            await service.telnyx.start_media_stream(call.telnyx_call_control_id, stream_url=stream_url,
+            await service.telnyx.start_media_stream(call_control_id, stream_url=stream_url,
                 client_state=client_state, command_id=command_id)
             receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media"}
             db.commit()
             return {"received": True, "routed": True}
+        if not target or not config.telnyx_phone_number:
+            raise HTTPException(status_code=500, detail="Missing transfer destination or source number")
         command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
-        await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
+        await service.telnyx.transfer_call(call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
     except Exception as exc:
         db.refresh(call)
         if call.ended_at is None:
@@ -943,9 +975,9 @@ async def retell_webhook(
     call_id = str(call_data.get("call_id") or "")
     if not call_id:
         raise HTTPException(status_code=422, detail="Retell call_id is required")
-    caller_phone = str(call_data.get("from_number") or call_data.get("from") or "") or None
-    sip_headers = call_data.get("custom_sip_headers") if isinstance(call_data.get("custom_sip_headers"), dict) else {}
-    reference = next((value for key, value in sip_headers.items() if key.casefold() == "x-avenqo-call-id"), None)
+    raw_headers = call_data.get("custom_sip_headers")
+    sip_headers: dict[str, Any] = raw_headers if isinstance(raw_headers, dict) else {}
+    reference = next((value for key, value in sip_headers.items() if str(key).casefold() == "x-avenqo-call-id"), None)
     if reference is None:
         call = db.scalar(select(VoiceCall).where(VoiceCall.config_id == config.id, VoiceCall.retell_call_id == call_id))
     else:
@@ -1068,7 +1100,6 @@ async def _voice_central_execute(
         return {"success": False, "status": "not_authorized", "error": "legacy_action_context_unavailable"}
 
     if db.get_bind().dialect.name == "postgresql":
-        from sqlalchemy import text
         db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
             {"lock_key": f"voice_metrics:{config.company_id}:{action_key}"},

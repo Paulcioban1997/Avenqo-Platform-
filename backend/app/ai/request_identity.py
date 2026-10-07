@@ -7,8 +7,8 @@ def resolve_ai_request_id(
     idempotency_key: str | None,
     *,
     tenant_id: UUID,
-    user_id: UUID,
-    conversation_id: UUID,
+    user_id: UUID | None = None,
+    conversation_id: UUID | None = None,
 ) -> str:
     if idempotency_key is None or not idempotency_key.strip():
         return str(uuid4())

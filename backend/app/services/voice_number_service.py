@@ -3,7 +3,10 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from backend.app.voice.providers import TelnyxClient
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -16,12 +19,33 @@ _COUNTRY_CODE = re.compile(r"^[A-Z]{2}$")
 
 
 class TelecomProvider(Protocol):
-    async def get_owned_number(self, phone_number: str) -> dict[str, object]: ...
-    async def search_available_numbers(self, **kwargs) -> list[dict[str, object]]: ...
+    async def get_owned_number(self, phone_number: str) -> dict[str, Any]: ...
 
-    async def order_phone_number(self, **kwargs) -> dict[str, object]: ...
+    async def search_available_numbers(
+        self,
+        *,
+        country_code: str,
+        region: str | None = None,
+        locality: str | None = None,
+        number_type: str | None = None,
+        limit: int = 20,
+        area_code: str | None = None,
+        prefix: str | None = None,
+        capabilities: tuple[str, ...] = ("voice",),
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]: ...
 
-    async def release_phone_number(self, provider_number_id: str) -> dict[str, object]: ...
+    async def order_phone_number(
+        self,
+        *,
+        phone_number: str,
+        connection_id: str,
+        messaging_profile_id: str | None = None,
+        idempotency_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]: ...
+
+    async def release_phone_number(self, provider_number_id: str) -> dict[str, Any]: ...
 
 
 class VoiceNumberOwnerActionRequired(RuntimeError):
@@ -44,7 +68,7 @@ class PhoneNumberSearch:
 class VoiceNumberManagementService:
     """Provider-neutral international number search/provisioning boundary."""
 
-    def __init__(self, provider: TelecomProvider) -> None:
+    def __init__(self, provider: TelecomProvider | TelnyxClient | Any) -> None:
         self._provider = provider
 
     async def register_owned_number(
@@ -79,8 +103,10 @@ class VoiceNumberManagementService:
         if any(item.company_id != tenant.company_id for item in configs) or existing is not None and existing.company_id != tenant.company_id:
             raise PermissionError("This number is already bound to another tenant")
         config = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id))
-        if config is not None and config.telnyx_phone_number != phone_number:
+        if config is not None and config.telnyx_phone_number and config.telnyx_phone_number != phone_number:
             raise ValueError("Existing Voice configuration uses a different number")
+        if config is not None and not config.telnyx_phone_number:
+            config.telnyx_phone_number = phone_number
         if existing is not None:
             if existing.provider != "telnyx" or existing.status != "ACTIVE" or existing.provider_number_id != str(record["id"]):
                 raise ValueError("Existing number lifecycle requires owner reconciliation")
@@ -180,24 +206,32 @@ class VoiceNumberManagementService:
         return await self._provider.release_phone_number(provider_number_id)
 
     @staticmethod
-    def _offer(country_code: str, raw: dict[str, object]) -> dict[str, Any]:
+    def _offer(country_code: str, raw: dict[str, Any]) -> dict[str, Any]:
         phone_number = str(raw.get("phone_number") or raw.get("number") or "")
         orderable = bool(re.fullmatch(r"\+[1-9]\d{7,14}", phone_number))
         if not orderable and not re.fullmatch(r"\+[1-9]\d*-+", phone_number):
             return {}
+        raw_features = raw.get("features")
+        feature_list = raw_features if isinstance(raw_features, list) else []
         features = {
             str(value.get("name", "") if isinstance(value, dict) else value).casefold()
-            for value in (raw.get("features") or [])
+            for value in feature_list
         }
-        cost_info = raw.get("cost_information") if isinstance(raw.get("cost_information"), dict) else {}
+        raw_cost = raw.get("cost_information")
+        cost_info: dict[str, Any] = raw_cost if isinstance(raw_cost, dict) else {}
         monthly_cost = cost_info.get("monthly_cost")
         try:
             monthly_cost = float(monthly_cost) if monthly_cost is not None else None
         except (TypeError, ValueError):
             monthly_cost = None
-        locations = raw.get("region_information") or []
-        location = locations[0] if isinstance(locations, list) and locations and isinstance(locations[0], dict) else {}
-        regions = {item.get("region_type"): item.get("region_name") for item in locations if isinstance(item, dict)}
+        raw_locations = raw.get("region_information")
+        locations: list[Any] = raw_locations if isinstance(raw_locations, list) else []
+        location: dict[str, Any] = locations[0] if locations and isinstance(locations[0], dict) else {}
+        regions: dict[str, Any] = {
+            str(item["region_type"]): item.get("region_name")
+            for item in locations
+            if isinstance(item, dict) and item.get("region_type") is not None
+        }
         requirements = raw.get("regulatory_requirements") or raw.get("requirements") or []
         return {
             "phone_number": phone_number,

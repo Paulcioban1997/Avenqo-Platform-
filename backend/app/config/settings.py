@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         env_file="backend/.env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     app_name: str = Field(default="Avenqo", alias="APP_NAME")

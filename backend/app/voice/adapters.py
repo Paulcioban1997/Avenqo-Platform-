@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from openai import AsyncOpenAI
 
@@ -136,7 +136,7 @@ class OpenAIRealtimeAudioAdapter:
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         self._manager = client.realtime.connect(model=self._model)
         self._connection = await self._manager.__aenter__()
-        await self._connection.send({
+        await self._connection.send(cast(Any, {
             "type": "session.update",
             "session": {
                 "type": "realtime",
@@ -157,7 +157,7 @@ class OpenAIRealtimeAudioAdapter:
                     "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": self._config.tts_voice},
                 },
             },
-        })
+        }))
 
     async def send_audio(self, audio: bytes) -> None:
         if self._connection is None:

@@ -1,6 +1,7 @@
 import pytest
 import httpx
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -9,7 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app.config.settings import get_settings
 from backend.app.core.rate_limit import reset_rate_limiter
 from backend.app.database import get_db
-from backend.app.dependencies.auth import get_current_identity
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import UserRole
 import backend.app.routers.voice as voice_router
@@ -81,7 +82,7 @@ async def test_number_purchase_requires_current_actor_quote_and_truthful_provide
     db.commit()
     user = db.get(User, tenant.user_id)
     membership = db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == tenant.user_id))
-    identity = SimpleNamespace(user=user)
+    identity = cast(CurrentIdentity, SimpleNamespace(user=user))
     settings = Settings(AUTH_JWT_SECRET='quote-test-secret-at-least-32-characters', TELNYX_VOICE_CONNECTION_ID='verified-connection')
     offer = {'phone_number': '+14385550123', 'country_code': 'CA', 'number_type': 'local',
         'is_orderable': True, 'cost_information': {'upfront_cost': '1.00', 'monthly_cost': '1.00', 'currency': 'USD'},
@@ -514,7 +515,7 @@ async def test_bounded_window_and_absent_fields_are_honest():
 
     provider.search_available_numbers = inventory
     result = await VoiceNumberManagementService(provider).search(PhoneNumberSearch("FR", limit=1, offset=1))
-    assert provider.search_kwargs["limit"] == 2
+    assert provider.search_kwargs is not None and provider.search_kwargs["limit"] == 2
     assert result["offers"][0]["phone_number"] == "+33123456790"
     assert result["offers"][0]["country_code"] is None
     assert result["offers"][0]["voice_capability"] is None

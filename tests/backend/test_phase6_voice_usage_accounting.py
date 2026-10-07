@@ -4,6 +4,7 @@ import asyncio
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
+from typing import Any, AsyncIterator, cast
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -52,7 +53,9 @@ def test_anonymous_voice_audio_persists_tenant_usage_without_fake_identity(tmp_p
     engine, db = _session(tmp_path, "anonymous-voice-usage.db")
     try:
         company = _company(db, "anonymous-voice", "professional")
-        usage_service = AIUsageService(db, AIQuotaPolicy(Settings(_env_file=None, AUTH_JWT_SECRET="a" * 32)))
+        anon_settings = Settings()
+        anon_settings.auth_jwt_secret = "a" * 32
+        usage_service = AIUsageService(db, AIQuotaPolicy(anon_settings))
         ledger = VoiceUsageLedger(usage_service, voice_pricing_catalog(), company_id=company.id,
             user_id=None, conversation_id=None, plan_code="professional", request_namespace=uuid4())
         event = SimpleNamespace(type="conversation.item.input_audio_transcription.completed", event_id="anonymous-stt",
@@ -99,9 +102,11 @@ def test_voice_turn_settles_actual_stt_and_realtime_usage_once_across_duplicates
     try:
         company = _company(db, "voice-usage", "professional")
         user_id, conversation_id = uuid4(), uuid4()
+        turn_settings = Settings()
+        turn_settings.auth_jwt_secret = "a" * 32
         usage_service = AIUsageService(
             db,
-            AIQuotaPolicy(Settings(_env_file=None, AUTH_JWT_SECRET="a" * 32)),
+            AIQuotaPolicy(turn_settings),
         )
         catalog = voice_pricing_catalog()
         ledger = VoiceUsageLedger(
@@ -152,6 +157,7 @@ def test_voice_turn_settles_actual_stt_and_realtime_usage_once_across_duplicates
             TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
         )).all()
 
+        assert reservation is not None
         assert reservation.status == "settled"
         assert reservation.actual_credits == 114
         assert len(attempts) == 2
@@ -191,9 +197,11 @@ def test_voice_failure_retry_and_barge_in_record_only_reported_usage_once(tmp_pa
     engine, db = _session(tmp_path, "voice-retry-usage.db")
     try:
         company = _company(db, "voice-retry", "base")
+        retry_settings = Settings()
+        retry_settings.auth_jwt_secret = "b" * 32
         usage_service = AIUsageService(
             db,
-            AIQuotaPolicy(Settings(_env_file=None, AUTH_JWT_SECRET="b" * 32)),
+            AIQuotaPolicy(retry_settings),
         )
         ledger = VoiceUsageLedger(
             usage_service,
@@ -250,6 +258,7 @@ def test_voice_failure_retry_and_barge_in_record_only_reported_usage_once(tmp_pa
             TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
         )).all()
 
+        assert reservation is not None
         assert reservation.status == "settled"
         assert reservation.actual_credits == 14
         assert len(attempts) == 3
@@ -271,13 +280,12 @@ def test_central_chat_reuses_voice_reservation_and_voice_ledger_settles_all_prov
         company = _company(db, "voice-central-shared", "professional")
         user_id, conversation_id = uuid4(), uuid4()
         request_id = "central-voice-turn-request"
+        central_settings = Settings()
+        central_settings.auth_jwt_secret = "d" * 32
+        central_settings.ai_quota_limits = {"professional": {MONTHLY_AI_REQUESTS: 1}}
         usage_service = AIUsageService(
             db,
-            AIQuotaPolicy(Settings(
-                _env_file=None,
-                AUTH_JWT_SECRET="d" * 32,
-                AI_QUOTA_LIMITS={"professional": {MONTHLY_AI_REQUESTS: 1}},
-            )),
+            AIQuotaPolicy(central_settings),
         )
         ledger = VoiceUsageLedger(
             usage_service,
@@ -337,8 +345,10 @@ def test_central_chat_reuses_voice_reservation_and_voice_ledger_settles_all_prov
                     attempts=(provider_attempt,),
                 )
 
-            async def stream(self, *, system_instruction: str, prompt: str):
-                yield "Central answer"
+            async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
+                async def _gen():
+                    yield "Central answer"
+                return _gen()
 
         class Conversations:
             def ensure_locale(self, *_args, **_kwargs):
@@ -358,8 +368,8 @@ def test_central_chat_reuses_voice_reservation_and_voice_ledger_settles_all_prov
                 return []
 
         chat = ChatService(
-            Conversations(),
-            Retrieval(),
+            cast(Any, Conversations()),
+            cast(Any, Retrieval()),
             Provider(),
             usage_service=usage_service,
         )
@@ -394,10 +404,11 @@ def test_central_chat_reuses_voice_reservation_and_voice_ledger_settles_all_prov
         ))
         assert message.content == "Central answer"
         assert len(central_attempts) == 2
-        assert db.scalar(select(TenantAICreditReservation).where(
+        central_reservation = db.scalar(select(TenantAICreditReservation).where(
             TenantAICreditReservation.company_id == company.id,
             TenantAICreditReservation.avenqo_request_id == stable_request_id,
-        )).status == "reserved"
+        ))
+        assert central_reservation is not None and central_reservation.status == "reserved"
         assert not db.scalars(select(TenantAICreditLedgerEntry).where(
             TenantAICreditLedgerEntry.company_id == company.id,
             TenantAICreditLedgerEntry.reference_id == stable_request_id,

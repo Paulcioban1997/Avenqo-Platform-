@@ -116,7 +116,9 @@ class ModuleEntitlementService:
             ModuleEntitlementState.AVAILABLE,
         }
 
-    def activate_module(self, tenant: TenantContext, module_key: str) -> CompanyEntitlements:
+    def activate_module(
+        self, tenant: TenantContext, module_key: str, *, auto_init_voice: bool = False
+    ) -> CompanyEntitlements:
         # Acquire atomic transaction-scoped advisory lock on tenant's company_id
         # strictly serializes concurrent activations for this company without locking any tables or rows
         if self._session.get_bind().dialect.name == "postgresql":
@@ -166,6 +168,9 @@ class ModuleEntitlementService:
             entitlement.status = CompanyModuleStatus.ACTIVE
             entitlement.activated_at = now
             entitlement.expires_at = None
+        if module_key == "voice" and auto_init_voice:
+            from backend.app.voice.service import ensure_voice_business_config
+            ensure_voice_business_config(self._session, tenant.company_id)
         self._session.flush()
         return self.summary(tenant)
 

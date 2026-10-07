@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 from alembic import command
@@ -28,7 +29,7 @@ def _alembic_config(database_url: str) -> Config:
 
 
 @pytest.fixture
-def temp_db_url(tmp_path: Path) -> str:
+def temp_db_url(tmp_path: Path) -> Iterator[str]:
     db_path = tmp_path / "phase34_migrations.db"
     url = f"sqlite:///{db_path.as_posix()}"
     yield url
@@ -69,12 +70,13 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0044_voice_number_references"
+    assert current == "0045_voice_optional_phone_number"
     number_columns = {column["name"] for column in inspector.get_columns("voice_phone_numbers")}
     assert {"provider_connection_id", "provider_order_id", "upfront_cost"}.issubset(number_columns)
     configuration_columns = {column["name"]: column for column in inspector.get_columns("voice_business_configs")}
     assert configuration_columns["retell_agent_id"]["nullable"]
     assert configuration_columns["retell_sip_uri"]["nullable"]
+    assert configuration_columns["telnyx_phone_number"]["nullable"]
     call_columns = {column["name"] for column in inspector.get_columns("voice_calls")}
     assert {"locale", "pin_challenge_hash", "pin_challenge_expires_at"}.issubset(call_columns)
     attempt_columns = {column["name"] for column in inspector.get_columns("tenant_ai_provider_attempts")}
@@ -126,7 +128,7 @@ def test_sandbox_membership_revision_upgrades_to_current_head(temp_db_url: str) 
     engine = create_engine(temp_db_url)
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0044_voice_number_references"
+    assert current == "0045_voice_optional_phone_number"
     assert "company_memberships" in inspect(engine).get_table_names()
 
 
@@ -139,7 +141,7 @@ def test_current_production_head_upgrades_through_compatibility_merge(temp_db_ur
     engine = create_engine(temp_db_url)
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0044_voice_number_references"
+    assert current == "0045_voice_optional_phone_number"
 
 
 def test_sandbox_schema_created_from_models_upgrades_idempotently(temp_db_url: str) -> None:
@@ -154,7 +156,7 @@ def test_sandbox_schema_created_from_models_upgrades_idempotently(temp_db_url: s
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0044_voice_number_references"
+    assert current == "0045_voice_optional_phone_number"
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:

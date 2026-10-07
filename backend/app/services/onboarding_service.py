@@ -73,7 +73,7 @@ class OnboardingService:
             if code not in BUSINESS_MODULES_BY_KEY:
                 continue
             try:
-                entitlements.activate_module(tenant, code)
+                entitlements.activate_module(tenant, code, auto_init_voice=True)
             except ModuleEntitlementError:
                 unavailable.append(code)
         return tuple(unavailable)

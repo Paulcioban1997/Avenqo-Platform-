@@ -187,16 +187,18 @@ class VoiceCallerAuth:
         principal = self.db.get(principal_model, credential.principal_id)
         if principal is None or principal.company_id != call.company_id or normalized_phone(principal.phone) != credential.phone_number:
             self.db.flush(); return failed
-        if credential.principal_type == "USER":
+        if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
             if not principal.is_active or membership is None:
                 self.db.flush(); return failed
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
             call.authenticated_user_id = principal.id; call.verified_client_id = None
-        else:
+        elif isinstance(principal, CRMClient):
             if principal.is_deleted:
                 self.db.flush(); return failed
             call.caller_type = "CLIENT"; call.verified_client_id = principal.id; call.authenticated_user_id = None
+        else:
+            self.db.flush(); return failed
         call.caller_verified_at = now
         credential.failed_attempts = 0; credential.locked_until = None
         self.establish(call)

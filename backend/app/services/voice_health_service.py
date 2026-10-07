@@ -109,18 +109,25 @@ class VoiceHealthService:
             )
         ).all() if conversation_ids else []
 
-        last_call = max((self._utc(item.started_at) for item in calls if item.started_at), default=None)
+        last_call = max((self._utc(item.started_at) for item in calls if item.started_at is not None), default=None)
         last_success = max(
             (
-                self._utc(item.ended_at or item.started_at)
+                self._utc(ts)
                 for item in calls
                 if item.status in {"ended", "appointment_booked", "appointment_cancelled", "transferred"}
-                and (item.ended_at or item.started_at)
+                for ts in [item.ended_at or item.started_at]
+                if ts is not None
             ),
             default=None,
         )
         last_failure = max(
-            (self._utc(item.ended_at or item.started_at) for item in calls if item.status in {"failed", "rejected"} and (item.ended_at or item.started_at)),
+            (
+                self._utc(ts)
+                for item in calls
+                if item.status in {"failed", "rejected"}
+                for ts in [item.ended_at or item.started_at]
+                if ts is not None
+            ),
             default=None,
         )
         duration_seconds = sum(

@@ -59,7 +59,7 @@ class VoiceBusinessConfig(TimestampMixin, Base):
     opening_hours: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     services: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     transfer_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    telnyx_phone_number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    telnyx_phone_number: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     preferred_language: Mapped[str] = mapped_column(String(8), nullable=False, default="fr")
     greeting_message: Mapped[str] = mapped_column(Text, nullable=False)
     retell_agent_id: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)

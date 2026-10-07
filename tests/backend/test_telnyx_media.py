@@ -9,9 +9,11 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
-from sqlalchemy import select
-
+from typing import Any, cast
 import pytest
+from pydantic import SecretStr
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from backend.app.voice.telnyx_media import InvalidMediaFrame, TelnyxAudioCodec, TelnyxMediaBridge, PublicInboundConversation, media_call_context, media_transport_context, issue_media_client_state, claim_media_start, release_media_session, TelnyxAudioReorderBuffer
 from backend.app.config.settings import Settings
@@ -45,7 +47,7 @@ def test_voice_pin_creation_accepts_nontrivial_secret_without_revealing_it():
     from backend.app.schemas.voice import VoicePinRequest
     secret = "907182"
     assert validate_voice_pin(secret) == secret
-    request = VoicePinRequest(pin=secret)
+    request = VoicePinRequest(pin=SecretStr(secret))
     assert secret not in repr(request) + request.model_dump_json()
 
 
@@ -74,10 +76,10 @@ def test_telnyx_codec_rejects_odd_pcm_length():
 
 
 def test_media_transport_disabled_by_default_before_database_or_provider_access():
-    settings = Settings(_env_file=None)
+    settings = Settings()
     assert settings.telnyx_media_enabled is False
     with pytest.raises(PermissionError, match="disabled"):
-        media_call_context(None, settings, uuid4())
+        media_call_context(cast(Session, None), settings, uuid4())
 
 
 def test_voice_setup_creates_disabled_config_and_links_owned_number_locally(signed_telnyx_webhook):
@@ -149,8 +151,10 @@ def test_voice_setup_rejects_foreign_number_without_creating_configuration(signe
 @pytest.fixture
 def authorized_media_call(tmp_path):
     engine, db, company, config, _key, orchestrator = _voice_database(tmp_path)
-    settings = Settings(_env_file=None, AUTH_JWT_SECRET="media-test-secret-at-least-32-characters",
-        TELNYX_MEDIA_ENABLED=True, TELNYX_VOICE_CONNECTION_ID="verified-connection")
+    settings = Settings()
+    settings.auth_jwt_secret = "media-test-secret-at-least-32-characters"
+    settings.telnyx_media_enabled = True
+    settings.telnyx_voice_connection_id = "verified-connection"
     config.enabled = False; config.retell_agent_id = None; config.retell_sip_uri = None
     user = User(company_id=company.id, first_name="Owner", last_name="Media", email="media-owner@example.com",
         password_hash="test", phone="+15145550123", role=UserRole.OWNER, is_active=True)
@@ -316,9 +320,9 @@ def test_public_audio_ledger_is_call_scoped_without_fabricated_user_or_conversat
     usage = FakeUsageService()
     tenant_id = uuid4()
     call_id = uuid4()
-    ledger = VoiceUsageLedger(usage, voice_pricing_catalog(), company_id=tenant_id,
+    ledger = VoiceUsageLedger(cast(Any, usage), voice_pricing_catalog(), company_id=tenant_id,
         user_id=None, conversation_id=None, plan_code="base", request_namespace=call_id)
-    other = VoiceUsageLedger(usage, voice_pricing_catalog(), company_id=tenant_id,
+    other = VoiceUsageLedger(cast(Any, usage), voice_pricing_catalog(), company_id=tenant_id,
         user_id=None, conversation_id=None, plan_code="base", request_namespace=uuid4())
     assert ledger.request_id_for("greeting") != other.request_id_for("greeting")
     ledger.record_transcription("public-turn", SimpleNamespace(event_id="public-stt", usage=None), model="gpt-4o-mini-transcribe")
@@ -733,7 +737,10 @@ async def test_media_streaming_sdk_request_uses_secure_pcmu_transport_only():
         return httpx.Response(200, json={"data": {"result": "ok"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        provider = TelnyxClient(Settings(_env_file=None, TELNYX_MEDIA_ENABLED=True, TELNYX_API_KEY="fake-key"), client=http)
+        client_settings = Settings()
+        client_settings.telnyx_media_enabled = True
+        client_settings.telnyx_api_key = "fake-key"
+        provider = TelnyxClient(client_settings, client=http)
         await provider.start_media_stream("control-test", stream_url="wss://api.example.test/api/v1/voice/telnyx/media/call-test",
             client_state="opaque-state", command_id="stream-command")
         with pytest.raises(ValueError):
@@ -871,8 +878,10 @@ def test_media_endpoint_closes_safely_on_denial(authorized_media_call, monkeypat
 # ÉTAPE 4 : FIABILISATION DU PONT AUDIO TELNYX
 # =====================================================================
 
-async def _async_noop(*_args, **_kwargs):
-    return None
+async def _raw_async_noop(*_args: Any, **_kwargs: Any) -> Any:
+    return {}
+
+_async_noop: Any = _raw_async_noop
 
 
 def test_reorder_buffer_sequences_1_2_3():
