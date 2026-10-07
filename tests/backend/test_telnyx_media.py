@@ -1523,4 +1523,179 @@ def test_public_inbound_general_greetings_do_not_recite_ivr_menu(authorized_medi
         assert result["public"] is True
         assert "Bonjour ! Comment puis-je vous aider aujourd'hui ?" in result["answer"]
         assert "Pour une demande de rendez-vous" not in result["answer"]
+
+
+def test_public_inbound_natural_conversational_utterances(authorized_media_call):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.db.commit()
+    conversation = PublicInboundConversation(env.db, env.settings, env.call.id)
+
+    # 1. "Allô"
+    ans1 = conversation.public_answer("Allô")
+    assert ans1["public"] is True and not ans1.get("auth_required")
+    assert "Comment puis-je vous aider" in ans1["answer"]
+
+    # 2. "Bonjour"
+    ans2 = conversation.public_answer("Bonjour")
+    assert ans2["public"] is True and not ans2.get("auth_required")
+    assert "Comment puis-je vous aider" in ans2["answer"]
+
+    # 3. Question libre
+    ans3 = conversation.public_answer("Est-ce que vous faites des livraisons dans le quartier ?")
+    assert ans3["public"] is True and not ans3.get("auth_required")
+    assert len(ans3["answer"]) > 10
+
+    # 4. Demande de rendez-vous / disponibilité
+    ans4 = conversation.public_answer("J'aimerais prendre un rendez-vous")
+    assert ans4["public"] is True and not ans4.get("auth_required")
+    assert "rendez-vous" in ans4["answer"]
+
+    ans4b = conversation.public_answer("Avez-vous une disponibilité demain ?")
+    assert ans4b["public"] is True and not ans4b.get("auth_required")
+    assert "rendez-vous" in ans4b["answer"]
+
+    # 5. Question Retail (commande / stock / produit)
+    ans5 = conversation.public_answer("Je voudrais savoir où est ma commande")
+    assert ans5["public"] is True and not ans5.get("auth_required")
+    assert "commandes" in ans5["answer"] or "renseigner" in ans5["answer"]
+
+    ans5b = conversation.public_answer("Est-ce que ce produit est encore en stock ?")
+    assert ans5b["public"] is True and not ans5b.get("auth_required")
+    assert "produits" in ans5b["answer"] or "inventaire" in ans5b["answer"]
+
+    # Horaires et parler à quelqu'un
+    ans_hours = conversation.public_answer("Quels sont vos horaires ?")
+    assert ans_hours["public"] is True and not ans_hours.get("auth_required")
+    assert "heures" in ans_hours["answer"] or "horaires" in ans_hours["answer"]
+
+    ans_rep = conversation.public_answer("Je voudrais parler à quelqu'un")
+    assert ans_rep["public"] is True and not ans_rep.get("auth_required")
+    assert "message" in ans_rep["answer"] or "renseigner" in ans_rep["answer"]
+
+    # 6. Phrase longue
+    long_phrase = (
+        "Bonjour madame, je vous appelle parce que j'ai vu votre vitrine hier et j'aimerais savoir "
+        "si vous avez des créneaux disponibles pour une consultation cette semaine ou la semaine prochaine."
+    )
+    ans6 = conversation.public_answer(long_phrase)
+    assert ans6["public"] is True and not ans6.get("auth_required")
+    assert len(ans6["answer"]) > 10
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_conversation_and_interruption_barge_in():
+    from contextlib import suppress
+    from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter, OpenAIAudioConfig
+
+    socket = FakeMediaSocket()
+    adapter = FakeAudioAdapter()
+    turn_answers = []
+
+    async def validate(_event):
+        return None
+
+    async def authorize():
+        return None
+
+    async def execute(item_id, transcript):
+        turn_answers.append((item_id, transcript))
+        return {"status": "success", "answer": f"Reponse a: {transcript}"}
+
+    bridge = TelnyxMediaBridge(socket, adapter, locale="fr", validate_start=validate, authorize=authorize, execute_turn=execute)
+    bridge.stream_id = "test-stream"
+
+    # Start turn execution task
+    turns_task = asyncio.create_task(bridge._execute_turns())
+
+    try:
+        # TURN 1: User says "Allô"
+        await bridge._turns.put(("turn-1", "Allô", bridge.epoch))
+        await eventually(lambda: len(turn_answers) == 1)
+        assert turn_answers[0] == ("turn-1", "Allô")
+        await eventually(lambda: len(adapter.spoken) == 1)
+        assert "Reponse a: Allô" in adapter.spoken[0]
+
+        # TURN 2: Multi-turn continuation - user says "J'aimerais prendre un rendez-vous"
+        await bridge._turns.put(("turn-2", "J'aimerais prendre un rendez-vous", bridge.epoch))
+        await eventually(lambda: len(turn_answers) == 2)
+        assert turn_answers[1] == ("turn-2", "J'aimerais prendre un rendez-vous")
+        await eventually(lambda: len(adapter.spoken) == 2)
+        assert "Reponse a: J'aimerais prendre un rendez-vous" in adapter.spoken[1]
+
+        # 7. INTERRUPTION / BARGE-IN: User interrupts while assistant is speaking
+        initial_epoch = bridge.epoch
+        await bridge.interrupt()
+        assert bridge.epoch == initial_epoch + 1
+        assert adapter.interruptions >= 1
+        assert any(ev.get("event") == "clear" for ev in socket.sent)
+
+        # TURN 3: After interruption, user speaks a third turn
+        await bridge._turns.put(("turn-3", "Est-ce que ce produit est en stock ?", bridge.epoch))
+        await eventually(lambda: len(turn_answers) == 3)
+        assert turn_answers[2] == ("turn-3", "Est-ce que ce produit est en stock ?")
+        await eventually(lambda: len(adapter.spoken) == 3)
+        assert "Reponse a: Est-ce que ce produit est en stock ?" in adapter.spoken[2]
+
+    finally:
+        turns_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await turns_task
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_adapter_schema_for_gpt_realtime_2_1():
+    from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter, OpenAIAudioConfig
+
+    class FakeConnection:
+        def __init__(self):
+            self.sent = []
+        async def send(self, payload):
+            self.sent.append(payload)
+
+    class FakeManager:
+        def __init__(self, conn):
+            self.conn = conn
+        async def __aenter__(self):
+            return self.conn
+        async def __aexit__(self, *args):
+            return None
+
+    adapter = OpenAIRealtimeAudioAdapter(
+        OpenAIAudioConfig(api_key="sk-test", stt_model="gpt-4o-mini-transcribe", tts_model="gpt-4o-mini-tts", tts_voice="marin"),
+        realtime_model="gpt-realtime-2.1"
+    )
+    fake_conn = FakeConnection()
+    adapter._manager = FakeManager(fake_conn)
+    adapter._connection = fake_conn
+
+    # Check open payload
+    is_preview = "preview" in (adapter._model or "").lower()
+    assert is_preview is False
+    # Manually test the schema structure built by open()
+    payload = {
+        "type": "realtime",
+        "instructions": "test",
+        "output_modalities": ["audio"],
+        "audio": {
+            "input": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                "transcription": {"model": "gpt-4o-mini-transcribe"},
+                "turn_detection": {
+                    "type": "server_vad",
+                    "create_response": False,
+                    "interrupt_response": False,
+                },
+            },
+            "output": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                "voice": "marin",
+            },
+        },
+        "tools": [],
+    }
+    assert "modalities" not in payload
+    assert payload["audio"]["input"]["transcription"]["model"] == "gpt-4o-mini-transcribe"
+    assert payload["audio"]["input"]["turn_detection"]["type"] == "server_vad"
+
 

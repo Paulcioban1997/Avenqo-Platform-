@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import unicodedata
+import logging
 from typing import Any, Awaitable, Callable, cast
 from uuid import UUID, uuid4
 
@@ -20,6 +21,8 @@ import jwt
 from fastapi import Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import CursorResult, select, text, update
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("avenqo.voice.media")
 
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.config.settings import Settings, get_settings
@@ -206,7 +209,7 @@ class PublicInboundConversation:
         if re.search(r"mes rendez.vous|my appointments|mon dossier|my record|annuler|cancel|deplacer|reschedule", normalized):
             answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
-        if re.search(r"rendez.vous|appointment|booking|reservation", normalized):
+        if re.search(r"rendez.vous|appointment|booking|reservation|disponibilit|disponible|availability|available", normalized):
             answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
@@ -228,7 +231,13 @@ class PublicInboundConversation:
             else:
                 answer = "Les services publics ne sont pas encore renseignés." if french else "Public services have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|hello|hi|hey)\b", normalized):
+        if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
+            answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
+            return {"status": "success", "answer": answer, "public": True}
+        if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
+            answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"
+            return {"status": "success", "answer": answer, "public": True}
+        if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|oui bonjour|hello|hi|hey)\b", normalized):
             return {"status": "success", "answer": "Bonjour ! Comment puis-je vous aider aujourd'hui ?" if french else "Hello! How can I help you today?", "public": True}
         answer = "Je peux vous renseigner sur nos heures d'ouverture, nos services ou pour une demande de rendez-vous. Comment puis-je vous aider ?" if french else "I can help with our opening hours, services, or an appointment request. How can I help you?"
         return {"status": "success", "answer": answer, "public": True}
@@ -557,8 +566,9 @@ class TelnyxMediaBridge:
                     if oldest[2] is not None:
                         oldest[2].settle(oldest[0])
                     self.dropped_outbound_frames += 1
-                self.pending_epoch = epoch
-                self._pending_speech.append((item_id, epoch, turn_ledger))
+                speak_epoch = self.epoch
+                self.pending_epoch = speak_epoch
+                self._pending_speech.append((item_id, speak_epoch, turn_ledger))
                 requested_audio = True
                 try:
                     await asyncio.wait_for(
@@ -637,7 +647,10 @@ class TelnyxMediaBridge:
     async def _provider_events(self) -> None:
         async for event in self.adapter.events():
             kind = getattr(event, "type", "")
-            if kind == "input_audio_buffer.speech_started" and not self.input_paused:
+            if kind == "session.updated":
+                logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
+            elif kind == "input_audio_buffer.speech_started" and not self.input_paused:
+                logger.info("Caller speech started (epoch=%s)", self.epoch)
                 await self.interrupt()
                 item_id = getattr(event, "item_id", "")
                 if self.usage is not None and isinstance(item_id, str) and item_id:
@@ -646,6 +659,7 @@ class TelnyxMediaBridge:
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
+                logger.info("Caller speech transcribed (item_id=%s, length=%d)", item_id, len(transcript) if isinstance(transcript, str) else 0)
                 if not isinstance(item_id, str) or not item_id or len(item_id) > 255 or not isinstance(transcript, str) or len(transcript) > 12000:
                     raise InvalidMediaFrame("Invalid transcription event")
                 if item_id in self._seen_items or not transcript.strip():
@@ -690,6 +704,7 @@ class TelnyxMediaBridge:
                     self.response_id = None
                     self.response_epoch = None
             elif kind == "error":
+                logger.error("Audio provider error event: %s", getattr(event, "error", event))
                 raise InvalidMediaFrame("Audio provider unavailable")
 
     async def _send_inbound_audio(self, pcm: bytes) -> None:

@@ -136,16 +136,14 @@ class OpenAIRealtimeAudioAdapter:
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         self._manager = client.realtime.connect(model=self._model)
         self._connection = await self._manager.__aenter__()
-        await self._connection.send(cast(Any, {
-            "type": "session.update",
-            "session": {
-                "type": "realtime",
+        is_preview = "preview" in (self._model or "").lower()
+        if is_preview:
+            session_payload: dict[str, Any] = {
                 "instructions": (
                     "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
                 "modalities": ["audio", "text"],
-                "output_modalities": ["audio"],
                 "voice": self._config.tts_voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
@@ -156,17 +154,38 @@ class OpenAIRealtimeAudioAdapter:
                     "interrupt_response": False,
                 },
                 "tools": [],
+            }
+        else:
+            session_payload = {
+                "type": "realtime",
+                "instructions": (
+                    "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
+                    "When a new user utterance uses a different language, follow that language. Never translate to French by default."
+                ),
+                "output_modalities": ["audio"],
                 "audio": {
                     "input": {
                         "format": {"type": "audio/pcm", "rate": 24000},
-                        "transcription": {"model": self._config.stt_model},
+                        "transcription": {"model": self._config.stt_model or "gpt-4o-mini-transcribe"},
                         "turn_detection": {
-                            "type": "server_vad", "create_response": False, "interrupt_response": False,
+                            "type": "server_vad",
+                            "create_response": False,
+                            "interrupt_response": False,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 500,
+                            "threshold": 0.5,
                         },
                     },
-                    "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": self._config.tts_voice},
+                    "output": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "voice": self._config.tts_voice or "marin",
+                    },
                 },
-            },
+                "tools": [],
+            }
+        await self._connection.send(cast(Any, {
+            "type": "session.update",
+            "session": session_payload,
         }))
 
     async def send_audio(self, audio: bytes) -> None:
