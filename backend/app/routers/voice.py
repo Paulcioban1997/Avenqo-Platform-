@@ -7,6 +7,7 @@ import binascii
 import hashlib
 import hmac
 import logging
+import secrets
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -33,6 +34,7 @@ from backend.app.models import (
     CompanyMembership,
     TenantAIProviderAttempt,
     User,
+    UserRole,
     VoiceBusinessConfig,
     VoiceCall,
     VoiceCentralSession,
@@ -47,7 +49,7 @@ from backend.app.ai.central.service import CentralAIService
 from backend.app.core.locale_catalog import resolve_locale, detect_spoken_language
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.voice.languages import voice_language_matrix
-from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
+from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets, validate_voice_pin
 from backend.app.voice.quotes import signed_number_quote, verify_number_quote, valid_cost
 from backend.app.voice.telnyx_media import telnyx_media_socket, media_audio_available, issue_media_client_state
 from backend.app.schemas.voice import VoicePinRequest
@@ -197,6 +199,36 @@ def set_customer_voice_pin(
         db.rollback()
         raise HTTPException(status_code=422, detail="Voice credential setup is unavailable") from None
     return {"status": "CONFIGURED"}
+
+
+@router.post("/auth/owner-bootstrap-code", dependencies=[Depends(require_active_subscription)])
+def create_owner_bootstrap_code(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    membership = db.scalar(select(CompanyMembership).where(
+        CompanyMembership.company_id == identity.user.company_id,
+        CompanyMembership.user_id == identity.user.id,
+        CompanyMembership.role == UserRole.OWNER,
+        CompanyMembership.is_active.is_(True),
+    ))
+    if membership is None:
+        raise HTTPException(status_code=403, detail="Only tenant owner can generate bootstrap code")
+    auth_controller = VoiceCallerAuth(db, settings)
+    try:
+        code, expires_at = auth_controller.generate_owner_bootstrap_code(identity.user.company_id, identity.user.id)
+        db.commit()
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return {
+        "bootstrap_code": code,
+        "expires_at": expires_at.isoformat(),
+        "expires_in_seconds": 900,
+        "instructions": "Call your Avenqo number and enter this code via DTMF to set up your personal Voice PIN on first call.",
+    }
 
 
 @router.get("/capabilities", dependencies=[Depends(require_active_subscription)])
@@ -877,7 +909,92 @@ async def telnyx_webhook(
         call.pin_challenge_hash = None
         call.pin_challenge_expires_at = None
         digits = call_payload.get("digits")
-        result = auth_controller.verify_gather(call, digits if isinstance(digits, str) else "")
+        digits_str = digits if isinstance(digits, str) else ""
+
+        has_owner = auth_controller.has_owner_credential(call.company_id)
+        current_stage = (call.source_context or {}).get("owner_enrollment_stage")
+
+        if current_stage == "enter_pin":
+            try:
+                validate_voice_pin(digits_str)
+                salt = secrets.token_hex(16)
+                pin_hmac = hmac.new(settings.auth_jwt_secret.encode(), f"{salt}:{digits_str}".encode(), hashlib.sha256).hexdigest()
+                client_state = auth_controller.challenge(call)
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "owner_enrollment_stage": "confirm_pin",
+                    "candidate_pin_hmac": pin_hmac,
+                    "candidate_pin_salt": salt,
+                    "pin_gather_status": "pending_pin_confirm",
+                }
+                if call.telnyx_call_control_id:
+                    command_id = str(UUID(hashlib.sha256(f"confirm-pin:{call.id}".encode()).hexdigest()[:32]))
+                    await service.telnyx.gather_pin(call.telnyx_call_control_id, command_id=command_id, client_state=client_state)
+                db.commit()
+                return {"received": True, "stage": "confirm_pin"}
+            except Exception:
+                call.source_context = {**(call.source_context or {}), "owner_enrollment_stage": None, "pin_gather_status": "refused"}
+                db.commit()
+                return {"received": True, "authenticated": False}
+        elif current_stage == "confirm_pin":
+            salt = str((call.source_context or {}).get("candidate_pin_salt", ""))
+            candidate_hmac = hmac.new(settings.auth_jwt_secret.encode(), f"{salt}:{digits_str}".encode(), hashlib.sha256).hexdigest()
+            expected_hmac = str((call.source_context or {}).get("candidate_pin_hmac", ""))
+            owner_id_str = str((call.source_context or {}).get("owner_user_id", ""))
+            if hmac.compare_digest(candidate_hmac, expected_hmac) and owner_id_str:
+                owner_user_id = UUID(owner_id_str)
+                enrolled = auth_controller.enroll_first_call_owner_pin(call, digits_str, owner_user_id)
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "owner_enrollment_stage": None,
+                    "candidate_pin_hmac": None,
+                    "candidate_pin_salt": None,
+                    "pin_gather_status": "authenticated" if enrolled else "refused",
+                }
+                receipt.result = {**receipt.result, "authenticated": enrolled}
+                if enrolled:
+                    AuditLogService(db).record(
+                        actor_user_id=owner_user_id,
+                        action="voice_pin_first_call_enrolled",
+                        target_type="voice_call",
+                        target_id=str(call.id),
+                        company_id=call.company_id,
+                        metadata={"authenticated": True, "first_call_enrollment": True},
+                        commit=False,
+                    )
+                db.commit()
+                return {"received": True, "authenticated": enrolled}
+            else:
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "owner_enrollment_stage": None,
+                    "candidate_pin_hmac": None,
+                    "candidate_pin_salt": None,
+                    "pin_gather_status": "refused",
+                }
+                receipt.result = {**receipt.result, "authenticated": False}
+                db.commit()
+                return {"received": True, "authenticated": False}
+
+        # Check if caller is providing an owner bootstrap OTP code (only when tenant has no owner PIN enrolled)
+        if not has_owner:
+            owner_user_id = auth_controller.verify_owner_bootstrap_code(call.company_id, digits_str)
+            if owner_user_id is not None:
+                client_state = auth_controller.challenge(call)
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "owner_enrollment_stage": "enter_pin",
+                    "owner_user_id": str(owner_user_id),
+                    "pin_gather_status": "pending_pin_entry",
+                }
+                if call.telnyx_call_control_id:
+                    command_id = str(UUID(hashlib.sha256(f"enroll-pin:{call.id}".encode()).hexdigest()[:32]))
+                    await service.telnyx.gather_pin(call.telnyx_call_control_id, command_id=command_id, client_state=client_state)
+                db.commit()
+                return {"received": True, "stage": "enter_pin"}
+
+        # Standard PIN authentication (Customer, Employee, or Owner)
+        result = auth_controller.verify_gather(call, digits_str)
         if media_mode:
             call.source_context = {**(call.source_context or {}), "pin_gather_status": "authenticated" if result["authenticated"] else "refused"}
         receipt.result = {**receipt.result, "authenticated": result["authenticated"]}

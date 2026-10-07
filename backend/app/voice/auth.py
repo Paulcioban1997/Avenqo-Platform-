@@ -5,6 +5,7 @@ import re
 import secrets
 import base64
 import json
+from uuid import UUID
 
 from pwdlib.exceptions import UnknownHashError
 from sqlalchemy import select, text
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import Settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.security import hash_password, verify_password
-from backend.app.models import CompanyMembership, CRMClient, User, UserRole, VoiceAuthSession, VoiceCall, VoiceCallerCredential
+from backend.app.models import CompanyMembership, CRMClient, User, UserRole, VoiceAuthSession, VoiceCall, VoiceCallerCredential, VoiceBusinessConfig, VoiceToolAction
 
 
 def utc(value):
@@ -75,7 +76,7 @@ class VoiceCallerAuth:
             return False
         return hmac.compare_digest(hashlib.sha256(candidate.encode()).hexdigest(), call.pin_challenge_hash)
 
-    def set_pin(self, tenant, principal_type, principal_id, pin):
+    def set_pin(self, tenant, principal_type, principal_id, pin, phone_number: str | None = None):
         validate_voice_pin(pin)
         if principal_type == "USER":
             principal = self.db.scalar(select(User).where(User.id == principal_id, User.company_id == tenant.company_id, User.is_active.is_(True)))
@@ -86,9 +87,11 @@ class VoiceCallerAuth:
             principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_id, CRMClient.company_id == tenant.company_id, CRMClient.is_deleted.is_(False)))
         else:
             raise ValueError("Unsupported principal type")
-        phone = normalized_phone(principal.phone if principal is not None else None)
+        phone = normalized_phone(phone_number or (principal.phone if principal is not None else None))
         if principal is None or phone is None:
             raise PermissionError("A registered tenant principal phone is required")
+        if principal.phone is None:
+            principal.phone = phone
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
                 {"lock_key": f"voice_pin:{tenant.company_id}:{phone}"})
@@ -110,6 +113,112 @@ class VoiceCallerAuth:
             session.revoked_at = datetime.now(timezone.utc)
         self.db.flush()
         return existing
+
+    def has_owner_credential(self, company_id) -> bool:
+        return self.db.scalar(select(VoiceCallerCredential.id).where(
+            VoiceCallerCredential.company_id == company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.enabled.is_(True),
+        )) is not None
+
+    def generate_owner_bootstrap_code(self, company_id, user_id) -> tuple[str, datetime]:
+        membership = self.db.scalar(select(CompanyMembership).where(
+            CompanyMembership.company_id == company_id,
+            CompanyMembership.user_id == user_id,
+            CompanyMembership.role == UserRole.OWNER,
+            CompanyMembership.is_active.is_(True),
+        ))
+        if membership is None:
+            raise PermissionError("Only tenant owner can generate bootstrap code")
+        config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        if config is None:
+            raise ValueError("Voice config not initialized")
+        code = f"{secrets.randbelow(900000) + 100000:06d}"
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        code_hash = hmac.new(self.settings.auth_jwt_secret.encode(), f"bootstrap:{company_id}:{code}".encode(), hashlib.sha256).hexdigest()
+        action_id = f"owner-bootstrap-otp:{company_id}"
+        existing = self.db.scalar(select(VoiceToolAction).where(
+            VoiceToolAction.company_id == company_id,
+            VoiceToolAction.config_id == config.id,
+            VoiceToolAction.action_id == action_id,
+        ))
+        if existing is not None:
+            existing.result = {"code_hash": code_hash, "expires_at": expires_at.isoformat(), "owner_user_id": str(user_id)}
+        else:
+            self.db.add(VoiceToolAction(
+                company_id=company_id,
+                config_id=config.id,
+                action_id=action_id,
+                tool_name="voice_owner_bootstrap",
+                result={"code_hash": code_hash, "expires_at": expires_at.isoformat(), "owner_user_id": str(user_id)},
+            ))
+        self.db.flush()
+        return code, expires_at
+
+    def verify_owner_bootstrap_code(self, company_id, candidate_code: str) -> UUID | None:
+        if not candidate_code or not re.fullmatch(r"[0-9]{6}", candidate_code):
+            return None
+        config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        if config is None:
+            return None
+        action_id = f"owner-bootstrap-otp:{company_id}"
+        receipt = self.db.scalar(select(VoiceToolAction).where(
+            VoiceToolAction.company_id == company_id,
+            VoiceToolAction.config_id == config.id,
+            VoiceToolAction.action_id == action_id,
+        ))
+        if receipt is None or not isinstance(receipt.result, dict):
+            return None
+        expected_hash = receipt.result.get("code_hash")
+        expires_iso = receipt.result.get("expires_at")
+        owner_id_str = receipt.result.get("owner_user_id")
+        if not expected_hash or not expires_iso or not owner_id_str:
+            return None
+        try:
+            expires_at = datetime.fromisoformat(expires_iso)
+            if utc(expires_at) <= datetime.now(timezone.utc):
+                return None
+        except Exception:
+            return None
+        candidate_hash = hmac.new(self.settings.auth_jwt_secret.encode(), f"bootstrap:{company_id}:{candidate_code}".encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(candidate_hash, str(expected_hash)):
+            return None
+        try:
+            return UUID(owner_id_str)
+        except Exception:
+            return None
+
+    def consume_owner_bootstrap_code(self, company_id) -> None:
+        config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        if config is not None:
+            receipt = self.db.scalar(select(VoiceToolAction).where(
+                VoiceToolAction.company_id == company_id,
+                VoiceToolAction.config_id == config.id,
+                VoiceToolAction.action_id == f"owner-bootstrap-otp:{company_id}",
+            ))
+            if receipt is not None:
+                receipt.result = {"consumed": True, "consumed_at": datetime.now(timezone.utc).isoformat()}
+                self.db.flush()
+
+    def enroll_first_call_owner_pin(self, call: VoiceCall, pin: str, owner_user_id: UUID) -> bool:
+        validate_voice_pin(pin)
+        owner_user = self.db.get(User, owner_user_id)
+        if owner_user is None or owner_user.company_id != call.company_id or not owner_user.is_active:
+            return False
+        caller_phone = normalized_phone(call.caller_phone)
+        if not caller_phone:
+            return False
+        from shared.ai_engine.contracts import TenantContext
+        tenant = TenantContext(company_id=call.company_id, user_id=owner_user.id)
+        self.set_pin(tenant, "USER", owner_user.id, pin, phone_number=caller_phone)
+        self.consume_owner_bootstrap_code(call.company_id)
+        call.caller_type = "OWNER"
+        call.authenticated_user_id = owner_user.id
+        call.caller_verified_at = datetime.now(timezone.utc)
+        self.establish(call)
+        self.db.flush()
+        return True
+
 
     def establish(self, call):
         now = datetime.now(timezone.utc)

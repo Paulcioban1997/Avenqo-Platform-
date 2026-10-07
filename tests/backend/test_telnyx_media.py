@@ -1,6 +1,8 @@
 import audioop
 import asyncio
 import base64
+import hashlib
+import hmac
 from types import SimpleNamespace
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
@@ -1220,3 +1222,199 @@ def test_cross_tenant_websocket_rejection(authorized_media_call, monkeypatch):
                 socket.send_json(event)
                 socket.receive_json()
         assert closed.value.code == 4403
+
+
+def test_media_audio_available_with_default_and_custom_locales():
+    settings = Settings()
+    settings.openai_api_key = "test-key"
+    settings.voice_realtime_provider = "openai"
+    settings.voice_realtime_model = "gpt-realtime-2.1"
+    settings.voice_stt_provider = "openai"
+    settings.voice_stt_model = "gpt-4o-mini-transcribe"
+    settings.voice_tts_provider = "openai"
+    settings.voice_tts_voice = "marin"
+    settings.voice_tts_model = "gpt-4o-mini-tts"
+
+    # Default locales should support fr and en
+    from backend.app.voice.telnyx_media import media_audio_available
+    assert media_audio_available(settings, "fr") is True
+    assert media_audio_available(settings, "fr-ca") is True
+    assert media_audio_available(settings, "en") is True
+    assert media_audio_available(settings, "en-us") is True
+    assert media_audio_available(settings, "de") is False
+
+    # Setting as comma-separated string should parse correctly via validator
+    parsed_locales = Settings._parse_voice_locales("fr, en, es")
+    assert parsed_locales == ["fr", "en", "es"]
+
+    # Setting empty should fallback to ['fr', 'en']
+    assert Settings._parse_voice_locales("") == ["fr", "en"]
+    assert Settings._parse_voice_locales([]) == ["fr", "en"]
+
+
+def test_owner_bootstrap_code_generation_endpoint(signed_telnyx_webhook):
+    import backend.app.routers.voice as voice_router
+    env = signed_telnyx_webhook
+    owner = User(company_id=env.company.id, first_name="Owner", last_name="Bootstrap", email="owner-boot@example.com",
+        password_hash="test", role=UserRole.OWNER, is_active=True)
+    env.session.add(owner); env.session.flush()
+    membership = CompanyMembership(company_id=env.company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)
+    env.session.add(membership); env.session.commit()
+
+    env.client.app.dependency_overrides[voice_router.get_current_identity] = lambda: SimpleNamespace(user=owner)
+    env.client.app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: membership
+
+    # Generate bootstrap code
+    response = env.client.post("/api/v1/voice/auth/owner-bootstrap-code")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["bootstrap_code"]) == 6
+    assert data["bootstrap_code"].isdigit()
+    assert data["expires_in_seconds"] == 900
+
+    # Non-owner cannot generate bootstrap code
+    employee = User(company_id=env.company.id, first_name="Emp", last_name="Loyee", email="emp@example.com",
+        password_hash="test", role=UserRole.USER, is_active=True)
+    env.session.add(employee); env.session.flush()
+    emp_membership = CompanyMembership(company_id=env.company.id, user_id=employee.id, role=UserRole.USER, is_active=True)
+    env.session.add(emp_membership); env.session.commit()
+    env.client.app.dependency_overrides[voice_router.get_current_identity] = lambda: SimpleNamespace(user=employee)
+    env.client.app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: emp_membership
+
+    forbidden = env.client.post("/api/v1/voice/auth/owner-bootstrap-code")
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_first_call_owner_pin_enrollment_via_dtmf(signed_telnyx_webhook):
+    from backend.app.voice.auth import VoiceCallerAuth
+    env = signed_telnyx_webhook
+    auth = VoiceCallerAuth(env.session, env.settings)
+
+    # 1. No owner credential exists initially
+    assert auth.has_owner_credential(env.company.id) is False
+
+    owner = User(company_id=env.company.id, first_name="Owner", last_name="FirstCall", email="owner-call@example.com",
+        phone=None, password_hash="test", role=UserRole.OWNER, is_active=True)
+    env.session.add(owner); env.session.flush()
+    membership = CompanyMembership(company_id=env.company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)
+    env.session.add(membership); env.session.commit()
+
+    # Generate bootstrap code
+    otp_code, _exp = auth.generate_owner_bootstrap_code(env.company.id, owner.id)
+    env.session.commit()
+
+    # 2. Incoming call from owner's phone (+15145550199)
+    call = VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550199",
+        telnyx_call_control_id="cc-enroll-test", status="in_progress")
+    env.session.add(call); env.session.commit()
+
+    # Challenge for bootstrap OTP
+    client_state = auth.challenge(call)
+    assert auth.valid_challenge(call, client_state) is True
+
+    # Caller sends OTP code via DTMF -> stage 0 -> advances to enter_pin
+    verified_owner_id = auth.verify_owner_bootstrap_code(env.company.id, otp_code)
+    assert verified_owner_id == owner.id
+
+    # Advance to enter_pin
+    call.source_context = {"owner_enrollment_stage": "enter_pin", "owner_user_id": str(owner.id)}
+    env.session.commit()
+
+    # Candidate PIN entered via DTMF ("907182")
+    new_pin = "907182"
+    salt = "testsalt1234"
+    pin_hmac = hmac.new(env.settings.auth_jwt_secret.encode(), f"{salt}:{new_pin}".encode(), hashlib.sha256).hexdigest()
+    call.source_context = {
+        "owner_enrollment_stage": "confirm_pin",
+        "candidate_pin_hmac": pin_hmac,
+        "candidate_pin_salt": salt,
+        "owner_user_id": str(owner.id),
+    }
+    env.session.commit()
+
+    # Confirmation PIN entered via DTMF ("907182") -> match!
+    confirm_pin = "907182"
+    confirm_hmac = hmac.new(env.settings.auth_jwt_secret.encode(), f"{salt}:{confirm_pin}".encode(), hashlib.sha256).hexdigest()
+    assert hmac.compare_digest(confirm_hmac, call.source_context["candidate_pin_hmac"]) is True
+
+    # Complete enrollment
+    success = auth.enroll_first_call_owner_pin(call, confirm_pin, owner.id)
+    assert success is True
+    assert auth.has_owner_credential(env.company.id) is True
+    assert call.caller_type == "OWNER"
+    assert call.authenticated_user_id == owner.id
+
+    # Verify session established and owner user phone updated
+    session = auth.valid_session(call)
+    assert session is not None
+    assert session.caller_type == "OWNER"
+    assert owner.phone == "+15145550199"
+
+    # Verify bootstrap OTP code is consumed
+    assert auth.verify_owner_bootstrap_code(env.company.id, otp_code) is None
+
+
+@pytest.mark.asyncio
+async def test_caller_id_alone_never_authorizes_or_enrolls_owner(signed_telnyx_webhook):
+    from backend.app.voice.auth import VoiceCallerAuth
+    env = signed_telnyx_webhook
+    auth = VoiceCallerAuth(env.session, env.settings)
+
+    owner = User(company_id=env.company.id, first_name="Owner", last_name="Safe", email="owner-safe@example.com",
+        phone="+15145550199", password_hash="test", role=UserRole.OWNER, is_active=True)
+    env.session.add(owner); env.session.flush()
+    membership = CompanyMembership(company_id=env.company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)
+    env.session.add(membership); env.session.commit()
+
+    # Generate bootstrap code
+    auth.generate_owner_bootstrap_code(env.company.id, owner.id)
+    env.session.commit()
+
+    # Wrong OTP code entered
+    wrong_owner_id = auth.verify_owner_bootstrap_code(env.company.id, "000000")
+    assert wrong_owner_id is None
+
+    # Call from same caller ID without OTP code
+    call = VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550199",
+        status="in_progress")
+    env.session.add(call); env.session.commit()
+
+    # Valid session must return None
+    assert auth.valid_session(call) is None
+
+
+@pytest.mark.asyncio
+async def test_first_call_pin_mismatch_cancels_enrollment(signed_telnyx_webhook):
+    from backend.app.voice.auth import VoiceCallerAuth
+    env = signed_telnyx_webhook
+    auth = VoiceCallerAuth(env.session, env.settings)
+
+    owner = User(company_id=env.company.id, first_name="Owner", last_name="Mismatch", email="owner-mis@example.com",
+        phone=None, password_hash="test", role=UserRole.OWNER, is_active=True)
+    env.session.add(owner); env.session.flush()
+    membership = CompanyMembership(company_id=env.company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)
+    env.session.add(membership); env.session.commit()
+
+    call = VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550199",
+        status="in_progress")
+    env.session.add(call); env.session.commit()
+
+    # Candidate PIN entered ("907182")
+    salt = "salt999"
+    pin_hmac = hmac.new(env.settings.auth_jwt_secret.encode(), f"{salt}:907182".encode(), hashlib.sha256).hexdigest()
+    call.source_context = {
+        "owner_enrollment_stage": "confirm_pin",
+        "candidate_pin_hmac": pin_hmac,
+        "candidate_pin_salt": salt,
+        "owner_user_id": str(owner.id),
+    }
+    env.session.commit()
+
+    # Confirmation PIN entered ("907183") -> Mismatch!
+    wrong_confirm_hmac = hmac.new(env.settings.auth_jwt_secret.encode(), f"{salt}:907183".encode(), hashlib.sha256).hexdigest()
+    assert hmac.compare_digest(wrong_confirm_hmac, call.source_context["candidate_pin_hmac"]) is False
+
+    # Enrollment not completed
+    assert auth.has_owner_credential(env.company.id) is False
+    assert auth.valid_session(call) is None

@@ -33,7 +33,7 @@ from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabi
 from backend.app.models import BillingAccount, Company, CompanyMembership, User, VoiceBusinessConfig, VoiceCall, VoicePhoneNumber, VoiceToolAction
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
-from backend.app.voice.auth import VoiceCallerAuth, utc
+from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
 from backend.app.voice.messages import voice_auth_message, voice_greeting
@@ -134,7 +134,8 @@ def claim_media_start(db: Session, settings: Settings, call_id: UUID, start: dic
         raise PermissionError("Invalid media authorization") from None
     if (claims["type"] != "telnyx_media" or claims["call_id"] != str(call.id) or claims["tenant_id"] != str(call.company_id)
         or claims["config_id"] != str(config.id) or claims["auth_epoch"] != auth_epoch
-        or start.get("call_control_id") != call.telnyx_call_control_id or start.get("to") != config.telnyx_phone_number):
+        or start.get("call_control_id") != call.telnyx_call_control_id
+        or (normalized_phone(start.get("to")) != normalized_phone(config.telnyx_phone_number) and start.get("to") != config.telnyx_phone_number)):
         raise PermissionError("Media authorization scope mismatch")
     nonce = claims["jti"]
     if not isinstance(nonce, str) or len(nonce) > 128:
@@ -706,9 +707,11 @@ class TelnyxMediaBridge:
             if kind != "media" or not isinstance(event.get("media"), dict):
                 raise InvalidMediaFrame("Invalid media event")
             media = event["media"]
-            if media.get("track") != "inbound":
+            track = media.get("track")
+            if track is not None and track not in ("inbound", "inbound_track"):
                 continue
-            chunk = str(media.get("chunk", ""))
+            chunk_raw = media.get("chunk") if media.get("chunk") is not None else event.get("sequence_number")
+            chunk = str(chunk_raw if chunk_raw is not None else "")
             if not chunk.isascii() or not chunk.isdigit() or len(chunk) > 10:
                 raise InvalidMediaFrame("Invalid media chunk")
             number = int(chunk)
@@ -759,7 +762,11 @@ class TelnyxMediaBridge:
             self.stream_id = event.get("stream_id")
             if not isinstance(self.stream_id, str) or not self.stream_id or len(self.stream_id) > 255:
                 raise InvalidMediaFrame("Invalid stream identity")
-            if event["start"].get("media_format") != {"encoding": "PCMU", "sample_rate": 8000, "channels": 1}:
+            media_fmt = event["start"].get("media_format") if isinstance(event["start"].get("media_format"), dict) else {}
+            enc = str(media_fmt.get("encoding", "")).upper()
+            rate = int(media_fmt.get("sample_rate", 0))
+            channels = int(media_fmt.get("channels", 1))
+            if enc != "PCMU" or rate != 8000 or channels != 1:
                 raise InvalidMediaFrame("Unsupported media format")
             await self.validate_start(event["start"])
             await self.authorize()

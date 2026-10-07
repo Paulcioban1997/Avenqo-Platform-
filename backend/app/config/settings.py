@@ -232,8 +232,31 @@ class Settings(BaseSettings):
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
-    voice_realtime_supported_locales: list[str] = Field(default_factory=list, alias="VOICE_REALTIME_SUPPORTED_LOCALES")
-    voice_auth_session_ttl_seconds: int = Field(default=600, ge=60, le=3600, alias="VOICE_AUTH_SESSION_TTL_SECONDS")
+    voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
+
+    @field_validator("voice_realtime_supported_locales", mode="before")
+    @classmethod
+    def _parse_voice_locales(cls, value: object) -> list[str]:
+        if not value:
+            return ["fr", "en"]
+        if isinstance(value, str):
+            import json
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    parsed = json.loads(trimmed)
+                    if isinstance(parsed, list):
+                        result = [str(item).strip() for item in parsed if str(item).strip()]
+                        return result or ["fr", "en"]
+                except Exception:
+                    pass
+            result = [part.strip() for part in trimmed.split(",") if part.strip()]
+            return result or ["fr", "en"]
+        if isinstance(value, (list, tuple, set)):
+            result = [str(item).strip() for item in value if str(item).strip()]
+            return result or ["fr", "en"]
+        return ["fr", "en"]
+
     voice_pin_max_attempts: int = Field(default=5, ge=3, le=10, alias="VOICE_PIN_MAX_ATTEMPTS")
     voice_pin_lockout_seconds: int = Field(default=900, ge=60, le=86400, alias="VOICE_PIN_LOCKOUT_SECONDS")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
