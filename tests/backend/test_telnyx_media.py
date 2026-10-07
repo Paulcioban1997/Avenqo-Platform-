@@ -27,6 +27,7 @@ from tests.backend.test_voice_agent import _voice_database
 from tests.backend.test_voice_agent import signed_telnyx_webhook
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import reset_rate_limiter
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
 import backend.app.voice.telnyx_media as media_module
 from backend.app.voice.providers import TelnyxClient
 from backend.app.database import get_db
@@ -167,6 +168,9 @@ def authorized_media_call(tmp_path):
         number_type="local", status="ACTIVE", capabilities=["voice"])
     account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
     db.add_all([membership, number, account]); db.commit()
+    # Keep production authorization strict: this fixture must explicitly activate Voice.
+    ModuleEntitlementService(db).activate_module(TenantContext(company.id), "voice")
+    db.commit()
     call = orchestrator.record_inbound(config, {"call_control_id": "control-test", "from": user.phone})
     call.status = "in_progress"; call.caller_type = "OWNER"; call.authenticated_user_id = user.id
     auth = VoiceCallerAuth(db, settings).establish(call)
