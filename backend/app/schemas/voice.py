@@ -134,9 +134,8 @@ class VoicePinRequest(BaseModel):
     @field_validator("pin")
     @classmethod
     def valid_pin(cls, value):
-        import re
-        if not re.fullmatch(r"\d{6,12}", value.get_secret_value()):
-            raise ValueError("PIN must contain 6 to 12 digits")
+        from backend.app.voice.auth import validate_voice_pin
+        validate_voice_pin(value.get_secret_value())
         return value
 
 

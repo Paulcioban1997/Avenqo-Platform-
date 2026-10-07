@@ -275,6 +275,22 @@ describe("native Voice module read-only selection", () => {
     expect(purchase?.method).toBe('POST');
     expect(confirm).toHaveBeenCalledTimes(1);
   });
+
+  it("creates the owner PIN only through authenticated Voice security and clears the masked field", async () => {
+    window.localStorage.setItem('avenqo-locale', 'en');
+    const calls = mockVoice(true);
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    const input = await screen.findByLabelText('PIN');
+    expect(input).toHaveAttribute('type', 'password');
+    expect(input).toHaveAttribute('minLength', '6');
+    fireEvent.change(input, { target: { value: '907182' } });
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(calls.some(call => call.path.endsWith('/voice/auth/pin') && call.method === 'PUT')).toBe(true));
+    await waitFor(() => expect(input).toHaveValue(''));
+    expect(window.localStorage.getItem('voice-pin')).toBeNull();
+    expect(screen.queryByText('907182')).not.toBeInTheDocument();
+    expect(calls.some(call => /\/tools\/|\/sessions\//.test(call.path))).toBe(false);
+  });
 });
 
 describe("credit display", () => {

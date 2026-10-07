@@ -65,6 +65,10 @@ def reset_rate_limiter() -> None:
     _limiter.reset()
 
 
+def allow_rate_limit(bucket: str, key: str, limit: int) -> bool:
+    return _limiter.hit(bucket, key, limit)
+
+
 def set_rate_limiter(limiter: RateLimiter) -> None:
     """Remplace le limiteur actif (usage prévu : injection d'un futur
     `DistributedRateLimiter` en production multi-instances). Non utilisé en
@@ -93,7 +97,7 @@ def rate_limit(bucket: str, limit_attr: str):
         if not settings.rate_limit_enabled:
             return
         limit = getattr(settings, limit_attr)
-        if not _limiter.hit(bucket, _client_key(request), limit):
+        if not allow_rate_limit(bucket, _client_key(request), limit):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Trop de requêtes, veuillez réessayer plus tard.",

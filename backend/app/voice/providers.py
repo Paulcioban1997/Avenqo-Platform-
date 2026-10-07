@@ -116,6 +116,18 @@ class TelnyxClient:
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
 
+    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+        parsed = urlsplit(stream_url)
+        if parsed.scheme != "wss" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("A secure credential-free media URL is required")
+        if not self._settings.telnyx_media_enabled:
+            raise RuntimeError("Telnyx media transport disabled")
+        await self._request("POST", f"/calls/{call_control_id}/actions/streaming_start", json={
+            "stream_url": stream_url, "stream_track": "inbound_track", "stream_codec": "PCMU",
+            "stream_bidirectional_mode": "rtp", "stream_bidirectional_codec": "PCMU",
+            "client_state": client_state, "command_id": command_id,
+        })
+
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
             "command_id": command_id, "client_state": client_state,

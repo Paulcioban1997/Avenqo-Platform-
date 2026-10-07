@@ -34,6 +34,8 @@ class RealtimeAudioAdapter(Protocol):
 
     async def interrupt(self) -> None: ...
 
+    async def clear_input(self) -> None: ...
+
     async def close(self) -> None: ...
 
     async def events(self): ...
@@ -108,6 +110,9 @@ class UnconfiguredRealtimeAudioAdapter:
     async def interrupt(self) -> None:
         return None
 
+    async def clear_input(self) -> None:
+        return None
+
     async def close(self) -> None:
         return None
 
@@ -179,6 +184,10 @@ class OpenAIRealtimeAudioAdapter:
         if self._connection is not None:
             await self._connection.send({"type": "response.cancel"})
             await self._connection.send({"type": "output_audio_buffer.clear"})
+
+    async def clear_input(self) -> None:
+        if self._connection is not None:
+            await self._connection.send({"type": "input_audio_buffer.clear"})
 
     async def close(self) -> None:
         if self._manager is not None:

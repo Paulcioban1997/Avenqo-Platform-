@@ -88,6 +88,7 @@ class VoiceNumberManagementService:
                 raise PermissionError("Number configuration binding does not match tenant")
             if config is not None:
                 existing.config_id = config.id
+            existing.provider_connection_id = str(record["connection_id"])
             session.flush()
             return existing
         purchased_at = record.get("purchased_at")

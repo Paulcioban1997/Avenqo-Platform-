@@ -226,11 +226,14 @@ export function VoiceModuleView() {
         <p>{currentStatus.business_number} · {messages[6]}</p>
         <button type="button" disabled={busy} onClick={() => void configureOwnedNumber()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{selectionCopy[0]}</button>
       </section>}
-      {enabled && <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3 border-t border-slate-200 pt-4 dark:border-white/10">
+      {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
+        <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
+        <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3">
         <label className="min-w-48 space-y-1 text-xs"><span>{messages[4]}</span><input aria-label={messages[4]} name="voice-pin" type="password" inputMode="numeric" pattern="[0-9]{6,12}" minLength={6} maxLength={12} autoComplete="new-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
         <button type="submit" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-white/20">{messages[5]}</button>
         {pinMessage && <span role="status" className="text-xs">{pinMessage}</span>}
-      </form>}
+        </form>
+      </section>}
       {!!currentStatus?.recent_calls?.length && <section className="space-y-2 text-sm"><h2 className="font-semibold">{health.calls}</h2>{currentStatus.recent_calls.map(call => <div key={call.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-white/10"><span>{call.started_at ? new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short', timeZone: active.timezone }).format(new Date(call.started_at)) : t.common.insufficientData}</span><span>{call.status}</span></div>)}</section>}
       <section className="space-y-4 border-t border-slate-200 pt-5 dark:border-white/10">
         <h2 className="font-semibold">{selectionCopy[0]}</h2>

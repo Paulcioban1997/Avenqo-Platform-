@@ -48,6 +48,25 @@ def _session(tmp_path, name: str):
     return engine, Session(engine, expire_on_commit=False)
 
 
+def test_anonymous_voice_audio_persists_tenant_usage_without_fake_identity(tmp_path):
+    engine, db = _session(tmp_path, "anonymous-voice-usage.db")
+    try:
+        company = _company(db, "anonymous-voice", "professional")
+        usage_service = AIUsageService(db, AIQuotaPolicy(Settings(_env_file=None, AUTH_JWT_SECRET="a" * 32)))
+        ledger = VoiceUsageLedger(usage_service, voice_pricing_catalog(), company_id=company.id,
+            user_id=None, conversation_id=None, plan_code="professional", request_namespace=uuid4())
+        event = SimpleNamespace(type="conversation.item.input_audio_transcription.completed", event_id="anonymous-stt",
+            usage=SimpleNamespace(type="duration", seconds=1))
+        assert ledger.record_transcription("public-turn", event, model="gpt-4o-mini-transcribe")
+        assert ledger.settle("public-turn")
+        rows = db.scalars(select(TenantAIProviderAttempt).where(TenantAIProviderAttempt.company_id == company.id)).all()
+        assert len(rows) == 1
+        assert rows[0].user_id is None and rows[0].conversation_id is None
+        assert not ledger.settle("public-turn")
+    finally:
+        db.close(); engine.dispose()
+
+
 def _response_event(event_id: str, response_id: str, status: str, *, audio_in: int, cached_audio_in: int, audio_out: int, text_in: int = 0, cached_text_in: int = 0, text_out: int = 0):
     return SimpleNamespace(
         event_id=event_id,

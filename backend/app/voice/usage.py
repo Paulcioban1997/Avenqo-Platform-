@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from dataclasses import dataclass, field, replace
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -270,9 +271,10 @@ class VoiceUsageLedger:
         catalog: ProviderPricingCatalog,
         *,
         company_id: UUID,
-        user_id: UUID,
-        conversation_id: UUID,
+        user_id: UUID | None,
+        conversation_id: UUID | None,
         plan_code: str | None,
+        request_namespace: UUID | None = None,
     ) -> None:
         self._usage = usage_service
         self._catalog = catalog
@@ -280,9 +282,12 @@ class VoiceUsageLedger:
         self._user_id = user_id
         self._conversation_id = conversation_id
         self._plan_code = plan_code
+        self._request_namespace = request_namespace
         self._turns: dict[str, _VoiceTurnUsage] = {}
 
     def request_id_for(self, item_id: str) -> str:
+        if self._request_namespace is not None:
+            item_id = hashlib.sha256(f"voice-call:{self._request_namespace}:{item_id}".encode()).hexdigest()
         request_id = resolve_ai_request_id(
             item_id,
             tenant_id=self._company_id,
@@ -329,8 +334,8 @@ class VoiceUsageLedger:
             attempt_number=len(turn.attempts) + 1,
             request_id=turn.request_id,
             tenant_id=str(self._company_id),
-            user_id=str(self._user_id),
-            conversation_id=str(self._conversation_id),
+            user_id=str(self._user_id) if self._user_id is not None else None,
+            conversation_id=str(self._conversation_id) if self._conversation_id is not None else None,
             agent_id=agent_id,
             module_id=module_id,
         )
@@ -361,8 +366,8 @@ class VoiceUsageLedger:
             attempt_number=len(turn.attempts) + 1,
             request_id=turn.request_id,
             tenant_id=str(self._company_id),
-            user_id=str(self._user_id),
-            conversation_id=str(self._conversation_id),
+            user_id=str(self._user_id) if self._user_id is not None else None,
+            conversation_id=str(self._conversation_id) if self._conversation_id is not None else None,
             agent_id=agent_id,
             module_id=module_id,
         )
@@ -396,8 +401,8 @@ class VoiceUsageLedger:
             request_id=turn.request_id,
             provider_request_id=event_id,
             tenant_id=str(self._company_id),
-            user_id=str(self._user_id),
-            conversation_id=str(self._conversation_id),
+            user_id=str(self._user_id) if self._user_id is not None else None,
+            conversation_id=str(self._conversation_id) if self._conversation_id is not None else None,
             agent_id=None,
             module_id=None,
             success=False,
@@ -437,8 +442,8 @@ class VoiceUsageLedger:
                     attempt.usage,
                     avenqo_request_id=turn.request_id,
                     tenant_id=str(self._company_id),
-                    user_id=str(self._user_id),
-                    conversation_id=str(self._conversation_id),
+                    user_id=str(self._user_id) if self._user_id is not None else None,
+                    conversation_id=str(self._conversation_id) if self._conversation_id is not None else None,
                 ),
             ))
 

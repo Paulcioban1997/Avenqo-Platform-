@@ -49,6 +49,7 @@ from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.voice.languages import voice_language_matrix
 from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
 from backend.app.voice.quotes import signed_number_quote, verify_number_quote, valid_cost
+from backend.app.voice.telnyx_media import telnyx_media_socket, media_audio_available, issue_media_client_state
 from backend.app.schemas.voice import VoicePinRequest
 from backend.app.schemas.voice import VoiceSetupRequest, VoiceOwnedNumberRequest
 from backend.app.services.audit_log_service import AuditLogService
@@ -77,6 +78,7 @@ from backend.app.models import CRMCalendarConnection
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
+router.add_api_websocket_route("/telnyx/media/{call_id}", telnyx_media_socket)
 manage_voice = require_permission("modules:manage")
 logger = logging.getLogger("avenqo.voice")
 
@@ -772,10 +774,19 @@ async def telnyx_webhook(
         VoiceBusinessConfig.id == binding.config_id,
         VoiceBusinessConfig.company_id == binding.company_id,
         VoiceBusinessConfig.telnyx_phone_number == binding.phone_number,
-        VoiceBusinessConfig.enabled.is_(True),
     ))
     if config is None:
         return {"received": True, "routed": False}
+    media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
+    if not config.enabled and not media_mode:
+        return {"received": True, "routed": False}
+    if media_mode:
+        from urllib.parse import urlsplit
+        target_url = urlsplit(settings.telnyx_media_stream_base_url or "")
+        if (target_url.scheme != "wss" or not target_url.hostname or target_url.username or target_url.password
+            or target_url.query or target_url.fragment or binding.provider_connection_id != settings.telnyx_voice_connection_id
+            or not media_audio_available(settings, config.preferred_language)):
+            return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
     service = _orchestrator(db, settings)
     try:
         _ensure_voice_access(db, config.company_id)
@@ -841,6 +852,8 @@ async def telnyx_webhook(
         call.pin_challenge_expires_at = None
         digits = call_payload.get("digits")
         result = auth_controller.verify_gather(call, digits if isinstance(digits, str) else "")
+        if media_mode:
+            call.source_context = {**(call.source_context or {}), "pin_gather_status": "authenticated" if result["authenticated"] else "refused"}
         receipt.result = {**receipt.result, "authenticated": result["authenticated"]}
         AuditLogService(db).record(actor_user_id=call.authenticated_user_id if result["authenticated"] else None,
             action="voice_pin_authentication_succeeded" if result["authenticated"] else "voice_pin_authentication_failed",
@@ -855,12 +868,12 @@ async def telnyx_webhook(
         return {"received": True}
     if event_type == "call.answered" and (call.ended_at is not None or call.status != "answering"):
         return {"received": True, "routed": False}
-    if not settings.retell_api_key:
+    if not media_mode and not settings.retell_api_key:
         call.status = "awaiting_configuration"
         db.commit()
         return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
     try:
-        target = service.provider.inbound_target(config)
+        target = service.provider.inbound_target(config) if not media_mode else None
     except ValueError:
         call.status = "awaiting_configuration"
         db.commit()
@@ -875,13 +888,22 @@ async def telnyx_webhook(
     expected_status = "incoming" if event_type == "call.initiated" else "answering"
     if claim.status != expected_status or claim.ended_at is not None:
         return {"received": True, "routed": claim.status in {"routing", "routed", "in_progress"}, "duplicate": True}
-    claim.status = "answering" if event_type == "call.initiated" else "routing"
+    claim.status = "answering" if event_type == "call.initiated" else "in_progress" if media_mode else "routing"
     db.commit()
     try:
         if event_type == "call.initiated":
             command_id = str(UUID(hashlib.sha256(f"answer:{call.id}".encode("utf-8")).hexdigest()[:32]))
             await service.telnyx.answer_call(call.telnyx_call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
+        if media_mode:
+            client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+            stream_url = settings.telnyx_media_stream_base_url.rstrip("/") + "/" + str(call.id)
+            command_id = str(UUID(hashlib.sha256(f"media:{call.id}".encode()).hexdigest()[:32]))
+            await service.telnyx.start_media_stream(call.telnyx_call_control_id, stream_url=stream_url,
+                client_state=client_state, command_id=command_id)
+            receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media"}
+            db.commit()
+            return {"received": True, "routed": True}
         command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
         await service.telnyx.transfer_call(call.telnyx_call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
     except Exception as exc:

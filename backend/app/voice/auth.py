@@ -29,6 +29,18 @@ def redact_voice_secrets(value):
     return re.sub(r"(?<!\d)(?:\d[ -]?){6,12}(?!\d)", "[REDACTED]", str(value or ""))
 
 
+def validate_voice_pin(pin: str) -> str:
+    if not isinstance(pin, str) or not re.fullmatch(r"[0-9]{6,12}", pin):
+        raise ValueError("PIN must contain 6 to 12 digits")
+    ascending = "01234567890123456789"
+    descending = "98765432109876543210"
+    repeated = any(len(pin) % size == 0 and pin == pin[:size] * (len(pin) // size)
+        for size in range(1, len(pin) // 2 + 1))
+    if pin in ascending or pin in descending or repeated:
+        raise ValueError("Choose a nontrivial Voice PIN")
+    return pin
+
+
 class VoiceCallerAuth:
     def __init__(self, db: Session, settings: Settings):
         self.db = db
@@ -64,8 +76,7 @@ class VoiceCallerAuth:
         return hmac.compare_digest(hashlib.sha256(candidate.encode()).hexdigest(), call.pin_challenge_hash)
 
     def set_pin(self, tenant, principal_type, principal_id, pin):
-        if not re.fullmatch(r"\d{6,12}", pin):
-            raise ValueError("PIN must contain 6 to 12 digits")
+        validate_voice_pin(pin)
         if principal_type == "USER":
             principal = self.db.scalar(select(User).where(User.id == principal_id, User.company_id == tenant.company_id, User.is_active.is_(True)))
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal_id, CompanyMembership.company_id == tenant.company_id, CompanyMembership.is_active.is_(True)))

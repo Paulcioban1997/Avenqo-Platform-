@@ -303,6 +303,7 @@ async def test_realtime_adapter_never_creates_autonomous_agent_response(monkeypa
     await adapter.open(locale="fr")
     await adapter.send_audio(b"\x01\x02")
     await adapter.speak("Authorized answer")
+    await adapter.clear_input()
     await adapter.interrupt()
     await adapter.close()
     assert sent[0]["type"] == "session.update"
@@ -313,6 +314,7 @@ async def test_realtime_adapter_never_creates_autonomous_agent_response(monkeypa
     assert sent[1] == {"type": "input_audio_buffer.append", "audio": "AQI="}
     assert sent[2]["type"] == "response.create"
     assert sent[2]["response"]["input"][0]["content"][0]["text"] == "Authorized answer"
+    assert sent[3] == {"type": "input_audio_buffer.clear"}
     assert [event["type"] for event in sent[-2:]] == ["response.cancel", "output_audio_buffer.clear"]
 
 

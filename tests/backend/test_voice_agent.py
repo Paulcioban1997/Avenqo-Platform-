@@ -126,6 +126,7 @@ class _FakeTelnyx:
         self.transfers: list[tuple[str, str]] = []
         self.messages: list[tuple[str, str]] = []
         self.gathers = []
+        self.media_streams = []
         self.commands = []
         self.fail_transfer = False
 
@@ -143,6 +144,9 @@ class _FakeTelnyx:
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         self.gathers.append((call_control_id, command_id, client_state))
+
+    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+        self.media_streams.append((call_control_id, stream_url, client_state, command_id))
 
     async def send_sms(self, *, from_number: str, to_number: str, text: str) -> str:
         self.messages.append((to_number, text))
@@ -189,15 +193,15 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
             principal = CRMClient(company_id=company.id, first_name="Client", last_name="Pin", email="pin-client@example.com", phone="+15145550123")
             session.add(principal); session.flush()
         controller = VoiceCallerAuth(session, Settings(AUTH_JWT_SECRET="test-pepper-at-least-32-characters"))
-        credential = controller.set_pin(TenantContext(company.id), principal_type, principal.id, "654321")
+        credential = controller.set_pin(TenantContext(company.id), principal_type, principal.id, "907182")
         session.commit()
-        assert credential.pin_hash.startswith("$argon2") and "654321" not in credential.pin_hash
+        assert credential.pin_hash.startswith("$argon2") and "907182" not in credential.pin_hash
         call = orchestrator.record_inbound(config, {"call_control_id": "pin-call", "from": principal.phone})
         assert controller.valid_session(call) is None
         assert controller.verify_gather(call, "123456") == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
-        assert controller.verify_gather(call, 654321) == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
+        assert controller.verify_gather(call, 907182) == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
         assert controller.valid_session(call) is None
-        result = controller.verify_gather(call, "654321"); session.commit()
+        result = controller.verify_gather(call, "907182"); session.commit()
         assert result == {"success": True, "authenticated": True}
         authenticated = controller.valid_session(call)
         assert authenticated.call_id == call.id and authenticated.company_id == company.id
@@ -215,8 +219,8 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
         session.commit()
         assert credential.locked_until is not None
         third = orchestrator.record_inbound(config, {"call_control_id": "pin-third-call", "from": principal.phone})
-        assert controller.verify_gather(third, "654321")["authenticated"] is False
-        assert "654321" not in caplog.text + str(result) + str(authenticated.permissions)
+        assert controller.verify_gather(third, "907182")["authenticated"] is False
+        assert "907182" not in caplog.text + str(result) + str(authenticated.permissions)
         assert session.scalar(select(func.count(VoiceCallerCredential.id))) == 1
         assert session.scalar(select(func.count(VoiceAuthSession.id))) == 1
     finally:
@@ -1193,12 +1197,12 @@ def test_signed_dtmf_gather_authenticates_customer_once_without_persisting_digit
         email="dtmf@example.com", phone="+15145550123")
     env.session.add(client); env.session.flush()
     controller = VoiceCallerAuth(env.session, env.settings)
-    controller.set_pin(TenantContext(env.company.id), "CUSTOMER", client.id, "765432")
+    controller.set_pin(TenantContext(env.company.id), "CUSTOMER", client.id, "908271")
     env.session.commit()
     env.send(env.event()); env.send(env.event("call.answered"))
     call = env.session.scalar(select(VoiceCall))
     challenge = controller.challenge(call); env.session.commit()
-    gathered = env.event("call.gather.ended", digits="765432", client_state=challenge)
+    gathered = env.event("call.gather.ended", digits="908271", client_state=challenge)
     assert env.send(gathered).json()["authenticated"] is True
     assert env.send(gathered).json()["duplicate"] is True
     env.session.refresh(call)
@@ -1206,7 +1210,7 @@ def test_signed_dtmf_gather_authenticates_customer_once_without_persisting_digit
     assert auth.principal_id == client.id and auth.permissions == ["customer:self"]
     assert call.caller_type == "CLIENT" and call.authenticated_user_id is None
     receipts = env.session.scalars(select(VoiceToolAction)).all()
-    assert "765432" not in str([item.result for item in receipts]) + caplog.text + str(call.transcript) + str(call.summary)
+    assert "908271" not in str([item.result for item in receipts]) + caplog.text + str(call.transcript) + str(call.summary)
     assert env.session.scalar(select(func.count(VoiceAuthSession.id))) == 1
     assert call.pin_challenge_hash is None
 
@@ -1219,6 +1223,27 @@ def test_signed_dtmf_without_matching_challenge_never_authenticates(signed_telny
     assert response.json()["authenticated"] is False
     call = env.session.scalar(select(VoiceCall))
     assert call.caller_type == "UNKNOWN" and VoiceCallerAuth(env.session, env.settings).valid_session(call) is None
+
+
+def test_local_media_inbound_answers_then_streams_without_retell_or_caller_auth(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.telnyx_media_enabled = True; env.settings.telnyx_media_inbound_enabled = True
+    env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
+    env.settings.openai_api_key = "fake-audio-key"; env.settings.voice_realtime_supported_locales = ["fr"]
+    env.config.enabled = False; env.config.retell_agent_id = None; env.config.retell_sip_uri = None
+    env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
+    env.session.commit()
+    initiated = env.event()
+    assert env.send(initiated).json()["status"] == "answering"
+    assert len(env.service.telnyx.commands) == 1
+    assert env.send(initiated).json()["duplicate"] is True
+    answered = env.event("call.answered")
+    assert env.send(answered).json()["routed"] is True
+    assert len(env.service.telnyx.media_streams) == 1 and env.service.telnyx.transfers == []
+    assert env.send(answered).json()["duplicate"] is True
+    call = env.session.scalar(select(VoiceCall))
+    assert call.caller_type == "UNKNOWN" and call.authenticated_user_id is None
+    assert call.status == "in_progress" and call.central_conversation_id is None
 
 
 def test_retell_webhook_correlates_only_to_existing_tenant_telnyx_call(signed_telnyx_webhook):

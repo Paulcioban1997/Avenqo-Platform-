@@ -157,6 +157,10 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
         assert replay.id == number_id
         assert replay.company_id == tenant.company_id and replay.config_id is None
         assert replay.provider_connection_id == "verified-connection"
+        replay.provider_connection_id = None
+        db.flush()
+        refreshed = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
+        assert refreshed.id == number_id and refreshed.provider_connection_id == "verified-connection"
         assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 1
         assert db.get(AccountingTransaction, entry_id).amount == 123
         assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'crm', 'accounting'}
