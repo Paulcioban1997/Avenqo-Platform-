@@ -1417,4 +1417,110 @@ async def test_first_call_pin_mismatch_cancels_enrollment(signed_telnyx_webhook)
 
     # Enrollment not completed
     assert auth.has_owner_credential(env.company.id) is False
-    assert auth.valid_session(call) is None
+    assert auth.valid_session(call) is None
+
+
+def test_telnyx_audio_deterministic_duration_and_roundtrip():
+    import math
+    codec = TelnyxAudioCodec()
+    # Generate 1.0 second deterministic 440 Hz sine wave tone at 8000 Hz PCMU (50 frames of 160 bytes)
+    sample_rate = 8000
+    duration_s = 1.0
+    total_samples = int(sample_rate * duration_s)
+    raw_linear = bytearray()
+    for i in range(total_samples):
+        val = int(16000 * math.sin(2 * math.pi * 440 * i / sample_rate))
+        raw_linear.extend(val.to_bytes(2, byteorder="little", signed=True))
+    pcmu_stream = audioop.lin2ulaw(bytes(raw_linear), 2)
+    assert len(pcmu_stream) == 8000
+
+    # Chunk into 20ms frames (160 bytes each) and convert to 24kHz PCM
+    resampled_pcm_24k = bytearray()
+    for offset in range(0, len(pcmu_stream), 160):
+        frame = pcmu_stream[offset:offset + 160]
+        pcm24k = codec.inbound_pcm(base64.b64encode(frame).decode("ascii"))
+        resampled_pcm_24k.extend(pcm24k)
+
+    # 1.0s at 24000 Hz 16-bit (2 bytes/sample) = 48000 bytes
+    assert abs(len(resampled_pcm_24k) - 48000) <= 200
+
+    # Resample 24kHz PCM back to 8kHz PCMU
+    reconstructed_pcmu = bytearray()
+    # Feed in 20ms chunks (480 samples * 2 bytes = 960 bytes)
+    for offset in range(0, len(resampled_pcm_24k), 960):
+        chunk = resampled_pcm_24k[offset:offset + 960]
+        if len(chunk) % 2 != 0:
+            chunk = chunk[:-1]
+        outbound = codec.outbound_pcm(base64.b64encode(chunk).decode("ascii"))
+        reconstructed_pcmu.extend(outbound)
+
+    # Output duration must match 1.0s (within 1 frame tolerance of 160 bytes)
+    # NOT 2x, 3x, or 4x faster or slower!
+    assert abs(len(reconstructed_pcmu) - 8000) <= 160
+    reconstructed_duration = len(reconstructed_pcmu) / 8000.0
+    assert 0.98 <= reconstructed_duration <= 1.02
+
+
+@pytest.mark.asyncio
+async def test_telnyx_media_pacing_drift_compensation():
+    import time
+    from contextlib import suppress
+    socket = FakeMediaSocket()
+    adapter = FakeAudioAdapter()
+    auth_calls = 0
+
+    async def validate(_event):
+        return None
+
+    async def authorize():
+        nonlocal auth_calls
+        auth_calls += 1
+
+    async def execute(*_args):
+        return {"status": "success", "answer": "ok"}
+
+    bridge = TelnyxMediaBridge(socket, adapter, locale="fr", validate_start=validate, authorize=authorize, execute_turn=execute)
+    bridge.stream_id = "test-stream"
+
+    # Enqueue 5 frames of 160 bytes (100ms total audio)
+    for _ in range(5):
+        await bridge._output.put((0, b"\xff" * 160))
+
+    write_task = asyncio.create_task(bridge._write_audio())
+    t0 = time.monotonic()
+    await eventually(lambda: len(socket.sent) == 5)
+    elapsed = time.monotonic() - t0
+    write_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await write_task
+
+    # 5 frames with 20ms spacing should take approximately 0.08 - 0.15s, NOT instantaneous and NOT 1.0s
+    assert 0.06 <= elapsed <= 0.35
+    # Crucially, authorize() was NOT called in the 50Hz audio write loop!
+    assert auth_calls == 0
+
+
+def test_public_inbound_greeting_is_conversational_and_concise(authorized_media_call):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.db.commit()
+    conversation = PublicInboundConversation(env.db, env.settings, env.call.id)
+    greeting = conversation.greeting()
+    # Greeting is short, polite and conversational
+    assert env.config.business_name in greeting
+    assert greeting == f"Bonjour, vous êtes bien chez {env.config.business_name}. Comment puis-je vous aider ?"
+    assert "Pour une demande de rendez-vous" not in greeting
+    assert "Cet appel peut être enregistré" not in greeting
+
+
+def test_public_inbound_general_greetings_do_not_recite_ivr_menu(authorized_media_call):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.db.commit()
+    conversation = PublicInboundConversation(env.db, env.settings, env.call.id)
+    for hello in ("Bonjour", "Allô", "bon matin", "Salut"):
+        result = conversation.public_answer(hello)
+        assert result["public"] is True
+        assert "Bonjour ! Comment puis-je vous aider aujourd'hui ?" in result["answer"]
+        assert "Pour une demande de rendez-vous" not in result["answer"]
+

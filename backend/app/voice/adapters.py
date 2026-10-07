@@ -144,7 +144,17 @@ class OpenAIRealtimeAudioAdapter:
                     "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
+                "modalities": ["audio", "text"],
                 "output_modalities": ["audio"],
+                "voice": self._config.tts_voice,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "input_audio_transcription": {"model": self._config.stt_model} if self._config.stt_model else None,
+                "turn_detection": {
+                    "type": "server_vad",
+                    "create_response": False,
+                    "interrupt_response": False,
+                },
                 "tools": [],
                 "audio": {
                     "input": {

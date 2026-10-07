@@ -182,8 +182,9 @@ class PublicInboundConversation:
 
     def greeting(self) -> str:
         _call, config, _company = self.context()
-        suffix = " Comment puis-je vous aider ?" if resolve_locale(config.preferred_language).startswith("fr") else " How can I help you?"
-        return voice_greeting(config.preferred_language, config.business_name) + suffix
+        if resolve_locale(config.preferred_language).startswith("fr"):
+            return f"Bonjour, vous êtes bien chez {config.business_name}. Comment puis-je vous aider ?"
+        return f"Hello, you've reached {config.business_name}. How can I help you?"
 
     def portal_message(self) -> str:
         _call, config, _company = self.context()
@@ -213,13 +214,23 @@ class PublicInboundConversation:
         if re.search(r"heures|horaires|hours|ouvert|opening", normalized):
             hours = {day: {key: value[key] for key in ("open", "close") if key in value}
                 for day, value in config.opening_hours.items() if day in {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"} and isinstance(value, dict)}
-            answer = ("Nos heures d'ouverture: " if french else "Our opening hours: ") + json.dumps(hours, ensure_ascii=False) if hours else ("Les heures d'ouverture ne sont pas encore renseignées." if french else "Opening hours have not been supplied yet.")
+            if hours:
+                summary = ", ".join(f"{day}: {hours[day].get('open', '')} - {hours[day].get('close', '')}" for day in hours)
+                answer = ("Nos heures d'ouverture: " if french else "Our opening hours: ") + summary
+            else:
+                answer = "Les heures d'ouverture ne sont pas encore renseignées." if french else "Opening hours have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"services|prix|price|tarif", normalized):
             services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in config.services if isinstance(value, dict)]
-            answer = ("Nos services: " if french else "Our services: ") + json.dumps(services, ensure_ascii=False) if services else ("Les services publics ne sont pas encore renseignés." if french else "Public services have not been supplied yet.")
+            if services:
+                summary = ", ".join(f"{s.get('name', '')} ({s.get('price', '')} {s.get('currency', '')})".strip() for s in services)
+                answer = ("Nos services: " if french else "Our services: ") + summary
+            else:
+                answer = "Les services publics ne sont pas encore renseignés." if french else "Public services have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
-        answer = "Je peux vous renseigner sur les heures et les services publics, ou recevoir une demande de rendez-vous." if french else "I can help with public opening hours and services, or an appointment request."
+        if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|hello|hi|hey)\b", normalized):
+            return {"status": "success", "answer": "Bonjour ! Comment puis-je vous aider aujourd'hui ?" if french else "Hello! How can I help you today?", "public": True}
+        answer = "Je peux vous renseigner sur nos heures d'ouverture, nos services ou pour une demande de rendez-vous. Comment puis-je vous aider ?" if french else "I can help with our opening hours, services, or an appointment request. How can I help you?"
         return {"status": "success", "answer": answer, "public": True}
 
     async def begin_pin(self, item_id: str) -> dict:
@@ -598,9 +609,14 @@ class TelnyxMediaBridge:
                     self.dropped_outbound_frames += 1
 
     async def _write_audio(self) -> None:
+        loop = asyncio.get_running_loop()
+        next_send_time = None
+        current_epoch = self.epoch
         while True:
             epoch, raw = await self._output.get()
-            await self.authorize()
+            if epoch != current_epoch:
+                current_epoch = epoch
+                next_send_time = None
             async with self._send_lock:
                 if epoch == self.epoch:
                     if isinstance(raw, dict):
@@ -608,11 +624,18 @@ class TelnyxMediaBridge:
                     else:
                         await self.socket.send_json({"event": "media", "media": {"payload": base64.b64encode(raw).decode("ascii")}})
             if isinstance(raw, bytes):
-                await asyncio.sleep(0.02)
+                now = loop.time()
+                if next_send_time is None or next_send_time < now - 0.1:
+                    next_send_time = now + 0.02
+                    await asyncio.sleep(0.02)
+                else:
+                    next_send_time += 0.02
+                    delay = next_send_time - loop.time()
+                    if delay > 0:
+                        await asyncio.sleep(delay)
 
     async def _provider_events(self) -> None:
         async for event in self.adapter.events():
-            await self.authorize()
             kind = getattr(event, "type", "")
             if kind == "input_audio_buffer.speech_started" and not self.input_paused:
                 await self.interrupt()
@@ -682,7 +705,6 @@ class TelnyxMediaBridge:
             event = await self.socket.receive_json()
             if not isinstance(event, dict) or event.get("stream_id") != self.stream_id:
                 raise InvalidMediaFrame("Media stream mismatch")
-            await self.authorize()
             kind = event.get("event")
             if kind == "stop":
                 if not self.input_paused:
@@ -752,6 +774,11 @@ class TelnyxMediaBridge:
                 if status in {"authenticated", "refused"}:
                     await self._finish_pin(status)
 
+    async def _periodic_auth(self) -> None:
+        while True:
+            await asyncio.sleep(5.0)
+            await self.authorize()
+
     async def run(self) -> None:
         try:
             event = await asyncio.wait_for(self.socket.receive_json(), timeout=5)
@@ -774,7 +801,7 @@ class TelnyxMediaBridge:
             if self.initial_answer:
                 await self._speak_system("inbound-greeting", self.initial_answer)
             reader = asyncio.create_task(self._read_audio())
-            self._background = [reader, asyncio.create_task(self._provider_events()), asyncio.create_task(self._write_audio()), asyncio.create_task(self._execute_turns())]
+            self._background = [reader, asyncio.create_task(self._provider_events()), asyncio.create_task(self._write_audio()), asyncio.create_task(self._execute_turns()), asyncio.create_task(self._periodic_auth())]
             if self.poll_pin is not None:
                 self._background.append(asyncio.create_task(self._monitor_pin()))
             done, _pending = await asyncio.wait(self._background, return_when=asyncio.FIRST_COMPLETED)
