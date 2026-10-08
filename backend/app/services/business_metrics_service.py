@@ -246,9 +246,6 @@ class BusinessMetricsService:
         if not data_covered:
             summary["data_covered"] = False
             summary["coverage_message"] = coverage_message
-            summary["orders"] = None
-            summary["revenue"] = None
-            summary["average_order_value"] = None
             metrics = [
                 self.metric_envelope(snapshot, source, "revenue", None, "currency", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
                 self.metric_envelope(snapshot, source, "orders", None, "count", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),

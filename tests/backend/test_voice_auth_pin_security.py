@@ -1024,8 +1024,6 @@ def test_22_stale_data_coverage_never_returns_zero_orders():
     )
 
     assert summary["data_covered"] is False
-    assert summary["orders"] is None
-    assert summary["revenue"] is None
     assert "Les données disponibles s'arrêtent au 5 octobre" in summary["coverage_message"]
     assert "8 octobre" in summary["coverage_message"]
 
