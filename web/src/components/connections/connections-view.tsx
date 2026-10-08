@@ -238,6 +238,19 @@ export function ConnectionsView() {
     return () => { loadRevision.current++; channel?.close(); window.removeEventListener("avenqo:session-expired", expired); };
   }, [loadData]);
 
+  // Auto-poll while any connection is syncing or processing until ready
+  useEffect(() => {
+    const isAnySyncing = connections.some(
+      (c) => c.status === "syncing" || c.status === "processing"
+    );
+    if (!isAnySyncing) return;
+    const timer = setInterval(() => {
+      void loadData();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [connections, loadData]);
+
+
   // File Upload Handlers
   const handleFiles = async (files: FileList | File[]) => {
     const validExtensions = [".csv", ".xls", ".xlsx", ".json", ".pdf", ".txt", ".parquet"];
@@ -320,6 +333,13 @@ export function ConnectionsView() {
         throw new Error("Impossible de déclencher la synchronisation.");
       }
       setAlertSuccess(connector.syncing);
+      if (connId) {
+        setConnections((prev) =>
+          prev.map((c) => (c.id === connId ? { ...c, status: "syncing" } : c))
+        );
+      } else {
+        setConnections((prev) => prev.map((c) => ({ ...c, status: "syncing" })));
+      }
       setTimeout(() => setAlertSuccess(null), 4000);
       loadData();
     } catch (err: any) {

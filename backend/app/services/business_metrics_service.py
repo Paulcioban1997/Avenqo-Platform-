@@ -247,17 +247,18 @@ class BusinessMetricsService:
             summary["data_covered"] = False
             summary["coverage_message"] = coverage_message
             metrics = [
-                self.metric_envelope(snapshot, source, "revenue", None, "currency", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
-                self.metric_envelope(snapshot, source, "orders", None, "count", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
-                self.metric_envelope(snapshot, source, "average_order_value", None, "currency", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+                self.metric_envelope(snapshot, source, "revenue", None, "currency", period_start, period_end, 0, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+                self.metric_envelope(snapshot, source, "orders", None, "count", period_start, period_end, 0, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+                self.metric_envelope(snapshot, source, "average_order_value", None, "currency", period_start, period_end, 0, calculated_at=calculated_at, state="DATA_UNCOVERED"),
             ]
         else:
             summary["data_covered"] = True
             summary["coverage_message"] = None
+            sample_orders = int(summary.get("orders") or 0)
             metrics = [
-                self.metric_envelope(snapshot, source, "revenue", summary["revenue"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["rows_considered"] else "INSUFFICIENT_DATA"),
-                self.metric_envelope(snapshot, source, "orders", summary["orders"], "count", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
-                self.metric_envelope(snapshot, source, "average_order_value", summary["average_order_value"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
+                self.metric_envelope(snapshot, source, "revenue", summary["revenue"], "currency", period_start, period_end, sample_orders, calculated_at=calculated_at, state="AVAILABLE" if summary["rows_considered"] else "INSUFFICIENT_DATA"),
+                self.metric_envelope(snapshot, source, "orders", summary["orders"], "count", period_start, period_end, sample_orders, calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
+                self.metric_envelope(snapshot, source, "average_order_value", summary["average_order_value"], "currency", period_start, period_end, sample_orders, calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
             ]
         return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
 
@@ -476,7 +477,7 @@ class BusinessMetricsService:
         unit: str,
         period_start: datetime | None,
         period_end: datetime | None,
-        sample_size: int,
+        sample_size: int | None = 0,
         *,
         calculated_at: datetime | None = None,
         state: str = "AVAILABLE",

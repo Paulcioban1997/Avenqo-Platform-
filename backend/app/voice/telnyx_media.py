@@ -1239,10 +1239,39 @@ async def telnyx_media_socket(
                     .where(CompanyMembership.company_id == current_company.id, CompanyMembership.is_active.is_(True))
                 )
             if owner_membership is None:
-                return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
-            current_user = db.get(User, owner_membership.user_id)
-            if current_user is None:
-                return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+                # Fallback: look for active User directly associated with current_company
+                fallback_user = db.scalar(
+                    select(User)
+                    .where(
+                        User.company_id == current_company.id,
+                        User.is_active.is_(True),
+                        User.role.in_([UserRole.OWNER, UserRole.ADMIN]),
+                    )
+                    .order_by(User.created_at.asc())
+                )
+                if fallback_user is None:
+                    fallback_user = db.scalar(
+                        select(User)
+                        .where(User.company_id == current_company.id, User.is_active.is_(True))
+                        .order_by(User.created_at.asc())
+                    )
+                if fallback_user is not None:
+                    owner_membership = CompanyMembership(
+                        company_id=current_company.id,
+                        user_id=fallback_user.id,
+                        role=fallback_user.role if fallback_user.role in [UserRole.OWNER, UserRole.ADMIN] else UserRole.ADMIN,
+                        is_active=True,
+                    )
+                    db.add(owner_membership)
+                    db.commit()
+                    db.refresh(owner_membership)
+                    current_user = fallback_user
+                else:
+                    return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            else:
+                current_user = db.get(User, owner_membership.user_id)
+                if current_user is None:
+                    return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
             permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
 
         if current_call.central_conversation_id is None:
@@ -1319,7 +1348,7 @@ async def telnyx_media_socket(
             return {"status": result.status, "answer": result.answer}
         except Exception as exc:
             if principal_id is None and public_conversation is not None:
-                logger.warning("Central AI execute error for public voice call, falling back: %s", exc)
+                logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
                 return public_conversation.public_answer(transcript)
             raise
         finally:

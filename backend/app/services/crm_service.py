@@ -1022,10 +1022,21 @@ class CRMService:
         if not conn or not self._cipher:
             return "not_configured", None
 
+        if conn.sync_status == "error":
+            return "failed", f"Le calendrier Google est en erreur ({conn.error_message or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
+
+        settings = get_settings()
         try:
             creds = self._cipher.decrypt(conn.encrypted_credentials)
             if conn.provider == "google":
-                provider = GoogleCalendarProvider()
+                try:
+                    provider = GoogleCalendarProvider(
+                        settings.google_calendar_client_id,
+                        settings.google_calendar_client_secret,
+                        settings.google_calendar_redirect_uri,
+                    )
+                except TypeError:
+                    provider = GoogleCalendarProvider()
                 event_data = CalendarEventData(
                     title=appointment.title,
                     start_time=appointment.start_time,
@@ -1038,21 +1049,44 @@ class CRMService:
                     ),
                     client_name=client.full_name,
                 )
-                if action == "create":
-                    ext_id = await provider.create_event(creds, event_data, conn.calendar_id)
-                    appointment.calendar_provider = "google"
-                    appointment.external_event_id = ext_id
-                    return "synced", None
-                elif action == "update" and appointment.external_event_id:
-                    await provider.update_event(creds, appointment.external_event_id, event_data, conn.calendar_id)
-                    return "synced", None
-                elif action == "delete" and appointment.external_event_id:
-                    deleted = await provider.delete_event(creds, appointment.external_event_id, conn.calendar_id)
-                    if not deleted:
-                        return "failed", "Google Calendar n'a pas confirmé la suppression de l'événement."
-                    appointment.external_event_id = None
-                    return "synced", None
-                return "skipped", None
+
+                async def _perform_op(current_creds: dict[str, Any]):
+                    if action == "create":
+                        ext_id = await provider.create_event(current_creds, event_data, conn.calendar_id)
+                        appointment.calendar_provider = "google"
+                        appointment.external_event_id = ext_id
+                        return "synced", None
+                    elif action == "update" and appointment.external_event_id:
+                        await provider.update_event(current_creds, appointment.external_event_id, event_data, conn.calendar_id)
+                        return "synced", None
+                    elif action == "delete" and appointment.external_event_id:
+                        deleted = await provider.delete_event(current_creds, appointment.external_event_id, conn.calendar_id)
+                        if not deleted:
+                            return "failed", "Google Calendar n'a pas confirmé la suppression de l'événement."
+                        appointment.external_event_id = None
+                        return "synced", None
+                    return "skipped", None
+
+                try:
+                    return await _perform_op(creds)
+                except CalendarProviderError as exc:
+                    cause = getattr(exc, "__cause__", None)
+                    if getattr(cause, "code", None) == 401 and creds.get("refresh_token"):
+                        try:
+                            refreshed = await provider.refresh_access_token(str(creds["refresh_token"]))
+                            creds = {**creds, **refreshed}
+                            if hasattr(self._cipher, "encrypt"):
+                                conn.encrypted_credentials = self._cipher.encrypt(creds)
+                            conn.sync_status = "connected"
+                            conn.error_message = None
+                            self._session.commit()
+                            return await _perform_op(creds)
+                        except Exception as refresh_err:
+                            conn.sync_status = "error"
+                            conn.error_message = "Google token expired or revoked. Please reconnect."
+                            self._session.commit()
+                            return "failed", f"Synchronisation Google Calendar impossible (token expiré): {refresh_err}"
+                    raise
         except Exception as exc:
             logger.warning(
                 "CRM calendar synchronization failed",

@@ -792,3 +792,37 @@ async def test_shopify_webhook_requires_valid_raw_body_hmac() -> None:
             body=body,
         )
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shopify_orders_sync_with_updated_since_includes_status_any() -> None:
+    captured_query = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_query
+        variables = json.loads(request.content)["variables"]
+        captured_query = variables.get("query")
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "orders": {
+                        "nodes": [{"id": "gid://shopify/Order/1"}],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
+                }
+            },
+        )
+
+    connector, client = _connector(handler)
+    context = ConnectorSyncContext(
+        tenant_id=uuid4(),
+        connection_id=uuid4(),
+        access_token="backend-only",
+        external_account_id="avenqo-demo.myshopify.com",
+        updated_since="2026-10-05T00:23:59Z",
+    )
+
+    await connector.sync_orders(context)
+    assert captured_query == "status:any updated_at:>='2026-10-05T00:23:59Z'"
+    await client.aclose()

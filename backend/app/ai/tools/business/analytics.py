@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
@@ -28,14 +29,14 @@ def _reverse_mapping(canonical_columns: dict[str, str]) -> dict[str, str]:
     return {canonical: original for original, canonical in canonical_columns.items()}
 
 
-def _value(row: dict[str, object], reverse: dict[str, str], field: str) -> object | None:
+def _value(row: dict[str, Any], reverse: dict[str, str], field: str) -> Any:
     original = reverse.get(field)
     if original is None or original not in row:
         return None
     return row[original]
 
 
-def _as_float(value: object | None) -> float | None:
+def _as_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -44,7 +45,7 @@ def _as_float(value: object | None) -> float | None:
         return None
 
 
-def parse_business_datetime(value: object | None) -> datetime | None:
+def parse_business_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value
     if value is None or not isinstance(value, str) or not value.strip():
@@ -63,11 +64,11 @@ def parse_business_datetime(value: object | None) -> datetime | None:
 
 
 def filter_rows_by_date(
-    rows: tuple[dict[str, object], ...],
+    rows: tuple[dict[str, Any], ...],
     reverse: dict[str, str],
     date_from: datetime | None,
     date_to: datetime | None,
-) -> tuple[dict[str, object], ...]:
+) -> tuple[dict[str, Any], ...]:
     if date_from is None and date_to is None:
         return rows
     filtered = []
@@ -92,7 +93,7 @@ def filter_rows_by_date(
     return tuple(filtered)
 
 
-def compute_business_overview(prepared: PreparedCompanyDataset) -> dict[str, object]:
+def compute_business_overview(prepared: PreparedCompanyDataset) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     revenue = 0.0
     order_ids: set[object] = set()
@@ -133,7 +134,7 @@ def compute_sales_summary(
     date_from: datetime | None,
     date_to: datetime | None,
     product: str | None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
     if product is not None:
@@ -168,7 +169,7 @@ def compute_sales_trend(
     date_to: datetime | None = None,
     granularity: str = "month",
     product: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
     if product is not None:
@@ -229,7 +230,7 @@ def compute_sales_comparison(
     current_to: datetime,
     previous_from: datetime,
     previous_to: datetime,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
 
     def revenue_between(start: datetime, end: datetime) -> float:
@@ -256,7 +257,7 @@ def compute_top_products(
     metric: str,
     date_from: datetime | None,
     date_to: datetime | None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
 
@@ -284,7 +285,7 @@ def compute_top_products(
 
 def compute_product_portfolio(
     prepared: PreparedCompanyDataset,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     """Aggregate safe product entities while reusing the shared sales formula."""
 
     reverse = _reverse_mapping(prepared.canonical_columns)
@@ -294,7 +295,7 @@ def compute_product_portfolio(
     has_revenue = "total_amount" in reverse
     has_unit_price = "unit_price" in reverse
 
-    by_product: dict[str, dict[str, object]] = {}
+    by_product: dict[str, dict[str, Any]] = {}
     for row_index, row in enumerate(prepared.rows):
         raw_entity = _value(row, reverse, entity_field)
         if raw_entity is None:
@@ -438,7 +439,7 @@ def compute_product_period_revenue(
     }
 
 
-def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, object]:
+def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, Any]:
     customers = compute_customer_portfolio(prepared)
     total_customers = len(customers)
     returning_customers = sum(1 for customer in customers if customer["orders"] > 1)
@@ -457,9 +458,9 @@ def compute_customer_summary(prepared: PreparedCompanyDataset) -> dict[str, obje
 
 def compute_customer_portfolio(
     prepared: PreparedCompanyDataset,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     reverse = _reverse_mapping(prepared.canonical_columns)
-    by_customer: dict[str, dict[str, object]] = {}
+    by_customer: dict[str, dict[str, Any]] = {}
 
     for row_index, row in enumerate(prepared.rows):
         customer_id = _value(row, reverse, "customer_id")

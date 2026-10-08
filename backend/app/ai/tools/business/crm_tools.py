@@ -72,6 +72,7 @@ class ListAvailableSlotsArgs(ToolArguments):
 class CreateAppointmentArgs(ToolArguments):
     client_name_or_id: str = Field(description="Nom ou UUID du client.")
     client_email: str | None = Field(default=None, description="Adresse courriel exacte du client si connue.")
+    client_phone: str | None = Field(default=None, description="Numéro de téléphone du client si disponible.")
     start_time: str = Field(description="Date et heure de début au format ISO (ex: 2026-09-20T14:30:00Z).")
     title: str = Field(description="Intitulé ou motif du rendez-vous (ex: Changement de pneus, Consultation).")
     duration_minutes: int = Field(default=60, description="Durée en minutes.")
@@ -325,15 +326,23 @@ class CheckAvailabilityTool(CRMAITool):
         try:
             start_dt = datetime.fromisoformat(arguments.start_time.replace("Z", "+00:00"))
         except ValueError:
-            return ToolResult(success=False, data={"error": "Format d'heure de début invalide."})
+            return ToolResult(success=False, error="Format d'heure de début invalide.", data={"error": "Format d'heure de début invalide."})
 
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
-
         service_id = UUID(arguments.service_id) if arguments.service_id else None
         result = await self._avail.check_availability(context.tenant.company_id, start_dt, arguments.duration_minutes, emp_id, service_id)
+        is_ok = result.get("state") in ("AVAILABLE", "BUSY")
+        error_msg = None
+        if not is_ok:
+            reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
+            if "GOOGLE_CALENDAR_AUTH_EXPIRED" in str(reason) or "EXTERNAL_CALENDAR_ERROR" in str(reason):
+                error_msg = "Le calendrier Google associé nécessite une reconnexion. Veuillez contacter l'administrateur."
+            else:
+                error_msg = f"Vérification de disponibilité impossible ({reason})."
         return ToolResult(
-            success=result["state"] in ("AVAILABLE", "BUSY"),
+            success=is_ok,
             data=result,
+            error=error_msg,
             source_refs=("crm_appointments", "business_hours", "google_freebusy"),
         )
 
@@ -351,10 +360,25 @@ class ListAvailableSlotsTool(CRMAITool):
         self._avail = CRMAvailabilityService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: ListAvailableSlotsArgs) -> ToolResult:
-        try:
-            target_date = date.fromisoformat(arguments.target_date)
-        except ValueError:
-            return ToolResult(success=False, data={"error": "Format de date invalide (YYYY-MM-DD attendu)."})
+        target_str = str(arguments.target_date or "").strip()
+        zone = self._avail._zone(context.tenant.company_id)
+        now_local = datetime.now(timezone.utc).astimezone(zone)
+
+        target_lower = target_str.lower()
+        if target_lower in ("demain", "tomorrow"):
+            target_date = (now_local + timedelta(days=1)).date()
+        elif target_lower in ("aujourd'hui", "aujourdhui", "today", "ce jour"):
+            target_date = now_local.date()
+        elif target_lower in ("après-demain", "apres-demain", "after-tomorrow"):
+            target_date = (now_local + timedelta(days=2)).date()
+        else:
+            try:
+                if "t" in target_lower or " " in target_str:
+                    target_date = datetime.fromisoformat(target_str.replace("Z", "+00:00")).astimezone(zone).date()
+                else:
+                    target_date = date.fromisoformat(target_str)
+            except ValueError:
+                return ToolResult(success=False, error="Format de date invalide (YYYY-MM-DD attendu).", data={"error": "Format de date invalide (YYYY-MM-DD attendu)."})
 
         svc_id = UUID(arguments.service_id) if arguments.service_id else None
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
@@ -364,10 +388,20 @@ class ListAvailableSlotsTool(CRMAITool):
                 context.tenant.company_id, target_date, service_id=svc_id, employee_id=emp_id
             )
         except AvailabilityUnavailable as exc:
-            return ToolResult(success=False, data={"state": str(exc), "slots": [], "available": False})
+            err_code = str(exc)
+            err_msg = (
+                "Le calendrier externe Google nécessite une reconnexion."
+                if ("GOOGLE_CALENDAR_AUTH_EXPIRED" in err_code or "EXTERNAL_CALENDAR_ERROR" in err_code)
+                else f"Impossible de récupérer les créneaux disponibles ({err_code})."
+            )
+            return ToolResult(
+                success=False,
+                error=err_msg,
+                data={"state": err_code, "slots": [], "available": False, "error": err_msg},
+            )
         return ToolResult(
             success=True,
-            data={"target_date": arguments.target_date, "count": len(slots), "slots": slots},
+            data={"target_date": target_date.isoformat(), "count": len(slots), "slots": slots},
             source_refs=("crm_appointments",),
         )
 
@@ -413,7 +447,13 @@ class CreateAppointmentTool(CRMAITool):
             )
 
         if not client:
-            if arguments.client_email and self._crm.is_valid_customer_email(arguments.client_email):
+            client_phone = getattr(arguments, "client_phone", None)
+            client_email = (
+                arguments.client_email.strip().lower()
+                if (arguments.client_email and self._crm.is_valid_customer_email(arguments.client_email))
+                else None
+            )
+            if client_email or client_phone or arguments.client_name_or_id:
                 parts = arguments.client_name_or_id.strip().split(" ", 1)
                 first_name = parts[0]
                 last_name = parts[1] if len(parts) > 1 else ""
@@ -422,16 +462,18 @@ class CreateAppointmentTool(CRMAITool):
                     {
                         "first_name": first_name or "Client",
                         "last_name": last_name or "",
-                        "email": arguments.client_email.strip().lower(),
+                        "email": client_email or "",
+                        "phone": client_phone or "",
                     },
                     actor_name="IA Voice",
                 )
             else:
                 return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
-        if not self._crm.is_valid_customer_email(client.email):
+
+        if not client.email and not client.phone:
             return ToolResult(
                 success=False,
-                data={"error": "J'ai besoin du courriel du client pour identifier le bon dossier et envoyer l'invitation."},
+                data={"error": "J'ai besoin du courriel ou du numéro de téléphone du client pour confirmer le rendez-vous."},
             )
 
         service_id = None

@@ -332,3 +332,141 @@ def test_voice_topic_switching_mid_call_preserves_cross_module_capabilities(tmp_
     tools_3, agents_3 = scope_3
     assert "get_unpaid_invoices" in tools_3
     assert agents_3["get_unpaid_invoices"] == "accounting"
+
+
+@pytest.mark.asyncio
+async def test_list_available_slots_flexible_dates_demain_and_iso(tmp_path):
+    """P0 Regression : list_available_slots gère 'demain', 'today', dates relatives et datetimes ISO."""
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    company.timezone = "America/Montreal"
+    company.business_hours = {
+        "weekly": {
+            "monday": [{"open": "09:00", "close": "17:00"}],
+            "tuesday": [{"open": "09:00", "close": "17:00"}],
+            "wednesday": [{"open": "09:00", "close": "17:00"}],
+            "thursday": [{"open": "09:00", "close": "17:00"}],
+            "friday": [{"open": "09:00", "close": "17:00"}],
+            "saturday": [{"open": "10:00", "close": "16:00"}],
+            "sunday": [{"open": "10:00", "close": "16:00"}],
+        }
+    }
+    db.commit()
+
+    context = ToolExecutionContext(
+        tenant=TenantContext(company_id=company.id, user_id=uuid4()),
+        user_id=uuid4(),
+        request_id="req-slots-demain",
+        permissions=frozenset({"ai:use"}),
+    )
+    tool = ListAvailableSlotsTool(db)
+
+    # 1. Tester 'demain'
+    res_demain = await tool.run(context, ListAvailableSlotsArgs(target_date="demain"))
+    assert res_demain.success is True
+    assert res_demain.data["count"] > 0
+
+    # 2. Tester 'today'
+    res_today = await tool.run(context, ListAvailableSlotsArgs(target_date="today"))
+    assert res_today.success is True
+
+    # 3. Tester string ISO datetime
+    res_iso = await tool.run(context, ListAvailableSlotsArgs(target_date="2026-10-15T14:00:00Z"))
+    assert res_iso.success is True
+    assert res_iso.data["target_date"] == "2026-10-15"
+
+
+@pytest.mark.asyncio
+async def test_create_appointment_with_client_phone_over_voice(tmp_path):
+    """P0 Regression : create_appointment par Voice AI crée le client avec son numéro de téléphone."""
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    company.timezone = "America/Montreal"
+    company.business_hours = {
+        "weekly": {
+            "monday": [{"open": "09:00", "close": "17:00"}],
+            "tuesday": [{"open": "09:00", "close": "17:00"}],
+            "wednesday": [{"open": "09:00", "close": "17:00"}],
+            "thursday": [{"open": "09:00", "close": "17:00"}],
+            "friday": [{"open": "09:00", "close": "17:00"}],
+        }
+    }
+    db.commit()
+
+    context = ToolExecutionContext(
+        tenant=TenantContext(company_id=company.id, user_id=uuid4()),
+        user_id=uuid4(),
+        request_id="req-phone-booking",
+        permissions=frozenset({"ai:use", "crm:appointments:write"}),
+    )
+    tool = CreateAppointmentTool(db)
+
+    future_start = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
+        hour=14, minute=0, second=0, microsecond=0
+    )
+    while future_start.weekday() >= 5:
+        future_start += timedelta(days=1)
+
+    args = CreateAppointmentArgs(
+        client_name_or_id="Lucie Tremblay",
+        client_phone="+15145551234",
+        start_time=future_start.isoformat(),
+        title="Consultation téléphonique",
+        duration_minutes=60,
+        confirmed=True,
+    )
+    res = await tool.run(context, args)
+    assert res.success is True
+    assert res.data["client_name"] == "Lucie Tremblay"
+
+    # Vérifier client dans la DB
+    client = db.scalar(select(CRMClient).where(CRMClient.company_id == company.id, CRMClient.first_name == "Lucie"))
+    assert client is not None
+    assert client.phone == "15145551234"
+
+
+@pytest.mark.asyncio
+async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_path, monkeypatch):
+    """P0 Regression : En cas de refresh token révoqué, CRMCalendarConnection passe à sync_status='error'."""
+    from backend.app.models.crm import CRMCalendarConnection
+    from backend.app.services.calendar.base import CalendarProviderError
+    import urllib.error
+
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    conn = CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="owner@test.com",
+        encrypted_credentials="enc_creds",
+        sync_status="connected",
+    )
+    db.add(conn)
+    db.commit()
+
+    class FakeCipher:
+        def decrypt(self, val):
+            return {"access_token": "expired", "refresh_token": "revoked_token"}
+        def encrypt(self, val):
+            return "enc_creds"
+
+    class FailingProvider:
+        async def check_busy_slots(self, creds, s, e, cal_id):
+            err = CalendarProviderError("401 Unauthorized")
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 401, "Unauthorized", {}, None)
+            raise err
+
+        async def refresh_access_token(self, r_tok):
+            err = CalendarProviderError("400 Bad Request: invalid_grant")
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_grant", {}, None)
+            raise err
+
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: FailingProvider())
+
+    avail = CRMAvailabilityService(db, cipher=FakeCipher())
+    future_start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
+    res = await avail.check_availability(company.id, future_start)
+    assert res["available"] is False
+    assert res["state"] == "EXTERNAL_AVAILABILITY_UNAVAILABLE"
+
+    # Vérifier que sync_status a été persisté à 'error'
+    db.refresh(conn)
+    assert conn.sync_status == "error"
+    assert "reconnect" in (conn.error_message or "").lower()

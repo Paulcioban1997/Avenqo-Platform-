@@ -705,9 +705,14 @@ class ShopifyConnector(CommerceConnector):
         field: str,
         query: str,
     ) -> ConnectorPage:
-        updated_query = (
-            f"updated_at:>='{context.updated_since}'" if context.updated_since else None
-        )
+        if context.updated_since:
+            updated_query = (
+                f"status:any updated_at:>='{context.updated_since}'"
+                if field == "orders"
+                else f"updated_at:>='{context.updated_since}'"
+            )
+        else:
+            updated_query = None
         data = await self._graphql(
             context,
             query,

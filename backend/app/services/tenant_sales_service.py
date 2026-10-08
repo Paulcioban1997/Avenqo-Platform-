@@ -277,7 +277,7 @@ class TenantSalesService:
 
     @staticmethod
     def _change(current: float | int, previous: float | int | None) -> float | None:
-        if previous in {None, 0}:
+        if previous is None or previous == 0:
             return None
         return round(((current - previous) / previous) * 100, 2)
 

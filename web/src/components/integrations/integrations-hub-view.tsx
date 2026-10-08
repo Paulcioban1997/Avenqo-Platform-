@@ -216,6 +216,19 @@ export function IntegrationsHubView() {
     loadConnections();
   }, [loadConnections]);
 
+  // Auto-poll while any connection is syncing or processing until ready
+  useEffect(() => {
+    const isAnySyncing = rawConnections.some(
+      (c) => c.status === "syncing" || c.status === "processing"
+    );
+    if (!isAnySyncing) return;
+    const timer = setInterval(() => {
+      void loadConnections();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [rawConnections, loadConnections]);
+
+
   // Handle opening modal for a connector
   const handleOpenConnector = (c: ConnectorItem) => {
     setSelectedConnector(c);
@@ -432,10 +445,17 @@ export function IntegrationsHubView() {
         );
       }
 
+      if (activeConn) {
+        setRawConnections((prev) =>
+          prev.map((c) => (c.id === activeConn.id ? { ...c, status: "syncing" } : c))
+        );
+      }
+
       setSyncSuccessToast(
         `Synchronisation lancée avec succès pour ${connector.name}. Les données sont réconciliées en arrière-plan.`
       );
       await loadConnections();
+
 
       const successLog: SyncLogItem = {
         id: `log-s-${Date.now()}`,

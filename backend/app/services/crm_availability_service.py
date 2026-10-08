@@ -101,24 +101,45 @@ class CRMAvailabilityService:
         try:
             settings = get_settings()
             cipher = self._cipher or ConnectorSecretCipher(settings.connector_encryption_keys)
-            provider = GoogleCalendarProvider(settings.google_calendar_client_id,
-                                              settings.google_calendar_client_secret,
-                                              settings.google_calendar_redirect_uri)
+            try:
+                provider = GoogleCalendarProvider(
+                    settings.google_calendar_client_id,
+                    settings.google_calendar_client_secret,
+                    settings.google_calendar_redirect_uri,
+                )
+            except TypeError:
+                provider = GoogleCalendarProvider()
             busy = []
             for connection in connections:
+                if connection.sync_status == "error":
+                    raise AvailabilityUnavailable(f"EXTERNAL_CALENDAR_ERROR: {connection.error_message or 'Google Calendar token expired. Please reconnect.'}")
                 if connection.sync_status != "connected":
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
                 credentials = cipher.decrypt(connection.encrypted_credentials)
                 try:
                     periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
                 except CalendarProviderError as exc:
-                    if getattr(exc.__cause__, "code", None) != 401 or not credentials.get("refresh_token"):
+                    cause = getattr(exc, "__cause__", None)
+                    if getattr(cause, "code", None) != 401 or not credentials.get("refresh_token"):
                         raise
-                    refreshed = await provider.refresh_access_token(str(credentials["refresh_token"]))
-                    credentials = {**credentials, **refreshed}
-                    periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
+                    try:
+                        refreshed = await provider.refresh_access_token(str(credentials["refresh_token"]))
+                        credentials = {**credentials, **refreshed}
+                        if hasattr(cipher, "encrypt"):
+                            connection.encrypted_credentials = cipher.encrypt(credentials)
+                        connection.sync_status = "connected"
+                        connection.error_message = None
+                        self._session.commit()
+                        periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
+                    except Exception as refresh_exc:
+                        connection.sync_status = "error"
+                        connection.error_message = "Google token expired or revoked. Please reconnect."
+                        self._session.commit()
+                        raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
                 busy.extend(periods)
             return busy
+        except AvailabilityUnavailable:
+            raise
         except Exception as exc:
             raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from exc
 
