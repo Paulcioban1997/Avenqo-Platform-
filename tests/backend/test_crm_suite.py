@@ -1064,6 +1064,9 @@ def test_availability_resource_isolation_and_missing_hours(db_session, combined_
     result = asyncio.run(service.check_availability(company.id, start, employee_id=employee.id))
     assert result["state"] == "RESOURCE_NOT_AUTHORIZED"
     assert state["calls"] == 0
+    # Explicitly configure the canonical tenant schedule with no open windows.
+    # An empty legacy Voice schedule alone triggers the CRM weekday fallback.
+    company.business_hours = {"weekly": {}}
     config.opening_hours = {}
     db_session.commit()
     assert asyncio.run(service.check_availability(company.id, start))["state"] == "BUSINESS_HOURS_UNAVAILABLE"
