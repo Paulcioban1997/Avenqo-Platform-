@@ -127,7 +127,7 @@ class CRMAvailabilityService:
         employee = self._resource(CRMEmployee, company_id, employee_id)
         config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         company = self._session.get(Company, company_id)
-        schedule = company.business_hours or {}
+        schedule = (company.business_hours if company else None) or {}
         weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[day.weekday()]
         if schedule:
             records = schedule.get("date_overrides", {}).get(day.isoformat(), schedule.get("weekly", {}).get(weekday, []))
