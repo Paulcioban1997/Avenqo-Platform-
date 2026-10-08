@@ -40,6 +40,7 @@ class CentralAIService:
         usage_service: AIUsageService,
         context_builder: CentralAIContextBuilder,
     ) -> None:
+        self._registry = registry
         self._router = CentralAIIntentRouter(registry)
         self._chat = chat_service
         self._usage = usage_service
@@ -60,6 +61,16 @@ class CentralAIService:
         active_modules: frozenset[str],
     ) -> tuple[frozenset[str], dict[str, str]] | None:
         if agent is None:
+            if page_context and page_context.startswith("/voice"):
+                voice_tool_names: set[str] = set()
+                voice_tool_agents: dict[str, str] = {}
+                for defn in self._registry.list_authorized(active_modules):
+                    if defn.slug in {"crm", "retail", "voice"}:
+                        for tool_name in defn.allowed_tool_names:
+                            voice_tool_names.add(tool_name)
+                            voice_tool_agents[tool_name] = defn.agent_id
+                if voice_tool_names:
+                    return frozenset(voice_tool_names), voice_tool_agents
             return frozenset(), {}
         if not agent.aggregate:
             if not agent_entitlements(agent).issubset(active_modules):
@@ -150,6 +161,11 @@ class CentralAIService:
             self._log_result(tenant.company_id, None, result, started_at, "permission_denied")
             return result
         agent = self._router.select(query, page_context=page_context)
+        if agent is None and conversation_id is not None:
+            recent_msgs = self._chat._conversations.messages(tenant.company_id, conversation_id, limit=4)
+            if recent_msgs:
+                combined_history = " ".join(m.content for m in recent_msgs)
+                agent = self._router.select(f"{combined_history} {query}", page_context=page_context)
         if agent is None:
             try:
                 if not allow_existing_reservation:
@@ -204,6 +220,11 @@ class CentralAIService:
             return result
         allowed_tool_names, authorized_tool_agents = tool_scope
 
+        is_voice = bool(page_context and page_context.startswith("/voice"))
+        fallback_agent_id = "crm" if (is_voice and "crm" in context.active_modules) else ("voice" if is_voice else None)
+        effective_agent_id = agent.agent_id if agent is not None else fallback_agent_id
+        effective_module_id = agent.module_code if agent is not None else ("crm" if (is_voice and "crm" in context.active_modules) else None)
+
         try:
             message, _ = await self._chat.send(
                 tenant.company_id,
@@ -221,11 +242,11 @@ class CentralAIService:
                 trusted_context=context.as_prompt_context(),
                 client_context=page_context or "",
                 allowed_tool_names=allowed_tool_names,
-                selected_agent_id=agent.agent_id if agent is not None else None,
-                module_id=agent.module_code if agent is not None else None,
+                selected_agent_id=effective_agent_id,
+                module_id=effective_module_id,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=agent is not None and agent.slug not in {"tenant_capabilities", "voice"},
+                retrieve_tenant_data=True if is_voice else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
                 follow_latest_utterance_language=spoken_language_input,
@@ -233,14 +254,14 @@ class CentralAIService:
                 language_auto_detect=language_auto_detect,
             )
         except AIQuotaExceededError:
-            result = self._result(tenant.company_id, agent.slug if agent else None, "credits_exhausted", context.plan_code, "available")
+            result = self._result(tenant.company_id, agent.slug if agent else fallback_agent_id, "credits_exhausted", context.plan_code, "available")
         else:
             outcomes = self._safe_tool_outcomes(
                 getattr(self._chat, "last_tool_call_results", ())
             )
             result = self._result(
                 tenant.company_id,
-                agent.slug if agent else None,
+                agent.slug if agent else fallback_agent_id,
                 "success",
                 context.plan_code,
                 "available",
@@ -249,10 +270,10 @@ class CentralAIService:
             )
         self._log_result(
             tenant.company_id,
-            agent.module_code if agent else None,
+            effective_module_id,
             result,
             started_at,
-            "deterministic_module" if agent else "general_fallback",
+            "deterministic_module" if (agent or is_voice) else "general_fallback",
         )
         return result
 

@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import logging
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from backend.app.ai.request_timeout import bounded_ai_request
 from backend.app.ai.chat.conversation_service import ConversationService
@@ -73,6 +75,12 @@ def _localized_system_instruction(
             "Respond in the user's selected language. "
             "Treat tool results as source data; explain them in the active response language without changing factual values. "
         )
+    try:
+        now_in_tz = datetime.now(ZoneInfo(company_timezone)) if company_timezone else datetime.now(timezone.utc)
+    except Exception:
+        now_in_tz = datetime.now(timezone.utc)
+    current_time_str = now_in_tz.strftime("%Y-%m-%d %H:%M (%A)")
+
     voice_instruction = (
         "\nIMPORTANT PHONE VOICE INSTRUCTIONS (LIVE CALL):\n"
         "- You are speaking on a live phone call with a real human caller. Your response will be synthesized by Text-To-Speech (TTS).\n"
@@ -81,7 +89,15 @@ def _localized_system_instruction(
         "- Keep responses concise and conversational (1 to 2 short spoken sentences maximum per turn).\n"
         "- NEVER produce markdown formatting: NO bullet points (* or -), NO numbered lists (1. 2.), NO bold/italic (**), NO headers (#), NO tables.\n"
         "- NEVER ask for multiple pieces of information at once in a list. Ask for ONE piece of information at a time.\n"
-        "- For appointments, guide the caller smoothly step by step (e.g. ask for the preferred date or service first).\n"
+        "- CRITICAL TOOL CALLING RULE: You have direct access to real-time tools (check_availability, list_available_slots, create_appointment). "
+        "When the caller asks for availability or to book an appointment, you MUST call the tool immediately in this exact turn. "
+        "NEVER say 'Je vais vérifier, un instant' or ask the caller to wait without executing the tool call in the same response! "
+        "Resolve relative dates (such as 'aujourd'hui', 'demain', 'vendredi prochain') based on the Current date and time above.\n"
+        "- When checking availability, use check_availability for a specific time or list_available_slots to find free slots on a day.\n"
+        "- If a slot is available, confirm availability and politely ask for the caller's name and email to proceed.\n"
+        "- If a slot is unavailable, honestly state it is taken and propose alternative slots from the suggested slots.\n"
+        "- Before calling create_appointment with confirmed=True, summarize the details (date, time, service) and obtain explicit caller confirmation.\n"
+        "- Only say an appointment is confirmed after create_appointment succeeds.\n"
         "- For opening hours or business information, give a clear, direct, spoken answer based on the company's real profile.\n"
     ) if is_voice_call else ""
     return (
@@ -90,6 +106,7 @@ def _localized_system_instruction(
         f"Company country: {company_country}\n"
         f"Company currency: {company_currency}\n"
         f"Company timezone: {company_timezone}\n"
+        f"Current date and time: {current_time_str}\n"
         f"{language_instruction}"
         f"{voice_instruction}"
         "All monetary business values must use the company's currency. "

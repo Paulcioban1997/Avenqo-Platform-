@@ -220,9 +220,22 @@ class CRMAvailabilityService:
             padded_end = end + timedelta(minutes=service.buffer_after_minutes if service else 0)
             windows = self._windows(company_id, start.astimezone(self._zone(company_id)).date(), employee_id)
             if not any(padded_start >= opened and padded_end <= closed for opened, closed in windows):
-                return {"available": False, "state": "BUSY", "reason": "OUTSIDE_WORKING_HOURS"}
+                target_date = start.astimezone(self._zone(company_id)).date()
+                suggested = await self.list_available_slots(company_id, target_date, service_id=service_id, employee_id=employee_id, duration_minutes=duration)
+                return {
+                    "available": False, "state": "BUSY", "reason": "OUTSIDE_WORKING_HOURS",
+                    "suggested_slots": [s["start_time"] for s in suggested[:3]],
+                    "start_time": start.astimezone(self._zone(company_id)).isoformat(),
+                    "end_time": end.astimezone(self._zone(company_id)).isoformat(),
+                }
             conflict, reason = await self.check_combined_conflict(company_id, padded_start, padded_end, employee_id)
+            suggested_slots = []
+            if conflict:
+                target_date = start.astimezone(self._zone(company_id)).date()
+                suggested = await self.list_available_slots(company_id, target_date, service_id=service_id, employee_id=employee_id, duration_minutes=duration)
+                suggested_slots = [s["start_time"] for s in suggested[:3]]
             return {"available": not conflict, "state": "BUSY" if conflict else "AVAILABLE", "reason": reason,
+                    "suggested_slots": suggested_slots,
                     "start_time": start.astimezone(self._zone(company_id)).isoformat(),
                     "end_time": end.astimezone(self._zone(company_id)).isoformat()}
         except AvailabilityUnavailable as exc:

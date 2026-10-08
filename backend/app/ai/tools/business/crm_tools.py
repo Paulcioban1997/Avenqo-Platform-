@@ -413,15 +413,37 @@ class CreateAppointmentTool(CRMAITool):
             )
 
         if not client:
-            return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
+            if arguments.client_email and self._crm.is_valid_customer_email(arguments.client_email):
+                parts = arguments.client_name_or_id.strip().split(" ", 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else ""
+                client = self._crm.create_client(
+                    context.tenant.company_id,
+                    {
+                        "first_name": first_name or "Client",
+                        "last_name": last_name or "",
+                        "email": arguments.client_email.strip().lower(),
+                    },
+                    actor_name="IA Voice",
+                )
+            else:
+                return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
         if not self._crm.is_valid_customer_email(client.email):
             return ToolResult(
                 success=False,
                 data={"error": "J'ai besoin du courriel du client pour identifier le bon dossier et envoyer l'invitation."},
             )
 
+        service_id = None
+        if arguments.service_name:
+            services = self._crm.list_services(context.tenant.company_id)
+            matched_svc = next((s for s in services if arguments.service_name.lower() in s.name.lower()), None)
+            if matched_svc:
+                service_id = matched_svc.id
+
         apt_data = {
             "client_id": client.id,
+            "service_id": service_id,
             "title": arguments.title,
             "start_time": start_dt,
             "duration_minutes": arguments.duration_minutes,
