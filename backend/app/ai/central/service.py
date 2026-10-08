@@ -354,5 +354,6 @@ class CentralAIService:
         tool_outcomes: tuple[dict[str, object], ...] = (),
     ) -> CentralAIResult:
         balance = self._usage.get_credit_balance(company_id, plan_code)
-        remaining = balance["total_remaining"]
+        raw_remaining = balance.get("total_remaining")
+        remaining: int | None = int(raw_remaining) if isinstance(raw_remaining, int) or (isinstance(raw_remaining, str) and raw_remaining.isdigit()) else None
         return CentralAIResult(selected_agent, status, answer, remaining, availability, tool_outcomes)
