@@ -263,6 +263,12 @@ class VoiceCallerAuth:
         membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == session.principal_id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
         if principal is None or membership is None or call.authenticated_user_id != principal.id or normalized_phone(principal.phone) != normalized_phone(call.caller_phone):
             return None
+        credential = self.db.scalar(select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == call.company_id,
+            VoiceCallerCredential.principal_id == session.principal_id,
+        ))
+        if credential is not None and (not credential.enabled or (credential.locked_until is not None and utc(credential.locked_until) > now)):
+            return None
         return session
 
     def verify_gather(self, call, pin):

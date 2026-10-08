@@ -24,7 +24,7 @@ class GetInventorySummaryTool(RetailAITool):
     name = "get_inventory_summary"
     description = "Return which products are low in stock or need attention. NOT YET AVAILABLE: no inventory data source exists in the platform."
     input_schema = InventorySummaryArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
     requires_capability = "inventory"
 
     async def run(self, context: ToolExecutionContext, arguments: InventorySummaryArgs) -> ToolResult:

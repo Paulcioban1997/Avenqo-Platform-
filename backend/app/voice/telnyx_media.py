@@ -43,6 +43,7 @@ from backend.app.models import (
     UserRole,
     VoiceBusinessConfig,
     VoiceCall,
+    VoiceCallerCredential,
     VoicePhoneNumber,
     VoiceToolAction,
 )
@@ -56,6 +57,7 @@ from backend.app.voice.providers import TelnyxClient
 from shared.ai_engine.contracts import TenantContext
 
 from backend.app.voice.auth import redact_voice_secrets
+from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from backend.app.voice.language_resolver import CallLanguageSession
 
 
@@ -228,6 +230,32 @@ class PublicInboundConversation:
             return "Créez ou modifiez votre NIP Voice depuis votre espace Avenqo authentifié, dans Voice AI, Sécurité. Ne dites jamais votre NIP à voix haute."
         return "Create or change your Voice PIN in your authenticated Avenqo workspace, under Voice AI, Security. Never say your PIN aloud."
 
+    def has_configured_pin(self, call: VoiceCall) -> bool:
+        phone = normalized_phone(call.caller_phone)
+        if phone:
+            has_cred = self.db.scalar(
+                select(VoiceCallerCredential.id).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.phone_number == phone,
+                    VoiceCallerCredential.enabled.is_(True),
+                )
+            )
+            if has_cred is not None:
+                return True
+        return VoiceCallerAuth(self.db, self.settings).has_owner_credential(call.company_id)
+
+    def consume_pending_auth_query(self) -> str | None:
+        call = self.db.get(VoiceCall, self.call_id)
+        if call is None or not call.source_context:
+            return None
+        pending = call.source_context.get("pending_auth_query")
+        if pending:
+            ctx = dict(call.source_context)
+            ctx.pop("pending_auth_query", None)
+            call.source_context = ctx
+            self.db.commit()
+        return pending
+
     def security_gate(self, transcript: str) -> dict | None:
         """Inspects transcript for security restrictions (PIN modification, owner auth, private client data).
 
@@ -237,12 +265,75 @@ class PublicInboundConversation:
         safe = redact_voice_secrets(transcript)
         normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
         french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
-        if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
+
+        # 1. PIN creation/configuration/management instructions
+        if re.search(r"(creer|configur|changer|modifier|reinitialis|oubli|create|change|set|reset).{0,30}\b(nip|pin)\b", normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
-        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b|chiffre d'affaires|produits vendus|commandes internes|mes clients|autres clients|internal|internes", normalized)
-        if private:
-            prompt = voice_auth_message(call.locale or config.preferred_language, 0)
-            return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
+
+        # 2. Inquiries specifically about PIN authentication / secure authentication
+        pin_inquiry = re.search(
+            r"\b(authentifi|authentification|identifier|connexion|login)\b.{0,30}\b(nip|pin|securis)\b"
+            r"|\b(nip|pin)\b.{0,30}\b(securis|authentifi)\b"
+            r"|\b(entrer|composer|saisir|fournir|taper)\b.{0,20}\b(nip|pin)\b"
+            r"|\b(code nip|code pin)\b",
+            normalized,
+        )
+
+        # 3. Requests for confidential business, financial or inventory data
+        private_data = re.search(
+            r"\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
+            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
+            r"|\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes)\b"
+            r"|\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b"
+            r"|\b(niveau de stock|etat des stocks|stock restant)\b",
+            normalized,
+        )
+
+        if pin_inquiry or private_data:
+            has_pin = self.has_configured_pin(call)
+            if has_pin:
+                # Save the pending query for automatic execution post-authentication
+                call.source_context = {**(call.source_context or {}), "pending_auth_query": safe}
+                self.db.commit()
+
+                if pin_inquiry:
+                    prompt = (
+                        "Oui, l'accès sécurisé s'effectue par NIP à l'aide des touches de votre téléphone. "
+                        "Veuillez saisir votre code NIP sur le clavier de votre téléphone, suivi du carré. "
+                        "Ne prononcez jamais votre NIP à voix haute."
+                        if french
+                        else "Yes, secure authentication is available using your phone keypad. "
+                        "Please enter your PIN on your phone keypad, followed by pound. "
+                        "Never say your PIN aloud."
+                    )
+                else:
+                    prompt = (
+                        "Pour accéder aux données de votre entreprise, veuillez saisir votre NIP "
+                        "à l'aide des touches de votre téléphone. Ne prononcez jamais votre NIP à voix haute."
+                        if french
+                        else "To access your business data, please enter your PIN using your phone keypad. "
+                        "Never say your PIN aloud."
+                    )
+                return {"status": "success", "answer": prompt, "auth_required": True, "public": True}
+            else:
+                if pin_inquiry:
+                    answer = (
+                        "L'authentification par NIP est disponible, mais aucun NIP n'est configuré pour ce numéro. "
+                        + self.portal_message()
+                        if french
+                        else "PIN authentication is available, but no PIN is configured for this number. "
+                        + self.portal_message()
+                    )
+                else:
+                    answer = (
+                        "L'accès aux données de votre entreprise nécessite la configuration d'un NIP. "
+                        + self.portal_message()
+                        if french
+                        else "Accessing company data requires configuring a PIN. "
+                        + self.portal_message()
+                    )
+                return {"status": "success", "answer": answer, "public": True}
+
         if re.search(r"mes rendez.vous|my appointments|mon dossier client|my record", normalized):
             answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
@@ -516,6 +607,7 @@ class TelnyxMediaBridge:
         initial_answer: str | None = None,
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
+        consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
         max_output_queue: int = 64,
     ) -> None:
         self.socket = socket
@@ -531,6 +623,7 @@ class TelnyxMediaBridge:
         self.initial_answer = initial_answer
         self.begin_pin: Callable[[str], Awaitable[dict]] | None = begin_pin
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
+        self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.codec = TelnyxAudioCodec()
         self.reorder_buffer = TelnyxAudioReorderBuffer(max_buffer_size=10, max_gap_tolerance=2)
         self.stream_id = None
@@ -895,12 +988,37 @@ class TelnyxMediaBridge:
         await self.adapter.speak(redact_voice_secrets(answer))
 
     async def _finish_pin(self, status: str) -> None:
-        item_id = self._pin_turn
+        item_id = self._pin_turn or "pin-result"
         self._pin_turn = None; self._pin_mark = None; self._pin_started = False; self._pin_deadline = None
         await self.adapter.clear_input()
         await self.authorize()
-        await self._speak_system("pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
-            voice_auth_message(self.locale, 1 if status == "authenticated" else 2))
+        pending_query = None
+        if status == "authenticated" and self.consume_pending_query is not None:
+            pending_query = await self.consume_pending_query()
+
+        if status == "authenticated":
+            if pending_query:
+                await self._speak_system(
+                    "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
+                    "Authentification réussie. " if resolve_locale(self.locale).startswith("fr") else "Authentication successful. ",
+                )
+                await asyncio.sleep(0.3)
+                result = await self.execute_turn(f"pending-exec:{item_id}", pending_query)
+                if result.get("status") == "success" and isinstance(result.get("answer"), str) and result["answer"].strip():
+                    await self._speak_system(
+                        f"pending-answer:{item_id}",
+                        clean_voice_text(redact_voice_secrets(result["answer"])),
+                    )
+            else:
+                await self._speak_system(
+                    "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
+                    voice_auth_message(self.locale, 1),
+                )
+        else:
+            await self._speak_system(
+                "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
+                voice_auth_message(self.locale, 2),
+            )
         await asyncio.sleep(0.2)
         await self.adapter.clear_input()
         self.input_paused = False
@@ -1125,7 +1243,7 @@ async def telnyx_media_socket(
             current_user = db.get(User, owner_membership.user_id)
             if current_user is None:
                 return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
-            permissions = frozenset({"ai:use", "crm:appointments:write", "crm:appointments:read"})
+            permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
 
         if current_call.central_conversation_id is None:
             conv = ConversationService(db).create(
@@ -1217,11 +1335,17 @@ async def telnyx_media_socket(
             return "refused"
         return public_conversation.pin_state()
 
+    async def consume_pending_query() -> str | None:
+        if public_conversation is None:
+            return None
+        return public_conversation.consume_pending_auth_query()
+
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=settings.voice_realtime_model,
         initial_answer=public_conversation.greeting() if public_conversation is not None else None,
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
+        consume_pending_query=consume_pending_query if public_mode else None,
         max_output_queue=2000)
     await websocket.accept()
     try:

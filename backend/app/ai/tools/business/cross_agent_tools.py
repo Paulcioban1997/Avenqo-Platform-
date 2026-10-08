@@ -30,7 +30,7 @@ class GetCrossAgentBusinessHealthTool(CrossAgentAITool):
         "À utiliser pour les questions transversales, les bilans complets d'activité ou la stratégie d'entreprise."
     )
     input_schema = CrossAgentGenericArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = CrossAgentIntelligenceService(session)

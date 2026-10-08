@@ -55,7 +55,7 @@ class GetFinancialOverviewTool(AccountingAITool):
         "À utiliser pour un bilan financier général ou un résumé comptable."
     )
     input_schema = AccountingGenericArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)
@@ -77,7 +77,7 @@ class GetMonthlyExpensesTool(AccountingAITool):
         "À utiliser quand l'utilisateur demande 'Combien ai-je dépensé ce mois-ci ?' ou 'Quelles sont mes dépenses ?'."
     )
     input_schema = MonthlyExpensesArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)
@@ -103,7 +103,7 @@ class GetProfitMarginTool(AccountingAITool):
         "À utiliser quand l'utilisateur demande 'Quelle est ma marge ?' ou 'Quelle est ma rentabilité ?'."
     )
     input_schema = AccountingGenericArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)
@@ -125,7 +125,7 @@ class GetUnpaidInvoicesTool(AccountingAITool):
         "À utiliser quand l'utilisateur demande 'Quels clients ont des factures impayées ?' ou 'Quelles factures sont en retard ?'."
     )
     input_schema = UnpaidInvoicesArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)
@@ -149,7 +149,7 @@ class GetExpenseAnomaliesTool(AccountingAITool):
         "À utiliser quand l'utilisateur demande 'Y a-t-il des dépenses suspectes ou anormales ?' ou 'Détecte les anomalies de dépenses'."
     )
     input_schema = ExpenseAnomaliesArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)
@@ -175,7 +175,7 @@ class GetCashFlowForecastTool(AccountingAITool):
         "À utiliser quand l'utilisateur demande 'Quelle est ma prévision de trésorerie ?' ou 'Mon cash flow à 30 jours ?'."
     )
     input_schema = CashFlowForecastArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session) -> None:
         self._service = AccountingIntelligenceService(session)

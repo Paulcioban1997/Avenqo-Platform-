@@ -29,6 +29,7 @@ from backend.app.dependencies.auth import CurrentIdentity, get_current_identity,
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.dependencies.tenant_business import get_tenant_analytics_service
 from backend.app.models import (
+    AuditLogEntry,
     BillingAccount,
     Company,
     CompanyMembership,
@@ -40,6 +41,8 @@ from backend.app.models import (
     VoiceCentralSession,
     VoicePhoneNumber,
     VoiceToolAction,
+    VoiceAuthSession,
+    VoiceCallerCredential,
 )
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
@@ -49,11 +52,19 @@ from backend.app.ai.central.service import CentralAIService
 from backend.app.core.locale_catalog import resolve_locale, detect_spoken_language
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.voice.languages import voice_language_matrix
-from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets, validate_voice_pin
+from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets, validate_voice_pin, utc, normalized_phone
 from backend.app.voice.quotes import signed_number_quote, verify_number_quote, valid_cost
 from backend.app.voice.telnyx_media import telnyx_media_socket, media_audio_available, issue_media_client_state
-from backend.app.schemas.voice import VoicePinRequest
-from backend.app.schemas.voice import VoiceSetupRequest, VoiceOwnedNumberRequest
+from backend.app.core.security import verify_password
+from pydantic import SecretStr
+from backend.app.schemas.voice import (
+    VoicePinRequest,
+    VoicePinSetupRequest,
+    VoicePhoneAccessRequest,
+    VoiceMemberAccessRequest,
+    VoiceSetupRequest,
+    VoiceOwnedNumberRequest,
+)
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
@@ -83,6 +94,12 @@ router = APIRouter(prefix="/voice", tags=["voice-agent"])
 router.add_api_websocket_route("/telnyx/media/{call_id}", telnyx_media_socket)
 manage_voice = require_permission("modules:manage")
 logger = logging.getLogger("avenqo.voice")
+
+
+def _secret_val(val: SecretStr | str | None) -> str:
+    if val is None:
+        return ""
+    return val.get_secret_value() if isinstance(val, SecretStr) else str(val)
 
 
 @router.post("/setup", dependencies=[Depends(require_active_subscription)])
@@ -154,6 +171,37 @@ async def import_owned_voice_number(
         raise HTTPException(status_code=409, detail="Owned number cannot be imported in this tenant state") from None
 
 
+@router.get("/auth/pin/status", dependencies=[Depends(require_active_subscription)])
+def get_user_voice_pin_status(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    cred = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == identity.user.id,
+    ))
+    now = datetime.now(timezone.utc)
+    active_sessions = db.scalar(select(func.count(VoiceAuthSession.id)).where(
+        VoiceAuthSession.company_id == identity.user.company_id,
+        VoiceAuthSession.principal_id == identity.user.id,
+        VoiceAuthSession.revoked_at.is_(None),
+        VoiceAuthSession.expires_at > now,
+    )) or 0
+    phone = cred.phone_number if cred else identity.user.phone
+    masked_phone = (phone[:4] + " *** **" + phone[-2:]) if phone and len(phone) >= 6 else phone
+    is_locked = bool(cred and cred.locked_until and utc(cred.locked_until) > now)
+    return {
+        "has_pin": cred is not None,
+        "phone_access_enabled": bool(cred.enabled) if cred else False,
+        "phone_number": masked_phone,
+        "is_locked": is_locked,
+        "failed_attempts": cred.failed_attempts if cred else 0,
+        "active_sessions_count": int(active_sessions),
+    }
+
+
 @router.put("/auth/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
 def set_user_voice_pin(
     request: VoicePinRequest,
@@ -165,19 +213,241 @@ def set_user_voice_pin(
     _ensure_voice_access(db, identity.user.company_id)
     if "ai:use" not in permissions_for(membership.role):
         raise HTTPException(status_code=403, detail="AI permission is required")
+
+    existing_cred = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == identity.user.id,
+    ))
+
+    current_pw = _secret_val(request.current_password)
+    pin_str = _secret_val(request.pin)
+    confirm_pin_str = _secret_val(request.confirm_pin or request.pin_confirmation)
+
+    # Strong web re-authentication: required if modifying an existing PIN or if password is provided
+    if existing_cred is not None:
+        if not current_pw:
+            raise HTTPException(status_code=400, detail="Current account password is required to change or reset your Voice PIN")
+        if not verify_password(current_pw, identity.user.password_hash):
+            raise HTTPException(status_code=403, detail="Invalid current account password")
+    elif current_pw:
+        if not verify_password(current_pw, identity.user.password_hash):
+            raise HTTPException(status_code=403, detail="Invalid current account password")
+
+    if current_pw and pin_str == current_pw:
+        raise HTTPException(status_code=422, detail="Voice PIN must not be identical to your account password")
+    if confirm_pin_str and pin_str != confirm_pin_str:
+        raise HTTPException(status_code=422, detail="Voice PIN and confirmation PIN do not match")
+
     try:
-        VoiceCallerAuth(db, settings).set_pin(TenantContext(identity.user.company_id, identity.user.id),
-            "USER", identity.user.id, request.pin.get_secret_value())
-        AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_pin_updated", target_type="user",
-            target_id=str(identity.user.id), company_id=identity.user.company_id, metadata={"credential_type": "USER"}, commit=False)
+        VoiceCallerAuth(db, settings).set_pin(
+            TenantContext(identity.user.company_id, identity.user.id),
+            "USER",
+            identity.user.id,
+            pin_str,
+            phone_number=request.phone_number,
+        )
+        AuditLogService(db).record(
+            actor_user_id=identity.user.id,
+            action="voice_pin_updated",
+            target_type="user",
+            target_id=str(identity.user.id),
+            company_id=identity.user.company_id,
+            metadata={"credential_type": "USER", "reauthenticated": bool(request.current_password)},
+            commit=False,
+        )
         config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
         if config is not None and config.telnyx_phone_number:
             config.enabled = True
         db.commit()
-    except (ValueError, PermissionError):
+    except (ValueError, PermissionError) as exc:
         db.rollback()
-        raise HTTPException(status_code=422, detail="Voice credential setup is unavailable") from None
+        raise HTTPException(status_code=422, detail=str(exc) or "Voice credential setup is unavailable") from None
     return {"status": "CONFIGURED"}
+
+
+@router.post("/auth/sessions/revoke", dependencies=[Depends(require_active_subscription)])
+def revoke_active_voice_sessions(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    now = datetime.now(timezone.utc)
+    count = 0
+    for session in db.scalars(select(VoiceAuthSession).where(
+        VoiceAuthSession.company_id == identity.user.company_id,
+        VoiceAuthSession.principal_id == identity.user.id,
+        VoiceAuthSession.revoked_at.is_(None),
+    )):
+        session.revoked_at = now
+        count += 1
+    AuditLogService(db).record(
+        actor_user_id=identity.user.id,
+        action="voice_sessions_revoked",
+        target_type="user",
+        target_id=str(identity.user.id),
+        company_id=identity.user.company_id,
+        metadata={"revoked_count": count},
+        commit=False,
+    )
+    db.commit()
+    return {"status": "REVOKED", "revoked_count": count}
+
+
+@router.put("/auth/phone-access", dependencies=[Depends(require_active_subscription)])
+def set_user_phone_access(
+    request: VoicePhoneAccessRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    cred = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == identity.user.id,
+    ))
+    if cred is None:
+        raise HTTPException(status_code=404, detail="No Voice credential configured yet")
+    cred.enabled = request.enabled
+    if not request.enabled:
+        now = datetime.now(timezone.utc)
+        for session in db.scalars(select(VoiceAuthSession).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == identity.user.id,
+            VoiceAuthSession.revoked_at.is_(None),
+        )):
+            session.revoked_at = now
+    AuditLogService(db).record(
+        actor_user_id=identity.user.id,
+        action="voice_phone_access_toggled",
+        target_type="user",
+        target_id=str(identity.user.id),
+        company_id=identity.user.company_id,
+        metadata={"enabled": request.enabled},
+        commit=False,
+    )
+    db.commit()
+    return {"status": "UPDATED", "enabled": cred.enabled}
+
+
+@router.get("/auth/audit", dependencies=[Depends(require_active_subscription)])
+def get_voice_auth_audit(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    events = db.scalars(
+        select(AuditLogEntry)
+        .where(
+            AuditLogEntry.company_id == identity.user.company_id,
+            AuditLogEntry.action.in_([
+                "voice_pin_authentication_succeeded",
+                "voice_pin_authentication_failed",
+                "voice_pin_updated",
+                "voice_sessions_revoked",
+                "voice_phone_access_toggled",
+                "voice_employee_access_updated",
+            ]),
+        )
+        .order_by(AuditLogEntry.created_at.desc())
+        .limit(20)
+    ).all()
+    results = []
+    for ev in events:
+        results.append({
+            "id": str(ev.id),
+            "timestamp": ev.created_at.isoformat() if ev.created_at else None,
+            "action": ev.action,
+            "actor_user_id": str(ev.actor_user_id) if ev.actor_user_id else None,
+            "success": "succeeded" in ev.action or ev.action in {
+                "voice_pin_updated", "voice_sessions_revoked", "voice_phone_access_toggled", "voice_employee_access_updated"
+            },
+            "metadata": {k: v for k, v in (ev.safe_metadata or {}).items() if "pin" not in k.lower()},
+        })
+    return {"events": results}
+
+
+@router.get("/auth/members", dependencies=[Depends(require_active_subscription)])
+def list_voice_auth_members(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Only owner or admin can view member voice permissions")
+    memberships = db.scalars(
+        select(CompanyMembership)
+        .where(CompanyMembership.company_id == identity.user.company_id, CompanyMembership.is_active.is_(True))
+    ).all()
+    members = []
+    now = datetime.now(timezone.utc)
+    for m in memberships:
+        u = db.get(User, m.user_id)
+        if not u:
+            continue
+        cred = db.scalar(select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.user.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == u.id,
+        ))
+        is_locked = bool(cred and cred.locked_until and utc(cred.locked_until) > now)
+        members.append({
+            "user_id": str(u.id),
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email,
+            "role": m.role.value,
+            "phone": (u.phone[:4] + " *** **" + u.phone[-2:]) if u.phone and len(u.phone) >= 6 else u.phone,
+            "has_pin": cred is not None,
+            "phone_access_enabled": cred.enabled if cred else False,
+            "is_locked": is_locked,
+            "is_active": u.is_active,
+        })
+    return {"members": members}
+
+
+@router.put("/auth/members/{user_id}/access", dependencies=[Depends(require_active_subscription)])
+def set_member_voice_access(
+    user_id: UUID,
+    request: VoiceMemberAccessRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _ensure_voice_access(db, identity.user.company_id)
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Only owner or admin can manage employee voice access")
+    target_user = db.get(User, user_id)
+    if target_user is None or target_user.company_id != identity.user.company_id:
+        raise HTTPException(status_code=404, detail="Member not found")
+    cred = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == user_id,
+    ))
+    if cred is None:
+        raise HTTPException(status_code=422, detail="Employee has not configured a Voice PIN yet")
+    cred.enabled = request.enabled
+    if not request.enabled:
+        now = datetime.now(timezone.utc)
+        for session in db.scalars(select(VoiceAuthSession).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == user_id,
+            VoiceAuthSession.revoked_at.is_(None),
+        )):
+            session.revoked_at = now
+    AuditLogService(db).record(
+        actor_user_id=identity.user.id,
+        action="voice_employee_access_updated",
+        target_type="user",
+        target_id=str(user_id),
+        company_id=identity.user.company_id,
+        metadata={"enabled": request.enabled, "target_user_id": str(user_id)},
+        commit=False,
+    )
+    db.commit()
+    return {"status": "UPDATED", "user_id": str(user_id), "enabled": cred.enabled}
 
 
 @router.put("/auth/customers/{customer_id}/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_customer_pin_setup", "rate_limit_ai_per_minute"))])
@@ -190,8 +460,12 @@ def set_customer_voice_pin(
 ) -> dict[str, Any]:
     _ensure_voice_access(db, identity.user.company_id)
     try:
-        VoiceCallerAuth(db, settings).set_pin(TenantContext(identity.user.company_id, identity.user.id),
-            "CUSTOMER", customer_id, request.pin.get_secret_value())
+        VoiceCallerAuth(db, settings).set_pin(
+            TenantContext(identity.user.company_id, identity.user.id),
+            "CUSTOMER",
+            customer_id,
+            _secret_val(request.pin),
+        )
         AuditLogService(db).record(actor_user_id=identity.user.id, action="voice_customer_pin_updated", target_type="crm_client",
             target_id=str(customer_id), company_id=identity.user.company_id, metadata={"credential_type": "CUSTOMER"}, commit=False)
         db.commit()
@@ -898,6 +1172,8 @@ async def telnyx_webhook(
         call.ended_at = call.ended_at or datetime.now(timezone.utc)
         if call.status not in {"appointment_booked", "appointment_cancelled", "transferred"}:
             call.status = "ended"
+        for session in db.scalars(select(VoiceAuthSession).where(VoiceAuthSession.call_id == call.id, VoiceAuthSession.revoked_at.is_(None))):
+            session.revoked_at = datetime.now(timezone.utc)
         db.commit()
         return {"received": True}
     if event_type == "call.gather.ended":
@@ -1341,3 +1617,222 @@ async def voice_central_agent(
     return await _voice_central_execute(
         request, x_avenqo_voice_key, db, settings, central_ai, prediction_service, metrics_only=False,
     )
+
+
+@router.get("/auth/pin/status")
+async def get_voice_pin_status(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    credential = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == identity.user_id,
+        )
+    )
+    user = db.get(User, identity.user_id)
+    phone = (credential.phone_number if credential else None) or (user.phone if user else None)
+    masked_phone = None
+    if phone and len(phone) >= 7:
+        masked_phone = f"{phone[:3]}***{phone[-4:]}"
+    active_sessions = db.scalar(
+        select(func.count(VoiceAuthSession.id)).where(
+            VoiceAuthSession.company_id == identity.company_id,
+            VoiceAuthSession.principal_id == identity.user_id,
+            VoiceAuthSession.revoked_at.is_(None),
+            VoiceAuthSession.expires_at > datetime.now(timezone.utc),
+        )
+    ) or 0
+    now = datetime.now(timezone.utc)
+    is_locked = bool(credential and credential.locked_until and utc(credential.locked_until) > now)
+    return {
+        "has_pin": bool(credential and credential.pin_hash),
+        "phone_access_enabled": bool(credential and credential.enabled),
+        "phone_number_masked": masked_phone,
+        "is_locked": is_locked,
+        "active_sessions_count": active_sessions,
+    }
+
+
+@router.put("/auth/pin")
+async def set_voice_pin(
+    request: VoicePinRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    user = db.get(User, identity.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    pin_val = _secret_val(request.pin)
+    if user.password_hash:
+        if not request.current_password:
+            raise HTTPException(
+                status_code=401,
+                detail="Your account password is required to set or update your Voice PIN.",
+            )
+        current_pw = _secret_val(request.current_password)
+        if not verify_password(current_pw, user.password_hash):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect account password.",
+            )
+        if current_pw == pin_val:
+            raise HTTPException(
+                status_code=400,
+                detail="Voice PIN cannot be identical to your account password.",
+            )
+
+    resolved_settings = settings if isinstance(settings, Settings) else get_settings()
+    auth = VoiceCallerAuth(db, resolved_settings)
+    tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
+    phone = request.phone_number or user.phone
+    auth.set_pin(tenant, "USER", identity.user_id, pin_val, phone_number=phone)
+    db.commit()
+    return await get_voice_pin_status(identity, db)
+
+
+@router.post("/auth/sessions/revoke")
+async def revoke_voice_auth_sessions(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    sessions = db.scalars(
+        select(VoiceAuthSession).where(
+            VoiceAuthSession.company_id == identity.company_id,
+            VoiceAuthSession.principal_id == identity.user_id,
+            VoiceAuthSession.revoked_at.is_(None),
+        )
+    ).all()
+    count = len(sessions)
+    for s in sessions:
+        s.revoked_at = now
+    db.commit()
+    return {"status": "success", "revoked_sessions_count": count}
+
+
+@router.put("/auth/phone-access")
+async def set_voice_phone_access(
+    request: VoicePhoneAccessRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    credential = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == identity.user_id,
+        )
+    )
+    if not credential:
+        raise HTTPException(status_code=404, detail="Voice credential not configured. Please create a PIN first.")
+    credential.enabled = request.enabled
+    if not request.enabled:
+        now = datetime.now(timezone.utc)
+        for s in db.scalars(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.company_id == identity.company_id,
+                VoiceAuthSession.principal_id == identity.user_id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        ):
+            s.revoked_at = now
+    db.commit()
+    return {"status": "success", "phone_access_enabled": credential.enabled}
+
+
+@router.get("/auth/audit")
+async def list_voice_auth_audit(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    calls = db.scalars(
+        select(VoiceCall)
+        .where(VoiceCall.company_id == identity.company_id)
+        .order_by(VoiceCall.created_at.desc())
+        .limit(20)
+    ).all()
+    entries = []
+    for c in calls:
+        phone = c.caller_phone or ""
+        masked = f"{phone[:3]}***{phone[-4:]}" if len(phone) >= 7 else phone
+        entries.append({
+            "call_id": str(c.id),
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "caller_phone_masked": masked,
+            "caller_type": c.caller_type,
+            "authenticated": bool(c.caller_verified_at),
+            "verification_attempts": c.verification_attempts,
+            "status": c.status,
+        })
+    return entries
+
+
+@router.get("/auth/members")
+async def list_voice_members(
+    identity: CurrentIdentity = Depends(require_permission("team:read")),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    memberships = db.scalars(
+        select(CompanyMembership)
+        .where(CompanyMembership.company_id == identity.company_id, CompanyMembership.is_active.is_(True))
+    ).all()
+    result = []
+    for m in memberships:
+        user = db.get(User, m.user_id)
+        if not user:
+            continue
+        cred = db.scalar(
+            select(VoiceCallerCredential).where(
+                VoiceCallerCredential.company_id == identity.company_id,
+                VoiceCallerCredential.principal_type == "USER",
+                VoiceCallerCredential.principal_id == user.id,
+            )
+        )
+        phone = (cred.phone_number if cred else None) or user.phone
+        masked = f"{phone[:3]}***{phone[-4:]}" if phone and len(phone) >= 7 else phone
+        result.append({
+            "user_id": str(user.id),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "phone_masked": masked,
+            "has_pin": bool(cred and cred.pin_hash),
+            "phone_access_enabled": bool(cred and cred.enabled),
+        })
+    return result
+
+
+@router.put("/auth/members/{user_id}/access")
+async def set_voice_member_access(
+    user_id: UUID,
+    request: VoiceMemberAccessRequest,
+    identity: CurrentIdentity = Depends(require_permission("team:write")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    cred = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == user_id,
+        )
+    )
+    if not cred:
+        raise HTTPException(status_code=404, detail="Member does not have a Voice PIN configured")
+    cred.enabled = request.enabled
+    if not request.enabled:
+        now = datetime.now(timezone.utc)
+        for s in db.scalars(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.company_id == identity.company_id,
+                VoiceAuthSession.principal_id == user_id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        ):
+            s.revoked_at = now
+    db.commit()
+    return {"status": "success", "user_id": str(user_id), "phone_access_enabled": cred.enabled}
+

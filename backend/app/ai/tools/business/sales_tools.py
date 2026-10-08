@@ -59,7 +59,7 @@ class GetBusinessOverviewTool(RetailAITool):
         "own connected business data."
     )
     input_schema = BusinessOverviewArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session, self._ingestion = session, ingestion
@@ -96,7 +96,7 @@ class GetSalesSummaryTool(RetailAITool):
         "The server interprets these in the company's timezone. Use date_from/date_to for a custom range."
     )
     input_schema = SalesSummaryArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session, self._ingestion = session, ingestion
@@ -131,7 +131,10 @@ class GetSalesSummaryTool(RetailAITool):
             product=arguments.product,
         )
         unsupported = [name for name, value in (("location", arguments.location), ("category", arguments.category)) if value is not None]
-        metadata = {"unsupported_filters": unsupported} if unsupported else {}
+        metadata: dict[str, Any] = {"unsupported_filters": unsupported} if unsupported else {}
+        if not data.get("data_covered", True):
+            metadata["data_covered"] = False
+            metadata["warning"] = data.get("coverage_message")
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),), metadata=metadata)
 
 
@@ -145,7 +148,7 @@ class GetSalesTrendTool(RetailAITool):
     name = "get_sales_trend"
     description = "Return a structured sales trend for the selected tenant source and company-local period."
     input_schema = SalesTrendArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session, self._ingestion = session, ingestion
@@ -191,7 +194,7 @@ class GetSalesComparisonTool(RetailAITool):
         "month) and return the absolute and percentage change."
     )
     input_schema = SalesComparisonArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session, self._ingestion = session, ingestion
@@ -245,7 +248,7 @@ class GetTopProductsTool(RetailAITool):
         "quantity sold, or number of orders."
     )
     input_schema = TopProductsArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService) -> None:
         self._session, self._ingestion = session, ingestion

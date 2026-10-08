@@ -17,6 +17,7 @@ from backend.app.ai.usage.service import AIUsageService
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
 from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
+from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -59,9 +60,11 @@ class CentralAIService:
         query: str,
         page_context: str | None,
         active_modules: frozenset[str],
+        permissions: frozenset[str] = frozenset(),
     ) -> tuple[frozenset[str], dict[str, str]] | None:
         is_voice = bool(page_context and page_context.startswith("/voice"))
         if is_voice:
+            public_caller = is_public_voice_caller(permissions)
             voice_tool_names: set[str] = set()
             voice_tool_agents: dict[str, str] = {}
             for defn in self._registry.list_authorized(active_modules):
@@ -70,6 +73,9 @@ class CentralAIService:
                     continue
                 for tool_name in defn.allowed_tool_names:
                     if tool_name in {"get_subscription_options"}:
+                        continue
+                    # Appelant non authentifié : réservation publique uniquement
+                    if public_caller and not public_voice_tool_allowed(tool_name):
                         continue
                     voice_tool_names.add(tool_name)
                     voice_tool_agents[tool_name] = defn.agent_id
@@ -218,6 +224,7 @@ class CentralAIService:
             query,
             page_context,
             frozenset(context.active_modules),
+            permissions=permissions,
         )
         if tool_scope is None:
             agent_slug = agent.slug if agent is not None else None
@@ -273,7 +280,7 @@ class CentralAIService:
                 module_id=effective_module_id,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=True if is_voice else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
+                retrieve_tenant_data=False if is_public_voice_caller(permissions) else (True if is_voice else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"})),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
                 follow_latest_utterance_language=spoken_language_input,

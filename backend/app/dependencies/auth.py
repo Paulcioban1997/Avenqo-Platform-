@@ -4,6 +4,7 @@ import hmac
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -34,6 +35,14 @@ class CurrentIdentity:
     auth_session: AuthSession
     user: User
     raw_token: str
+
+    @property
+    def user_id(self) -> UUID:
+        return self.user.id
+
+    @property
+    def company_id(self) -> UUID:
+        return self.user.company_id
 
 
 def get_account_notifier() -> AccountNotifier:

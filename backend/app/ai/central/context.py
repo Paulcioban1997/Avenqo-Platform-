@@ -144,7 +144,7 @@ class CentralAIContextBuilder:
                 if agent.required_permissions.issubset(permissions)
                 and agent.entrypoints.intersection({"business", "voice"})
             ) if self._registry is not None and summary.subscription_status.strip().lower() in {"active", "trialing"} else (),
-            authorized_sources=self._sources(tenant) if self._sources is not None else {},
+            authorized_sources=self._sources(tenant) if self._sources is not None and "data:read" in permissions else {},
             plan_options=tuple({
                 "code": plan.code.value,
                 "name": plan.name,

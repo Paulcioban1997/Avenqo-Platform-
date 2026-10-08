@@ -128,15 +128,59 @@ class VoiceOwnedNumberRequest(BaseModel):
 
 
 class VoicePinRequest(BaseModel):
-    pin: SecretStr
+    pin: SecretStr | str
+    confirm_pin: SecretStr | str | None = None
+    pin_confirmation: SecretStr | str | None = None
+    current_password: SecretStr | str | None = None
+    phone_number: str | None = None
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("pin")
-    @classmethod
-    def valid_pin(cls, value):
+    @model_validator(mode="after")
+    def validate_pin_payload(self) -> VoicePinRequest:
         from backend.app.voice.auth import validate_voice_pin
-        validate_voice_pin(value.get_secret_value())
-        return value
+        pin_val = self.pin.get_secret_value() if isinstance(self.pin, SecretStr) else str(self.pin)
+        validate_voice_pin(pin_val)
+        confirmation = self.confirm_pin or self.pin_confirmation
+        if confirmation is not None:
+            confirm_val = confirmation.get_secret_value() if isinstance(confirmation, SecretStr) else str(confirmation)
+            if pin_val != confirm_val:
+                raise ValueError("PIN and confirmation PIN do not match")
+        if self.current_password is not None:
+            pw_val = self.current_password.get_secret_value() if isinstance(self.current_password, SecretStr) else str(self.current_password)
+            if pw_val == pin_val:
+                raise ValueError("PIN must not be identical to your account password")
+        return self
+
+    @property
+    def pin_value(self) -> str:
+        return self.pin.get_secret_value() if isinstance(self.pin, SecretStr) else str(self.pin)
+
+    @property
+    def current_password_value(self) -> str | None:
+        if self.current_password is None:
+            return None
+        return self.current_password.get_secret_value() if isinstance(self.current_password, SecretStr) else str(self.current_password)
+
+    @property
+    def confirm_pin_value(self) -> str | None:
+        val = self.confirm_pin or self.pin_confirmation
+        if val is None:
+            return None
+        return val.get_secret_value() if isinstance(val, SecretStr) else str(val)
+
+
+class VoicePinSetupRequest(VoicePinRequest):
+    pass
+
+
+class VoicePhoneAccessRequest(BaseModel):
+    enabled: bool
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceMemberAccessRequest(BaseModel):
+    enabled: bool
+    model_config = ConfigDict(extra="forbid")
 
 
 class CheckAvailabilityArguments(BaseModel):

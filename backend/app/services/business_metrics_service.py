@@ -215,11 +215,53 @@ class BusinessMetricsService:
             product=product,
         )
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
-        metrics = [
-            self.metric_envelope(snapshot, source, "revenue", summary["revenue"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["rows_considered"] else "INSUFFICIENT_DATA"),
-            self.metric_envelope(snapshot, source, "orders", summary["orders"], "count", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
-            self.metric_envelope(snapshot, source, "average_order_value", summary["average_order_value"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
-        ]
+        tz_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        timestamps = self._timestamps(normalized, tz_name)
+        max_trans_time = max(timestamps) if timestamps else None
+        last_sync = freshness.last_updated_at
+        latest_coverage = max(filter(None, [max_trans_time, last_sync]), default=None)
+
+        data_covered = True
+        coverage_message = None
+        if period_start is not None and latest_coverage is not None:
+            latest_coverage_utc = self._utc(latest_coverage)
+            period_start_utc = self._utc(period_start)
+            if period_start_utc.date() > latest_coverage_utc.date() or (
+                period_start_utc > latest_coverage_utc
+                and summary.get("rows_considered", 0) == 0
+                and freshness.freshness_status in {"STALE", "UNAVAILABLE"}
+            ):
+                data_covered = False
+                month_names_fr = {
+                    1: "janvier", 2: "février", 3: "mars", 4: "avril",
+                    5: "mai", 6: "juin", 7: "juillet", 8: "août",
+                    9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
+                }
+                sync_d = latest_coverage_utc.date()
+                target_d = period_start_utc.date()
+                sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')}"
+                target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')}"
+                coverage_message = f"Les données disponibles s'arrêtent au {sync_str} ; je ne peux pas confirmer les commandes du {target_str}."
+
+        if not data_covered:
+            summary["data_covered"] = False
+            summary["coverage_message"] = coverage_message
+            summary["orders"] = None
+            summary["revenue"] = None
+            summary["average_order_value"] = None
+            metrics = [
+                self.metric_envelope(snapshot, source, "revenue", None, "currency", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+                self.metric_envelope(snapshot, source, "orders", None, "count", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+                self.metric_envelope(snapshot, source, "average_order_value", None, "currency", period_start, period_end, None, calculated_at=calculated_at, state="DATA_UNCOVERED"),
+            ]
+        else:
+            summary["data_covered"] = True
+            summary["coverage_message"] = None
+            metrics = [
+                self.metric_envelope(snapshot, source, "revenue", summary["revenue"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["rows_considered"] else "INSUFFICIENT_DATA"),
+                self.metric_envelope(snapshot, source, "orders", summary["orders"], "count", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
+                self.metric_envelope(snapshot, source, "average_order_value", summary["average_order_value"], "currency", period_start, period_end, summary["orders"], calculated_at=calculated_at, state="AVAILABLE" if summary["orders"] else "INSUFFICIENT_DATA"),
+            ]
         return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
 
     def business_overview(

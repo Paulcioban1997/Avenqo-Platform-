@@ -3,9 +3,9 @@
 from backend.app.models.base import UserRole
 
 ROLE_PERMISSIONS: dict[UserRole, tuple[str, ...]] = {
-    UserRole.OWNER: ("company:manage", "users:manage", "modules:manage", "billing:manage", "data:manage", "crm:appointments:write", "crm:appointments:read", "ai:use"),
-    UserRole.ADMIN: ("users:manage", "modules:manage", "data:manage", "crm:appointments:write", "crm:appointments:read", "ai:use"),
-    UserRole.MANAGER: ("data:manage", "crm:appointments:write", "crm:appointments:read", "ai:use"),
+    UserRole.OWNER: ("company:manage", "users:manage", "modules:manage", "billing:manage", "data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
+    UserRole.ADMIN: ("users:manage", "modules:manage", "data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
+    UserRole.MANAGER: ("data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
     UserRole.ANALYST: ("data:read", "ai:use"),
     UserRole.USER: ("ai:use",),
     UserRole.VIEWER: ("data:read",),

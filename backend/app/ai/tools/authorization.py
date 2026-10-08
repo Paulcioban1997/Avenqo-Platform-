@@ -13,6 +13,7 @@ from backend.app.core.permissions import permissions_for
 from backend.app.models import CompanyMembership, User
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.ai.tools.plans import plan_meets_minimum
+from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
 
 
 class ToolAuthorizationPolicy:
@@ -23,6 +24,11 @@ class ToolAuthorizationPolicy:
         self._agents = agents
 
     def authorize(self, tool: AITool, context: ToolExecutionContext) -> None:
+        # Unauthenticated phone callers run under the tenant owner's membership
+        # for transport purposes only: never let that grant private tools.
+        if is_public_voice_caller(context.permissions) and not public_voice_tool_allowed(tool.name):
+            raise ToolAuthorizationError("Caller authentication is required for this tool.")
+
         user = self._db.get(User, context.user_id)
         if (
             user is None
@@ -42,6 +48,8 @@ class ToolAuthorizationPolicy:
             raise ToolAuthorizationError("An active tenant membership is required.")
 
         permissions = frozenset(permissions_for(membership.role))
+        if context.permissions:
+            permissions = permissions.intersection(context.permissions)
         if not set(tool.required_permissions).issubset(permissions):
             raise ToolAuthorizationError("The membership role cannot run this tool.")
 
