@@ -182,6 +182,26 @@ def release_media_session(db: Session, call_id: UUID, claim: tuple) -> None:
     db.commit()
 
 
+def clean_voice_text(text: str) -> str:
+    """Nettoie le texte destiné à la synthèse vocale téléphonique (TTS).
+    Supprime la syntaxe markdown (listes à puces, numérotation, astérisques, dièses, crochets),
+    pour garantir une lecture orale fluide et naturelle sans artefacts robotiques.
+    """
+    if not text:
+        return ""
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"__([^_]+)__", r"\1", cleaned)
+    cleaned = re.sub(r"_([^_]+)_", r"\1", cleaned)
+    cleaned = re.sub(r"^#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[\-\*•]\s*", "", cleaned, flags=re.MULTILINE)
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    cleaned = " ".join(lines)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 class PublicInboundConversation:
     def __init__(self, db: Session, settings: Settings, call_id: UUID, telnyx=None):
         self.db = db
@@ -468,6 +488,7 @@ class TelnyxMediaBridge:
         initial_answer: str | None = None,
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
+        max_output_queue: int = 64,
     ) -> None:
         self.socket = socket
         self.adapter = adapter
@@ -492,7 +513,7 @@ class TelnyxMediaBridge:
         self.input_paused = False
         self._last_chunk = 0
         self._seen_items: set[str] = set()
-        self._output = asyncio.Queue(maxsize=64)
+        self._output = asyncio.Queue(maxsize=max_output_queue)
         self._remainder = b""
         self._send_lock = asyncio.Lock()
         self._background = []
@@ -623,7 +644,7 @@ class TelnyxMediaBridge:
                 self.telemetry["final_state"] = "RESPONDING"
                 try:
                     await asyncio.wait_for(
-                        self.adapter.speak(redact_voice_secrets(result["answer"])),
+                        self.adapter.speak(clean_voice_text(redact_voice_secrets(result["answer"]))),
                         timeout=self.tts_timeout
                     )
                 except Exception:
@@ -1059,7 +1080,7 @@ async def telnyx_media_socket(
             current_user = db.get(User, owner_membership.user_id)
             if current_user is None:
                 return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
-            permissions = frozenset({"ai:use", "crm:appointments:write", "data:read"})
+            permissions = frozenset({"ai:use", "crm:appointments:write"})
 
         if current_call.central_conversation_id is None:
             conv = ConversationService(db).create(
@@ -1149,7 +1170,8 @@ async def telnyx_media_socket(
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=settings.voice_realtime_model,
         initial_answer=public_conversation.greeting() if public_conversation is not None else None,
-        begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None)
+        begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
+        max_output_queue=2000)
     await websocket.accept()
     try:
         await bridge.run()

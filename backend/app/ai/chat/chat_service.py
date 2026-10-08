@@ -39,6 +39,7 @@ def _localized_system_instruction(
     follow_latest_utterance_language: bool = False,
     language_explicitly_requested: bool = False,
     language_auto_detect: bool = False,
+    is_voice_call: bool = False,
 ) -> str:
     """Ajoute le contexte de localisation métier — jamais de devise déduite de la langue."""
 
@@ -72,6 +73,15 @@ def _localized_system_instruction(
             "Respond in the user's selected language. "
             "Treat tool results as source data; explain them in the active response language without changing factual values. "
         )
+    voice_instruction = (
+        "\nIMPORTANT PHONE VOICE INSTRUCTIONS (LIVE CALL):\n"
+        "- You are speaking on a live phone call. Your response will be synthesized by Text-To-Speech (TTS).\n"
+        "- Speak warmly, naturally, and concisely (1 to 2 short conversational sentences maximum per turn).\n"
+        "- NEVER produce markdown formatting: NO bullet points (* or -), NO numbered lists (1. 2.), NO bold/italic (**), NO headers (#), NO tables.\n"
+        "- NEVER ask for multiple pieces of information at once in a list. Ask for ONE piece of information at a time.\n"
+        "- For appointments, guide the caller smoothly step by step (e.g. ask for the preferred date or service first).\n"
+        "- For opening hours or business information, give a clear, direct, spoken answer.\n"
+    ) if is_voice_call else ""
     return (
         f"{base}\n"
         f"{language_context}"
@@ -79,6 +89,7 @@ def _localized_system_instruction(
         f"Company currency: {company_currency}\n"
         f"Company timezone: {company_timezone}\n"
         f"{language_instruction}"
+        f"{voice_instruction}"
         "All monetary business values must use the company's currency. "
         "Never infer currency from language. "
         "Do not convert values unless an explicit conversion rate/source is provided."
@@ -377,6 +388,7 @@ class ChatService:
                 follow_latest_utterance_language=follow_latest_utterance_language,
                 language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
+                is_voice_call=(client_context == "/voice" or client_context.startswith("/voice")),
             )
             with self._provider.routing(routing_context):
                 if self._orchestrator is not None:

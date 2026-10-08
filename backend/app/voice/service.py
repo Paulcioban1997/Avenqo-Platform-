@@ -92,6 +92,18 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
             and str(source.source_id) == str(context["source_id"])
             and source.status.upper() == "READY"
         ]
+    cfg = db.scalar(
+        select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id)
+    )
+    business_info = None
+    if cfg is not None:
+        business_info = {
+            "business_name": cfg.business_name,
+            "opening_hours": cfg.opening_hours,
+            "services": cfg.services,
+            "timezone": cfg.timezone_name,
+        }
+
     return {
         "state": context["state"] if selected else "SOURCE_UNAVAILABLE" if context["source_type"] else context["state"],
         "selection": context["source_type"],
@@ -106,6 +118,7 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
             }
             for source in selected
         ],
+        "business_profile": business_info,
         "resolved_at": datetime.now(timezone.utc).isoformat(),
     }
 

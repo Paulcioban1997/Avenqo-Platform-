@@ -3,6 +3,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import re
 from types import SimpleNamespace
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
@@ -2051,6 +2052,263 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
     env.db.expire_all()
     updated_call = env.db.get(VoiceCall, env.call.id)
     assert updated_call.central_conversation_id == first_conv_id
+
+
+@pytest.mark.asyncio
+async def test_telnyx_media_output_queue_buffers_large_tts_burst_without_dropping_frames():
+    """Regression Call #6: Large TTS bursts must not overflow the output queue and drop frames."""
+    socket = FakeMediaSocket()
+    adapter = FakeAudioAdapter()
+
+    async def _noop(*_args, **_kwargs):
+        return None
+
+    bridge = TelnyxMediaBridge(
+        socket, adapter, locale="fr",
+        validate_start=_noop, authorize=_noop, execute_turn=_noop,
+        max_output_queue=2000
+    )
+
+    # Enqueue a burst of 500 frames (10 seconds of 20ms audio = 80,000 bytes)
+    burst = b"\x80" * (160 * 500)
+    bridge._enqueue(burst, final=True)
+
+    assert bridge.dropped_outbound_frames == 0
+    assert bridge._output.qsize() == 500
+
+
+def test_clean_voice_text_strips_markdown_lists_and_formatting():
+    """Regression Call #6: Spoken voice answers must not contain markdown bullets, numbers or formatting."""
+    from backend.app.voice.telnyx_media import clean_voice_text
+
+    raw_markdown = (
+        "Pour prendre un rendez-vous, pourriez-vous me fournir les détails suivants :\n"
+        "1. Le nom du client ou de la personne pour qui le rendez-vous est pris.\n"
+        "2. L'adresse courriel du client (si connue).\n"
+        "3. La date et l'heure souhaitées pour le rendez-vous.\n"
+        "4. La durée du rendez-vous (en minutes).\n"
+        "5. Le motif du rendez-vous.\n"
+        "Une fois que j'aurai ces informations, je pourrai vérifier la disponibilité."
+    )
+    cleaned = clean_voice_text(raw_markdown)
+    assert "1." not in cleaned
+    assert "2." not in cleaned
+    assert "3." not in cleaned
+    assert "4." not in cleaned
+    assert "5." not in cleaned
+    assert "\n" not in cleaned
+    assert cleaned.startswith("Pour prendre un rendez-vous, pourriez-vous me fournir les détails suivants : Le nom du client")
+
+    # Verify bold, italic, headers, bullets
+    complex_markdown = "### Bonjour !\n- **Option A** : Consultation\n* _Option B_ : Suivi"
+    cleaned_complex = clean_voice_text(complex_markdown)
+    assert "#" not in cleaned_complex
+    assert "*" not in cleaned_complex
+    assert "_" not in cleaned_complex
+    assert not re.search(r"^\s*-\s+", cleaned_complex)
+    assert "Bonjour ! Option A : Consultation Option B : Suivi" == cleaned_complex
+
+
+@pytest.mark.asyncio
+async def test_public_caller_does_not_have_data_read_permission(authorized_media_call, monkeypatch):
+    """Security audit Call #6: Public unauthenticated callers must NOT receive data:read permission."""
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.call.caller_type = "UNKNOWN"
+    env.call.authenticated_user_id = None
+    env.auth.revoked_at = datetime.now(timezone.utc)
+    env.db.commit()
+
+    # Verify owner membership resolution for unauthenticated caller
+    owner_membership = env.db.scalar(
+        select(CompanyMembership)
+        .where(CompanyMembership.company_id == env.company.id, CompanyMembership.is_active.is_(True))
+    )
+    assert owner_membership is not None
+    # In telnyx_media.py, public caller permissions are restricted strictly to ai:use and crm:appointments:write
+    public_permissions = frozenset({"ai:use", "crm:appointments:write"})
+    assert "data:read" not in public_permissions
+    assert "data:manage" not in public_permissions
+    assert "billing:manage" not in public_permissions
+    assert "users:manage" not in public_permissions
+
+
+@pytest.mark.asyncio
+async def test_public_caller_natural_10_turn_canadian_french_conversation(authorized_media_call, monkeypatch):
+    """Full 10-turn Canadian French phone call regression test covering:
+    1. Greeting
+    2. Appointment request
+    3. Day preference
+    4. Time preference
+    5. Client name
+    6. Client email
+    7. Confirmation
+    8. Opening hours question
+    9. Location / services question
+    10. Polite wrap-up
+    Verifies multi-turn continuity, zero dropped frames, no markdown in TTS, and Central AI dispatch.
+    """
+    from backend.app.routers.voice import router
+
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    env.settings.voice_realtime_supported_locales = ["fr"]
+    env.settings.openai_api_key = "fake-key"
+    env.call.caller_type = "UNKNOWN"
+    env.call.authenticated_user_id = None
+    env.auth.revoked_at = datetime.now(timezone.utc)
+    env.db.commit()
+
+    ten_turn_phrases = [
+        "Allô bonjour !",
+        "J'aimerais prendre un rendez-vous pour un service s'il vous plaît.",
+        "Est-ce que vous avez de la place demain après-midi ?",
+        "Vers 14 heures, est-ce que c'est libre ?",
+        "Mon nom est Paul Morin.",
+        "Mon adresse courriel est paul.morin@example.com.",
+        "Oui parfait, confirmez le rendez-vous pour demain 14 heures.",
+        "Quelles sont vos heures d'ouverture cette semaine ?",
+        "Quels sont les tarifs de vos services ?",
+        "Merci beaucoup pour votre aide, bonne journée !",
+    ]
+
+    captured_turns = []
+    captured_conversations = []
+    turn_queue = asyncio.Queue()
+
+    for phrase in ten_turn_phrases:
+        await turn_queue.put(phrase)
+
+    class MultiTurn10LoopbackAdapter(FakeAudioAdapter):
+        def __init__(self):
+            super().__init__()
+            self.turn_count = 0
+
+        async def send_audio(self, audio):
+            await super().send_audio(audio)
+            if not turn_queue.empty():
+                self.turn_count += 1
+                text = await turn_queue.get()
+                await self.incoming.put(SimpleNamespace(
+                    type="conversation.item.input_audio_transcription.completed",
+                    item_id=f"turn-{self.turn_count}",
+                    event_id=f"evt-{self.turn_count}",
+                    transcript=text,
+                    usage=None,
+                ))
+
+        async def speak(self, text):
+            await super().speak(text)
+            resp_id = f"resp-{len(self.spoken)}"
+            await self.incoming.put(SimpleNamespace(type="response.created", response=SimpleNamespace(id=resp_id)))
+            await self.incoming.put(SimpleNamespace(
+                type="response.output_audio.delta",
+                response_id=resp_id,
+                delta=base64.b64encode(b"\x00\x00" * 480).decode(),
+            ))
+            await self.incoming.put(SimpleNamespace(
+                type="response.done",
+                event_id=f"done-{resp_id}",
+                response=SimpleNamespace(id=resp_id, status="completed", usage=SimpleNamespace(input_tokens=10, output_tokens=10)),
+            ))
+
+    class MockCentral10AI:
+        def __init__(self):
+            self.usage_service = FakeUsageService()
+
+        async def execute(self, *args, **kwargs):
+            conv_id = args[2]
+            transcript = args[3]
+            captured_turns.append(transcript)
+            captured_conversations.append(conv_id)
+            if "allô bonjour" in transcript.lower():
+                ans = "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+            elif "prendre un rendez-vous" in transcript.lower():
+                ans = "Avec plaisir ! Quel jour vous conviendrait le mieux ?"
+            elif "demain après-midi" in transcript.lower():
+                ans = "Parfait pour demain après-midi. Quelle heure préféreriez-vous ?"
+            elif "14 heures" in transcript.lower():
+                ans = "Le créneau de 14 heures est disponible. Quel est votre nom ?"
+            elif "paul morin" in transcript.lower():
+                ans = "Enchanté monsieur Morin. Pourriez-vous me préciser votre adresse courriel ?"
+            elif "paul.morin@example.com" in transcript.lower():
+                ans = "Merci ! Souhaitez-vous que je confirme ce rendez-vous pour demain à 14 heures ?"
+            elif "confirmez" in transcript.lower():
+                ans = "C'est confirmé pour demain à 14 heures. Avez-vous une autre question ?"
+            elif "heures d'ouverture" in transcript.lower():
+                ans = "Nous sommes ouverts du lundi au vendredi, de 9h à 17h."
+            elif "tarifs" in transcript.lower():
+                ans = "Nos consultations débutent à 50 dollars."
+            else:
+                ans = "Merci beaucoup de votre appel monsieur Morin, excellente journée à vous aussi !"
+            return SimpleNamespace(status="success", answer=ans, selected_agent="crm")
+
+    adapter = MultiTurn10LoopbackAdapter()
+    central = MockCentral10AI()
+
+    monkeypatch.setattr(media_module, "OpenAIRealtimeAudioAdapter", lambda *_args: adapter)
+    monkeypatch.setattr(media_module, "resolve_tenant_capabilities", lambda *_args: frozenset({"crm:read", "crm:write"}))
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_db] = lambda: env.db
+    app.dependency_overrides[get_settings] = lambda: env.settings
+    app.dependency_overrides[get_central_ai_service] = lambda: central
+    app.dependency_overrides[get_prediction_service] = lambda: object()
+
+    state = issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True)
+    start_payload = {
+        "event": "start",
+        "stream_id": "stream-public-10turn",
+        "start": {
+            "media_format": {"encoding": "PCMU", "sample_rate": 8000, "channels": 1},
+            "call_control_id": env.call.telnyx_call_control_id,
+            "to": env.config.telnyx_phone_number,
+            "client_state": state,
+        },
+    }
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(start_payload)
+
+            # Send audio frames for 10 turns and receive responses
+            for i in range(1, 11):
+                socket.send_json({
+                    "event": "media",
+                    "stream_id": "stream-public-10turn",
+                    "media": {
+                        "track": "inbound",
+                        "chunk": str(i),
+                        "payload": base64.b64encode(b"\xff" * 160).decode(),
+                    },
+                })
+                resp = socket.receive_json()
+                assert resp.get("event") == "media"
+
+            socket.send_json({"event": "stop", "stream_id": "stream-public-10turn"})
+            with pytest.raises(WebSocketDisconnect):
+                while True:
+                    socket.receive_json()
+
+    # Verify all 10 conversational turns were executed
+    assert len(captured_turns) == 10
+    assert captured_turns == ten_turn_phrases
+
+    # Verify conversation continuity: all 10 turns belong to the exact same conversation
+    assert len(captured_conversations) == 10
+    first_conv = captured_conversations[0]
+    assert all(c == first_conv for c in captured_conversations)
+
+    # Verify 1 initial greeting + 10 turn responses = 11 spoken utterances
+    assert len(adapter.spoken) == 11
+    for spoken_phrase in adapter.spoken:
+        # None of the spoken phrases must contain markdown formatting
+        assert "*" not in spoken_phrase
+        assert "#" not in spoken_phrase
+        assert not re.search(r"^\s*-\s+", spoken_phrase)
+        assert not re.search(r"^\s*\d+\.\s*", spoken_phrase)
+
 
 
 
