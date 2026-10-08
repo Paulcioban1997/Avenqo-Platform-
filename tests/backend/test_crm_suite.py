@@ -1069,7 +1069,10 @@ def test_availability_resource_isolation_and_missing_hours(db_session, combined_
     company.business_hours = {"weekly": {}}
     config.opening_hours = {}
     db_session.commit()
-    assert asyncio.run(service.check_availability(company.id, start))["state"] == "BUSINESS_HOURS_UNAVAILABLE"
+    closed = asyncio.run(service.check_availability(company.id, start))
+    assert closed["available"] is False
+    assert closed["state"] == "BUSY"
+    assert closed["reason"] == "OUTSIDE_WORKING_HOURS"
 
 
 @pytest.mark.parametrize("value", [datetime(2027, 3, 14, 2, 30), datetime(2027, 11, 7, 1, 30)])
