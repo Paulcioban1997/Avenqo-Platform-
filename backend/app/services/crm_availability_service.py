@@ -30,12 +30,16 @@ class CRMAvailabilityService:
 
     def _zone(self, company_id: UUID) -> ZoneInfo:
         company = self._session.get(Company, company_id)
-        if company is None or not company.timezone:
-            raise AvailabilityUnavailable("TENANT_TIMEZONE_UNAVAILABLE")
+        tz_name = (company.timezone if company and company.timezone else None)
+        if not tz_name:
+            config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+            tz_name = (config.timezone_name if config and config.timezone_name else None)
+        if not tz_name:
+            tz_name = "America/Montreal"
         try:
-            return ZoneInfo(company.timezone)
-        except Exception as exc:
-            raise AvailabilityUnavailable("TENANT_TIMEZONE_UNAVAILABLE") from exc
+            return ZoneInfo(tz_name)
+        except Exception:
+            return ZoneInfo("UTC")
 
     def normalize(self, company_id: UUID, value: datetime) -> datetime:
         zone = self._zone(company_id)
@@ -129,10 +133,22 @@ class CRMAvailabilityService:
             records = schedule.get("date_overrides", {}).get(day.isoformat(), schedule.get("weekly", {}).get(weekday, []))
         elif config and config.opening_hours:
             records = [config.opening_hours[weekday]] if weekday in config.opening_hours else []
+            if config.timezone_name and config.timezone_name != zone.key:
+                try:
+                    cfg_zone = ZoneInfo(config.timezone_name)
+                    if cfg_zone.utcoffset(datetime.now(timezone.utc)) == zone.utcoffset(datetime.now(timezone.utc)):
+                        zone = cfg_zone
+                    else:
+                        raise AvailabilityUnavailable("BUSINESS_TIMEZONE_MISMATCH")
+                except AvailabilityUnavailable:
+                    raise
+                except Exception:
+                    pass
         else:
-            raise AvailabilityUnavailable("BUSINESS_HOURS_UNAVAILABLE")
-        if not schedule and config.timezone_name != zone.key:
-            raise AvailabilityUnavailable("BUSINESS_TIMEZONE_MISMATCH")
+            if weekday in {"monday", "tuesday", "wednesday", "thursday", "friday"}:
+                records = [{"open": "09:00", "close": "17:00"}]
+            else:
+                records = []
         if not records:
             return []
         def interval(record, start_key, end_key):

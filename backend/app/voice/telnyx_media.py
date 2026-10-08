@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import array
 import audioop
 import asyncio
 import base64
@@ -55,6 +56,7 @@ from backend.app.voice.providers import TelnyxClient
 from shared.ai_engine.contracts import TenantContext
 
 from backend.app.voice.auth import redact_voice_secrets
+from backend.app.voice.language_resolver import CallLanguageSession
 
 
 class InvalidMediaFrame(ValueError):
@@ -237,7 +239,7 @@ class PublicInboundConversation:
         french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
         if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
-        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|comptabilite|accounting|dashboard|factures|invoices)\b|mes clients|autres clients|internal|internes", normalized)
+        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b|chiffre d'affaires|produits vendus|commandes internes|mes clients|autres clients|internal|internes", normalized)
         if private:
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
@@ -253,7 +255,7 @@ class PublicInboundConversation:
         french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
         if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
-        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b|mes clients|autres clients|internal|internes", normalized)
+        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b|chiffre d'affaires|produits vendus|commandes internes|mes clients|autres clients|internal|internes", normalized)
         if private:
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
@@ -470,11 +472,37 @@ class TelnyxAudioCodec:
         converted, self._input_state = audioop.ratecv(pcm, 2, 1, 8000, 24000, self._input_state)
         return converted
 
+    @staticmethod
+    def _anti_alias_filter(pcm: bytes) -> bytes:
+        """7-tap symmetric FIR low-pass filter (cutoff ~3600 Hz at 24000 Hz).
+        Attenuates energy above 4 kHz before 3:1 downsampling, preventing severe harmonic aliasing.
+        """
+        if len(pcm) < 16:
+            return pcm
+        samples = array.array("h", pcm)
+        n = len(samples)
+        out = array.array("h", [0] * n)
+        # Scaled coefficients [36, 97, 195, 368, 195, 97, 36] / 1024
+        for i in range(3, n - 3):
+            val = (
+                36 * (samples[i - 3] + samples[i + 3])
+                + 97 * (samples[i - 2] + samples[i + 2])
+                + 195 * (samples[i - 1] + samples[i + 1])
+                + 368 * samples[i]
+            ) >> 10
+            out[i] = max(-32768, min(32767, val))
+        for i in (0, 1, 2):
+            out[i] = samples[i]
+        for i in (n - 3, n - 2, n - 1):
+            out[i] = samples[i]
+        return out.tobytes()
+
     def outbound_pcm(self, payload: object) -> bytes:
         pcm = self.decode_payload(payload, 48000)
         if len(pcm) % 2:
             raise InvalidMediaFrame("Invalid PCM frame")
-        converted, self._output_state = audioop.ratecv(pcm, 2, 1, 24000, 8000, self._output_state)
+        filtered = self._anti_alias_filter(pcm)
+        converted, self._output_state = audioop.ratecv(filtered, 2, 1, 24000, 8000, self._output_state)
         return audioop.lin2ulaw(converted, 2)
 
 
@@ -709,7 +737,10 @@ class TelnyxMediaBridge:
             if isinstance(raw, bytes):
                 now = loop.time()
                 if next_send_time is None or next_send_time < now - 0.1:
-                    next_send_time = now + 0.02
+                    # Pre-buffer: brief micro-pause if queue is low to prevent buffer underflows/crackles
+                    if self._output.qsize() < 2:
+                        await asyncio.sleep(0.04)
+                    next_send_time = loop.time() + 0.02
                     await asyncio.sleep(0.02)
                 else:
                     next_send_time += 0.02
@@ -1003,6 +1034,20 @@ async def telnyx_media_socket(
     principal_id = None
     auth_epoch = None
     public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
+    call_lang_session = CallLanguageSession(
+        tenant_id=company.id,
+        call_session_id=str(call.id),
+        primary_locale=call.locale or config.preferred_language or locale,
+        active_locale=call.locale or config.preferred_language or locale,
+        allowed_locales=tuple((call.source_context or {}).get("allowed_locales", ())) or (
+            resolve_locale(call.locale or config.preferred_language or locale),
+            "en-US", "fr-CA", "es-ES", "ro-RO",
+        ),
+    )
+    saved_lang_state = (call.source_context or {}).get("call_language_session")
+    if isinstance(saved_lang_state, dict) and saved_lang_state.get("active_locale"):
+        call_lang_session.active_locale = resolve_locale(saved_lang_state["active_locale"])
+        call_lang_session.last_confirmed_locale = call_lang_session.active_locale
     adapter = OpenAIRealtimeAudioAdapter(OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model,
         settings.voice_tts_model, settings.voice_tts_voice), settings.voice_realtime_model)
     bridge: TelnyxMediaBridge
@@ -1080,7 +1125,7 @@ async def telnyx_media_socket(
             current_user = db.get(User, owner_membership.user_id)
             if current_user is None:
                 return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
-            permissions = frozenset({"ai:use", "crm:appointments:write"})
+            permissions = frozenset({"ai:use", "crm:appointments:write", "crm:appointments:read"})
 
         if current_call.central_conversation_id is None:
             conv = ConversationService(db).create(
@@ -1108,10 +1153,16 @@ async def telnyx_media_socket(
                     model=settings.voice_realtime_model,
                 )
 
-        detection = detect_spoken_language(transcript, preferred_locale=current_call.locale or locale)
-        current_call.locale = detection.locale or current_call.locale or locale
+        # Verrouillage linguistique dynamique et anti-dérive par appel
+        active_locale = call_lang_session.process_utterance(transcript)
+        current_call.locale = active_locale
+        bridge.locale = active_locale
         tenant = TenantContext(current_company.id, current_user.id)
-        current_call.source_context = resolve_voice_source_context(db, tenant)
+        current_call.source_context = {
+            **resolve_voice_source_context(db, tenant),
+            **(current_call.source_context or {}),
+            "call_language_session": call_lang_session.as_dict(),
+        }
         db.commit()
 
         if ledger is None or ledger._user_id is None or ledger._conversation_id is None:
