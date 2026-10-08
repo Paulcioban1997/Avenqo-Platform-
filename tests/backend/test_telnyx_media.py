@@ -2060,12 +2060,15 @@ async def test_telnyx_media_output_queue_buffers_large_tts_burst_without_droppin
     socket = FakeMediaSocket()
     adapter = FakeAudioAdapter()
 
-    async def _noop(*_args, **_kwargs):
+    async def _noop(*_args, **_kwargs) -> None:
         return None
+
+    async def _noop_turn(_item_id: str, _transcript: str) -> dict[str, Any]:
+        return {}
 
     bridge = TelnyxMediaBridge(
         socket, adapter, locale="fr",
-        validate_start=_noop, authorize=_noop, execute_turn=_noop,
+        validate_start=_noop, authorize=_noop, execute_turn=_noop_turn,
         max_output_queue=2000
     )
 
