@@ -175,8 +175,8 @@ export function SettingsView() {
       const [userRes, entRes, pinRes, auditRes] = await Promise.all([
         fetch("/api/v1/auth/me", { headers }),
         fetch("/api/v1/modules/entitlements", { headers }),
-        fetch("/api/v1/voice/auth/pin/status", { headers, cache: "no-store" }),
-        fetch("/api/v1/voice/auth/audit", { headers, cache: "no-store" }),
+        fetch("/api/v1/voice/auth/pin/status", { headers, cache: "no-store" }).catch(() => null),
+        fetch("/api/v1/voice/auth/audit", { headers, cache: "no-store" }).catch(() => null),
       ]);
 
       if (userRes.ok) {
@@ -186,22 +186,22 @@ export function SettingsView() {
         const role = String(userData.user?.role || "").toLowerCase();
         if (role === "owner" || role === "admin") {
           const [voiceRes, membersRes] = await Promise.all([
-            fetch("/api/v1/voice/status", { headers, cache: "no-store" }),
-            fetch("/api/v1/voice/auth/members", { headers, cache: "no-store" }),
+            fetch("/api/v1/voice/status", { headers, cache: "no-store" }).catch(() => null),
+            fetch("/api/v1/voice/auth/members", { headers, cache: "no-store" }).catch(() => null),
           ]);
-          if (voiceRes.ok) setVoiceStatus(await voiceRes.json());
+          if (voiceRes?.ok) setVoiceStatus(await voiceRes.json());
           else setVoiceStatus(null);
-          if (membersRes.ok) {
+          if (membersRes?.ok) {
             const memData = await membersRes.json();
             setVoiceMembers(memData.members || []);
           }
         }
       }
 
-      if (pinRes.ok) {
+      if (pinRes?.ok) {
         setPinStatus(await pinRes.json());
       }
-      if (auditRes.ok) {
+      if (auditRes?.ok) {
         const auditData = await auditRes.json();
         setVoiceAuditLogs(auditData.events || []);
       }

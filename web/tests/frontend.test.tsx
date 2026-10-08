@@ -643,6 +643,9 @@ describe("Voice settings provisioning safety", () => {
       if (path.endsWith("/auth/me")) return Response.json({ user: { id: "owner", first_name: "Voice", last_name: "Owner", role: "owner" }, company: { id: "tenant", name: "Tenant", subscription_plan: "professional" } });
       if (path.endsWith("/modules/entitlements")) return Response.json({ company_id: "tenant", plan_code: "professional", active_modules: ["voice"], modules: [] });
       if (path.endsWith("/voice/status")) return Response.json({ voice_status: "NOT_CONFIGURED", telnyx_status: "NOT_CONFIGURED", retell_status: "NOT_CONFIGURED", stt_status: "NOT_CONFIGURED", tts_status: "NOT_CONFIGURED", realtime_status: "NOT_CONFIGURED", number_status: "READY_FOR_OWNER_ACTION", data_freshness: { freshness_status: "UNAVAILABLE" } });
+      if (path.includes("/voice/auth/pin/status")) return Response.json({ has_pin: false, enabled: false, locked: false, last_digits: null });
+      if (path.includes("/voice/auth/audit")) return Response.json({ events: [] });
+      if (path.includes("/voice/auth/members")) return Response.json({ members: [] });
       throw new Error(`Unexpected fetch: ${path}`);
     }));
 
