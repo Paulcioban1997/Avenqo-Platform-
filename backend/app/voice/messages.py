@@ -58,7 +58,59 @@ _VOICE_GREETINGS = {
 }
 
 
+
+_VOICE_NATURAL_GREETINGS = {
+    "af": "Goeiedag, welkom by {name}. Hoe kan ek jou vandag help?",
+    "am": "ሰላም፣ እንኳን ወደ {name} በደህና መጡ። ዛሬ በምን ልርዳዎ?",
+    "ar": "مرحباً بكم في {name}. كيف يمكنني مساعدتكم اليوم؟",
+    "bn": "নমস্কার, {name}-এ আপনাকে স্বাগত। আজ কীভাবে সাহায্য করতে পারি?",
+    "cs": "Dobrý den, vítejte v {name}. Jak vám mohu dnes pomoci?",
+    "de": "Guten Tag, herzlich willkommen bei {name}. Wie kann ich Ihnen heute helfen?",
+    "el": "Γεια σας, καλώς ορίσατε στην {name}. Πώς μπορώ να σας βοηθήσω σήμερα;",
+    "en": "Hello, thank you for calling {name}. How can I help you today?",
+    "es": "Hola, le damos la bienvenida a {name}. ¿Cómo puedo ayudarle hoy?",
+    "fa": "سلام، به {name} خوش آمدید. امروز چطور می‌توانم به شما کمک کنم؟",
+    "fr": "Bonjour, bienvenue chez {name}. Comment puis-je vous aider aujourd'hui ?",
+    "ha": "Barka, barka da zuwa {name}. Ta yaya zan iya taimaka muku yau?",
+    "he": "שלום, ברוכים הבאים ל-{name}. כיצד אוכל לעזור לך היום?",
+    "hi": "नमस्ते, {name} में आपका स्वागत है। आज मैं आपकी क्या मदद कर सकता हूँ?",
+    "hy": "Բարև ձեզ, բարի գալուստ {name}։ Ինչո՞վ կարող եմ օգնել ձեզ այսօր։",
+    "id": "Halo, selamat datang di {name}. Ada yang bisa saya bantu hari ini?",
+    "it": "Buongiorno, benvenuto da {name}. Come posso aiutarla oggi?",
+    "ja": "お電話ありがとうございます、{name}でございます。本日はどのようなご用件でしょうか？",
+    "ka": "გამარჯობა, კეთილი იყოს თქვენი მობრძანება {name}-ში. რით შემიძლია დაგეხმაროთ დღეს?",
+    "km": "ជំរាបសួរ សូមស្វាគមន៍មកកាន់ {name}។ តើខ្ញុំអាចជួយអ្វីបានខ្លះនៅថ្ងៃនេះ?",
+    "ko": "안녕하세요, {name}에 오신 것을 환영합니다. 오늘 무엇을 도와드릴까요?",
+    "mn": "Сайн байна уу, {name}-д тавтай морилно уу. Өнөөдөр танд юугаар туслах вэ?",
+    "ms": "Halo, selamat datang ke {name}. Bagaimana saya boleh membantu anda hari ini?",
+    "my": "မင်္ဂလာပါ {name} မှ ကြိုဆိုပါတယ်။ ဒီနေ့ ဘာကူညီပေးရမလဲခင်ဗျာ။",
+    "ne": "नमस्ते, {name} मा स्वागत छ। आज म तपाईंलाई कसरी मद्दत गर्न सक्छु?",
+    "nl": "Goedendag, welkom bij {name}. Hoe kan ik u vandaag helpen?",
+    "pa": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ, {name} ਵਿੱਚ ਤੁਹਾਡਾ ਸਵਾਗਤ ਹੈ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
+    "pl": "Dzień dobry, witamy w {name}. W czym mogę dziś pomóc?",
+    "pt": "Olá, seja bem-vindo à {name}. Como posso ajudar você hoje?",
+    "ro": "Bună ziua, bine ați venit la {name}. Cu ce vă pot ajuta astăzi?",
+    "ru": "Здравствуйте, добро пожаловать в {name}. Чем могу вам помочь?",
+    "sv": "Hej, välkommen till {name}. Hur kan jag hjälpa dig idag?",
+    "sw": "Habari, karibu {name}. Ninawezaje kukusaidia leo?",
+    "ta": "வணக்கம், {name}-க்கு வரவேற்கிறோம். இன்று நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?",
+    "th": "สวัสดีครับ ยินดีต้อนรับสู่ {name} วันนี้มีอะไรให้ช่วยไหมครับ",
+    "tl": "Kumusta, maligayang pagdating sa {name}. Paano kita matutulungan ngayon?",
+    "tr": "Merhaba, {name}'e hoş geldiniz. Bugün size nasıl yardımcı olabilirim?",
+    "uk": "Доброго дня, вітаємо у {name}. Чим можу вам допомогти?",
+    "ur": "السلام علیکم، {name} میں خوش آمدید۔ آج میں آپ کی کیا مدد کر سکتا ہوں؟",
+    "vi": "Xin chào, chào mừng đến với {name}. Tôi có thể giúp gì cho bạn hôm nay?",
+    "zh": "您好，欢迎致电{name}。请问今天有什么可以帮您？",
+}
+
+
 def voice_greeting(locale, business_name):
     language = resolve_locale(locale).split("-", 1)[0]
     template = _VOICE_GREETINGS.get(language, _VOICE_GREETINGS["en"])
+    return template.format(name=business_name.strip())
+
+
+def voice_natural_greeting(locale: str, business_name: str) -> str:
+    lang = resolve_locale(locale).split("-", 1)[0]
+    template = _VOICE_NATURAL_GREETINGS.get(lang) or _VOICE_NATURAL_GREETINGS.get(resolve_locale(locale), _VOICE_NATURAL_GREETINGS["en"])
     return template.format(name=business_name.strip())

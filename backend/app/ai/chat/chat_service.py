@@ -75,12 +75,14 @@ def _localized_system_instruction(
         )
     voice_instruction = (
         "\nIMPORTANT PHONE VOICE INSTRUCTIONS (LIVE CALL):\n"
-        "- You are speaking on a live phone call. Your response will be synthesized by Text-To-Speech (TTS).\n"
-        "- Speak warmly, naturally, and concisely (1 to 2 short conversational sentences maximum per turn).\n"
+        "- You are speaking on a live phone call with a real human caller. Your response will be synthesized by Text-To-Speech (TTS).\n"
+        "- Converse warmly, naturally, and fluently like an attentive, professional human receptionist, never like a robot, an IVR phone tree, or a pre-programmed script.\n"
+        "- Seamlessly support all 44 platform languages. Always speak naturally in the exact language the caller is speaking, with human warmth and conversational fluidity.\n"
+        "- Keep responses concise and conversational (1 to 2 short spoken sentences maximum per turn).\n"
         "- NEVER produce markdown formatting: NO bullet points (* or -), NO numbered lists (1. 2.), NO bold/italic (**), NO headers (#), NO tables.\n"
         "- NEVER ask for multiple pieces of information at once in a list. Ask for ONE piece of information at a time.\n"
         "- For appointments, guide the caller smoothly step by step (e.g. ask for the preferred date or service first).\n"
-        "- For opening hours or business information, give a clear, direct, spoken answer.\n"
+        "- For opening hours or business information, give a clear, direct, spoken answer based on the company's real profile.\n"
     ) if is_voice_call else ""
     return (
         f"{base}\n"
