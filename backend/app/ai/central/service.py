@@ -207,11 +207,12 @@ class CentralAIService:
             result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
             self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
             return result
-        scoped_agents = (agent, *self._router.select_matching_agents(query, page_context=page_context)) if agent is not None and agent.aggregate else (agent,)
-        if any(item is not None and not item.required_permissions.issubset(permissions) for item in scoped_agents):
-            result = self._result(tenant.company_id, agent.slug, "not_authorized", context.plan_code, "unavailable")
-            self._log_result(tenant.company_id, agent.module_code, result, started_at, "agent_permission_denied")
-            return result
+        if agent is not None:
+            scoped_agents = (agent, *self._router.select_matching_agents(query, page_context=page_context)) if agent.aggregate else (agent,)
+            if any(item is not None and not item.required_permissions.issubset(permissions) for item in scoped_agents):
+                result = self._result(tenant.company_id, agent.slug, "not_authorized", context.plan_code, "unavailable")
+                self._log_result(tenant.company_id, agent.module_code, result, started_at, "agent_permission_denied")
+                return result
         tool_scope = self._tool_scope_for_request(
             agent,
             query,
@@ -219,11 +220,13 @@ class CentralAIService:
             frozenset(context.active_modules),
         )
         if tool_scope is None:
+            agent_slug = agent.slug if agent is not None else None
+            module_code = agent.module_code if agent is not None else None
             result = self._result(
-                tenant.company_id, agent.slug, "not_entitled", context.plan_code, "not_entitled",
+                tenant.company_id, agent_slug, "not_entitled", context.plan_code, "not_entitled",
                 answer=agent_upgrade_message(user_language),
             )
-            self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_inactive")
+            self._log_result(tenant.company_id, module_code, result, started_at, "module_inactive")
             return result
         allowed_tool_names, authorized_tool_agents = tool_scope
 
