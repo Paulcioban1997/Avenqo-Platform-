@@ -205,3 +205,130 @@ def test_multi_tenant_isolation_on_appointments(tmp_path):
     # Tenant B ne peut jamais voir le client de Tenant A
     client_from_b = crm.get_client(uuid4(), client_a.id)
     assert client_from_b is None
+
+
+def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
+    """Vérifie la découverte dynamique de tous les modules métier autorisés sans hardcoding."""
+    from backend.app.ai.central.service import CentralAIService
+    from backend.app.assistants.registry import build_default_assistant_registry
+    from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
+
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+
+    class _FakeIngestion:
+        pass
+
+    class _FakePredictionService:
+        pass
+
+    tool_reg = build_business_tool_registry(db, cast(Any, _FakeIngestion()), cast(Any, _FakePredictionService()))
+    asst_reg = build_default_assistant_registry(tool_reg)
+
+    class MockChat:
+        pass
+
+    service = CentralAIService(
+        registry=asst_reg,
+        chat_service=cast(Any, MockChat()),
+        context_builder=cast(Any, None),
+        usage_service=cast(Any, None),
+    )
+
+    # 1. Tenant avec CRM seul : a les outils CRM, mais ni Retail ni Accounting
+    scope_crm = service._tool_scope_for_request(
+        agent=None,
+        query="Allô ?",
+        page_context="/voice",
+        active_modules=frozenset({"crm", "voice"}),
+    )
+    assert scope_crm is not None
+    tools_crm, agents_crm = scope_crm
+    assert "check_availability" in tools_crm
+    assert "get_sales_summary" not in tools_crm
+    assert "get_unpaid_invoices" not in tools_crm
+    assert "get_subscription_options" not in tools_crm
+
+    # 2. Tenant avec CRM + Retail : a les outils CRM et Retail, mais pas Accounting
+    scope_crm_retail = service._tool_scope_for_request(
+        agent=None,
+        query="Allô ?",
+        page_context="/voice",
+        active_modules=frozenset({"crm", "retail", "voice"}),
+    )
+    assert scope_crm_retail is not None
+    tools_cr, agents_cr = scope_crm_retail
+    assert "check_availability" in tools_cr
+    assert "get_sales_summary" in tools_cr
+    assert agents_cr["check_availability"] == "crm"
+    assert agents_cr["get_sales_summary"] == "retail"
+    assert "get_unpaid_invoices" not in tools_cr
+
+    # 3. Tenant complet CRM + Retail + Accounting : découverte universelle de tous les modules métier
+    scope_all = service._tool_scope_for_request(
+        agent=None,
+        query="Allô ?",
+        page_context="/voice",
+        active_modules=frozenset({"crm", "retail", "accounting", "voice"}),
+    )
+    assert scope_all is not None
+    tools_all, agents_all = scope_all
+    assert "check_availability" in tools_all
+    assert "get_sales_summary" in tools_all
+    assert "get_unpaid_invoices" in tools_all
+    assert "get_monthly_expenses" in tools_all
+    assert "get_cross_agent_business_health" in tools_all
+    assert agents_all["get_unpaid_invoices"] == "accounting"
+    assert agents_all["get_cross_agent_business_health"] == "cross_agent"
+    # Jamais d'outils d'administration plateforme
+    assert "get_subscription_options" not in tools_all
+
+
+def test_voice_topic_switching_mid_call_preserves_cross_module_capabilities(tmp_path):
+    """Vérifie qu'un appelant peut enchaîner RDV, ventes et comptabilité sans blocage."""
+    from backend.app.ai.central.service import CentralAIService
+    from backend.app.assistants.registry import build_default_assistant_registry
+    from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
+
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+
+    class _FakeIngestion:
+        pass
+
+    class _FakePredictionService:
+        pass
+
+    tool_reg = build_business_tool_registry(db, cast(Any, _FakeIngestion()), cast(Any, _FakePredictionService()))
+    asst_reg = build_default_assistant_registry(tool_reg)
+
+    class MockChat:
+        pass
+
+    service = CentralAIService(
+        registry=asst_reg,
+        chat_service=cast(Any, MockChat()),
+        context_builder=cast(Any, None),
+        usage_service=cast(Any, None),
+    )
+
+    all_modules = frozenset({"crm", "retail", "accounting", "voice"})
+
+    # Tour 1 : Demande de rendez-vous -> scope /voice donne accès à CRM
+    scope_1 = service._tool_scope_for_request(asst_reg.get("crm"), "Prends un rendez-vous demain", "/voice", all_modules)
+    assert scope_1 is not None
+    tools_1, agents_1 = scope_1
+    assert "check_availability" in tools_1
+    assert agents_1["check_availability"] == "crm"
+
+    # Tour 2 : Changement de sujet -> Combien de commandes aujourd'hui ?
+    scope_2 = service._tool_scope_for_request(asst_reg.get("retail"), "Combien de commandes reçues aujourd'hui ?", "/voice", all_modules)
+    assert scope_2 is not None
+    tools_2, agents_2 = scope_2
+    assert "get_sales_summary" in tools_2
+    assert agents_2["get_sales_summary"] == "retail"
+
+    # Tour 3 : Changement de sujet -> Factures impayées ?
+    scope_3 = service._tool_scope_for_request(asst_reg.get("accounting"), "Quelles sont les factures impayées ?", "/voice", all_modules)
+    assert scope_3 is not None
+    tools_3, agents_3 = scope_3
+    assert "get_unpaid_invoices" in tools_3
+    assert agents_3["get_unpaid_invoices"] == "accounting"

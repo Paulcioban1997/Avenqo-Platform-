@@ -60,17 +60,24 @@ class CentralAIService:
         page_context: str | None,
         active_modules: frozenset[str],
     ) -> tuple[frozenset[str], dict[str, str]] | None:
+        is_voice = bool(page_context and page_context.startswith("/voice"))
+        if is_voice:
+            voice_tool_names: set[str] = set()
+            voice_tool_agents: dict[str, str] = {}
+            for defn in self._registry.list_authorized(active_modules):
+                # Ne jamais exposer les assistants de gestion de plateforme ou d'administration
+                if defn.category in {"platform", "platform_support"} or defn.slug in {"tenant_capabilities", "platform_support", "voice"}:
+                    continue
+                for tool_name in defn.allowed_tool_names:
+                    if tool_name in {"get_subscription_options"}:
+                        continue
+                    voice_tool_names.add(tool_name)
+                    voice_tool_agents[tool_name] = defn.agent_id
+            if voice_tool_names:
+                return frozenset(voice_tool_names), voice_tool_agents
+            return frozenset(), {}
+
         if agent is None:
-            if page_context and page_context.startswith("/voice"):
-                voice_tool_names: set[str] = set()
-                voice_tool_agents: dict[str, str] = {}
-                for defn in self._registry.list_authorized(active_modules):
-                    if defn.slug in {"crm", "retail", "voice"}:
-                        for tool_name in defn.allowed_tool_names:
-                            voice_tool_names.add(tool_name)
-                            voice_tool_agents[tool_name] = defn.agent_id
-                if voice_tool_names:
-                    return frozenset(voice_tool_names), voice_tool_agents
             return frozenset(), {}
         if not agent.aggregate:
             if not agent_entitlements(agent).issubset(active_modules):
@@ -221,9 +228,26 @@ class CentralAIService:
         allowed_tool_names, authorized_tool_agents = tool_scope
 
         is_voice = bool(page_context and page_context.startswith("/voice"))
-        fallback_agent_id = "crm" if (is_voice and "crm" in context.active_modules) else ("voice" if is_voice else None)
+        if is_voice and agent is None:
+            if "cross_agent" in context.active_modules and {"crm", "retail", "accounting"}.issubset(context.active_modules):
+                fallback_agent_id = "cross_agent"
+                effective_module_id = "cross_agent"
+            elif "crm" in context.active_modules:
+                fallback_agent_id = "crm"
+                effective_module_id = "crm"
+            elif "retail" in context.active_modules:
+                fallback_agent_id = "retail"
+                effective_module_id = "retail"
+            elif "accounting" in context.active_modules:
+                fallback_agent_id = "accounting"
+                effective_module_id = "accounting"
+            else:
+                fallback_agent_id = "voice"
+                effective_module_id = "voice"
+        else:
+            fallback_agent_id = agent.agent_id if agent is not None else None
+            effective_module_id = agent.module_code if agent is not None else None
         effective_agent_id = agent.agent_id if agent is not None else fallback_agent_id
-        effective_module_id = agent.module_code if agent is not None else ("crm" if (is_voice and "crm" in context.active_modules) else None)
 
         try:
             message, _ = await self._chat.send(

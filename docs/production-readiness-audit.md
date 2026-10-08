@@ -127,7 +127,38 @@ Le test `test_shopify_active_source_filters_all_retail_services` dans `tests/bac
 
 ---
 
-## 5. RECOMMANDATIONS POUR LE TEST VOCAL RÉEL EN PRODUCTION (CALL #8)
+## 5. INTÉGRATION UNIVERSELLE VOICE AI ↔ TOUS LES MODULES MÉTIER
+
+### 5.1 Découverte Dynamique des Outils Métier
+La sélection statique et codée en dur (`{"crm", "retail", "voice"}`) dans `backend/app/ai/central/service.py` a été remplacée par une **découverte dynamique** basée sur les modules activement souscrits par le tenant :
+- **CRM AI :** `check_availability`, `list_available_slots`, `create_appointment`, `search_appointments`, `get_crm_metrics`, etc.
+- **Retail AI :** `get_sales_summary`, `get_top_products`, `get_inventory_levels`, `forecast_sales`, etc.
+- **Accounting AI :** `get_financial_overview`, `get_monthly_expenses`, `get_profit_margin`, `get_unpaid_invoices`, `get_expense_anomalies`, `get_cashflow_forecast`.
+- **Cross-Agent Intelligence :** `get_cross_agent_business_health` (synthèse 360° quand CRM, Retail et Accounting sont activés).
+
+### 5.2 Règles de Sécurité Téléphonique & Authentification par Rôle
+| Rôle de l'Appelant | Mode de Vérification | Outils Accessibles | Opérations Interdites |
+| :--- | :--- | :--- | :--- |
+| **Appelant Externe / Public** | Numéro entrant non vérifié | `check_availability`, `list_available_slots`, `create_appointment` (avec recueil d'infos et confirmation) | Interdiction stricte : Données financières (`accounting`), métriques de vente (`retail`), listes de clients ou factures. Biaisés par `security_gate` et `ToolAuthorizationPolicy`. |
+| **Client Enregistré** | NIP client DTMF vérifié | Consultation/modification de ses propres rendez-vous | Accès aux finances et aux données d'autres clients. |
+| **Propriétaire / Collaborateur** | NIP de gestion DTMF vérifié | Métriques CRM, Retail et Accounting complètes selon son rôle RBAC | Opérations d'administration plateforme (facturation Avenqo, upgrade, suppression de tenant). |
+
+### 5.3 Statut des Autres Modules du Catalogue
+- **Accounting AI :** **VALIDÉ PAR TEST AUTOMATISÉ UNIQUEMENT** (6 outils opérationnels dans `accounting_tools.py`, connectés et testés avec succès).
+- **OCR, Media, Legal, Marketing, RH et Workflow :** **NON IMPLÉMENTÉ**
+  - *Audit technique :* Aucun outil métier ou moteur d'exécution n'est déclaré dans `backend/app/ai/tools/business/` pour ces modules.
+  - *Sécurité :* Ces modules sont strictement exclus du scope d'outils vocal pour éviter d'exposer des interfaces vides ou d'induire le LLM en erreur.
+
+### 5.4 Changements de Sujet Pendant un Même Appel
+La persistance d'exposition des outils métier autorisés permet désormais d'enchaîner sans friction :
+1. *Tour 1 :* « Prends un rendez-vous demain à 14h » -> Exécution `check_availability` (CRM).
+2. *Tour 2 :* « Combien de commandes avons-nous reçues aujourd'hui ? » -> Exécution `get_sales_summary` (Retail).
+3. *Tour 3 :* « Quel est le montant des factures impayées ? » -> Exécution `get_unpaid_invoices` (Accounting).
+Testé et validé par `test_voice_topic_switching_mid_call_preserves_cross_module_capabilities` dans `tests/backend/test_voice_crm_end_to_end.py`.
+
+---
+
+## 6. RECOMMANDATIONS POUR LE TEST VOCAL RÉEL EN PRODUCTION (CALL #8)
 
 Pour valider en conditions réelles avec Telnyx et Google Calendar :
 1. **Activer le module CRM & Voice** pour le tenant de test.
@@ -139,3 +170,4 @@ Pour valider en conditions réelles avec Telnyx et Google Calendar :
    - Fournir nom et courriel : « Je m'appelle Marc Tremblay, marc.tremblay@test-avenqo.ca. »
    - Confirmer explicitement : « Oui, je confirme. »
    - Vérifier l'apparition instantanée de l'événement dans le calendrier Google et dans le tableau CRM Avenqo.
+
