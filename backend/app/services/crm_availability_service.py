@@ -81,7 +81,7 @@ class CRMAvailabilityService:
         if exclude_appointment_id is not None:
             query = query.where(CRMAppointment.id != exclude_appointment_id)
         for appointment in self._session.scalars(query).all():
-            service = services.get(appointment.service_id)
+            service = services.get(appointment.service_id) if appointment.service_id is not None else None
             opened = appointment.start_time.replace(tzinfo=timezone.utc) if appointment.start_time.tzinfo is None else appointment.start_time.astimezone(timezone.utc)
             closed = appointment.end_time.replace(tzinfo=timezone.utc) if appointment.end_time.tzinfo is None else appointment.end_time.astimezone(timezone.utc)
             opened -= timedelta(minutes=service.buffer_before_minutes if service else 0)
