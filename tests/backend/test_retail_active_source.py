@@ -107,7 +107,7 @@ def _prepared(company, dataset, prefix, amount):
         },
         rows=(
             {
-                "date": "2026-09-08",
+                "date": datetime.now(timezone.utc).date().isoformat(),
                 "order": f"{prefix}-ORDER",
                 "customer": f"{prefix}-CUSTOMER",
                 "product": f"{prefix}-PRODUCT",
