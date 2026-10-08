@@ -309,3 +309,41 @@ def test_caller_role_permissions_distinction():
     assert "data:manage" not in public_perms
     assert "billing:manage" not in public_perms
     assert "users:manage" not in public_perms
+
+
+def test_region_language_resolver_paris_madrid_bucharest():
+    """Vérifie les recommandations régionales pour Paris (fr-FR), Madrid (es-ES) et Bucarest (ro-RO)."""
+    rec_paris = RegionLanguageResolver.resolve("FR", locality="paris")
+    assert rec_paris.primary_locale == "fr-FR"
+
+    rec_madrid = RegionLanguageResolver.resolve("ES", locality="madrid")
+    assert rec_madrid.primary_locale == "es-ES"
+
+    rec_bucharest = RegionLanguageResolver.resolve("RO", locality="bucharest")
+    assert rec_bucharest.primary_locale == "ro-RO"
+
+
+def test_voice_audio_capabilities_matrix_44_locales():
+    """Vérifie la matrice audio complète des 44 langues sans fausse validation."""
+    from backend.app.voice.languages import voice_audio_capabilities_matrix, get_voice_language_capability
+
+    matrix = voice_audio_capabilities_matrix()
+    assert len(matrix) == 44
+
+    # Exactement les 5 variantes testées ont live_audio_validated=True
+    validated = [row["locale"] for row in matrix if row["live_audio_validated"]]
+    assert set(validated) == {"fr", "en", "es", "ro"}  # avec leurs bcp47 fr-CA, en-US, es-ES, ro-RO
+
+    # Les 40 autres n'ont PAS de fausse validation audio
+    unvalidated = [row["locale"] for row in matrix if not row["live_audio_validated"]]
+    assert len(unvalidated) == 40
+
+    cap_ro = get_voice_language_capability("ro-RO")
+    assert cap_ro["live_audio_validated"] is True
+    assert cap_ro["stt_available"] is True
+
+    cap_ja = get_voice_language_capability("ja-JP")
+    assert cap_ja["live_audio_validated"] is False
+    assert cap_ja["stt_available"] is True
+    assert cap_ja["fallback_locale"] in {"en-US", "fr-CA"}
+

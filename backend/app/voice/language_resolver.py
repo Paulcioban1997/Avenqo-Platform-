@@ -106,13 +106,31 @@ REGION_LANGUAGE_DATA: dict[str, dict[str, Any]] = {
         "name": "France",
         "default_primary": "fr-FR",
         "default_secondary": ["en-US"],
-        "subdivisions": {},
+        "subdivisions": {
+            "IDF": {
+                "name": "Île-de-France",
+                "primary": "fr-FR",
+                "secondary": ["en-US"],
+                "localities": {
+                    "paris": {"primary": "fr-FR", "secondary": ["en-US"]},
+                },
+            },
+        },
     },
     "RO": {
         "name": "România",
         "default_primary": "ro-RO",
         "default_secondary": ["en-US", "fr-FR", "hu-HU"],
         "subdivisions": {
+            "B": {
+                "name": "București",
+                "primary": "ro-RO",
+                "secondary": ["en-US", "fr-FR"],
+                "localities": {
+                    "bucuresti": {"primary": "ro-RO", "secondary": ["en-US", "fr-FR"]},
+                    "bucharest": {"primary": "ro-RO", "secondary": ["en-US", "fr-FR"]},
+                },
+            },
             "CJ": {
                 "name": "Cluj",
                 "primary": "ro-RO",
@@ -125,6 +143,14 @@ REGION_LANGUAGE_DATA: dict[str, dict[str, Any]] = {
         "default_primary": "es-ES",
         "default_secondary": ["en-US"],
         "subdivisions": {
+            "MD": {
+                "name": "Madrid",
+                "primary": "es-ES",
+                "secondary": ["en-US"],
+                "localities": {
+                    "madrid": {"primary": "es-ES", "secondary": ["en-US"]},
+                },
+            },
             "CT": {
                 "name": "Cataluña",
                 "primary": "es-ES",
