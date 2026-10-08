@@ -119,13 +119,17 @@ class TenantSalesService:
             if bounds["comparison_start"] is not None
             else None
         )
-        current["revenue_change_percent"] = self._change(
-            float(current["revenue"]),
-            float(previous["revenue"]) if previous is not None else None,
+        # An uncovered reporting period has unknown values, not zero sales.
+        # Preserve None instead of coercing it into a number or crashing.
+        current["data_covered"] = current_result.get("data_covered", True)
+        current["coverage_message"] = current_result.get("coverage_message")
+        current["revenue_change_percent"] = (
+            self._change(current["revenue"], previous["revenue"] if previous else None)
+            if current["revenue"] is not None else None
         )
-        current["orders_change_percent"] = self._change(
-            int(current["orders"]),
-            int(previous["orders"]) if previous is not None else None,
+        current["orders_change_percent"] = (
+            self._change(current["orders"], previous["orders"] if previous else None)
+            if current["orders"] is not None else None
         )
         current["previous_revenue"] = previous["revenue"] if previous is not None else None
         current["previous_orders"] = previous["orders"] if previous is not None else None
@@ -139,8 +143,14 @@ class TenantSalesService:
             previous_value = previous_values.get(metric["metric_id"])
             metric_value = metric["value"]
             metric["previous_value"] = previous_value
-            metric["absolute_change"] = metric_value - previous_value if previous_value is not None else None
-            metric["change_percent"] = self._change(metric_value, previous_value) if previous_value is not None else None
+            metric["absolute_change"] = (
+                metric_value - previous_value
+                if metric_value is not None and previous_value is not None else None
+            )
+            metric["change_percent"] = (
+                self._change(metric_value, previous_value)
+                if metric_value is not None and previous_value is not None else None
+            )
             structured_metrics.append(metric)
 
         trend = compute_sales_trend(
