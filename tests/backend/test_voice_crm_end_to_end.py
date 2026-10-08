@@ -171,9 +171,9 @@ async def test_tool_scope_for_voice_call_never_drops_tools_when_agent_none(tmp_p
 
     service = CentralAIService(
         registry=asst_reg,
-        chat_service=MockChat(),
-        context_builder=None,
-        usage_service=None,
+        chat_service=cast(Any, MockChat()),
+        context_builder=cast(Any, None),
+        usage_service=cast(Any, None),
     )
 
     # Cas 1 : Énoncé standard sans mot-clé CRM (« Allô, est-ce que vous avez fini ? »)
