@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -161,7 +162,7 @@ async def test_tool_scope_for_voice_call_never_drops_tools_when_agent_none(tmp_p
     class _FakePredictionService:
         pass
 
-    tool_reg = build_business_tool_registry(db, _FakeIngestion(), _FakePredictionService())
+    tool_reg = build_business_tool_registry(db, cast(Any, _FakeIngestion()), cast(Any, _FakePredictionService()))
     asst_reg = build_default_assistant_registry(tool_reg)
 
     # Simuler le service Central AI
