@@ -70,7 +70,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0045_voice_optional_phone_number"
+    assert current == "0046_voice_personalization_customization"
     number_columns = {column["name"] for column in inspector.get_columns("voice_phone_numbers")}
     assert {"provider_connection_id", "provider_order_id", "upfront_cost"}.issubset(number_columns)
     configuration_columns = {column["name"]: column for column in inspector.get_columns("voice_business_configs")}
@@ -128,7 +128,7 @@ def test_sandbox_membership_revision_upgrades_to_current_head(temp_db_url: str) 
     engine = create_engine(temp_db_url)
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0045_voice_optional_phone_number"
+    assert current == "0046_voice_personalization_customization"
     assert "company_memberships" in inspect(engine).get_table_names()
 
 
@@ -141,7 +141,7 @@ def test_current_production_head_upgrades_through_compatibility_merge(temp_db_ur
     engine = create_engine(temp_db_url)
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0045_voice_optional_phone_number"
+    assert current == "0046_voice_personalization_customization"
 
 
 def test_sandbox_schema_created_from_models_upgrades_idempotently(temp_db_url: str) -> None:
@@ -156,7 +156,7 @@ def test_sandbox_schema_created_from_models_upgrades_idempotently(temp_db_url: s
 
     with engine.connect() as connection:
         current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0045_voice_optional_phone_number"
+    assert current == "0046_voice_personalization_customization"
 
 
 def test_fresh_database_has_audit_log_indexes_after_upgrade(temp_db_url: str) -> None:
