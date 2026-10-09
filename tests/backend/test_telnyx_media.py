@@ -2296,11 +2296,11 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
                 while True:
                     socket.receive_json()
 
-    # The final farewell is handled by the Telnyx hangup path,
-    # not dispatched to Central AI. The nine preceding turns must be preserved.
+    # Final goodbye is handled by Telnyx hangup, not Central AI.
+    # The preceding nine turns must all be processed in order.
     assert captured_turns == ten_turn_phrases[:-1]
 
-    # Verify conversation continuity for turns sent to Central AI.
+    # Verify continuity for all turns dispatched to Central AI.
     assert len(captured_conversations) == len(ten_turn_phrases) - 1
     first_conv = captured_conversations[0]
     assert all(c == first_conv for c in captured_conversations)
