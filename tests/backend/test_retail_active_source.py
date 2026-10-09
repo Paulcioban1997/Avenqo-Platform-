@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -107,7 +107,7 @@ def _prepared(company, dataset, prefix, amount):
         },
         rows=(
             {
-                "date": datetime.now(timezone.utc).date().isoformat(),
+                "date": (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat(),
                 "order": f"{prefix}-ORDER",
                 "customer": f"{prefix}-CUSTOMER",
                 "product": f"{prefix}-PRODUCT",
