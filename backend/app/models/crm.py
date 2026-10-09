@@ -536,6 +536,15 @@ class CRMCalendarConnection(TimestampMixin, Base):
     sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    @property
+    def error_message(self) -> str | None:
+        return self.sync_error
+
+    @error_message.setter
+    def error_message(self, value: str | None) -> None:
+        self.sync_error = value
+
+
 
 # --- Journal d'Audit d'Activité CRM ---
 

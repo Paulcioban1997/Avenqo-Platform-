@@ -66,6 +66,12 @@ class VoiceBusinessConfig(TimestampMixin, Base):
     retell_sip_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
     voice_api_key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     voice_api_key_last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    voice_id: Mapped[str] = mapped_column(String(64), nullable=False, default="alloy")
+    voice_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="openai")
+    speech_speed: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    personality_tone: Mapped[str] = mapped_column(String(32), nullable=False, default="professionnel")
+    custom_pronunciation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    farewell_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 

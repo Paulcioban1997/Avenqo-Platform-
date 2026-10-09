@@ -495,8 +495,8 @@ class CreateAppointmentTool(CRMAITool):
         apt, err = await self._crm.create_appointment(
             context.tenant.company_id, apt_data, actor_name="IA Copilot"
         )
-        if err:
-            return ToolResult(success=False, data={"error": err})
+        if err or apt is None:
+            return ToolResult(success=False, data={"error": err or "Échec de création du rendez-vous."})
 
         return ToolResult(
             success=True,
@@ -554,8 +554,8 @@ class UpdateAppointmentTool(CRMAITool):
         apt, err = await self._crm.update_appointment(
             context.tenant.company_id, aid, patch_data, actor_name="IA Copilot"
         )
-        if err:
-            return ToolResult(success=False, data={"error": err})
+        if err or apt is None:
+            return ToolResult(success=False, data={"error": err or "Rendez-vous introuvable."})
 
         return ToolResult(
             success=True,

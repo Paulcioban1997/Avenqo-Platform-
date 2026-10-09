@@ -205,7 +205,7 @@ class ShopifyConnector(CommerceConnector):
                 }
             }
         """
-    _WEBHOOK_TOPICS = (
+    _WEBHOOK_TOPICS: tuple[str, ...] = (
         "ORDERS_CREATE",
         "ORDERS_UPDATED",
         "ORDERS_DELETE",
@@ -249,6 +249,7 @@ class ShopifyConnector(CommerceConnector):
         self._sleep = sleep
         self._max_retries = max_retries
         self._base_delay_seconds = base_delay_seconds
+        self._WEBHOOK_TOPICS: tuple[str, ...] = self._WEBHOOK_TOPICS
 
     @staticmethod
     def normalize_shop_domain(value: str) -> str:

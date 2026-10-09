@@ -29,6 +29,12 @@ class VoiceConfigRequest(BaseModel):
     preferred_language: str = Field(default="fr", min_length=2, max_length=16)
     retell_agent_id: str | None = Field(default=None, min_length=1, max_length=128)
     retell_sip_uri: str | None = Field(default=None, pattern=r"^sips?:[^\s]+$")
+    voice_id: str = Field(default="alloy", min_length=1, max_length=64)
+    voice_provider: str = Field(default="openai", min_length=1, max_length=32)
+    speech_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    personality_tone: str = Field(default="professionnel", min_length=1, max_length=64)
+    custom_pronunciation: str | None = Field(default=None, max_length=255)
+    farewell_message: str | None = Field(default=None, max_length=1000)
     enabled: bool = False
 
     @model_validator(mode="after")
@@ -76,6 +82,12 @@ class VoiceConfigResponse(BaseModel):
     retell_agent_id: str | None
     retell_sip_uri: str | None
     voice_api_key_last4: str
+    voice_id: str = "alloy"
+    voice_provider: str = "openai"
+    speech_speed: float = 1.0
+    personality_tone: str = "professionnel"
+    custom_pronunciation: str | None = None
+    farewell_message: str | None = None
     enabled: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -220,6 +232,27 @@ class TakeMessageArguments(BaseModel):
     caller_name: str = Field(min_length=1, max_length=255)
     caller_phone: str = Field(min_length=8, max_length=40)
     message: str = Field(min_length=1, max_length=4000)
+
+
+class VoiceCatalogItem(BaseModel):
+    id: str
+    name: str
+    provider: str
+    gender: str
+    style: str
+    style_label: str
+    description: str
+    sample_url: str | None = None
+    supported_languages: list[str]
+    latency_tier: str
+    quality_tier: str
+
+
+class VoicePreviewRequest(BaseModel):
+    voice_id: str = Field(default="alloy", min_length=1, max_length=64)
+    text: str | None = Field(default=None, max_length=500)
+    language: str | None = Field(default="fr", max_length=16)
+
 
 
 class RetellWebhookEnvelope(BaseModel):

@@ -15,7 +15,7 @@ from uuid import UUID
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from math import isfinite
 from httpx import HTTPStatusError, TimeoutException
 from sqlalchemy import func, select, text
@@ -73,6 +73,8 @@ from backend.app.schemas.voice import (
     VoiceConfigCreatedResponse,
     VoiceConfigRequest,
     VoiceConfigResponse,
+    VoiceCatalogItem,
+    VoicePreviewRequest,
     VoiceNumberProvisionRequest,
     VoiceNumberReleaseRequest,
     VoiceNumberAssignRequest,
@@ -536,6 +538,159 @@ def _config_response(config: VoiceBusinessConfig) -> VoiceConfigResponse:
 
 def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+VOICE_CATALOG_ITEMS = [
+    VoiceCatalogItem(
+        id="alloy",
+        name="Alloy",
+        provider="openai",
+        gender="neutral",
+        style="professionnel",
+        style_label="Professionnel & Neutre",
+        description="Voix équilibrée, claire et polyvalente, adaptée à tous types d'entreprises.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="echo",
+        name="Echo",
+        provider="openai",
+        gender="male",
+        style="chaleureux",
+        style_label="Chaleureux & Posé",
+        description="Voix masculine profonde, rassurante et posée, idéale pour services financiers ou cliniques.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="shimmer",
+        name="Shimmer",
+        provider="openai",
+        gender="female",
+        style="accueillant",
+        style_label="Accueillant & Lumineux",
+        description="Voix féminine claire, souriante et engageante, parfaite pour l'accueil client et salons.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="ash",
+        name="Ash",
+        provider="openai",
+        gender="male",
+        style="dynamique",
+        style_label="Dynamique & Moderne",
+        description="Voix masculine naturelle, fluide et contemporaine, idéale pour les entreprises modernes.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="coral",
+        name="Coral",
+        provider="openai",
+        gender="female",
+        style="dynamique",
+        style_label="Énergique & Bienveillante",
+        description="Voix féminine vive et expressive avec une excellente clarté d'articulation.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="sage",
+        name="Sage",
+        provider="openai",
+        gender="female",
+        style="calme",
+        style_label="Calme & Précise",
+        description="Voix féminine sereine, attentive et posée, idéale pour les cabinets professionnels.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="ballad",
+        name="Ballad",
+        provider="openai",
+        gender="male",
+        style="elegant",
+        style_label="Élégant & Mélodieux",
+        description="Voix masculine sophistiquée, douce et chaleureuse, idéale pour les marques haut de gamme.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+    VoiceCatalogItem(
+        id="verse",
+        name="Verse",
+        provider="openai",
+        gender="neutral",
+        style="professionnel",
+        style_label="Articulé & Réactif",
+        description="Voix dynamique et rythmée, conçue pour des échanges rapides et précis.",
+        supported_languages=["fr", "en", "es", "de", "it", "pt"],
+        latency_tier="ultra_low",
+        quality_tier="premium_hd",
+    ),
+]
+
+
+@router.get("/voices", response_model=list[VoiceCatalogItem], dependencies=[Depends(require_active_subscription)])
+def get_voice_catalog(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> list[VoiceCatalogItem]:
+    _ensure_voice_access(db, identity.user.company_id)
+    return VOICE_CATALOG_ITEMS
+
+
+@router.post("/voices/preview", dependencies=[Depends(require_active_subscription)])
+async def preview_voice(
+    request: VoicePreviewRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    _ensure_voice_access(db, identity.user.company_id)
+    company = identity.user.company
+    lang = resolve_locale(request.language or company.preferred_language or "fr")
+    company_name = company.name if company else "Avenqo"
+    if request.text and request.text.strip():
+        text_to_speak = request.text.strip()
+    else:
+        if lang.startswith("fr"):
+            text_to_speak = f"Bonjour, vous êtes bien chez {company_name}. Comment puis-je vous aider aujourd'hui ?"
+        elif lang.startswith("es"):
+            text_to_speak = f"Hola, bienvenido a {company_name}. ¿Cómo puedo ayudarle hoy?"
+        else:
+            text_to_speak = f"Hello, welcome to {company_name}. How can I help you today?"
+
+    if settings.openai_api_key:
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            standard_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+            tts_voice = request.voice_id if request.voice_id in standard_voices else "alloy"
+            audio_response = await client.audio.speech.create(
+                model="tts-1",
+                voice=tts_voice,
+                input=text_to_speak,
+            )
+            audio_bytes = audio_response.content
+            return Response(content=audio_bytes, media_type="audio/mpeg")
+        except Exception as exc:
+            logging.getLogger("avenqo.voice").warning("TTS audio generation error during preview: %s", exc)
+
+    silent_mp3 = (
+        b"\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    ) * 10
+    return Response(content=silent_mp3, media_type="audio/mpeg")
 
 
 @router.get("/status", dependencies=[Depends(require_active_subscription)])

@@ -510,7 +510,7 @@ async def test_shopify_webhook_registration_reports_user_errors_safely(caplog) -
         )
 
     connector, client = _connector(handler)
-    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE",)
+    setattr(connector, "_WEBHOOK_TOPICS", ("ORDERS_CREATE",))
     context = ConnectorSyncContext(
         tenant_id=uuid4(),
         connection_id=uuid4(),
@@ -754,7 +754,7 @@ async def test_shopify_partial_webhook_failure_retries_without_duplicates() -> N
         )
 
     connector, client = _connector(handler)
-    connector._WEBHOOK_TOPICS = ("ORDERS_CREATE", "PRODUCTS_CREATE")
+    setattr(connector, "_WEBHOOK_TOPICS", ("ORDERS_CREATE", "PRODUCTS_CREATE"))
     context = ConnectorSyncContext(
         tenant_id=uuid4(),
         connection_id=uuid4(),

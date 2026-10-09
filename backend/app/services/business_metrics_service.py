@@ -112,6 +112,10 @@ class BusinessMetricsService:
                 "comparison_end": None,
             }
         if key == "custom":
+            if date_from is None and date_to is not None:
+                date_from = date_to
+            elif date_to is None and date_from is not None:
+                date_to = date_from
             if date_from is None or date_to is None or date_from > date_to:
                 raise ValueError("A valid custom date range is required")
             start_local = datetime.combine(date_from, midnight, business_zone)

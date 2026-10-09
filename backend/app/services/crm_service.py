@@ -1023,7 +1023,7 @@ class CRMService:
             return "not_configured", None
 
         if conn.sync_status == "error":
-            return "failed", f"Le calendrier Google est en erreur ({conn.error_message or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
+            return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
 
         settings = get_settings()
         try:
@@ -1078,16 +1078,18 @@ class CRMService:
                             if hasattr(self._cipher, "encrypt"):
                                 conn.encrypted_credentials = self._cipher.encrypt(creds)
                             conn.sync_status = "connected"
-                            conn.error_message = None
+                            conn.sync_error = None
                             self._session.commit()
                             return await _perform_op(creds)
                         except Exception as refresh_err:
                             conn.sync_status = "error"
-                            conn.error_message = "Google token expired or revoked. Please reconnect."
+                            conn.sync_error = "Google token expired or revoked. Please reconnect."
                             self._session.commit()
                             return "failed", f"Synchronisation Google Calendar impossible (token expiré): {refresh_err}"
                     raise
+            return "skipped", None
         except Exception as exc:
+
             logger.warning(
                 "CRM calendar synchronization failed",
                 extra={"company_id": str(company_id), "appointment_id": str(appointment.id), "action": action},

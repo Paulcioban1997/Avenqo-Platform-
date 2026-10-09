@@ -608,6 +608,7 @@ class TelnyxMediaBridge:
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
         consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
+        hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
     ) -> None:
         self.socket = socket
@@ -624,6 +625,8 @@ class TelnyxMediaBridge:
         self.begin_pin: Callable[[str], Awaitable[dict]] | None = begin_pin
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
+        self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
+        self._stop_event = asyncio.Event()
         self.codec = TelnyxAudioCodec()
         self.reorder_buffer = TelnyxAudioReorderBuffer(max_buffer_size=10, max_gap_tolerance=2)
         self.stream_id = None
@@ -775,6 +778,14 @@ class TelnyxMediaBridge:
                         self._pending_speech.pop()
                     if turn_ledger is not None:
                         turn_ledger.settle(item_id)
+                if result.get("hangup"):
+                    while not self._output.empty():
+                        await asyncio.sleep(0.06)
+                    await asyncio.sleep(0.5)
+                    if self.hangup_call is not None:
+                        with suppress(Exception):
+                            await self.hangup_call()
+                    self._stop_event.set()
         finally:
             if turn_ledger is not None and not requested_audio:
                 turn_ledger.settle(item_id)
@@ -1065,7 +1076,14 @@ class TelnyxMediaBridge:
                 self.telemetry["final_state"] = "GREETING"
                 await self._speak_system("inbound-greeting", self.initial_answer)
             reader = asyncio.create_task(self._read_audio())
-            self._background = [reader, asyncio.create_task(self._provider_events()), asyncio.create_task(self._write_audio()), asyncio.create_task(self._execute_turns()), asyncio.create_task(self._periodic_auth())]
+            self._background = [
+                reader,
+                asyncio.create_task(self._provider_events()),
+                asyncio.create_task(self._write_audio()),
+                asyncio.create_task(self._execute_turns()),
+                asyncio.create_task(self._periodic_auth()),
+                asyncio.create_task(self._stop_event.wait()),
+            ]
             if self.poll_pin is not None:
                 self._background.append(asyncio.create_task(self._monitor_pin()))
             done, _pending = await asyncio.wait(self._background, return_when=asyncio.FIRST_COMPLETED)
@@ -1166,8 +1184,9 @@ async def telnyx_media_socket(
     if isinstance(saved_lang_state, dict) and saved_lang_state.get("active_locale"):
         call_lang_session.active_locale = resolve_locale(saved_lang_state["active_locale"])
         call_lang_session.last_confirmed_locale = call_lang_session.active_locale
+    selected_voice = getattr(config, "voice_id", None) or settings.voice_tts_voice or "alloy"
     adapter = OpenAIRealtimeAudioAdapter(OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model,
-        settings.voice_tts_model, settings.voice_tts_voice), settings.voice_realtime_model)
+        settings.voice_tts_model, selected_voice), settings.voice_realtime_model)
     bridge: TelnyxMediaBridge
 
     async def authorize() -> None:
@@ -1256,15 +1275,6 @@ async def telnyx_media_socket(
                         .order_by(User.created_at.asc())
                     )
                 if fallback_user is not None:
-                    owner_membership = CompanyMembership(
-                        company_id=current_company.id,
-                        user_id=fallback_user.id,
-                        role=fallback_user.role if fallback_user.role in [UserRole.OWNER, UserRole.ADMIN] else UserRole.ADMIN,
-                        is_active=True,
-                    )
-                    db.add(owner_membership)
-                    db.commit()
-                    db.refresh(owner_membership)
                     current_user = fallback_user
                 else:
                     return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
@@ -1324,6 +1334,43 @@ async def telnyx_media_socket(
             )
             bridge.use_ledger(ledger)
 
+        def is_hangup_request(text: str) -> bool:
+            normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+            patterns = [
+                r"\b(au revoir|bonne journee|bonne soiree|a bientot|a la prochaine)\b",
+                r"\b(vous pouvez raccrocher|termine l'appel|tu peux raccrocher|raccroche|raccrochez)\b",
+                r"\b(c'est tout|ce sera tout)\b",
+                r"\b(goodbye|bye bye|bye-bye|\bbye\b|have a great day|have a good day|have a nice day)\b",
+                r"\b(you can hang up|hang up now|end the call|hang up the call)\b",
+                r"\b(that's all|that is all|that'll be all|that will be all|that's it|that is it)\b",
+                r"\b(adios|hasta luego|chao|puedes colgar)\b",
+                r"\b(auf wiedersehen|tschuss)\b",
+                r"\b(arrivederci|puoi riagganciare)\b",
+            ]
+            return any(re.search(p, normalized) for p in patterns)
+
+        if is_hangup_request(transcript):
+            french = resolve_locale(current_call.locale or locale).startswith("fr")
+            has_unconfirmed = bool(
+                (current_call.source_context or {}).get("public_appointment_request")
+                and not (current_call.source_context or {}).get("appointment_confirmed")
+            )
+            farewell = getattr(current_config, "farewell_message", None)
+            if not farewell:
+                if has_unconfirmed:
+                    farewell = (
+                        "Veuillez noter que votre demande de réservation n'a pas été confirmée et aucun rendez-vous n'a été créé. Au revoir et bonne journée !"
+                        if french
+                        else "Please note that your booking request was not confirmed and no appointment was created. Goodbye and have a great day!"
+                    )
+                else:
+                    farewell = (
+                        "Merci de votre appel. Au revoir et bonne journée !"
+                        if french
+                        else "Thank you for calling. Goodbye and have a great day!"
+                    )
+            return {"status": "success", "answer": farewell, "hangup": True}
+
         attempts = []
         try:
             result = await service.execute(
@@ -1345,7 +1392,8 @@ async def telnyx_media_socket(
                 attempt_sink=attempts,
             )
             ledger.attribute(item_id, result.selected_agent, result.selected_agent)
-            return {"status": result.status, "answer": result.answer}
+            hangup_detected = is_hangup_request(transcript) or bool(result.answer and is_hangup_request(result.answer))
+            return {"status": result.status, "answer": result.answer, "hangup": hangup_detected}
         except Exception as exc:
             if principal_id is None and public_conversation is not None:
                 logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
@@ -1369,12 +1417,23 @@ async def telnyx_media_socket(
             return None
         return public_conversation.consume_pending_auth_query()
 
+    async def hangup_call() -> None:
+        c_call, _cfg, _comp = media_transport_context(db, settings, call_id)
+        if c_call.telnyx_call_control_id:
+            with suppress(Exception):
+                await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
+        if c_call.status != "completed":
+            c_call.status = "completed"
+            c_call.ended_at = datetime.now(timezone.utc)
+            db.commit()
+
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=settings.voice_realtime_model,
         initial_answer=public_conversation.greeting() if public_conversation is not None else None,
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
+        hangup_call=hangup_call,
         max_output_queue=2000)
     await websocket.accept()
     try:

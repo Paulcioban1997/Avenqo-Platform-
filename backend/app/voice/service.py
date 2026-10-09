@@ -213,6 +213,12 @@ class VoiceOrchestrator:
             "retell_agent_id": config.retell_agent_id,
             "retell_sip_uri": config.retell_sip_uri,
             "voice_api_key_last4": config.voice_api_key_last4,
+            "voice_id": getattr(config, "voice_id", "alloy") or "alloy",
+            "voice_provider": getattr(config, "voice_provider", "openai") or "openai",
+            "speech_speed": getattr(config, "speech_speed", 1.0) or 1.0,
+            "personality_tone": getattr(config, "personality_tone", "professionnel") or "professionnel",
+            "custom_pronunciation": getattr(config, "custom_pronunciation", None),
+            "farewell_message": getattr(config, "farewell_message", None),
             "enabled": config.enabled,
         }
 
