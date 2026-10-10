@@ -138,12 +138,15 @@ def _backfill_stripe_invoices(
     provider: BillingProvider,
     settings: Settings,
     company_id: UUID,
-) -> None:
+) -> bool:
     try:
         sync_customer_invoices(db, provider, settings, company_id)
+        return True
     except Exception:
         # L'historique local reste disponible même si Stripe est momentanément indisponible.
         logger.exception("Stripe invoice backfill failed for tenant %s", company_id)
+        db.rollback()
+        return False
 
 
 @router.get("/plans", response_model=list[PlanResponse])
@@ -298,7 +301,7 @@ def invoice_history(
     fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
 ) -> InvoiceHistoryResponse:
     # Le frontend Avenqo charge cet endpoint, donc le backfill doit être fait ici aussi.
-    _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
+    synchronized = _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
     items, total = service.get_company_invoices(
         identity.user.company_id,
         start=start,
@@ -313,6 +316,7 @@ def invoice_history(
 
     bounded_limit = min(max(limit, 1), 200)
     return InvoiceHistoryResponse(
+        synchronization_status="ready" if synchronized else "unavailable",
         items=[InvoiceResponse.model_validate(invoice) for invoice in items],
         total=total,
         offset=max(offset, 0),

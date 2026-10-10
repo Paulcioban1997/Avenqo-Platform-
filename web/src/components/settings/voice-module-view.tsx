@@ -54,7 +54,7 @@ interface Offer {
 interface NumberQuote { offer: Offer; quote_token: string; purchase_allowed: boolean; expires_in_seconds: number }
 
 export function VoiceModuleView() {
-  const { identity, sourceRevision } = useSession();
+  const { identity, sourceRevision, credits, creditError } = useSession();
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
@@ -211,11 +211,12 @@ export function VoiceModuleView() {
       <Link href="/settings" className="inline-flex items-center gap-2 text-sm"><Settings size={16} />{t.navigation.settings}</Link>
     </header>
     {error && <p role="alert" className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300"><ShieldAlert size={16} />{company.connectionsGenericError}</p>}
+    {active && (credits.remaining === 0 || !["active", "trialing"].includes(active.subscription_status)) && <div role="alert" className="rounded-xl border border-amber-400 bg-amber-500/10 p-4 text-sm"><p>{locale.startsWith("fr") ? (credits.remaining === 0 ? "Accueil téléphonique bloqué : votre solde de crédits IA est épuisé." : "Accueil téléphonique bloqué : votre abonnement est inactif.") : (credits.remaining === 0 ? "Phone assistant blocked: your AI credit balance is exhausted." : "Phone assistant blocked: your subscription is inactive.")}</p><p className="mt-2">{locale.startsWith("fr") ? "Solde disponible" : "Available balance"}: {creditError ? "—" : credits.remaining ?? "—"} · <Link href="/billing" className="underline">{t.navigation.billing}</Link></p></div>}
     {!active ? <p role="status">{error ? t.integrations.statusNeedsAttention : company.connectionsLoading}</p> : <>
       <section className="grid gap-4 border-y border-slate-200 py-4 text-sm sm:grid-cols-3 dark:border-white/10">
         <div><div className="text-slate-500">{t.navigation.billing}</div><div className="mt-1 font-semibold">{planName} · {active.subscription_status === 'active' ? billing.statusActive : active.subscription_status === 'trialing' ? billing.statusTrialing : billing.statusInactive}</div><div className="mt-1 flex items-center gap-1">{active.plan_compatible_modules?.includes('voice') && <Check size={14} />}{t.navigation.voiceAi}: {enabled ? billing.statusActive : billing.statusInactive}</div><Link className="mt-2 inline-block underline" href="/billing">{t.navigation.billing}</Link></div>
         <div><div className="text-slate-500">{health.phone}</div><div className="mt-1 font-mono">{currentStatus?.business_number ?? selectionCopy[0]}</div><div className="mt-1 text-xs">{[currentStatus?.country, currentStatus?.region, currentStatus?.locality].filter(Boolean).join(" · ")}</div></div>
-        <div><div className="text-slate-500">{health.credits}</div><div className="mt-1">{currentStatus?.voice_ai_credits_charged ?? t.common.insufficientData}</div><div className="mt-1 text-xs">{health.calls}: {currentStatus?.call_count ?? t.common.insufficientData} · {health.minutes}: {currentStatus?.call_minutes ?? t.common.insufficientData}</div></div>
+        <div><div className="text-slate-500">{locale.startsWith("fr") ? "Crédits IA disponibles" : "Available AI credits"}</div><div className="mt-1">{creditError ? t.common.insufficientData : credits.remaining ?? t.common.insufficientData}</div><div className="mt-1 text-xs">{health.calls}: {currentStatus?.call_count ?? t.common.insufficientData} · {health.minutes}: {currentStatus?.call_minutes ?? t.common.insufficientData}</div></div>
       </section>
       <section className="space-y-3 text-sm">
         <h2 className="font-semibold">{t.navigation.agentsAi}</h2>

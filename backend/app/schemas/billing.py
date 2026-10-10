@@ -137,6 +137,7 @@ class InvoiceResponse(BaseModel):
 
 
 class InvoiceHistoryResponse(BaseModel):
+    synchronization_status: str = "ready"
     items: list[InvoiceResponse]
     total: int
     offset: int

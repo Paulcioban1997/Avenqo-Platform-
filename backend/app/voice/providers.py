@@ -118,6 +118,14 @@ class TelnyxClient:
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
 
+    async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
+        french = locale.startswith("fr")
+        await self._request("POST", f"/calls/{call_control_id}/actions/speak", json={
+            "command_id": command_id, "payload_type": "text", "service_level": "basic",
+            "voice": "female", "language": "fr-CA" if french else "en-US",
+            "payload": "L’assistant téléphonique est temporairement indisponible. Veuillez contacter l’entreprise autrement. Merci." if french else "The phone assistant is temporarily unavailable. Please contact the business another way. Thank you.",
+        })
+
     async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
         parsed = urlsplit(stream_url)
         if parsed.scheme != "wss" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:

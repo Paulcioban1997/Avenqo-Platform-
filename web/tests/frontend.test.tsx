@@ -979,3 +979,8 @@ it("shows a Dashboard backend failure instead of a valid empty dataset", async (
   expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard service unavailable");
   expect(screen.queryByText("Mon espace")).not.toBeInTheDocument();
 });
+
+
+it("includes purchased credits in the common balance even when the monthly allowance is exhausted", () => {
+  expect(creditBalanceViewModel({ monthly_included: 6500, monthly_remaining: 0, monthly_used: 6500, purchased_remaining: 6500, total_remaining: 6500 })).toEqual({ remaining: 6500, limit: 13000, used: 6500 });
+});

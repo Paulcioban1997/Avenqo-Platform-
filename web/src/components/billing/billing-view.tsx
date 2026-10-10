@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   CreditCard,
   ExternalLink,
@@ -27,6 +27,7 @@ import {
   Shield,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api-request";
+import { useSession } from "@/lib/session-context";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -127,6 +128,8 @@ interface InvoiceItem {
 
 export function BillingView() {
   const { locale } = useLocale();
+  const { identity, creditBalance } = useSession();
+  const requestVersion = useRef(0);
   const t = getAppTranslations(locale);
   const companyTranslations = getApplicationCatalog(locale).company;
   const billingTranslations = getApplicationCatalog(locale).phase4e;
@@ -147,7 +150,8 @@ export function BillingView() {
     stripe_subscription_linked: false,
   });
 
-  const [credits, setCredits] = useState<AICreditBalance>({});
+  const [loadedCredits, setCredits] = useState<AICreditBalance>({});
+  const credits: AICreditBalance = creditBalance ?? loadedCredits;
 
   const [breakdownPeriod, setBreakdownPeriod] = useState<string>("billing_period");
   const [breakdownItems, setBreakdownItems] = useState<AICreditBreakdownItem[]>([]);
@@ -180,6 +184,7 @@ export function BillingView() {
   const canManageBilling = ["OWNER"].includes(userRole?.toUpperCase());
 
   const loadData = useCallback(async () => {
+    const version = requestVersion.current;
     setLoading(true);
     setLoadError(false);
     setActionError(null);
@@ -193,6 +198,7 @@ export function BillingView() {
         apiFetch("/api/v1/modules/entitlements", { headers }).catch(() => null),
         apiFetch("/api/v1/auth/me", { headers }).catch(() => null),
       ]);
+      if (version !== requestVersion.current) return;
 
       if (!subRes?.ok || !credRes?.ok || !userRes?.ok) throw new Error("unavailable");
       if (!packRes?.ok || !invRes?.ok || !entRes?.ok) setActionError(companyTranslations.billingUnavailable);
@@ -212,6 +218,7 @@ export function BillingView() {
       }
       if (invRes && invRes.ok) {
         const invData = await invRes.json();
+        if (invData.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         if (invData && Array.isArray(invData.items)) {
           setInvoices(invData.items);
         }
@@ -230,31 +237,32 @@ export function BillingView() {
         }
       }
     } catch {
+      if (version !== requestVersion.current) return;
       setLoadError(true);
       setCreditPacks([]);
       setUserRole("");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [companyTranslations.billingUnavailable]);
 
   const loadBreakdown = useCallback(async (period: string) => {
     try {
       const headers = getAuthHeaders();
-      const res = await fetch(`/api/v1/billing/ai-credits/breakdown?period=${period}`, { headers });
+      const res = await apiFetch(`/api/v1/billing/ai-credits/breakdown?period=${encodeURIComponent(period)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setBreakdownItems(data.items || []);
         setTotalBreakdownUsed(data.total_used || 0);
       }
-    } catch {}
-  }, []);
+    } catch { setActionError(companyTranslations.billingUnavailable); }
+  }, [companyTranslations.billingUnavailable]);
 
   const loadHistory = useCallback(async (page: number, period: string) => {
     try {
       const headers = getAuthHeaders();
       const offset = page * historyPageSize;
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/v1/billing/ai-credits/history?offset=${offset}&limit=${historyPageSize}&period=${encodeURIComponent(period)}`,
         { headers }
       );
@@ -263,35 +271,53 @@ export function BillingView() {
         setHistoryItems(data.items || []);
         setHistoryTotal(data.total || 0);
       }
-    } catch {}
-  }, [historyPageSize]);
+    } catch { setActionError(companyTranslations.billingUnavailable); }
+  }, [historyPageSize, companyTranslations.billingUnavailable]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    requestVersion.current++;
+    const version = requestVersion.current;
+    queueMicrotask(() => {
+      if (version !== requestVersion.current) return;
+      setCredits({}); setInvoices([]); setEntitlements(null);
+      void loadData();
+    });
+    return () => { requestVersion.current++; };
+  }, [loadData, identity?.company.id]);
 
   useEffect(() => {
-    const refreshCreditBalance = async () => {
+    const controller = new AbortController();
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
       try {
-        const response = await apiFetch("/api/v1/billing/ai-credits", {
-          headers: getAuthHeaders(),
-        });
-        if (response.ok) setCredits(await response.json());
+        const [response, subscriptionResponse] = await Promise.all([
+          apiFetch("/api/v1/billing/invoices/history?offset=0&limit=50", { signal: controller.signal }),
+          apiFetch("/api/v1/billing/subscription", { signal: controller.signal }),
+        ]);
+        const [payload, subscriptionPayload] = await Promise.all([response.json(), subscriptionResponse.json()]);
+        if (!controller.signal.aborted) {
+          setInvoices(payload.items); setSubscription(subscriptionPayload);
+          if (payload.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
+        }
       } catch {
-        // Keep the last backend balance while temporarily offline.
-      }
+        if (!controller.signal.aborted) setActionError(companyTranslations.billingUnavailable);
+      } finally { pending = false; }
     };
-    window.addEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
-    return () => window.removeEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
-  }, []);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 30_000);
+    return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [identity?.company.id, companyTranslations.billingUnavailable]);
 
   useEffect(() => {
-    loadBreakdown(breakdownPeriod);
-  }, [loadBreakdown, breakdownPeriod]);
+    queueMicrotask(() => { void loadBreakdown(breakdownPeriod); });
+  }, [loadBreakdown, breakdownPeriod, creditBalance]);
 
   useEffect(() => {
-    loadHistory(historyPage, breakdownPeriod);
-  }, [loadHistory, historyPage, breakdownPeriod]);
+    queueMicrotask(() => { void loadHistory(historyPage, breakdownPeriod); });
+  }, [loadHistory, historyPage, breakdownPeriod, creditBalance]);
 
   const handleRefreshBalance = async () => {
     setRefreshing(true);
@@ -341,6 +367,7 @@ export function BillingView() {
       setActionError(companyTranslations.billingUnavailable);
       return;
     }
+    if (!subscription.stripe_subscription_linked) { void handleSubscribeToBase(); return; }
     const code = (subscription.plan_code || "").toLowerCase();
     if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
@@ -360,7 +387,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }
@@ -381,7 +408,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }
@@ -436,7 +463,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }

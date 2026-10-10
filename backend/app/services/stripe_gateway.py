@@ -73,7 +73,7 @@ class StripeGateway:
             line_items=[{"price": price_id, "quantity": 1}],
             client_reference_id=company_id,
             subscription_data={"metadata": {"avenqo_company_id": company_id}},
-            adaptive_pricing={"enabled": True},
+            adaptive_pricing={"enabled": False},
             success_url=success_url,
             cancel_url=cancel_url,
             api_key=self._api_key,

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { apiFetch, ApiRequestError } from "./api-request";
-import { creditBalanceViewModel, type CreditBalanceViewModel } from "./credit-balance";
+import { creditBalanceViewModel, type CreditBalanceViewModel, type CreditBalancePayload } from "./credit-balance";
 
 export interface OrganizationItem {
   id: string; name: string; slug: string; subscription_plan: string; role: string; is_current: boolean;
@@ -18,6 +18,7 @@ interface SessionState {
   error: ApiRequestError | null;
   loading: boolean;
   credits: CreditBalanceViewModel;
+  creditBalance: CreditBalancePayload | null;
   creditError: ApiRequestError | null;
   activeDataSources: string[];
   sourceError: ApiRequestError | null;
@@ -40,6 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState<CreditBalanceViewModel>(unknownCredits);
+  const [creditBalance, setCreditBalance] = useState<CreditBalancePayload | null>(null);
   const [creditError, setCreditError] = useState<ApiRequestError | null>(null);
   const [activeDataSources, setActiveDataSources] = useState<string[]>([]);
   const [sourceError, setSourceError] = useState<ApiRequestError | null>(null);
@@ -65,6 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const payload = await response.json();
         if (version !== revision.current) return;
         setCredits(creditBalanceViewModel(payload));
+        setCreditBalance(payload);
         setCreditError(null);
       } catch (error) {
         if (version === revision.current) setCreditError(asError(error));
@@ -84,7 +87,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (version !== revision.current) return;
         if (!data.user?.id || !data.company?.id || !data.company.name) throw new ApiRequestError("tenant_unresolved");
         if (tenantId.current !== data.company.id) {
-          setCredits(unknownCredits); setActiveDataSources([]); setSourceContext(null);
+          setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null);
           tenantId.current = data.company.id;
         }
         setIdentity(data); setError(null);
@@ -133,25 +136,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!protectedPage) return;
-    const expired = () => { revision.current++; setIdentity(null); setCredits(unknownCredits); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
+    const expired = () => { revision.current++; tenantId.current = null; setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
     const changed = () => {
       revision.current++; tenantId.current = null;
-      setIdentity(null); setCredits(unknownCredits); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(null);
+      setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(null);
       setSourceContext(null); setSourceRevision(value => value + 1);
       const previous = pending.current;
       if (previous) void previous.finally(() => { void reload(); });
       else void reload();
     };
-    const creditUpdated = () => { void refreshCredits(); };
+    const creditUpdated = () => { if (document.visibilityState !== "hidden" && tenantId.current) void refreshCredits(); };
     const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("avenqo-session") : null;
     if (channel) channel.onmessage = changed;
     window.addEventListener("avenqo:session-expired", expired);
     window.addEventListener("avenqo:ai-credits-updated", creditUpdated);
-    const timer = window.setInterval(creditUpdated, 30_000);
-    return () => { channel?.close(); window.clearInterval(timer); window.removeEventListener("avenqo:session-expired", expired); window.removeEventListener("avenqo:ai-credits-updated", creditUpdated); };
+    window.addEventListener("focus", creditUpdated);
+    document.addEventListener("visibilitychange", creditUpdated);
+    const timer = window.setInterval(creditUpdated, 5_000);
+    return () => { channel?.close(); window.clearInterval(timer); window.removeEventListener("focus", creditUpdated); document.removeEventListener("visibilitychange", creditUpdated); window.removeEventListener("avenqo:session-expired", expired); window.removeEventListener("avenqo:ai-credits-updated", creditUpdated); };
   }, [protectedPage, reload, refreshCredits]);
 
-  return <SessionContext.Provider value={{ identity, error, loading, credits, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, selectSource }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ identity, error, loading, credits, creditBalance, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, selectSource }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

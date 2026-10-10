@@ -45,6 +45,8 @@ from backend.app.models import (
     VoiceCallerCredential,
 )
 from backend.app.ai.chat.conversation_service import ConversationService
+from backend.app.ai.usage.service import AIUsageService
+from backend.app.ai.usage.policy import AIQuotaPolicy
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.central_ai import get_central_ai_service
@@ -683,6 +685,7 @@ async def preview_voice(
                 model=settings.voice_tts_model or "gpt-4o-mini-tts",
                 voice=request.voice_id,
                 input=text_to_speak,
+                response_format="mp3",
             )
             audio_bytes = audio_response.content
             if not audio_bytes:
@@ -1344,7 +1347,7 @@ async def telnyx_webhook(
     data, call_payload = _call_event_data(envelope)
     event_type = str(data.get("event_type") or "")
     call_control_id = str(call_payload.get("call_control_id") or "")
-    if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup", "call.gather.ended"}:
+    if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup", "call.gather.ended", "call.speak.ended"}:
         return {"received": True, "handled": False}
     event_id = str(data.get("id") or "")
     if not event_id or len(event_id) > 255 or not call_control_id or len(call_control_id) > 255:
@@ -1428,12 +1431,31 @@ async def telnyx_webhook(
         raise HTTPException(status_code=503, detail="Webhook receipt is temporarily unavailable") from None
     if event_type == "call.hangup":
         call.ended_at = call.ended_at or datetime.now(timezone.utc)
-        if call.status not in {"appointment_booked", "appointment_cancelled", "transferred"}:
+        if call.status not in {"appointment_booked", "appointment_cancelled", "transferred", "blocked_credits", "blocked_announcement"}:
             call.status = "ended"
         for session in db.scalars(select(VoiceAuthSession).where(VoiceAuthSession.call_id == call.id, VoiceAuthSession.revoked_at.is_(None))):
             session.revoked_at = datetime.now(timezone.utc)
         db.commit()
         return {"received": True}
+    if event_type == "call.speak.ended":
+        if call.status == "blocked_announcement" and call.ended_at is None:
+            await service.telnyx.hangup(call_control_id)
+            call.status = "blocked_credits"
+            call.ended_at = datetime.now(timezone.utc)
+            db.commit()
+        return {"received": True, "routed": False}
+    if event_type == "call.answered" and call.status == "blocked_credits" and call.ended_at is None:
+        call.status = "blocked_announcement"
+        db.commit()
+        command_id = str(UUID(hashlib.sha256(f"blocked:{call.id}".encode()).hexdigest()[:32]))
+        try:
+            await service.telnyx.speak_unavailable(call_control_id, command_id=command_id, locale=config.preferred_language)
+        except Exception:
+            await service.telnyx.hangup(call_control_id)
+            call.status = "blocked_credits"
+            call.ended_at = datetime.now(timezone.utc)
+            db.commit()
+        return {"received": True, "routed": False, "status": "blocked_credits"}
     if event_type == "call.gather.ended":
         if call.ended_at is not None or call.status not in {"routed", "in_progress"}:
             return {"received": True, "authenticated": False}
@@ -1545,6 +1567,24 @@ async def telnyx_webhook(
         return {"received": True}
     if event_type == "call.answered" and (call.ended_at is not None or call.status != "answering"):
         return {"received": True, "routed": False}
+    if event_type in {"call.initiated", "call.answered"}:
+        company = db.get(Company, config.company_id)
+        usage = AIUsageService(db, AIQuotaPolicy(settings), settings.avenqo_provider_cost_per_credit_usd,
+            settings.ai_credit_reservation_ttl_minutes)
+        balance = usage.get_credit_balance(config.company_id, company.subscription_plan if company else None)
+        if balance["total_remaining"] == 0:
+            call.status = "blocked_credits"
+            call.source_context = {**(call.source_context or {}), "access_block_reason": "INSUFFICIENT_AI_CREDITS"}
+            receipt.result = {**receipt.result, "status": "blocked_credits"}
+            db.commit()
+            command_id = str(UUID(hashlib.sha256(f"blocked-answer:{call.id}".encode()).hexdigest()[:32]))
+            if event_type == "call.initiated":
+                await service.telnyx.answer_call(call_control_id, command_id=command_id)
+            else:
+                await service.telnyx.hangup(call_control_id)
+                call.ended_at = datetime.now(timezone.utc)
+                db.commit()
+            return {"received": True, "routed": False, "status": "blocked_credits"}
     if not media_mode and not settings.retell_api_key:
         call.status = "awaiting_configuration"
         db.commit()

@@ -26,6 +26,7 @@ def test_preview_preserves_voice_and_model_and_fails_explicitly(tmp_path, monkey
         assert response.body == b"real-mocked-audio"
         assert speech.call_args.kwargs["voice"] == "ballad"
         assert speech.call_args.kwargs["model"] == "gpt-4o-mini-tts"
+        assert speech.call_args.kwargs["response_format"] == "mp3"
         speech.side_effect = RuntimeError("provider unavailable")
         with pytest.raises(HTTPException) as failure:
             asyncio.run(preview_voice(VoicePreviewRequest(), identity, db, settings))

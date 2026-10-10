@@ -96,11 +96,10 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setLoaded(false);
-    setSaveSuccess(false);
-    setCatalog([]);
-    setErrorMessage(null);
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setLoading(true); setLoaded(false); setSaveSuccess(false); setCatalog([]); setErrorMessage(null);
+    });
     async function loadData() {
       try {
         const [catalogRes, configRes] = await Promise.all([
@@ -160,6 +159,9 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
       }
 
       const blob = await response.blob();
+      if (!response.headers.get("Content-Type")?.startsWith("audio/") || blob.size === 0) {
+        throw new Error("Le service n’a pas retourné d’extrait audio valide. Réessayez.");
+      }
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;

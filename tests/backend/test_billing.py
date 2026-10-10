@@ -1250,7 +1250,7 @@ def test_stripe_subscription_checkout_uses_price_and_adaptive_pricing(
     assert url == "https://checkout.stripe.test/subscription"
     assert captured["mode"] == "subscription"
     assert captured["line_items"] == [{"price": "price_professional", "quantity": 1}]
-    assert captured["adaptive_pricing"] == {"enabled": True}
+    assert captured["adaptive_pricing"] == {"enabled": False}
     assert captured["subscription_data"] == {
         "metadata": {"avenqo_company_id": "company-1"},
     }
@@ -1474,3 +1474,14 @@ def test_invoice_email_uses_existing_transport_and_localized_stripe_values(
     assert "https://invoice.stripe.test/in_acme.pdf" in message["text_body"]
     assert "<p>" in message["html_body"]
     engine.dispose()
+
+
+def test_invoice_sync_failure_is_distinguished_from_an_empty_history(monkeypatch):
+    from unittest.mock import MagicMock
+    from backend.app.routers.billing import _backfill_stripe_invoices
+    db = MagicMock()
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+    monkeypatch.setattr("backend.app.routers.billing.sync_customer_invoices", unavailable)
+    assert _backfill_stripe_invoices(db, MagicMock(), get_settings(), __import__("uuid").uuid4()) is False
+    db.rollback.assert_called_once()

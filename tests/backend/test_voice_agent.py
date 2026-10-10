@@ -137,6 +137,9 @@ class _FakeTelnyx:
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         self.commands.append(("answer", call_control_id, command_id))
 
+    async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
+        self.commands.append(("speak_unavailable", call_control_id, command_id))
+
     async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         if self.fail_transfer:
             raise RuntimeError("test-secret-never-log")
@@ -1303,3 +1306,26 @@ def test_telnyx_provider_failure_is_generic_and_not_retried(signed_telnyx_webhoo
     assert env.send(answered).json()["duplicate"] is True
     call = env.session.scalar(select(VoiceCall))
     assert call.status == "routing_outcome_unknown"
+
+
+def test_exhausted_phone_announces_unavailable_without_starting_ai_and_handles_replays(signed_telnyx_webhook):
+    from backend.app.models import TenantAICreditBalance
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-key"
+    env.session.add(TenantAICreditBalance(company_id=env.company.id, monthly_period="2026-10", monthly_used=20000, purchased_balance=0))
+    env.session.commit()
+    initiated = env.event()
+    result = env.send(initiated)
+    assert result.status_code == 200 and result.json()["status"] == "blocked_credits"
+    assert len(env.service.telnyx.commands) == 1
+    assert env.send(initiated).json()["duplicate"] is True
+    answered = env.event("call.answered")
+    assert env.send(answered).json()["status"] == "blocked_credits"
+    assert env.service.telnyx.commands[-1][0] == "speak_unavailable"
+    assert env.send(answered).json()["duplicate"] is True
+    assert env.service.telnyx.media_streams == [] and env.service.telnyx.transfers == []
+    assert env.send(env.event("call.speak.ended")).status_code == 200
+    call = env.session.scalar(select(VoiceCall))
+    assert call.status == "blocked_credits" and call.ended_at is not None
+    assert call.authenticated_user_id is None
+    assert env.send(env.event("call.answered")).json()["routed"] is False
