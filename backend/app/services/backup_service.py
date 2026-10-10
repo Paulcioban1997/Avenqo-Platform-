@@ -381,7 +381,7 @@ class BackupService:
         else:  # postgresql
             connection, child_env = _postgres_subprocess_connection(target_database_url)
             result = subprocess.run(
-                ["psql", connection, "-f", str(db_path)],
+                ["psql", connection, "--set=ON_ERROR_STOP=1", "--single-transaction", "-f", str(db_path)],
                 env=child_env,
                 capture_output=True, text=True, timeout=1800, check=False,
             )

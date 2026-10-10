@@ -1,6 +1,6 @@
 # Incident GitGuardian 38085288 — procédure préparée
 
-État : ouvert. Aucun mot de passe PostgreSQL ou clé de chiffrement n’a été changé. Aucune base ni aucun volume n’a été supprimé, recréé ou réinitialisé. Aucun historique n’a été réécrit et aucun force-push n’a été exécuté.
+État : ouvert. Aucun mot de passe PostgreSQL Railway ou clé de chiffrement active n’a été changé. Aucune base ni aucun volume existant n’a été supprimé, recréé ou réinitialisé. Deux bases nouvelles ont été créées uniquement dans un PostgreSQL local isolé pour les restaurations et la répétition de rotation. Aucun historique n’a été réécrit et aucun force-push n’a été exécuté.
 
 ## Constats vérifiés le 10 octobre 2026
 
@@ -71,3 +71,33 @@ Régressions sauvegarde/restauration locales :29 réussies ; test ciblé actuali
 
 
 Validation finale du code1c52d96099d3cbaf6b732c692fcedf392685b0bc : CI38087737202 SUCCESS, quatre jobs réussis (sécurité, backend/Voice/facturation, web, Flutter).40 tests de sécurité réussis avec PostgreSQL18, aucun ignoré. URL : https://github.com/Paulcioban1997/Avenqo-Platform-/actions/runs/38087737202 . Les notes ci-dessus « en cours » sont historiques ; cette validation finale les remplace. Aucun mot de passe ou clé de production n’a été changé ni révoqué. Autorisations de rotation toujours attendues ; restauration réelle de sauvegarde toujours préalable. Les correctifs locaux sont publiés en PR24, sans déploiement de ce correctif de sécurité.
+
+## Vérifications complémentaires effectives — 10 octobre 2026
+
+Les résultats suivants remplacent les mentions précédentes de restauration non vérifiée et de calendrier sandbox non lisible.
+
+### Calendrier sandbox
+
+Le champ non Fernet provenait d’une fixture E2E révoquée, sans utilisateur associé, dans un tenant de test et déjà déconnectée. La réparation n’accepte que ce marqueur connu dans sandbox ; elle conserve sa valeur dans une enveloppe chiffrée et exige une réautorisation. Elle ne crée aucun token OAuth et ne reconnecte pas le calendrier. Les identifiants inconnus ou actifs sont refusés, de même que toute exécution en production. La correction de cette seule ligne sandbox a été appliquée puis vérifiée de façon idempotente, sans déploiement. Un contrôle READ ONLY ultérieur a déchiffré et rechiffré uniquement en mémoire les neuf charges sandbox (huit commerce, un calendrier), avec comparaison du contenu : neuf réussites, zéro charge illisible, clé temporaire abandonnée. Les trois charges de production avaient déjà réussi ce même contrôle en lecture seule.
+
+### Restauration réelle et nouveaux accès
+
+L’archive réelle 20261010T070137253149Z a été restaurée dans un PostgreSQL18.6 local, sur un réseau Docker interne sans accès sortant. Son SHA256 vérifié est 6855a1e607b014e216d90868ca626468317f58508eb309f0ed5a0e213fbcfa98. Les 75 tables COPY et leurs 4588 lignes correspondent aux données du dump ; révision Alembic 0046_voice_personalization_customization, aucune contrainte étrangère non validée et aucune table ORM manquante. La restauration est désormais atomique avec ON_ERROR_STOP et --single-transaction, afin qu’une erreur SQL annule la transaction plutôt que de produire un faux succès.
+
+Sur cette copie uniquement : transfert sélectif des tables, séquences et onze types enum à un propriétaire NOLOGIN ; nouveaux comptes API DML, migrateur membre du propriétaire et sauvegarde en lecture seule. Le migrateur utilise ALEMBIC_DATABASE_URL avec options=-c role=<propriétaire> : rôle courant, propriété des nouvelles tables et privilèges par défaut vérifiés. Alembic upgrade head réussit. Une nouvelle table créée par ce rôle est lisible et modifiable par l’API, et lisible par la sauvegarde grâce aux privilèges par défaut.
+
+Un pg_dump réel avec le nouvel utilisateur de sauvegarde réussit. Cette nouvelle archive a été restaurée dans une deuxième base locale neuve ; les comptages des 75 tables originales et la donnée de validation sont préservés. Le mot de passe administrateur local a ensuite été changé : l’ancienne connexion locale est refusée, les nouveaux accès API et sauvegarde continuent de fonctionner. Aucun rôle ni mot de passe Railway n’a été modifié.
+
+Le véritable serveur FastAPI a été démarré avec l’utilisateur API sans droits administrateur ni CREATE. /health et /ready, inscription, vérification d’email, connexion, compte, organisations, abonnement, solde de crédits, historique des factures et déconnexion réussissent. Les appels externes sont bloqués ; la configuration Stripe utilisée pour ces lectures est fictive. Il s’agit d’un contrôle PostgreSQL/API, pas d’un paiement Stripe ni d’une validation des connecteurs externes. Les dumps, clés temporaires et journaux restent dans un dossier local ignoré par Git, avec accès Windows limité à l’utilisateur ; aucune donnée client n’est publiée.
+
+### Compatibilité Cursor — préalable encore ouvert
+
+La branche prévue feat/avenqo-platform-security-and-business-os n’est pas publiée sur origin et son nom réel n’est pas confirmé. Aucun contrôle ne peut garantir la compatibilité avec des modifications encore locales dans Cursor. La comparaison sans fusion avec la branche disponible fix/ci-voice-auth-contracts-20261010 signale des conflits dans les quatre scripts opérationnels corrigés et trois tests Central/Voice. Cette branche n’est pas affirmée comme étant celle du prompt maître. La PR24 reste draft et ne sera pas fusionnée avant confirmation du nom réel et du commit Cursor, puis résolution et tests de la combinaison exacte. Aucun déploiement n’est autorisé par cette préparation.
+
+### Risques, retour arrière et autorisation finale
+
+La coexistence des anciens et nouveaux comptes permet la transition progressive ; une seule réplique backend ne garantit toutefois pas zéro interruption HTTP. Les principales difficultés possibles sont les droits sur objets futurs, un consommateur de DATABASE_URL non inventorié, le cron arrêté entre exécutions et la coordination des branches. Les extensions conservent leur propriété administrative. La répétition locale démontre le mécanisme, mais la validation après bascule Railway restera nécessaire.
+
+Avant révocation, un retour temporaire à l’accès précédent reste techniquement possible mais prolonge l’exposition : privilégier la correction des droits ou le retour au code précédent avec les nouveaux accès. Après révocation, ne jamais réactiver l’ancien mot de passe ; utiliser le nouvel accès administratif protégé pour réparer les permissions ou émettre un autre accès neuf. Conserver les sauvegardes originales et les clés de récupération pour les anciennes archives chiffrées. La rotation des clés de connecteurs reste une opération distincte avec double lecture puis vérification de la clé primaire seule.
+
+Les preuves locales de restauration et de nouveaux accès sont acquises. Restent avant demande d’autorisation réelle : vérification de la branche Cursor exacte, validation des correctifs complémentaires et revue du périmètre Railway au moment de la bascule. L’incident38085288 reste ouvert jusqu’à révocation effective du mot de passe exposé et preuve de refus de l’ancienne connexion. Aucune rotation de production ni aucun déploiement ne sera exécuté sans l’autorisation explicite demandée ensuite.

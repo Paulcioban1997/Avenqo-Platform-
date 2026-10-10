@@ -53,6 +53,9 @@ def test_dump_and_restore_both_use_password_free_process_arguments(tmp_path, mon
             invoked.append(command[0])
             if command[0] == "pg_dump":
                 Path(command[command.index("--file") + 1]).write_text("-- isolated test dump\n")
+            else:
+                assert "--set=ON_ERROR_STOP=1" in command
+                assert "--single-transaction" in command
         return CompletedProcess(command, 0, stdout="test-revision", stderr="")
 
     monkeypatch.setattr("backend.app.services.backup_service.subprocess.run", execute)
