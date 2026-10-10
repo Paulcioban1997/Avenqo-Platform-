@@ -1,10 +1,7 @@
 import os
 import psycopg2
 
-db_url = os.environ.get(
-    "DATABASE_PUBLIC_URL",
-    "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
-)
+db_url = os.environ["DATABASE_PUBLIC_URL"]
 
 conn = psycopg2.connect(db_url)
 cur = conn.cursor()
