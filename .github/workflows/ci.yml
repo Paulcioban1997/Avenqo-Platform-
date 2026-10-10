@@ -92,6 +92,19 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
 
+      - name: Run security regression suite
+        run: >-
+          python -m pytest
+          tests/security
+          tests/backend/test_connector_secret_cipher.py
+          tests/backend/test_connector_key_rotation.py
+          -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+
       - name: Run Voice Master contract suite
         run: >-
           python -m pytest

@@ -34,8 +34,20 @@ STRIPE_PRICE_PROFESSIONAL = os.environ.get("STRIPE_PRICE_PROFESSIONAL", "")
 WOO_STORE_URL = os.environ.get("WOO_STORE_URL", "https://wordpress-production-7219.up.railway.app")
 WOO_CONNECTION_ID = "a93d53b9-0a32-4d7a-82bb-7123746e36b3"
 COMPANY_ID = "9c97cb94-e9f9-46fb-afd4-8a1d21019cff"
-TEST_USER_EMAIL = os.environ.get("TEST_USER_EMAIL", "gauffy95@gmail.com")
+TEST_USER_EMAIL = os.environ.get("TEST_USER_EMAIL", "")
 TEST_USER_PW = os.environ.get("TEST_USER_PW", "")
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("AVENQO_LIVE_E2E") != "1",
+    reason="Live sandbox suite: set AVENQO_LIVE_E2E=1 and provide credentials via environment",
+)
+
+
+def _connector_keys_from_env() -> list[str]:
+    keys = [k.strip() for k in os.environ.get("CONNECTOR_ENCRYPTION_KEYS", "").split(",") if k.strip()]
+    if not keys:
+        pytest.skip("CONNECTOR_ENCRYPTION_KEYS is not set")
+    return keys
 
 
 @pytest.fixture(scope="session")
@@ -53,7 +65,7 @@ def auth_token():
 
 @pytest.fixture(scope="session")
 def woo_creds():
-    cipher = ConnectorSecretCipher(["03rZtfwgwKsrVQ3vzJ3srsLtiJHrwqrfW2z7ojGiV2E="])
+    cipher = ConnectorSecretCipher(_connector_keys_from_env())
     conn = psycopg2.connect(RAILWAY_PG_URL)
     cur = conn.cursor()
     cur.execute("SELECT encrypted_credentials FROM commerce_connections WHERE id=%s", (WOO_CONNECTION_ID,))
