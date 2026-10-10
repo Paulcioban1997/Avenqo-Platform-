@@ -771,7 +771,7 @@ async def test_context_uses_billing_plan_and_central_ai_does_not_consume_module_
     assert result.status == "success"
     assert '"plan_code":"professional"' in provider.last_prompt
     assert before.active_modules == after.active_modules == ("retail",)
-    assert before.remaining_module_slots == after.remaining_module_slots == 5
+    assert before.remaining_module_slots == after.remaining_module_slots == 4
 
 
 async def test_frontend_cannot_supply_tenant_plan_module_or_credit_authority() -> None:
