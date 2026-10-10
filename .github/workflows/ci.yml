@@ -99,6 +99,8 @@ jobs:
           tests/backend/test_connector_secret_cipher.py
           tests/backend/test_connector_key_rotation.py
           tests/backend/test_internal_commerce.py
+          tests/backend/test_plan_limits.py
+          tests/backend/test_telnyx_speak_contract.py
           -q
         env:
           PYTHONPATH: .
