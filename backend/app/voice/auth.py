@@ -87,10 +87,17 @@ class VoiceCallerAuth:
             principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_id, CRMClient.company_id == tenant.company_id, CRMClient.is_deleted.is_(False)))
         else:
             raise ValueError("Unsupported principal type")
-        phone = normalized_phone(phone_number or (principal.phone if principal is not None else None))
+        raw_phone = phone_number or (principal.phone if principal is not None else None)
+        if principal_type == "USER" and principal is not None and principal.company.country.upper() in {"CA", "US", "CANADA", "UNITED STATES"}:
+            digits = re.sub(r"\D", "", raw_phone or "")
+            if len(digits) == 10:
+                raw_phone = "+1" + digits
+            elif len(digits) == 11 and digits.startswith("1"):
+                raw_phone = "+" + digits
+        phone = normalized_phone(raw_phone)
         if principal is None or phone is None:
             raise PermissionError("A registered tenant principal phone is required")
-        if principal.phone is None:
+        if principal.phone is None or principal_type == "USER":
             principal.phone = phone
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),

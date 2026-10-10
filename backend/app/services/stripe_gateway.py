@@ -90,21 +90,32 @@ class StripeGateway:
         success_url: str,
         cancel_url: str,
     ) -> CreditCheckoutSession:
-        checkout = stripe.checkout.Session.create(
+        from payments.plans import get_ai_credit_pack
+        pack = get_ai_credit_pack(metadata["avenqo_credit_pack"])
+        client = stripe.StripeClient(self._api_key)
+        price = client.v1.prices.retrieve(price_id)
+        product = price["product"]
+        if not isinstance(product, str) or price["recurring"]:
+            raise ValueError("A one-time credit product is required")
+        amount = pack.price_cad * 100
+        line_item = {"price": price_id, "quantity": 1} if (
+            price["currency"] == "cad" and price["unit_amount"] == amount
+        ) else {"price_data": {"currency": "cad", "unit_amount": amount, "product": product}, "quantity": 1}
+        checkout = client.v1.checkout.sessions.create(params=dict(
             mode="payment",
             customer=customer_id,
-            line_items=[{"price": price_id, "quantity": 1}],
+            currency="cad",
+            line_items=[line_item],
             metadata=metadata,
             payment_intent_data={"metadata": metadata},
             invoice_creation={
                 "enabled": True,
                 "invoice_data": {"metadata": metadata},
             },
-            adaptive_pricing={"enabled": True},
+            adaptive_pricing={"enabled": False},
             success_url=success_url,
             cancel_url=cancel_url,
-            api_key=self._api_key,
-        )
+        ))
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
         return CreditCheckoutSession(id=str(checkout.id), url=str(checkout.url))

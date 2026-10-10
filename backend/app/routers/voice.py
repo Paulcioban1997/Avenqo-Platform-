@@ -175,12 +175,11 @@ async def import_owned_voice_number(
         raise HTTPException(status_code=409, detail="Owned number cannot be imported in this tenant state") from None
 
 
-@router.get("/auth/pin/status", dependencies=[Depends(require_active_subscription)])
+@router.get("/auth/pin/status")
 def get_user_voice_pin_status(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     cred = db.scalar(select(VoiceCallerCredential).where(
         VoiceCallerCredential.company_id == identity.user.company_id,
         VoiceCallerCredential.principal_type == "USER",
@@ -206,7 +205,7 @@ def get_user_voice_pin_status(
     }
 
 
-@router.put("/auth/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
+@router.put("/auth/pin", dependencies=[Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
 def set_user_voice_pin(
     request: VoicePinRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
@@ -214,7 +213,6 @@ def set_user_voice_pin(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     if "ai:use" not in permissions_for(membership.role):
         raise HTTPException(status_code=403, detail="AI permission is required")
 
@@ -228,15 +226,10 @@ def set_user_voice_pin(
     pin_str = _secret_val(request.pin)
     confirm_pin_str = _secret_val(request.confirm_pin or request.pin_confirmation)
 
-    # Strong web re-authentication: required if modifying an existing PIN or if password is provided
-    if existing_cred is not None:
-        if not current_pw:
-            raise HTTPException(status_code=400, detail="Current account password is required to change or reset your Voice PIN")
-        if not verify_password(current_pw, identity.user.password_hash):
-            raise HTTPException(status_code=403, detail="Invalid current account password")
-    elif current_pw:
-        if not verify_password(current_pw, identity.user.password_hash):
-            raise HTTPException(status_code=403, detail="Invalid current account password")
+    if not current_pw:
+        raise HTTPException(status_code=400, detail="Votre mot de passe actuel est requis pour configurer le NIP vocal.")
+    if not verify_password(current_pw, identity.user.password_hash):
+        raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
 
     if current_pw and pin_str == current_pw:
         raise HTTPException(status_code=422, detail="Voice PIN must not be identical to your account password")
@@ -260,9 +253,6 @@ def set_user_voice_pin(
             metadata={"credential_type": "USER", "reauthenticated": bool(request.current_password)},
             commit=False,
         )
-        config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
-        if config is not None and config.telnyx_phone_number:
-            config.enabled = True
         db.commit()
     except (ValueError, PermissionError) as exc:
         db.rollback()
@@ -1889,7 +1879,6 @@ async def voice_central_agent(
     )
 
 
-@router.get("/auth/pin/status")
 async def get_voice_pin_status(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -1925,7 +1914,6 @@ async def get_voice_pin_status(
     }
 
 
-@router.put("/auth/pin")
 async def set_voice_pin(
     request: VoicePinRequest,
     identity: CurrentIdentity = Depends(get_current_identity),

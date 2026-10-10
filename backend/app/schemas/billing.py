@@ -34,6 +34,9 @@ class CreditPackResponse(BaseModel):
     code: str
     credits: int
     price_usd: float | int
+    price_cad: float | int
+    price_cents: int
+    currency: str
 
 
 class CreditPackCheckoutRequest(BaseModel):

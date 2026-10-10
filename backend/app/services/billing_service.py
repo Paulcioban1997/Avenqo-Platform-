@@ -145,7 +145,8 @@ class BillingService:
         )
         plan_code = account.plan_code if account is not None else fallback_plan_code
         return [
-            {"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd}
+            {"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd,
+             "price_cad": pack.price_cad, "price_cents": pack.price_cad * 100, "currency": "CAD"}
             for pack in AI_CREDIT_PACKS
             if pack.plan_code.value == ("base" if plan_code == "demo" else plan_code)
             and pack.code.startswith("credits_")

@@ -22,7 +22,7 @@ import { getAuthHeaders } from "@/lib/api-headers";
 import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
-import { apiFetch } from "@/lib/api-request";
+import { apiFetch, ApiRequestError } from "@/lib/api-request";
 
 export interface AvenqoCopilotProps {
   isOpen: boolean;
@@ -156,11 +156,11 @@ export function AvenqoCopilot({
         };
         setMessages((prev) => [...prev, errorMsg]);
       }
-    } catch {
+    } catch (error) {
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         sender: "copilot",
-        content: t.copilot.errorPrompt,
+        content: error instanceof ApiRequestError && error.publicMessage ? error.publicMessage : t.copilot.errorPrompt,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         grounded: false,
       };
@@ -382,12 +382,11 @@ export function AvenqoCopilot({
                 {t.copilot.title}
               </h2>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-[#0076FF]/15 dark:text-[#00D4FF] border border-blue-200 dark:border-[#0076FF]/30">
-                v2.4
+                {locale === "fr" ? "Inclus" : "Included"}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#94A3B8] flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {t.copilot.statusActive}
+              {locale === "fr" ? "Disponible avec Base, Professional et Enterprise" : "Available with Base, Professional and Enterprise"}
             </p>
           </div>
         </div>

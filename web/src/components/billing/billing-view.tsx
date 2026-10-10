@@ -89,6 +89,8 @@ interface CreditPack {
   credits: number;
   price_cents?: number;
   price_usd?: number;
+  price_cad?: number;
+  currency?: string;
 }
 
 interface AICreditBreakdownItem {
@@ -1028,7 +1030,7 @@ export function BillingView() {
                   {pack.credits.toLocaleString(locale)} {billingTranslations.creditsUnit}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
-                  ${pack.price_usd || ((pack.price_cents || 0) / 100)} USD
+                  {new Intl.NumberFormat(locale, { style: "currency", currency: pack.currency || "CAD" }).format(pack.price_cad ?? ((pack.price_cents || 0) / 100))} {pack.currency || "CAD"}
                 </div>
               </div>
 

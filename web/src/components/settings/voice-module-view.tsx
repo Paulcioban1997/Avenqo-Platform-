@@ -150,12 +150,16 @@ export function VoiceModuleView() {
     event.preventDefault();
     const input = event.currentTarget.elements.namedItem("voice-pin") as HTMLInputElement;
     const pin = input.value;
+    const passwordInput = event.currentTarget.elements.namedItem("voice-account-password") as HTMLInputElement;
     setPinMessage("");
     try {
-      const response = await fetch("/api/v1/voice/auth/pin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
-      if (!response.ok) throw new Error("voice_pin_unavailable");
+      const response = await fetch("/api/v1/voice/auth/pin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, confirm_pin: pin, current_password: passwordInput.value }) });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || (typeof payload?.detail === "string" ? payload.detail : company.connectionsGenericError));
+      }
       setPinMessage(messages[5]);
-    } catch { setPinMessage(company.connectionsGenericError); } finally { input.value = ""; }
+    } catch (error) { setPinMessage(error instanceof Error ? error.message : company.connectionsGenericError); } finally { input.value = ""; passwordInput.value = ""; }
   }
 
   async function requestQuote() {
@@ -231,6 +235,7 @@ export function VoiceModuleView() {
       {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
         <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
         <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3">
+        <label className="min-w-48 space-y-1 text-xs"><span>{locale === "fr" ? "Mot de passe actuel" : "Current password"}</span><input aria-label={locale === "fr" ? "Mot de passe actuel" : "Current password"} name="voice-account-password" type="password" autoComplete="current-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
         <label className="min-w-48 space-y-1 text-xs"><span>{messages[4]}</span><input aria-label={messages[4]} name="voice-pin" type="password" inputMode="numeric" pattern="[0-9]{6,12}" minLength={6} maxLength={12} autoComplete="new-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
         <button type="submit" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-white/20">{messages[5]}</button>
         {pinMessage && <span role="status" className="text-xs">{pinMessage}</span>}

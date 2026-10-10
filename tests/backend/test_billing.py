@@ -538,7 +538,7 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     packs = client.get("/api/v1/billing/credit-packs", headers=headers)
     assert packs.status_code == 200
     assert packs.json() == [
-        {"code": "credits_6500", "credits": 6500, "price_usd": 10},
+        {"code": "credits_6500", "credits": 6500, "price_usd": 10, "price_cad": 10, "price_cents": 1000, "currency": "CAD"},
     ]
     assert "price_id" not in packs.text
 
@@ -861,8 +861,8 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     ).status_code == 200
 
     assert client.get("/api/v1/billing/credit-packs", headers=headers).json() == [
-        {"code": "credits_25000", "credits": 25000, "price_usd": 35},
-        {"code": "credits_65000", "credits": 65000, "price_usd": 80},
+        {"code": "credits_25000", "credits": 25000, "price_usd": 35, "price_cad": 35, "price_cents": 3500, "currency": "CAD"},
+        {"code": "credits_65000", "credits": 65000, "price_usd": 80, "price_cad": 80, "price_cents": 8000, "currency": "CAD"},
     ]
     assert client.post(
         "/api/v1/billing/credit-packs/checkout",
@@ -1175,23 +1175,27 @@ def test_refund_reverses_only_unconsumed_purchase_credits_and_flags_shortfall(
     engine.dispose()
 
 
-def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("configured_currency", ["cad", "usd"])
+def test_stripe_credit_checkout_uses_approved_cad_amount(monkeypatch: pytest.MonkeyPatch, configured_currency) -> None:
     captured: dict[str, Any] = {}
 
-    def create_session(**kwargs: Any) -> SimpleNamespace:
-        captured.update(kwargs)
+    def create_session(params) -> SimpleNamespace:
+        captured.update(params)
         return SimpleNamespace(id="cs_inline", url="https://checkout.stripe.test/inline")
 
     monkeypatch.setattr(
-        "backend.app.services.stripe_gateway.stripe.checkout.Session.create",
-        create_session,
+        "backend.app.services.stripe_gateway.stripe.StripeClient",
+        lambda key: SimpleNamespace(v1=SimpleNamespace(
+            prices=SimpleNamespace(retrieve=lambda price_id: {"currency": configured_currency, "unit_amount": 1000, "product": "prod_credits", "recurring": None}),
+            checkout=SimpleNamespace(sessions=SimpleNamespace(create=create_session)),
+        )),
     )
     metadata = {
         "avenqo_kind": "ai_credit_pack",
         "avenqo_company_id": "company-1",
-        "avenqo_credit_pack": "professional_extra",
-        "avenqo_plan_code": "professional",
-        "avenqo_credits": "25000",
+        "avenqo_credit_pack": "credits_6500",
+        "avenqo_plan_code": "base",
+        "avenqo_credits": "6500",
     }
 
     checkout = StripeGateway("sk_test").create_credit_checkout(
@@ -1207,10 +1211,12 @@ def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.Monkey
         url="https://checkout.stripe.test/inline",
     )
     assert captured["mode"] == "payment"
-    assert captured["adaptive_pricing"] == {"enabled": True}
-    assert captured["line_items"] == [
-        {"price": "price_credit_professional", "quantity": 1}
-    ]
+    assert captured["adaptive_pricing"] == {"enabled": False}
+    assert captured["currency"] == "cad"
+    if configured_currency == "cad":
+        assert captured["line_items"] == [{"price": "price_credit_professional", "quantity": 1}]
+    else:
+        assert captured["line_items"] == [{"price_data": {"currency": "cad", "unit_amount": 1000, "product": "prod_credits"}, "quantity": 1}]
     assert captured["metadata"] == metadata
     assert captured["payment_intent_data"] == {"metadata": metadata}
 

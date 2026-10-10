@@ -284,6 +284,7 @@ describe("native Voice module read-only selection", () => {
     expect(input).toHaveAttribute('type', 'password');
     expect(input).toHaveAttribute('minLength', '6');
     fireEvent.change(input, { target: { value: '907182' } });
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'TestPassword123!' } });
     fireEvent.submit(input.closest('form')!);
     await waitFor(() => expect(calls.some(call => call.path.endsWith('/voice/auth/pin') && call.method === 'PUT')).toBe(true));
     await waitFor(() => expect(input).toHaveValue(''));
@@ -323,6 +324,11 @@ describe("credit display", () => {
       monthly_included: 6500,
       monthly_remaining: 6485,
     })).toEqual({ remaining: 6485, used: 15, limit: 6500 });
+  });
+
+  it("uses recorded consumption above the allowance and does not infer it from purchased credits", () => {
+    expect(creditBalanceViewModel({ monthly_included: 6500, monthly_remaining: 0, monthly_used: 6563 })).toEqual({ remaining: 0, limit: 6500, used: 6563 });
+    expect(creditBalanceViewModel({ monthly_included: 6500, total_remaining: 10000 })).toEqual({ remaining: 10000, limit: 6500, used: null });
   });
 });
 

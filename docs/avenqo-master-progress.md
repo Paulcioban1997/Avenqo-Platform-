@@ -3,6 +3,20 @@
 Date : 2026-10-10. Branche : `codex/avenqo-master-20261010`.
 Point de retour local : `codex/avenqo-before-master-20261010` (`548499e`).
 
+## Correctifs signalés par captures — 10 octobre
+
+- Autorisation explicite du propriétaire : déployer en sandbox et production. IA Central doit répondre même sans crédits ou abonnement actif ; pack 6 500 crédits à 10 CAD.
+- Production avant ce lot : frontend `dpl_2T4Qan17t5RAYnFwtxCGvykBFLf7`, backend `3b5e96ed-fba2-4fb0-ae5d-b56178f2adb5`, code `672d087`. Retour possible sur ces versions.
+- IA Central : suppression du verrou d'abonnement de son endpoint, prise en charge serveur des coûts fournisseur sans débit client. Contexte limité à la requête et au tenant ; limites de débit, identité, droits, isolation, idempotence et budgets par requête conservés. Aucun crédit ni abonnement artificiellement attribué. Sans abonnement actif, réponses générales réelles sans exécution des outils métier.
+- NIP personnel : parcours accessible sans abonnement, réauthentification obligatoire, numéro canadien normalisé, doublons de routes PIN supprimés. Aucun numéro professionnel activé automatiquement. Les anciens helpers restent uniquement pour compatibilité des tests.
+- Crédits additionnels : catalogue CAD ; Checkout en CAD au montant serveur approuvé, même si l'ancien prix Stripe est USD. Produit existant réutilisé ; prix et achats historiques préservés. Lecture Stripe réelle confirme l'ancien pack à 1 000 cents USD et son produit actif.
+- Facturation : consommation exacte du journal, historique trié par date, auteur réel limité au tenant, auteur inconnu affiché « — ». Voice identifié comme Voice.
+- Paramètres : affichage limité aux six modules métier canoniques. Retrait du faux numéro de version et de la promesse permanente « En ligne » du panneau Central.
+- Validation initiale : 123 tests frontend et build réussis ; 6 tests Central/NIP via services et routes HTTP réussis ; historique (1), Checkout CAD depuis prix CAD/USD (2), conversation Voice dix tours (1) réussis. Régressions complètes en cours avant livraison.
+- Blocage commercial distinct : le compte client observé n'a pas d'abonnement Stripe lié actif et a épuisé son allocation. Le fonctionnement gratuit d'IA Central est autorisé ; cela n'autorise pas l'activation payante des modules ni un achat de crédits.
+- NIP de production : aucun PIN personnel saisi ou remplacé par l'agent. La validation finale de son secret appartient au propriétaire.
+- Déploiement de ce lot et preuve navigateur : à compléter après vérification effective.
+
 ## État vérifié avant intervention
 
 - Dépôt GitHub : Paulcioban1997/Avenqo-Platform-, main et branche feature à 548499e.

@@ -84,6 +84,8 @@ def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Sessi
 
 def _ai_usage_module(operation: str | None) -> str:
     normalized = (operation or "").lower()
+    if "voice" in normalized:
+        return "Voice AI"
     if "retail" in normalized or "sales" in normalized:
         return "Retail AI"
     if "crm" in normalized or "appointment" in normalized:
@@ -508,7 +510,7 @@ def ai_credits_history(
     query = (
         select(TenantAIProviderAttempt)
         .where(*filters)
-        .order_by(TenantAIProviderAttempt.id.desc())
+        .order_by(TenantAIProviderAttempt.created_at.desc(), TenantAIProviderAttempt.id.desc())
     )
     total = (
         db.scalar(
@@ -520,10 +522,15 @@ def ai_credits_history(
     )
 
     attempts = db.scalars(query.offset(offset).limit(limit)).all()
+    from backend.app.models import User
+    actor_ids = {att.user_id for att in attempts if att.user_id is not None}
+    actors = {user.id: f"{user.first_name} {user.last_name}".strip() for user in db.scalars(
+        select(User).where(User.company_id == identity.user.company_id, User.id.in_(actor_ids))
+    )} if actor_ids else {}
     items = []
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
-        timestamp = att.created_at or datetime.now(timezone.utc)
+        timestamp = att.created_at
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         items.append(
@@ -533,7 +540,7 @@ def ai_credits_history(
                 module=_ai_usage_module(att.operation),
                 operation=op,
                 credits_used=att.avenqo_credits or 0,
-                user=f"{identity.user.first_name} {identity.user.last_name}",
+                user=actors.get(att.user_id, "—"),
             )
         )
     return AICreditHistoryResponse(
