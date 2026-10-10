@@ -121,6 +121,10 @@ async def message(
     return CentralAIResponse(
         **asdict(result),
         conversation_id=conversation_id,
-        grounded_source=f"Analyse basée sur : [{active_source_name}]" if active_source_name else None,
+        grounded_source=(
+            f"Analyse basée sur : [{active_source_name}]"
+            if active_source_name and result.selected_agent not in {None, "tenant_capabilities", "voice"} and result.status == "success"
+            else None
+        ),
         source_id=active_source_id_str,
     )

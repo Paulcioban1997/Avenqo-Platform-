@@ -34,6 +34,7 @@ def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_env
             assert response.status_code == 200, response.text
             assert response.json()["status"] == "success"
             assert response.json()["answer"]
+            assert response.json()["grounded_source"] is None
             assert usage.get_credit_balance(user.company_id, "base")["monthly_used"] == 100000
         finally:
             client.app.dependency_overrides.pop(get_central_ai_service, None)
