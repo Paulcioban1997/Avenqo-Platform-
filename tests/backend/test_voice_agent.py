@@ -1,5 +1,6 @@
-from backend.app.core.security import hash_password
 from __future__ import annotations
+
+from backend.app.core.security import hash_password
 
 import asyncio
 import base64
