@@ -148,6 +148,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     avenqo_owner_notification_email: str | None = Field(default=None, alias="AVENQO_OWNER_NOTIFICATION_EMAIL")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
+    stripe_automatic_tax_enabled: bool = Field(default=False, alias="STRIPE_AUTOMATIC_TAX_ENABLED")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_base: str | None = Field(default=None, alias="STRIPE_PRICE_BASE")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
@@ -365,6 +366,7 @@ class Settings(BaseSettings):
     platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
     billing_legal_business_name: str | None = Field(default=None, alias="BILLING_LEGAL_BUSINESS_NAME")
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
+    billing_business_tax_ids: dict[str, str] = Field(default_factory=dict, alias="BILLING_BUSINESS_TAX_IDS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")

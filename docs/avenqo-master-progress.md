@@ -99,3 +99,24 @@ Rapport détaillé et preuves du lot conservés dans `output/avenqo-release-2026
 ## Lot affichage de la facture test dans /billing — 10 octobre 2026
 
 Demande propriétaire : présenter XVMNAYLP-0006 dans la section Factures actuelle avec téléchargement PDF. Archive séparée `billing_test_documents`, strictement liée au tenant, PDF natif sandbox avec badge TEST et empreinte SHA256. Aucun changement des factures comptables, des totaux fiscaux, du solde ni de l'abonnement de production. Import opérationnel unique vérifiant le propriétaire commun aux deux environnements ; aucune clé sandbox ou autorisation inter-environnement ajoutée au serveur production. API lecture protégée `billing:manage`, téléchargement privé/no-store, accès autre tenant 404, accès anonyme 401. Tests ciblés isolation/exclusion des totaux réussis ; migration additive/bootstrap/rejeu réussie ; 124 tests web et build Next réussis. Livraison à vérifier.
+
+Livraison vérifiée : code `4547f25d1369c362217359f5ea046f686f349bf7`.
+
+- Railway sandbox : `4c4acddb-d929-493b-ac93-bc05f51bdf85` SUCCESS ; production : `bb855723-6fd3-4941-b6d9-880b815d887c` SUCCESS.
+- Vercel production : `dpl_EtjvF7RwfkULNjSo4BUB7xknDjrB` READY ; preview : `dpl_AL5Nn8NhRoGdNnMLgUKV58CrJF1z` READY.
+- Readiness via avenqo.ca : même commit, migrations, base et stockage OK. 28 tests facturation et 124 web réussis ; build et TypeScript réussis.
+- Compte propriétaire Produits_Ero : XVMNAYLP-0006 visible dans Factures, marquée TEST, 29,99 CAD, bouton Télécharger le PDF. Le clic a téléchargé `C:/Users/paulm/Downloads/facture-avenqo-TEST-XVMNAYLP-0006.pdf`. Empreinte identique au PDF archivé ; rendu visuel inspecté.
+- Les UUID d'entreprise sont identiques dans le clone sandbox. L'import vérifie l'environnement, le même propriétaire actif et l'absence de cette facture dans le registre comptable de production. Les crédits et l'abonnement de production restent inchangés.
+- Preuve écran : `scratch/billing-invoice-pdf-production.jpg`.
+
+Observabilité : aucune ligne contenant error dans les journaux de cette livraison Railway. Accès aux logs runtime Vercel refusé 403 ; CLI non installée. Aucun drain Vercel configuré. Ne pas interpréter le refus comme une absence d'erreurs ; la vérification fonctionnelle du client et du téléchargement est réussie. CI globale 38081364798 encore en cours à ce point.
+
+CI globale 38081364798 : SUCCESS ; backend, contrats Voice/facturation/auth, web et Flutter réussis pour le commit 4547f25.
+
+## Fiscal billing preparation — 2026-10-10
+- Persist modern Stripe `total_taxes` and legacy tax components with actual amounts, tax labels/rates and automatic-tax metadata; webhook and invoice sync share the same normalization.
+- Native PDF details TPS/TVH/TVQ when recorded components reconcile with the invoice total. No historical paid invoice is recalculated. Issuer tax IDs remain unset unless configured with real values.
+- New Checkout automatic-tax path requests customer billing address and requires active Stripe Tax settings, registrations, classification and exclusive pricing. `STRIPE_AUTOMATIC_TAX_ENABLED` defaults false and was verified unset in sandbox and production before release.
+- Actual sandbox inspection: TaxSettings pending; head office unset; no registrations; no automatic tax enabled. Explicit approval for fictitious sandbox address/registrations requested under Stripe tax skill. No live registration or tax setting changed.
+- Review PDF `output/pdf/Simulation-Taxes-PMC-Solutions-AI.pdf`: two clearly marked hypothetical, unpaid scenarios (QC 29.99 + 1.50 TPS + 2.99 TVQ = 34.48 CAD; ON 29.99 + 3.90 TVH = 33.89 CAD). Both pages rendered and inspected. This is not a real Stripe calculation or issued invoice.
+- Validation: billing/tax suite 35 passed; final tax suite 8 passed; modern-tax webhook/PDF focused checks 2 passed. Actual sandbox tax calculation remains pending authorization/configuration. Included subscription credits and existing subscriptions preserved.

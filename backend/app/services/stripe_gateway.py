@@ -6,6 +6,10 @@ from typing import Any, Protocol
 import stripe
 
 
+class StripeTaxConfigurationError(RuntimeError):
+    """Requested tax collection is not configured; do not silently collect zero."""
+
+
 @dataclass(frozen=True, slots=True)
 class CreditCheckoutSession:
     id: str
@@ -40,14 +44,50 @@ class BillingProvider(Protocol):
 class StripeGateway:
     """Traduit les opÃ©rations Avenqo vers le SDK officiel Stripe."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, *, automatic_tax_enabled: bool = False) -> None:
         self._api_key = api_key
+        self._automatic_tax_enabled = automatic_tax_enabled
+
+    def _tax_options(self) -> dict[str, Any]:
+        if not self._automatic_tax_enabled:
+            return {}
+        client = stripe.StripeClient(self._api_key)
+        try:
+            tax_settings = client.v1.tax.settings.retrieve().to_dict()
+            registrations = client.v1.tax.registrations.list(params={"status": "active", "limit": 100})
+        except stripe.StripeError as exc:
+            raise StripeTaxConfigurationError("Impossible de vérifier la configuration Stripe Tax ; aucun paiement créé.") from exc
+        if tax_settings.get("status") != "active" or not registrations.data:
+            raise StripeTaxConfigurationError("Stripe Tax exige une adresse fiscale et une inscription active avant la collecte.")
+        if not (tax_settings.get("defaults") or {}).get("tax_code"):
+            raise StripeTaxConfigurationError("La classification fiscale du service Avenqo doit être configurée dans Stripe Tax.")
+        if (tax_settings.get("defaults") or {}).get("tax_behavior") != "exclusive":
+            raise StripeTaxConfigurationError("Les tarifs hors taxes exigent un comportement fiscal exclusif dans Stripe Tax.")
+        return {"automatic_tax": {"enabled": True}, "billing_address_collection": "required",
+                "customer_update": {"address": "auto", "name": "auto"}, "tax_id_collection": {"enabled": True}}
+
+    def enrich_invoice_taxes(self, invoice: dict[str, Any]) -> dict[str, Any]:
+        client = stripe.StripeClient(self._api_key)
+        cache = {}
+        for tax in invoice.get("total_taxes") or invoice.get("total_tax_amounts") or []:
+            rate = (tax.get("tax_rate_details") or {}).get("tax_rate") or tax.get("tax_rate")
+            if isinstance(rate, str):
+                if rate not in cache:
+                    try:
+                        cache[rate] = client.v1.tax_rates.retrieve(rate).to_dict()
+                    except stripe.StripeError:
+                        cache[rate] = {}  # Amount persists even if the descriptive lookup is unavailable.
+                tax["_avenqo_tax_rate"] = cache[rate]
+        return invoice
 
     def _require_monthly_price(self, price_id: str) -> None:
-        price = stripe.Price.retrieve(price_id, api_key=self._api_key)
+        price = (stripe.StripeClient(self._api_key).v1.prices.retrieve(price_id).to_dict()
+                 if self._automatic_tax_enabled else stripe.Price.retrieve(price_id, api_key=self._api_key))
         recurring = price.get("recurring") if hasattr(price, "get") else None
         if not recurring or recurring.get("interval") != "month":
             raise ValueError("Avenqo subscription prices must recur monthly")
+        if self._automatic_tax_enabled and price.get("tax_behavior") == "inclusive":
+            raise StripeTaxConfigurationError("Ce tarif Stripe inclut les taxes ; utilisez un nouveau tarif hors taxes.")
 
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         customer = stripe.Customer.create(
@@ -67,7 +107,8 @@ class StripeGateway:
         cancel_url: str,
     ) -> str:
         self._require_monthly_price(price_id)
-        checkout = stripe.checkout.Session.create(
+        tax_options = self._tax_options()
+        params = dict(
             mode="subscription",
             customer=customer_id,
             line_items=[{"price": price_id, "quantity": 1}],
@@ -76,8 +117,10 @@ class StripeGateway:
             adaptive_pricing={"enabled": False},
             success_url=success_url,
             cancel_url=cancel_url,
-            api_key=self._api_key,
+            **tax_options,
         )
+        checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params)
+                    if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key))
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retournÃ© d'URL Checkout")
         return checkout.url
@@ -122,6 +165,7 @@ class StripeGateway:
             adaptive_pricing={"enabled": False},
             success_url=success_url,
             cancel_url=cancel_url,
+            **self._tax_options(),
         ))
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retourné d'URL Checkout")
@@ -142,7 +186,7 @@ class StripeGateway:
                 invoices.append(invoice.to_dict())
             else:
                 invoices.append(dict(invoice))
-        return invoices
+        return [self.enrich_invoice_taxes(invoice) for invoice in invoices]
 
     def change_subscription(self, subscription_id: str, price_id: str) -> None:
         self._require_monthly_price(price_id)

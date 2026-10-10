@@ -180,6 +180,7 @@ class InvoiceFiscalService:
         self,
         invoice: BillingInvoice,
         company: Company | None = None,
+        *, simulation: bool = False,
     ) -> tuple[bytes, str, str]:
         """Render every persisted charge; never calculate prices with an LLM."""
         from decimal import Decimal
@@ -214,10 +215,13 @@ class InvoiceFiscalService:
             int(invoice.amount_due or 0) - int(invoice.amount_paid or 0), 0)
         story = [paragraph(f"Facture {number}", styles["InvoiceTitle"]),
                  paragraph(f"{status} | Émise le {date(invoice.issued_at)}"), Spacer(1, 16)]
+        if simulation:
+            story += [paragraph("SIMULATION FISCALE — Aucun paiement, aucune facture comptable émise", small), Spacer(1, 10)]
         if settings.stripe_secret_key and settings.stripe_secret_key.startswith("sk_test_"):
             story += [paragraph("ENVIRONNEMENT TEST - Aucun débit réel", small), Spacer(1, 10)]
         issuer = [settings.billing_legal_business_name or "Avenqo",
                   settings.billing_business_address or "", settings.billing_support_email or "", "avenqo.ca"]
+        issuer += [f"{label} : {value}" for label, value in settings.billing_business_tax_ids.items() if value]
         details = invoice.billing_details or {}
         customer = [details.get("name") or (company.name if company else "Client Avenqo"), invoice.customer_email or ""]
         address = details.get("address") or {}
@@ -249,8 +253,20 @@ class InvoiceFiscalService:
                                   ("BOTTOMPADDING",(0,0),(-1,-1),10),
                                   ("LINEBELOW",(0,0),(-1,-1),0.4,colors.HexColor("#DCE5F1"))]))
         story += [table, Spacer(1, 18)]
+        tax_rows = details.get("tax_breakdown") or []
+        tax_totals = []
+        if tax_rows and sum(int(row.get("amount", 0)) for row in tax_rows) == invoice.tax_total:
+            for row in tax_rows:
+                label = row.get("name") or "Taxe"
+                if row.get("percentage") is not None:
+                    label += f" ({str(row['percentage']).replace('.', ',')} %)"
+                if row.get("inclusive"):
+                    label += " — incluse"
+                tax_totals.append((label, int(row.get("amount", 0))))
+        else:
+            tax_totals = [("Taxes enregistrées", invoice.tax_total)]
         totals = [("Sous-total", invoice.subtotal), ("Réductions", -(invoice.discount_total or 0)),
-                  ("Taxes enregistrées", invoice.tax_total), ("Total", invoice.total),
+                  *tax_totals, ("Total", invoice.total),
                   ("Montant payé", invoice.amount_paid), ("Solde à payer", remaining)]
         total_table = Table([[paragraph(label), paragraph(money(value))] for label,value in totals],
                             colWidths=[170, 130], hAlign="RIGHT")
@@ -261,13 +277,16 @@ class InvoiceFiscalService:
             story.append(paragraph(f"Paiement confirmé le {date(invoice.paid_at)}", small))
         elif invoice.due_at:
             story.append(paragraph(f"Échéance : {date(invoice.due_at)}", small))
-        story.append(paragraph(f"Référence Stripe : {invoice.stripe_invoice_id}", small))
+        if not simulation:
+            story.append(paragraph(f"Référence Stripe : {invoice.stripe_invoice_id}", small))
         usage = self.invoice_usage(invoice)
         if usage is not None:
             story += [Spacer(1, 20), paragraph("Utilisation IA pendant la période"),
                       paragraph(f"{usage['included']} crédits inclus consommés | {usage['purchased']} crédits achetés consommés", small),
                       paragraph("Relevé informatif actualisé au téléchargement. Ces crédits ne constituent pas une facturation additionnelle.", small)]
-        story += [Spacer(1, 16), paragraph("Document Avenqo établi à partir de la facture et du paiement enregistrés. Les services et suppléments ci-dessus reprennent les lignes de facturation ; aucune nouvelle somme n'est ajoutée.", small)]
+        explanation = ("Exemple de présentation fiscale. Les montants sont un scénario de test ; ce document ne confirme ni une inscription fiscale ni un paiement."
+                       if simulation else "Document Avenqo établi à partir de la facture et du paiement enregistrés. Les services et suppléments ci-dessus reprennent les lignes de facturation ; aucune nouvelle somme n'est ajoutée.")
+        story += [Spacer(1, 16), paragraph(explanation, small)]
         def decorate(doc_canvas, document):
             doc_canvas.saveState()
             doc_canvas.setFillColor(colors.HexColor("#087CF0"))

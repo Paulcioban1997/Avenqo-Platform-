@@ -234,6 +234,22 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
+def test_modern_stripe_tax_webhook_preserves_breakdown_and_actual_payment(billing_environment):
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="tax-modern@acme.ca")
+    event = invoice_event(owner['company']['id'], event_id='evt_tax_modern', invoice_id='in_tax_modern')
+    invoice = event['data']['object']
+    invoice.pop('total_tax_amounts')
+    invoice.update(subtotal=2999,total=3448,amount_paid=3448,amount_due=3448,total_discount_amounts=[],
+        total_taxes=[{'amount':150,'tax_rate_details':{'tax_rate':'txr_gst'},'_avenqo_tax_rate':{'tax_type':'gst','percentage':5}},
+                     {'amount':299,'tax_rate_details':{'tax_rate':'txr_qst'},'_avenqo_tax_rate':{'tax_type':'qst','percentage':9.975}}])
+    provider.events.append(event)
+    assert client.post('/api/v1/billing/webhook',content=b'{}',headers={'Stripe-Signature':'valid_signature'}).status_code==200
+    persisted=client.get('/api/v1/billing/invoices',headers=auth_headers(owner)).json()[0]
+    assert persisted['tax_total']==449 and persisted['amount_paid']==3448
+    assert [tax['name'] for tax in persisted['billing_details']['tax_breakdown']]==['TPS','TVQ']
+
+
 def test_archived_test_pdf_is_tenant_scoped_and_excluded_from_financial_totals(billing_environment, tmp_path):
     import hashlib
     from backend.app.models import BillingTestDocument
