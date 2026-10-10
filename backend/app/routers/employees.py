@@ -18,6 +18,7 @@ from backend.app.services.employee_service import (
     EmployeePermissionError,
     EmployeeService,
 )
+from backend.app.services.plan_limits_service import PlanLimitReached
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 manage_users = require_permission("users:manage")
@@ -28,6 +29,18 @@ def get_employee_service(
     notifier: AccountNotifier = Depends(get_account_notifier),
 ) -> EmployeeService:
     return EmployeeService(db, notifier)
+
+
+def plan_limit_exception(exc: PlanLimitReached) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "plan_limit_reached",
+            "limit_key": exc.limit_key,
+            "limit": exc.limit,
+            "plan_code": exc.plan_code,
+        },
+    )
 
 
 def employee_response(user: User) -> UserResponse:
@@ -64,6 +77,8 @@ def create_employee(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except EmployeePermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except PlanLimitReached as exc:
+        raise plan_limit_exception(exc) from exc
 
 
 @router.patch("/{employee_id}", response_model=UserResponse)
@@ -79,3 +94,5 @@ def update_employee(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except EmployeePermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except PlanLimitReached as exc:
+        raise plan_limit_exception(exc) from exc
