@@ -995,7 +995,7 @@ class VoiceOrchestrator:
             activity.completed_at = call.ended_at
         if call.appointment_id:
             appointment = self.db.get(CRMAppointmentModel, call.appointment_id)
-            if appointment:
+            if appointment and appointment.company_id == config.company_id:
                 existing_note = self.db.scalar(select(CRMNote).where(
                     CRMNote.company_id == config.company_id,
                     CRMNote.appointment_id == appointment.id,
@@ -1023,7 +1023,8 @@ class VoiceOrchestrator:
     async def _send_confirmation(self, config: VoiceBusinessConfig, call: VoiceCall) -> None:
         from_number = config.telnyx_phone_number
         appointment = self.db.get(CRMAppointmentModel, call.appointment_id)
-        if not appointment or call.caller_phone == "unknown" or not from_number:
+        if (not appointment or appointment.company_id != config.company_id
+                or call.caller_phone == "unknown" or not from_number):
             return
         local_time = appointment.start_time.astimezone(ZoneInfo(config.timezone_name)).strftime("%Y-%m-%d %H:%M")
         message = f"{config.business_name} : votre rendez-vous est confirmé le {local_time} ({config.timezone_name})."

@@ -1092,6 +1092,50 @@ def test_websocket_disconnect_cleanup_releases_ledger_and_marks_call_completed(a
     assert lease is not None and lease.result.get("active") is False
 
 
+@pytest.mark.parametrize("public_mode", [False, True])
+@pytest.mark.parametrize("client_state", ["opaque-token", None])
+def test_websocket_without_valid_media_ticket_cannot_end_the_call(authorized_media_call, monkeypatch, public_mode, client_state):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = public_mode
+    app, _adapter, _central = media_test_app(env, monkeypatch)
+    event = start_event()
+    event["start"].update(to=env.config.telnyx_phone_number, client_state=client_state)
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(event)
+            socket.close()
+
+    env.db.expire_all()
+    untouched = env.db.get(VoiceCall, env.call.id)
+    assert untouched.status == "in_progress"
+    assert untouched.ended_at is None
+
+
+def test_second_socket_losing_the_media_lease_does_not_end_the_live_call(authorized_media_call, monkeypatch):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    live_claim = claim_media_start(env.db, env.settings, env.call.id, {
+        "client_state": issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True),
+        "call_control_id": env.call.telnyx_call_control_id, "to": env.config.telnyx_phone_number,
+    }, public_mode=True)
+    app, _adapter, _central = media_test_app(env, monkeypatch)
+    event = start_event()
+    event["start"].update(to=env.config.telnyx_phone_number,
+        client_state=issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True))
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(event)
+            socket.close()
+
+    env.db.expire_all()
+    untouched = env.db.get(VoiceCall, env.call.id)
+    assert untouched.status == "in_progress"
+    assert untouched.ended_at is None
+    release_media_session(env.db, env.call.id, live_claim)
+
+
 def test_media_ticket_replay_expired_and_cross_tenant_rejection(authorized_media_call):
     env = authorized_media_call
     state = issue_media_client_state(env.db, env.settings, env.call.id)

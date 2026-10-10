@@ -685,7 +685,10 @@ def create_note(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    note = service.create_note(tenant.company_id, payload.model_dump(), author_name="Utilisateur")
+    try:
+        note = service.create_note(tenant.company_id, payload.model_dump(), author_name="Utilisateur")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     return {"id": str(note.id), "content": note.content}
 
 

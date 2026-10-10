@@ -184,6 +184,25 @@ class CRMService:
             )
         ).first()
 
+    _REFERENCE_MODELS = {
+        "client_id": (CRMClient, "Le client spécifié n'existe pas."),
+        "service_id": (CRMServiceModel, "Le service spécifié n'existe pas."),
+        "employee_id": (CRMEmployee, "L'employé spécifié n'existe pas."),
+        "appointment_id": (CRMAppointment, "Le rendez-vous spécifié n'existe pas."),
+    }
+
+    def _owned(self, model: Any, record_id: Any, company_id: UUID) -> Any:
+        if record_id is None:
+            return None
+        record = self._session.get(model, record_id)
+        return record if record is not None and record.company_id == company_id else None
+
+    def _foreign_reference_error(self, company_id: UUID, data: dict[str, Any]) -> str | None:
+        for key, (model, message) in self._REFERENCE_MODELS.items():
+            if data.get(key) is not None and self._owned(model, data[key], company_id) is None:
+                return message
+        return None
+
     def resolve_client_for_appointment(
         self,
         company_id: UUID,
@@ -457,9 +476,9 @@ class CRMService:
 
         results = []
         for a in apts:
-            client = self._session.get(CRMClient, a.client_id)
-            service = self._session.get(CRMServiceModel, a.service_id) if a.service_id else None
-            employee = self._session.get(CRMEmployee, a.employee_id) if a.employee_id else None
+            client = self._owned(CRMClient, a.client_id, company_id)
+            service = self._owned(CRMServiceModel, a.service_id, company_id)
+            employee = self._owned(CRMEmployee, a.employee_id, company_id)
 
             if search:
                 needle = search.strip().lower()
@@ -512,6 +531,9 @@ class CRMService:
         duration = data.get("duration_minutes", 60)
         end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
         employee_id = data.get("employee_id")
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         idempotency_key = str(data.get("idempotency_key") or "").strip() or None
         if idempotency_key:
@@ -643,6 +665,9 @@ class CRMService:
         ).first()
         if not apt:
             return None, "Rendez-vous introuvable."
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         supplied_start = data.get("start_time", apt.start_time)
         if "start_time" not in data and supplied_start.tzinfo is None:
@@ -1157,6 +1182,9 @@ class CRMService:
     # --- Notes ---
 
     def create_note(self, company_id: UUID, data: dict[str, Any], author_name: str = "Système") -> CRMNote:
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            raise LookupError(reference_error)
         note = CRMNote(
             company_id=company_id,
             client_id=data.get("client_id"),
