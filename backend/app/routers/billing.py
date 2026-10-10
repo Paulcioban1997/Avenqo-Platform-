@@ -477,6 +477,7 @@ def ai_credits_breakdown(
         "Copilot": 0,
         "OCR AI": 0,
         "Marketing AI": 0,
+        "Voice AI": 0,
         "Autre": 0,
     }
 

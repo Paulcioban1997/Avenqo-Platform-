@@ -26,3 +26,12 @@ La livraison, le paiement test, les factures après paiement et un appel avec so
 Sandbox b494421 : frontend Vercel READY et backend Railway SUCCESS, même empreinte de code ; readiness database/storage/migrations ok. Essai IA Central avec vrai fournisseur : réponse 200 non vide, sans consommation du solde client. Stripe bloque la création du Checkout CAD sur la fiche sandbox existante car elle possède deux abonnements test actifs en USD. Accord demandé pour remplacer uniquement ces abonnements sandbox ; aucune mutation d’abonnement de production.
 
 Correction complémentaire : une facture Stripe payée pour la création initiale d’un abonnement doit restaurer l’allocation incluse, comme un renouvellement. Les crédits achetés sont conservés ; la clé de renouvellement empêche le double crédit en cas de répétition de webhook. Trois tests complémentaires passent. Les nouvelles versions Stripe peuvent fournir la prochaine échéance sur l’item d’abonnement : ce champ est pris en charge.
+
+## Livraison et contrôle du 10 octobre — suite
+
+- Code 9c0b9d0 livré au sandbox (Railway 7075c8c8-7d60-44f1-8445-2393e1078339), puis en production (Railway 8b413b20-7d6a-4a90-942c-380196318305 ; Vercel dpl_zCSyeHT2iEP42zEqcQcGqGhgeL7Z). /health et /ready directs et via avenqo.ca confirment production, SHA, base/stockage/migrations OK. Bref 502 observé pendant le redémarrage, résolu après démarrage.
+- CI 38067309768 : 477 tests backend, 312 tests Voice/facturation/auth, 124 tests web et 306 tests Flutter réussis ; compilation Next réussie.
+- Session client Produits_Ero reconnectée : réponse réelle IA Central à zéro crédit, pack 6 500 crédits à 10 CAD et historique des opérations sans débit Central constatés dans le navigateur.
+- Accord explicite obtenu pour remplacer les deux abonnements sandbox USD actifs. Ils sont annulés sans prorata ni paiement supplémentaire ; historique conservé ; aucun abonnement production modifié.
+- Checkout test Base sur la fiche existante préparé : 2 999 centimes CAD par mois, livemode faux, affichage Environnement de test. Paiement encore ouvert/non payé ; la facture après paiement ne peut donc pas être déclarée vérifiée. URL privée conservée uniquement dans scratch.
+- Le contrôle en production a détecté une erreur du graphique de consommation : catégorie Voice AI absente de l'agrégateur alors que les opérations Voice sont classifiées. Correction de la catégorie ; deux tests passent, dont 29 crédits Voice, 1 Copilot et exclusion de 999 crédits d'un autre tenant.
