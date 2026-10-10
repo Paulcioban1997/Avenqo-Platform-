@@ -13,8 +13,8 @@ it("revokes another session and reloads the authoritative list", async () => {
   let revoked = false;
   const fetch = vi.fn(async (url, init) => {
     if (init?.method === "DELETE") { revoked = true; return new Response(null, { status: 204 }); }
-    if (String(url).endsWith("/overview")) return Response.json({ email_verified: true, role: "owner", mfa_supported: false });
-    if (String(url).includes("/audit") || String(url).includes("/support-access")) return Response.json([]);
+    if (String(url).endsWith("/overview")) return Response.json({ email_verified: true, role: "owner", mfa_supported: true, mfa_enabled: false });
+    if (String(url).includes("/audit") || String(url).includes("/support-access") || String(url).endsWith("/login-history")) return Response.json([]);
     return Response.json([{ id: "current", current: true, created_at: "2026-10-10T12:00:00Z", expires_at: "2026-11-10T12:00:00Z" },
       ...revoked ? [] : [{ id: "other", current: false, created_at: "2026-10-09T12:00:00Z", expires_at: "2026-11-09T12:00:00Z" }]]);
   });
@@ -23,7 +23,7 @@ it("revokes another session and reloads the authoritative list", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Révoquer" }));
   await waitFor(() => expect(screen.queryByRole("button", { name: "Révoquer" })).not.toBeInTheDocument());
   expect(fetch.mock.calls.some(([url, init]) => url === "/api/v1/security/sessions/other" && init.method === "DELETE")).toBe(true);
-  expect(screen.getByText(/Non prise en charge actuellement/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Générer une clé" })).toBeInTheDocument();
 });
 
 it("unselected modules link to selection rather than the operational module", async () => {

@@ -1,6 +1,14 @@
 # Avenqo — staging, rotations et tests externes
 
-Préparation du 10 octobre 2026. Branche locale : `codex/avenqo-security-staging-20261010`. Aucun push, fusion dans main, déploiement, changement de secret réel ou révocation effectué pendant cette préparation. Les bases et volumes existants sont conservés.
+Préparation du 10 octobre 2026. Branche : `codex/avenqo-security-staging-20261010`, publiée dans la PR #27. Aucune fusion dans main, aucun déploiement Railway, changement de secret réel ou révocation effectué. Les bases et volumes existants sont conservés. La publication a déclenché les previews Vercel automatiques.
+
+## Publication et activation en attente
+
+La source du backend sandbox est préparée sur le commit de staging ; le patch Railway ne change que la source du service, sans variable ni volume. Il n'est pas appliqué. Les contrôles GitHub sont lancés. Le test web de révocation attendait encore le texte indiquant l'absence de MFA : il est aligné sur la MFA intégrée ; ses trois cas passent localement.
+
+GitGuardian signale un Generic Password dans l'historique importé de Cursor, commit `0e71573`, fichier `tests/backend/test_workspace_os.py`. Les cinq littéraux de mot de passe de ce fichier sont identiques au mot de passe utilisé par la fixture de création de compte dans `tests/backend/test_auth.py` ; ce contrôle constitue une preuve de leur usage de test, pas une preuve de révocation des véritables secrets PostgreSQL, Fernet ou WooCommerce. Aucun incident n'a été fermé et aucune exemption globale des tests n'a été ajoutée.
+
+Cursor a publié ensuite `1542e2c894a84acbb016279a87b45c6388248ac6`. La simulation Git de son intégration avec staging ne présente aucun conflit. Ce commit, portant sur les quotas commerciaux et le prix CAD affiché, n'est pas encore intégré à cette version figée.
 
 ## Intégration réalisée
 
@@ -15,7 +23,7 @@ Les quatre conflits ont été résolus avec les versions sécurisées PR24 :
 | run_migrations.py | Exécution Alembic avec surcharge ALEMBIC_DATABASE_URL | Configuration explicite et échappement des caractères % pour Alembic |
 | verify_prod_dataset.py | Contrôle des données/export/nettoyage par API | Session autorisée fournie explicitement ; aucune session privilégiée créée dans la base, aucune donnée client affichée |
 
-La fonctionnalité de vérification du dataset est conservée ; son ancien mécanisme de fabrication de JWT/session est supprimé. Aucune branche publiée ni la PR24 n’a été modifiée à distance.
+La fonctionnalité de vérification du dataset est conservée ; son ancien mécanisme de fabrication de JWT/session est supprimé. La PR24 est conservée ; la PR27 porte l'intégration de staging à distance.
 
 ## Migrations 0049 / 0050 : données et nouveaux rôles
 
