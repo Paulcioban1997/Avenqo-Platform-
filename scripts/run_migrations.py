@@ -5,10 +5,7 @@ from pathlib import Path
 root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir))
 
-db_url = os.environ.get(
-    "DATABASE_PUBLIC_URL",
-    "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
-)
+db_url = os.environ["DATABASE_PUBLIC_URL"]
 
 # For alembic, ensure postgresql:// or postgresql+psycopg2://
 os.environ["DATABASE_URL"] = db_url
