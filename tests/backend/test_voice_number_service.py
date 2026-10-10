@@ -146,8 +146,14 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
     manager = VoiceNumberManagementService(provider)
     with db.begin():
         entitlements = ModuleEntitlementService(db)
+        # Professional allows five active modules: fill the two free slots
+        # before asserting that a sixth module is rejected.
+        entitlements.activate_module(tenant, 'marketing')
+        entitlements.activate_module(tenant, 'hr')
         with pytest.raises(ModuleLimitReached):
             entitlements.activate_module(tenant, 'voice')
+        entitlements.deactivate_module(tenant, 'marketing')
+        entitlements.deactivate_module(tenant, 'hr')
         entitlements.deactivate_module(tenant, 'accounting')
         state = entitlements.activate_module(tenant, 'voice')
         assert set(state.active_modules) == {'retail', 'crm', 'voice'} and state.module_limit == 5
