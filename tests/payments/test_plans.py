@@ -1,6 +1,6 @@
 import pytest
 
-from payments import PLANS, PlanCode, SubscriptionPlan, get_plan
+from payments.plans import PLANS, PlanCode, SubscriptionPlan, get_plan
 
 
 def test_catalogue_contient_les_trois_offres_publiques_avenqo() -> None:
