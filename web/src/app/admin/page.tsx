@@ -18,6 +18,7 @@ import {
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
+import { AdminCreditPacks } from "@/components/billing/admin-credit-packs";
 
 interface AdminUserRecord {
   role?: string;
@@ -66,7 +67,7 @@ export default function AdminPage() {
           const data = await res.json() as { user?: AdminUserRecord; company?: AdminCompanyRecord };
           setUser(data.user ?? null);
           setCompany(data.company ?? null);
-          if (data.user?.is_platform_admin || data.user?.role === "SUPER_ADMIN" || data.user?.role === "ADMIN") {
+          if (data.user?.is_platform_admin) {
             setIsAdmin(true);
             const healthResponse = await fetch("/api/v1/admin/voice/health", { credentials: "include", cache: "no-store" });
             if (healthResponse.ok) setVoiceHealth(await healthResponse.json() as PlatformVoiceHealth);
@@ -111,6 +112,7 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            <AdminCreditPacks isFr={isFr} />
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-white/[0.08] pb-6">
               <div>

@@ -231,6 +231,66 @@ def test_strict_multi_tenant_isolation(db_session):
     assert ai_get_res.success is False
 
 
+def _foreign_crm_resources(db_session):
+    company_a = _create_company(db_session, "tenant-owner")
+    company_b = _create_company(db_session, "tenant-intruder")
+    crm_svc = CRMAppService(db_session)
+    foreign = SimpleNamespace(
+        client=crm_svc.create_client(company_a.id, {"first_name": "Secret", "last_name": "Client", "email": "secret.client@alpha.ca"}),
+        service=crm_svc.create_service(company_a.id, {"name": "Secret service"}),
+        employee=crm_svc.create_employee(company_a.id, {"name": "Secret Employee", "color_hex": "#123456"}),
+    )
+    own_client = crm_svc.create_client(company_b.id, {"first_name": "Own", "last_name": "Client", "email": "own.client@beta.ca"})
+    start = (datetime.now(timezone.utc) + timedelta(days=3)).replace(hour=15, minute=0, second=0, microsecond=0)
+    return crm_svc, company_b, own_client, foreign, start
+
+
+@pytest.mark.parametrize("reference", ["client_id", "service_id", "employee_id"])
+def test_appointment_creation_rejects_another_tenants_references(db_session, reference):
+    crm_svc, company_b, own_client, foreign, start = _foreign_crm_resources(db_session)
+    data = {"client_id": own_client.id, "title": "Intrusion", "start_time": start, "duration_minutes": 30}
+    data[reference] = getattr(foreign, reference.removesuffix("_id")).id
+
+    appointment, error = asyncio.run(crm_svc.create_appointment(company_b.id, data, check_conflicts=False))
+
+    assert appointment is None
+    assert "n'existe pas" in error
+    assert db_session.query(CRMAppointment).filter(CRMAppointment.company_id == company_b.id).count() == 0
+
+
+def test_appointment_update_cannot_attach_and_then_reveal_a_foreign_employee(db_session):
+    crm_svc, company_b, own_client, foreign, start = _foreign_crm_resources(db_session)
+    appointment, error = asyncio.run(crm_svc.create_appointment(company_b.id, {
+        "client_id": own_client.id, "title": "Own booking", "start_time": start, "duration_minutes": 30,
+    }, check_conflicts=False))
+    assert error is None
+
+    updated, error = asyncio.run(crm_svc.update_appointment(
+        company_b.id, appointment.id, {"employee_id": foreign.employee.id}, check_conflicts=False))
+    assert updated is None and "n'existe pas" in error
+
+    # Even a row polluted before this fix must not leak the other tenant's employee.
+    db_session.expire_all()
+    polluted = db_session.get(CRMAppointment, appointment.id)
+    polluted.employee_id = foreign.employee.id
+    polluted.service_id = foreign.service.id
+    db_session.commit()
+    listed = crm_svc.list_appointments(company_b.id)
+    assert listed[0]["employee_name"] == "Non assigné"
+    assert listed[0]["service_name"] is None
+    assert "Secret" not in str(listed)
+
+
+def test_note_creation_rejects_another_tenants_client(db_session):
+    crm_svc, company_b, own_client, foreign, _start = _foreign_crm_resources(db_session)
+
+    with pytest.raises(LookupError):
+        crm_svc.create_note(company_b.id, {"client_id": foreign.client.id, "content": "Intrusion"})
+
+    note = crm_svc.create_note(company_b.id, {"client_id": own_client.id, "content": "Legit"})
+    assert note.company_id == company_b.id
+
+
 def test_appointment_crud_and_conflict_detection(db_session):
     """Création de RDV, détection de conflit d'horaire et mise à jour de statut."""
     company = _create_company(db_session, "tenant-appointments")

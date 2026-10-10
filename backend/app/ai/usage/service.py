@@ -25,6 +25,7 @@ from backend.app.ai.usage.exceptions import (
     AI_REQUEST_BUDGET_EXCEEDED,
 )
 from backend.app.ai.usage.credit_policy import AvenqoCreditPolicy
+from backend.app.ai.usage.included_central import central_is_included
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.policy import (
     MONTHLY_AI_REQUESTS,
@@ -127,6 +128,8 @@ class AIUsageService:
         `AIQuotaExceededError`, un message sûr et générique.
         """
 
+        if central_is_included(company_id):
+            return
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
         if limit is None:
             return
@@ -420,7 +423,7 @@ class AIUsageService:
             return CreditReservationClaim(existing, acquired=False)
 
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
-        if limit is None:
+        if limit is None or central_is_included(company_id):
             included_reservation = 0
             purchased_reservation = 0
             allocations: list[dict[str, object]] = []
@@ -459,7 +462,7 @@ class AIUsageService:
             included_reserved_delta=included_reservation,
             purchased_reserved_delta=purchased_reservation,
             reference_id=avenqo_request_id,
-            details={"estimated_credits": estimated_credits},
+            details={"estimated_credits": estimated_credits, "included_central": central_is_included(company_id)},
         )
         self._db.commit()
         self._db.refresh(reservation)
@@ -543,6 +546,8 @@ class AIUsageService:
             if attempts
             else (1 if count_request else 0)
         )
+        if central_is_included(company_id):
+            actual_credits = 0
         balance = self._get_or_create_credits(company_id)
         self._release_stale_reservations_locked(
             company_id,
@@ -613,6 +618,7 @@ class AIUsageService:
                 "estimated_credits": reservation.estimated_credits,
                 "actual_credits": actual_credits,
                 "unfunded_credits": unfunded,
+                "included_central": central_is_included(company_id),
             },
         )
         if attempts:
@@ -926,6 +932,8 @@ class AIUsageService:
         else:
             credits_used = 1
 
+        if central_is_included(company_id):
+            credits_used = 0
         reference_id = request_id if attempts else None
         self._consume_credits(
             company_id,

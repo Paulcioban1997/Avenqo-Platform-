@@ -148,6 +148,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     avenqo_owner_notification_email: str | None = Field(default=None, alias="AVENQO_OWNER_NOTIFICATION_EMAIL")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
+    stripe_automatic_tax_enabled: bool = Field(default=False, alias="STRIPE_AUTOMATIC_TAX_ENABLED")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_base: str | None = Field(default=None, alias="STRIPE_PRICE_BASE")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
@@ -265,6 +266,9 @@ class Settings(BaseSettings):
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")
     google_calendar_redirect_uri: str | None = Field(default=None, alias="GOOGLE_CALENDAR_REDIRECT_URI")
+    microsoft_calendar_client_id: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_ID")
+    microsoft_calendar_client_secret: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_SECRET")
+    microsoft_calendar_redirect_uri: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_REDIRECT_URI")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
@@ -365,6 +369,7 @@ class Settings(BaseSettings):
     platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
     billing_legal_business_name: str | None = Field(default=None, alias="BILLING_LEGAL_BUSINESS_NAME")
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
+    billing_business_tax_ids: dict[str, str] = Field(default_factory=dict, alias="BILLING_BUSINESS_TAX_IDS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
@@ -385,8 +390,16 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             stripped = value.strip()
             if stripped.startswith("["):
-                return value
+                return json.loads(stripped)
             return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
+
+    @field_validator("openai_api_key", "anthropic_api_key", "google_ai_api_key", mode="before")
+    @classmethod
+    def normalize_ai_api_key(cls, value: object) -> object:
+        # A copied trailing newline makes HTTP authorization headers invalid.
+        if isinstance(value, str):
+            return "".join(value.split()) or None
         return value
 
     @field_validator(
@@ -400,6 +413,7 @@ class Settings(BaseSettings):
         "shopify_client_id", "shopify_client_secret", "shopify_redirect_uri",
         "woocommerce_callback_uri", "woocommerce_webhook_uri",
         "google_calendar_client_id", "google_calendar_client_secret", "google_calendar_redirect_uri",
+        "microsoft_calendar_client_id", "microsoft_calendar_client_secret", "microsoft_calendar_redirect_uri",
         mode="before",
     )
     @classmethod

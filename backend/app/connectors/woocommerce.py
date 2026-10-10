@@ -294,10 +294,20 @@ class WooCommerceConnector(CommerceConnector):
     ) -> Mapping[str, Any]:
         supplied = headers.get("x-wc-webhook-signature", "")
         webhook_secret = str((credentials or {}).get("webhook_secret") or "")
-        expected = base64.b64encode(
-            hmac.new(webhook_secret.encode("utf-8"), body, hashlib.sha256).digest()
-        ).decode("ascii")
-        if not webhook_secret or not supplied or not hmac.compare_digest(expected, supplied):
+        previous = (credentials or {}).get("previous_webhook_secrets", [])
+        # One explicitly configured old secret allows provider hooks to change
+        # progressively. Removing it immediately ends acceptance of old signatures.
+        if not isinstance(previous, list) or len(previous) > 1 or any(
+            not isinstance(secret, str) or not secret for secret in previous
+        ):
+            raise WooCommerceAuthenticationError("Invalid WooCommerce webhook signature")
+        accepted = False
+        for secret in [webhook_secret, *previous]:
+            expected = base64.b64encode(
+                hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
+            ).decode("ascii")
+            accepted |= bool(secret) and hmac.compare_digest(expected, supplied)
+        if not webhook_secret or not supplied or not accepted:
             raise WooCommerceAuthenticationError(
                 "Invalid WooCommerce webhook signature"
             )

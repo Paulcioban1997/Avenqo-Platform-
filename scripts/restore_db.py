@@ -51,7 +51,7 @@ def main() -> int:
         print(f"ÉCHEC de la restauration : {exc}", file=sys.stderr)
         return 1
 
-    print(f"Restauration réussie vers {args.target_database_url}")
+    print("Restauration réussie vers la cible explicitement configurée ; connexion masquée.")
     return 0
 
 

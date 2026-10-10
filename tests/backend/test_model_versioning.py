@@ -21,6 +21,7 @@ from backend.app.database import get_db
 from backend.app.database.session import get_session_factory
 from backend.app.dependencies.ai_engine import get_model_registry_root
 from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.internal import get_internal_service_tenant
 from backend.app.dependencies.datasets import get_dataset_import_service
 from backend.app.models import (
     Base,
@@ -105,6 +106,7 @@ def training_environment(tmp_path: Path):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_tenant_context] = lambda: tenant
+    app.dependency_overrides[get_internal_service_tenant] = lambda: tenant
     app.dependency_overrides[get_dataset_import_service] = override_dataset_service
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_model_registry_root] = lambda: model_root

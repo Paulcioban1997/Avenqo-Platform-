@@ -1,0 +1,27 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "avenqo-database-credentials"
+description = "Literal database URL credentials"
+regex = '''(?i)(?:postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|redis)://[^\s"'<>:@]+:([^\s"'<>@]+)@'''
+secretGroup = 1
+keywords = ["postgres", "mysql", "redis"]
+[[rules.allowlists]]
+description = "Explicit fictional fixtures only"
+regexTarget = "secret"
+regexes = ['''^test-only-password$''']
+
+[[rules]]
+id = "avenqo-connector-encryption-key"
+description = "Literal Fernet connector encryption key"
+regex = '''(?i)(?:CONNECTOR_ENCRYPTION_KEYS?\s*[=:][\s\["'`]*|ConnectorSecretCipher\s*\(\s*\[[\s"']*)([A-Za-z0-9_-]{43}=)'''
+secretGroup = 1
+keywords = ["CONNECTOR_ENCRYPTION_KEY", "ConnectorSecretCipher"]
+
+[[rules]]
+id = "avenqo-webhook-signing-secret"
+description = "Literal webhook signing secret including fallback values"
+regex = '''(?i)(?:\.get\(\s*["']webhook_secret["']\s*,\s*["']|(?:webhook_secret|wh_secret)["']?\s*[:=]\s*["'])([A-Za-z0-9_-]{32,})'''
+secretGroup = 1
+keywords = ["webhook_secret", "wh_secret"]

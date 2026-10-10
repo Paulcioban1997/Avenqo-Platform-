@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.internal import get_internal_service_tenant
 from backend.app.dependencies.training import get_training_dispatcher
 from backend.app.schemas.training import RetrainingCheckRequest, RetrainingCheckResponse
 from backend.app.services.training_dispatcher import TrainingDispatcher
@@ -35,7 +35,7 @@ router = APIRouter(tags=["internal-retraining"])
 @router.post("/retraining/check", response_model=RetrainingCheckResponse)
 def check_retraining(
     request: RetrainingCheckRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(get_internal_service_tenant),
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
 ) -> RetrainingCheckResponse:
     ai_job = dispatcher.dispatch_retraining_check(

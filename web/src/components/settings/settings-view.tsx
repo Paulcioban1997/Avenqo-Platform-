@@ -294,8 +294,8 @@ export function SettingsView() {
       setPinFormError("Les deux saisies de NIP ne correspondent pas.");
       return;
     }
-    if (pinStatus?.has_pin && !pinForm.currentPassword) {
-      setPinFormError("Votre mot de passe de compte actuel est requis pour modifier votre NIP.");
+    if (!pinForm.currentPassword) {
+      setPinFormError("Votre mot de passe de compte actuel est requis pour configurer votre NIP.");
       return;
     }
 
@@ -320,7 +320,7 @@ export function SettingsView() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Échec de configuration du NIP");
+        throw new Error(err.error?.message || (typeof err.detail === "string" ? err.detail : null) || "Échec de configuration du NIP");
       }
 
       setPinFormSuccess("NIP vocal configuré et sécurisé avec succès.");
@@ -1000,7 +1000,7 @@ export function SettingsView() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {entitlements.modules.map((mod) => {
+            {entitlements.modules.filter(mod => ["crm", "voice", "retail", "accounting", "marketing", "ocr"].includes(mod.key)).map((mod) => {
               const isUpdating = updatingKey === mod.key;
               const isLocked = mod.state === "upgrade_required";
 

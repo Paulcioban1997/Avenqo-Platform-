@@ -28,6 +28,7 @@ from tests.backend.test_voice_agent import _voice_database
 from tests.backend.test_voice_agent import signed_telnyx_webhook
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import reset_rate_limiter
+from backend.app.core.security import hash_password
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 import backend.app.voice.telnyx_media as media_module
 from backend.app.voice.providers import TelnyxClient
@@ -127,7 +128,7 @@ def test_pin_api_authenticated_creation_masks_secrets_and_rejects_trivial_pin(au
     app.dependency_overrides[voice_router.get_current_identity] = lambda: SimpleNamespace(user=env.user)
     app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: env.membership
     with TestClient(app) as client:
-        response = client.put("/api/v1/voice/auth/pin", json={"pin": secret})
+        response = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "media-test-password"})
     assert response.status_code == (200 if secret == "907182" else 422)
     assert secret not in response.text + caplog.text
     credential = env.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == env.company.id))
@@ -161,7 +162,7 @@ def authorized_media_call(tmp_path):
     settings.telnyx_voice_connection_id = "verified-connection"
     config.enabled = False; config.retell_agent_id = None; config.retell_sip_uri = None
     user = User(company_id=company.id, first_name="Owner", last_name="Media", email="media-owner@example.com",
-        password_hash="test", phone="+15145550123", role=UserRole.OWNER, is_active=True)
+        password_hash=hash_password("media-test-password"), phone="+15145550123", role=UserRole.OWNER, is_active=True)
     db.add(user); db.flush()
     membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
     number = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
@@ -315,8 +316,8 @@ def test_pin_setup_api_rate_limit_rejects_repeated_authenticated_requests(author
     app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: env.membership
     reset_rate_limiter()
     with TestClient(app) as client:
-        first = client.put("/api/v1/voice/auth/pin", json={"pin": "907182"})
-        second = client.put("/api/v1/voice/auth/pin", json={"pin": "908271"})
+        first = client.put("/api/v1/voice/auth/pin", json={"pin": "907182", "current_password": "media-test-password"})
+        second = client.put("/api/v1/voice/auth/pin", json={"pin": "908271", "current_password": "media-test-password"})
     assert first.status_code == 200 and second.status_code == 429
     assert "908271" not in second.text
     reset_rate_limiter()
@@ -1089,6 +1090,50 @@ def test_websocket_disconnect_cleanup_releases_ledger_and_marks_call_completed(a
         VoiceToolAction.action_id == "media-active:" + str(env.call.id)
     ))
     assert lease is not None and lease.result.get("active") is False
+
+
+@pytest.mark.parametrize("public_mode", [False, True])
+@pytest.mark.parametrize("client_state", ["opaque-token", None])
+def test_websocket_without_valid_media_ticket_cannot_end_the_call(authorized_media_call, monkeypatch, public_mode, client_state):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = public_mode
+    app, _adapter, _central = media_test_app(env, monkeypatch)
+    event = start_event()
+    event["start"].update(to=env.config.telnyx_phone_number, client_state=client_state)
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(event)
+            socket.close()
+
+    env.db.expire_all()
+    untouched = env.db.get(VoiceCall, env.call.id)
+    assert untouched.status == "in_progress"
+    assert untouched.ended_at is None
+
+
+def test_second_socket_losing_the_media_lease_does_not_end_the_live_call(authorized_media_call, monkeypatch):
+    env = authorized_media_call
+    env.settings.telnyx_media_inbound_enabled = True
+    live_claim = claim_media_start(env.db, env.settings, env.call.id, {
+        "client_state": issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True),
+        "call_control_id": env.call.telnyx_call_control_id, "to": env.config.telnyx_phone_number,
+    }, public_mode=True)
+    app, _adapter, _central = media_test_app(env, monkeypatch)
+    event = start_event()
+    event["start"].update(to=env.config.telnyx_phone_number,
+        client_state=issue_media_client_state(env.db, env.settings, env.call.id, public_mode=True))
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(event)
+            socket.close()
+
+    env.db.expire_all()
+    untouched = env.db.get(VoiceCall, env.call.id)
+    assert untouched.status == "in_progress"
+    assert untouched.ended_at is None
+    release_media_session(env.db, env.call.id, live_claim)
 
 
 def test_media_ticket_replay_expired_and_cross_tenant_rejection(authorized_media_call):
@@ -2296,12 +2341,11 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
                 while True:
                     socket.receive_json()
 
-    # Final goodbye is handled by Telnyx hangup, not Central AI.
-    # The preceding nine turns must all be processed in order.
-    assert captured_turns == ten_turn_phrases[:-1]
+    # All ten inputs are questions; the last asks for the business address.
+    assert captured_turns == ten_turn_phrases
 
     # Verify continuity for all turns dispatched to Central AI.
-    assert len(captured_conversations) == len(ten_turn_phrases) - 1
+    assert len(captured_conversations) == len(ten_turn_phrases)
     first_conv = captured_conversations[0]
     assert all(c == first_conv for c in captured_conversations)
 

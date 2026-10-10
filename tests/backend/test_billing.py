@@ -234,6 +234,55 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
+def test_modern_stripe_tax_webhook_preserves_breakdown_and_actual_payment(billing_environment):
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="tax-modern@acme.ca")
+    event = invoice_event(owner['company']['id'], event_id='evt_tax_modern', invoice_id='in_tax_modern')
+    invoice = event['data']['object']
+    invoice.pop('total_tax_amounts')
+    invoice.update(subtotal=2999,total=3448,amount_paid=3448,amount_due=3448,total_discount_amounts=[],
+        total_taxes=[{'amount':150,'tax_rate_details':{'tax_rate':'txr_gst'},'_avenqo_tax_rate':{'tax_type':'gst','percentage':5}},
+                     {'amount':299,'tax_rate_details':{'tax_rate':'txr_qst'},'_avenqo_tax_rate':{'tax_type':'qst','percentage':9.975}}])
+    provider.events.append(event)
+    assert client.post('/api/v1/billing/webhook',content=b'{}',headers={'Stripe-Signature':'valid_signature'}).status_code==200
+    persisted=client.get('/api/v1/billing/invoices',headers=auth_headers(owner)).json()[0]
+    assert persisted['tax_total']==449 and persisted['amount_paid']==3448
+    assert [tax['name'] for tax in persisted['billing_details']['tax_breakdown']]==['TPS','TVQ']
+
+
+def test_archived_test_pdf_is_tenant_scoped_and_excluded_from_financial_totals(billing_environment, tmp_path):
+    import hashlib
+    from backend.app.models import BillingTestDocument
+
+    client, _, notifier = billing_environment
+    owner = create_owner(client, notifier)
+    stranger = create_owner(client, notifier, email="other@acme.ca", company_name="Other")
+    company_id = UUID(owner["company"]["id"])
+    factory = sessionmaker(bind=create_engine(f"sqlite:///{tmp_path / 'billing.db'}"))
+    pdf = b"%PDF-1.4\nTEST - aucun debit reel\n%%EOF"
+    with factory() as db:
+        document = BillingTestDocument(company_id=company_id, source_company_id=str(uuid4()),
+            source_invoice_id="in_test_paid", number="TEST-0006", currency="CAD", total=2999,
+            issued_at=datetime.now(timezone.utc), pdf_sha256=hashlib.sha256(pdf).hexdigest(), pdf_content=pdf)
+        db.add(document); db.commit(); document_id = str(document.id)
+    response = client.get("/api/v1/billing/invoices/history", headers=auth_headers(owner))
+    assert response.status_code == 200
+    assert response.json()["total"] == 0 and response.json()["items"] == []
+    assert response.json()["test_documents"][0]["id"] == document_id
+    assert "pdf_content" not in response.text and "source_company_id" not in response.text
+    path = f"/api/v1/billing/test-invoice-documents/{document_id}/pdf"
+    download = client.get(path, headers=auth_headers(owner))
+    assert download.status_code == 200 and download.content == pdf
+    assert download.headers["content-type"] == "application/pdf"
+    assert download.headers["cache-control"] == "private, no-store"
+    assert "test" in download.headers["content-disposition"]
+    assert client.get(path, headers=auth_headers(stranger)).status_code == 404
+    assert client.get(path).status_code == 401
+    assert client.get("/api/v1/billing/invoices/history", headers=auth_headers(stranger)).json()["test_documents"] == []
+    with factory() as db:
+        assert InvoiceFiscalService(db).get_paid_subscription_totals(company_id, 2026)["invoices_paid"] == 0
+
+
 def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
     billing_environment,
     tmp_path: Path,
@@ -538,8 +587,7 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     packs = client.get("/api/v1/billing/credit-packs", headers=headers)
     assert packs.status_code == 200
     assert packs.json() == [
-        {"code": "credits_6500", "credits": 6500, "price_usd": 10},
-        {"code": "demo_extra", "credits": 6500, "price_usd": 10},
+        {"code": "credits_6500", "credits": 6500, "price_usd": 10, "price_cad": 10, "price_cents": 1000, "currency": "CAD"},
     ]
     assert "price_id" not in packs.text
 
@@ -842,8 +890,11 @@ def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_env
     assert balance_b["purchased_remaining"] == 0
 
 
+@pytest.mark.parametrize("billing_reason", ["subscription_cycle", "subscription_create"])
 def test_professional_packs_accumulate_then_survive_subscription_renewal(
     billing_environment,
+    billing_reason,
+    tmp_path,
 ) -> None:
     client, provider, notifier = billing_environment
     login = create_owner(
@@ -862,10 +913,8 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     ).status_code == 200
 
     assert client.get("/api/v1/billing/credit-packs", headers=headers).json() == [
-        {"code": "credits_25000", "credits": 25000, "price_usd": 35},
-        {"code": "credits_65000", "credits": 65000, "price_usd": 80},
-        {"code": "professional_6500", "credits": 6500, "price_usd": 10},
-        {"code": "professional_25000", "credits": 25000, "price_usd": 25},
+        {"code": "credits_25000", "credits": 25000, "price_usd": 35, "price_cad": 35, "price_cents": 3500, "currency": "CAD"},
+        {"code": "credits_65000", "credits": 65000, "price_usd": 80, "price_cad": 80, "price_cents": 8000, "currency": "CAD"},
     ]
     assert client.post(
         "/api/v1/billing/credit-packs/checkout",
@@ -888,10 +937,16 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     assert accumulated["purchased_remaining"] == 50000
     assert accumulated["total_remaining"] == 75000
 
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        balance = session.scalar(select(TenantAICreditBalance).where(TenantAICreditBalance.company_id == UUID(company_id)))
+        balance.monthly_used = 7000
+        session.commit()
+    engine.dispose()
     renewal = invoice_event(
         company_id,
         event_id="evt_subscription_cycle",
-        billing_reason="subscription_cycle",
+        billing_reason=billing_reason,
     )
     provider.events.extend([renewal, renewal])
     reset = client.post(
@@ -1178,23 +1233,27 @@ def test_refund_reverses_only_unconsumed_purchase_credits_and_flags_shortfall(
     engine.dispose()
 
 
-def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("configured_currency", ["cad", "usd"])
+def test_stripe_credit_checkout_uses_approved_cad_amount(monkeypatch: pytest.MonkeyPatch, configured_currency) -> None:
     captured: dict[str, Any] = {}
 
-    def create_session(**kwargs: Any) -> SimpleNamespace:
-        captured.update(kwargs)
+    def create_session(params) -> SimpleNamespace:
+        captured.update(params)
         return SimpleNamespace(id="cs_inline", url="https://checkout.stripe.test/inline")
 
     monkeypatch.setattr(
-        "backend.app.services.stripe_gateway.stripe.checkout.Session.create",
-        create_session,
+        "backend.app.services.stripe_gateway.stripe.StripeClient",
+        lambda key: SimpleNamespace(v1=SimpleNamespace(
+            prices=SimpleNamespace(retrieve=lambda price_id: {"currency": configured_currency, "unit_amount": 1000, "product": "prod_credits", "recurring": None}),
+            checkout=SimpleNamespace(sessions=SimpleNamespace(create=create_session)),
+        )),
     )
     metadata = {
         "avenqo_kind": "ai_credit_pack",
         "avenqo_company_id": "company-1",
-        "avenqo_credit_pack": "professional_extra",
-        "avenqo_plan_code": "professional",
-        "avenqo_credits": "25000",
+        "avenqo_credit_pack": "credits_6500",
+        "avenqo_plan_code": "base",
+        "avenqo_credits": "6500",
     }
 
     checkout = StripeGateway("sk_test").create_credit_checkout(
@@ -1210,10 +1269,12 @@ def test_stripe_credit_checkout_uses_configured_price(monkeypatch: pytest.Monkey
         url="https://checkout.stripe.test/inline",
     )
     assert captured["mode"] == "payment"
-    assert captured["adaptive_pricing"] == {"enabled": True}
-    assert captured["line_items"] == [
-        {"price": "price_credit_professional", "quantity": 1}
-    ]
+    assert captured["adaptive_pricing"] == {"enabled": False}
+    assert captured["currency"] == "cad"
+    if configured_currency == "cad":
+        assert captured["line_items"] == [{"price": "price_credit_professional", "quantity": 1}]
+    else:
+        assert captured["line_items"] == [{"price_data": {"currency": "cad", "unit_amount": 1000, "product": "prod_credits"}, "quantity": 1}]
     assert captured["metadata"] == metadata
     assert captured["payment_intent_data"] == {"metadata": metadata}
 
@@ -1247,7 +1308,7 @@ def test_stripe_subscription_checkout_uses_price_and_adaptive_pricing(
     assert url == "https://checkout.stripe.test/subscription"
     assert captured["mode"] == "subscription"
     assert captured["line_items"] == [{"price": "price_professional", "quantity": 1}]
-    assert captured["adaptive_pricing"] == {"enabled": True}
+    assert captured["adaptive_pricing"] == {"enabled": False}
     assert captured["subscription_data"] == {
         "metadata": {"avenqo_company_id": "company-1"},
     }
@@ -1471,3 +1532,87 @@ def test_invoice_email_uses_existing_transport_and_localized_stripe_values(
     assert "https://invoice.stripe.test/in_acme.pdf" in message["text_body"]
     assert "<p>" in message["html_body"]
     engine.dispose()
+
+
+def test_invoice_sync_failure_is_distinguished_from_an_empty_history(monkeypatch):
+    from unittest.mock import MagicMock
+    from backend.app.routers.billing import _backfill_stripe_invoices
+    db = MagicMock()
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+    monkeypatch.setattr("backend.app.routers.billing.sync_customer_invoices", unavailable)
+    assert _backfill_stripe_invoices(db, MagicMock(), get_settings(), __import__("uuid").uuid4()) is False
+    db.rollback.assert_called_once()
+
+
+def test_avenqo_pdf_contains_actual_addons_and_paid_balance(billing_environment):
+    from io import BytesIO
+    from pypdf import PdfReader
+    from backend.app.models import BillingInvoice
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="pdf@example.ca", company_name="PDF Client")
+    other = create_owner(client, notifier, email="otherpdf@example.ca", company_name="Other PDF")
+    factory = client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        invoice = BillingInvoice(id=uuid4(), company_id=UUID(owner["company"]["id"]), stripe_invoice_id="in_pdf_native",
+            number="AVQ-PDF-01", status="paid", currency="cad", plan_code="base", subtotal=3999, total=3999,
+            tax_total=0, discount_total=0, amount_paid=3999, amount_due=3999, issued_at=datetime.now(timezone.utc),
+            line_items=[{"description":"Avenqo Base", "quantity":1, "amount":2999}, {"description":"Starter - 1000 crédits IA", "quantity":1, "amount":1000}],
+            invoice_pdf="https://invoice.stripe.test/original.pdf")
+        db.add(invoice); db.commit(); invoice_id = invoice.id
+    response = client.get(f"/api/v1/billing/invoices/{invoice_id}/avenqo-pdf", headers=auth_headers(owner))
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    text = " ".join(page.extract_text() for page in PdfReader(BytesIO(response.content)).pages)
+    assert "Avenqo Base" in text and "Starter - 1000 crédits IA" in text
+    assert "39,99 CAD" in text and "Solde à payer" in text and "0,00 CAD" in text
+    assert "PAYÉE" in text and "illimité" not in text
+    assert client.get(f"/api/v1/billing/invoices/{invoice_id}/avenqo-pdf", headers=auth_headers(other)).status_code == 404
+
+
+def test_new_pack_catalog_is_shared_but_cannot_sell_before_validation(billing_environment):
+    from backend.app.models import AICreditPackOffer
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="catalog@example.ca", company_name="Catalogue Client")
+    client.get("/api/v1/billing/subscription", headers=auth_headers(owner))
+    factory = client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        db.add(AICreditPackOffer(code="starter_1000_v1", name="Starter", credits=1000, price_cents=1000, enabled=False))
+        account = db.scalar(select(BillingAccount).where(BillingAccount.company_id==UUID(owner["company"]["id"])))
+        account.status="active"; db.commit()
+    response=client.get("/api/v1/billing/credit-packs",headers=auth_headers(owner))
+    assert response.status_code==200
+    assert response.json()[0]["credits"]==1000 and response.json()[0]["enabled"] is False
+    checkout=client.post("/api/v1/billing/credit-packs/checkout",json={"pack_code":"starter_1000_v1"},headers=auth_headers(owner))
+    assert checkout.status_code==400 and provider.credit_checkouts==[]
+    assert client.get("/api/v1/admin/credit-packs",headers=auth_headers(owner)).status_code==403
+
+
+def test_versioned_pack_fulfills_server_terms_once_and_rejects_wrong_subtotal(billing_environment):
+    from backend.app.models import AICreditPackOffer
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="newpack@example.ca", company_name="New Pack Client")
+    headers=auth_headers(owner); company_id=owner["company"]["id"]
+    client.get("/api/v1/billing/subscription",headers=headers)
+    factory=client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        db.add(AICreditPackOffer(code="starter_1000_v1",name="Starter",credits=1000,price_cents=1000,enabled=True))
+        account=db.scalar(select(BillingAccount).where(BillingAccount.company_id==UUID(company_id)))
+        account.status="active"; account.stripe_customer_id=f"cus_{company_id}"; db.commit()
+    checkout=client.post("/api/v1/billing/credit-packs/checkout",json={"pack_code":"starter_1000_v1"},headers=headers)
+    assert checkout.status_code==200
+    metadata=provider.credit_checkouts[0]["metadata"]
+    assert metadata["avenqo_credits"]=="1000" and metadata["avenqo_price_cents"]=="1000"
+    event=credit_checkout_event(company_id,checkout_session_id="cs_created_1",payment_intent_id="pi_starter_1",metadata=metadata)
+    event["data"]["object"]["amount_subtotal"]=1000
+    event["data"]["object"]["currency"]="cad"
+    from copy import deepcopy
+    bad_event=deepcopy(event); bad_event["id"]="evt_starter_wrong_amount"
+    bad_event["data"]["object"]["amount_subtotal"]=999
+    provider.events.append(bad_event)
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).status_code==400
+    provider.events.extend([event,event])
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":True}
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":False}
+    balance=client.get("/api/v1/billing/ai-credits",headers=headers).json()
+    assert balance["purchased_remaining"]==1000 and balance["monthly_included"]==6500

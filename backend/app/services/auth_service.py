@@ -180,9 +180,25 @@ class AuthService:
             token_hash=hash_token(refresh_token),
             created_at=now,
             expires_at=refresh_expires_at,
+            ip_address=getattr(self, "_login_ip", None),
+            user_agent=getattr(self, "_login_ua", None),
+            last_seen_at=now,
         )
         self._session.add(auth_session)
         user.last_login = now
+        from backend.app.models import LoginEvent
+
+        self._session.add(
+            LoginEvent(
+                company_id=user.company_id,
+                user_id=user.id,
+                session_id=auth_session.id,
+                outcome="success",
+                ip_address=auth_session.ip_address,
+                user_agent=auth_session.user_agent,
+                created_at=now,
+            )
+        )
         self._session.commit()
         access_token, access_expires_at = create_access_token(
             user.id,
@@ -199,14 +215,78 @@ class AuthService:
 
     _create_auth_session = create_auth_session
 
-    def login(self, email: str, password: str) -> AuthResult:
-        user = self._session.scalar(select(User).where(User.email == email.strip().lower()))
+    def login(
+        self,
+        email: str,
+        password: str,
+        *,
+        otp: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthResult:
+        # Serialize recovery-code consumption and lockout counters. Concurrent
+        # logins must not both consume the same single-use recovery code.
+        user = self._session.scalar(
+            select(User).where(User.email == email.strip().lower()).with_for_update()
+        )
+        now = datetime.now(timezone.utc)
+        if user is not None and self._is_locked(user, now):
+            self._record_login(user, "locked", ip_address, user_agent)
+            self._session.commit()
+            raise AuthenticationError("Compte temporairement verrouillé")
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
+            if user is not None:
+                self._register_failure(user, ip_address, user_agent, now)
             raise AuthenticationError("Email ou mot de passe incorrect")
         if user.email_verified_at is None:
             raise AuthenticationError("L'adresse email doit être vérifiée")
+        if getattr(user, "mfa_enabled", False):
+            from backend.app.services.totp import consume_recovery_code, decrypt_mfa_secret, verify_totp
 
+            if not otp:
+                raise AuthenticationError("mfa_required")
+            totp_ok = bool(user.mfa_secret_encrypted) and verify_totp(decrypt_mfa_secret(user.mfa_secret_encrypted), otp)
+            recovered, remaining = consume_recovery_code(user.mfa_recovery_hashes, otp)
+            if recovered:
+                user.mfa_recovery_hashes = remaining
+            if not totp_ok and not recovered:
+                self._register_failure(user, ip_address, user_agent, now)
+                raise AuthenticationError("Code d'authentification invalide")
+        user.failed_login_count = 0
+        user.locked_until = None
+        self._login_ip = ip_address
+        self._login_ua = (user_agent or "")[:512] or None
         return self.create_auth_session(user)
+
+    def _is_locked(self, user: User, now: datetime) -> bool:
+        locked = getattr(user, "locked_until", None)
+        if locked is None:
+            return False
+        if locked.tzinfo is None:
+            locked = locked.replace(tzinfo=timezone.utc)
+        return locked > now
+
+    def _register_failure(self, user: User, ip_address: str | None, user_agent: str | None, now: datetime) -> None:
+        user.failed_login_count = int(getattr(user, "failed_login_count", 0) or 0) + 1
+        if user.failed_login_count >= 8:
+            user.locked_until = now + timedelta(minutes=15)
+            user.failed_login_count = 0
+        self._record_login(user, "failure", ip_address, user_agent)
+        self._session.commit()
+
+    def _record_login(self, user: User, outcome: str, ip_address: str | None, user_agent: str | None) -> None:
+        from backend.app.models import LoginEvent
+
+        self._session.add(
+            LoginEvent(
+                company_id=user.company_id,
+                user_id=user.id,
+                outcome=outcome,
+                ip_address=ip_address,
+                user_agent=(user_agent or "")[:512] or None,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
 
     def authenticate(self, access_token: str) -> tuple[AuthSession, User]:
         try:

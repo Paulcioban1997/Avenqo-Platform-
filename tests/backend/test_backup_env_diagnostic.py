@@ -11,14 +11,14 @@ import pytest
 
 
 def test_settings_reads_database_url_from_env_when_set(monkeypatch, tmp_path) -> None:
-    """Settings doit lire DATABASE_URL depuis l'env OS même si .env existe."""
+    """Settings doit lire DATABASE_URL depuis l'env OS mÃªme si .env existe."""
 
-    # Créer un .env avec une valeur SQLite pour simuler le conflit potentiel
+    # CrÃ©er un .env avec une valeur SQLite pour simuler le conflit potentiel
     env_file = tmp_path / "backend" / ".env"
     env_file.parent.mkdir(parents=True)
     env_file.write_text("DATABASE_URL=sqlite:///./var/avenqo.db\n", encoding="utf-8")
 
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@railway:5432/db")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:test-only-password@railway:5432/db")
     monkeypatch.chdir(tmp_path)
 
     from backend.app.config.settings import get_settings
@@ -32,11 +32,11 @@ def test_settings_reads_database_url_from_env_when_set(monkeypatch, tmp_path) ->
 
 
 def test_backup_script_logs_safe_presence_and_scheme(tmp_path) -> None:
-    """Le script de backup log présence + scheme, jamais la valeur."""
+    """Le script de backup log prÃ©sence + scheme, jamais la valeur."""
 
     script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
     env = os.environ.copy()
-    env["DATABASE_URL"] = "postgresql://user:secret@host:5432/db"
+    env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     # Forcer un cwd sans .env pour isoler le test
     env["BACKUP_ROOT"] = str(tmp_path / "backups")
@@ -65,11 +65,11 @@ def test_backup_script_detects_env_settings_mismatch(tmp_path) -> None:
 
     script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
     env = os.environ.copy()
-    env["DATABASE_URL"] = "postgresql://user:secret@host:5432/db"
+    env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env["BACKUP_ROOT"] = str(tmp_path / "backups")
 
-    # cwd dans un dossier vide → Settings cherche backend/.env là-bas → absent
+    # cwd dans un dossier vide â†’ Settings cherche backend/.env lÃ -bas â†’ absent
     result = subprocess.run(
         [sys.executable, str(script)],
         capture_output=True,
@@ -80,6 +80,6 @@ def test_backup_script_detects_env_settings_mismatch(tmp_path) -> None:
     )
 
     output = result.stdout + result.stderr
-    # Doit quand même fonctionner car env OS est prioritaire
+    # Doit quand mÃªme fonctionner car env OS est prioritaire
     assert "settings_database_url_present=true" in output
     assert "secret" not in output

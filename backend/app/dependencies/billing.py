@@ -21,7 +21,7 @@ def get_billing_provider() -> BillingProvider:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Stripe n'est pas configuré",
         )
-    return StripeGateway(settings.stripe_secret_key)
+    return StripeGateway(settings.stripe_secret_key, automatic_tax_enabled=settings.stripe_automatic_tax_enabled)
 
 
 def get_billing_service(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -9,6 +11,43 @@ import httpx
 
 from backend.app.config.settings import Settings
 from backend.app.models.voice import VoiceBusinessConfig
+
+logger = logging.getLogger("avenqo.voice.telnyx")
+
+_UNAVAILABLE_MESSAGES = {
+    "fr": "L’assistant téléphonique est temporairement indisponible. Veuillez contacter l’entreprise autrement. Merci.",
+    "en": "The phone assistant is temporarily unavailable. Please contact the business another way. Thank you.",
+}
+_CALL_PATH = re.compile(r"^/calls/[^/]+/")
+
+
+def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]:
+    """Telnyx only accepts en-US with service_level=basic; any other language requires premium."""
+    if locale.lower().startswith("fr"):
+        language = "fr-FR" if locale.lower() in {"fr-fr", "fr_fr"} else "fr-CA"
+        return {
+            "command_id": command_id, "payload_type": "text", "service_level": "premium",
+            "voice": "female", "language": language, "payload": _UNAVAILABLE_MESSAGES["fr"],
+        }
+    return {
+        "command_id": command_id, "payload_type": "text", "service_level": "basic",
+        "voice": "female", "language": "en-US", "payload": _UNAVAILABLE_MESSAGES["en"],
+    }
+
+
+def telnyx_error_summary(response: httpx.Response) -> dict[str, Any]:
+    """Provider error codes only: never request payloads, phone numbers or credentials."""
+    try:
+        errors = response.json().get("errors", [])
+    except (ValueError, AttributeError):
+        errors = []
+    return {
+        "status": response.status_code,
+        "codes": [str(e.get("code")) for e in errors if isinstance(e, dict) and e.get("code")][:5],
+        "titles": [str(e.get("title"))[:120] for e in errors if isinstance(e, dict) and e.get("title")][:5],
+        "sources": [str((e.get("source") or {}).get("pointer"))[:80] for e in errors
+                    if isinstance(e, dict) and isinstance(e.get("source"), dict)][:5],
+    }
 
 
 class VoiceProvider(Protocol):
@@ -117,6 +156,22 @@ class TelnyxClient:
 
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
+
+    async def reject_call(self, call_control_id: str, *, command_id: str, cause: str = "USER_BUSY") -> None:
+        await self._request("POST", f"/calls/{call_control_id}/actions/reject", json={"cause": cause, "command_id": command_id})
+
+    async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
+        payload = unavailable_speak_payload(locale, command_id=command_id)
+        try:
+            await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 422 or payload["language"] == "en-US":
+                raise
+            await self._request(
+                "POST",
+                f"/calls/{call_control_id}/actions/speak",
+                json=unavailable_speak_payload("en", command_id=f"{command_id}-en"),
+            )
 
     async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
         parsed = urlsplit(stream_url)
@@ -235,5 +290,11 @@ class TelnyxClient:
         else:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 response = await client.request(method, f"{self.API_BASE}{path}", headers=headers, **kwargs)
+        if response.is_error:
+            logger.warning(
+                "telnyx_request_failed method=%s route=%s summary=%s",
+                method, _CALL_PATH.sub("/calls/{call_control_id}/", path.split("?")[0]),
+                telnyx_error_summary(response),
+            )
         response.raise_for_status()
         return response.json() if response.content else {}

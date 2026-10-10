@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+python scripts/check_secrets.py --staged
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --staged --redact=100 --config .gitleaks.toml
+elif [ -x scratch/gitleaks-8.30.1/bin/gitleaks.exe ]; then
+  scratch/gitleaks-8.30.1/bin/gitleaks.exe git --staged --redact=100 --config .gitleaks.toml
+else
+  echo "Gitleaks is required before committing. Install the pinned scanner; commit blocked."
+  exit 1
+fi

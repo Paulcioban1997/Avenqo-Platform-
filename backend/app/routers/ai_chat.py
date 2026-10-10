@@ -21,6 +21,7 @@ from backend.app.dependencies.ai_chat import get_chat_service, get_conversation_
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
+from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.dependencies.assistants import get_assistant_registry
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.dependencies.tenant_business import (
@@ -128,7 +129,7 @@ def detail(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_con
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=ChatMessageResponse,
-    dependencies=[Depends(rate_limit("ai_chat_message", "rate_limit_ai_per_minute"))],
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("ai_chat_message", "rate_limit_ai_per_minute"))],
 )
 async def message(
     conversation_id: UUID,
@@ -209,7 +210,7 @@ async def message(
 
 @router.post(
     "/conversations/{conversation_id}/messages/stream",
-    dependencies=[Depends(rate_limit("ai_chat_message_stream", "rate_limit_ai_per_minute"))],
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("ai_chat_message_stream", "rate_limit_ai_per_minute"))],
 )
 async def stream(
     conversation_id: UUID,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,7 +29,13 @@ class User(TimestampMixin, Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     job_title: Mapped[str] = mapped_column(String(120), nullable=False, default="Owner")
+    department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_recovery_hashes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
