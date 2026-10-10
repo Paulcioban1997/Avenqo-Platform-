@@ -1,3 +1,4 @@
+import os
 import uuid
 import json
 import urllib.request
@@ -6,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, text
 from backend.app.core.security import create_access_token, generate_token, hash_token
 
-db_url = "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
+db_url = os.environ["DATABASE_PUBLIC_URL"]
 engine = create_engine(db_url)
 
 with engine.begin() as conn:
