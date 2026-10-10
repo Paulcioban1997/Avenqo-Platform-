@@ -46,12 +46,10 @@ api_router.include_router(health_router, prefix="/api/v1")
 api_router.include_router(
 	ai_chat_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(
 	central_ai_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")

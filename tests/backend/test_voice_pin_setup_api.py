@@ -1,6 +1,6 @@
 """Exercise the actual HTTP route rather than the former duplicate helper."""
 from sqlalchemy import select
-from backend.app.models import User, VoiceCallerCredential
+from backend.app.models import User, VoiceCallerCredential, BillingAccount
 from tests.backend.test_auth import auth_environment, registration_payload, verify_and_login
 
 def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_environment):
@@ -11,8 +11,14 @@ def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_env
     assert client.post("/api/v1/auth/register", json=payload).status_code == 201
     login = verify_and_login(client, notifier, payload["email"])
     headers = {"Authorization": "Bearer " + login["access_token"]}
+    with factory() as db:
+        user = db.scalar(select(User).where(User.email == payload["email"]))
+        account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == user.company_id))
+        account.status = "inactive"
+        db.commit()
     conversation = client.post("/api/v1/ai/chat/conversations", headers=headers, json={"title": "Central included"})
     assert conversation.status_code == 201
+    assert client.post(f"/api/v1/ai/chat/conversations/{conversation.json()['id']}/messages", headers=headers, json={"content": "Bonjour"}).status_code == 402
     with factory() as db:
         user = db.scalar(select(User).where(User.email == payload["email"]))
         provider = MeteredStubProvider(classification="general")
@@ -38,6 +44,11 @@ def test_pin_setup_is_available_without_subscription_normalizes_phone_and_reauth
     assert client.post("/api/v1/auth/register", json=payload).status_code == 201
     login = verify_and_login(client, notifier, payload["email"])
     headers = {"Authorization": "Bearer " + login["access_token"]}
+    with factory() as db:
+        user = db.scalar(select(User).where(User.email == payload["email"]))
+        account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == user.company_id))
+        account.status = "inactive"
+        db.commit()
     assert client.get("/api/v1/voice/auth/pin/status", headers=headers).status_code == 200
     body = {"pin": "907182", "confirm_pin": "907182", "phone_number": "514-555-0198"}
     assert client.put("/api/v1/voice/auth/pin", headers=headers, json=body).status_code == 400
