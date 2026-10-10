@@ -5,11 +5,20 @@ import re
 import subprocess
 
 PATTERN = re.compile(r'''(?i)(?:postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|redis)://[^\s"'<>:@]+:([^\s"'<>@]+)@''')
+CONNECTOR_PATTERN = re.compile(
+    r'''(?i)(?:CONNECTOR_ENCRYPTION_KEYS?\s*[=:][\s\["'`]*|ConnectorSecretCipher\s*\(\s*\[[\s"']*)([A-Za-z0-9_-]{43}=)'''
+)
+WEBHOOK_PATTERN = re.compile(
+    r'''(?i)(?:\.get\(\s*["']webhook_secret["']\s*,\s*["']|(?:webhook_secret|wh_secret)["']?\s*[:=]\s*["'])([A-Za-z0-9_-]{32,})'''
+)
 
 
 def violations(body: str) -> list[int]:
-    return [body[:match.start()].count("\n") + 1 for match in PATTERN.finditer(body)
-            if match.group(1) != "test-only-password" and not match.group(1).startswith("${")]
+    database_lines = [body[:match.start()].count("\n") + 1 for match in PATTERN.finditer(body)
+                      if match.group(1) != "test-only-password" and not match.group(1).startswith("${")]
+    connector_lines = [body[:match.start()].count("\n") + 1 for match in CONNECTOR_PATTERN.finditer(body)]
+    webhook_lines = [body[:match.start()].count("\n") + 1 for match in WEBHOOK_PATTERN.finditer(body)]
+    return sorted(set(database_lines + connector_lines + webhook_lines))
 
 
 def main() -> int:
@@ -29,7 +38,7 @@ def main() -> int:
             continue
         for line in violations(body):
             found = True
-            print(f"Credential-shaped database URL blocked: {name}:{line}")
+            print(f"Literal credential blocked: {name}:{line}")
     return int(found)
 
 

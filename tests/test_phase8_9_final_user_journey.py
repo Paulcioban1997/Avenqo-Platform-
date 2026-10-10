@@ -37,11 +37,32 @@ STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO", "")
 WOO_STORE_URL = os.environ.get("WOO_STORE_URL", "https://wordpress-production-7219.up.railway.app")
 WOO_CONN_ID = "a93d53b9-0a32-4d7a-82bb-7123746e36b3"
 COMPANY_ID = "9c97cb94-e9f9-46fb-afd4-8a1d21019cff"
-TENANT_EMAIL = os.environ.get("TEST_USER_EMAIL", "gauffy95@gmail.com")
+TENANT_EMAIL = os.environ.get("TEST_USER_EMAIL", "")
 TENANT_PW = os.environ.get("TEST_USER_PW", "")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "paulmircea15@gmail.com")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 ADMIN_PW = os.environ.get("ADMIN_PW", "")
 
+
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("AVENQO_LIVE_E2E") != "1",
+    reason="Live sandbox suite requires explicit opt-in and environment credentials",
+)
+
+
+def _connector_keys_from_env() -> list[str]:
+    import json
+
+    raw = os.environ.get("CONNECTOR_ENCRYPTION_KEYS", "").strip()
+    if not raw:
+        pytest.skip("CONNECTOR_ENCRYPTION_KEYS is not set")
+    try:
+        keys = json.loads(raw) if raw.startswith("[") else [key.strip() for key in raw.split(",") if key.strip()]
+    except ValueError:
+        pytest.skip("Connector key configuration is invalid")
+    if not isinstance(keys, list) or not keys or any(not isinstance(key, str) or not key.strip() for key in keys):
+        pytest.skip("Connector key configuration is invalid")
+    return keys
 
 @pytest.fixture(scope="session")
 def tenant_token():
@@ -59,7 +80,7 @@ def admin_token():
 
 @pytest.fixture(scope="session")
 def woo_creds():
-    cipher = ConnectorSecretCipher(["03rZtfwgwKsrVQ3vzJ3srsLtiJHrwqrfW2z7ojGiV2E="])
+    cipher = ConnectorSecretCipher(_connector_keys_from_env())
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
     cur.execute("SELECT encrypted_credentials FROM commerce_connections WHERE id=%s", (WOO_CONN_ID,))
