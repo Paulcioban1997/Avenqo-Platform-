@@ -49,7 +49,7 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
 from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
@@ -99,6 +99,29 @@ def _ai_usage_module(operation: str | None) -> str:
     }:
         return "Copilot"
     return "Autre"
+
+
+def _debited_attempt_credits(
+    db: Session, company_id: UUID, attempts: list[TenantAIProviderAttempt]
+) -> dict[UUID, int]:
+    """Display wallet debits, excluding provider costs absorbed by Avenqo."""
+    request_ids = list({attempt.avenqo_request_id for attempt in attempts})
+    debits = {}
+    for start in range(0, len(request_ids), 500):
+        rows = db.execute(select(
+            TenantAICreditLedgerEntry.reference_id,
+            func.sum(-TenantAICreditLedgerEntry.included_delta - TenantAICreditLedgerEntry.purchased_delta),
+        ).where(
+            TenantAICreditLedgerEntry.company_id == company_id,
+            TenantAICreditLedgerEntry.reference_id.in_(request_ids[start:start + 500]),
+            TenantAICreditLedgerEntry.transaction_type.in_(["ai_usage", "ai_settlement"]),
+        ).group_by(TenantAICreditLedgerEntry.reference_id)).all()
+        debits.update({reference: max(int(credits or 0), 0) for reference, credits in rows})
+    return {
+        attempt.id: debits.get(attempt.avenqo_request_id, attempt.avenqo_credits or 0)
+        if attempt.avenqo_credits else 0
+        for attempt in attempts
+    }
 
 
 def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
@@ -482,8 +505,9 @@ def ai_credits_breakdown(
     }
 
     total = 0
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
-        creds = att.avenqo_credits or 0
+        creds = debited[att.id]
         module_counts[_ai_usage_module(att.operation)] += creds
         total += creds
 
@@ -533,6 +557,7 @@ def ai_credits_history(
         select(User).where(User.company_id == identity.user.company_id, User.id.in_(actor_ids))
     )} if actor_ids else {}
     items = []
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
         timestamp = att.created_at
@@ -544,7 +569,7 @@ def ai_credits_history(
                 date=timestamp.isoformat(),
                 module=_ai_usage_module(att.operation),
                 operation=op,
-                credits_used=att.avenqo_credits or 0,
+                credits_used=debited[att.id],
                 user=actors.get(att.user_id, "—"),
             )
         )

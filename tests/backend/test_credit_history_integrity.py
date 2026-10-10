@@ -3,7 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from sqlalchemy import select
 from backend.app.ai.llm.schemas import LLMProviderAttempt, LLMUsage
-from backend.app.models import TenantAIProviderAttempt
+from backend.app.models import TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from backend.app.routers.billing import ai_credits_breakdown, ai_credits_history
 from tests.backend.test_central_ai import db_session, make_company, make_service, StubProvider
 
@@ -54,3 +54,31 @@ def test_credit_breakdown_includes_voice_usage_and_excludes_other_tenants(db_ses
     assert items["Voice AI"].credits_used == 29
     assert items["Voice AI"].percentage == 96.7
     assert items["Copilot"].credits_used == 1
+
+
+def test_credit_reports_exclude_unfunded_cost_and_do_not_double_count_retries(db_session):
+    company, viewer = make_company(db_session, slug="funded-credits")
+    foreign_company, _ = make_company(db_session, slug="foreign-funded")
+    _, _, usage, _ = make_service(db_session, company, StubProvider(), limit=1, retail_entitled=False)
+    attempts = tuple(LLMProviderAttempt(
+        provider="stub", model="stub", operation="voice_realtime_tts", attempt_number=number,
+        success=number == 2, latency_ms=1, provider_cost_usd=Decimal("0.001"),
+        usage=LLMUsage(provider="stub", model="stub", avenqo_request_id="underfunded-voice"),
+    ) for number in (1, 2))
+    usage._record_provider_attempts(company.id, attempts, 29)
+    for tenant, debit in [(company, 17), (foreign_company, 999)]:
+        db_session.add(TenantAICreditLedgerEntry(
+            company_id=tenant.id, idempotency_key=f"settlement:{tenant.id}",
+            transaction_type="ai_settlement", reference_id="underfunded-voice",
+            billing_period=datetime.now(timezone.utc).strftime("%Y-%m"),
+            included_delta=-debit, monthly_used_after=debit, purchased_balance_after=0,
+            included_reserved_after=0, purchased_reserved_after=0,
+        ))
+    db_session.commit()
+    result = ai_credits_breakdown(period="7d", identity=SimpleNamespace(user=viewer), db=db_session)
+    assert result.total_used == 17
+    history = ai_credits_history(offset=0, limit=10, period="7d", identity=SimpleNamespace(user=viewer), db=db_session)
+    assert sorted(item.credits_used for item in history.items) == [0, 17]
+    assert db_session.scalar(select(TenantAIProviderAttempt.avenqo_credits).where(
+        TenantAIProviderAttempt.company_id == company.id, TenantAIProviderAttempt.attempt_number == 2
+    )) == 29
