@@ -484,7 +484,7 @@ class BillingService:
         account.plan_code = plan_code
         account.status = str(subscription["status"])
         account.cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
-        period_end = subscription.get("current_period_end")
+        period_end = subscription.get("current_period_end") or subscription["items"]["data"][0].get("current_period_end")
         account.current_period_end = (
             datetime.fromtimestamp(int(period_end), timezone.utc) if period_end else None
         )
@@ -496,6 +496,10 @@ class BillingService:
         existing = self._session.scalar(select(BillingInvoice).where(
             BillingInvoice.stripe_invoice_id == str(invoice["id"]),
         ))
+        if existing is not None and existing.company_id != company_id:
+            raise BillingOperationError("Facture Stripe incompatible avec le tenant")
+        if account.stripe_customer_id and str(invoice.get("customer") or "") != account.stripe_customer_id:
+            raise BillingOperationError("Client Stripe incompatible avec le tenant de la facture")
         issued_at = datetime.fromtimestamp(int(invoice["created"]), timezone.utc)
         lines = (invoice.get("lines") or {}).get("data") or []
         line = lines[0] if lines else {}
@@ -553,7 +557,7 @@ class BillingService:
                 setattr(existing, field, value)
         if (
             invoice.get("status") == "paid"
-            and invoice.get("billing_reason") == "subscription_cycle"
+            and invoice.get("billing_reason") in {"subscription_cycle", "subscription_create"}
         ):
             period_start = values["period_start"] or issued_at
             self._usage_service.reset_credits_for_renewal(

@@ -841,8 +841,11 @@ def test_credit_webhook_rejects_unpaid_or_tenant_mismatched_metadata(billing_env
     assert balance_b["purchased_remaining"] == 0
 
 
+@pytest.mark.parametrize("billing_reason", ["subscription_cycle", "subscription_create"])
 def test_professional_packs_accumulate_then_survive_subscription_renewal(
     billing_environment,
+    billing_reason,
+    tmp_path,
 ) -> None:
     client, provider, notifier = billing_environment
     login = create_owner(
@@ -885,10 +888,16 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     assert accumulated["purchased_remaining"] == 50000
     assert accumulated["total_remaining"] == 75000
 
+    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
+    with Session(engine) as session:
+        balance = session.scalar(select(TenantAICreditBalance).where(TenantAICreditBalance.company_id == UUID(company_id)))
+        balance.monthly_used = 7000
+        session.commit()
+    engine.dispose()
     renewal = invoice_event(
         company_id,
         event_id="evt_subscription_cycle",
-        billing_reason="subscription_cycle",
+        billing_reason=billing_reason,
     )
     provider.events.extend([renewal, renewal])
     reset = client.post(

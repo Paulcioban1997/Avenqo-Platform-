@@ -19,3 +19,10 @@ Périmètre autorisé : corriger les parcours existants, livrer sandbox puis pro
 Le tarif de production Stripe inspecté est 2 999 centimes CAD, récurrent mensuel, livemode vrai. Le sandbox avait un ancien tarif 2 800 centimes USD ; un tarif test 2 999 centimes CAD a été créé et sa configuration CAD est préparée pour le prochain déploiement. Aucun paiement réel n’a été lancé.
 
 La livraison, le paiement test, les factures après paiement et un appel avec solde positif doivent encore être vérifiés. Agents et Automatisations restent des aperçus ; ce lot ne termine pas le mandat global. Ne pas annoncer un appel fonctionnel sans essai téléphonique réel.
+
+
+## Complément de validation avant paiement
+
+Sandbox b494421 : frontend Vercel READY et backend Railway SUCCESS, même empreinte de code ; readiness database/storage/migrations ok. Essai IA Central avec vrai fournisseur : réponse 200 non vide, sans consommation du solde client. Stripe bloque la création du Checkout CAD sur la fiche sandbox existante car elle possède deux abonnements test actifs en USD. Accord demandé pour remplacer uniquement ces abonnements sandbox ; aucune mutation d’abonnement de production.
+
+Correction complémentaire : une facture Stripe payée pour la création initiale d’un abonnement doit restaurer l’allocation incluse, comme un renouvellement. Les crédits achetés sont conservés ; la clé de renouvellement empêche le double crédit en cas de répétition de webhook. Trois tests complémentaires passent. Les nouvelles versions Stripe peuvent fournir la prochaine échéance sur l’item d’abonnement : ce champ est pris en charge.
