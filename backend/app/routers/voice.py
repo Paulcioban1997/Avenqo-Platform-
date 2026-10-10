@@ -646,9 +646,20 @@ VOICE_CATALOG_ITEMS = [
 def get_voice_catalog(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> list[VoiceCatalogItem]:
     _ensure_voice_access(db, identity.user.company_id)
-    return VOICE_CATALOG_ITEMS
+    return _supported_preview_voices(settings)
+
+
+def _supported_preview_voices(settings: Settings) -> list[VoiceCatalogItem]:
+    model = settings.voice_tts_model or "gpt-4o-mini-tts"
+    if model in {"tts-1", "tts-1-hd"}:
+        supported = {"alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"}
+        return [voice for voice in VOICE_CATALOG_ITEMS if voice.id in supported]
+    if model.startswith("gpt-4o-mini-tts"):
+        return VOICE_CATALOG_ITEMS
+    return []
 
 
 @router.post("/voices/preview", dependencies=[Depends(require_active_subscription)])
@@ -659,6 +670,10 @@ async def preview_voice(
     settings: Settings = Depends(get_settings),
 ) -> Response:
     _ensure_voice_access(db, identity.user.company_id)
+    if request.voice_id not in {voice.id for voice in _supported_preview_voices(settings)}:
+        raise HTTPException(status_code=422, detail="Voice unavailable for the configured speech model")
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=503, detail="Speech preview provider is not configured")
     company = identity.user.company
     lang = resolve_locale(request.language or company.preferred_language or "fr")
     company_name = company.name if company else "Avenqo"
@@ -676,23 +691,18 @@ async def preview_voice(
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=settings.openai_api_key)
-            standard_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
-            tts_voice = request.voice_id if request.voice_id in standard_voices else "alloy"
             audio_response = await client.audio.speech.create(
-                model="tts-1",
-                voice=tts_voice,
+                model=settings.voice_tts_model or "gpt-4o-mini-tts",
+                voice=request.voice_id,
                 input=text_to_speak,
             )
             audio_bytes = audio_response.content
+            if not audio_bytes:
+                raise ValueError("Empty speech response")
             return Response(content=audio_bytes, media_type="audio/mpeg")
         except Exception as exc:
-            logging.getLogger("avenqo.voice").warning("TTS audio generation error during preview: %s", exc)
-
-    silent_mp3 = (
-        b"\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    ) * 10
-    return Response(content=silent_mp3, media_type="audio/mpeg")
+            logging.getLogger("avenqo.voice").warning("Speech preview failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="Speech preview is temporarily unavailable") from None
 
 
 @router.get("/status", dependencies=[Depends(require_active_subscription)])
@@ -1226,6 +1236,10 @@ def update_voice_customization(
     settings: Settings = Depends(get_settings),
 ) -> VoiceCustomizationResponse:
     _ensure_voice_access(db, identity.user.company_id)
+    if request.voice_id is not None and request.voice_id not in {voice.id for voice in _supported_preview_voices(settings)}:
+        raise HTTPException(status_code=422, detail="Voice unavailable for the configured speech model")
+    if request.voice_provider not in {None, "openai"}:
+        raise HTTPException(status_code=422, detail="Unsupported voice provider")
     service = _orchestrator(db, settings)
     config = service.ensure_config(TenantContext(identity.user.company_id))
 

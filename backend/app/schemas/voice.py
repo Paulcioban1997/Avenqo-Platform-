@@ -257,9 +257,9 @@ class VoicePreviewRequest(BaseModel):
 
 class VoiceCustomizationUpdateRequest(BaseModel):
     voice_id: str | None = Field(default=None, max_length=64)
-    voice_provider: str | None = Field(default="openai", max_length=32)
-    speech_speed: float | None = Field(default=1.0, ge=0.5, le=2.0)
-    personality_tone: str | None = Field(default="professionnel", max_length=64)
+    voice_provider: str | None = Field(default=None, max_length=32)
+    speech_speed: float | None = Field(default=None, ge=0.5, le=2.0)
+    personality_tone: str | None = Field(default=None, max_length=64)
     greeting_message: str | None = Field(default=None, max_length=2000)
     farewell_message: str | None = Field(default=None, max_length=2000)
     custom_pronunciation: dict[str, Any] | None = None

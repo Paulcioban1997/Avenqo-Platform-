@@ -184,7 +184,7 @@ def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     assert "non autorisé" in err_msg.lower()
 
 
-def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
+def test_super_admin_tenant_switch_requires_explicit_membership(sec_env) -> None:
     client, session_factory, notifier = sec_env
 
     # Création d'une entreprise cible
@@ -235,19 +235,12 @@ def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
         headers={"Authorization": f"Bearer {admin_token}"},
         json={"company_id": str(target_company_id)},
     )
-    assert switch_res.status_code == 200
-    assert switch_res.json()["company"]["name"] == "Lucia Boutique Inc"
-
-    # Vérification que l'événement d'audit immuable a bien été consigné
+    assert switch_res.status_code == 403
     with session_factory() as session:
-        audit = session.scalar(
-            select(AuditLogEntry).where(
-                AuditLogEntry.action == "super_admin_tenant_switch",
-                AuditLogEntry.target_id == str(target_company_id),
-            )
-        )
-        assert audit is not None
-        assert audit.safe_metadata["admin_email"] == "platform.admin@avenqo.ca"
+        assert session.scalar(select(AuditLogEntry).where(
+            AuditLogEntry.action == "tenant_switched",
+            AuditLogEntry.company_id == target_company_id,
+        )) is None
 
 
 def test_cross_tenant_invoice_pdf_download_denied(sec_env) -> None:

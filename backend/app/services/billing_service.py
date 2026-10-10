@@ -147,7 +147,8 @@ class BillingService:
         return [
             {"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd}
             for pack in AI_CREDIT_PACKS
-            if pack.plan_code.value == plan_code
+            if pack.plan_code.value == ("base" if plan_code == "demo" else plan_code)
+            and pack.code.startswith("credits_")
         ]
 
     def get_credit_balance(self, company_id: UUID, fallback_plan_code: str) -> dict[str, Any]:

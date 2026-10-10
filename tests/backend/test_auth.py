@@ -555,7 +555,6 @@ def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environme
             "retail",
             "marketing",
             "crm",
-            "hr",
             "accounting",
             "ocr",
         ],

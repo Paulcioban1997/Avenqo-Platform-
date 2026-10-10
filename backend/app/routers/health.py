@@ -1,4 +1,6 @@
 import os
+import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -13,9 +15,18 @@ from backend.app.schemas.readiness import ReadinessResponse
 from backend.app.services.artifact_storage_health import artifact_storage_health
 
 router = APIRouter()
+BUILD_INFO_PATH = Path(__file__).resolve().parents[2] / "build-info.json"
 
 
 def _git_sha() -> str:
+    # A source upload may inherit stale Git variables from an earlier deployment.
+    # The release packager embeds the actual committed source identity in the image.
+    try:
+        sha = json.loads(BUILD_INFO_PATH.read_text(encoding="utf-8"))["git_sha"]
+        if isinstance(sha, str) and re.fullmatch(r"[a-f0-9]{40}", sha):
+            return sha
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     return (
         os.getenv("RAILWAY_GIT_COMMIT_SHA")
         or os.getenv("VERCEL_GIT_COMMIT_SHA")

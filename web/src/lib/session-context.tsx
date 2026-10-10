@@ -31,7 +31,7 @@ export interface SourceContext { state: string; source_type: string | null; sour
 const namesForContext = (context: SourceContext) => context.state === "READY" ? context.sources.filter(source => context.source_type === "all" ? source.enabled : source.source_type === context.source_type && source.source_id === context.source_id).map(source => source.display_name) : [];
 const SessionContext = createContext<SessionState | null>(null);
 const unknownCredits = { remaining: null, limit: null, used: null };
-const publicRoutes = new Set(["/", "/login", "/register", "/signup", "/forgot-password", "/reset-password", "/pricing", "/contact", "/privacy", "/terms", "/docs"]);
+const publicRoutes = new Set(["/", "/login", "/register", "/signup", "/forgot-password", "/reset-password", "/pricing", "/contact", "/privacy", "/terms", "/docs", "/trust"]);
 const asError = (error: unknown) => error instanceof ApiRequestError ? error : new ApiRequestError("backend_error");
 
 export function SessionProvider({ children }: { children: ReactNode }) {

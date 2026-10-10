@@ -36,6 +36,7 @@ from backend.app.models import (
     BillingAccount,
     BillingInvoice,
     Company,
+    CompanyMembership,
     EnterpriseOverride,
     User,
     UserRole,
@@ -340,6 +341,8 @@ def test_admin_retail_context_requires_platform_admin_and_existing_company(
     )
     assert missing.status_code == 404
 
+    db_session.add(CompanyMembership(user_id=admin.id, company_id=tenant.id, role=UserRole.VIEWER))
+    db_session.commit()
     selected = admin_client.post(
         f"/api/v1/admin/companies/{tenant.id}/retail/context",
         headers=admin_headers,
@@ -373,6 +376,8 @@ def test_admin_retail_data_is_explicit_and_switching_never_leaks_previous_tenant
     tenant_b = _company(db_session, slug="retail-admin-b")
     admin_company = _company(db_session, slug="retail-admin-platform")
     admin = _user(db_session, admin_company, platform_admin=True)
+    db_session.add_all([CompanyMembership(user_id=admin.id, company_id=tenant_a.id, role=UserRole.VIEWER),
+                        CompanyMembership(user_id=admin.id, company_id=tenant_b.id, role=UserRole.VIEWER)])
     db_session.commit()
     admin_client.app.dependency_overrides[get_tenant_sales_service] = lambda: _TenantEchoSalesService(
         {tenant_a.id: 101.0, tenant_b.id: 202.0}

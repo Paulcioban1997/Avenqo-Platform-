@@ -59,14 +59,14 @@ const nextConfig: NextConfig = {
       },
       {
         // Strictly prevent indexing of private SaaS and app routes via HTTP headers
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api|accounting|marketing|chatbots|automations|voice|ocr|agents|connections)/:subpath*",
+        source: "/:path(security|workspace|dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api|accounting|marketing|chatbots|automations|voice|ocr|agents|connections)/:subpath*",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],
       },
       {
         // Strictly prevent indexing of root private endpoints
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting|marketing|chatbots|automations|voice|ocr|agents)",
+        source: "/:path(security|workspace|dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting|marketing|chatbots|automations|voice|ocr|agents)",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],

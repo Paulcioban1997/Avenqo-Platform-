@@ -539,7 +539,6 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
     assert packs.status_code == 200
     assert packs.json() == [
         {"code": "credits_6500", "credits": 6500, "price_usd": 10},
-        {"code": "demo_extra", "credits": 6500, "price_usd": 10},
     ]
     assert "price_id" not in packs.text
 
@@ -864,8 +863,6 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     assert client.get("/api/v1/billing/credit-packs", headers=headers).json() == [
         {"code": "credits_25000", "credits": 25000, "price_usd": 35},
         {"code": "credits_65000", "credits": 65000, "price_usd": 80},
-        {"code": "professional_6500", "credits": 6500, "price_usd": 10},
-        {"code": "professional_25000", "credits": 25000, "price_usd": 25},
     ]
     assert client.post(
         "/api/v1/billing/credit-packs/checkout",
