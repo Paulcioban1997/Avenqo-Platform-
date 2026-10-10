@@ -47,11 +47,11 @@ class RecordingNotifier:
     def send_password_reset(self, email: str, token: str) -> None:
         pass
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
         self.invoice_emails.append({
             "recipient": recipient,
-            "company_id": str(company.id),
-            "invoice_id": str(invoice.id),
+            "company_id": str(getattr(company, "id", "")),
+            "invoice_id": str(getattr(invoice, "id", "")),
         })
 
 
@@ -83,7 +83,7 @@ def test_subscription_response_hides_unlinked_period_and_uses_tenant_currency() 
         current_period_end=stale_period_end,
         cancel_at_period_end=False,
     )
-    company = SimpleNamespace(name="Produits_Ero", currency_code="CAD")
+    company: Any = SimpleNamespace(name="Produits_Ero", currency_code="CAD")
 
     response = subscription_response(account, company)
 

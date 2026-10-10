@@ -1,6 +1,7 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
+from typing import Any
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -98,10 +99,14 @@ def _ai_usage_module(operation: str | None) -> str:
     return "Autre"
 
 
-def subscription_response(account, company: Company | None = None) -> SubscriptionResponse:
+def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
     plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
-    price = plan_obj.monthly_price_usd if plan_obj else 49
+    currency = (company.currency_code or "CAD").upper() if company else "CAD"
+    if currency == "CAD":
+        price = plan_obj.monthly_price_cad if (plan_obj and plan_obj.monthly_price_cad is not None) else 29.99
+    else:
+        price = plan_obj.monthly_price_usd if (plan_obj and plan_obj.monthly_price_usd is not None) else 21.99
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
     return SubscriptionResponse(
@@ -116,10 +121,10 @@ def subscription_response(account, company: Company | None = None) -> Subscripti
         current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
-        monthly_price_usd=price,
+        monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else None,
         monthly_price=price,
         billing_frequency="monthly",
-        currency=(company.currency_code or "USD").upper() if company else "USD",
+        currency=currency,
         stripe_subscription_linked=stripe_linked,
         company_name=comp_name,
         payment_method=None,
@@ -201,7 +206,7 @@ def provider_status(
         "configured": bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
         "customer_linked": bool(account and account.stripe_customer_id),
         "subscription_linked": subscription_linked,
-        "subscription_status": account.status if subscription_linked else "inactive",
+        "subscription_status": account.status if (account and subscription_linked) else "inactive",
         "portal_available": bool(account and account.stripe_customer_id),
     }
 
