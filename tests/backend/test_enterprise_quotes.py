@@ -70,15 +70,22 @@ def test_landing_and_dashboard_quotes_notify_both_recipients(billing_environment
     assert dashboard.status_code == 200
     assert dashboard.json()["notification_status"] == "sent"
 
-    recipients = {tuple(item["to"]) for item in notifier.quote_mailer.messages}
-    assert ("info@avenqo.ca",) in recipients
-    assert ("paulmircea15@gmail.com",) in recipients
-    assert ("camille@nordicgarage.ca",) in recipients
-    owner_messages = [item for item in notifier.quote_mailer.messages if item["to"][0] in OWNERS]
-    assert len(owner_messages) == 4
-    assert all("Nom :" in item["text_body"] for item in owner_messages)
-    assert all("Entreprise :" in item["text_body"] for item in owner_messages)
-    assert all("Date de soumission :" in item["text_body"] for item in owner_messages)
+    owner_messages = [
+        item for item in notifier.quote_mailer.messages if set(item["to"]) == OWNERS
+    ]
+    assert len(owner_messages) == 2
+    landing_mail, dashboard_mail = owner_messages
+    assert landing_mail["text_body"]
+    assert "Référence :" in landing_mail["text_body"]
+    assert "Camille Roy" in landing_mail["text_body"]
+    assert "Nordic Garage" in landing_mail["text_body"]
+    assert "camille@nordicgarage.ca" in landing_mail["text_body"]
+    assert "+1 514 555 0101" in landing_mail["text_body"]
+    assert "Devis Entreprise sur mesure" in landing_mail["text_body"]
+    assert landing_body["reference_id"] in landing_mail["subject"]
+    assert landing_mail["to"] == dashboard_mail["to"] == ["info@avenqo.ca", "paulmircea15@gmail.com"]
+    assert landing_mail["text_body"] != dashboard_mail["text_body"]
+    assert any(item["to"] == ["camille@nordicgarage.ca"] for item in notifier.quote_mailer.messages)
 
     _promote_admin(client, "owner@garage.ca")
     admin = client.get("/api/v1/admin/enterprise-quotes", headers=auth_headers(login))
@@ -122,8 +129,9 @@ def test_temporary_failure_retries_without_duplicate_emails(billing_environment)
     response = client.post("/api/v1/public/enterprise-quote", json=LANDING_PAYLOAD)
     assert response.status_code == 200
     assert response.json()["notification_status"] == "sent"
-    owner_sends = [item for item in notifier.quote_mailer.messages if item["to"][0] in OWNERS]
-    assert len(owner_sends) == 2
+    owner_sends = [item for item in notifier.quote_mailer.messages if set(item["to"]) == OWNERS]
+    assert len(owner_sends) == 1
+    assert owner_sends[0]["to"] == ["info@avenqo.ca", "paulmircea15@gmail.com"]
 
 
 def test_identical_retry_does_not_create_duplicate_quote_or_emails(billing_environment) -> None:
@@ -134,10 +142,9 @@ def test_identical_retry_does_not_create_duplicate_quote_or_emails(billing_envir
     assert first.status_code == second.status_code == 200
     assert first.json()["reference_id"] == second.json()["reference_id"]
     assert len(_quotes(client)) == 1
-    owner_sends = [item for item in notifier.quote_mailer.messages if item["to"][0] in OWNERS]
-    assert len(owner_sends) == 2
-    keys = [item["idempotency_key"] for item in owner_sends]
-    assert len(keys) == len(set(keys))
+    owner_sends = [item for item in notifier.quote_mailer.messages if set(item["to"]) == OWNERS]
+    assert len(owner_sends) == 1
+    assert owner_sends[0]["idempotency_key"] == f"eq-{first.json()['reference_id']}-owner"
 
 
 def test_spam_honeypot_and_rate_limit_are_rejected(billing_environment) -> None:
@@ -190,3 +197,62 @@ def test_delivery_report_marks_owner_emails_sent_without_resending(billing_envir
         assert owner_ids == {"re_info", "re_paul"}
     finally:
         db_gen.close()
+
+
+def test_migration_0051_on_isolated_sqlite(tmp_path) -> None:
+    import importlib.util
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import create_engine, inspect, text
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'enterprise-quote-0051.db'}")
+    with engine.begin() as connection:
+        connection.execute(text(
+            """
+            CREATE TABLE enterprise_quotes (
+                id VARCHAR(36) PRIMARY KEY,
+                reference_id VARCHAR(64) NOT NULL,
+                company_id VARCHAR(36) NOT NULL,
+                user_id VARCHAR(36),
+                contact_name VARCHAR(255),
+                contact_email VARCHAR(255),
+                contact_phone VARCHAR(64),
+                requested_modules TEXT NOT NULL,
+                estimated_users INTEGER,
+                monthly_volume VARCHAR(255),
+                required_integrations TEXT NOT NULL,
+                notes TEXT,
+                status VARCHAR(64) NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+            """
+        ))
+        path = (
+            __import__("pathlib").Path(__file__).resolve().parents[2]
+            / "alembic"
+            / "versions"
+            / "0051_enterprise_quote_deliveries.py"
+        )
+        spec = importlib.util.spec_from_file_location("enterprise_quote_0051", path)
+        migration = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        spec.loader.exec_module(migration)
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+
+    inspector = inspect(engine)
+    columns = {item["name"] for item in inspector.get_columns("enterprise_quotes")}
+    assert {
+        "source",
+        "company_name",
+        "need",
+        "notification_status",
+        "acknowledgment_status",
+        "idempotency_key",
+        "submitted_at",
+    }.issubset(columns)
+    assert "enterprise_quote_deliveries" in inspector.get_table_names()
+    delivery_columns = {item["name"] for item in inspector.get_columns("enterprise_quote_deliveries")}
+    assert {"quote_id", "kind", "recipient", "idempotency_key", "status", "provider_message_id"}.issubset(delivery_columns)
+    engine.dispose()

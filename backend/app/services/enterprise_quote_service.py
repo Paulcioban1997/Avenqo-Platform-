@@ -163,15 +163,22 @@ class EnterpriseQuoteService:
 
         def _deliver_kind(kind: str) -> None:
             nonlocal sent
-            for job in jobs:
-                if job.kind != kind:
-                    continue
-                if job.next_retry_at and job.next_retry_at > now:
-                    continue
-                parent = quote or job.quote
-                if kind == "acknowledgment" and parent.notification_status != "sent":
-                    continue
-                if self._deliver(job, parent):
+            selected = [
+                job
+                for job in jobs
+                if job.kind == kind and not (job.next_retry_at and job.next_retry_at > now)
+            ]
+            if not selected:
+                return
+            parent = quote or selected[0].quote
+            if kind == "acknowledgment" and parent.notification_status != "sent":
+                return
+            if kind == "owner":
+                if self._deliver_batch(selected, parent):
+                    sent += 1
+                return
+            for job in selected:
+                if self._deliver_batch([job], parent):
                     sent += 1
 
         _deliver_kind("owner")
@@ -189,46 +196,60 @@ class EnterpriseQuoteService:
         self._db.commit()
         return sent
 
-    def _deliver(self, job: EnterpriseQuoteDelivery, quote: EnterpriseQuote) -> bool:
-        if self._mailer is None:
-            job.last_error = "Transactional email API is not configured"
-            job.status = "failed"
-            job.attempts += 1
+    def _deliver_batch(self, jobs: list[EnterpriseQuoteDelivery], quote: EnterpriseQuote) -> bool:
+        if not jobs:
             return False
-        subject, text_body, html_body = self._message_for(job, quote)
-        job.attempts += 1
+        if self._mailer is None:
+            for job in jobs:
+                job.last_error = "Transactional email API is not configured"
+                job.status = "failed"
+                job.attempts += 1
+            return False
+        subject, text_body, html_body = self._message_for(jobs[0], quote)
+        recipients = [job.recipient for job in jobs]
+        idempotency_key = (
+            f"eq-{quote.reference_id}-{jobs[0].kind}"
+            if jobs[0].kind == "owner"
+            else jobs[0].idempotency_key
+        )
         last_error: Exception | None = None
+        for job in jobs:
+            job.attempts += 1
         for attempt in range(_IMMEDIATE_RETRIES + 1):
             try:
                 message_id = self._mailer.send(
-                    to=[job.recipient],
+                    to=recipients,
                     subject=subject,
                     text_body=text_body,
                     html_body=html_body,
-                    idempotency_key=job.idempotency_key,
+                    idempotency_key=idempotency_key,
                 )
-                job.status = "sent"
-                job.provider_message_id = message_id
-                job.last_error = None
-                job.next_retry_at = None
+                for job in jobs:
+                    job.status = "sent"
+                    job.provider_message_id = message_id
+                    job.last_error = None
+                    job.next_retry_at = None
                 return True
             except TemporaryEmailDeliveryError as exc:
                 last_error = exc
                 if attempt < _IMMEDIATE_RETRIES:
                     sleep(_RETRY_BACKOFF_SECONDS[min(attempt, len(_RETRY_BACKOFF_SECONDS) - 1)])
                     continue
-                job.status = "pending"
-                job.last_error = str(exc)[:500]
-                job.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=min(15, 2 ** job.attempts))
+                for job in jobs:
+                    job.status = "pending"
+                    job.last_error = str(exc)[:500]
+                    job.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=min(15, 2 ** job.attempts))
                 return False
             except PermanentEmailDeliveryError as exc:
-                job.status = "failed"
-                job.last_error = str(exc)[:500]
-                job.next_retry_at = None
+                for job in jobs:
+                    job.status = "failed"
+                    job.last_error = str(exc)[:500]
+                    job.next_retry_at = None
                 return False
         if last_error is not None:
-            job.status = "pending"
-            job.last_error = str(last_error)[:500]
+            for job in jobs:
+                job.status = "pending"
+                job.last_error = str(last_error)[:500]
         return False
 
     def _ensure_delivery_jobs(self, quote: EnterpriseQuote) -> None:

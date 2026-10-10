@@ -132,14 +132,14 @@ export async function POST(request: NextRequest) {
     });
     const deliveries: Array<{ kind: string; recipient: string; provider_message_id: string }> = [];
     try {
+      const sent = await sendResendEmail({
+        to: recipients,
+        subject: owner.subject,
+        text: owner.text,
+        html: owner.html,
+        idempotencyKey: `eq-${referenceId}-owner`,
+      });
       for (const recipient of recipients) {
-        const sent = await sendResendEmail({
-          to: [recipient],
-          subject: owner.subject,
-          text: owner.text,
-          html: owner.html,
-          idempotencyKey: `eq-${referenceId}-owner-${recipient}`,
-        });
         deliveries.push({ kind: "owner", recipient, provider_message_id: sent.id });
       }
     } catch (error) {

@@ -153,8 +153,11 @@ describe("contact route", () => {
     const resendBodies = calls
       .filter((item) => item.url.includes("api.resend.com"))
       .map((item) => JSON.parse(String(item.init?.body || "{}")));
-    const ownerRecipients = resendBodies.flatMap((item) => item.to as string[]);
-    expect(ownerRecipients).toEqual(expect.arrayContaining(["info@avenqo.ca", "paulmircea15@gmail.com"]));
+    const ownerMail = resendBodies.find((item) => Array.isArray(item.to) && item.to.includes("info@avenqo.ca"));
+    expect(ownerMail?.to).toEqual(["info@avenqo.ca", "paulmircea15@gmail.com"]);
+    expect(ownerMail?.text).toContain("EQ-OK12");
+    expect(ownerMail?.text).toContain("Nordic Garage");
+    expect(ownerMail?.text).toContain("Camille Roy");
   });
 
   it("rejects a honeypot submission before any send", async () => {

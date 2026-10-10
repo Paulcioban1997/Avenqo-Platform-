@@ -23,7 +23,7 @@ it("revokes another session and reloads the authoritative list", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Révoquer" }));
   await waitFor(() => expect(screen.queryByRole("button", { name: "Révoquer" })).not.toBeInTheDocument());
   expect(fetch.mock.calls.some(([url, init]) => url === "/api/v1/security/sessions/other" && init.method === "DELETE")).toBe(true);
-  expect(screen.getByText(/Non prise en charge actuellement/)).toBeInTheDocument();
+  expect(screen.getByText(/Non activée. Protégez la connexion avec un code temporaire./)).toBeInTheDocument();
 });
 
 it("unselected modules link to selection rather than the operational module", async () => {
