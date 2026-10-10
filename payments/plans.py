@@ -78,7 +78,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         max_concurrent_calls=2,
         monthly_price_usd=49.99,
         monthly_price_cad=49.99,
-        monthly_ai_credits=25_000,
+        monthly_ai_credits=20_000,
     ),
     SubscriptionPlan(
         PlanCode.ENTERPRISE,

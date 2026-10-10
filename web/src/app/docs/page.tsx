@@ -36,15 +36,15 @@ export default function DocsPage() {
       icon: Cpu,
       title: isEn ? "4. AI Credits & Usage Quotas" : "4. Crédits IA & Quotas d'utilisation",
       desc: isEn
-        ? "Every subscription tier includes an AI credit allowance (6,500 credits for Base, 25,000 credits for Professional, custom for Enterprise). Credits power model inference, predictive forecasting, and autonomous workflow actions."
-        : "Chaque formule comprend un volume mensuel de crédits IA (6 500 crédits en Base, 25 000 crédits en Professional, sur mesure en Enterprise). Ces crédits alimentent l'inférence des modèles, les prédictions et les actions automatisées.",
+        ? "Every subscription tier includes an AI credit allowance (6,500 credits for Base, 20,000 credits for Professional, custom for Enterprise). Credits power model inference, predictive forecasting, and autonomous workflow actions."
+        : "Chaque formule comprend un volume mensuel de crédits IA (6 500 crédits en Base, 20 000 crédits en Professional, sur mesure en Enterprise). Ces crédits alimentent l'inférence des modèles, les prédictions et les actions automatisées.",
     },
     {
       icon: Shield,
-      title: isEn ? "5. Security, Law 25 & Data Isolation" : "5. Sécurité, Loi 25 & Isolation des données",
+      title: isEn ? "5. Security, Law 25 Practices & Data Isolation" : "5. Sécurité, Pratiques Loi 25 & Isolation des données",
       desc: isEn
-        ? "Avenqo adheres strictly to Quebec Law 25 and PIPEDA standards. Enterprise data is segregated with cryptographic tokens, Argon2 password hashing, and role-based access control (RBAC). Your proprietary data is never used to train global public models."
-        : "Avenqo applique une conformité rigoureuse à la Loi 25 québécoise et aux normes LPRPDE canadiennes. Vos données d'entreprise sont cloisonnées avec des jetons cryptographiques, un hachage Argon2 et un contrôle d'accès basé sur les rôles (RBAC). Vos données ne sont jamais utilisées pour entraîner des modèles publics.",
+        ? "Avenqo implements technical controls designed to support privacy principles aligned with Quebec Law 25 and PIPEDA standards: tenant-isolated database access, cryptographic session tokens, Argon2 password hashing, and role-based access control (RBAC). Your proprietary enterprise data is never used to train public AI models. These safeguards support your internal governance without constituting third-party legal certification."
+        : "Avenqo met en œuvre des mesures techniques conçues pour soutenir les principes de protection des renseignements personnels inspirés de la Loi 25 (Québec) et de la LPRPDE : cloisonnement strict par entreprise (multi-tenant), jetons de session cryptographiques, hachage Argon2 des mots de passe et contrôle d'accès par rôles (RBAC). Vos données d'entreprise ne sont jamais utilisées pour entraîner des modèles publics. Ces mesures techniques accompagnent votre gouvernance interne sans constituer une certification juridique autonome.",
     },
   ];
 

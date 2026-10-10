@@ -6,7 +6,7 @@ import {
   ArrowRight, BarChart3, FileScan, MessagesSquare, Mic2, Network,
   Play, ReceiptText, Scale, ShoppingBag, Sparkles,
 } from "lucide-react";
-import { useTranslations } from "@/lib/i18n/locale-context";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
 
 const quickModuleIcons: Record<string, typeof ShoppingBag> = {
   retail: ShoppingBag,
@@ -20,12 +20,16 @@ const quickModuleIcons: Record<string, typeof ShoppingBag> = {
 
 export function DashboardPreview() {
   const t = useTranslations();
+  const { locale } = useLocale();
+  const isEn = locale === "en";
+  const greeting = (t.dashboard.greeting || "").replace(/Paul/g, "Alex");
+
   return (
     <div className="dashboard-window" aria-label={t.dashboard.subtitle}>
       <div className="window-topbar">
         <div className="window-dots"><i /><i /><i /></div>
         <span>{t.dashboard.subtitle}</span>
-        <div className="avatar">PC</div>
+        <div className="avatar">AL</div>
       </div>
       <div className="dashboard-body">
         <aside className="dashboard-nav">
@@ -36,7 +40,15 @@ export function DashboardPreview() {
         </aside>
         <div className="dashboard-content">
           <div className="dashboard-heading">
-            <div><small>{t.dashboard.greeting}</small><strong>{t.dashboard.subtitle}</strong></div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <small>{greeting}</small>
+                <span style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", background: "rgba(0, 0, 0, 0.05)", padding: "2px 7px", borderRadius: "9999px", border: "1px solid rgba(0, 0, 0, 0.08)" }}>
+                  {isEn ? "Fictional demo data" : "Données de démonstration fictives"}
+                </span>
+              </div>
+              <strong>{t.dashboard.subtitle}</strong>
+            </div>
             <button><Sparkles size={14} /> {t.dashboard.askAvenqo}</button>
           </div>
           <div className="metric-grid">

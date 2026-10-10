@@ -225,14 +225,14 @@ export const SECTOR_PROFILES: SectorProfile[] = [
       },
       {
         stepNumber: 3,
-        titleFr: "Avis de consentement Loi 25",
-        titleEn: "Privacy & Law 25 Notice",
+        titleFr: "Avis de gestion des données & consentement",
+        titleEn: "Privacy & Data Consent Notice",
         descriptionFr: "Notification préalable sur la gestion confidentielle des données",
         descriptionEn: "Automated consent notice provided before appointment storage",
         activeModule: "central_ai",
         inputData: "Validation des conditions de confidentialité",
         simulatedOutput: "Données cloisonnées au locataire · Chiffrement AES-256",
-        visualMetric: "Conforme Loi 25",
+        visualMetric: "Pratiques Loi 25 actives",
       },
       {
         stepNumber: 4,

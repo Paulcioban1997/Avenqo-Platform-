@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from payments import PLANS, PlanCode, SubscriptionPlan, get_plan
 
@@ -32,7 +32,7 @@ def test_catalogue_public_ne_contient_pas_custom_enterprise() -> None:
 
 def test_allocations_mensuelles_de_credits_sont_centralisees_par_offre() -> None:
     assert get_plan("demo").monthly_ai_credits == 6_500
-    assert get_plan("professional").monthly_ai_credits == 25_000
+    assert get_plan("professional").monthly_ai_credits == 20_000
     assert get_plan("enterprise").monthly_ai_credits is None
 
 

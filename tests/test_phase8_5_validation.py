@@ -107,7 +107,7 @@ class TestPhase85_Part1_PricingConsistency:
         assert "6 500" in html or "6,500" in html
         # Pro pricing & credits
         assert "$49" in html
-        assert "25 000" in html or "25,000" in html
+        assert "20 000" in html or "20,000" in html
         # Enterprise
         assert "Sur mesure" in html or "Custom quote" in html
 

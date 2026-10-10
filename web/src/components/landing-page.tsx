@@ -65,7 +65,7 @@ export function LandingPage() {
       tier: "Professional",
       price: isEn ? "$49.99 CAD" : "49,99 $ CA",
       period: isEn ? "/ month" : "/ mois",
-      credits: isEn ? "25,000 AI credits included" : "25 000 crédits IA inclus",
+      credits: isEn ? "20,000 AI credits included" : "20 000 crédits IA inclus",
       action: isEn ? "Choose Professional" : "Choisir Professional",
       href: "/signup?plan=professional",
       featured: true,

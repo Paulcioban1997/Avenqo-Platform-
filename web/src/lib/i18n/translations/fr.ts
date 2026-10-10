@@ -30,7 +30,7 @@ const fr: Translations = {
     trustDecide: "Décider",
   },
   dashboard: {
-    greeting: "Bonjour Paul",
+    greeting: "Bonjour Alex",
     subtitle: "Votre activité aujourd'hui",
     askAvenqo: "Demander à Avenqo",
     salesLabel: "Ventes du mois",
@@ -132,25 +132,25 @@ const fr: Translations = {
     kicker: "Tarification claire",
     title: "Commencez maintenant. Évoluez à votre rythme.",
     subtitle: "Chaque offre inclut la plateforme, l'assistant Avenqo et un espace sécurisé.",
-    popular: "Le plus choisi",
+    popular: "Pour les équipes en croissance",
     priceLabel: "Sur mesure",
     plans: [
       {
         tier: "Base",
         title: "Pour démarrer",
-        items: ["3 modules Avenqo au choix", "6 500 crédits IA inclus / mois", "Jusqu'à 5 utilisateurs", "Assistant IA intégré", "Support standard"],
+        items: ["Exactement 2 modules IA au choix", "6 500 crédits IA inclus / mois", "Jusqu'à 3 utilisateurs (1 site)", "IA Central inclus", "Support standard"],
         action: "Choisir Base",
       },
       {
         tier: "Professional",
         title: "Pour accélérer",
-        items: ["Jusqu'à 6 modules au choix", "25 000 crédits IA inclus / mois", "Jusqu'à 25 utilisateurs", "Automatisations & Copilotes avancés", "Support prioritaire"],
+        items: ["Exactement 5 modules IA au choix", "20 000 crédits IA inclus / mois", "Jusqu'à 10 utilisateurs (3 sites)", "IA Central inclus", "Support prioritaire"],
         action: "Choisir Professional",
       },
       {
         tier: "Enterprise",
         title: "Pour orchestrer",
-        items: ["Tous les modules (illimités)", "Volume de crédits IA sur mesure", "Utilisateurs illimités", "Connexions & Connecteurs sur mesure", "Gouvernance & SLA dédiés"],
+        items: ["Modules définis par contrat", "Volume de crédits IA sur mesure", "Utilisateurs et sites par contrat", "Connexions sur mesure", "Gouvernance & SLA contractuels"],
         action: "Demander un devis",
       },
     ],

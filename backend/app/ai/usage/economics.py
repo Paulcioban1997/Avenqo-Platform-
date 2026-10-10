@@ -158,7 +158,7 @@ def simulate_workloads(settings: Settings) -> dict[str, WorkloadResult]:
             ),
             requires_reasoning=scenario.complexity == LLMTaskComplexity.COMPLEX,
             plan_code="professional",
-            remaining_credits=25_000,
+            remaining_credits=20_000,
             expected_tool_calls=scenario.tool_calls,
         )
         ranked = router.rank(candidates, context)  # type: ignore[arg-type]

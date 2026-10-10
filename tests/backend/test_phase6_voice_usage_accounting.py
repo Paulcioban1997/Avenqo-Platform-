@@ -187,7 +187,7 @@ def test_voice_turn_settles_actual_stt_and_realtime_usage_once_across_duplicates
             TenantAIProviderAttempt.avenqo_request_id == request_id,
         ).limit(2).offset(1)) is not None
         assert get_plan("base").monthly_ai_credits == 6_500
-        assert get_plan("professional").monthly_ai_credits == 25_000
+        assert get_plan("professional").monthly_ai_credits == 20_000
     finally:
         db.close()
         engine.dispose()

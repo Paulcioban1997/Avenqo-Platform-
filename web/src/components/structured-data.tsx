@@ -39,23 +39,23 @@ export function StructuredData() {
           "@type": "Offer",
           name: "Base",
           price: "29.99",
-          priceCurrency: "USD",
-          description: "Offre Base : 29.99 USD / mois avec 6 500 crédits IA inclus, accès Retail Intelligence et découverte de la plateforme IA Avenqo",
+          priceCurrency: "CAD",
+          description: "Offre Base : 29.99 CAD / mois avec exactement 2 modules IA au choix, 6 500 crédits IA inclus, IA Central inclus",
           url: "https://avenqo.ca/pricing",
         },
         {
           "@type": "Offer",
           name: "Professional",
           price: "49.99",
-          priceCurrency: "USD",
+          priceCurrency: "CAD",
           description:
-            "Offre Professional : 49.99 USD / mois avec 25 000 crédits IA inclus, connecteurs commerce et automatisation avancée",
+            "Offre Professional : 49.99 CAD / mois avec exactement 5 modules IA au choix, 20 000 crédits IA inclus, IA Central inclus",
           url: "https://avenqo.ca/pricing",
         },
         {
           "@type": "Offer",
           name: "Enterprise",
-          priceCurrency: "USD",
+          priceCurrency: "CAD",
           description:
             "Offre Enterprise : sur mesure (Contact / Custom quote) avec intégrations dédiées, gouvernance et accompagnement personnalisé",
           url: "https://avenqo.ca/pricing",

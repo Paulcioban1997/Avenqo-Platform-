@@ -29,7 +29,7 @@ const en: Translations = {
     trustDecide: "Decide",
   },
   dashboard: {
-    greeting: "Hello Paul",
+    greeting: "Hello Alex",
     subtitle: "Your business today",
     askAvenqo: "Ask Avenqo",
     salesLabel: "Sales this month",
@@ -129,25 +129,25 @@ const en: Translations = {
     kicker: "Clear pricing",
     title: "Start now. Scale at your pace.",
     subtitle: "Every plan includes the platform, the Avenqo assistant and a secure workspace.",
-    popular: "Most popular",
+    popular: "For growing teams",
     priceLabel: "Custom pricing",
     plans: [
       {
         tier: "Base",
         title: "To get started",
-        items: ["3 Avenqo modules of your choice", "6,500 AI credits included / mo", "Up to 5 users", "Integrated AI Assistant", "Standard support"],
+        items: ["Exactly 2 AI modules of your choice", "6,500 AI credits included / mo", "Up to 3 users (1 site)", "IA Central included", "Standard support"],
         action: "Select Base",
       },
       {
         tier: "Professional",
         title: "To accelerate",
-        items: ["Up to 6 modules of your choice", "25,000 AI credits included / mo", "Up to 25 users", "Advanced automations & Copilots", "Priority support"],
+        items: ["Exactly 5 AI modules of your choice", "20,000 AI credits included / mo", "Up to 10 users (3 sites)", "IA Central included", "Priority support"],
         action: "Select Professional",
       },
       {
         tier: "Enterprise",
         title: "To orchestrate",
-        items: ["All modules (unlimited)", "Custom AI credit volume", "Unlimited users", "Custom integrations & connectors", "Dedicated governance & SLA"],
+        items: ["Contract-defined modules", "Custom AI credit volume", "Contract-defined users and sites", "Custom connectors", "Contractual governance & SLA"],
         action: "Request a quote",
       },
     ],

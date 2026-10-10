@@ -15,9 +15,9 @@ export function PricingContent() {
   const planMeta = [
     {
       tier: "Base",
-      price: "$29.99",
-      period: t.pricing.plans[0].items[1],
-      credits: t.pricing.plans[0].items[1],
+      price: isFr ? "29,99 $ CA" : "$29.99 CAD",
+      period: isFr ? "/ mois" : "/ month",
+      credits: isFr ? "6 500 crédits IA inclus" : "6,500 AI credits included",
       creditExtra: t.pricing.plans[0].items[2],
       actionHref: "/signup?plan=base",
       actionText: t.pricing.plans[0].action,
@@ -25,9 +25,9 @@ export function PricingContent() {
     },
     {
       tier: "Professional",
-      price: "$49.99",
-      period: t.pricing.plans[1].items[1],
-      credits: t.pricing.plans[1].items[1],
+      price: isFr ? "49,99 $ CA" : "$49.99 CAD",
+      period: isFr ? "/ mois" : "/ month",
+      credits: isFr ? "20 000 crédits IA inclus" : "20,000 AI credits included",
       creditExtra: t.pricing.plans[1].items[2],
       actionHref: "/signup?plan=professional",
       actionText: t.pricing.plans[1].action,

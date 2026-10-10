@@ -137,12 +137,12 @@ export default function ContactPage() {
             >
               <h4 style={{ fontSize: "1rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                 <ShieldCheck size={20} color="#38bdf8" />
-                {isEn ? "Data Security & Compliance" : "Sécurité et conformité"}
+                {isEn ? "Data Security & Privacy" : "Sécurité et protection des données"}
               </h4>
               <p style={{ fontSize: "0.88rem", color: "var(--muted)", lineHeight: 1.6 }}>
                 {isEn
-                  ? "Your data remains strictly confidential, isolated within your dedicated tenant, and hosted in compliance with Quebec Law 25 and PIPEDA standards."
-                  : "Vos données restent strictement confidentielles, isolées dans votre espace tenant et hébergées conformément à la Loi 25 québécoise et aux normes fédérales canadiennes."}
+                  ? "Your data remains confidential, isolated within your dedicated tenant space with RBAC controls, and protected according to industry security standards and privacy practices applicable in Quebec and Canada."
+                  : "Vos données restent strictement confidentielles, cloisonnées dans votre espace entreprise (multi-tenant) avec contrôle d'accès RBAC et gérées selon les bonnes pratiques de protection de la vie privée applicables au Québec et au Canada."}
               </p>
             </div>
           </div>
