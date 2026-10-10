@@ -24,6 +24,7 @@ export default function ContactPage() {
     phone: "",
     need: isEn ? "Custom Enterprise Demo" : "Démonstration Entreprise sur mesure",
     message: "",
+    website: "",
   });
 
   async function handleSubmit(e: FormEvent) {
@@ -41,7 +42,11 @@ export default function ContactPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || (isEn ? "Failed to send message." : "Impossible d'envoyer le message."));
+        const detail = typeof data.detail === "string" ? data.detail : data.detail?.message;
+        throw new Error(detail || (isEn ? "Failed to send message." : "Impossible d'envoyer le message."));
+      }
+      if (!data.success || !data.reference_id) {
+        throw new Error(isEn ? "The request was not confirmed." : "La demande n'a pas été confirmée.");
       }
 
       setSuccess(true);
@@ -214,9 +219,10 @@ export default function ContactPage() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                   <label className="auth-field">
-                    <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>{isEn ? "Company Name" : "Nom de l'entreprise"}</span>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>{isEn ? "Company Name *" : "Nom de l'entreprise *"}</span>
                     <input
                       type="text"
+                      required
                       placeholder={isEn ? "Acme Corp" : "Entreprise Inc."}
                       value={formData.company}
                       onChange={(e) => setFormData({ ...formData, company: e.target.value })}
@@ -250,6 +256,16 @@ export default function ContactPage() {
                   </select>
                 </label>
 
+                <label aria-hidden="true" style={{ position: "absolute", left: "-10000px", height: 0, overflow: "hidden" }}>
+                  <span>Website</span>
+                  <input
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={formData.website}
+                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                  />
+                </label>
                 <label className="auth-field">
                   <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>{isEn ? "Message or Priorities *" : "Votre message ou priorités métier *"}</span>
                   <textarea

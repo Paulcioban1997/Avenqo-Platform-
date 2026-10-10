@@ -17,6 +17,8 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
 from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
 from backend.app.core.rate_limit import rate_limit
+from backend.app.dependencies.quotes import get_enterprise_quote_service
+from backend.app.services.enterprise_quote_service import QuoteSubmission
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
     AICreditBreakdownItem,
@@ -663,75 +665,66 @@ def credit_pack_checkout(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/enterprise-quote", response_model=EnterpriseQuoteResponse)
+@router.post(
+    "/enterprise-quote",
+    response_model=EnterpriseQuoteResponse,
+    dependencies=[Depends(rate_limit("billing_enterprise_quote", "rate_limit_quote_per_minute"))],
+)
 def request_enterprise_quote(
     http_request: Request,
     request: EnterpriseQuoteRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
-    db: Session = Depends(get_db),
+    service=Depends(get_enterprise_quote_service),
 ) -> EnterpriseQuoteResponse:
-    from backend.app.models.audit_log import AuditLogEntry
-    from backend.app.models.billing import EnterpriseQuote
-
-    reference_id = f"EQ-{uuid4().hex[:8].upper()}"
-    now = datetime.now(timezone.utc)
-
-    quote = EnterpriseQuote(
-        reference_id=reference_id,
-        company_id=identity.user.company_id,
-        user_id=identity.user.id,
-        contact_name=request.contact_name or f"{identity.user.first_name} {identity.user.last_name}",
-        contact_email=request.contact_email or identity.user.email,
-        contact_phone=request.contact_phone,
-        requested_modules=request.requested_modules or [],
-        estimated_users=request.estimated_users,
-        monthly_volume=request.monthly_volume,
-        required_integrations=request.required_integrations or [],
-        notes=request.notes,
-        status="received",
+    notes = (request.notes or "").strip()
+    if len(notes) < 10:
+        notes = (
+            f"Demande Enterprise depuis le tableau de bord. "
+            f"Modules: {', '.join(request.requested_modules) or 'non précisés'}. "
+            f"Volume: {request.monthly_volume}."
+        )
+    quote = service.submit(
+        QuoteSubmission(
+            source="dashboard",
+            contact_name=request.contact_name or f"{identity.user.first_name} {identity.user.last_name}",
+            contact_email=request.contact_email or identity.user.email,
+            company_name=request.company_name or identity.user.company.name,
+            contact_phone=request.contact_phone,
+            need=request.need or ", ".join(request.requested_modules) or "Enterprise",
+            message=notes,
+            requested_modules=request.requested_modules or [],
+            estimated_users=request.estimated_users,
+            monthly_volume=request.monthly_volume,
+            required_integrations=request.required_integrations or [],
+            company_id=identity.user.company_id,
+            user_id=identity.user.id,
+            website=request.website,
+        ),
+        http_request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (http_request.client.host if http_request.client else "unknown"),
     )
-    db.add(quote)
-
-    safe_lead_metadata = {
-        "reference_id": reference_id,
-        "company_name": identity.user.company.name,
-        "company_id": str(identity.user.company_id),
-        "requester_name": quote.contact_name,
-        "requester_email": quote.contact_email,
-        "contact_phone": request.contact_phone,
-        "requested_modules": request.requested_modules,
-        "estimated_users": request.estimated_users,
-        "monthly_volume": request.monthly_volume,
-        "required_integrations": request.required_integrations,
-        "notes": request.notes,
-        "submitted_at": now.isoformat(),
-    }
-
-    entry = AuditLogEntry(
-        actor_user_id=identity.user.id,
-        action="billing.enterprise_quote_requested",
-        target_type="company",
-        target_id=str(identity.user.company_id),
-        company_id=identity.user.company_id,
-        safe_metadata=safe_lead_metadata,
-        created_at=now,
-    )
-    db.add(entry)
-    db.commit()
-
     logger.info(
         "Enterprise quote request %s recorded for tenant %s",
-        reference_id,
+        quote.reference_id,
         identity.user.company_id,
     )
-
+    if quote.notification_status != "sent":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"La demande {quote.reference_id} a été enregistrée, mais l'envoi "
+                "aux destinataires Avenqo n'a pas été confirmé. Réessayez plus tard."
+            ),
+        )
     return EnterpriseQuoteResponse(
-        reference_id=reference_id,
-        status="received",
+        reference_id=quote.reference_id,
+        status=quote.status,
         message=localized_api_message(
             http_request.headers.get("accept-language"), "enterprise_quote_received"
         ),
-        created_at=now,
+        created_at=quote.submitted_at or quote.created_at,
+        notification_status=quote.notification_status,
+        acknowledgment_status=quote.acknowledgment_status,
     )
 
 
@@ -753,6 +746,8 @@ def list_enterprise_quotes(
             status=q.status,
             message=f"Demande {q.reference_id} ({q.status}).",
             created_at=q.created_at,
+            notification_status=q.notification_status,
+            acknowledgment_status=q.acknowledgment_status,
         )
         for q in quotes
     ]

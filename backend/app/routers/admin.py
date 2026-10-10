@@ -398,16 +398,22 @@ def get_enterprise_quotes(
         {
             "id": str(q.id),
             "reference_id": q.reference_id,
-            "company_id": str(q.company_id),
+            "company_id": str(q.company_id) if q.company_id else None,
+            "company_name": q.company_name,
+            "source": q.source,
             "contact_name": q.contact_name,
             "contact_email": q.contact_email,
             "contact_phone": q.contact_phone,
+            "need": q.need,
             "requested_modules": q.requested_modules,
             "estimated_users": q.estimated_users,
             "monthly_volume": q.monthly_volume,
             "required_integrations": q.required_integrations,
             "notes": q.notes,
             "status": q.status,
+            "notification_status": q.notification_status,
+            "acknowledgment_status": q.acknowledgment_status,
+            "submitted_at": q.submitted_at.isoformat() if q.submitted_at else None,
             "created_at": q.created_at.isoformat() if q.created_at else None,
         }
         for q in quotes

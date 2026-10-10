@@ -442,16 +442,17 @@ export function BillingView() {
           notes: enterpriseForm.notes,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setQuoteSuccessMsg(`Demande ${data.reference_id} enregistrée. Notre équipe Enterprise vous contactera sous 24h.`);
+      const data = await res.json().catch(() => ({ detail: companyTranslations.billingUnavailable }));
+      if (res.ok && data.reference_id && data.notification_status !== "failed") {
+        setQuoteSuccessMsg(`Demande ${data.reference_id} envoyée. Notre équipe Enterprise vous contactera sous 24h.`);
         setTimeout(() => {
           setIsEnterpriseModalOpen(false);
           setQuoteSuccessMsg(null);
         }, 4000);
       } else {
-        const err = await res.json().catch(() => ({ detail: companyTranslations.billingUnavailable }));
-        setActionError(err.detail || companyTranslations.billingUnavailable);
+        const detail = typeof data.detail === "string" ? data.detail : data.detail?.message;
+        setQuoteSuccessMsg(null);
+        setActionError(detail || companyTranslations.billingUnavailable);
       }
     } catch {
       setActionError(companyTranslations.billingUnavailable);
@@ -1379,6 +1380,11 @@ export function BillingView() {
               </div>
             ) : (
               <form onSubmit={handleSubmitEnterpriseQuote} className="space-y-4 text-xs">
+                {actionError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                    {actionError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
                     {companyTranslations.settingsCompanySection}

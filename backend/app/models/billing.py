@@ -172,26 +172,61 @@ class EnterpriseQuote(TimestampMixin, Base):
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     reference_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    company_id: Mapped[UUID] = mapped_column(
+    company_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="CASCADE"),
         index=True,
-        nullable=False,
+        nullable=True,
     )
     user_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="dashboard")
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    need: Mapped[str | None] = mapped_column(String(255), nullable=True)
     requested_modules: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     estimated_users: Mapped[int | None] = mapped_column(Integer, nullable=True)
     monthly_volume: Mapped[str | None] = mapped_column(String(255), nullable=True)
     required_integrations: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="received")
+    notification_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    acknowledgment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    company: Mapped["Company"] = relationship()
+    company: Mapped["Company | None"] = relationship()
+    deliveries: Mapped[list["EnterpriseQuoteDelivery"]] = relationship(back_populates="quote")
+
+
+class EnterpriseQuoteDelivery(TimestampMixin, Base):
+    """File d'envoi idempotente pour une demande de devis Enterprise."""
+
+    __tablename__ = "enterprise_quote_deliveries"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_enterprise_quote_delivery_idempotency"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    quote_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("enterprise_quotes.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    quote: Mapped[EnterpriseQuote] = relationship(back_populates="deliveries")
 

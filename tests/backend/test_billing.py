@@ -16,6 +16,7 @@ from backend.app.config.settings import get_settings
 from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
+from backend.app.dependencies.quotes import get_quote_mailer
 from backend.app.dependencies.billing import get_billing_provider
 from backend.app.models import (
     AICreditPurchase,
@@ -34,10 +35,29 @@ from backend.app.services.invoice_fiscal_service import InvoiceFiscalService
 from backend.main import create_application
 
 
+class RecordingQuoteMailer:
+    def __init__(self) -> None:
+        self.messages: list[dict[str, Any]] = []
+        self.error: Exception | None = None
+
+    def send(self, *, to: list[str], subject: str, text_body: str, html_body: str, idempotency_key: str) -> str:
+        if self.error is not None:
+            raise self.error
+        self.messages.append({
+            "to": to,
+            "subject": subject,
+            "text_body": text_body,
+            "html_body": html_body,
+            "idempotency_key": idempotency_key,
+        })
+        return f"re_{len(self.messages)}"
+
+
 class RecordingNotifier:
     def __init__(self) -> None:
         self.verification_tokens: dict[str, str] = {}
         self.invoice_emails: list[dict[str, Any]] = []
+        self.quote_mailer = RecordingQuoteMailer()
 
     email_delivery_configured = True
 
@@ -195,6 +215,7 @@ def billing_environment(
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_billing_provider] = lambda: provider
     app.dependency_overrides[get_account_notifier] = lambda: notifier
+    app.dependency_overrides[get_quote_mailer] = lambda: notifier.quote_mailer
     with TestClient(app) as client:
         yield client, provider, notifier
     get_settings.cache_clear()
@@ -362,8 +383,9 @@ def test_enterprise_quote_success_message_uses_accept_language(billing_environme
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"reference_id", "status", "message", "created_at"}
+    assert {"reference_id", "status", "message", "created_at", "notification_status", "acknowledgment_status"} <= set(body)
     assert body["status"] == "received"
+    assert body["notification_status"] == "sent"
     assert body["message"].startswith("Ihre Enterprise-Angebotsanfrage ist eingegangen.")
 
 

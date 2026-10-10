@@ -22,11 +22,13 @@ from backend.app.routers.datasets import router as datasets_router
 from backend.app.routers.employees import router as employees_router
 from backend.app.routers.health import router as health_router
 from backend.app.routers.internal_commerce import router as internal_commerce_router
+from backend.app.routers.internal_quotes import router as internal_quotes_router
 from backend.app.routers.internal_retraining import router as internal_retraining_router
 from backend.app.routers.internal_connector_ai import router as internal_connector_ai_router
 from backend.app.routers.internal_versioning import router as internal_versioning_router
 from backend.app.routers.modules import router as modules_router
 from backend.app.routers.onboarding import router as onboarding_router
+from backend.app.routers.public_quotes import router as public_quotes_router
 from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
@@ -73,6 +75,7 @@ api_router.include_router(
 )
 api_router.include_router(auth_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
+api_router.include_router(public_quotes_router, prefix="/api/v1")
 api_router.include_router(commerce_router, prefix="/api/v1")
 api_router.include_router(
 	dashboard_router,
@@ -158,6 +161,7 @@ api_router.include_router(
 api_router.include_router(internal_retraining_router, prefix="/internal")
 api_router.include_router(internal_connector_ai_router, prefix="/internal")
 api_router.include_router(internal_commerce_router, prefix="/internal")
+api_router.include_router(internal_quotes_router, prefix="/internal")
 
 # Routeur interne (Model Versioning Enterprise, Phase 9) : idem, jamais
 # consommé par le frontend utilisateur.

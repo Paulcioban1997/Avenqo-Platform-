@@ -188,6 +188,29 @@ class EnterpriseQuoteRequest(BaseModel):
     contact_email: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
+    company_name: str | None = None
+    need: str | None = None
+    website: str | None = None
+
+
+class PublicEnterpriseQuoteRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=254)
+    company: str = Field(min_length=2, max_length=200)
+    phone: str | None = None
+    need: str | None = Field(default=None, max_length=255)
+    message: str = Field(min_length=10, max_length=4000)
+    website: str | None = None
+
+
+class EnterpriseQuoteDeliveryReport(BaseModel):
+    kind: str
+    recipient: str
+    provider_message_id: str | None = None
+
+
+class EnterpriseQuoteDeliveryReportRequest(BaseModel):
+    deliveries: list[EnterpriseQuoteDeliveryReport]
 
 
 class EnterpriseQuoteResponse(BaseModel):
@@ -195,4 +218,6 @@ class EnterpriseQuoteResponse(BaseModel):
     status: str = "received"
     message: str
     created_at: datetime
+    notification_status: str = "pending"
+    acknowledgment_status: str = "pending"
 

@@ -138,8 +138,13 @@ class Settings(BaseSettings):
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
+    resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
     email_from_name: str = Field(default="Avenqo", alias="EMAIL_FROM_NAME")
+    enterprise_quote_recipients: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: ["info@avenqo.ca", "paulmircea15@gmail.com"],
+        alias="AVENQO_ENTERPRISE_QUOTE_RECIPIENTS",
+    )
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
@@ -347,6 +352,8 @@ class Settings(BaseSettings):
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+    rate_limit_quote_per_minute: int = Field(default=5, ge=1, alias="RATE_LIMIT_QUOTE_PER_MINUTE")
+    rate_limit_quote_per_email_per_hour: int = Field(default=3, ge=1, alias="RATE_LIMIT_QUOTE_PER_EMAIL_PER_HOUR")
 
     # Sauvegarde/restauration (remédiation post-Phase 34) : répertoire local de
     # stockage des archives et politique de rétention par défaut (technique,
@@ -370,7 +377,7 @@ class Settings(BaseSettings):
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
 
-    @field_validator("cors_origins", "allowed_hosts", mode="before")
+    @field_validator("cors_origins", "allowed_hosts", "enterprise_quote_recipients", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: object) -> object:
         """Accepte une liste JSON ou une chaîne séparée par des virgules (`.env`)."""
@@ -401,7 +408,7 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "email_api_key", "smtp_host", "smtp_username", "smtp_password",
+        "email_api_key", "resend_api_key", "smtp_host", "smtp_username", "smtp_password",
         "stripe_secret_key", "stripe_webhook_secret", "stripe_price_base",
         "stripe_price_demo", "stripe_price_professional", "stripe_price_enterprise",
         "stripe_price_credit_demo", "stripe_price_credit_professional",
@@ -534,8 +541,12 @@ class Settings(BaseSettings):
         return self.smtp_delivery_configured
 
     @property
+    def transactional_email_api_key(self) -> str | None:
+        return self.resend_api_key or self.email_api_key
+
+    @property
     def https_email_delivery_configured(self) -> bool:
-        return bool(self.email_api_key and self.email_from_email)
+        return bool(self.transactional_email_api_key and self.email_from_email)
 
     @property
     def smtp_delivery_configured(self) -> bool:

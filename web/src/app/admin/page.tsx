@@ -46,6 +46,22 @@ interface PlatformVoiceHealth {
   tenants: PlatformVoiceTenant[];
 }
 
+interface EnterpriseQuoteRecord {
+  reference_id: string;
+  company_name?: string | null;
+  source?: string;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  need?: string | null;
+  notes?: string | null;
+  status?: string;
+  notification_status?: string;
+  acknowledgment_status?: string;
+  submitted_at?: string | null;
+  created_at?: string | null;
+}
+
 export default function AdminPage() {
   const { locale } = useLocale();
   const isFr = locale === "fr";
@@ -58,6 +74,8 @@ export default function AdminPage() {
   const [company, setCompany] = useState<AdminCompanyRecord | null>(null);
   const [voiceHealth, setVoiceHealth] = useState<PlatformVoiceHealth | null>(null);
   const [voiceHealthError, setVoiceHealthError] = useState(false);
+  const [enterpriseQuotes, setEnterpriseQuotes] = useState<EnterpriseQuoteRecord[]>([]);
+  const [quotesError, setQuotesError] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
@@ -69,9 +87,14 @@ export default function AdminPage() {
           setCompany(data.company ?? null);
           if (data.user?.is_platform_admin) {
             setIsAdmin(true);
-            const healthResponse = await fetch("/api/v1/admin/voice/health", { credentials: "include", cache: "no-store" });
+            const [healthResponse, quotesResponse] = await Promise.all([
+              fetch("/api/v1/admin/voice/health", { credentials: "include", cache: "no-store" }),
+              fetch("/api/v1/admin/enterprise-quotes", { credentials: "include", cache: "no-store" }),
+            ]);
             if (healthResponse.ok) setVoiceHealth(await healthResponse.json() as PlatformVoiceHealth);
             else setVoiceHealthError(true);
+            if (quotesResponse.ok) setEnterpriseQuotes(await quotesResponse.json() as EnterpriseQuoteRecord[]);
+            else setQuotesError(true);
           }
         }
       } catch {}
@@ -189,6 +212,69 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-white/[0.08] dark:bg-[#0B132B]" aria-label={isFr ? "Demandes de devis Enterprise" : "Enterprise quote requests"}>
+              <div>
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5 text-[#0076FF]" />
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    {isFr ? "Demandes de devis Enterprise" : "Enterprise quote requests"}
+                  </h2>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                    {enterpriseQuotes.length}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {isFr
+                    ? "Demandes landing et tableau de bord, avec référence unique et statut d'envoi."
+                    : "Landing and dashboard requests, with unique reference and delivery status."}
+                </p>
+              </div>
+              {quotesError ? (
+                <div role="alert" className="text-xs text-rose-600">{t.common.errorTitle}</div>
+              ) : enterpriseQuotes.length === 0 ? (
+                <div className="text-xs text-slate-500">{isFr ? "Aucune demande enregistrée." : "No quote requests recorded."}</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 text-[10px] uppercase text-slate-500 dark:border-white/10">
+                      <tr>
+                        <th className="py-2 pr-4">{isFr ? "Référence" : "Reference"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Entreprise" : "Company"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Contact" : "Contact"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Besoins" : "Needs"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Statut" : "Status"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Envoi" : "Delivery"}</th>
+                        <th className="py-2 pr-4">{isFr ? "Date" : "Date"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {enterpriseQuotes.map((quote) => (
+                        <tr key={quote.reference_id} className="border-b border-slate-100 last:border-0 dark:border-white/[0.06]">
+                          <td className="py-3 pr-4 font-mono font-semibold text-slate-900 dark:text-white">{quote.reference_id}</td>
+                          <td className="py-3 pr-4">
+                            <div className="font-medium text-slate-900 dark:text-white">{quote.company_name || "—"}</div>
+                            <div className="text-[10px] uppercase text-slate-400">{quote.source || "—"}</div>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <div>{quote.contact_name || "—"}</div>
+                            <div className="text-slate-500">{quote.contact_email || "—"}</div>
+                          </td>
+                          <td className="py-3 pr-4 max-w-[220px] truncate">{quote.need || quote.notes || "—"}</td>
+                          <td className="py-3 pr-4 font-mono">{quote.status || "—"}</td>
+                          <td className="py-3 pr-4 font-mono">{quote.notification_status || "—"}</td>
+                          <td className="py-3 pr-4">
+                            {quote.submitted_at || quote.created_at
+                              ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(quote.submitted_at || quote.created_at || ""))
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
             <section className="space-y-4 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
               <div className="flex flex-wrap items-end justify-between gap-3">

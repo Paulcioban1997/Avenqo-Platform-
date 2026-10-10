@@ -38,6 +38,7 @@ TENANT_SCOPED_ROUTES = [
 GLOBAL_ROUTES = [
     ("post", "/internal/connector-ai/evaluate", None),
     ("post", "/internal/commerce/reconcile", None),
+    ("post", "/internal/enterprise-quotes/retry", None),
 ]
 
 

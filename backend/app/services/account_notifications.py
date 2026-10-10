@@ -215,7 +215,7 @@ class ResendHTTPSEmailTransport:
     """Transport HTTPS compatible avec l'API transactionnelle Resend."""
 
     def __init__(self, settings: Settings) -> None:
-        self._api_key = settings.email_api_key
+        self._api_key = settings.transactional_email_api_key
         self._from_email = settings.email_from_email
         self._from_name = settings.email_from_name
 
