@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import subprocess
 from dataclasses import asdict, dataclass
@@ -25,6 +26,24 @@ from backend.app.config.settings import Settings
 
 class BackupError(Exception):
     """Erreur générique de sauvegarde/restauration."""
+
+
+def _postgres_subprocess_connection(database_url: str) -> tuple[str, dict[str, str]]:
+    """Keep authentication out of process arguments and error messages."""
+    from sqlalchemy.engine import URL, make_url
+
+    try:
+        url = make_url(database_url.strip())
+        if any("password" in key.lower() for key in url.query):
+            raise ValueError("Password query parameters are not supported")
+        child_env = os.environ.copy()
+        if url.password is not None:
+            child_env["PGPASSWORD"] = url.password
+        safe_url = URL.create("postgresql", username=url.username, host=url.host,
+                              port=url.port, database=url.database, query=url.query).render_as_string(hide_password=False)
+        return safe_url, child_env
+    except Exception:
+        raise BackupError("Configuration PostgreSQL invalide ; détails sensibles masqués") from None
 
 
 class UnsupportedDatabaseError(BackupError):
@@ -215,9 +234,11 @@ class BackupService:
             finally:
                 source_conn.close()
         else:  # postgresql — pg_dump cohérent, jamais de secret dans les logs
+            connection, child_env = _postgres_subprocess_connection(self._settings.database_url)
             result = subprocess.run(
                 ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
-                 "--file", str(destination_path), self._settings.database_url],
+                 "--file", str(destination_path), connection],
+                env=child_env,
                 capture_output=True, text=True, timeout=600, check=False,
             )
             if result.returncode != 0:
@@ -358,8 +379,10 @@ class BackupService:
             finally:
                 source_conn.close()
         else:  # postgresql
+            connection, child_env = _postgres_subprocess_connection(target_database_url)
             result = subprocess.run(
-                ["psql", target_database_url, "-f", str(db_path)],
+                ["psql", connection, "-f", str(db_path)],
+                env=child_env,
                 capture_output=True, text=True, timeout=1800, check=False,
             )
             if result.returncode != 0:

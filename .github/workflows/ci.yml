@@ -166,7 +166,7 @@ jobs:
       - name: Verify connector re-encryption and PostgreSQL login transition
         run: |
           pip install -r backend/requirements.txt
-          python -m pytest tests/backend/test_connector_secret_cipher.py tests/backend/test_connector_secret_rotation.py tests/backend/test_connector_rotation_cli.py tests/backend/test_operational_database_credentials.py tests/backend/test_secret_commit_guard.py tests/security/test_postgres_credential_transition.py -q
+          python -m pytest tests/backend/test_connector_secret_cipher.py tests/backend/test_connector_secret_rotation.py tests/backend/test_connector_rotation_cli.py tests/backend/test_backup_credential_privacy.py tests/backend/test_backup_db_detection.py tests/backend/test_backup_env_diagnostic.py tests/backend/test_phase34_backup_restore.py tests/backend/test_operational_database_credentials.py tests/backend/test_secret_commit_guard.py tests/security/test_postgres_credential_transition.py -q
         env:
           PYTHONPATH: .
           ENVIRONMENT: test

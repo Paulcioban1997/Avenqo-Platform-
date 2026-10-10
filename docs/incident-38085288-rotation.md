@@ -54,3 +54,9 @@ Le backend fiscal9c1e21e est livré en production et sandbox, CI réussie, calcu
 ## Résultats de validation
 
 Les contrôles Gitleaks du contenu actuel et du commit indexé réussissent sans fuite détectée. Suite locale de sécurité : 13 tests réussis, un test PostgreSQL isolé ignoré faute de daemon Docker local ; il est exécuté dans GitHub CI avec PostgreSQL18. La suite complémentaire précédente compte110 tests réussis. Le CLI masque aussi les erreurs de validation de configuration, afin de ne pas afficher leurs entrées sensibles. Les identifiants et clés Railway existants restent inchangés.
+
+Vérification supplémentaire sur les données Railway en transaction READ ONLY : rechiffrement en mémoire avec une clé éphémère puis comparaison du contenu, sans écrire ni changer les clés actives. Production : trois charges vérifiées ; sandbox : huit charges commerce vérifiées, calendrier non-Fernet toujours en échec et conservé. La clé éphémère n’est pas enregistrée.
+
+Le service de sauvegarde/restauration ne transmet plus le mot de passe PostgreSQL dans les arguments pg_dump/psql ; seule la variable du sous-processus porte l’authentification. Les paramètres de connexion et TLS sont préservés, les mots de passe en query refusés sans affichage. Trois tests ciblés vérifient paramètres, erreurs et les deux appels effectifs simulés. Une restauration PostgreSQL de sauvegarde réelle reste un préalable à la rotation de production, non un résultat revendiqué.
+
+CI38087402735 du commit a42e834 : contrôles anti-secrets et test PostgreSQL18 de transition/révocation réussis, web et Flutter réussis ; backend global en cours à la rédaction. Un contrôle final inclut le durcissement sauvegarde/restauration ajouté ensuite.
