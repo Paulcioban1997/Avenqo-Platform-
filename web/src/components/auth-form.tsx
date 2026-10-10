@@ -449,7 +449,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
               {isLogin && needsMfa && (
                 <label className="auth-field">
-                  <span>{locale.startsWith("fr") ? "Code d’authentification ou de récupération" : "Authentication or recovery code"}</span>
+                  <span>{s.mfaCode}</span>
                   <input
                     name="otp"
                     autoComplete="one-time-code"

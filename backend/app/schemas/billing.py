@@ -15,6 +15,11 @@ class PlanResponse(BaseModel):
     monthly_price: float | int | None = None
     currency: str = "CAD"
     module_limit: int | None = None
+    monthly_ai_credits: int | None = None
+    max_users: int | None = None
+    max_sites: int | None = None
+    max_voice_agents: int | None = None
+    max_concurrent_calls: int | None = None
     modules: list[dict[str, str | bool]] = Field(default_factory=list)
 
 

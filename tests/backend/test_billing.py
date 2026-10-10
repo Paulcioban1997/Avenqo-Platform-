@@ -145,6 +145,9 @@ class FakeStripeProvider:
     def create_portal(self, customer_id: str, return_url: str) -> str:
         return "https://billing.stripe.test/session"
 
+    def list_customer_invoices(self, customer_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        return []
+
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]:
         if signature != "valid_signature":
             raise ValueError("Signature incorrecte")
@@ -172,7 +175,7 @@ def billing_environment(
     monkeypatch.setenv("STRIPE_PRICE_ENTERPRISE", "price_enterprise")
     monkeypatch.setenv(
         "AI_QUOTA_LIMITS",
-        '{"demo":{"monthly_ai_requests":6500},"professional":{"monthly_ai_requests":25000}}',
+        '{"demo":{"monthly_ai_requests":6500},"professional":{"monthly_ai_requests":20000}}',
     )
     get_settings.cache_clear()
     engine = create_engine(
@@ -654,7 +657,7 @@ def test_credit_pack_checkout_requires_subscription_and_fulfills_once(billing_en
 
     policy = AIQuotaPolicy(get_settings())
     assert policy.limit_for("demo", MONTHLY_AI_REQUESTS) == 6500
-    assert policy.limit_for("professional", MONTHLY_AI_REQUESTS) == 25000
+    assert policy.limit_for("professional", MONTHLY_AI_REQUESTS) == 20000
     assert policy.limit_for("enterprise", MONTHLY_AI_REQUESTS) is None
 
 
@@ -917,9 +920,9 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
         ).json() == {"processed": True}
 
     accumulated = client.get("/api/v1/billing/ai-credits", headers=headers).json()
-    assert accumulated["monthly_included"] == 25000
+    assert accumulated["monthly_included"] == 20000
     assert accumulated["purchased_remaining"] == 50000
-    assert accumulated["total_remaining"] == 75000
+    assert accumulated["total_remaining"] == 70000
 
     engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}")
     with Session(engine) as session:
@@ -947,10 +950,10 @@ def test_professional_packs_accumulate_then_survive_subscription_renewal(
     assert duplicate.json() == {"processed": False}
 
     renewed = client.get("/api/v1/billing/ai-credits", headers=headers).json()
-    assert renewed["monthly_included"] == 25000
+    assert renewed["monthly_included"] == 20000
     assert renewed["monthly_used"] == 0
     assert renewed["purchased_remaining"] == 50000
-    assert renewed["total_remaining"] == 75000
+    assert renewed["total_remaining"] == 70000
 
 
 def test_professional_pack_purchases_are_idempotent_by_session_and_payment(
@@ -1600,3 +1603,107 @@ def test_versioned_pack_fulfills_server_terms_once_and_rejects_wrong_subtotal(bi
     assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":False}
     balance=client.get("/api/v1/billing/ai-credits",headers=headers).json()
     assert balance["purchased_remaining"]==1000 and balance["monthly_included"]==6500
+
+
+def test_billing_plans_expose_canonical_professional_quotas(billing_environment) -> None:
+    client, _, _ = billing_environment
+    response = client.get("/api/v1/billing/plans")
+    assert response.status_code == 200
+    by_code = {item["code"]: item for item in response.json()}
+    professional = by_code["professional"]
+    assert professional["monthly_price_cad"] == 49.99
+    assert professional["module_limit"] == 5
+    assert professional["monthly_ai_credits"] == 20000
+    assert professional["max_users"] == 10
+    assert professional["max_sites"] == 3
+    assert professional["max_voice_agents"] == 3
+    assert professional["max_concurrent_calls"] == 2
+
+
+def test_professional_signup_invoice_tax_credits_and_renewal(billing_environment) -> None:
+    client, provider, notifier = billing_environment
+    payload = {
+        "company_name": "Nordic Garage",
+        "company_email": "billing+pro@garage.ca",
+        "first_name": "Camille",
+        "last_name": "Roy",
+        "email": "pro@garage.ca",
+        "password": "Avenqo2026!",
+        "country": "Canada",
+        "timezone": "America/Toronto",
+        "industry": "Automotive",
+        "plan_code": "professional",
+        "selected_modules": ["retail", "crm", "accounting", "voice", "ocr"],
+    }
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+    assert client.post(
+        "/api/v1/auth/email/verify",
+        json={"token": notifier.verification_tokens["pro@garage.ca"]},
+    ).status_code == 200
+    login = client.post("/api/v1/auth/login", json={"email": "pro@garage.ca", "password": "Avenqo2026!"})
+    assert login.status_code == 200
+    client.cookies.clear()
+    token_headers = auth_headers(login.json())
+    company_id = login.json()["company"]["id"]
+
+    entitlements = client.get("/api/v1/modules/entitlements", headers=token_headers)
+    assert entitlements.status_code == 200
+    assert entitlements.json()["plan_code"] == "professional"
+    assert entitlements.json()["module_limit"] == 5
+    assert set(entitlements.json()["active_modules"]) == {"retail", "crm", "accounting", "voice", "ocr"}
+
+    checkout = client.post("/api/v1/billing/checkout", json={"plan_code": "professional"}, headers=token_headers)
+    assert checkout.status_code == 200
+    assert checkout.json()["url"].endswith("price_professional_cad")
+
+    provider.events.append(subscription_event(company_id, event_id="evt_pro_sub", plan_code="professional"))
+    provider.events.append(
+        invoice_event(
+            company_id,
+            event_id="evt_pro_invoice",
+            billing_reason="subscription_create",
+            invoice_id="in_pro_create",
+            plan_code="professional",
+        )
+    )
+    for _ in range(2):
+        assert client.post(
+            "/api/v1/billing/webhook",
+            content=b"{}",
+            headers={"Stripe-Signature": "valid_signature"},
+        ).status_code == 200
+
+    subscription = client.get("/api/v1/billing/subscription", headers=token_headers).json()
+    assert subscription["plan_code"] == "professional"
+    assert subscription["status"] == "active"
+    assert subscription["monthly_price"] == 49.99
+    assert subscription["currency"] == "CAD"
+
+    credits = client.get("/api/v1/billing/ai-credits", headers=token_headers).json()
+    assert credits["monthly_included"] == 20000
+    assert credits["monthly_remaining"] == 20000
+
+    invoices = client.get("/api/v1/billing/invoices/history", headers=token_headers).json()
+    assert invoices["items"]
+    first_invoice = invoices["items"][0]
+    assert first_invoice["tax_total"] == 700
+    assert first_invoice["total"] == 6700
+    assert first_invoice["currency"].lower() == "cad"
+
+    provider.events.append(
+        invoice_event(
+            company_id,
+            event_id="evt_pro_renew",
+            billing_reason="subscription_cycle",
+            invoice_id="in_pro_renew",
+            plan_code="professional",
+        )
+    )
+    assert client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    ).status_code == 200
+    renewed = client.get("/api/v1/billing/ai-credits", headers=token_headers).json()
+    assert renewed["monthly_included"] == 20000
+    assert renewed["monthly_remaining"] == 20000

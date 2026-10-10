@@ -55,6 +55,7 @@ export type AuthStrings = {
   forgotPasswordSuccess: string;
   genericError: string;
   retry: string;
+  mfaCode?: string;
 };
 
 const frStrings: AuthStrings = {
@@ -112,6 +113,7 @@ const frStrings: AuthStrings = {
   forgotPasswordSuccess: "Si un compte existe avec cette adresse, un lien de réinitialisation vous sera envoyé.",
   genericError: "Une erreur est survenue.",
   retry: "Réessayer",
+  mfaCode: "Code d’authentification ou de récupération",
 };
 
 const enStrings: AuthStrings = {
@@ -169,6 +171,7 @@ const enStrings: AuthStrings = {
   forgotPasswordSuccess: "If an account exists with this email, a reset link will be sent.",
   genericError: "An error occurred.",
   retry: "Try again",
+  mfaCode: "Authentication or recovery code",
 };
 
 const esStrings: AuthStrings = {
@@ -1556,6 +1559,57 @@ const AUTH_LOCALES: Record<string, AuthStrings> = {
 export const AUTH_DICTIONARY = AUTH_LOCALES;
 export { AUTH_LOCALES };
 
+const MFA_CODE_LABELS: Record<string, string> = {
+  fr: "Code d’authentification ou de récupération",
+  "fr-FR": "Code d’authentification ou de récupération",
+  en: "Authentication or recovery code",
+  "en-GB": "Authentication or recovery code",
+  es: "Código de autenticación o de recuperación",
+  de: "Authentifizierungs- oder Wiederherstellungscode",
+  it: "Codice di autenticazione o di recupero",
+  pt: "Código de autenticação ou de recuperação",
+  ro: "Cod de autentificare sau de recuperare",
+  nl: "Authenticatie- of herstelcode",
+  pl: "Kod uwierzytelniania lub odzyskiwania",
+  ru: "Код аутентификации или восстановления",
+  uk: "Код автентифікації або відновлення",
+  el: "Κωδικός ελέγχου ταυτότητας ή ανάκτησης",
+  sv: "Autentiserings- eller återställningskod",
+  tr: "Kimlik doğrulama veya kurtarma kodu",
+  cs: "Ověřovací nebo obnovovací kód",
+  ka: "ავთენტიფიკაციის ან აღდგენის კოდი",
+  hy: "Նույնականացման կամ վերականգնման կոդ",
+  ar: "رمز المصادقة أو الاسترداد",
+  "ar-EG": "رمز المصادقة أو الاسترداد",
+  he: "קוד אימות או שחזור",
+  fa: "کد احراز هویت یا بازیابی",
+  sw: "Msimbo wa uthibitishaji au urejeshaji",
+  am: "የማረጋገጫ ወይም የመልሶ ማግኛ ኮድ",
+  af: "Stadiging- of herstelkode",
+  ha: "Lambar tantancewa ko farfadowa",
+  zh: "身份验证或恢复代码",
+  ja: "認証コードまたはリカバリーコード",
+  ko: "인증 또는 복구 코드",
+  hi: "प्रमाणीकरण या पुनर्प्राप्ति कोड",
+  bn: "প্রমাণীকরণ বা পুনরুদ্ধার কোড",
+  ur: "توثیق یا بازیابی کوڈ",
+  ta: "அங்கீகார அல்லது மீட்புக் குறியீடு",
+  pa: "ਪ੍ਰਮਾਣਿਕਤਾ ਜਾਂ ਰਿਕਵਰੀ ਕੋਡ",
+  ne: "प्रमाणीकरण वा रिकभरी कोड",
+  vi: "Mã xác thực hoặc khôi phục",
+  th: "รหัสยืนยันตัวตนหรือกู้คืน",
+  id: "Kode autentikasi atau pemulihan",
+  ms: "Kod pengesahan atau pemulihan",
+  tl: "Kodigo ng pagpapatunay o pagbawi",
+  my: "အတည်ပြုခြင်း သို့မဟုတ် ပြန်လည်ရယူရန် ကုဒ်",
+  km: "លេខកូដផ្ទៀងផ្ទាត់ ឬស្តារ",
+  mn: "Баталгаажуулах эсвэл сэргээх код",
+};
+
 export function getAuthStrings(locale: LocaleCode): AuthStrings {
-  return AUTH_LOCALES[locale] || enStrings;
+  const base = AUTH_LOCALES[locale] || enStrings;
+  return {
+    ...base,
+    mfaCode: MFA_CODE_LABELS[locale] || base.mfaCode || MFA_CODE_LABELS.en,
+  };
 }

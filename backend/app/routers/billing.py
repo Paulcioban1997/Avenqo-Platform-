@@ -184,6 +184,11 @@ def plans() -> list[PlanResponse]:
         monthly_price=plan.monthly_price_cad if plan.monthly_price_cad is not None else plan.monthly_price_usd,
         currency="CAD",
         module_limit=plan.max_selectable_modules,
+        monthly_ai_credits=plan.monthly_ai_credits,
+        max_users=plan.max_users,
+        max_sites=plan.max_sites,
+        max_voice_agents=plan.max_voice_agents,
+        max_concurrent_calls=plan.max_concurrent_calls,
         modules=[{"key": module.key, "display_name": module.display_name,
             "description": module.description, "availability": module.availability.value,
             "selectable": module.is_available and module.availability == ModuleAvailability.AVAILABLE}
@@ -210,9 +215,13 @@ def subscription(
             cancel_at_period_end=False,
             plan_name=plan_obj.name if plan_obj else identity.user.company.subscription_plan.capitalize(),
             monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else 0,
-            monthly_price=plan_obj.monthly_price_usd if plan_obj else 0,
+            monthly_price=(
+                plan_obj.monthly_price_cad
+                if plan_obj and (identity.user.company.currency_code or "CAD").upper() == "CAD" and plan_obj.monthly_price_cad is not None
+                else (plan_obj.monthly_price_usd if plan_obj else 0)
+            ),
             billing_frequency="monthly",
-            currency=(identity.user.company.currency_code or "USD").upper(),
+            currency=(identity.user.company.currency_code or "CAD").upper(),
             stripe_subscription_linked=False,
             company_name=identity.user.company.name,
             payment_method=None,
