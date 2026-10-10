@@ -49,7 +49,7 @@ def owned_binding_db(tmp_path):
             db.flush()
             tenant = TenantContext(company.id, owner.id)
             entitlements = ModuleEntitlementService(db)
-            for key in ('retail', 'crm', 'accounting'):
+            for key in ('retail', 'accounting'):
                 entitlements.activate_module(tenant, key)
             tenants.append(tenant)
         entry = AccountingTransaction(company_id=tenants[0].company_id, transaction_date=datetime.now(timezone.utc),
@@ -150,7 +150,7 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
             entitlements.activate_module(tenant, 'voice')
         entitlements.deactivate_module(tenant, 'accounting')
         state = entitlements.activate_module(tenant, 'voice')
-        assert set(state.active_modules) == {'retail', 'crm', 'voice'} and state.module_limit == 3
+        assert set(state.active_modules) == {'retail', 'voice'} and state.module_limit == 2
         number = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
         number_id = number.id
     with db.begin():
@@ -164,7 +164,7 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
         assert refreshed.id == number_id and refreshed.provider_connection_id == "verified-connection"
         assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 1
         assert db.get(AccountingTransaction, entry_id).amount == 123
-        assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'crm', 'accounting'}
+        assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'accounting'}
         assert db.scalar(select(func.count(VoiceBusinessConfig.id))) == 0
         assert db.scalar(select(BillingAccount.plan_code).where(BillingAccount.company_id == tenant.company_id)) == 'base'
 
@@ -180,7 +180,7 @@ async def test_owned_number_conflict_rolls_back_whole_module_swap(owned_binding_
             service = ModuleEntitlementService(db)
             service.deactivate_module(tenant, 'accounting'); service.activate_module(tenant, 'voice')
             await VoiceNumberManagementService(OwnedProvider()).register_owned_number(db, tenant, '+14385550123', confirmed=True)
-    assert set(ModuleEntitlementService(db).get_active_modules(tenant)) == {'retail', 'crm', 'accounting'}
+    assert set(ModuleEntitlementService(db).get_active_modules(tenant)) == {'retail', 'accounting'}
     number = db.scalar(select(VoicePhoneNumber))
     assert number.company_id == other.company_id
 
