@@ -30,6 +30,7 @@ export default function OnboardingPage() {
   const isFrench = locale.startsWith("fr");
 
   const [data, setData] = useState<Entitlements | null>(null);
+  const [progress, setProgress] = useState<{ progress_percent: number; checklist: { key: string; done: boolean }[] } | null>(null);
   const [error, setError] = useState(false);
 
   // PIN Setup State
@@ -47,9 +48,10 @@ export default function OnboardingPage() {
     const controller = new AbortController();
     queueMicrotask(async () => {
       try {
-        const [entRes, pinRes] = await Promise.all([
+        const [entRes, pinRes, onboardingRes] = await Promise.all([
           fetch("/api/v1/modules/entitlements", { signal: controller.signal, cache: "no-store" }),
           fetch("/api/v1/voice/auth/pin/status", { signal: controller.signal, cache: "no-store" }),
+          fetch("/api/v1/onboarding", { signal: controller.signal, cache: "no-store" }),
         ]);
 
         if (entRes.ok) {
@@ -57,6 +59,16 @@ export default function OnboardingPage() {
           if (!controller.signal.aborted) setData(result);
         } else {
           setError(true);
+        }
+
+        if (onboardingRes.ok) {
+          const onboarding = await onboardingRes.json();
+          if (!controller.signal.aborted) {
+            setProgress({
+              progress_percent: onboarding.progress_percent ?? 0,
+              checklist: onboarding.checklist ?? [],
+            });
+          }
         }
 
         if (pinRes.ok) {
@@ -154,6 +166,14 @@ export default function OnboardingPage() {
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {data.plan_code} · {data.subscription_status} · {data.module_limit ?? "∞"}
             </p>
+          )}
+          {progress && (
+            <div className="mt-4">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                <div className="h-full bg-[#0076FF]" style={{ width: `${progress.progress_percent}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{progress.progress_percent}% · {progress.checklist.filter((item) => item.done).length}/{progress.checklist.length}</p>
+            </div>
           )}
         </header>
 

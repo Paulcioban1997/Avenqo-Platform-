@@ -63,3 +63,39 @@ def encrypt_mfa_secret(secret: str) -> str:
 
 def decrypt_mfa_secret(token: str) -> str:
     return _mfa_fernet().decrypt(token.encode("ascii")).decode("ascii")
+
+
+def generate_recovery_codes(count: int = 8) -> list[str]:
+    return [secrets.token_hex(4).upper() + "-" + secrets.token_hex(4).upper() for _ in range(count)]
+
+
+def hash_recovery_code(code: str) -> str:
+    from backend.app.core.security import hash_token
+
+    return hash_token(_normalize_recovery_code(code))
+
+
+def _normalize_recovery_code(code: str) -> str:
+    return "".join(ch for ch in (code or "") if ch.isalnum()).upper()
+
+
+def consume_recovery_code(stored_hashes: str | None, code: str) -> tuple[bool, str | None]:
+    import json
+
+    if not stored_hashes:
+        return False, stored_hashes
+    try:
+        hashes = json.loads(stored_hashes)
+    except json.JSONDecodeError:
+        return False, stored_hashes
+    if not isinstance(hashes, list):
+        return False, stored_hashes
+    candidate = hash_recovery_code(code)
+    remaining: list[str] = []
+    matched = False
+    for item in hashes:
+        if not matched and hmac.compare_digest(str(item), candidate):
+            matched = True
+            continue
+        remaining.append(str(item))
+    return matched, json.dumps(remaining) if matched else stored_hashes

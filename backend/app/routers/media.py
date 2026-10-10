@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.subscription import require_active_subscription
-from backend.app.services.media_generation_service import MediaGenerationService
+from backend.app.services.media_generation_service import MediaGenerationService, MediaUnavailableError
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
 
@@ -57,7 +57,12 @@ def generate(
     entitlements = ModuleEntitlementService(db)
     if not entitlements.can_use_module(tenant, "media") and not entitlements.can_use_module(tenant, "marketing"):
         raise HTTPException(403, {"code": "module_inactive", "module": "media"})
-    row = service.generate(identity.user, payload.prompt, payload.kind)
+    try:
+        row = service.generate(identity.user, payload.prompt, payload.kind)
+    except MediaUnavailableError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {
         "id": str(row.id),
         "output_text": row.output_text,

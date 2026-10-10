@@ -275,6 +275,122 @@ class WorkspaceService:
             "generated_at": now.isoformat(),
         }
 
+    def answer_question(self, actor: User, question: str, *, confirm_token: str | None = None) -> dict:
+        briefing = self.personal_briefing(actor)
+        text = (question or "").strip()
+        if len(text) < 3:
+            raise WorkspaceError("Question trop courte")
+        lowered = text.lower()
+        modules = set(briefing["modules"])
+        if any(word in lowered for word in ("rendez-vous", "rdv", "appointment", "calendar")):
+            appointments = self._today_appointments(actor) if "crm" in modules else []
+            return {
+                "intent": "today_appointments",
+                "invented": False,
+                "answer": (
+                    f"{len(appointments)} rendez-vous aujourd'hui."
+                    if appointments
+                    else "Aucun rendez-vous confirmé aujourd'hui dans le CRM."
+                ),
+                "data": appointments,
+                "requires_confirmation": False,
+            }
+        if any(word in lowered for word in ("tâche", "tache", "task", "priorit")):
+            overdue = briefing["overdue_tasks"]
+            today = briefing["today_tasks"]
+            return {
+                "intent": "priority_tasks",
+                "invented": False,
+                "answer": (
+                    f"{len(overdue)} tâche(s) en retard, {len(today)} échéance(s) aujourd'hui."
+                    if overdue or today
+                    else "Aucune tâche prioritaire n'est enregistrée pour vous."
+                ),
+                "data": {"overdue": overdue, "today": today, "open": briefing["open_tasks"]},
+                "requires_confirmation": False,
+            }
+        if any(word in lowered for word in ("vente", "sales", "chiffre")):
+            if "accounting" not in modules and "retail" not in modules:
+                return {
+                    "intent": "weekly_sales",
+                    "invented": False,
+                    "answer": "Les modules Retail ou Comptabilité ne sont pas activés pour cette entreprise.",
+                    "data": [],
+                    "requires_confirmation": False,
+                }
+            sales = self._week_sales(actor)
+            return {
+                "intent": "weekly_sales",
+                "invented": False,
+                "answer": (
+                    f"Ventes confirmées cette semaine : {sales['total']} {sales['currency']}."
+                    if sales["count"]
+                    else "Aucune vente confirmée n'est enregistrée pour cette semaine."
+                ),
+                "data": sales,
+                "requires_confirmation": False,
+            }
+        if any(word in lowered for word in ("rapport", "report", "gestionnaire", "manager")):
+            return {
+                "intent": "manager_report",
+                "invented": False,
+                "answer": "Rapport compilé à partir des tâches, responsabilités et modules réellement actifs.",
+                "data": briefing,
+                "requires_confirmation": False,
+            }
+        return {
+            "intent": "unknown",
+            "invented": False,
+            "answer": "Je ne peux répondre qu'avec les rendez-vous, tâches, ventes confirmées ou un rapport de briefing. Aucune donnée n'a été inventée.",
+            "data": {"permissions": briefing["permissions"], "modules": briefing["modules"]},
+            "requires_confirmation": False,
+        }
+
+    def _today_appointments(self, actor: User) -> list[dict]:
+        from backend.app.models.crm import CRMAppointment
+
+        now = datetime.now(timezone.utc)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+        rows = list(
+            self._session.scalars(
+                select(CRMAppointment).where(
+                    CRMAppointment.company_id == actor.company_id,
+                    CRMAppointment.is_deleted.is_(False),
+                    CRMAppointment.start_time >= start,
+                    CRMAppointment.start_time < end,
+                )
+            )
+        )
+        return [
+            {
+                "id": str(row.id),
+                "title": row.title,
+                "start_time": row.start_time.isoformat() if row.start_time else None,
+                "status": row.status,
+            }
+            for row in rows
+        ]
+
+    def _week_sales(self, actor: User) -> dict:
+        from backend.app.models.accounting import AccountingTransaction
+
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=7)
+        rows = list(
+            self._session.scalars(
+                select(AccountingTransaction).where(
+                    AccountingTransaction.company_id == actor.company_id,
+                    AccountingTransaction.transaction_type == "revenue",
+                    AccountingTransaction.is_confirmed.is_(True),
+                    AccountingTransaction.transaction_date >= start,
+                )
+            )
+        )
+        total = round(sum(row.amount for row in rows), 2)
+        currency = rows[0].currency if rows else (actor.company.currency_code if actor.company else "CAD")
+        return {"count": len(rows), "total": total, "currency": currency or "CAD"}
+
     def _team_card(self, user: User, responsibilities: list[EmployeeResponsibility]) -> dict:
         return {
             "id": str(user.id),

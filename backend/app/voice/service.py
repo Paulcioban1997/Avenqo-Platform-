@@ -876,6 +876,17 @@ class VoiceOrchestrator:
         call.appointment_id = appointment.id
         call.status = "appointment_booked"
         self.db.commit()
+        try:
+            from backend.app.services.automation_service import AutomationService
+
+            AutomationService(self.db).dispatch(
+                config.company_id,
+                "voice_appointment",
+                {"appointment_id": str(appointment.id), "call_id": str(call.id)},
+                idempotency_key=str(appointment.id),
+            )
+        except Exception:
+            pass
         return {
             "success": True,
             "appointment_id": str(appointment.id),

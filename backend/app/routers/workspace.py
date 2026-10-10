@@ -176,6 +176,23 @@ def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Dep
     return {"id": str(user.id), "email": user.email, "company_id": str(user.company_id)}
 
 
+class GuidanceAsk(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+    confirm_token: str | None = None
+
+
 @router.get("/guidance")
 def guidance(identity: CurrentIdentity = Depends(get_current_identity), service: WorkspaceService = Depends(_service)) -> dict:
     return service.personal_briefing(identity.user)
+
+
+@router.post("/guidance/ask")
+def ask_guidance(
+    payload: GuidanceAsk,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        return service.answer_question(identity.user, payload.question, confirm_token=payload.confirm_token)
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc

@@ -80,6 +80,50 @@ async def upload_ocr(
     return _payload(row)
 
 
+@ocr_router.get("/documents/{document_id}")
+def get_ocr(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: DocumentAIService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> dict:
+    _require_module(db, tenant, "ocr")
+    try:
+        return _payload(service.get_document(identity.user, document_id))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@ocr_router.post("/documents/{document_id}/accounting-proposal", status_code=201)
+def propose_accounting(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: DocumentAIService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> dict:
+    _require_module(db, tenant, "ocr")
+    if not ModuleEntitlementService(db).can_use_module(tenant, "accounting"):
+        raise HTTPException(403, {"code": "module_inactive", "module": "accounting"})
+    try:
+        invoice = service.propose_accounting_entry(identity.user, document_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "total_amount": invoice.total_amount,
+        "is_confirmed": invoice.is_confirmed,
+        "status": invoice.status,
+        "notes": invoice.notes,
+    }
+
+
 @legal_router.get("/documents")
 def list_legal(
     identity: CurrentIdentity = Depends(get_current_identity),

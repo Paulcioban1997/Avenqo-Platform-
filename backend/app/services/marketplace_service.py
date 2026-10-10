@@ -52,8 +52,8 @@ CONNECTORS = (
         "key": "outlook_calendar",
         "name": "Outlook Calendar",
         "category": "calendar",
-        "availability": "coming_soon",
-        "route": None,
+        "availability": "available",
+        "route": "/crm",
     },
 )
 

@@ -15,7 +15,9 @@ from backend.app.services.support_access import active_support_grants
 from backend.app.services.totp import (
     encrypt_mfa_secret,
     decrypt_mfa_secret,
+    generate_recovery_codes,
     generate_totp_secret,
+    hash_recovery_code,
     provisioning_uri,
     verify_totp,
 )
@@ -182,10 +184,14 @@ def confirm_mfa(payload: MfaConfirm, identity: CurrentIdentity = Depends(get_cur
         raise HTTPException(400, "Enrollment MFA requis")
     if not verify_totp(decrypt_mfa_secret(user.mfa_secret_encrypted), payload.code):
         raise HTTPException(400, "Code d'authentification invalide")
+    import json
+
+    codes = generate_recovery_codes()
+    user.mfa_recovery_hashes = json.dumps([hash_recovery_code(code) for code in codes])
     user.mfa_enabled = True
     db.add(AuditLogEntry(actor_user_id=user.id, company_id=user.company_id, action="mfa_enabled", target_type="user", target_id=str(user.id)))
     db.commit()
-    return {"mfa_enabled": True}
+    return {"mfa_enabled": True, "recovery_codes": codes}
 
 
 @router.delete("/mfa")
@@ -197,6 +203,7 @@ def disable_mfa(payload: MfaConfirm, identity: CurrentIdentity = Depends(get_cur
         raise HTTPException(400, "Code d'authentification invalide")
     user.mfa_enabled = False
     user.mfa_secret_encrypted = None
+    user.mfa_recovery_hashes = None
     db.add(AuditLogEntry(actor_user_id=user.id, company_id=user.company_id, action="mfa_disabled", target_type="user", target_id=str(user.id)))
     db.commit()
     return {"mfa_enabled": False}

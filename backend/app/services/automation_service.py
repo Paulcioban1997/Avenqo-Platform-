@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 from backend.app.models import AutomationRun, AutomationWorkflow, EmployeeTask, User
 
 
-ALLOWED_TRIGGERS = {"manual", "task_overdue", "document_uploaded"}
+ALLOWED_TRIGGERS = {
+    "manual",
+    "task_overdue",
+    "document_uploaded",
+    "shopify_order",
+    "voice_appointment",
+    "invoice_extracted",
+}
 ALLOWED_ACTIONS = {"create_task", "notify_owner"}
 
 
@@ -146,3 +153,37 @@ class AutomationService:
             self._session.add(task)
             return f"Tâche créée : {title}"
         return f"Notification interne : {workflow.name}"
+
+    def dispatch(
+        self,
+        company_id: UUID,
+        trigger_type: str,
+        payload: dict,
+        *,
+        actor: User | None = None,
+        idempotency_key: str | None = None,
+    ) -> list[AutomationRun]:
+        if trigger_type not in ALLOWED_TRIGGERS:
+            return []
+        owner = actor or self._session.scalar(
+            select(User).where(User.company_id == company_id).order_by(User.created_at.asc())
+        )
+        if owner is None:
+            return []
+        workflows = [
+            workflow
+            for workflow in self.list_workflows(company_id)
+            if workflow.is_enabled and workflow.trigger_type == trigger_type
+        ]
+        runs: list[AutomationRun] = []
+        key_base = idempotency_key or str(payload.get("id") or payload.get("document_id") or payload.get("appointment_id") or "event")
+        for workflow in workflows:
+            runs.append(
+                self.run(
+                    owner,
+                    workflow.id,
+                    idempotency_key=f"{trigger_type}:{workflow.id}:{key_base}",
+                    payload=payload,
+                )
+            )
+        return runs

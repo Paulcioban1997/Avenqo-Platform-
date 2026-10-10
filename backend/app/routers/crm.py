@@ -35,6 +35,7 @@ from backend.app.models.crm import (
 )
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
+from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.models.company import Company
@@ -156,6 +157,41 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
 def _google_redirect_uri(settings) -> str:
     return settings.google_calendar_redirect_uri or (
         "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
+    )
+
+
+def _outlook_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
+    payload = {
+        "tenant_id": str(tenant_id),
+        "user_id": str(user_id),
+        "provider": "outlook_calendar",
+        "nonce": secrets.token_urlsafe(24),
+        "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+    signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _verify_outlook_oauth_state(state: str, secret: str) -> dict[str, str]:
+    try:
+        encoded, signature = state.split(".", 1)
+        expected = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("invalid signature")
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if payload.get("provider") != "outlook_calendar":
+            raise ValueError("unexpected provider")
+        if int(payload["expires_at"]) < int(datetime.now(timezone.utc).timestamp()):
+            raise ValueError("expired state")
+        return payload
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou expiré.") from exc
+
+
+def _outlook_redirect_uri(settings) -> str:
+    return settings.microsoft_calendar_redirect_uri or (
+        "https://api.avenqo.ca/api/v1/crm/calendar/outlook/callback"
     )
 
 
@@ -905,6 +941,127 @@ async def google_calendar_callback(
         pass
     return RedirectResponse(
         url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
+        status_code=303,
+    )
+
+
+@router.get("/calendar/outlook/auth-url")
+def get_outlook_calendar_auth_url(
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity=Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    settings = get_settings()
+    if not all(
+        (
+            settings.microsoft_calendar_client_id,
+            settings.microsoft_calendar_client_secret,
+            settings.microsoft_calendar_redirect_uri,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Microsoft Outlook OAuth non configuré sur ce serveur.",
+        )
+    provider = OutlookCalendarProvider(
+        client_id=settings.microsoft_calendar_client_id,
+        client_secret=settings.microsoft_calendar_client_secret,
+        redirect_uri=_outlook_redirect_uri(settings),
+    )
+    state = _outlook_oauth_state(tenant.company_id, identity.user.id, settings.auth_jwt_secret)
+    now = datetime.now(timezone.utc)
+    previous_states = db.scalars(
+        select(CommerceOAuthState).where(
+            CommerceOAuthState.company_id == tenant.company_id,
+            CommerceOAuthState.actor_user_id == identity.user.id,
+            CommerceOAuthState.provider == "outlook_calendar",
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+    ).all()
+    for previous_state in previous_states:
+        previous_state.consumed_at = now
+    db.add(
+        CommerceOAuthState(
+            company_id=tenant.company_id,
+            actor_user_id=identity.user.id,
+            provider="outlook_calendar",
+            external_account_id="outlook_calendar",
+            state_hash=hash_token(state),
+            expires_at=now + timedelta(minutes=10),
+        )
+    )
+    db.commit()
+    return {"auth_url": provider.get_auth_url(state)}
+
+
+@google_oauth_callback_router.get("/calendar/outlook/callback")
+async def outlook_calendar_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    settings = get_settings()
+    state_data = _verify_outlook_oauth_state(state, settings.auth_jwt_secret)
+    tenant_id = UUID(state_data["tenant_id"])
+    user_id = UUID(state_data["user_id"])
+    now = datetime.now(timezone.utc)
+    oauth_state = db.scalar(
+        select(CommerceOAuthState)
+        .where(
+            CommerceOAuthState.provider == "outlook_calendar",
+            CommerceOAuthState.state_hash == hash_token(state),
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if (
+        oauth_state is None
+        or _as_utc(oauth_state.expires_at) <= now
+        or oauth_state.company_id != tenant_id
+        or oauth_state.actor_user_id != user_id
+    ):
+        raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou déjà utilisé.")
+    oauth_state.consumed_at = now
+    db.commit()
+    provider = OutlookCalendarProvider(
+        client_id=settings.microsoft_calendar_client_id,
+        client_secret=settings.microsoft_calendar_client_secret,
+        redirect_uri=_outlook_redirect_uri(settings),
+    )
+    tokens = await provider.exchange_code(code)
+    encrypted_creds = get_connector_secret_cipher().encrypt(tokens)
+    email = tokens.get("account_email") or ""
+    if not email:
+        raise HTTPException(400, "Microsoft n'a pas renvoyé l'adresse du compte.")
+    conn = db.scalars(
+        select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == tenant_id,
+            CRMCalendarConnection.provider == "outlook",
+        )
+    ).first()
+    if conn:
+        conn.user_id = user_id
+        conn.account_email = email
+        conn.encrypted_credentials = encrypted_creds
+        conn.sync_status = "connected"
+        conn.last_synced_at = now
+        conn.sync_error = None
+    else:
+        db.add(
+            CRMCalendarConnection(
+                company_id=tenant_id,
+                user_id=user_id,
+                provider="outlook",
+                account_email=email,
+                calendar_id="primary",
+                encrypted_credentials=encrypted_creds,
+                sync_status="connected",
+                last_synced_at=now,
+            )
+        )
+    db.commit()
+    return RedirectResponse(
+        url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=outlook_calendar&status=connected",
         status_code=303,
     )
 

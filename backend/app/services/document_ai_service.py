@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
-from backend.app.models import TenantDocument, User
+from backend.app.models import AccountingInvoice, TenantDocument, User
 from backend.app.services.document_extraction import (
     UnsupportedDocumentError,
     classify_document,
@@ -26,8 +26,10 @@ LEGAL_DISCLAIMER = (
 
 
 class DocumentAIService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, image_ocr=None, llm=None) -> None:
         self._session = session
+        self._image_ocr = image_ocr
+        self._llm = llm
 
     def ingest(
         self,
@@ -40,7 +42,7 @@ class DocumentAIService:
     ) -> TenantDocument:
         if kind not in {"ocr", "legal"}:
             raise ValueError("Type de document invalide")
-        text = extract_text(filename, content)
+        text = extract_text(filename, content, image_ocr=self._image_ocr)
         digest = sha256_bytes(content)
         settings = get_settings()
         relative = Path("tenant_documents") / str(actor.company_id) / kind / f"{digest}{Path(filename).suffix.lower()}"
@@ -64,6 +66,17 @@ class DocumentAIService:
         )
         self._session.add(row)
         self._session.commit()
+        try:
+            from backend.app.services.automation_service import AutomationService
+
+            AutomationService(self._session).dispatch(
+                actor.company_id,
+                "document_uploaded",
+                {"kind": kind, "document_id": str(row.id), "classification": row.classification},
+                actor=actor,
+            )
+        except Exception:
+            pass
         return row
 
     def list_documents(self, actor: User, kind: str) -> list[TenantDocument]:
@@ -100,6 +113,53 @@ class DocumentAIService:
             "disclaimer": LEGAL_DISCLAIMER,
         }
 
+    def propose_accounting_entry(self, actor: User, document_id: UUID) -> AccountingInvoice:
+        document = self.get_document(actor, document_id)
+        if document.kind != "ocr":
+            raise ValueError("Seuls les documents OCR peuvent préparer une écriture")
+        import json as _json
+
+        analysis = {}
+        try:
+            analysis = _json.loads(document.analysis_json or "{}")
+        except _json.JSONDecodeError:
+            analysis = {}
+        fields = analysis.get("fields") or self._extract_fields(document.extracted_text or "")
+        raw_total = str(fields.get("total") or "")
+        amount = self._parse_amount(raw_total)
+        if amount is None:
+            raise ValueError("Aucun montant extractible : aucune écriture n'a été inventée.")
+        invoice_number = str(fields.get("invoice_number") or f"OCR-{document.id}")[:100]
+        existing = self._session.scalar(
+            select(AccountingInvoice).where(
+                AccountingInvoice.company_id == actor.company_id,
+                AccountingInvoice.invoice_number == invoice_number,
+                AccountingInvoice.is_confirmed.is_(False),
+            )
+        )
+        if existing is not None:
+            return existing
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        row = AccountingInvoice(
+            company_id=actor.company_id,
+            invoice_number=invoice_number,
+            invoice_type="payable",
+            party_name="Fournisseur à confirmer",
+            issue_date=now,
+            due_date=now + timedelta(days=30),
+            total_amount=amount,
+            paid_amount=0.0,
+            currency="CAD",
+            status="unpaid",
+            is_confirmed=False,
+            notes=f"Proposition OCR document={document.id} — validation humaine requise.",
+        )
+        self._session.add(row)
+        self._session.commit()
+        return row
+
     def _analyze(self, kind: str, text: str, filename: str) -> dict:
         clauses = self._extract_clauses(text)
         if kind == "legal":
@@ -116,12 +176,16 @@ class DocumentAIService:
             ):
                 if needle in lowered:
                     flags.append(label)
+            summary = self._summarize(text)
+            if self._llm is not None:
+                summary = self._llm_summary(text, summary)
             return {
                 "filename": filename,
-                "summary": self._summarize(text),
+                "summary": summary,
                 "clauses": clauses[:20],
                 "review_flags": flags,
                 "word_count": len(text.split()),
+                "source": "extracted_text",
             }
         return {
             "filename": filename,
@@ -129,6 +193,41 @@ class DocumentAIService:
             "fields": self._extract_fields(text),
             "word_count": len(text.split()),
         }
+
+    def _llm_summary(self, text: str, fallback: str) -> str:
+        import asyncio
+
+        async def _generate() -> str:
+            generation = await self._llm.generate(
+                system_instruction=(
+                    f"{LEGAL_DISCLAIMER} Résume uniquement les passages fournis. "
+                    "Cite les extraits. N'invente aucune clause absente."
+                ),
+                prompt=text[:8000],
+            )
+            return (generation.content or "").strip() or fallback
+
+        try:
+            return asyncio.run(_generate())
+        except Exception:
+            return fallback
+
+    @staticmethod
+    def _parse_amount(raw: str) -> float | None:
+        digits = re.sub(r"[^\d,.\-]", "", raw)
+        if not digits:
+            return None
+        if digits.count(",") == 1 and digits.count(".") == 0:
+            digits = digits.replace(",", ".")
+        else:
+            digits = digits.replace(",", "")
+        try:
+            value = float(digits)
+        except ValueError:
+            return None
+        if value <= 0:
+            return None
+        return value
 
     @staticmethod
     def _summarize(text: str) -> str:

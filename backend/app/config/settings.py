@@ -265,6 +265,9 @@ class Settings(BaseSettings):
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")
     google_calendar_redirect_uri: str | None = Field(default=None, alias="GOOGLE_CALENDAR_REDIRECT_URI")
+    microsoft_calendar_client_id: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_ID")
+    microsoft_calendar_client_secret: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_SECRET")
+    microsoft_calendar_redirect_uri: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_REDIRECT_URI")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
@@ -408,6 +411,7 @@ class Settings(BaseSettings):
         "shopify_client_id", "shopify_client_secret", "shopify_redirect_uri",
         "woocommerce_callback_uri", "woocommerce_webhook_uri",
         "google_calendar_client_id", "google_calendar_client_secret", "google_calendar_redirect_uri",
+        "microsoft_calendar_client_id", "microsoft_calendar_client_secret", "microsoft_calendar_redirect_uri",
         mode="before",
     )
     @classmethod

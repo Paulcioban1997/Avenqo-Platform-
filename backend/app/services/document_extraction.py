@@ -7,6 +7,8 @@ import io
 from pathlib import Path
 
 
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+
 SUPPORTED_SUFFIXES = {
     ".pdf",
     ".docx",
@@ -16,6 +18,7 @@ SUPPORTED_SUFFIXES = {
     ".json",
     ".xlsx",
     ".xls",
+    *IMAGE_SUFFIXES,
 }
 
 
@@ -27,7 +30,7 @@ def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def extract_text(filename: str, content: bytes) -> str:
+def extract_text(filename: str, content: bytes, *, image_ocr=None) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise UnsupportedDocumentError(
@@ -36,6 +39,16 @@ def extract_text(filename: str, content: bytes) -> str:
         )
     if not content:
         return ""
+    if suffix in IMAGE_SUFFIXES:
+        if image_ocr is None:
+            raise UnsupportedDocumentError(
+                "L'OCR des images JPEG/PNG scannées nécessite un extracteur de vision configuré. "
+                "Aucun texte n'a été inventé."
+            )
+        text = image_ocr(filename, content)
+        if not str(text or "").strip():
+            raise UnsupportedDocumentError("Aucun texte n'a pu être lu sur cette image.")
+        return str(text).strip()
     if suffix == ".pdf":
         from pypdf import PdfReader
 
