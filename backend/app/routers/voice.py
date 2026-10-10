@@ -662,10 +662,10 @@ def _supported_preview_voices(settings: Settings) -> list[VoiceCatalogItem]:
     return []
 
 
-@router.post("/voices/preview", dependencies=[Depends(require_active_subscription)])
+@router.post("/voices/preview", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_preview", "rate_limit_ai_per_minute"))])
 async def preview_voice(
     request: VoicePreviewRequest,
-    identity: CurrentIdentity = Depends(get_current_identity),
+    identity: CurrentIdentity = Depends(require_permission("ai:use")),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
