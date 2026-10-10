@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { getAuthHeaders } from "@/lib/api-headers";
 import {
   Volume2,
   VolumeX,
@@ -26,8 +27,11 @@ interface VoiceCatalogItem {
   name: string;
   provider: string;
   gender: "male" | "female" | "neutral";
-  personality_traits: string[];
-  sample_text: string;
+  style?: string;
+  style_label?: string;
+  personality_traits?: string[];
+  description?: string;
+  sample_url?: string | null;
   supported_languages: string[];
   latency_tier: string;
 }
@@ -83,16 +87,18 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
   useEffect(() => {
     async function loadData() {
       setLoading(true);
+      const authHeaders = getAuthHeaders();
       try {
         // Fetch Voice Catalog
-        const catalogRes = await fetch("/api/v1/voice/voices");
+        const catalogRes = await fetch("/api/v1/voice/voices", { headers: authHeaders });
         if (catalogRes.ok) {
           const catalogData = await catalogRes.json();
-          setCatalog(catalogData.voices || []);
+          const items = Array.isArray(catalogData) ? catalogData : catalogData.voices || [];
+          setCatalog(items);
         }
 
         // Fetch Current Voice Config
-        const configRes = await fetch("/api/v1/voice/config");
+        const configRes = await fetch("/api/v1/voice/config", { headers: authHeaders });
         if (configRes.ok) {
           const configData = await configRes.json();
           if (configData.voice_id) setSelectedVoiceId(configData.voice_id);
@@ -101,7 +107,17 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
           if (configData.greeting_message) setGreetingMessage(configData.greeting_message);
           if (configData.farewell_message) setFarewellMessage(configData.farewell_message);
           if (configData.custom_pronunciation) {
-            const list = Object.entries(configData.custom_pronunciation).map(([term, replaceWith]) => ({
+            let pronObj: Record<string, any> = {};
+            if (typeof configData.custom_pronunciation === "string") {
+              try {
+                pronObj = JSON.parse(configData.custom_pronunciation);
+              } catch {
+                pronObj = { term: configData.custom_pronunciation };
+              }
+            } else if (typeof configData.custom_pronunciation === "object") {
+              pronObj = configData.custom_pronunciation;
+            }
+            const list = Object.entries(pronObj).map(([term, replaceWith]) => ({
               term,
               replaceWith: String(replaceWith),
             }));
@@ -141,9 +157,10 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     setErrorMessage(null);
 
     try {
+      const authHeaders = getAuthHeaders();
       const response = await fetch("/api/v1/voice/voices/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           voice_id: voice.id,
           text: `Bonjour, je suis votre assistant vocal Avenqo. Comment puis-je vous aider aujourd'hui ?`,
@@ -201,6 +218,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     }
 
     try {
+      const authHeaders = getAuthHeaders();
       const payload = {
         voice_id: selectedVoiceId,
         voice_provider: "openai",
@@ -211,11 +229,20 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
         custom_pronunciation: customPronunciationRecord,
       };
 
-      const response = await fetch("/api/v1/voice/config", {
+      // Try dedicated customization endpoint first, fallback to config endpoint
+      let response = await fetch("/api/v1/voice/customization", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        response = await fetch("/api/v1/voice/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify(payload),
+        });
+      }
 
       if (!response.ok) {
         throw new Error("Échec de la sauvegarde des paramètres vocaux");
@@ -235,7 +262,8 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = voice.name.toLowerCase().includes(q) || voice.id.toLowerCase().includes(q);
-      const matchTraits = voice.personality_traits.some((t) => t.toLowerCase().includes(q));
+      const traits = voice.personality_traits || (voice.style_label ? [voice.style_label] : []);
+      const matchTraits = traits.some((t) => t.toLowerCase().includes(q));
       return matchName || matchTraits;
     }
     return true;
@@ -374,7 +402,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
 
                   {/* Badges / Traits */}
                   <div className="mt-2.5 flex flex-wrap gap-1">
-                    {voice.personality_traits.map((trait) => (
+                    {(voice.personality_traits || (voice.style_label ? [voice.style_label] : [])).map((trait) => (
                       <span
                         key={trait}
                         className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-white/5 dark:text-slate-400"

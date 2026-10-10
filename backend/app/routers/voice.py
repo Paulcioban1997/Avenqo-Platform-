@@ -73,6 +73,8 @@ from backend.app.schemas.voice import (
     VoiceConfigCreatedResponse,
     VoiceConfigRequest,
     VoiceConfigResponse,
+    VoiceCustomizationUpdateRequest,
+    VoiceCustomizationResponse,
     VoiceCatalogItem,
     VoicePreviewRequest,
     VoiceNumberProvisionRequest,
@@ -1189,22 +1191,121 @@ async def create_voice_config(
     return VoiceConfigCreatedResponse(**service.public_config(config), voice_api_key=api_key or "")
 
 
+@router.get("/customization", response_model=VoiceCustomizationResponse, dependencies=[Depends(require_active_subscription)])
+def get_voice_customization(
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VoiceCustomizationResponse:
+    _ensure_voice_access(db, identity.user.company_id)
+    service = _orchestrator(db, settings)
+    config = service.ensure_config(TenantContext(identity.user.company_id))
+    pronunciation_dict = {}
+    if config.custom_pronunciation:
+        try:
+            import json as _json
+            pronunciation_dict = _json.loads(config.custom_pronunciation) if config.custom_pronunciation.startswith("{") else {"term": config.custom_pronunciation}
+        except Exception:
+            pronunciation_dict = {}
+    return VoiceCustomizationResponse(
+        voice_id=getattr(config, "voice_id", "alloy") or "alloy",
+        voice_provider=getattr(config, "voice_provider", "openai") or "openai",
+        speech_speed=float(getattr(config, "speech_speed", 1.0) or 1.0),
+        personality_tone=getattr(config, "personality_tone", "professionnel") or "professionnel",
+        greeting_message=getattr(config, "greeting_message", None),
+        farewell_message=getattr(config, "farewell_message", None),
+        custom_pronunciation=pronunciation_dict,
+    )
+
+
+@router.put("/customization", response_model=VoiceCustomizationResponse, dependencies=[Depends(require_active_subscription)])
+def update_voice_customization(
+    request: VoiceCustomizationUpdateRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VoiceCustomizationResponse:
+    _ensure_voice_access(db, identity.user.company_id)
+    service = _orchestrator(db, settings)
+    config = service.ensure_config(TenantContext(identity.user.company_id))
+
+    if request.voice_id is not None:
+        config.voice_id = request.voice_id
+    if request.voice_provider is not None:
+        config.voice_provider = request.voice_provider
+    if request.speech_speed is not None:
+        config.speech_speed = request.speech_speed
+    if request.personality_tone is not None:
+        config.personality_tone = request.personality_tone
+    if request.greeting_message is not None:
+        config.greeting_message = request.greeting_message
+    if request.farewell_message is not None:
+        config.farewell_message = request.farewell_message
+    if request.custom_pronunciation is not None:
+        import json as _json
+        config.custom_pronunciation = _json.dumps(request.custom_pronunciation)
+
+    db.commit()
+    db.refresh(config)
+
+    pronunciation_dict = {}
+    if config.custom_pronunciation:
+        try:
+            import json as _json
+            pronunciation_dict = _json.loads(config.custom_pronunciation) if config.custom_pronunciation.startswith("{") else {"term": config.custom_pronunciation}
+        except Exception:
+            pronunciation_dict = {}
+
+    return VoiceCustomizationResponse(
+        voice_id=config.voice_id,
+        voice_provider=config.voice_provider,
+        speech_speed=config.speech_speed,
+        personality_tone=config.personality_tone,
+        greeting_message=config.greeting_message,
+        farewell_message=config.farewell_message,
+        custom_pronunciation=pronunciation_dict,
+    )
+
+
 @router.put("/config", response_model=VoiceConfigResponse, dependencies=[Depends(require_active_subscription)])
 async def update_voice_config(
-    request: VoiceConfigRequest,
+    request: dict[str, Any],
     identity: CurrentIdentity = Depends(manage_voice),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> VoiceConfigResponse:
+    _ensure_voice_access(db, identity.user.company_id)
     service = _orchestrator(db, settings)
-    try:
+    config = service.ensure_config(TenantContext(identity.user.company_id))
+
+    # Apply voice customization settings
+    if "voice_id" in request and request["voice_id"]:
+        config.voice_id = str(request["voice_id"])
+    if "voice_provider" in request and request["voice_provider"]:
+        config.voice_provider = str(request["voice_provider"])
+    if "speech_speed" in request and request["speech_speed"] is not None:
+        config.speech_speed = float(request["speech_speed"])
+    if "personality_tone" in request and request["personality_tone"]:
+        config.personality_tone = str(request["personality_tone"])
+    if "greeting_message" in request and request["greeting_message"]:
+        config.greeting_message = str(request["greeting_message"])
+    if "farewell_message" in request and request["farewell_message"]:
+        config.farewell_message = str(request["farewell_message"])
+    if "custom_pronunciation" in request and request["custom_pronunciation"]:
+        import json as _json
+        val = request["custom_pronunciation"]
+        config.custom_pronunciation = _json.dumps(val) if isinstance(val, dict) else str(val)
+
+    # If full VoiceConfigRequest fields (business_name, etc.) are present, run full upsert
+    if "business_name" in request:
+        validated = VoiceConfigRequest(**request)
         config, _ = await service.upsert_config(
-            TenantContext(identity.user.company_id), request.model_dump(mode="json")
+            TenantContext(identity.user.company_id), validated.model_dump(mode="json")
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        db.commit()
+        db.refresh(config)
+
     return _config_response(config)
 
 
