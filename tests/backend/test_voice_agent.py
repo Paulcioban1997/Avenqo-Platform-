@@ -1,3 +1,4 @@
+from backend.app.core.security import hash_password
 from __future__ import annotations
 
 import asyncio
@@ -188,7 +189,7 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
     try:
         if principal_type == "USER":
             principal = User(company_id=company.id, first_name="Owner", last_name="Pin", email="pin-owner@example.com",
-                password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+                password_hash=hash_password("pin-http-test-password"), role=UserRole.OWNER, phone="+15145550123", is_active=True)
             session.add(principal); session.flush()
             session.add(CompanyMembership(company_id=company.id, user_id=principal.id, role=UserRole.OWNER, is_active=True))
         else:
@@ -425,7 +426,7 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
     engine, session, company, _config, _key, _service = _voice_database(tmp_path)
     try:
         user = User(company_id=company.id, first_name="Owner", last_name="PIN", email="pin-http@example.com",
-            password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+            password_hash=hash_password("pin-http-test-password"), role=UserRole.OWNER, phone="+15145550123", is_active=True)
         session.add(user); session.flush()
         membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
         session.add_all([membership, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
@@ -438,10 +439,10 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
         app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: membership
         secret = "908172"
         with TestClient(app) as client:
-            response = client.put("/api/v1/voice/auth/pin", json={"pin": secret})
+            response = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password"})
             assert response.status_code == 200 and response.json() == {"status": "CONFIGURED"}
             assert secret not in response.text
-            malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "company_id": str(uuid4())})
+            malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password", "company_id": str(uuid4())})
             assert malformed.status_code == 422 and secret not in malformed.text
         credential = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == company.id))
         assert credential is not None and credential.principal_id == user.id and credential.pin_hash.startswith("$argon2")
