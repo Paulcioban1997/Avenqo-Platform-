@@ -12,15 +12,16 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm-environment")
     args = parser.parse_args()
-    from backend.app.config.settings import get_settings
-    from backend.app.database import SessionLocal
-    from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
-    from backend.app.services.connector_secret_rotation import rotate_connector_secrets
-    settings = get_settings()
-    if args.apply and args.confirm_environment != settings.environment:
-        print("Explicit environment confirmation required; no changes applied.", file=sys.stderr)
-        return 2
     try:
+        # Configuration validation can include sensitive input in its exception text.
+        from backend.app.config.settings import get_settings
+        from backend.app.database import SessionLocal
+        from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+        from backend.app.services.connector_secret_rotation import rotate_connector_secrets
+        settings = get_settings()
+        if args.apply and args.confirm_environment != settings.environment:
+            print("Explicit environment confirmation required; no changes applied.", file=sys.stderr)
+            return 2
         cipher = ConnectorSecretCipher(settings.connector_encryption_keys)
         with SessionLocal() as db, db.begin():
             report = rotate_connector_secrets(db, cipher, apply=args.apply)
