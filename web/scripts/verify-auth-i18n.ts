@@ -109,8 +109,8 @@ const expectedFrSubstrings = [
 
 for (const exp of expectedFrSubstrings) {
   const actual = fr[exp.key as keyof AuthStrings];
-  if (!actual.includes(exp.expected)) {
-    console.error(`FR key ${exp.key} expected to contain "${exp.expected}", got "${actual}"`);
+  if (actual === undefined || !actual.includes(exp.expected)) {
+    console.error(`FR key ${exp.key} expected to contain "${exp.expected}", got "${actual ?? ""}"`);
     errors++;
   }
 }
