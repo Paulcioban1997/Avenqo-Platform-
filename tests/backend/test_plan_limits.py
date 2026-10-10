@@ -100,6 +100,16 @@ def test_catalogue_limits_per_plan(db_session, plan, users, sites, agents, calls
     )
 
 
+def test_every_plan_code_has_an_explicit_rank() -> None:
+    from backend.app.ai.tools.plans import _PLAN_RANK, plan_meets_minimum
+    from payments.plans import PlanCode
+
+    assert {code.value for code in PlanCode} == set(_PLAN_RANK)
+    assert plan_meets_minimum("base", "base") and not plan_meets_minimum("base", "professional")
+    assert plan_meets_minimum("professional", "base") and not plan_meets_minimum("professional", "enterprise")
+    assert plan_meets_minimum("enterprise", "professional")
+
+
 def test_enterprise_contract_overrides_apply_and_invalid_values_are_ignored(db_session) -> None:
     company = _company(db_session, "enterprise")
     db_session.add(EnterpriseOverride(
