@@ -180,9 +180,25 @@ class AuthService:
             token_hash=hash_token(refresh_token),
             created_at=now,
             expires_at=refresh_expires_at,
+            ip_address=getattr(self, "_login_ip", None),
+            user_agent=getattr(self, "_login_ua", None),
+            last_seen_at=now,
         )
         self._session.add(auth_session)
         user.last_login = now
+        from backend.app.models import LoginEvent
+
+        self._session.add(
+            LoginEvent(
+                company_id=user.company_id,
+                user_id=user.id,
+                session_id=auth_session.id,
+                outcome="success",
+                ip_address=auth_session.ip_address,
+                user_agent=auth_session.user_agent,
+                created_at=now,
+            )
+        )
         self._session.commit()
         access_token, access_expires_at = create_access_token(
             user.id,
@@ -199,13 +215,29 @@ class AuthService:
 
     _create_auth_session = create_auth_session
 
-    def login(self, email: str, password: str) -> AuthResult:
+    def login(
+        self,
+        email: str,
+        password: str,
+        *,
+        otp: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuthResult:
         user = self._session.scalar(select(User).where(User.email == email.strip().lower()))
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
             raise AuthenticationError("Email ou mot de passe incorrect")
         if user.email_verified_at is None:
             raise AuthenticationError("L'adresse email doit être vérifiée")
+        if getattr(user, "mfa_enabled", False):
+            from backend.app.services.totp import decrypt_mfa_secret, verify_totp
 
+            if not otp:
+                raise AuthenticationError("mfa_required")
+            if not user.mfa_secret_encrypted or not verify_totp(decrypt_mfa_secret(user.mfa_secret_encrypted), otp):
+                raise AuthenticationError("Code d'authentification invalide")
+        self._login_ip = ip_address
+        self._login_ua = (user_agent or "")[:512] or None
         return self.create_auth_session(user)
 
     def authenticate(self, access_token: str) -> tuple[AuthSession, User]:

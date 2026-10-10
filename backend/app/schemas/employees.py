@@ -14,6 +14,8 @@ class EmployeeCreateRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=10, max_length=128)
     role: UserRole = UserRole.USER
+    job_title: str = Field(default="Employee", max_length=120)
+    department: str | None = Field(default=None, max_length=120)
 
     _validate_password = field_validator("password")(
         RegisterRequest.validate_password.__func__
@@ -25,6 +27,8 @@ class EmployeeUpdateRequest(BaseModel):
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     role: UserRole | None = None
     is_active: bool | None = None
+    job_title: str | None = Field(default=None, min_length=1, max_length=120)
+    department: str | None = Field(default=None, max_length=120)
 
     @model_validator(mode="after")
     def require_change(self) -> "EmployeeUpdateRequest":

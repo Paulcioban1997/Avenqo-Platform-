@@ -139,9 +139,13 @@ def get_current_identity(
 
 def get_tenant_context(
     identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
 ) -> TenantContext:
     """Construit le contexte AI Engine depuis l'identité authentifiée."""
 
+    from backend.app.services.tenant_rls import apply_tenant_rls
+
+    apply_tenant_rls(db, identity.user.company_id, bypass=identity.user.is_platform_admin)
     return TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
 
 

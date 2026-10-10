@@ -53,6 +53,8 @@ class EmployeeService:
             email=email,
             password_hash=hash_password(request.password),
             role=request.role,
+            job_title=getattr(request, "job_title", None) or "Employee",
+            department=getattr(request, "department", None),
             is_active=True,
         )
         self._session.add(employee)
@@ -88,6 +90,10 @@ class EmployeeService:
             employee.first_name = request.first_name.strip()
         if request.last_name is not None:
             employee.last_name = request.last_name.strip()
+        if request.job_title is not None:
+            employee.job_title = request.job_title.strip()
+        if request.department is not None:
+            employee.department = request.department.strip() or None
         if request.is_active is not None:
             if employee.id == actor.id and not request.is_active:
                 raise EmployeePermissionError("Vous ne pouvez pas désactiver votre propre compte")

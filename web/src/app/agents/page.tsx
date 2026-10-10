@@ -1,37 +1,35 @@
-import React from "react";
-import { AppShell } from "@/components/shell/app-shell";
-import { ModulePreview } from "@/components/common/module-preview";
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Agents IA | Avenqo Enterprise AI",
-  description: "Flotte d'agents spécialisés autonomes collaborant pour piloter la chaîne logistique et commerciale.",
-};
+import { useEffect, useState } from "react";
+import { AppShell } from "@/components/shell/app-shell";
+import { apiFetch } from "@/lib/api-request";
+import { useLocale } from "@/lib/i18n/locale-context";
 
 export default function AgentsPage() {
+  const { locale } = useLocale();
+  const fr = locale.startsWith("fr");
+  const [data, setData] = useState<{ agents: { slug: string; name_key: string }[]; unavailable_agents: { slug: string }[] } | null>(null);
+
+  useEffect(() => {
+    void apiFetch("/api/v1/agents").then(async (response) => {
+      if (response.ok) setData(await response.json());
+    });
+  }, []);
+
   return (
     <AppShell>
-      <ModulePreview
-        iconType="agents"
-        titleEn="Autonomous AI Agents Fleet"
-        titleFr="Flotte d'Agents IA Autonomes"
-        descriptionEn="Multi-agent orchestration where specialized agents coordinate sales forecasting, supplier negotiations, and marketing execution."
-        descriptionFr="Orchestration multi-agents où des agents spécialisés collaborent pour la prévision des ventes, les alertes fournisseurs et l'exécution marketing."
-        featuresEn={[
-          "Multi-agent collaborative problem solving with human-in-the-loop validation",
-          "Automated pricing optimization based on margin targets and competitor feeds",
-          "Deep grounding in your isolated tenant database and connected stores",
-          "Comprehensive execution audit logs and explainability traces",
-        ]}
-        featuresFr={[
-          "Résolution collaborative multi-agents avec validation supervisée",
-          "Optimisation dynamique des prix selon vos marges cibles et vos concurrents",
-          "Ancrage strict sur vos données d'entreprise et vos boutiques connectées",
-          "Traçabilité complète des décisions avec journal d'audit transparent",
-        ]}
-        badge="Multi-Agent System"
-        targetRelease="Q4 2026"
-      />
+      <div className="mx-auto max-w-4xl space-y-4">
+        <h1 className="text-3xl font-bold">{fr ? "Agents IA implémentés" : "Implemented AI agents"}</h1>
+        <p className="text-sm text-slate-500">{fr ? "Catalogue réel des assistants enregistrés. Aucun agent fictif n’est annoncé comme disponible." : "Real catalog of registered assistants. No fictional agent is advertised as available."}</p>
+        <ul className="space-y-3">
+          {(data?.agents || []).map((agent) => (
+            <li key={agent.slug} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#0B132B]">
+              <p className="font-semibold">{agent.slug}</p>
+              <p className="text-xs text-slate-500">{agent.name_key}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
     </AppShell>
   );
 }

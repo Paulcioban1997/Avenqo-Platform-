@@ -56,6 +56,9 @@ def get_db() -> Generator[Session, None, None]:
 
     session = SessionLocal()
     try:
+        from backend.app.services.tenant_rls import set_rls_bypass
+
+        set_rls_bypass(session, enabled=True)
         yield session
     finally:
         session.rollback()

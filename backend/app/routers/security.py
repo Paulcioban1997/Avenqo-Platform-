@@ -10,8 +10,15 @@ from pydantic import BaseModel, EmailStr, Field
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
-from backend.app.models import AuditLogEntry, AuthSession, User
+from backend.app.models import AuditLogEntry, AuthSession, LoginEvent, User
 from backend.app.services.support_access import active_support_grants
+from backend.app.services.totp import (
+    encrypt_mfa_secret,
+    decrypt_mfa_secret,
+    generate_totp_secret,
+    provisioning_uri,
+    verify_totp,
+)
 
 router = APIRouter(prefix="/security", tags=["security"])
 
@@ -65,13 +72,28 @@ def revoke_support_access(grant_id: UUID,
 
 
 @router.get("/overview")
-def overview(identity: CurrentIdentity = Depends(get_current_identity)) -> dict:
+def overview(identity: CurrentIdentity = Depends(get_current_identity), db: Session = Depends(get_db)) -> dict:
+    recommendations = []
+    if identity.user.email_verified_at is None:
+        recommendations.append({"code": "verify_email", "severity": "high"})
+    if not identity.user.mfa_enabled:
+        recommendations.append({"code": "enable_mfa", "severity": "medium"})
+    active_sessions = db.scalars(select(AuthSession).where(
+        AuthSession.user_id == identity.user.id,
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > datetime.now(timezone.utc),
+    )).all()
+    if len(list(active_sessions)) > 3:
+        recommendations.append({"code": "review_sessions", "severity": "medium"})
     return {
         "email_verified": identity.user.email_verified_at is not None,
         "role": identity.user.role.value,
-        "mfa_supported": False,
+        "mfa_supported": True,
+        "mfa_enabled": bool(identity.user.mfa_enabled),
         "session_revocation_supported": True,
         "support_access": "explicit_consent_required",
+        "recommendations": recommendations,
+        "plan_tier": identity.user.company.subscription_plan if identity.user.company else "base",
     }
 
 
@@ -84,6 +106,8 @@ def sessions(identity: CurrentIdentity = Depends(get_current_identity), db: Sess
         AuthSession.expires_at > now,
     ).order_by(AuthSession.created_at.desc())).all()
     return [{"id": row.id, "created_at": row.created_at, "expires_at": row.expires_at,
+             "ip_address": row.ip_address, "user_agent": row.user_agent,
+             "last_seen_at": row.last_seen_at,
              "current": row.id == identity.auth_session.id} for row in rows]
 
 
@@ -113,3 +137,66 @@ def audit(limit: int = 50, identity: CurrentIdentity = Depends(require_permissio
     # Metadata may originate in older administrative paths; never expose it blindly.
     return [{"id": row.id, "action": row.action, "target_type": row.target_type,
              "created_at": row.created_at} for row in rows]
+
+
+@router.get("/login-history")
+def login_history(identity: CurrentIdentity = Depends(get_current_identity), db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.scalars(
+        select(LoginEvent)
+        .where(LoginEvent.company_id == identity.company_id, LoginEvent.user_id == identity.user.id)
+        .order_by(LoginEvent.created_at.desc())
+        .limit(50)
+    ).all()
+    return [
+        {
+            "id": str(row.id),
+            "outcome": row.outcome,
+            "ip_address": row.ip_address,
+            "user_agent": row.user_agent,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+class MfaConfirm(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
+
+
+@router.post("/mfa/enroll")
+def enroll_mfa(identity: CurrentIdentity = Depends(get_current_identity), db: Session = Depends(get_db)) -> dict:
+    user = db.get(User, identity.user.id)
+    if user is None:
+        raise HTTPException(404, "Compte introuvable")
+    secret = generate_totp_secret()
+    user.mfa_secret_encrypted = encrypt_mfa_secret(secret)
+    user.mfa_enabled = False
+    db.commit()
+    return {"otpauth_url": provisioning_uri(secret, user.email), "secret": secret}
+
+
+@router.post("/mfa/confirm")
+def confirm_mfa(payload: MfaConfirm, identity: CurrentIdentity = Depends(get_current_identity), db: Session = Depends(get_db)) -> dict:
+    user = db.get(User, identity.user.id)
+    if user is None or not user.mfa_secret_encrypted:
+        raise HTTPException(400, "Enrollment MFA requis")
+    if not verify_totp(decrypt_mfa_secret(user.mfa_secret_encrypted), payload.code):
+        raise HTTPException(400, "Code d'authentification invalide")
+    user.mfa_enabled = True
+    db.add(AuditLogEntry(actor_user_id=user.id, company_id=user.company_id, action="mfa_enabled", target_type="user", target_id=str(user.id)))
+    db.commit()
+    return {"mfa_enabled": True}
+
+
+@router.delete("/mfa")
+def disable_mfa(payload: MfaConfirm, identity: CurrentIdentity = Depends(get_current_identity), db: Session = Depends(get_db)) -> dict:
+    user = db.get(User, identity.user.id)
+    if user is None or not user.mfa_enabled or not user.mfa_secret_encrypted:
+        return {"mfa_enabled": False}
+    if not verify_totp(decrypt_mfa_secret(user.mfa_secret_encrypted), payload.code):
+        raise HTTPException(400, "Code d'authentification invalide")
+    user.mfa_enabled = False
+    user.mfa_secret_encrypted = None
+    db.add(AuditLogEntry(actor_user_id=user.id, company_id=user.company_id, action="mfa_disabled", target_type="user", target_id=str(user.id)))
+    db.commit()
+    return {"mfa_enabled": False}

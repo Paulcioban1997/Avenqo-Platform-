@@ -20,6 +20,7 @@ import {
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { apiFetch } from "@/lib/api-request";
 
 export function MarketingView() {
   const { locale } = useLocale();
@@ -30,21 +31,25 @@ export function MarketingView() {
   const [generating, setGenerating] = useState(false);
   const [generatedCampaign, setGeneratedCampaign] = useState<any>(null);
 
-  const handleGenerate = (e: React.FormEvent) => {
+  const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignPrompt.trim()) return;
     setGenerating(true);
-    setTimeout(() => {
-      setGeneratedCampaign({
-        title: "Campagne Flash — Réactivation Clients",
-        subject: "Offre Spéciale Exclusivité Avenqo pour Vous",
-        channel: "Email & SMS",
-        target_segment: "Clients inactifs > 30 jours",
-        predicted_roi: "3.8x",
-        content: `Bonjour,\n\nNous avons remarqué que vous n'aviez pas visité notre boutique récemment. Profitez d'un avantage exceptionnel de 15 % sur votre prochaine commande avec le code FLASH15.\n\nÀ très vite sur notre boutique !`,
+    try {
+      const response = await apiFetch("/api/v1/media/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: campaignPrompt, kind: "marketing_text" }),
       });
+      if (!response.ok) {
+        setGeneratedCampaign({ content: locale.startsWith("fr") ? "Activez Marketing AI ou Media AI pour générer un brouillon réel." : "Activate Marketing AI or Media AI to generate a real draft." });
+      } else {
+        const payload = await response.json();
+        setGeneratedCampaign({ content: payload.output_text, provider: payload.provider });
+      }
+    } finally {
       setGenerating(false);
-    }, 900);
+    }
   };
 
   return (
@@ -108,7 +113,7 @@ export function MarketingView() {
             <Target size={16} className="text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            3.4 %
+            —
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {company.analyticsUnavailable}
@@ -121,7 +126,7 @@ export function MarketingView() {
             <TrendingUp size={16} className="text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            4.2x
+            —
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {company.salesForecastTitle}
@@ -165,24 +170,11 @@ export function MarketingView() {
 
         {generatedCampaign && (
           <div className="mt-4 p-4 rounded-xl bg-blue-50/50 dark:bg-[#111D3D]/60 border border-blue-100 dark:border-blue-900/40 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                {generatedCampaign.title}
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">
-                {t.marketing.estimatedRoi}: {generatedCampaign.predicted_roi}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-              <div>
-                <strong>{t.marketing.channel} :</strong> {generatedCampaign.channel}
-              </div>
-              <div>
-                <strong>{company.customersSegment} :</strong> {generatedCampaign.target_segment}
-              </div>
-            </div>
-
+            <p className="text-xs font-bold text-slate-900 dark:text-white">
+              {generatedCampaign.provider === "prompt_draft"
+                ? (locale.startsWith("fr") ? "Brouillon basé sur votre consigne" : "Draft based on your prompt")
+                : (locale.startsWith("fr") ? "Brouillon" : "Draft")}
+            </p>
             <div className="p-3 rounded-lg bg-white dark:bg-[#0B132B] border border-slate-200/60 dark:border-white/[0.08] text-xs font-mono whitespace-pre-line text-slate-700 dark:text-slate-300">
               {generatedCampaign.content}
             </div>

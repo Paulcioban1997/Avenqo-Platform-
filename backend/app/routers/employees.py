@@ -49,6 +49,7 @@ def employee_response(user: User) -> UserResponse:
         company_id=user.company_id,
         first_name=user.first_name,
         last_name=user.last_name,
+        job_title=user.job_title,
         email=user.email,
         role=user.role,
         permissions=permissions_for(user.role),

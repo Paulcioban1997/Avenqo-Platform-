@@ -977,6 +977,8 @@ def http_error_message(
         return ERROR_MESSAGES[locale]["email_verification_required"]
     if "email ou mot de passe incorrect" in detail_text:
         return ERROR_MESSAGES[locale]["invalid_credentials"]
+    if isinstance(detail, dict) and detail.get("code") == "mfa_required":
+        return "Un code d'authentification est requis." if locale.startswith("fr") else "An authentication code is required."
     category = _STATUS_CATEGORY.get(status_code, "request_invalid")
     return ERROR_MESSAGES[locale][category]
 

@@ -13,7 +13,9 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from backend.app.models import BillingAccount, Company, CompanyMembership, User
+from datetime import datetime, timezone
+
+from backend.app.models import BillingAccount, Company, CompanyMembership, EmployeeInvitation, User
 from backend.app.models.enterprise_override import EnterpriseOverride
 from payments import get_plan
 
@@ -82,10 +84,29 @@ class PlanLimitsService:
         )
         return set(primary) | set(members)
 
+    def pending_invitation_count(self, company_id: UUID) -> int:
+        now = datetime.now(timezone.utc)
+        rows = self._session.scalars(
+            select(EmployeeInvitation).where(
+                EmployeeInvitation.company_id == company_id,
+                EmployeeInvitation.accepted_at.is_(None),
+                EmployeeInvitation.revoked_at.is_(None),
+            )
+        )
+        count = 0
+        for row in rows:
+            expires = row.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires > now:
+                count += 1
+        return count
+
     def ensure_user_capacity(self, company_id: UUID, *, adding: int = 1) -> PlanLimits:
         self._lock(company_id, "users")
         limits = self.limits_for(company_id)
-        if limits.max_users is not None and len(self.active_user_ids(company_id)) + adding > limits.max_users:
+        used = len(self.active_user_ids(company_id)) + self.pending_invitation_count(company_id)
+        if limits.max_users is not None and used + adding > limits.max_users:
             raise PlanLimitReached("max_users", limits.max_users, limits.plan_code)
         return limits
 

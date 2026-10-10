@@ -52,7 +52,7 @@ function SupportAccess() {
 
 type SecuritySession = { id: string; current: boolean; created_at: string; expires_at: string };
 type AuditEvent = { id: string; action: string; target_type: string; created_at: string };
-type Overview = { email_verified: boolean; role: string; mfa_supported: boolean; session_revocation_supported: boolean };
+type Overview = { email_verified: boolean; role: string; mfa_supported: boolean; mfa_enabled?: boolean; session_revocation_supported: boolean; recommendations?: { code: string }[] };
 const panel = "rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#0B132B]";
 
 export function SecurityView() {
@@ -99,7 +99,7 @@ export function SecurityView() {
     {loading && <p role="status">{text("Chargement des contrôles…", "Loading controls…")}</p>}
     {overview && <div className="grid gap-4 md:grid-cols-3">
       <section className={panel}><ShieldCheck className="mb-3 text-cyan-500" aria-hidden /><h2 className="font-semibold">{text("Adresse courriel", "Email address")}</h2><p className="mt-2 text-sm">{overview.email_verified ? text("Vérifiée", "Verified") : text("À vérifier", "Not verified")}</p></section>
-      <section className={panel}><KeyRound className="mb-3 text-cyan-500" aria-hidden /><h2 className="font-semibold">{text("Authentification multifacteur", "Multi-factor authentication")}</h2><p className="mt-2 text-sm">{text("Non prise en charge actuellement. Aucun facteur supplémentaire n’est activé.", "Not currently supported. No additional factor is enabled.")}</p></section>
+      <section className={panel}><KeyRound className="mb-3 text-cyan-500" aria-hidden /><h2 className="font-semibold">{text("Authentification multifacteur", "Multi-factor authentication")}</h2><p className="mt-2 text-sm">{overview.mfa_enabled ? text("Activée sur ce compte.", "Enabled on this account.") : text("Disponible. Activez-la depuis l’enrollment MFA de l’API /security/mfa.", "Available. Enable it from the /security/mfa enrollment endpoints.")}</p></section>
       <section className={panel}><Users className="mb-3 text-cyan-500" aria-hidden /><h2 className="font-semibold">{text("Utilisateurs et autorisations", "Users and permissions")}</h2><Link href="/settings" className="mt-2 inline-block text-sm text-blue-600 dark:text-cyan-300 underline">{text("Gérer les paramètres de l’entreprise", "Manage organization settings")}</Link></section>
     </div>}
     <section className={panel}><h2 className="text-lg font-semibold">{text("Mes sessions actives", "My active sessions")}</h2>

@@ -3,14 +3,14 @@ import { DocumentWorkspace } from "@/components/workspace/document-workspace";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "OCR AI | Avenqo",
-  description: "Téléversement sécurisé et extraction réelle de documents d'entreprise.",
+  title: "Legal AI | Avenqo",
+  description: "Assistance documentaire juridique avec limites clairement affichées.",
 };
 
-export default function OcrPage() {
+export default function LegalPage() {
   return (
     <AppShell>
-      <DocumentWorkspace kind="ocr" titleFr="OCR AI" titleEn="OCR AI" />
+      <DocumentWorkspace kind="legal" titleFr="Legal AI" titleEn="Legal AI" />
     </AppShell>
   );
 }
