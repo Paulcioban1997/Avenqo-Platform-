@@ -232,11 +232,16 @@ def stream_ticket(
         "session_id": str(session_id), "auth_session_id": str(identity.auth_session.id),
         "iat": now, "exp": now + 30, "iss": settings.auth_jwt_issuer, "aud": settings.auth_jwt_audience,
     }, settings.auth_jwt_secret, algorithm=settings.auth_jwt_algorithm)
+    stream_url = None
+    if http_request:
+        # Railway terminates TLS before Uvicorn. Its internal request scheme can
+        # therefore be HTTP even though the public browser must use secure WS.
+        scheme = "wss" if settings.environment in {"production", "sandbox"} or http_request.url.scheme == "https" else "ws"
+        stream_url = f"{scheme}://{http_request.url.netloc}/api/v1/ai/voice/sessions/{session_id}/stream"
     return VoiceStreamTicketResponse(
         ticket=ticket,
         realtime=_realtime_available(session.locale),
-        stream_url=(str(http_request.base_url).rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
-                    + f"/api/v1/ai/voice/sessions/{session_id}/stream") if http_request else None,
+        stream_url=stream_url,
     )
 
 

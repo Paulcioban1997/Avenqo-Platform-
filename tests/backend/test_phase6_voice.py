@@ -623,6 +623,13 @@ async def test_browser_ticket_is_bound_to_authenticated_voice_session(voice_rout
     )
     validated_ticket = VoiceStreamTicketResponse.model_validate(ticket_response)
     assert isinstance(validated_ticket.realtime, bool)
+    from fastapi import Request
+    real_settings = ai_voice.get_settings()
+    monkeypatch.setattr(ai_voice, "get_settings", lambda: real_settings.model_copy(update={"environment": "sandbox"}))
+    request = Request({"type": "http", "scheme": "http", "method": "POST", "path": "/",
+        "headers": [(b"host", b"avenqo-platform-sandbox.up.railway.app")], "server": ("internal", 8000), "query_string": b""})
+    secure_ticket = ai_voice.stream_ticket(voice_route.voice.id, tenant, identity, voice_route.db, voice_route.membership, request)
+    assert secure_ticket.stream_url.startswith("wss://avenqo-platform-sandbox.up.railway.app/")
     ticket = validated_ticket.ticket
     socket = FakeSocket(token="")
     socket.headers["sec-websocket-protocol"] = f"avenqo.voice, ticket.{ticket}"

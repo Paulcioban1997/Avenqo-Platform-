@@ -1076,6 +1076,19 @@ export function BillingView() {
             </div>
           ))}
         </div>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="font-bold">Enterprise</h3>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8]">{locale === "fr" ? "Crédits et tarifs personnalisés sur devis" : "Custom credits and pricing by quote"}</p>
+          </div>
+          <button type="button" disabled={!canManageBilling} className="rounded-xl px-4 py-2 bg-[#0076FF] text-white text-xs font-semibold disabled:opacity-50"
+            onClick={() => {
+              setEnterpriseForm((previous) => ({ ...previous, notes: previous.notes || (locale === "fr" ? "Demande de pack de crédits IA Enterprise personnalisé." : "Request for a custom Enterprise AI credit pack.") }));
+              setIsEnterpriseModalOpen(true);
+            }}>
+            {locale === "fr" ? "Demander un devis" : "Request a quote"}
+          </button>
+        </div>
       </div>
 
       {/* 6. FACTURES (Invoices Table & Real PDF Download) */}

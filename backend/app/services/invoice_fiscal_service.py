@@ -235,7 +235,10 @@ class InvoiceFiscalService:
             story += [paragraph(f"Période : {date(invoice.period_start)} au {date(invoice.period_end)}", small), Spacer(1, 10)]
         rows = [[paragraph("SERVICE / SUPPLÉMENT"), paragraph("QTÉ"), paragraph("MONTANT")]]
         for item in invoice.line_items or []:
-            rows.append([paragraph(item.get("description") or "Service Avenqo"),
+            description = item.get("description") or "Service Avenqo"
+            if invoice.plan_code in {"base", "demo"} and "Avenqo - Demo" in description:
+                description = "Abonnement Avenqo Base · Mensuel"
+            rows.append([paragraph(description),
                          paragraph(item.get("quantity") if item.get("quantity") is not None else "-"),
                          paragraph(money(item.get("amount")))])
         if len(rows) == 1:
