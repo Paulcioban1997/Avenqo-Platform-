@@ -48,7 +48,7 @@ export function CreditMeter({
             ? "—"
             : `${remaining.toLocaleString()} / ${limit.toLocaleString()}`}
         </span>
-        <Link href="/pricing" className="text-[#0076FF] hover:underline font-medium">
+        <Link href="/billing" className="text-[#0076FF] hover:underline font-medium">
           {upgradeLabel}
         </Link>
       </div>

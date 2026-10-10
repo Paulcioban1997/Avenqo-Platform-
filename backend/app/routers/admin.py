@@ -8,6 +8,8 @@ qu'en lecture, via un contexte explicite validé et audité côté serveur.
 from __future__ import annotations
 
 from dataclasses import asdict
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -83,6 +85,55 @@ router = APIRouter(
         Depends(rate_limit("admin", "rate_limit_admin_per_minute")),
     ],
 )
+
+
+class CreditOfferCreate(BaseModel):
+    code: str = Field(pattern=r"^[a-z0-9_]{3,64}$")
+    name: str = Field(min_length=1, max_length=100)
+    credits: int = Field(gt=0, le=100_000_000)
+    price_cents: int = Field(gt=0, le=100_000_000)
+
+
+class CreditOfferActivation(BaseModel):
+    enabled: bool
+    reconciliation_reference: str | None = Field(default=None, min_length=3, max_length=500)
+
+
+@router.get("/credit-packs")
+def admin_credit_packs(db: Session = Depends(get_db), settings: Settings = Depends(get_settings)) -> list[dict]:
+    from backend.app.models import AICreditPackOffer
+    from backend.app.services.credit_pack_catalog import pack_payload
+    return [pack_payload(db, offer, settings) for offer in db.scalars(select(AICreditPackOffer).order_by(AICreditPackOffer.credits))]
+
+
+@router.post("/credit-packs", status_code=201)
+def create_credit_offer(request: CreditOfferCreate, db: Session = Depends(get_db),
+    identity: CurrentIdentity = Depends(require_platform_admin)) -> dict:
+    from backend.app.models import AICreditPackOffer
+    if db.get(AICreditPackOffer, request.code):
+        raise HTTPException(status_code=409, detail="Create a new version code to change pricing; existing purchases retain their terms")
+    offer = AICreditPackOffer(**request.model_dump(), enabled=False)
+    db.add(offer)
+    AuditLogService(db).record(actor_user_id=identity.user.id, action="credit_offer_created", target_type="credit_pack", target_id=offer.code, metadata=request.model_dump())
+    return {"code": offer.code, "enabled": False}
+
+
+@router.patch("/credit-packs/{code}")
+def activate_credit_offer(code: str, request: CreditOfferActivation, db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings), identity: CurrentIdentity = Depends(require_platform_admin)) -> dict:
+    from backend.app.models import AICreditPackOffer
+    from backend.app.services.credit_pack_catalog import profitability_report
+    offer = db.get(AICreditPackOffer, code)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Credit offer not found")
+    report = profitability_report(db, offer, settings)
+    if request.enabled and (report["status"] != "ready_for_review" or not request.reconciliation_reference):
+        raise HTTPException(status_code=409, detail="Reconcile provider invoices, Voice/PSTN and overhead before activating this pack")
+    if request.enabled:
+        offer.profitability_review = {**report, "reconciliation_reference": request.reconciliation_reference, "reviewed_by": str(identity.user.id)}
+    offer.enabled = request.enabled
+    AuditLogService(db).record(actor_user_id=identity.user.id, action="credit_offer_activation", target_type="credit_pack", target_id=code, metadata={"enabled": request.enabled})
+    return {"code": code, "enabled": offer.enabled}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)

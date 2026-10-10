@@ -184,7 +184,7 @@ def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     assert "non autorisé" in err_msg.lower()
 
 
-def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
+def test_super_admin_tenant_switch_requires_explicit_membership(sec_env) -> None:
     client, session_factory, notifier = sec_env
 
     # Création d'une entreprise cible
@@ -235,19 +235,12 @@ def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
         headers={"Authorization": f"Bearer {admin_token}"},
         json={"company_id": str(target_company_id)},
     )
-    assert switch_res.status_code == 200
-    assert switch_res.json()["company"]["name"] == "Lucia Boutique Inc"
-
-    # Vérification que l'événement d'audit immuable a bien été consigné
+    assert switch_res.status_code == 403
     with session_factory() as session:
-        audit = session.scalar(
-            select(AuditLogEntry).where(
-                AuditLogEntry.action == "super_admin_tenant_switch",
-                AuditLogEntry.target_id == str(target_company_id),
-            )
-        )
-        assert audit is not None
-        assert audit.safe_metadata["admin_email"] == "platform.admin@avenqo.ca"
+        assert session.scalar(select(AuditLogEntry).where(
+            AuditLogEntry.action == "tenant_switched",
+            AuditLogEntry.company_id == target_company_id,
+        )) is None
 
 
 def test_cross_tenant_invoice_pdf_download_denied(sec_env) -> None:
@@ -298,6 +291,7 @@ def test_billing_subscription_and_ai_credits_scoped_to_tenant(sec_env) -> None:
         # Création d'une tentative IA pour Lucia
         attempt = TenantAIProviderAttempt(
             company_id=lucia_company.id,
+            user_id=session.scalar(select(User.id).where(User.company_id == lucia_company.id)),
             avenqo_request_id=f"req_{uuid4().hex[:12]}",
             attempt_number=1,
             operation="retail_demand_forecast",

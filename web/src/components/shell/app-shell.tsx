@@ -31,6 +31,7 @@ import {
   Globe,
   Sliders,
   ShieldAlert,
+  Layers,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RegionLanguageSelector } from "@/components/region-language-selector";
@@ -116,7 +117,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan },
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare },
     { href: "/automations", label: t.navigation.automations, icon: Zap },
-    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: "Pro" },
+    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: undefined },
   ];
 
   const platformModules = [
@@ -124,6 +125,10 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard },
+    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Mes modules" : "My modules", icon: Layers },
+    { href: "/security", label: locale.startsWith("fr") ? "Centre de sécurité" : "Security center", icon: ShieldAlert },
+    { href: "/trust", label: locale.startsWith("fr") ? "Centre de confiance" : "Trust center", icon: ShieldAlert },
+    { href: "/onboarding", label: locale.startsWith("fr") ? "Démarrage accompagné" : "Guided setup", icon: Check },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
   ];
 
@@ -299,7 +304,11 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Avenqo Copilot Trigger Button */}
           <button
-            onClick={() => setIsCopilotOpen((prev) => !prev)}
+            type="button"
+            aria-label={t.shell.copilotButton}
+            aria-expanded={isCopilotOpen}
+            aria-controls="avenqo-central-dialog"
+            onClick={() => setIsCopilotOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#005bd3] hover:from-[#158bff] hover:to-[#0076FF] text-white text-xs font-semibold shadow-xs shadow-blue-500/20 transition-all duration-150"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />

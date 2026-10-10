@@ -49,7 +49,7 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
 from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
@@ -84,6 +84,8 @@ def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Sessi
 
 def _ai_usage_module(operation: str | None) -> str:
     normalized = (operation or "").lower()
+    if "voice" in normalized:
+        return "Voice AI"
     if "retail" in normalized or "sales" in normalized:
         return "Retail AI"
     if "crm" in normalized or "appointment" in normalized:
@@ -97,6 +99,29 @@ def _ai_usage_module(operation: str | None) -> str:
     }:
         return "Copilot"
     return "Autre"
+
+
+def _debited_attempt_credits(
+    db: Session, company_id: UUID, attempts: list[TenantAIProviderAttempt]
+) -> dict[UUID, int]:
+    """Display wallet debits, excluding provider costs absorbed by Avenqo."""
+    request_ids = list({attempt.avenqo_request_id for attempt in attempts})
+    debits = {}
+    for start in range(0, len(request_ids), 500):
+        rows = db.execute(select(
+            TenantAICreditLedgerEntry.reference_id,
+            func.sum(-TenantAICreditLedgerEntry.included_delta - TenantAICreditLedgerEntry.purchased_delta),
+        ).where(
+            TenantAICreditLedgerEntry.company_id == company_id,
+            TenantAICreditLedgerEntry.reference_id.in_(request_ids[start:start + 500]),
+            TenantAICreditLedgerEntry.transaction_type.in_(["ai_usage", "ai_settlement"]),
+        ).group_by(TenantAICreditLedgerEntry.reference_id)).all()
+        debits.update({reference: max(int(credits or 0), 0) for reference, credits in rows})
+    return {
+        attempt.id: debits.get(attempt.avenqo_request_id, attempt.avenqo_credits or 0)
+        if attempt.avenqo_credits else 0
+        for attempt in attempts
+    }
 
 
 def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
@@ -136,12 +161,15 @@ def _backfill_stripe_invoices(
     provider: BillingProvider,
     settings: Settings,
     company_id: UUID,
-) -> None:
+) -> bool:
     try:
         sync_customer_invoices(db, provider, settings, company_id)
+        return True
     except Exception:
         # L'historique local reste disponible même si Stripe est momentanément indisponible.
         logger.exception("Stripe invoice backfill failed for tenant %s", company_id)
+        db.rollback()
+        return False
 
 
 @router.get("/plans", response_model=list[PlanResponse])
@@ -296,7 +324,7 @@ def invoice_history(
     fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
 ) -> InvoiceHistoryResponse:
     # Le frontend Avenqo charge cet endpoint, donc le backfill doit être fait ici aussi.
-    _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
+    synchronized = _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
     items, total = service.get_company_invoices(
         identity.user.company_id,
         start=start,
@@ -311,6 +339,8 @@ def invoice_history(
 
     bounded_limit = min(max(limit, 1), 200)
     return InvoiceHistoryResponse(
+        environment="test" if (settings.stripe_secret_key or "").startswith("sk_test_") else "live",
+        synchronization_status="ready" if synchronized else "unavailable",
         items=[InvoiceResponse.model_validate(invoice) for invoice in items],
         total=total,
         offset=max(offset, 0),
@@ -388,6 +418,23 @@ def invoice_detail(
         )
     except InvoiceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/invoices/{invoice_id}/avenqo-pdf")
+def avenqo_invoice_pdf(
+    invoice_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> Response:
+    try:
+        invoice = service.get_invoice(identity.user.company_id, invoice_id)
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    content, media_type, file_name = service.generate_invoice_pdf(invoice)
+    return Response(content=content, media_type=media_type, headers={
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+        "Cache-Control": "private, no-store",
+    })
 
 
 @router.get("/invoices/{invoice_id}/pdf")
@@ -471,12 +518,14 @@ def ai_credits_breakdown(
         "Copilot": 0,
         "OCR AI": 0,
         "Marketing AI": 0,
+        "Voice AI": 0,
         "Autre": 0,
     }
 
     total = 0
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
-        creds = att.avenqo_credits or 0
+        creds = debited[att.id]
         module_counts[_ai_usage_module(att.operation)] += creds
         total += creds
 
@@ -508,7 +557,7 @@ def ai_credits_history(
     query = (
         select(TenantAIProviderAttempt)
         .where(*filters)
-        .order_by(TenantAIProviderAttempt.id.desc())
+        .order_by(TenantAIProviderAttempt.created_at.desc(), TenantAIProviderAttempt.id.desc())
     )
     total = (
         db.scalar(
@@ -520,10 +569,16 @@ def ai_credits_history(
     )
 
     attempts = db.scalars(query.offset(offset).limit(limit)).all()
+    from backend.app.models import User
+    actor_ids = {att.user_id for att in attempts if att.user_id is not None}
+    actors = {user.id: f"{user.first_name} {user.last_name}".strip() for user in db.scalars(
+        select(User).where(User.company_id == identity.user.company_id, User.id.in_(actor_ids))
+    )} if actor_ids else {}
     items = []
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
-        timestamp = att.created_at or datetime.now(timezone.utc)
+        timestamp = att.created_at
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         items.append(
@@ -532,8 +587,8 @@ def ai_credits_history(
                 date=timestamp.isoformat(),
                 module=_ai_usage_module(att.operation),
                 operation=op,
-                credits_used=att.avenqo_credits or 0,
-                user=f"{identity.user.first_name} {identity.user.last_name}",
+                credits_used=debited[att.id],
+                user=actors.get(att.user_id, "—"),
             )
         )
     return AICreditHistoryResponse(
@@ -544,7 +599,7 @@ def ai_credits_history(
     )
 
 
-@router.get("/credit-packs", response_model=list[CreditPackResponse])
+@router.get("/credit-packs", response_model=list[CreditPackResponse], response_model_exclude_unset=True)
 def credit_packs(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: BillingService = Depends(get_billing_service),

@@ -14,6 +14,7 @@ from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.service import AIUsageService
+from backend.app.ai.usage.included_central import central_is_included
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
 from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
@@ -210,9 +211,12 @@ class CentralAIService:
 
             agent = await self._router.select_free_form(query, classify)
         if agent is not None and not agent.status.is_executable:
-            result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
-            self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
-            return result
+            if central_is_included(tenant.company_id):
+                agent = None
+            else:
+                result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
+                self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
+                return result
         if agent is not None:
             scoped_agents = (agent, *self._router.select_matching_agents(query, page_context=page_context)) if agent.aggregate else (agent,)
             if any(item is not None and not item.required_permissions.issubset(permissions) for item in scoped_agents):
@@ -226,6 +230,13 @@ class CentralAIService:
             frozenset(context.active_modules),
             permissions=permissions,
         )
+        if central_is_included(tenant.company_id) and context.subscription_status.lower() not in {"active", "trialing"}:
+            agent = None
+            tool_scope = (frozenset(), {})
+        if tool_scope is None:
+            if central_is_included(tenant.company_id):
+                agent = None
+                tool_scope = (frozenset(), {})
         if tool_scope is None:
             agent_slug = agent.slug if agent is not None else None
             module_code = agent.module_code if agent is not None else None
@@ -344,7 +355,7 @@ class CentralAIService:
             company_id,
             module_code,
             self._chat.provider_name,
-            1 if result.status == "success" else 0,
+            1 if result.status == "success" and not central_is_included(company_id) else 0,
             result.status,
             int((perf_counter() - started_at) * 1000),
             route,

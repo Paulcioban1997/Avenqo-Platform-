@@ -70,6 +70,8 @@ def sync_customer_invoices(
                 BillingInvoice.stripe_invoice_id == stripe_invoice_id
             )
         )
+        if existing is not None and existing.company_id != company_id:
+            raise ValueError("Stripe invoice already belongs to another tenant")
         lines = (invoice.get("lines") or {}).get("data") or []
         first_line = lines[0] if lines else {}
         period = first_line.get("period") or {}

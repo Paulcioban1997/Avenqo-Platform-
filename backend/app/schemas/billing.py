@@ -31,9 +31,15 @@ class RedirectResponse(BaseModel):
 
 
 class CreditPackResponse(BaseModel):
+    name: str | None = None
+    enabled: bool = True
+    tax_exclusive: bool = True
     code: str
     credits: int
     price_usd: float | int
+    price_cad: float | int
+    price_cents: int
+    currency: str
 
 
 class CreditPackCheckoutRequest(BaseModel):
@@ -134,6 +140,8 @@ class InvoiceResponse(BaseModel):
 
 
 class InvoiceHistoryResponse(BaseModel):
+    environment: str = "live"
+    synchronization_status: str = "ready"
     items: list[InvoiceResponse]
     total: int
     offset: int

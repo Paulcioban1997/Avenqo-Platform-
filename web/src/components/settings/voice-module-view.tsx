@@ -54,7 +54,7 @@ interface Offer {
 interface NumberQuote { offer: Offer; quote_token: string; purchase_allowed: boolean; expires_in_seconds: number }
 
 export function VoiceModuleView() {
-  const { identity, sourceRevision } = useSession();
+  const { identity, sourceRevision, credits, creditError } = useSession();
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
@@ -150,12 +150,16 @@ export function VoiceModuleView() {
     event.preventDefault();
     const input = event.currentTarget.elements.namedItem("voice-pin") as HTMLInputElement;
     const pin = input.value;
+    const passwordInput = event.currentTarget.elements.namedItem("voice-account-password") as HTMLInputElement;
     setPinMessage("");
     try {
-      const response = await fetch("/api/v1/voice/auth/pin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
-      if (!response.ok) throw new Error("voice_pin_unavailable");
+      const response = await fetch("/api/v1/voice/auth/pin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, confirm_pin: pin, current_password: passwordInput.value }) });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || (typeof payload?.detail === "string" ? payload.detail : company.connectionsGenericError));
+      }
       setPinMessage(messages[5]);
-    } catch { setPinMessage(company.connectionsGenericError); } finally { input.value = ""; }
+    } catch (error) { setPinMessage(error instanceof Error ? error.message : company.connectionsGenericError); } finally { input.value = ""; passwordInput.value = ""; }
   }
 
   async function requestQuote() {
@@ -207,11 +211,12 @@ export function VoiceModuleView() {
       <Link href="/settings" className="inline-flex items-center gap-2 text-sm"><Settings size={16} />{t.navigation.settings}</Link>
     </header>
     {error && <p role="alert" className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300"><ShieldAlert size={16} />{company.connectionsGenericError}</p>}
+    {active && (credits.remaining === 0 || !["active", "trialing"].includes(active.subscription_status)) && <div role="alert" className="rounded-xl border border-amber-400 bg-amber-500/10 p-4 text-sm"><p>{locale.startsWith("fr") ? (credits.remaining === 0 ? "Accueil téléphonique bloqué : votre solde de crédits IA est épuisé." : "Accueil téléphonique bloqué : votre abonnement est inactif.") : (credits.remaining === 0 ? "Phone assistant blocked: your AI credit balance is exhausted." : "Phone assistant blocked: your subscription is inactive.")}</p><p className="mt-2">{locale.startsWith("fr") ? "Solde disponible" : "Available balance"}: {creditError ? "—" : credits.remaining ?? "—"} · <Link href="/billing" className="underline">{t.navigation.billing}</Link></p></div>}
     {!active ? <p role="status">{error ? t.integrations.statusNeedsAttention : company.connectionsLoading}</p> : <>
       <section className="grid gap-4 border-y border-slate-200 py-4 text-sm sm:grid-cols-3 dark:border-white/10">
         <div><div className="text-slate-500">{t.navigation.billing}</div><div className="mt-1 font-semibold">{planName} · {active.subscription_status === 'active' ? billing.statusActive : active.subscription_status === 'trialing' ? billing.statusTrialing : billing.statusInactive}</div><div className="mt-1 flex items-center gap-1">{active.plan_compatible_modules?.includes('voice') && <Check size={14} />}{t.navigation.voiceAi}: {enabled ? billing.statusActive : billing.statusInactive}</div><Link className="mt-2 inline-block underline" href="/billing">{t.navigation.billing}</Link></div>
         <div><div className="text-slate-500">{health.phone}</div><div className="mt-1 font-mono">{currentStatus?.business_number ?? selectionCopy[0]}</div><div className="mt-1 text-xs">{[currentStatus?.country, currentStatus?.region, currentStatus?.locality].filter(Boolean).join(" · ")}</div></div>
-        <div><div className="text-slate-500">{health.credits}</div><div className="mt-1">{currentStatus?.voice_ai_credits_charged ?? t.common.insufficientData}</div><div className="mt-1 text-xs">{health.calls}: {currentStatus?.call_count ?? t.common.insufficientData} · {health.minutes}: {currentStatus?.call_minutes ?? t.common.insufficientData}</div></div>
+        <div><div className="text-slate-500">{locale.startsWith("fr") ? "Crédits IA disponibles" : "Available AI credits"}</div><div className="mt-1">{creditError ? t.common.insufficientData : credits.remaining ?? t.common.insufficientData}</div><div className="mt-1 text-xs">{health.calls}: {currentStatus?.call_count ?? t.common.insufficientData} · {health.minutes}: {currentStatus?.call_minutes ?? t.common.insufficientData}</div></div>
       </section>
       <section className="space-y-3 text-sm">
         <h2 className="font-semibold">{t.navigation.agentsAi}</h2>
@@ -231,6 +236,7 @@ export function VoiceModuleView() {
       {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
         <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
         <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3">
+        <label className="min-w-48 space-y-1 text-xs"><span>{locale === "fr" ? "Mot de passe actuel" : "Current password"}</span><input aria-label={locale === "fr" ? "Mot de passe actuel" : "Current password"} name="voice-account-password" type="password" autoComplete="current-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
         <label className="min-w-48 space-y-1 text-xs"><span>{messages[4]}</span><input aria-label={messages[4]} name="voice-pin" type="password" inputMode="numeric" pattern="[0-9]{6,12}" minLength={6} maxLength={12} autoComplete="new-password" required className="w-full rounded border border-slate-300 bg-transparent p-2 text-sm dark:border-white/20" /></label>
         <button type="submit" className="rounded border border-slate-300 px-3 py-2 text-sm dark:border-white/20">{messages[5]}</button>
         {pinMessage && <span role="status" className="text-xs">{pinMessage}</span>}

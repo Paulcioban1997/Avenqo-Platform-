@@ -389,6 +389,14 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
+    @field_validator("openai_api_key", "anthropic_api_key", "google_ai_api_key", mode="before")
+    @classmethod
+    def normalize_ai_api_key(cls, value: object) -> object:
+        # A copied trailing newline makes HTTP authorization headers invalid.
+        if isinstance(value, str):
+            return "".join(value.split()) or None
+        return value
+
     @field_validator(
         "email_api_key", "smtp_host", "smtp_username", "smtp_password",
         "stripe_secret_key", "stripe_webhook_secret", "stripe_price_base",

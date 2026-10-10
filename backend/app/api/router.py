@@ -30,6 +30,7 @@ from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
+from backend.app.routers.security import router as security_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.voice import router as voice_router
 from backend.app.routers.ai_voice import router as ai_voice_router
@@ -40,16 +41,15 @@ from backend.app.routers.tenant_products_recommendations import (
 )
 
 api_router = APIRouter()
+api_router.include_router(security_router, prefix="/api/v1")
 api_router.include_router(health_router, prefix="/api/v1")
 api_router.include_router(
 	ai_chat_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(
 	central_ai_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")
@@ -98,7 +98,6 @@ api_router.include_router(sectors_router, prefix="/api/v1")
 api_router.include_router(
 	modules_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(
 	retail_router,

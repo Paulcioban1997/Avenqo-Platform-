@@ -1,8 +1,8 @@
 """Tests obligatoires de production pour les règles d'abonnements et modules Avenqo.
 
 Conforme aux spécifications :
-- Demo : max 3 modules actifs
-- Professional : max 6 modules actifs
+- Base (alias Demo) : max 2 modules actifs
+- Professional : max 5 modules actifs
 - Sérialisation des activations concurrentes
 - Droits de facturation stricts (MEMBER refusé)
 - Idempotence webhook Stripe et échec de paiement
@@ -98,50 +98,49 @@ def _service(db: Session) -> ModuleEntitlementService:
     return ModuleEntitlementService(db, registry=TEST_REGISTRY)
 
 
-def test_demo_limit_three_accepted_fourth_refused(db: Session) -> None:
-    """1. Demo : trois activations acceptées, quatrième refusée."""
+def test_demo_limit_two_accepted_third_refused(db: Session) -> None:
+    """1. Base : deux activations acceptées, troisième refusée."""
     company = _create_company(db, "demo", "Demo Co")
     tenant = TenantContext(company.id)
     service = _service(db)
 
     summary = service.summary(tenant)
-    assert summary.module_limit == 3
-    assert summary.remaining_module_slots == 3
+    assert summary.module_limit == 2
+    assert summary.remaining_module_slots == 2
 
     # Activer 3 modules -> succès
     service.activate_module(tenant, "retail")
     service.activate_module(tenant, "crm")
-    service.activate_module(tenant, "accounting")
 
     summary = service.summary(tenant)
-    assert len(summary.active_modules) == 3
+    assert len(summary.active_modules) == 2
     assert summary.remaining_module_slots == 0
 
     # 4ème tentative -> refus avec explication claire
-    with pytest.raises(ModuleLimitReached, match="supports 3 active modules"):
+    with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
         service.activate_module(tenant, "marketing")
 
 
-def test_professional_limit_six_accepted_seventh_refused(db: Session) -> None:
-    """2. Professional : six acceptées, septième refusée."""
+def test_professional_limit_five_accepted_sixth_refused(db: Session) -> None:
+    """2. Professional : cinq acceptées, sixième refusée."""
     company = _create_company(db, "professional", "Pro Co")
     tenant = TenantContext(company.id)
     service = _service(db)
 
     summary = service.summary(tenant)
-    assert summary.module_limit == 6
+    assert summary.module_limit == 5
 
     # Activer 6 modules
-    for key in AVAILABLE_KEYS[:6]:
+    for key in ("retail", "crm", "marketing", "accounting", "ocr"):
         service.activate_module(tenant, key)
 
     summary = service.summary(tenant)
-    assert len(summary.active_modules) == 6
+    assert len(summary.active_modules) == 5
     assert summary.remaining_module_slots == 0
 
     # 7ème tentative -> refus
-    with pytest.raises(ModuleLimitReached, match="supports 6 active modules"):
-        service.activate_module(tenant, AVAILABLE_KEYS[6])
+    with pytest.raises(ModuleLimitReached, match="supports 5 active modules"):
+        service.activate_module(tenant, "voice")
 
 
 def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
@@ -152,7 +151,6 @@ def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
 
     service.activate_module(tenant, "retail")
     service.activate_module(tenant, "crm")
-    service.activate_module(tenant, "accounting")
 
     # Désactiver CRM libère 1 slot
     service.deactivate_module(tenant, "crm")
@@ -161,7 +159,7 @@ def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
 
     # Activer Marketing à la place
     swapped = service.activate_module(tenant, "marketing")
-    assert set(swapped.active_modules) == {"retail", "accounting", "marketing"}
+    assert set(swapped.active_modules) == {"retail", "marketing"}
     assert swapped.remaining_module_slots == 0
 
     # Vérifier que l'entitlement CRM existe toujours en base avec statut INACTIVE (données préservées)

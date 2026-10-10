@@ -128,16 +128,17 @@ class AICreditPack:
     plan_code: PlanCode
     credits: int
     price_usd: int
+    price_cad: int
 
 
 AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (
-    AICreditPack("credits_6500", PlanCode.BASE, credits=6_500, price_usd=10),
-    AICreditPack("credits_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=35),
-    AICreditPack("credits_65000", PlanCode.PROFESSIONAL, credits=65_000, price_usd=80),
+    AICreditPack("credits_6500", PlanCode.BASE, credits=6_500, price_usd=10, price_cad=10),
+    AICreditPack("credits_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=35, price_cad=35),
+    AICreditPack("credits_65000", PlanCode.PROFESSIONAL, credits=65_000, price_usd=80, price_cad=80),
     # Rétrocompatibilité
-    AICreditPack("demo_extra", PlanCode.BASE, credits=6_500, price_usd=10),
-    AICreditPack("professional_6500", PlanCode.PROFESSIONAL, credits=6_500, price_usd=10),
-    AICreditPack("professional_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=25),
+    AICreditPack("demo_extra", PlanCode.BASE, credits=6_500, price_usd=10, price_cad=10),
+    AICreditPack("professional_6500", PlanCode.PROFESSIONAL, credits=6_500, price_usd=10, price_cad=10),
+    AICreditPack("professional_25000", PlanCode.PROFESSIONAL, credits=25_000, price_usd=25, price_cad=25),
 )
 AI_CREDIT_PACKS_BY_CODE = {pack.code: pack for pack in AI_CREDIT_PACKS}
 # Preserve delayed Checkout sessions created before the Phase 2 code rename.
