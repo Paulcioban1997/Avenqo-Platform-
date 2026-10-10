@@ -45,6 +45,9 @@ def test_pin_setup_is_available_without_subscription_normalizes_phone_and_reauth
     response = client.put("/api/v1/voice/auth/pin", headers=headers, json=body)
     assert response.status_code == 200, response.text
     assert client.get("/api/v1/voice/auth/pin/status", headers=headers).json()["has_pin"]
+    assert client.put("/api/v1/voice/auth/phone-access", headers=headers, json={"enabled": False}).status_code == 200
+    assert not client.get("/api/v1/voice/auth/pin/status", headers=headers).json()["phone_access_enabled"]
+    assert client.post("/api/v1/voice/auth/sessions/revoke", headers=headers).status_code == 200
     with factory() as db:
         user = db.scalar(select(User).where(User.email == payload["email"]))
         credential = db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.principal_id == user.id))

@@ -260,12 +260,11 @@ def set_user_voice_pin(
     return {"status": "CONFIGURED"}
 
 
-@router.post("/auth/sessions/revoke", dependencies=[Depends(require_active_subscription)])
+@router.post("/auth/sessions/revoke")
 def revoke_active_voice_sessions(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     now = datetime.now(timezone.utc)
     count = 0
     for session in db.scalars(select(VoiceAuthSession).where(
@@ -288,13 +287,12 @@ def revoke_active_voice_sessions(
     return {"status": "REVOKED", "revoked_count": count}
 
 
-@router.put("/auth/phone-access", dependencies=[Depends(require_active_subscription)])
+@router.put("/auth/phone-access")
 def set_user_phone_access(
     request: VoicePhoneAccessRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     cred = db.scalar(select(VoiceCallerCredential).where(
         VoiceCallerCredential.company_id == identity.user.company_id,
         VoiceCallerCredential.principal_type == "USER",
@@ -1951,7 +1949,6 @@ async def set_voice_pin(
     return await get_voice_pin_status(identity, db)
 
 
-@router.post("/auth/sessions/revoke")
 async def revoke_voice_auth_sessions(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -1971,7 +1968,6 @@ async def revoke_voice_auth_sessions(
     return {"status": "success", "revoked_sessions_count": count}
 
 
-@router.put("/auth/phone-access")
 async def set_voice_phone_access(
     request: VoicePhoneAccessRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
