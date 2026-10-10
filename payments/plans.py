@@ -51,6 +51,12 @@ class SubscriptionPlan:
 MODULE_NAMES = {module.key: module.display_name for module in BUSINESS_MODULE_REGISTRY}
 ALL_MODULES = frozenset(MODULE_NAMES)
 
+# Tarification canonique PMC Solutions AI (société établie au Canada) :
+# Les prix de référence officiels sont fixés en Dollars Canadiens (CAD) :
+# - Base : 29.99 CAD / mois
+# - Professional : 49.99 CAD / mois
+# - Enterprise : Sur devis personnalisé
+# Les équivalents internationaux (USD, EUR, GBP, etc.) sont convertis selon les devises des pays respectifs.
 PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
     SubscriptionPlan(
         PlanCode.BASE,
@@ -62,7 +68,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         max_sites=1,
         max_voice_agents=1,
         max_concurrent_calls=1,
-        monthly_price_usd=29.99,
+        monthly_price_usd=21.99,
         monthly_price_cad=29.99,
         monthly_ai_credits=6_500,
     ),
@@ -76,7 +82,7 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         max_sites=3,
         max_voice_agents=3,
         max_concurrent_calls=2,
-        monthly_price_usd=49.99,
+        monthly_price_usd=36.99,
         monthly_price_cad=49.99,
         monthly_ai_credits=20_000,
     ),
@@ -100,7 +106,7 @@ INTERNAL_COMPATIBILITY_PLANS: tuple[SubscriptionPlan, ...] = (
         max_sites=1,
         max_voice_agents=1,
         max_concurrent_calls=1,
-        monthly_price_usd=29.99,
+        monthly_price_usd=21.99,
         monthly_price_cad=29.99,
         monthly_ai_credits=6_500,
     ),

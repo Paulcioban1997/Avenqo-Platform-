@@ -6,16 +6,21 @@ import { ArrowRight, Check, ShieldCheck, Zap, Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
 import { SiteFooter } from "@/components/site-footer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
+import { getLocalizedPlanPrice } from "@/lib/i18n/currency";
 
 export function PricingContent() {
   const t = useTranslations();
   const { locale } = useLocale();
   const isFr = locale.startsWith("fr");
 
+  const basePrice = getLocalizedPlanPrice("base", locale);
+  const proPrice = getLocalizedPlanPrice("professional", locale);
+
   const planMeta = [
     {
       tier: "Base",
-      price: isFr ? "29,99 $ CA" : "$29.99 CAD",
+      price: basePrice.formatted,
+      conversionNote: basePrice.conversionNote,
       period: isFr ? "/ mois" : "/ month",
       credits: isFr ? "6 500 crédits IA inclus" : "6,500 AI credits included",
       creditExtra: t.pricing.plans[0].items[2],
@@ -25,7 +30,8 @@ export function PricingContent() {
     },
     {
       tier: "Professional",
-      price: isFr ? "49,99 $ CA" : "$49.99 CAD",
+      price: proPrice.formatted,
+      conversionNote: proPrice.conversionNote,
       period: isFr ? "/ mois" : "/ month",
       credits: isFr ? "20 000 crédits IA inclus" : "20,000 AI credits included",
       creditExtra: t.pricing.plans[1].items[2],
@@ -36,6 +42,7 @@ export function PricingContent() {
     {
       tier: "Enterprise",
       price: t.pricing.priceLabel,
+      conversionNote: isFr ? "Devis personnalisé" : "Tailored plan",
       period: t.pricing.plans[2].title,
       credits: t.pricing.plans[2].items[1],
       creditExtra: t.pricing.plans[2].items[4] ?? t.pricing.plans[2].items[0],
@@ -84,10 +91,15 @@ export function PricingContent() {
                   {meta.featured && <div className="popular">{t.pricing.popular}</div>}
                   <span>{meta.tier}</span>
                   <h3>{plan.title}</h3>
-                  <div style={{ margin: "16px 0 8px" }}>
+                  <div style={{ margin: "16px 0 2px" }}>
                     <span style={{ fontSize: 36, fontWeight: 800, color: "var(--foreground)" }}>{meta.price}</span>
                     <span style={{ fontSize: 14, color: "var(--muted)", marginLeft: 6 }}>{meta.period}</span>
                   </div>
+                  {meta.conversionNote && (
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12, fontStyle: "italic" }}>
+                      {meta.conversionNote}
+                    </div>
+                  )}
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 9999, background: "rgba(56, 189, 248, 0.1)", color: "#38bdf8", marginBottom: 18 }}>
                     <Sparkles size={13} /> {meta.credits}
                   </div>

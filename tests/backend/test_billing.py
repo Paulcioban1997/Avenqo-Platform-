@@ -1,4 +1,4 @@
-﻿from collections.abc import Generator
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -434,7 +434,8 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     assert [plan["code"] for plan in catalog] == [
         "base", "professional", "enterprise"
     ]
-    assert [plan["monthly_price_usd"] for plan in catalog] == [29.99, 49.99, None]
+    assert [plan["monthly_price_cad"] for plan in catalog] == [29.99, 49.99, None]
+    assert [plan["monthly_price_usd"] for plan in catalog] == [21.99, 36.99, None]
     assert [plan["requires_sales_contact"] for plan in catalog] == [False, False, True]
 
     # Un nouveau tenant peut ouvrir le portail : le Customer Stripe est créé à la demande.

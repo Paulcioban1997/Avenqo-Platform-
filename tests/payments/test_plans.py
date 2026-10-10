@@ -36,6 +36,21 @@ def test_allocations_mensuelles_de_credits_sont_centralisees_par_offre() -> None
     assert get_plan("enterprise").monthly_ai_credits is None
 
 
+def test_tarification_canonique_cad_et_usd_est_definie() -> None:
+    base = get_plan("base")
+    assert base.monthly_price_cad == 29.99
+    assert base.monthly_price_usd == 21.99
+
+    pro = get_plan("professional")
+    assert pro.monthly_price_cad == 49.99
+    assert pro.monthly_price_usd == 36.99
+
+    enterprise = get_plan("enterprise")
+    assert enterprise.monthly_price_cad is None
+    assert enterprise.monthly_price_usd is None
+
+
 def test_offre_inconnue_est_refusee() -> None:
     with pytest.raises(ValueError, match="Offre Avenqo inconnue"):
         get_plan("inconnue")
+

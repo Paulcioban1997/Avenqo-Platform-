@@ -17,7 +17,9 @@ interface RegistrationPlan {
   name: string;
   module_limit: number | null;
   requires_sales_contact: boolean;
+  monthly_price_cad?: number | null;
   monthly_price_usd: number | null;
+  monthly_price?: number | null;
   modules: { key: string; display_name: string; description: string; selectable: boolean }[];
 }
 
@@ -373,7 +375,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <label className="auth-field">
                       <span>{locale === "en" ? "Formula / Plan" : "Formule d'abonnement"}</span>
                       <select name="plan_code" value={chosenPlan} onChange={event => { setChosenPlan(event.target.value); setChosenModules([]); }} required>
-                        {plans.map(plan => <option key={plan.code} value={plan.code}>{plan.name} · {plan.requires_sales_contact ? (locale === "en" ? "Contact sales" : "Contacter les ventes") : plan.monthly_price_usd == null ? t.navigation.billing : `${new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(plan.monthly_price_usd)} USD/${locale === "en" ? "month" : "mois"}`}</option>)}
+                        {plans.map(plan => {
+                          if (plan.requires_sales_contact) {
+                            return <option key={plan.code} value={plan.code}>{plan.name} · {locale === "en" ? "Contact sales" : "Contacter les ventes"}</option>;
+                          }
+                          const cadPrice = plan.monthly_price_cad ?? plan.monthly_price ?? 29.99;
+                          const isFr = locale.startsWith("fr");
+                          const priceStr = isFr ? `${cadPrice.toFixed(2).replace(".", ",")} $ CAD / mois` : `$${cadPrice.toFixed(2)} CAD / month`;
+                          return <option key={plan.code} value={plan.code}>{plan.name} · {priceStr}</option>;
+                        })}
                       </select>
                     </label>
                   </div>

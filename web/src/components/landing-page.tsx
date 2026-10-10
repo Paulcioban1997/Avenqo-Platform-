@@ -15,6 +15,7 @@ import { AvenqoLiveExperience } from "@/components/live-experience/avenqo-live-e
 import { SiteFooter } from "@/components/site-footer";
 import { TrustSections } from "@/components/trust-sections";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
+import { getLocalizedPlanPrice } from "@/lib/i18n/currency";
 
 const moduleIcons = [
   ShoppingBag, Network, ReceiptText, FileScan, BarChart3, Megaphone,
@@ -51,10 +52,14 @@ export function LandingPage() {
   const isEn = locale === "en";
   const usecaseEntries = [t.usecases.direction, t.usecases.finance, t.usecases.commerce, t.usecases.operations];
 
+  const basePrice = getLocalizedPlanPrice("base", locale);
+  const proPrice = getLocalizedPlanPrice("professional", locale);
+
   const planTiers = [
     {
       tier: "Base",
-      price: isEn ? "$29.99 CAD" : "29,99 $ CA",
+      price: basePrice.formatted,
+      conversionNote: basePrice.conversionNote,
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "6,500 AI credits included" : "6 500 crédits IA inclus",
       action: isEn ? "Choose Base" : "Choisir Base",
@@ -63,7 +68,8 @@ export function LandingPage() {
     },
     {
       tier: "Professional",
-      price: isEn ? "$49.99 CAD" : "49,99 $ CA",
+      price: proPrice.formatted,
+      conversionNote: proPrice.conversionNote,
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "20,000 AI credits included" : "20 000 crédits IA inclus",
       action: isEn ? "Choose Professional" : "Choisir Professional",
@@ -73,6 +79,7 @@ export function LandingPage() {
     {
       tier: "Enterprise",
       price: isEn ? "Custom quote" : "Sur mesure",
+      conversionNote: isEn ? "Tailored plan" : "Devis personnalisé",
       period: isEn ? "Tailored plan" : "Devis personnalisé",
       credits: isEn ? "Custom AI credit volume" : "Crédits IA sur mesure",
       action: isEn ? "Request a quote" : "Demander un devis",
@@ -207,6 +214,7 @@ export function LandingPage() {
                   tier={meta.tier}
                   title={plan.title}
                   price={meta.price}
+                  conversionNote={meta.conversionNote}
                   period={meta.period}
                   credits={meta.credits}
                   items={plan.items}
@@ -253,6 +261,7 @@ function PriceCard({
   tier,
   title,
   price,
+  conversionNote,
   period,
   credits,
   items,
@@ -264,6 +273,7 @@ function PriceCard({
   tier: string;
   title: string;
   price: string;
+  conversionNote?: string;
   period: string;
   credits: string;
   items: string[];
@@ -284,10 +294,15 @@ function PriceCard({
       {featured && <div className="popular">{popularLabel}</div>}
       <span>{tier}</span>
       <h3>{title}</h3>
-      <div style={{ margin: "14px 0 6px" }}>
+      <div style={{ margin: "14px 0 2px" }}>
         <span style={{ fontSize: 34, fontWeight: 800, color: "var(--foreground)" }}>{price}</span>
         <span style={{ fontSize: 14, color: "var(--muted)", marginLeft: 6 }}>{period}</span>
       </div>
+      {conversionNote && (
+        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, fontStyle: "italic" }}>
+          {conversionNote}
+        </div>
+      )}
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 9999, background: "rgba(56, 189, 248, 0.1)", color: "#38bdf8", marginBottom: 16 }}>
         <Sparkles size={13} /> {credits}
       </div>

@@ -10,6 +10,7 @@ class PlanResponse(BaseModel):
     code: str
     name: str
     requires_sales_contact: bool
+    monthly_price_cad: float | int | None = None
     monthly_price_usd: float | int | None
     monthly_price: float | int | None = None
     currency: str = "CAD"

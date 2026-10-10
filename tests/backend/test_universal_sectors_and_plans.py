@@ -88,6 +88,7 @@ def test_canonical_plan_limits_and_pricing():
     assert base_plan.max_selectable_modules == 2
     assert base_plan.exact_modules_count == 2
     assert base_plan.monthly_price_cad == 29.99
+    assert base_plan.monthly_price_usd == 21.99
     assert base_plan.monthly_ai_credits == 6_500
     assert base_plan.max_users == 3
     assert base_plan.max_sites == 1
@@ -98,6 +99,7 @@ def test_canonical_plan_limits_and_pricing():
     assert pro_plan.max_selectable_modules == 5
     assert pro_plan.exact_modules_count == 5
     assert pro_plan.monthly_price_cad == 49.99
+    assert pro_plan.monthly_price_usd == 36.99
     assert pro_plan.monthly_ai_credits == 20_000
     assert pro_plan.max_users == 10
     assert pro_plan.max_sites == 3
