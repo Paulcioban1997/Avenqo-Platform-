@@ -2,15 +2,17 @@
 
 import asyncio
 import base64
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 import jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.central.service import CentralAIService
+from backend.app.ai.usage.included_central import included_central
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError
 from backend.app.ai.request_identity import resolve_ai_request_id
 from backend.app.config.settings import get_settings
@@ -26,7 +28,7 @@ from backend.app.dependencies.auth import CurrentIdentity, get_current_identity,
 from backend.app.core.security import decode_access_token
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.database import get_db
-from backend.app.models import AuthSession, BillingAccount, CompanyMembership, User, VoiceCentralSession
+from backend.app.models import AIConversation, AuthSession, BillingAccount, CompanyMembership, User, VoiceCentralSession
 from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.dependencies.subscription import require_active_subscription
@@ -48,9 +50,11 @@ router = APIRouter(
 )
 
 
-def _enforce_voice_access(db: Session, tenant: TenantContext, membership: CompanyMembership) -> None:
+def _enforce_voice_access(db: Session, tenant: TenantContext, membership: CompanyMembership, *, central: bool = False) -> None:
     if "ai:use" not in permissions_for(membership.role):
         raise HTTPException(status_code=403, detail="AI permission is required")
+    if central:
+        return
     account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == tenant.company_id))
     if account is not None:
         db.refresh(account)
@@ -136,9 +140,11 @@ def _resolve_voice_turn_language(
 
 
 def _audit_session_source(session: VoiceCentralSession, db: Session) -> None:
+    entrypoint = (getattr(session, "source_context", None) or {}).get("entrypoint", "voice")
     session.source_context = resolve_voice_source_context(
         db, TenantContext(company_id=session.company_id, user_id=session.user_id)
     )
+    session.source_context = {**session.source_context, "entrypoint": entrypoint}
     db.commit()
 
 
@@ -148,8 +154,16 @@ def create_session(
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
-    membership: CompanyMembership = Depends(get_voice_membership),
+    membership: CompanyMembership = Depends(get_active_ai_membership),
 ) -> VoiceSessionResponse:
+    _enforce_voice_access(db, tenant, membership, central=request.entrypoint == "central")
+    conversation = db.scalar(select(AIConversation.id).where(
+        AIConversation.id == request.conversation_id,
+        AIConversation.company_id == tenant.company_id,
+        AIConversation.user_id == identity.user.id,
+    ))
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     request_id = resolve_ai_request_id(
         request.request_id,
         tenant_id=tenant.company_id,
@@ -163,6 +177,8 @@ def create_session(
         )
     )
     if existing is not None:
+        if (getattr(existing, "source_context", None) or {}).get("entrypoint", "voice") != request.entrypoint:
+            raise HTTPException(status_code=409, detail="Voice request entrypoint mismatch")
         return _response(existing)
     requested_locale = request.locale if "locale" in request.model_fields_set else identity.user.company.preferred_language or "fr"
     normalized = requested_locale.casefold().replace("_", "-")
@@ -178,9 +194,9 @@ def create_session(
         stt_provider="openai" if realtime else "browser_speech",
         tts_provider="openai" if realtime else None,
         realtime_provider="openai" if realtime else None,
-        source_context=resolve_voice_source_context(
+        source_context={**resolve_voice_source_context(
             db, TenantContext(company_id=tenant.company_id, user_id=identity.user.id)
-        ),
+        ), "entrypoint": request.entrypoint},
     )
     db.add(session)
     db.commit()
@@ -197,7 +213,8 @@ def stream_ticket(
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
-    membership: CompanyMembership = Depends(get_voice_membership),
+    membership: CompanyMembership = Depends(get_active_ai_membership),
+    http_request: Request = None,
 ) -> VoiceStreamTicketResponse:
     session = db.scalar(select(VoiceCentralSession).where(
         VoiceCentralSession.id == session_id,
@@ -207,6 +224,7 @@ def stream_ticket(
     ))
     if session is None:
         raise HTTPException(status_code=404, detail="Voice session not found")
+    _enforce_voice_access(db, tenant, membership, central=(getattr(session, "source_context", None) or {}).get("entrypoint") == "central")
     settings = get_settings()
     now = int(datetime.now(timezone.utc).timestamp())
     ticket = jwt.encode({
@@ -217,6 +235,8 @@ def stream_ticket(
     return VoiceStreamTicketResponse(
         ticket=ticket,
         realtime=_realtime_available(session.locale),
+        stream_url=(str(http_request.base_url).rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
+                    + f"/api/v1/ai/voice/sessions/{session_id}/stream") if http_request else None,
     )
 
 
@@ -233,7 +253,7 @@ async def turn(
     request: VoiceTurnRequest,
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
-    membership=Depends(get_voice_membership),
+    membership=Depends(get_active_ai_membership),
     service: CentralAIService = Depends(get_central_ai_service),
     db: Session = Depends(get_db),
 ) -> VoiceTurnResponse:
@@ -246,6 +266,8 @@ async def turn(
     )
     if session is None or session.status != "active":
         raise HTTPException(status_code=404, detail="Voice session not found")
+    central = (getattr(session, "source_context", None) or {}).get("entrypoint") == "central"
+    _enforce_voice_access(db, tenant, membership, central=central)
     detection = _resolve_voice_turn_language(session, request.transcript, db)
     _audit_session_source(session, db)
     request_id = resolve_ai_request_id(
@@ -254,21 +276,22 @@ async def turn(
         user_id=identity.user.id,
         conversation_id=session.conversation_id,
     )
-    result = await _execute_voice(service,
-        tenant,
-        identity.user.id,
-        session.conversation_id,
-        request.transcript,
-        permissions=frozenset(permissions_for(membership.role)),
-        capabilities=frozenset(),
-        request_id=request_id,
-        user_language=detection.locale or session.locale,
-        company_country=identity.user.company.country or "",
-        company_currency=getattr(identity.user.company, "currency_code", None) or "USD",
-        company_timezone=identity.user.company.timezone or "UTC",
-        locale_explicit=detection.locale is not None,
-        spoken_language_input=True,
-    )
+    with included_central(tenant.company_id) if central else nullcontext():
+        result = await _execute_voice(service,
+            tenant,
+            identity.user.id,
+            session.conversation_id,
+            request.transcript,
+            permissions=frozenset(permissions_for(membership.role)),
+            capabilities=frozenset(),
+            request_id=request_id,
+            user_language=detection.locale or session.locale,
+            company_country=identity.user.company.country or "",
+            company_currency=getattr(identity.user.company, "currency_code", None) or "USD",
+            company_timezone=identity.user.company.timezone or "UTC",
+            locale_explicit=detection.locale is not None,
+            spoken_language_input=True,
+        )
     return VoiceTurnResponse(
         session_id=session.id,
         conversation_id=session.conversation_id,
@@ -304,8 +327,7 @@ def end_session(
     return _response(session)
 
 
-@router.websocket("/sessions/{session_id}/stream")
-async def stream_session(
+async def _stream_session(
     websocket: WebSocket,
     session_id: UUID,
     db: Session = Depends(get_db),
@@ -370,7 +392,7 @@ async def stream_session(
         if membership is None or not membership.is_active:
             return None
         try:
-            _enforce_voice_access(db, TenantContext(tenant_id, user_id), membership)
+            _enforce_voice_access(db, TenantContext(tenant_id, user_id), membership, central=(getattr(session, "source_context", None) or {}).get("entrypoint") == "central")
         except HTTPException:
             return None
         return membership
@@ -628,3 +650,18 @@ async def stream_session(
             usage_ledger.settle_pending()
         if adapter is not None:
             await adapter.close()
+
+
+@router.websocket("/sessions/{session_id}/stream")
+async def stream_session(
+    websocket: WebSocket,
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    service: CentralAIService = Depends(get_central_ai_service),
+) -> None:
+    session = db.scalar(select(VoiceCentralSession).where(VoiceCentralSession.id == session_id))
+    central = session is not None and (getattr(session, "source_context", None) or {}).get("entrypoint") == "central"
+    # Sponsorship only applies to this persisted Central session. The stream still
+    # validates the JWT, session owner, membership and every private tool action.
+    with included_central(session.company_id) if central else nullcontext():
+        await _stream_session(websocket, session_id, db, service)

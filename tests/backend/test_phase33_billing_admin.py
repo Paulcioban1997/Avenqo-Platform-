@@ -245,6 +245,23 @@ def _access_token(db_session, user: User) -> str:
     return token
 
 
+def test_credit_catalog_versions_are_immutable_and_activation_requires_cost_review(db_session, admin_client):
+    company = _company(db_session, slug="pack-admin")
+    admin = _user(db_session, company, platform_admin=True)
+    token = _access_token(db_session, admin)
+    headers = {"Authorization": f"Bearer {token}"}
+    offer = {"code": "starter_1000_v1", "name": "Starter", "credits": 1000, "price_cents": 1000}
+    assert admin_client.post("/api/v1/admin/credit-packs", json=offer, headers=headers).status_code == 201
+    assert admin_client.post("/api/v1/admin/credit-packs", json={**offer, "price_cents": 2000}, headers=headers).status_code == 409
+    offers = admin_client.get("/api/v1/admin/credit-packs", headers=headers).json()
+    assert offers[0]["price_cents"] == 1000 and offers[0]["enabled"] is False
+    assert offers[0]["profitability"]["status"] == "pending"
+    response = admin_client.patch("/api/v1/admin/credit-packs/starter_1000_v1", headers=headers,
+        json={"enabled": True, "reconciliation_reference": "sample-review"})
+    assert response.status_code == 409
+    assert admin_client.get("/api/v1/admin/credit-packs", headers=headers).json()[0]["enabled"] is False
+
+
 class _TenantEchoSalesService:
     def __init__(self, revenues: dict) -> None:
         self.revenues = revenues

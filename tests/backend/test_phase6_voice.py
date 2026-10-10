@@ -392,6 +392,38 @@ async def test_native_browser_voice_denies_missing_capability_before_audio(voice
     assert voice_route.calls == []
 
 
+@pytest.mark.asyncio
+async def test_included_central_voice_opens_without_paid_voice_entitlement(voice_route):
+    from backend.app.ai.usage.included_central import central_is_included
+    voice_route.voice.source_context = {"entrypoint": "central"}
+    voice_route.active_modules.clear()
+    voice_route.account.status = "inactive"
+    original_execute = voice_route.service.execute
+    async def execute(*args, **kwargs):
+        assert central_is_included(voice_route.voice.company_id)
+        return await original_execute(*args, **kwargs)
+    voice_route.service.execute = execute
+    socket = FakeSocket()
+    run = asyncio.create_task(ai_voice.stream_session(socket, voice_route.voice.id, voice_route.db, voice_route.service))
+    await until(lambda: voice_route.adapter.opened)
+    await voice_route.adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="central-free-1", transcript="Bonjour"))
+    await until(lambda: bool(voice_route.adapter.spoken))
+    assert voice_route.adapter.spoken == ["Central authorized answer"]
+    await socket.incoming.put(None)
+    await run
+    assert not central_is_included(voice_route.voice.company_id)
+
+
+@pytest.mark.asyncio
+async def test_included_central_voice_still_rejects_missing_ai_permission(voice_route):
+    voice_route.voice.source_context = {"entrypoint": "central"}
+    voice_route.membership.role = "viewer"
+    socket = FakeSocket()
+    await ai_voice.stream_session(socket, voice_route.voice.id, voice_route.db, voice_route.service)
+    assert socket.closed == 4403
+    assert voice_route.adapter.opened is False
+
+
 @pytest.fixture
 def voice_route(monkeypatch):
     company_id, user_id, conversation_id, session_id, auth_id = (uuid4() for _ in range(5))

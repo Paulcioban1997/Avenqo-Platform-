@@ -291,6 +291,7 @@ def test_billing_subscription_and_ai_credits_scoped_to_tenant(sec_env) -> None:
         # Création d'une tentative IA pour Lucia
         attempt = TenantAIProviderAttempt(
             company_id=lucia_company.id,
+            user_id=session.scalar(select(User.id).where(User.company_id == lucia_company.id)),
             avenqo_request_id=f"req_{uuid4().hex[:12]}",
             attempt_number=1,
             operation="retail_demand_forecast",

@@ -8,11 +8,7 @@ import {
   Bot,
   User,
   ShieldCheck,
-  TrendingUp,
-  AlertTriangle,
   RefreshCw,
-  FileSpreadsheet,
-  ChevronRight,
   Mic,
   MicOff,
 } from "lucide-react";
@@ -23,6 +19,13 @@ import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
+
+interface BrowserSpeechRecognition {
+  lang: string; interimResults: boolean; continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null; onend: (() => void) | null;
+  start(): void; stop(): void;
+}
 
 export interface AvenqoCopilotProps {
   isOpen: boolean;
@@ -56,12 +59,14 @@ export function AvenqoCopilot({
   const activeSources = session.activeDataSources;
   const [isListening, setIsListening] = useState(false);
   const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceSocketRef = useRef<WebSocket | null>(null);
   const captureRef = useRef<{ stream: MediaStream; context: AudioContext; source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode } | null>(null);
-  const playbackRef = useRef<{ context: AudioContext; nextTime: number } | null>(null);
+  const playbackRef = useRef<{ context: AudioContext; nextTime: number; sources: Set<AudioBufferSourceNode> } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRequestRef = useRef<{ content: string; key: string } | null>(null);
+  const fallbackVoiceRef = useRef(false);
+  const voiceGenerationRef = useRef(0);
 
   // Auto-scroll on message change
   useEffect(() => {
@@ -79,7 +84,7 @@ export function AvenqoCopilot({
     pendingRequestRef.current = pendingRequest;
 
     const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
+      id: crypto.randomUUID(),
       sender: "user",
       content: query,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -139,16 +144,23 @@ export function AvenqoCopilot({
         pendingRequestRef.current = null;
         window.dispatchEvent(new Event("avenqo:ai-credits-updated"));
         const copilotMsg: ChatMessage = {
-          id: `c-${Date.now()}`,
+          id: crypto.randomUUID(),
           sender: "copilot",
           content: data.answer || t.copilot.errorPrompt,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           grounded: Boolean(data.grounded_source && data.status === "success"),
         };
         setMessages((prev) => [...prev, copilotMsg]);
+        if (fallbackVoiceRef.current && data.answer && "speechSynthesis" in window) {
+          const spoken = new SpeechSynthesisUtterance(data.answer);
+          spoken.lang = locale === "fr" ? "fr-CA" : locale;
+          spoken.onend = () => { if (fallbackVoiceRef.current) startFallbackRecognition(voiceSession); };
+          spoken.onerror = () => { fallbackVoiceRef.current = false; setIsListening(false); };
+          window.speechSynthesis.speak(spoken);
+        }
       } else {
         const errorMsg: ChatMessage = {
-          id: `c-${Date.now()}`,
+          id: crypto.randomUUID(),
           sender: "copilot",
           content: t.copilot.errorPrompt,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -158,7 +170,7 @@ export function AvenqoCopilot({
       }
     } catch (error) {
       const errorMsg: ChatMessage = {
-        id: `err-${Date.now()}`,
+        id: crypto.randomUUID(),
         sender: "copilot",
         content: error instanceof ApiRequestError && error.publicMessage ? error.publicMessage : t.copilot.errorPrompt,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -171,6 +183,9 @@ export function AvenqoCopilot({
   };
 
   const stopVoice = () => {
+    voiceGenerationRef.current += 1;
+    fallbackVoiceRef.current = false;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     const capture = captureRef.current;
@@ -189,29 +204,31 @@ export function AvenqoCopilot({
   };
 
   const startFallbackRecognition = (sessionId: string | null) => {
-    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as Window & { SpeechRecognition?: new () => BrowserSpeechRecognition; webkitSpeechRecognition?: new () => BrowserSpeechRecognition };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!Recognition) {
       setMessages((prev) => [...prev, {
-        id: `voice-${Date.now()}`, sender: "copilot",
+        id: crypto.randomUUID(), sender: "copilot",
         content: "Voice input is not available in this browser. You can continue with text.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       }]);
       return;
     }
     const recognition = new Recognition();
+    fallbackVoiceRef.current = true;
     recognition.interimResults = true;
     recognition.continuous = false;
     let transcript = "";
-    recognition.onresult = (event: any) => {
-      transcript = Array.from(event.results as ArrayLike<any>)
-        .map((result: any) => result[0]?.transcript || "").join(" ");
+    recognition.onresult = (event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => {
+      transcript = Array.from(event.results as ArrayLike<ArrayLike<{ transcript: string }>>)
+        .map((result: ArrayLike<{ transcript: string }>) => result[0]?.transcript || "").join(" ");
       setInput(transcript);
     };
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = () => { fallbackVoiceRef.current = false; setIsListening(false); };
     recognition.onend = () => {
-      setIsListening(false);
       recognitionRef.current = null;
-      if (transcript.trim()) void handleSend(transcript, sessionId);
+      if (fallbackVoiceRef.current && transcript.trim()) void handleSend(transcript, sessionId);
+      else setIsListening(false);
     };
     recognitionRef.current = recognition;
     setIsListening(true);
@@ -223,9 +240,14 @@ export function AvenqoCopilot({
       stopVoice();
       return;
     }
+    const generation = ++voiceGenerationRef.current;
+    setIsListening(true);
+    const ensureActive = () => {
+      if (voiceGenerationRef.current !== generation) throw new Error("Voice start cancelled");
+    };
     const playbackContext = new AudioContext({ sampleRate: 24000 });
     void playbackContext.resume();
-    playbackRef.current = { context: playbackContext, nextTime: 0 };
+    playbackRef.current = { context: playbackContext, nextTime: 0, sources: new Set() };
     const startVoice = async () => {
       let sessionId = voiceSessionId;
       let activeConversationId = conversationId;
@@ -240,11 +262,12 @@ export function AvenqoCopilot({
           setConversationId(activeConversationId);
         }
       }
+      ensureActive();
       if (!sessionId && activeConversationId) {
         const response = await apiFetch("/api/v1/ai/voice/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-          body: JSON.stringify({ conversation_id: activeConversationId, locale, request_id: crypto.randomUUID() }),
+          body: JSON.stringify({ conversation_id: activeConversationId, locale, entrypoint: "central", request_id: crypto.randomUUID() }),
         });
         if (response.ok) {
           const session = await response.json();
@@ -252,6 +275,7 @@ export function AvenqoCopilot({
           setVoiceSessionId(sessionId);
         }
       }
+      ensureActive();
       if (!sessionId || !navigator.mediaDevices?.getUserMedia) {
         void playbackRef.current?.context.close();
         playbackRef.current = null;
@@ -262,7 +286,8 @@ export function AvenqoCopilot({
         method: "POST", headers: getAuthHeaders(),
       });
       if (!ticketResponse.ok) throw new Error("Voice ticket unavailable");
-      const { ticket, realtime: available } = await ticketResponse.json();
+      const { ticket, realtime: available, stream_url: streamUrl } = await ticketResponse.json();
+      ensureActive();
       if (!available) {
         void playbackRef.current?.context.close();
         playbackRef.current = null;
@@ -272,7 +297,7 @@ export function AvenqoCopilot({
       const host = ["localhost", "127.0.0.1"].includes(window.location.hostname)
         ? `${window.location.hostname}:8000` : "api.avenqo.ca";
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(`${protocol}//${host}/api/v1/ai/voice/sessions/${sessionId}/stream`, ["avenqo.voice", `ticket.${ticket}`]);
+      const socket = new WebSocket(streamUrl || `${protocol}//${host}/api/v1/ai/voice/sessions/${sessionId}/stream`, ["avenqo.voice", `ticket.${ticket}`]);
       voiceSocketRef.current = socket;
       let sequence = -1;
       socket.onmessage = (message) => {
@@ -286,8 +311,12 @@ export function AvenqoCopilot({
           return;
         }
         if (event.type === "lifecycle" && event.status === "interrupted") {
-          void playbackRef.current?.context.close();
-          playbackRef.current = null;
+          const playback = playbackRef.current;
+          if (playback) {
+            for (const source of playback.sources) source.stop();
+            playback.sources.clear();
+            playback.nextTime = playback.context.currentTime;
+          }
         }
         if (event.type === "transcript" && event.status === "final") {
           setMessages((prev) => [...prev, {
@@ -303,8 +332,9 @@ export function AvenqoCopilot({
           }]);
         }
         if (event.type === "audio" && event.format === "pcm16") {
-          const playback = playbackRef.current ?? { context: new AudioContext({ sampleRate: 24000 }), nextTime: 0 };
+          const playback = playbackRef.current ?? { context: new AudioContext({ sampleRate: 24000 }), nextTime: 0, sources: new Set<AudioBufferSourceNode>() };
           playbackRef.current = playback;
+          void playback.context.resume();
           const raw = atob(event.audio);
           const buffer = playback.context.createBuffer(1, raw.length / 2, 24000);
           const samples = buffer.getChannelData(0);
@@ -314,6 +344,8 @@ export function AvenqoCopilot({
           }
           const source = playback.context.createBufferSource();
           source.buffer = buffer;
+          playback.sources.add(source);
+          source.onended = () => { playback.sources.delete(source); };
           source.connect(playback.context.destination);
           source.start(Math.max(playback.context.currentTime, playback.nextTime));
           playback.nextTime = Math.max(playback.context.currentTime, playback.nextTime) + buffer.duration;
@@ -326,10 +358,16 @@ export function AvenqoCopilot({
         }
       };
       await new Promise<void>((resolve, reject) => {
-        socket.onopen = () => resolve();
-        socket.onerror = () => reject(new Error("Voice stream unavailable"));
+        const timeout = window.setTimeout(() => reject(new Error("Voice connection timed out")), 15000);
+        socket.onopen = () => { window.clearTimeout(timeout); resolve(); };
+        socket.onerror = () => { window.clearTimeout(timeout); reject(new Error("Voice stream unavailable")); };
       });
+      ensureActive();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (voiceGenerationRef.current !== generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const context = new AudioContext({ sampleRate: 24000 });
       const source = context.createMediaStreamSource(stream);
       const processor = context.createScriptProcessor(2048, 1, 1);
@@ -356,6 +394,7 @@ export function AvenqoCopilot({
       setIsListening(true);
     };
     void startVoice().catch(() => {
+      if (voiceGenerationRef.current !== generation) return;
       stopVoice();
       startFallbackRecognition(voiceSessionId);
     });
@@ -365,6 +404,7 @@ export function AvenqoCopilot({
 
   return (
     <div
+      id="avenqo-central-dialog"
       role="dialog"
       aria-modal="true"
       aria-label={t.copilot.title}
@@ -419,40 +459,22 @@ export function AvenqoCopilot({
         </div>
       </div>
 
-      {/* Quick Action Pills */}
-      <div className="p-3 border-b border-slate-100 dark:border-white/[0.04] bg-white dark:bg-[#0B132B]">
-        <div className="text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-2 tracking-wider">
-          {t.copilot.quickPills.analyzeSales}
-        </div>
+      {/* Actions follow the current workspace instead of always suggesting Retail. */}
+      <div className="p-3 border-b border-slate-100 dark:border-white/[0.04]">
         <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => handleSend(t.copilot.quickPills.analyzeSales)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-slate-100 dark:bg-white/[0.06] hover:bg-blue-50 hover:text-[#0076FF] dark:hover:bg-[#172652] dark:hover:text-[#00D4FF] text-slate-700 dark:text-[#F4F7FB] transition-colors border border-transparent hover:border-blue-200 dark:hover:border-[#0076FF]/40 font-medium"
-          >
-            <TrendingUp className="w-3 h-3 text-[#0076FF]" />
-            {t.copilot.quickPills.analyzeSales}
-          </button>
-          <button
-            onClick={() => handleSend(t.copilot.quickPills.forecastDemand)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-slate-100 dark:bg-white/[0.06] hover:bg-blue-50 hover:text-[#0076FF] dark:hover:bg-[#172652] dark:hover:text-[#00D4FF] text-slate-700 dark:text-[#F4F7FB] transition-colors border border-transparent hover:border-blue-200 dark:hover:border-[#0076FF]/40 font-medium"
-          >
-            <Sparkles className="w-3 h-3 text-[#00D4FF]" />
-            {t.copilot.quickPills.forecastDemand}
-          </button>
-          <button
-            onClick={() => handleSend(t.copilot.quickPills.detectAnomalies)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-slate-100 dark:bg-white/[0.06] hover:bg-blue-50 hover:text-[#0076FF] dark:hover:bg-[#172652] dark:hover:text-[#00D4FF] text-slate-700 dark:text-[#F4F7FB] transition-colors border border-transparent hover:border-blue-200 dark:hover:border-[#0076FF]/40 font-medium"
-          >
-            <AlertTriangle className="w-3 h-3 text-amber-500" />
-            {t.copilot.quickPills.detectAnomalies}
-          </button>
-          <button
-            onClick={() => handleSend(t.copilot.quickPills.generateReport)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-slate-100 dark:bg-white/[0.06] hover:bg-blue-50 hover:text-[#0076FF] dark:hover:bg-[#172652] dark:hover:text-[#00D4FF] text-slate-700 dark:text-[#F4F7FB] transition-colors border border-transparent hover:border-blue-200 dark:hover:border-[#0076FF]/40 font-medium"
-          >
-            <FileSpreadsheet className="w-3 h-3 text-emerald-500" />
-            {t.copilot.quickPills.generateReport}
-          </button>
+          {(activeRoute.startsWith("/billing")
+            ? (locale === "fr" ? ["Expliquer ma facture", "Voir mon solde de crédits", "Quels modules sont inclus dans mon abonnement ?"] : ["Explain my invoice", "Show my credit balance", "Which modules are included in my subscription?"])
+            : activeRoute.startsWith("/crm")
+            ? (locale === "fr" ? ["Afficher mes rendez-vous", "Trouver un client", "Aider à créer un rendez-vous"] : ["Show my appointments", "Find a customer", "Help create an appointment"])
+            : activeRoute.startsWith("/retail")
+            ? Object.values(t.copilot.quickPills)
+            : (locale === "fr" ? ["Quelles actions peux-tu effectuer ici ?", "Quels sont mes modules actifs ?", "M'aider à utiliser Avenqo"] : ["Which actions can you perform here?", "Which modules are active?", "Help me use Avenqo"])
+          ).map((prompt) => (
+            <button key={prompt} type="button" disabled={isThinking} onClick={() => void handleSend(prompt)}
+              className="px-2.5 py-1 rounded-full text-xs bg-slate-100 dark:bg-white/[0.06] hover:text-[#0076FF] disabled:opacity-50">
+              {prompt}
+            </button>
+          ))}
         </div>
       </div>
 

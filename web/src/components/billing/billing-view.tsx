@@ -85,6 +85,7 @@ interface AICreditBalance {
 }
 
 interface CreditPack {
+  enabled?: boolean;
   code: string;
   name?: string;
   credits: number;
@@ -166,6 +167,7 @@ export function BillingView() {
   const [loadError, setLoadError] = useState(false);
 
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [invoiceEnvironment, setInvoiceEnvironment] = useState<"test" | "live" | null>(null);
   const [entitlements, setEntitlements] = useState<EntitlementsInfo | null>(null);
   const [userRole, setUserRole] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -221,6 +223,7 @@ export function BillingView() {
         if (invData.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         if (invData && Array.isArray(invData.items)) {
           setInvoices(invData.items);
+          setInvoiceEnvironment(invData.environment === "test" ? "test" : "live");
         }
       }
       if (entRes && entRes.ok) {
@@ -279,7 +282,7 @@ export function BillingView() {
     const version = requestVersion.current;
     queueMicrotask(() => {
       if (version !== requestVersion.current) return;
-      setCredits({}); setInvoices([]); setEntitlements(null);
+      setCredits({}); setInvoices([]); setInvoiceEnvironment(null); setEntitlements(null);
       void loadData();
     });
     return () => { requestVersion.current++; };
@@ -299,6 +302,7 @@ export function BillingView() {
         const [payload, subscriptionPayload] = await Promise.all([response.json(), subscriptionResponse.json()]);
         if (!controller.signal.aborted) {
           setInvoices(payload.items); setSubscription(subscriptionPayload);
+          setInvoiceEnvironment(payload.environment === "test" ? "test" : "live");
           if (payload.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         }
       } catch {
@@ -479,10 +483,10 @@ export function BillingView() {
     try {
       const endpoint =
         format === "pdf"
-          ? `/api/v1/billing/invoices/${invoice.id}/pdf`
+          ? `/api/v1/billing/invoices/${invoice.id}/avenqo-pdf`
           : `/api/v1/billing/invoices/${invoice.id}/export/${format}`;
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         headers: getAuthHeaders(),
       });
 
@@ -1057,16 +1061,17 @@ export function BillingView() {
                   {pack.credits.toLocaleString(locale)} {billingTranslations.creditsUnit}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
-                  {new Intl.NumberFormat(locale, { style: "currency", currency: pack.currency || "CAD" }).format(pack.price_cad ?? ((pack.price_cents || 0) / 100))} {pack.currency || "CAD"}
+                  {new Intl.NumberFormat(locale, { style: "currency", currency: pack.currency || "CAD" }).format(pack.price_cad ?? ((pack.price_cents || 0) / 100))}
+                  <span className="block mt-1">{locale === "fr" ? "Hors taxes · Achat volontaire, sans dépassement automatique" : "Excludes tax · Voluntary purchase, no automatic overage"}</span>
                 </div>
               </div>
 
               <button
-                disabled={!canManageBilling}
+                disabled={!canManageBilling || pack.enabled === false}
                 onClick={() => handleBuyCredits(pack.code)}
                 className="mt-4 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#111D3D] dark:hover:bg-[#172652] text-xs font-semibold text-slate-800 dark:text-[#F4F7FB] transition-colors cursor-pointer"
               >
-                {billingTranslations.purchase}
+                {pack.enabled === false ? (locale === "fr" ? "Validation commerciale en cours" : "Commercial validation pending") : billingTranslations.purchase}
               </button>
             </div>
           ))}
@@ -1078,7 +1083,7 @@ export function BillingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              {invoiceTranslations.officialInvoice}
+              {companyTranslations.billingInvoicesTitle}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
               {invoiceTranslations.viewInvoice}
@@ -1099,6 +1104,9 @@ export function BillingView() {
           {invoices.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500">
               {invoiceTranslations.noInvoices}
+              {invoiceEnvironment && <p className="mt-2 text-xs">{locale === "fr"
+                ? (invoiceEnvironment === "test" ? "Historique sandbox : seuls les paiements de test apparaissent ici." : "Historique de production : les paiements sandbox ne figurent pas ici.")
+                : (invoiceEnvironment === "test" ? "Sandbox history: test payments only." : "Production history: sandbox payments are separate.")}</p>}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1169,8 +1177,9 @@ export function BillingView() {
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-[#111D3D] dark:text-[#00D4FF] dark:hover:bg-[#172652] font-semibold text-[11px] transition-colors cursor-pointer"
                             >
                               <Download size={13} className={downloadingId === `${inv.id}-pdf` ? "animate-bounce" : ""} />
-                              <span>PDF</span>
+                              <span>PDF Avenqo</span>
                             </button>
+                            {inv.hosted_invoice_url && <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#0076FF] underline">Stripe</a>}
 
                             {/* CSV Export */}
                             <button

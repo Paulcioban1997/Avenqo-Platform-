@@ -91,16 +91,23 @@ class StripeGateway:
         cancel_url: str,
     ) -> CreditCheckoutSession:
         from payments.plans import get_ai_credit_pack
-        pack = get_ai_credit_pack(metadata["avenqo_credit_pack"])
         client = stripe.StripeClient(self._api_key)
-        price = client.v1.prices.retrieve(price_id)
-        product = price["product"]
-        if not isinstance(product, str) or price["recurring"]:
-            raise ValueError("A one-time credit product is required")
-        amount = pack.price_cad * 100
-        line_item = {"price": price_id, "quantity": 1} if (
-            price["currency"] == "cad" and price["unit_amount"] == amount
-        ) else {"price_data": {"currency": "cad", "unit_amount": amount, "product": product}, "quantity": 1}
+        if "avenqo_price_cents" in metadata:
+            amount = int(metadata["avenqo_price_cents"])
+            if amount <= 0 or int(metadata["avenqo_credits"]) <= 0:
+                raise ValueError("Positive credit pack terms required")
+            line_item = {"price_data": {"currency": "cad", "unit_amount": amount,
+                "tax_behavior": "exclusive", "product_data": {"name": metadata["avenqo_pack_name"] + " - " + metadata["avenqo_credits"] + " crédits IA"}}, "quantity": 1}
+        else:
+            pack = get_ai_credit_pack(metadata["avenqo_credit_pack"])
+            price = client.v1.prices.retrieve(price_id)
+            product = price["product"]
+            if not isinstance(product, str) or price["recurring"]:
+                raise ValueError("A one-time credit product is required")
+            amount = pack.price_cad * 100
+            line_item = {"price": price_id, "quantity": 1} if (
+                price["currency"] == "cad" and price["unit_amount"] == amount
+            ) else {"price_data": {"currency": "cad", "unit_amount": amount, "product": product}, "quantity": 1}
         checkout = client.v1.checkout.sessions.create(params=dict(
             mode="payment",
             customer=customer_id,

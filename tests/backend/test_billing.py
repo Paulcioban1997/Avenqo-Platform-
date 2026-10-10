@@ -1494,3 +1494,76 @@ def test_invoice_sync_failure_is_distinguished_from_an_empty_history(monkeypatch
     monkeypatch.setattr("backend.app.routers.billing.sync_customer_invoices", unavailable)
     assert _backfill_stripe_invoices(db, MagicMock(), get_settings(), __import__("uuid").uuid4()) is False
     db.rollback.assert_called_once()
+
+
+def test_avenqo_pdf_contains_actual_addons_and_paid_balance(billing_environment):
+    from io import BytesIO
+    from pypdf import PdfReader
+    from backend.app.models import BillingInvoice
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="pdf@example.ca", company_name="PDF Client")
+    other = create_owner(client, notifier, email="otherpdf@example.ca", company_name="Other PDF")
+    factory = client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        invoice = BillingInvoice(id=uuid4(), company_id=UUID(owner["company"]["id"]), stripe_invoice_id="in_pdf_native",
+            number="AVQ-PDF-01", status="paid", currency="cad", plan_code="base", subtotal=3999, total=3999,
+            tax_total=0, discount_total=0, amount_paid=3999, amount_due=3999, issued_at=datetime.now(timezone.utc),
+            line_items=[{"description":"Avenqo Base", "quantity":1, "amount":2999}, {"description":"Starter - 1000 crédits IA", "quantity":1, "amount":1000}],
+            invoice_pdf="https://invoice.stripe.test/original.pdf")
+        db.add(invoice); db.commit(); invoice_id = invoice.id
+    response = client.get(f"/api/v1/billing/invoices/{invoice_id}/avenqo-pdf", headers=auth_headers(owner))
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    text = " ".join(page.extract_text() for page in PdfReader(BytesIO(response.content)).pages)
+    assert "Avenqo Base" in text and "Starter - 1000 crédits IA" in text
+    assert "39,99 CAD" in text and "Solde à payer" in text and "0,00 CAD" in text
+    assert "PAYÉE" in text and "illimité" not in text
+    assert client.get(f"/api/v1/billing/invoices/{invoice_id}/avenqo-pdf", headers=auth_headers(other)).status_code == 404
+
+
+def test_new_pack_catalog_is_shared_but_cannot_sell_before_validation(billing_environment):
+    from backend.app.models import AICreditPackOffer
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="catalog@example.ca", company_name="Catalogue Client")
+    client.get("/api/v1/billing/subscription", headers=auth_headers(owner))
+    factory = client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        db.add(AICreditPackOffer(code="starter_1000_v1", name="Starter", credits=1000, price_cents=1000, enabled=False))
+        account = db.scalar(select(BillingAccount).where(BillingAccount.company_id==UUID(owner["company"]["id"])))
+        account.status="active"; db.commit()
+    response=client.get("/api/v1/billing/credit-packs",headers=auth_headers(owner))
+    assert response.status_code==200
+    assert response.json()[0]["credits"]==1000 and response.json()[0]["enabled"] is False
+    checkout=client.post("/api/v1/billing/credit-packs/checkout",json={"pack_code":"starter_1000_v1"},headers=auth_headers(owner))
+    assert checkout.status_code==400 and provider.credit_checkouts==[]
+    assert client.get("/api/v1/admin/credit-packs",headers=auth_headers(owner)).status_code==403
+
+
+def test_versioned_pack_fulfills_server_terms_once_and_rejects_wrong_subtotal(billing_environment):
+    from backend.app.models import AICreditPackOffer
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="newpack@example.ca", company_name="New Pack Client")
+    headers=auth_headers(owner); company_id=owner["company"]["id"]
+    client.get("/api/v1/billing/subscription",headers=headers)
+    factory=client.app.dependency_overrides[get_db]
+    with next(factory()) as db:
+        db.add(AICreditPackOffer(code="starter_1000_v1",name="Starter",credits=1000,price_cents=1000,enabled=True))
+        account=db.scalar(select(BillingAccount).where(BillingAccount.company_id==UUID(company_id)))
+        account.status="active"; account.stripe_customer_id=f"cus_{company_id}"; db.commit()
+    checkout=client.post("/api/v1/billing/credit-packs/checkout",json={"pack_code":"starter_1000_v1"},headers=headers)
+    assert checkout.status_code==200
+    metadata=provider.credit_checkouts[0]["metadata"]
+    assert metadata["avenqo_credits"]=="1000" and metadata["avenqo_price_cents"]=="1000"
+    event=credit_checkout_event(company_id,checkout_session_id="cs_created_1",payment_intent_id="pi_starter_1",metadata=metadata)
+    event["data"]["object"]["amount_subtotal"]=1000
+    event["data"]["object"]["currency"]="cad"
+    from copy import deepcopy
+    bad_event=deepcopy(event); bad_event["id"]="evt_starter_wrong_amount"
+    bad_event["data"]["object"]["amount_subtotal"]=999
+    provider.events.append(bad_event)
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).status_code==400
+    provider.events.extend([event,event])
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":True}
+    assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":False}
+    balance=client.get("/api/v1/billing/ai-credits",headers=headers).json()
+    assert balance["purchased_remaining"]==1000 and balance["monthly_included"]==6500

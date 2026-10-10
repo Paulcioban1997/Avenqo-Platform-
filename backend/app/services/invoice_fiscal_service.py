@@ -181,143 +181,122 @@ class InvoiceFiscalService:
         invoice: BillingInvoice,
         company: Company | None = None,
     ) -> tuple[bytes, str, str]:
-        if company is None:
-            company = self._session.get(Company, invoice.company_id)
-        company_name = company.name if company else "Client Avenqo"
-        inv_number = invoice.number or f"AVQ-{str(invoice.id)[:8].upper()}"
+        """Render every persisted charge; never calculate prices with an LLM."""
+        from decimal import Decimal
+        from xml.sax.saxutils import escape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+        company = company or self._session.get(Company, invoice.company_id)
+        number = invoice.number or f"AVQ-{str(invoice.id)[:8].upper()}"
         currency = (invoice.currency or "CAD").upper()
         settings = get_settings()
-        legal_name = settings.billing_legal_business_name or "Avenqo"
-        business_address = settings.billing_business_address or ""
-        support_email = settings.billing_support_email
-
-        subtotal_val = (invoice.subtotal or 0) / 100.0
-        tax_val = (invoice.tax_total or 0) / 100.0
-        total_val = (invoice.total or 0) / 100.0
-        paid_val = (invoice.amount_paid or 0) / 100.0
-
         output = BytesIO()
-        doc = canvas.Canvas(output, pagesize=letter)
-        doc.setTitle(f"Facture {inv_number}")
-
-        # Top Header Brand
-        doc.setFillColorRGB(0.03, 0.49, 0.94)  # #087CF0 Avenqo Blue
-        doc.rect(0, 750, 612, 42, fill=1, stroke=0)
-        doc.setFillColorRGB(1, 1, 1)
-        doc.setFont("Helvetica-Bold", 16)
-        doc.drawString(50, 764, "AVENQO — FACTURE")
-
-        # Invoice Info & Metadata
-        doc.setFillColorRGB(0.1, 0.1, 0.15)
-        doc.setFont("Helvetica-Bold", 20)
-        doc.drawString(50, 700, f"FACTURE #{inv_number}")
-
-        doc.setFont("Helvetica", 10)
-        doc.setFillColorRGB(0.4, 0.4, 0.5)
-        issued_date_str = invoice.issued_at.strftime("%Y-%m-%d") if invoice.issued_at else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        doc.drawString(50, 680, f"Date d'émission : {issued_date_str}")
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name="InvoiceBody", fontName="Helvetica", fontSize=10,
+                                  leading=15, textColor=colors.HexColor("#23324D")))
+        styles.add(ParagraphStyle(name="InvoiceSmall", parent=styles["InvoiceBody"], fontSize=8, leading=12))
+        styles.add(ParagraphStyle(name="InvoiceTitle", parent=styles["InvoiceBody"], fontSize=25, leading=32))
+        body = styles["InvoiceBody"]
+        small = styles["InvoiceSmall"]
+        def paragraph(value, style=body):
+            return Paragraph(escape(str(value or "")), style)
+        def money(cents):
+            amount = Decimal(int(cents or 0)) / Decimal(100)
+            return f"{amount:,.2f}".replace(",", " ").replace(".", ",") + f" {currency}"
+        def date(value):
+            return value.strftime("%Y-%m-%d") if value else "Non renseignée"
+        status = {"paid": "PAYÉE", "open": "À PAYER", "draft": "BROUILLON",
+                  "void": "ANNULÉE", "uncollectible": "IRRÉCOUVRABLE"}.get(invoice.status, invoice.status)
+        # Stripe amount_due is the original payable amount, not the outstanding balance.
+        remaining = 0 if invoice.status in {"paid", "void"} else max(
+            int(invoice.amount_due or 0) - int(invoice.amount_paid or 0), 0)
+        story = [paragraph(f"Facture {number}", styles["InvoiceTitle"]),
+                 paragraph(f"{status} | Émise le {date(invoice.issued_at)}"), Spacer(1, 16)]
+        if settings.stripe_secret_key and settings.stripe_secret_key.startswith("sk_test_"):
+            story += [paragraph("ENVIRONNEMENT TEST - Aucun débit réel", small), Spacer(1, 10)]
+        issuer = [settings.billing_legal_business_name or "Avenqo",
+                  settings.billing_business_address or "", settings.billing_support_email or "", "avenqo.ca"]
+        details = invoice.billing_details or {}
+        customer = [details.get("name") or (company.name if company else "Client Avenqo"), invoice.customer_email or ""]
+        address = details.get("address") or {}
+        customer += [str(address.get(k) or "") for k in ("line1", "line2", "city", "state", "postal_code", "country")]
+        addresses = Table([[paragraph("ÉMETTEUR"), paragraph("FACTURÉ À")],
+                           [paragraph(" | ".join(filter(None, issuer))), paragraph(" | ".join(filter(None, customer)))]],
+                          colWidths=[256, 256], hAlign="LEFT")
+        addresses.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "TOP"),
+                                        ("LEFTPADDING", (0,0), (-1,-1), 0), ("RIGHTPADDING", (0,0), (-1,-1), 18)]))
+        story += [addresses, Spacer(1, 20)]
+        if invoice.plan_code:
+            plan_name = {"base": "Base", "demo": "Base", "professional": "Professional", "enterprise": "Enterprise"}.get(invoice.plan_code, invoice.plan_code)
+            story += [paragraph(f"Forfait enregistré : {plan_name}", small), Spacer(1, 8)]
         if invoice.period_start and invoice.period_end:
-            p_start = invoice.period_start.strftime("%Y-%m-%d")
-            p_end = invoice.period_end.strftime("%Y-%m-%d")
-            doc.drawString(50, 666, f"Période de facturation : {p_start} au {p_end}")
-
-        # Status badge
-        is_paid = (invoice.status or "").lower() == "paid"
-        if is_paid:
-            doc.setFillColorRGB(0.1, 0.7, 0.3)
-            doc.rect(430, 680, 130, 24, fill=1, stroke=0)
-            doc.setFillColorRGB(1, 1, 1)
-            doc.setFont("Helvetica-Bold", 11)
-            doc.drawString(455, 687, "STATUT : PAYÉE")
-        else:
-            doc.setFillColorRGB(0.9, 0.4, 0.1)
-            doc.rect(430, 680, 130, 24, fill=1, stroke=0)
-            doc.setFillColorRGB(1, 1, 1)
-            doc.setFont("Helvetica-Bold", 11)
-            doc.drawString(440, 687, f"STATUT : {(invoice.status or 'EN ATTENTE').upper()}")
-
-        # Billing Addresses
-        doc.setFillColorRGB(0.1, 0.1, 0.15)
-        doc.setFont("Helvetica-Bold", 11)
-        doc.drawString(50, 625, "ÉMETTEUR :")
-        doc.setFont("Helvetica", 10)
-        doc.drawString(50, 610, legal_name)
-        if business_address:
-            doc.drawString(50, 596, business_address)
-        doc.drawString(50, 582, support_email)
-        doc.drawString(50, 568, "https://avenqo.ca")
-
-        doc.setFont("Helvetica-Bold", 11)
-        doc.drawString(340, 625, "FACTURÉ À :")
-        doc.setFont("Helvetica", 10)
-        doc.drawString(340, 610, f"Organisation : {company_name}")
-        if invoice.customer_email:
-            doc.drawString(340, 596, f"Email : {invoice.customer_email}")
-        doc.drawString(340, 582, f"Identifiant Client : {str(invoice.company_id)[:16]}")
-        doc.drawString(340, 568, f"Plan souscrit : {(invoice.plan_code or 'Demo').upper()}")
-
-        # Items Table Header
-        doc.setFillColorRGB(0.94, 0.96, 0.98)
-        doc.rect(50, 515, 512, 22, fill=1, stroke=0)
-        doc.setFillColorRGB(0.2, 0.25, 0.35)
-        doc.setFont("Helvetica-Bold", 10)
-        doc.drawString(60, 522, "DESCRIPTION DU SERVICE")
-        doc.drawString(380, 522, "QTÉ")
-        doc.drawString(480, 522, "MONTANT")
-
-        # Item row
-        doc.setFont("Helvetica", 10)
-        doc.setFillColorRGB(0.15, 0.15, 0.2)
-        plan_desc = f"Abonnement plateforme Avenqo — Forfait {(invoice.plan_code or 'Demo').capitalize()}"
-        doc.drawString(60, 490, plan_desc)
-        doc.drawString(390, 490, "1")
-        doc.drawString(470, 490, f"{subtotal_val:,.2f} {currency}")
-
-        doc.setFont("Helvetica-Oblique", 9)
-        doc.setFillColorRGB(0.45, 0.45, 0.55)
-        doc.drawString(60, 475, "Accès illimité aux agents IA, Data Hub, CRM et connecteurs de données normalisés.")
-
-        # Separator Line
-        doc.setStrokeColorRGB(0.85, 0.88, 0.92)
-        doc.setLineWidth(1)
-        doc.line(50, 455, 562, 455)
-
-        # Totals Section
-        doc.setFont("Helvetica", 10)
-        doc.setFillColorRGB(0.3, 0.3, 0.4)
-        doc.drawString(340, 430, "Sous-total HT :")
-        doc.drawString(470, 430, f"{subtotal_val:,.2f} {currency}")
-
-        doc.drawString(340, 412, "Taxes (TPS / TVQ applicables) :")
-        doc.drawString(470, 412, f"{tax_val:,.2f} {currency}")
-
-        doc.setStrokeColorRGB(0.85, 0.88, 0.92)
-        doc.line(340, 400, 562, 400)
-
-        doc.setFont("Helvetica-Bold", 12)
-        doc.setFillColorRGB(0.05, 0.1, 0.25)
-        doc.drawString(340, 382, "TOTAL PAYÉ :")
-        doc.drawString(470, 382, f"{total_val:,.2f} {currency}")
-
-        # Transaction details
-        doc.setFont("Helvetica", 9)
-        doc.setFillColorRGB(0.4, 0.4, 0.5)
-        if invoice.stripe_invoice_id:
-            doc.drawString(50, 330, f"Réf. Transaction Stripe : {invoice.stripe_invoice_id}")
+            story += [paragraph(f"Période : {date(invoice.period_start)} au {date(invoice.period_end)}", small), Spacer(1, 10)]
+        rows = [[paragraph("SERVICE / SUPPLÉMENT"), paragraph("QTÉ"), paragraph("MONTANT")]]
+        for item in invoice.line_items or []:
+            rows.append([paragraph(item.get("description") or "Service Avenqo"),
+                         paragraph(item.get("quantity") if item.get("quantity") is not None else "-"),
+                         paragraph(money(item.get("amount")))])
+        if len(rows) == 1:
+            rows.append([paragraph(f"Abonnement Avenqo - {invoice.plan_code or 'Service'}"), paragraph("1"), paragraph(money(invoice.subtotal))])
+        table = Table(rows, colWidths=[352, 40, 120], repeatRows=1, hAlign="LEFT")
+        table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#EAF3FF")),
+                                  ("VALIGN",(0,0),(-1,-1),"TOP"), ("TOPPADDING",(0,0),(-1,-1),10),
+                                  ("BOTTOMPADDING",(0,0),(-1,-1),10),
+                                  ("LINEBELOW",(0,0),(-1,-1),0.4,colors.HexColor("#DCE5F1"))]))
+        story += [table, Spacer(1, 18)]
+        totals = [("Sous-total", invoice.subtotal), ("Réductions", -(invoice.discount_total or 0)),
+                  ("Taxes enregistrées", invoice.tax_total), ("Total", invoice.total),
+                  ("Montant payé", invoice.amount_paid), ("Solde à payer", remaining)]
+        total_table = Table([[paragraph(label), paragraph(money(value))] for label,value in totals],
+                            colWidths=[170, 130], hAlign="RIGHT")
+        total_table.setStyle(TableStyle([("BACKGROUND",(0,-1),(-1,-1),colors.HexColor("#EAF3FF")),
+                                        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        story += [total_table, Spacer(1, 16)]
         if invoice.paid_at:
-            doc.drawString(50, 316, f"Paiement acquitté le : {invoice.paid_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            story.append(paragraph(f"Paiement confirmé le {date(invoice.paid_at)}", small))
+        elif invoice.due_at:
+            story.append(paragraph(f"Échéance : {date(invoice.due_at)}", small))
+        story.append(paragraph(f"Référence Stripe : {invoice.stripe_invoice_id}", small))
+        usage = self.invoice_usage(invoice)
+        if usage is not None:
+            story += [Spacer(1, 20), paragraph("Utilisation IA pendant la période"),
+                      paragraph(f"{usage['included']} crédits inclus consommés | {usage['purchased']} crédits achetés consommés", small),
+                      paragraph("Relevé informatif actualisé au téléchargement. Ces crédits ne constituent pas une facturation additionnelle.", small)]
+        story += [Spacer(1, 16), paragraph("Document Avenqo établi à partir de la facture et du paiement enregistrés. Les services et suppléments ci-dessus reprennent les lignes de facturation ; aucune nouvelle somme n'est ajoutée.", small)]
+        def decorate(doc_canvas, document):
+            doc_canvas.saveState()
+            doc_canvas.setFillColor(colors.HexColor("#087CF0"))
+            doc_canvas.rect(0, 742, 612, 50, fill=1, stroke=0)
+            doc_canvas.setFillColor(colors.white)
+            doc_canvas.setFont("Helvetica-Bold", 17)
+            doc_canvas.drawString(50, 762, "AVENQO")
+            doc_canvas.setFont("Helvetica", 8)
+            doc_canvas.setFillColor(colors.HexColor("#627089"))
+            doc_canvas.drawString(50, 30, "Facturation Avenqo | " + number)
+            doc_canvas.drawRightString(562, 30, f"Page {document.page}")
+            doc_canvas.restoreState()
+        document = SimpleDocTemplate(output, pagesize=letter, rightMargin=50, leftMargin=50,
+                                     topMargin=76, bottomMargin=54, title=f"Facture {number}", author="Avenqo")
+        document.build(story, onFirstPage=decorate, onLaterPages=decorate)
+        return output.getvalue(), "application/pdf", f"avenqo-facture-{number}.pdf"
 
-        # Legal footer
-        doc.setStrokeColorRGB(0.9, 0.9, 0.93)
-        doc.line(50, 100, 562, 100)
-        doc.setFont("Helvetica", 8)
-        doc.setFillColorRGB(0.5, 0.5, 0.55)
-        doc.drawString(50, 85, "Document généré à partir des données de facturation enregistrées.")
-        doc.drawString(50, 72, f"Questions de facturation : {support_email}")
-
-        doc.save()
-        file_name = f"avenqo-facture-{inv_number}.pdf"
-        return output.getvalue(), "application/pdf", file_name
+    def invoice_usage(self, invoice: BillingInvoice) -> dict[str, int] | None:
+        """Tenant-scoped funded consumption; never charge provider costs twice."""
+        from backend.app.models import TenantAICreditLedgerEntry
+        if not invoice.period_start or not invoice.period_end:
+            return None
+        row = self._session.execute(select(
+            func.sum(TenantAICreditLedgerEntry.included_delta),
+            func.sum(TenantAICreditLedgerEntry.purchased_delta),
+        ).where(
+            TenantAICreditLedgerEntry.company_id == invoice.company_id,
+            TenantAICreditLedgerEntry.transaction_type.in_(["ai_usage", "ai_settlement"]),
+            TenantAICreditLedgerEntry.created_at >= invoice.period_start,
+            TenantAICreditLedgerEntry.created_at < invoice.period_end,
+        )).one()
+        return {"included": max(-int(row[0] or 0), 0), "purchased": max(-int(row[1] or 0), 0)}
 
     def generate_invoices_summary_pdf(
         self,
@@ -353,7 +332,7 @@ class InvoiceFiscalService:
         y -= 18
 
         doc.setFont("Helvetica", 9)
-        for inv in invoices[:25]:
+        for inv in invoices:
             inv_num = inv.number or f"AVQ-{str(inv.id)[:8].upper()}"
             d_str = inv.issued_at.strftime("%Y-%m-%d") if inv.issued_at else "—"
             plan = (inv.plan_code or "Demo").capitalize()

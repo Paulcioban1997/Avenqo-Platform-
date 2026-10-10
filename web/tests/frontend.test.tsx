@@ -698,6 +698,7 @@ describe("Copilot production response", () => {
 
   it("streams microphone PCM and provider audio through the Voice session without an HTTP turn", async () => {
     const playbackStart = vi.fn();
+    const playbackStop = vi.fn();
     const playbackClose = vi.fn(async () => undefined);
     const processor = { onaudioprocess: null as ((event: { inputBuffer: { getChannelData: () => Float32Array } }) => void) | null,
       connect: vi.fn(), disconnect: vi.fn() };
@@ -707,7 +708,7 @@ describe("Copilot production response", () => {
       createMediaStreamSource: () => ({ connect: vi.fn(), disconnect: vi.fn() }),
       createScriptProcessor: () => processor,
       createBuffer: (_channels: number, count: number) => ({ getChannelData: () => new Float32Array(count), duration: count / 24000 }),
-      createBufferSource: () => ({ connect: vi.fn(), start: playbackStart, buffer: null }),
+      createBufferSource: () => ({ connect: vi.fn(), start: playbackStart, stop: playbackStop, buffer: null }),
     };
     vi.stubGlobal("AudioContext", class { constructor() { return context; } });
     const stopTrack = vi.fn();
@@ -755,10 +756,14 @@ describe("Copilot production response", () => {
     sockets[0].onmessage?.({ data: JSON.stringify({ type: "audio", format: "pcm16", audio: "AQI=" }) });
     expect(playbackStart).toHaveBeenCalled();
     sockets[0].onmessage?.({ data: JSON.stringify({ type: "lifecycle", status: "interrupted" }) });
-    expect(playbackClose).toHaveBeenCalled();
+    expect(playbackStop).toHaveBeenCalled();
+    expect(playbackClose).not.toHaveBeenCalled();
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "audio", format: "pcm16", audio: "AQI=" }) });
+    expect(playbackStart).toHaveBeenCalledTimes(2);
     expect(requests.every((url) => !url.endsWith("/turn"))).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
     expect(stopTrack).toHaveBeenCalled();
+    expect(playbackClose).toHaveBeenCalled();
   });
 
   it("renders grounded Retail values and never CRM fallback values", async () => {

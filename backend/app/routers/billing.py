@@ -339,6 +339,7 @@ def invoice_history(
 
     bounded_limit = min(max(limit, 1), 200)
     return InvoiceHistoryResponse(
+        environment="test" if (settings.stripe_secret_key or "").startswith("sk_test_") else "live",
         synchronization_status="ready" if synchronized else "unavailable",
         items=[InvoiceResponse.model_validate(invoice) for invoice in items],
         total=total,
@@ -417,6 +418,23 @@ def invoice_detail(
         )
     except InvoiceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/invoices/{invoice_id}/avenqo-pdf")
+def avenqo_invoice_pdf(
+    invoice_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> Response:
+    try:
+        invoice = service.get_invoice(identity.user.company_id, invoice_id)
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    content, media_type, file_name = service.generate_invoice_pdf(invoice)
+    return Response(content=content, media_type=media_type, headers={
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+        "Cache-Control": "private, no-store",
+    })
 
 
 @router.get("/invoices/{invoice_id}/pdf")
@@ -581,7 +599,7 @@ def ai_credits_history(
     )
 
 
-@router.get("/credit-packs", response_model=list[CreditPackResponse])
+@router.get("/credit-packs", response_model=list[CreditPackResponse], response_model_exclude_unset=True)
 def credit_packs(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: BillingService = Depends(get_billing_service),

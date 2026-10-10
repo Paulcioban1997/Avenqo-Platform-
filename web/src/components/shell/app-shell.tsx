@@ -304,7 +304,11 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Avenqo Copilot Trigger Button */}
           <button
-            onClick={() => setIsCopilotOpen((prev) => !prev)}
+            type="button"
+            aria-label={t.shell.copilotButton}
+            aria-expanded={isCopilotOpen}
+            aria-controls="avenqo-central-dialog"
+            onClick={() => setIsCopilotOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#005bd3] hover:from-[#158bff] hover:to-[#0076FF] text-white text-xs font-semibold shadow-xs shadow-blue-500/20 transition-all duration-150"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />

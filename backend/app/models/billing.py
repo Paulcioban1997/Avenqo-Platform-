@@ -104,6 +104,7 @@ class AICreditPurchase(TimestampMixin, Base):
     )
     stripe_customer_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     pack_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    offer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     plan_code: Mapped[str] = mapped_column(String(64), nullable=False)
     credits_granted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits_remaining: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -118,6 +119,21 @@ class AICreditPurchase(TimestampMixin, Base):
     review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     company: Mapped["Company"] = relationship()
+
+
+class AICreditPackOffer(TimestampMixin, Base):
+    """Versioned optional packs; an issued Checkout keeps its original snapshot."""
+    __tablename__ = "ai_credit_pack_offers"
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    profitability_review: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    __table_args__ = (
+        CheckConstraint("credits > 0", name="ck_credit_offer_credits_positive"),
+        CheckConstraint("price_cents > 0", name="ck_credit_offer_price_positive"),
+    )
 
 
 class StripeWebhookEvent(Base):
