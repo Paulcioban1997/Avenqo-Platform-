@@ -51,8 +51,12 @@ def _register_and_login(client: TestClient, notifier: RecordingNotifier) -> str:
     )
     assert response.status_code == 201
     session = verify_and_login(client, notifier, email)
-    assert session["company"]["onboarding_status"] == "pending"
-    return session["access_token"]
+    company = session["company"]
+    assert isinstance(company, dict)
+    assert company["onboarding_status"] == "pending"
+    token = session["access_token"]
+    assert isinstance(token, str)
+    return token
 
 
 def test_new_company_defaults_to_pending(onboarding_environment) -> None:
