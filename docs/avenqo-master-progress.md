@@ -79,3 +79,23 @@ Ne pas lancer de paiement, appel facturé, envoi marketing ou réservation réel
 Ne pas déployer si l'isolation critique ou une migration échoue.
 Préserver les comptes et abonnements existants ; réconciliation sensible avant changement de capacité en production.
 Maintenir ce document avec fichiers, routes, tests, commit et état de livraison réellement observés.
+
+## Livraison du lot factures, packs et Central vocal — 10 octobre 2026
+
+Code réellement livré : 566ccd6d22a42da12f3692a186e281753e32ec7d. CI38073192089 réussie (483 backend,316 Voice/facturation/auth,124 web,306 Flutter). Vercel production dpl_4RSHP6iJ2d7aVdm5jJFvyJpsYr28 READY ; Railway production5ad18dc3-cbe8-4d1b-a373-9239c7df2096 SUCCESS ; sandbox b6a2c403-ac1b-437f-ab6a-1e0046ead5eb. Health/readiness directs et viaavenqo.ca validés ; base, stockage et migrations OK.
+
+- Facture PDF native Avenqo : toutes les charges persistées, prix CAD, statut payé, solde réel, suppléments et utilisation informative. Facture sandbox réellement payée29.99CAD rendue et inspectée. Les factures test ne sont pas copiées dans la production.
+- Packs1000/10CAD,4000/35CAD,10000/80CAD hors taxes ; Enterprise sur devis. Catalogue et administration versionnés, montants historiques préservés, achats volontaires, aucune allocation incluse modifiée et aucun dépassement automatique. OFFRES COMMERCIALES DÉSACTIVÉES : Anthropic401, rotation de clé sécurisée demandée. Réconcilier les coûts réels fournisseur, PSTN, hébergement, Central gratuit et frais avant activation.
+- IA Central : bouton mobile haut-droite vérifié en production, réponse texte réelle à zérocrédit ; deux échanges vocaux avec transcriptions et réponses audio réelles dans même session sandbox, solde0inchangé. Écoute sur appareil client encore à confirmer (question pendante). Accueil téléphonique toujours soumis aux crédits et droits, essai réel avec solde positif et NIP non vérifié.
+
+### Prochain lot indépendant : terminer les modules, sans simulations présentées comme fonctionnelles
+
+Marketing actuellement simule la génération avec setTimeout et affiche3.4%/4.2x sans données source (`web/src/components/marketing/marketing-view.tsx`). Aucune API métier Marketing dédiée ni agent Marketing exécutable dans le registre. À remplacer par brouillons persistés, vrai fournisseur IA, limites/permissions/quota côté serveur, segmentation uniquement de modules autorisés, calendrier, historique et approbation avant envoi. Ne pas router ces opérations payantes par le Central inclus pour contourner les quotas du module.
+
+OCR, Agents et Automatisations utilisent encore ModulePreview (`web/src/app/{ocr,agents,automations}/page.tsx`). À implémenter selon mandat : import/extraction/vérification/export OCR, cycle versionné agents Brouillon→Test→Approbation→Publication→Surveillance, workflows conditionnels/simulation/idempotence/publication. Aucune action externe irreversible pendant simulation. Ne pas présenter ces aperçus comme opérationnels.
+
+Rapport détaillé et preuves du lot conservés dans `output/avenqo-release-20261010.md` et `scratch/avenqo-video-final-handoff.md`. Une reprise conserve les derniers choix client (source Superstore, modules Retail et Voice) et ne refait pas le paiement test déjà terminé.
+
+## Lot affichage de la facture test dans /billing — 10 octobre 2026
+
+Demande propriétaire : présenter XVMNAYLP-0006 dans la section Factures actuelle avec téléchargement PDF. Archive séparée `billing_test_documents`, strictement liée au tenant, PDF natif sandbox avec badge TEST et empreinte SHA256. Aucun changement des factures comptables, des totaux fiscaux, du solde ni de l'abonnement de production. Import opérationnel unique vérifiant le propriétaire commun aux deux environnements ; aucune clé sandbox ou autorisation inter-environnement ajoutée au serveur production. API lecture protégée `billing:manage`, téléchargement privé/no-store, accès autre tenant 404, accès anonyme 401. Tests ciblés isolation/exclusion des totaux réussis ; migration additive/bootstrap/rejeu réussie ; 124 tests web et build Next réussis. Livraison à vérifier.

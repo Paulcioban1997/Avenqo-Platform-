@@ -167,6 +167,7 @@ export function BillingView() {
   const [loadError, setLoadError] = useState(false);
 
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [testDocuments, setTestDocuments] = useState<Pick<InvoiceItem, "id" | "number" | "currency" | "total" | "issued_at">[]>([]);
   const [invoiceEnvironment, setInvoiceEnvironment] = useState<"test" | "live" | null>(null);
   const [entitlements, setEntitlements] = useState<EntitlementsInfo | null>(null);
   const [userRole, setUserRole] = useState<string>("");
@@ -223,6 +224,7 @@ export function BillingView() {
         if (invData.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         if (invData && Array.isArray(invData.items)) {
           setInvoices(invData.items);
+          setTestDocuments(Array.isArray(invData.test_documents) ? invData.test_documents : []);
           setInvoiceEnvironment(invData.environment === "test" ? "test" : "live");
         }
       }
@@ -282,7 +284,7 @@ export function BillingView() {
     const version = requestVersion.current;
     queueMicrotask(() => {
       if (version !== requestVersion.current) return;
-      setCredits({}); setInvoices([]); setInvoiceEnvironment(null); setEntitlements(null);
+      setCredits({}); setInvoices([]); setTestDocuments([]); setInvoiceEnvironment(null); setEntitlements(null);
       void loadData();
     });
     return () => { requestVersion.current++; };
@@ -302,6 +304,7 @@ export function BillingView() {
         const [payload, subscriptionPayload] = await Promise.all([response.json(), subscriptionResponse.json()]);
         if (!controller.signal.aborted) {
           setInvoices(payload.items); setSubscription(subscriptionPayload);
+          setTestDocuments(Array.isArray(payload.test_documents) ? payload.test_documents : []);
           setInvoiceEnvironment(payload.environment === "test" ? "test" : "live");
           if (payload.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         }
@@ -477,12 +480,14 @@ export function BillingView() {
     }
   };
 
-  const handleDownloadInvoice = async (invoice: InvoiceItem, format: "pdf" | "csv" | "xlsx") => {
+  const handleDownloadInvoice = async (invoice: Pick<InvoiceItem, "id" | "number">, format: "pdf" | "csv" | "xlsx", testDocument = false) => {
     setDownloadingId(`${invoice.id}-${format}`);
     setActionError(null);
     try {
       const endpoint =
-        format === "pdf"
+        testDocument
+          ? `/api/v1/billing/test-invoice-documents/${invoice.id}/pdf`
+          : format === "pdf"
           ? `/api/v1/billing/invoices/${invoice.id}/avenqo-pdf`
           : `/api/v1/billing/invoices/${invoice.id}/export/${format}`;
 
@@ -499,7 +504,7 @@ export function BillingView() {
       const a = document.createElement("a");
       a.href = url;
       const num = invoice.number || invoice.id.slice(0, 8);
-      a.download = `facture-avenqo-${num}.${format}`;
+      a.download = `facture-avenqo-${testDocument ? "TEST-" : ""}${num}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -1109,19 +1114,20 @@ export function BillingView() {
                 "{count}",
                 invoices.length.toLocaleString(locale),
               )}
+              {testDocuments.length > 0 && ` · ${testDocuments.length} ${locale.startsWith("fr") ? "facture(s) de test" : "test invoice(s)"}`}
             </span>
           </div>
         </div>
 
         <div className="rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] overflow-hidden shadow-xs">
-          {invoices.length === 0 ? (
+          {invoices.length === 0 && testDocuments.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500">
               {invoiceTranslations.noInvoices}
               {invoiceEnvironment && <p className="mt-2 text-xs">{locale === "fr"
                 ? (invoiceEnvironment === "test" ? "Historique sandbox : seuls les paiements de test apparaissent ici." : "Historique de production : les paiements sandbox ne figurent pas ici.")
                 : (invoiceEnvironment === "test" ? "Sandbox history: test payments only." : "Production history: sandbox payments are separate.")}</p>}
             </div>
-          ) : (
+          ) : invoices.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -1222,6 +1228,28 @@ export function BillingView() {
                   })}
                 </tbody>
               </table>
+            </div>
+          ) : null}
+          {testDocuments.length > 0 && (
+            <div className="p-4 space-y-3 border-t border-slate-200 dark:border-white/10">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                {locale.startsWith("fr") ? "Factures de test — aucun débit réel" : "Test invoices — no real charge"}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {locale.startsWith("fr") ? "Documents du paiement sandbox, exclus de la comptabilité et des totaux de production." : "Sandbox payment documents, excluded from production accounting and totals."}
+              </p>
+              {testDocuments.map((document) => (
+                <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 dark:bg-white/5 p-3">
+                  <div className="space-y-1 text-xs">
+                    <p className="font-semibold text-slate-900 dark:text-white">{document.number} <span className="ml-2 text-amber-700 dark:text-amber-300">TEST</span></p>
+                    <p className="text-slate-500 dark:text-slate-400">{document.issued_at?.slice(0, 10)} · {new Intl.NumberFormat(locale, { style: "currency", currency: document.currency.toUpperCase() }).format((document.total ?? 0) / 100)}</p>
+                  </div>
+                  <button type="button" onClick={() => handleDownloadInvoice(document, "pdf", true)} disabled={downloadingId === `${document.id}-pdf`}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#0076FF] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                    <Download size={14} /> {locale.startsWith("fr") ? "Télécharger le PDF" : "Download PDF"}
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>

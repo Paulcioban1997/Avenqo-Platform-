@@ -32,6 +32,7 @@ from backend.app.schemas.billing import (
     InvoiceResponse,
     InvoiceFiscalSummaryResponse,
     InvoiceHistoryResponse,
+    TestInvoiceDocumentResponse,
     PaymentMethodSummary,
     PlanResponse,
     RedirectResponse,
@@ -49,7 +50,7 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
 from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
@@ -345,6 +346,10 @@ def invoice_history(
         total=total,
         offset=max(offset, 0),
         limit=bounded_limit,
+        test_documents=[TestInvoiceDocumentResponse.model_validate(document) for document in db.scalars(
+            select(BillingTestDocument).where(BillingTestDocument.company_id == identity.user.company_id)
+            .order_by(BillingTestDocument.issued_at.desc()).limit(50)
+        )],
     )
 
 
@@ -404,6 +409,26 @@ def invoice_fiscal_pdf(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
     )
+
+
+@router.get("/test-invoice-documents/{document_id}/pdf")
+def test_invoice_document_pdf(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    db: Session = Depends(get_db),
+) -> Response:
+    document = db.scalar(select(BillingTestDocument).where(
+        BillingTestDocument.id == document_id,
+        BillingTestDocument.company_id == identity.user.company_id,
+    ))
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    # Only an explicitly imported, tenant-scoped test PDF; no Stripe redirect or ledger write.
+    return Response(content=document.pdf_content, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="facture-avenqo-test-{document.id}.pdf"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)

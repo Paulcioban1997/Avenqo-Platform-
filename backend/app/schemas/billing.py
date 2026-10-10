@@ -139,6 +139,15 @@ class InvoiceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TestInvoiceDocumentResponse(BaseModel):
+    id: UUID
+    number: str
+    currency: str
+    total: int
+    issued_at: datetime
+    model_config = {"from_attributes": True}
+
+
 class InvoiceHistoryResponse(BaseModel):
     environment: str = "live"
     synchronization_status: str = "ready"
@@ -146,6 +155,7 @@ class InvoiceHistoryResponse(BaseModel):
     total: int
     offset: int
     limit: int
+    test_documents: list[TestInvoiceDocumentResponse] = []
 
 
 class InvoiceFiscalSummaryResponse(BaseModel):

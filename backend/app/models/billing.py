@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, JSON, BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, JSON, BigInteger, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,25 @@ class BillingInvoice(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BillingTestDocument(TimestampMixin, Base):
+    """Authorized sandbox PDF archive, excluded from all financial ledgers and totals."""
+    __tablename__ = "billing_test_documents"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_invoice_id", name="uq_test_document_source"),
+        CheckConstraint("total >= 0", name="ck_test_document_total_nonnegative"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_invoice_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    number: Mapped[str] = mapped_column(String(100), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    total: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pdf_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    pdf_content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
 
 
 class AICreditPurchase(TimestampMixin, Base):

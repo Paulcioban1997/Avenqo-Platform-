@@ -234,6 +234,39 @@ def auth_headers(login: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
+def test_archived_test_pdf_is_tenant_scoped_and_excluded_from_financial_totals(billing_environment, tmp_path):
+    import hashlib
+    from backend.app.models import BillingTestDocument
+
+    client, _, notifier = billing_environment
+    owner = create_owner(client, notifier)
+    stranger = create_owner(client, notifier, email="other@acme.ca", company_name="Other")
+    company_id = UUID(owner["company"]["id"])
+    factory = sessionmaker(bind=create_engine(f"sqlite:///{tmp_path / 'billing.db'}"))
+    pdf = b"%PDF-1.4\nTEST - aucun debit reel\n%%EOF"
+    with factory() as db:
+        document = BillingTestDocument(company_id=company_id, source_company_id=str(uuid4()),
+            source_invoice_id="in_test_paid", number="TEST-0006", currency="CAD", total=2999,
+            issued_at=datetime.now(timezone.utc), pdf_sha256=hashlib.sha256(pdf).hexdigest(), pdf_content=pdf)
+        db.add(document); db.commit(); document_id = str(document.id)
+    response = client.get("/api/v1/billing/invoices/history", headers=auth_headers(owner))
+    assert response.status_code == 200
+    assert response.json()["total"] == 0 and response.json()["items"] == []
+    assert response.json()["test_documents"][0]["id"] == document_id
+    assert "pdf_content" not in response.text and "source_company_id" not in response.text
+    path = f"/api/v1/billing/test-invoice-documents/{document_id}/pdf"
+    download = client.get(path, headers=auth_headers(owner))
+    assert download.status_code == 200 and download.content == pdf
+    assert download.headers["content-type"] == "application/pdf"
+    assert download.headers["cache-control"] == "private, no-store"
+    assert "test" in download.headers["content-disposition"]
+    assert client.get(path, headers=auth_headers(stranger)).status_code == 404
+    assert client.get(path).status_code == 401
+    assert client.get("/api/v1/billing/invoices/history", headers=auth_headers(stranger)).json()["test_documents"] == []
+    with factory() as db:
+        assert InvoiceFiscalService(db).get_paid_subscription_totals(company_id, 2026)["invoices_paid"] == 0
+
+
 def test_ai_credit_views_filter_period_and_report_exact_attempt_credits(
     billing_environment,
     tmp_path: Path,
