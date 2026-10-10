@@ -15,7 +15,12 @@ Point de retour local : `codex/avenqo-before-master-20261010` (`548499e`).
 - Validation initiale : 123 tests frontend et build réussis ; 6 tests Central/NIP via services et routes HTTP réussis ; historique (1), Checkout CAD depuis prix CAD/USD (2), conversation Voice dix tours (1) réussis. Régressions complètes en cours avant livraison.
 - Blocage commercial distinct : le compte client observé n'a pas d'abonnement Stripe lié actif et a épuisé son allocation. Le fonctionnement gratuit d'IA Central est autorisé ; cela n'autorise pas l'activation payante des modules ni un achat de crédits.
 - NIP de production : aucun PIN personnel saisi ou remplacé par l'agent. La validation finale de son secret appartient au propriétaire.
-- Déploiement de ce lot et preuve navigateur : à compléter après vérification effective.
+- Livraison finale vérifiée : code `5e904e8592943916fe82654b89b30df40d763c5a`, sandbox Railway `8fe4a8de-1dbc-49ba-894f-cb02d4d2137a`, production Railway `e82233ba-b2b7-4cfc-af52-19d7aa7ca833` SUCCESS, production Vercel `dpl_HnEFakn4u695KaREeQKzecP4B6Uf` READY avec aliases avenqo.ca/www. /health et /ready, direct et via frontend, confirment le code et l'environnement production ; base, stockage et migrations OK.
+- CI finale du code livré : run `38064926962` réussi (477 tests backend, 309 tests Voice/facturation/auth, 123 tests web, build Next, contrôles Flutter). Test HTTP renforcé après CI : deux tests réussis, avec abonnement explicitement inactif et une source Retail connectée ; une réponse générale ne revendique pas cette source.
+- Vérification réelle sandbox : compte QA isolé, abonnement Base inactif et zéro crédit ; vraie réponse fournisseur reçue, allocation et crédits achetés inchangés, sécurité/modules/NIP accessibles, pack 6 500 crédits à 1 000 cents CAD. Aucun achat effectué.
+- Vérification navigateur production : réponse réelle du panneau supérieur IA Central sur le compte client à zéro crédit, sans faux badge de certification ; carte 6 500 crédits à 10 CAD et opérations Central à coût nul visibles. Preuves locales ignorées : scratch/avenqo-central-production.png et scratch/avenqo-credits-cad-production.png.
+- Le test réel a révélé un verrou supplémentaire sur le montage global des routes : il a été supprimé pour les conversations et Central, puis réappliqué aux messages/stream des assistants payants. Les tests prouvent que ceux-ci restent bloqués pour un abonnement inactif.
+- Validation NIP client encore en attente : formulaire production ouvert et remis au propriétaire, qui doit saisir et soumettre lui-même ses secrets. Le service et le parcours HTTP ont été testés ; aucun NIP client n'a été changé par l'agent.
 
 ## État vérifié avant intervention
 

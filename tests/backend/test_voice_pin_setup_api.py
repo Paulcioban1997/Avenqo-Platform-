@@ -3,7 +3,7 @@ from sqlalchemy import select
 from backend.app.models import User, VoiceCallerCredential, BillingAccount
 from tests.backend.test_auth import auth_environment, registration_payload, verify_and_login
 
-def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_environment):
+def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_environment, monkeypatch):
     from backend.app.dependencies.central_ai import get_central_ai_service
     from tests.backend.test_central_ai import make_service, MeteredStubProvider
     client, factory, notifier = auth_environment
@@ -27,6 +27,14 @@ def test_central_http_endpoint_runs_included_when_subscription_inactive(auth_env
         balance.monthly_used = 100000
         db.commit()
         client.app.dependency_overrides[get_central_ai_service] = lambda: central
+        from types import SimpleNamespace
+        from uuid import uuid4
+        from backend.app.services.retail_source_service import RetailSourceService
+        source_id = uuid4()
+        monkeypatch.setattr(RetailSourceService, "context", lambda self, tenant: {
+            "state": "READY", "source_type": "all", "source_id": source_id,
+            "sources": [SimpleNamespace(enabled=True, source_type="shopify", source_id=source_id, display_name="QA source")],
+        })
         try:
             response = client.post(f"/api/v1/ai/central/conversations/{conversation.json()['id']}/messages",
                 headers={**headers, "Idempotency-Key": "central-included-http"},
