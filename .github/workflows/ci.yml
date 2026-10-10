@@ -98,6 +98,7 @@ jobs:
           tests/security
           tests/backend/test_connector_secret_cipher.py
           tests/backend/test_connector_key_rotation.py
+          tests/backend/test_internal_commerce.py
           -q
         env:
           PYTHONPATH: .
