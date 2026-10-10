@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+import pytest
 from uuid import UUID
 
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
@@ -11,6 +13,15 @@ from shared.ai_engine.contracts import TenantContext
 from tests.backend.test_auth import auth_environment, registration_payload, verify_and_login
 from tests.backend.test_security_center import account, headers
 from tests.subscription_helpers import activate_subscription_by_id
+
+
+@pytest.fixture
+def non_sensitive_test_password() -> str:
+    """Ephemeral credential for this test's isolated TestClient database only.
+
+    Never read from environment variables or used against hosted services.
+    """
+    return secrets.token_urlsafe(24) + "Aa1!"
 
 
 def _ready(client, factory, notifier, email, name, modules=(), plan=None):
@@ -75,7 +86,7 @@ def test_tasks_and_guidance_are_tenant_scoped(auth_environment):
     ).status_code == 404
 
 
-def test_invitation_respects_user_quota(auth_environment):
+def test_invitation_respects_user_quota(auth_environment, non_sensitive_test_password):
     client, factory, notifier = auth_environment
     owner = _ready(client, factory, notifier, "seats@example.ca", "Seats Co")
     first = client.post(
@@ -90,7 +101,7 @@ def test_invitation_respects_user_quota(auth_environment):
             "token": first.json()["token"],
             "first_name": "Sam",
             "last_name": "Lee",
-            "password": "Avenqo2026!",
+            "password": non_sensitive_test_password,
         },
     )
     assert accepted.status_code == 201
@@ -265,9 +276,12 @@ def test_marketplace_marks_etsy_and_outlook_as_future(auth_environment):
     assert next(item for item in catalog["connectors"] if item["key"] == "shopify")["availability"] == "available"
 
 
-def test_mfa_enroll_confirm_and_login(auth_environment):
+def test_mfa_enroll_confirm_and_login(auth_environment, non_sensitive_test_password):
     client, factory, notifier = auth_environment
-    owner = account(client, notifier, "mfa@example.ca", "MFA Co")
+    payload = registration_payload("mfa@example.ca", "MFA Co")
+    payload["password"] = non_sensitive_test_password
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+    owner = verify_and_login(client, notifier, payload["email"], non_sensitive_test_password)
     enroll = client.post("/api/v1/security/mfa/enroll", headers=headers(owner))
     assert enroll.status_code == 200
     secret = enroll.json()["secret"]
@@ -282,22 +296,22 @@ def test_mfa_enroll_confirm_and_login(auth_environment):
     overview = client.get("/api/v1/security/overview", headers=headers(owner))
     assert overview.status_code == 200
     assert overview.json()["mfa_enabled"] is True
-    blocked = client.post("/api/v1/auth/login", json={"email": "mfa@example.ca", "password": "Avenqo2026!"})
+    blocked = client.post("/api/v1/auth/login", json={"email": "mfa@example.ca", "password": non_sensitive_test_password})
     assert blocked.status_code == 401
     assert blocked.json()["error"]["code"] == "mfa_required"
     allowed = client.post(
         "/api/v1/auth/login",
-        json={"email": "mfa@example.ca", "password": "Avenqo2026!", "otp": totp_code(secret)},
+        json={"email": "mfa@example.ca", "password": non_sensitive_test_password, "otp": totp_code(secret)},
     )
     assert allowed.status_code == 200
     recovered = client.post(
         "/api/v1/auth/login",
-        json={"email": "mfa@example.ca", "password": "Avenqo2026!", "otp": recovery_codes[0]},
+        json={"email": "mfa@example.ca", "password": non_sensitive_test_password, "otp": recovery_codes[0]},
     )
     assert recovered.status_code == 200
     reused = client.post(
         "/api/v1/auth/login",
-        json={"email": "mfa@example.ca", "password": "Avenqo2026!", "otp": recovery_codes[0]},
+        json={"email": "mfa@example.ca", "password": non_sensitive_test_password, "otp": recovery_codes[0]},
     )
     assert reused.status_code == 401
     history = client.get("/api/v1/security/login-history", headers={"Authorization": f"Bearer {allowed.json()['access_token']}"})
