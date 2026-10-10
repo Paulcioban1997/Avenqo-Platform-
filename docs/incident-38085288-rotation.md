@@ -60,3 +60,14 @@ Vérification supplémentaire sur les données Railway en transaction READ ONLY 
 Le service de sauvegarde/restauration ne transmet plus le mot de passe PostgreSQL dans les arguments pg_dump/psql ; seule la variable du sous-processus porte l’authentification. Les paramètres de connexion et TLS sont préservés, les mots de passe en query refusés sans affichage. Trois tests ciblés vérifient paramètres, erreurs et les deux appels effectifs simulés. Une restauration PostgreSQL de sauvegarde réelle reste un préalable à la rotation de production, non un résultat revendiqué.
 
 CI38087402735 du commit a42e834 : contrôles anti-secrets et test PostgreSQL18 de transition/révocation réussis, web et Flutter réussis ; backend global en cours à la rédaction. Un contrôle final inclut le durcissement sauvegarde/restauration ajouté ensuite.
+
+## Complément d’audit et sauvegarde vérifiée
+
+Les63 objets exclus initialement parce que volumineux ou binaires ont fait l’objet d’un scan complémentaire UTF-8, UTF-16 et chaînes binaires : aucune connexion PostgreSQL supplémentaire détectée. Les archives compressées n’ont pas été décompressées et cette limite subsiste. Ce résultat ne garantit pas l’absence de secrets de tout format.
+
+Le cron de sauvegarde est arrêté entre exécutions et ne permet pas SSH à cet instant. La lecture du stockage de sauvegardes depuis le backend de production a permis de vérifier SHA256 de l’archive PostgreSQL20261010T070137253149Z, créée2026-10-10T07:01:51.359197+00:00, taille2127888 octets. Aucune archive existante n’a été modifiée. La restauration PostgreSQL réelle reste NON vérifiée et constitue un préalable obligatoire à la rotation.
+
+Régressions sauvegarde/restauration locales :29 réussies ; test ciblé actualisé des deux sous-processus :3 réussis. CI38087737202 pour le code1c52d96 : contrôles de sécurité, transition PostgreSQL18 et web/Flutter réussis ; backend global en cours lors de cette note. Aucun accès ni clé de production modifié. Autorisations PostgreSQL et clés de connecteurs demandées séparément conformément au mandat.
+
+
+Validation finale du code1c52d96099d3cbaf6b732c692fcedf392685b0bc : CI38087737202 SUCCESS, quatre jobs réussis (sécurité, backend/Voice/facturation, web, Flutter).40 tests de sécurité réussis avec PostgreSQL18, aucun ignoré. URL : https://github.com/Paulcioban1997/Avenqo-Platform-/actions/runs/38087737202 . Les notes ci-dessus « en cours » sont historiques ; cette validation finale les remplace. Aucun mot de passe ou clé de production n’a été changé ni révoqué. Autorisations de rotation toujours attendues ; restauration réelle de sauvegarde toujours préalable. Les correctifs locaux sont publiés en PR24, sans déploiement de ce correctif de sécurité.
