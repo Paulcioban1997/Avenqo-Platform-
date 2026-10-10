@@ -2174,7 +2174,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
         "Oui parfait, confirmez le rendez-vous pour demain 14 heures.",
         "Quelles sont vos heures d'ouverture cette semaine ?",
         "Quels sont les tarifs de vos services ?",
-        "Merci beaucoup pour votre aide, bonne journée !",
+        "Pouvez-vous me rappeler l'adresse de votre établissement ?",
     ]
 
     captured_turns = []
