@@ -702,10 +702,10 @@ def test_active_plan_wallet_uses_catalog_allowance_without_quota_environment(
         headers={"Stripe-Signature": "valid_signature"},
     ).status_code == 200
     professional = client.get("/api/v1/billing/ai-credits", headers=headers).json()
-    assert professional["monthly_included"] == 25000
-    assert professional["monthly_remaining"] == 25000
+    assert professional["monthly_included"] == 20000
+    assert professional["monthly_remaining"] == 20000
     assert professional["purchased_remaining"] == 0
-    assert professional["total_remaining"] == 25000
+    assert professional["total_remaining"] == 20000
 
 
 def test_credit_api_excludes_active_reservations_from_displayed_usage(
