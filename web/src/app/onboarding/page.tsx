@@ -6,6 +6,7 @@ import { Shield, Lock, CheckCircle2, AlertTriangle, KeyRound, PhoneCall, ArrowRi
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { AppShell } from "@/components/shell/app-shell";
+import { FirstCustomerConcierge } from "@/components/workspace/first-customer-concierge";
 
 interface Entitlements {
   plan_code: string;
@@ -161,6 +162,8 @@ export default function OnboardingPage() {
             {t.integrations.statusNeedsAttention}
           </p>
         )}
+
+        <FirstCustomerConcierge />
 
         {/* STEP 2: Sécurisez votre assistant vocal Avenqo */}
         {pinStepOpen && !pinSuccess && (

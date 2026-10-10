@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DashboardPreview } from "@/components/dashboard-preview";
 import { Header } from "@/components/header";
+import { AvenqoLiveExperience } from "@/components/live-experience/avenqo-live-experience";
 import { SiteFooter } from "@/components/site-footer";
 import { TrustSections } from "@/components/trust-sections";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-context";
@@ -53,7 +54,7 @@ export function LandingPage() {
   const planTiers = [
     {
       tier: "Base",
-      price: "$29.99 USD",
+      price: isEn ? "$29.99 CAD" : "29,99 $ CA",
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "6,500 AI credits included" : "6 500 crédits IA inclus",
       action: isEn ? "Choose Base" : "Choisir Base",
@@ -62,7 +63,7 @@ export function LandingPage() {
     },
     {
       tier: "Professional",
-      price: "$49.99 USD",
+      price: isEn ? "$49.99 CAD" : "49,99 $ CA",
       period: isEn ? "/ month" : "/ mois",
       credits: isEn ? "25,000 AI credits included" : "25 000 crédits IA inclus",
       action: isEn ? "Choose Professional" : "Choisir Professional",
@@ -106,7 +107,7 @@ export function LandingPage() {
         <div className="page-shell">
           <motion.div className="section-heading center" {...fadeUp}><span className="section-kicker">{t.features.kicker}</span><h2>{t.features.title}</h2><p>{t.features.subtitle}</p></motion.div>
           <div className="feature-grid">
-            <motion.article className="feature-large assistant-feature" id="demonstration" {...fadeUp}>
+            <motion.article className="feature-large assistant-feature" id="assistant-demo" {...fadeUp}>
               <div className="feature-label"><Bot size={18} /> {t.features.assistantLabel}</div><h3>{t.features.assistantTitle}</h3><p>{t.features.assistantText}</p>
               <div className="chat-demo"><div className="question">{t.features.demoQuestion}</div><div className="answer"><span><Sparkles size={15} /></span><p>{t.features.demoAnswer}</p></div><div className="chat-actions"><Link href="/signup">{t.features.demoAction1}</Link><Link href="#demonstration">{isEn ? "View the analysis" : "Voir l'analyse"}</Link></div></div>
             </motion.article>
@@ -115,6 +116,8 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      <AvenqoLiveExperience />
 
       <TrustSections />
 

@@ -294,6 +294,146 @@ export default function AdminPage() {
                 </Link>
               </div>
             </div>
+
+            {/* Customer Success → First Customer Pilots Universal Supervision Table (Phase 8) */}
+            <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-white/[0.08] dark:bg-[#0B132B]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-4 dark:border-white/[0.08]">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                      {isFr ? "Customer Success · Suivi des Pilotes Clients" : "Customer Success · First Customer Pilots"}
+                    </h2>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      {isFr ? "Accompagnement Actif" : "Active Supervision"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {isFr
+                      ? "Supervision universelle multi-sectorielle des entreprises accompagnées jusqu'à leur première valeur métier vérifiée."
+                      : "Universal cross-industry oversight of active pilot accounts towards verified first business value."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 text-[11px] font-semibold uppercase text-slate-400 dark:border-white/[0.08]">
+                      <th className="py-2.5 px-3">{isFr ? "Entreprise" : "Organization"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Secteur" : "Sector"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Forfait" : "Plan"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Modules" : "Modules"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Statut" : "Activation"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Blocages / Alerte" : "Blockers"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "Prochaine Action" : "Next Action"}</th>
+                      <th className="py-2.5 px-3">{isFr ? "1re Valeur Vérifiée" : "First Value"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-white/[0.05] dark:text-slate-300">
+                    <tr className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                      <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">
+                        <div>Boutique Élysée</div>
+                        <div className="font-mono text-[10px] text-slate-400">elysee-qc-01</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold dark:bg-white/5">
+                          {isFr ? "Commerce & E-commerce" : "Retail & E-commerce"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-blue-50 px-2 py-0.5 font-bold text-[#0076FF] dark:bg-blue-900/30 dark:text-blue-300">
+                          Base (29,99$)
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex gap-1">
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">Retail</span>
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">Marketing</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          {isFr ? "Vérifié" : "Verified"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">—</td>
+                      <td className="py-3 px-3">{isFr ? "Suivi campagne réactivation" : "Follow-up retention campaign"}</td>
+                      <td className="py-3 px-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                        {isFr ? "✓ Synchro POS 184k$ confirmée" : "✓ POS 184k$ sync confirmed"}
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                      <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">
+                        <div>Garage Auto Expert Inc.</div>
+                        <div className="font-mono text-[10px] text-slate-400">auto-exp-02</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold dark:bg-white/5">
+                          {isFr ? "Garages Automobiles" : "Auto Repair"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-purple-50 px-2 py-0.5 font-bold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                          Professional (49,99$)
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex flex-wrap gap-1">
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">Voice</span>
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">CRM</span>
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">OCR</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-cyan-300">
+                          {isFr ? "En cours" : "In Progress"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">—</td>
+                      <td className="py-3 px-3">{isFr ? "Tester flux Telnyx en direct" : "Live Telnyx call test"}</td>
+                      <td className="py-3 px-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                        {isFr ? "✓ 1er RDV pneus booké" : "✓ 1st tire booking logged"}
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                      <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">
+                        <div>Clinique Santé Globale</div>
+                        <div className="font-mono text-[10px] text-slate-400">sante-glob-03</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold dark:bg-white/5">
+                          {isFr ? "Cliniques & Santé" : "Healthcare"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded bg-purple-50 px-2 py-0.5 font-bold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                          Professional (49,99$)
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex flex-wrap gap-1">
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">CRM</span>
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">Voice</span>
+                          <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] dark:bg-white/10">OCR</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                          {isFr ? "Configuration" : "Configuring"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-amber-600 font-medium">
+                        {isFr ? "Sync Google Calendar en attente" : "Pending Google Cal sync"}
+                      </td>
+                      <td className="py-3 px-3">{isFr ? "Finaliser liaison praticiens" : "Complete therapist calendar sync"}</td>
+                      <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         )}
       </div>

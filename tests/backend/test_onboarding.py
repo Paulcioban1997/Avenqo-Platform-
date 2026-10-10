@@ -76,7 +76,7 @@ def test_public_plan_catalog_uses_canonical_module_limits_and_available_modules(
     assert response.status_code == 200
     plans = response.json()
     assert [(item["code"], item["module_limit"]) for item in plans] == [
-        ("base", 3), ("professional", 6), ("enterprise", None)
+        ("base", 2), ("professional", 5), ("enterprise", None)
     ]
     assert all(module["availability"] == "available"
         for plan in plans for module in plan["modules"] if module["selectable"])
@@ -247,13 +247,13 @@ def test_module_entitlement_api_is_tenant_scoped(onboarding_environment) -> None
 
     initial = client.get("/api/v1/modules/entitlements", headers=headers_a)
     assert initial.status_code == 200
-    assert initial.json()["module_limit"] == 3
+    assert initial.json()["module_limit"] == 2
     assert initial.json()["active_modules"] == []
 
     activated = client.post("/api/v1/modules/retail/activate", headers=headers_a)
     assert activated.status_code == 200
     assert activated.json()["active_modules"] == ["retail"]
-    assert activated.json()["remaining_module_slots"] == 2
+    assert activated.json()["remaining_module_slots"] == 1
 
     coming_soon = client.post("/api/v1/modules/workflow/activate", headers=headers_a)
     assert coming_soon.status_code == 409

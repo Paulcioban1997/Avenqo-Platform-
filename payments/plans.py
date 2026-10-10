@@ -24,8 +24,14 @@ class SubscriptionPlan:
     name: str
     selectable_modules: frozenset[str]
     max_selectable_modules: int | None = None
+    exact_modules_count: int | None = None
+    max_users: int | None = None
+    max_sites: int | None = None
+    max_voice_agents: int | None = None
+    max_concurrent_calls: int | None = None
     requires_sales_contact: bool = False
     monthly_price_usd: float | None = None
+    monthly_price_cad: float | None = None
     monthly_ai_credits: int | None = None
 
     def allows_module(self, module_code: str) -> bool:
@@ -50,16 +56,28 @@ PUBLIC_PLANS: tuple[SubscriptionPlan, ...] = (
         PlanCode.BASE,
         "Base",
         ALL_MODULES,
-        max_selectable_modules=3,
+        max_selectable_modules=2,
+        exact_modules_count=2,
+        max_users=3,
+        max_sites=1,
+        max_voice_agents=1,
+        max_concurrent_calls=1,
         monthly_price_usd=29.99,
+        monthly_price_cad=29.99,
         monthly_ai_credits=6_500,
     ),
     SubscriptionPlan(
         PlanCode.PROFESSIONAL,
         "Professional",
         ALL_MODULES,
-        max_selectable_modules=6,
+        max_selectable_modules=5,
+        exact_modules_count=5,
+        max_users=10,
+        max_sites=3,
+        max_voice_agents=3,
+        max_concurrent_calls=2,
         monthly_price_usd=49.99,
+        monthly_price_cad=49.99,
         monthly_ai_credits=25_000,
     ),
     SubscriptionPlan(
@@ -76,8 +94,14 @@ INTERNAL_COMPATIBILITY_PLANS: tuple[SubscriptionPlan, ...] = (
         PlanCode.DEMO,
         "Base",
         ALL_MODULES,
-        max_selectable_modules=3,
+        max_selectable_modules=2,
+        exact_modules_count=2,
+        max_users=3,
+        max_sites=1,
+        max_voice_agents=1,
+        max_concurrent_calls=1,
         monthly_price_usd=29.99,
+        monthly_price_cad=29.99,
         monthly_ai_credits=6_500,
     ),
     SubscriptionPlan(
