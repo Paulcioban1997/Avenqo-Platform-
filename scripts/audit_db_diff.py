@@ -12,10 +12,8 @@ print("Models imported.")
 
 from sqlalchemy import create_engine, inspect
 
-raw_url = os.environ.get(
-    "DATABASE_PUBLIC_URL",
-    "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
-)
+from scripts.database_runtime import require_database_url
+raw_url = require_database_url()
 if raw_url.startswith("postgresql://"):
     raw_url = raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 

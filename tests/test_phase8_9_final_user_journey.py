@@ -215,7 +215,7 @@ def test_retail_connectors_catalog_and_security(tenant_token):
 
 def test_woocommerce_real_sync_product_14(woo_creds):
     auth = (woo_creds["consumer_key"], woo_creds["consumer_secret"])
-    wh_secret = woo_creds.get("webhook_secret", "xUumq5_TEcvKgr4cL5dApQT2TYqQ8hgn07TvVm-RsWZO2hR6Or05f4cH2ndZ4PpY")
+    wh_secret = woo_creds.get("webhook_secret", 'test-only-fictional-value')
 
     # 1. Fetch current price
     r_prod = requests.get(f"{WOO_STORE_URL}/wp-json/wc/v3/products/14", auth=auth, timeout=15)

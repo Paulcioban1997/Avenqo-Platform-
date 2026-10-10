@@ -134,3 +134,42 @@ jobs:
       - name: Run Flutter tests
         working-directory: frontend
         run: flutter test
+
+  security-incident-guard:
+    name: Secret guard and credential transition
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: rotation_test_ci
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify pinned secret scanner and inspect current tree
+        run: |
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output /tmp/gitleaks.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum --check --status
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks dir . --config .gitleaks.toml --redact=100
+          python scripts/check_secrets.py
+      - name: Verify connector re-encryption and PostgreSQL login transition
+        run: |
+          pip install -r backend/requirements.txt
+          python -m pytest tests/backend/test_connector_secret_cipher.py tests/backend/test_connector_secret_rotation.py tests/backend/test_operational_database_credentials.py tests/backend/test_secret_commit_guard.py tests/security/test_postgres_credential_transition.py -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          DATABASE_URL: 'sqlite:///:memory:'
+          AUTH_JWT_SECRET: 'ci-test-only-fictional-auth-secret-long-enough'
+          AVENQO_ROTATION_TEST_ADMIN_URL: 'postgresql+psycopg2://postgres:test-only-password@localhost:5432/rotation_test_ci'

@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "avenqo-database-credentials"
+description = "Literal database URL credentials"
+regex = '''(?i)(?:postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|redis)://[^\s"'<>:@]+:([^\s"'<>@]+)@'''
+secretGroup = 1
+keywords = ["postgres", "mysql", "redis"]
+[[rules.allowlists]]
+description = "Explicit fictional fixtures only"
+regexTarget = "secret"
+regexes = ['''^test-only-password$''']

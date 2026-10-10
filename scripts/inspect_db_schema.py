@@ -1,10 +1,11 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import os
 import psycopg2
 
-db_url = os.environ.get(
-    "DATABASE_PUBLIC_URL",
-    "postgresql://postgres:aVxFamcMziEnMoleBZCYdkLpOELxLatB@tramway.proxy.rlwy.net:25367/railway"
-)
+from scripts.database_runtime import require_database_url
+db_url = require_database_url()
 
 conn = psycopg2.connect(db_url)
 cur = conn.cursor()

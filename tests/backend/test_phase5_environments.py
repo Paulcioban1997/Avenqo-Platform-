@@ -25,7 +25,7 @@ def test_postgres_url_normalization():
     """Verify legacy postgres:// URLs from Railway/Heroku are automatically converted to postgresql://."""
     settings = Settings(
         ENVIRONMENT="development",
-        DATABASE_URL="postgres://user:pass@ep-sandbox.railway.internal:5432/railway",
+        DATABASE_URL="postgres://user:test-only-password@ep-sandbox.railway.internal:5432/railway",
     )
     assert settings.database_url.startswith("postgresql://")
     assert not settings.database_url.startswith("postgres://")
@@ -35,7 +35,7 @@ def test_staging_environment_requires_secure_cookies_and_strong_secret():
     """Verify staging / sandbox environment enforces Secure=True cookies and rejects default secrets."""
     settings = Settings(
         ENVIRONMENT="staging",
-        DATABASE_URL="postgresql://user:pass@ep-sandbox.railway.internal:5432/railway",
+        DATABASE_URL="postgresql://user:test-only-password@ep-sandbox.railway.internal:5432/railway",
         AUTH_JWT_SECRET="super-strong-staging-secret-key-with-over-32-characters!",
     )
     assert settings.is_secure_cookie is True
@@ -54,7 +54,7 @@ def test_production_rejects_default_jwt_secret():
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+            DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
             AUTH_JWT_SECRET="development-only-change-this-jwt-secret",
             STRIPE_SECRET_KEY="sk_live_123",
             STRIPE_WEBHOOK_SECRET="whsec_123",
@@ -70,7 +70,7 @@ def test_production_rejects_default_jwt_secret():
     with pytest.raises(ValidationError) as exc_info2:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+            DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
             AUTH_JWT_SECRET="replace-with-at-least-32-random-characters",
             STRIPE_SECRET_KEY="sk_live_123",
             STRIPE_WEBHOOK_SECRET="whsec_123",
@@ -88,7 +88,7 @@ def test_production_rejects_empty_critical_secrets():
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+            DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
             AUTH_JWT_SECRET="super-strong-production-secret-key-32-characters-minimum!",
             STRIPE_SECRET_KEY="",
             STRIPE_WEBHOOK_SECRET="",
@@ -110,7 +110,7 @@ def test_production_rejects_wildcard_cors_and_insecure_origins():
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+            DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
             AUTH_JWT_SECRET="super-strong-production-secret-key-32-characters-minimum!",
             STRIPE_SECRET_KEY="sk_live_123",
             STRIPE_WEBHOOK_SECRET="whsec_123",
@@ -126,7 +126,7 @@ def test_production_rejects_wildcard_cors_and_insecure_origins():
     with pytest.raises(ValidationError) as exc_info2:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+            DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
             AUTH_JWT_SECRET="super-strong-production-secret-key-32-characters-minimum!",
             STRIPE_SECRET_KEY="sk_live_123",
             STRIPE_WEBHOOK_SECRET="whsec_123",
@@ -143,9 +143,9 @@ def test_production_accepts_valid_canonical_configuration():
     """Production must successfully validate when all production parameters are compliant."""
     settings = Settings(
         ENVIRONMENT="production",
-        DATABASE_URL="postgresql://user:pass@ep-prod.railway.internal:5432/railway",
+        DATABASE_URL="postgresql://user:test-only-password@ep-prod.railway.internal:5432/railway",
         AUTH_JWT_SECRET="super-strong-production-secret-key-32-characters-minimum!",
-        STRIPE_SECRET_KEY="sk_live_test_12345",
+        STRIPE_SECRET_KEY='sk_test_test-only-fictional-value',
         STRIPE_WEBHOOK_SECRET="whsec_test_12345",
         STRIPE_PRICE_DEMO="price_demo_12345",
         STRIPE_PRICE_PROFESSIONAL="price_pro_12345",

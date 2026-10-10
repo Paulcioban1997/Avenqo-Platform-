@@ -1,4 +1,4 @@
-﻿"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
+"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _build_settings(monkeypatch, **overrides):
 
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./var/avenqo-production.db")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
+    monkeypatch.setenv("AUTH_JWT_SECRET", 'test-only-fictional-value' * 3)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_dummy")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo_dummy")
@@ -110,7 +110,7 @@ def test_billing_provider_returns_clear_503_when_stripe_missing(_clean_settings_
     for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
         monkeypatch.setenv(key, "")
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
+    monkeypatch.setenv("AUTH_JWT_SECRET", 'test-only-fictional-value' * 3)
     from backend.app.config.settings import Settings
     settings = Settings()
     assert settings.stripe_secret_key is None
@@ -194,4 +194,3 @@ def test_production_settings_rejects_wildcard_cors(
 ) -> None:
     with pytest.raises(ValueError, match="CORS_ORIGINS"):
         _build_settings(monkeypatch, CORS_ORIGINS="*")
-
