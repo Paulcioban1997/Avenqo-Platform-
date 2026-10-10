@@ -1449,14 +1449,16 @@ async def telnyx_media_socket(
         await websocket.close(code=1011)
     finally:
         db.rollback()
+        # Only the socket that claimed the signed media ticket owns the call lifecycle;
+        # an unauthenticated socket for a known call_id must not end someone else's call.
         if claim is not None:
             with suppress(Exception):
                 release_media_session(db, call_id, claim)
-        try:
-            current_call = db.get(VoiceCall, call_id)
-            if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                current_call.ended_at = datetime.now(timezone.utc)
-                current_call.status = "completed"
-                db.commit()
-        except Exception:
-            db.rollback()
+            try:
+                current_call = db.get(VoiceCall, call_id)
+                if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
+                    current_call.ended_at = datetime.now(timezone.utc)
+                    current_call.status = "completed"
+                    db.commit()
+            except Exception:
+                db.rollback()

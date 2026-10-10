@@ -140,6 +140,9 @@ class _FakeTelnyx:
     async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
         self.commands.append(("speak_unavailable", call_control_id, command_id))
 
+    async def reject_call(self, call_control_id: str, *, command_id: str, cause: str = "USER_BUSY") -> None:
+        self.commands.append(("reject", call_control_id, cause))
+
     async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         if self.fail_transfer:
             raise RuntimeError("test-secret-never-log")
@@ -1306,6 +1309,38 @@ def test_telnyx_provider_failure_is_generic_and_not_retried(signed_telnyx_webhoo
     assert env.send(answered).json()["duplicate"] is True
     call = env.session.scalar(select(VoiceCall))
     assert call.status == "routing_outcome_unknown"
+
+
+@pytest.mark.parametrize("plan,limit", [("base", 1), ("professional", 2)])
+def test_concurrent_call_limit_rejects_busy_before_answer_or_credit_use(signed_telnyx_webhook, plan, limit):
+    from backend.app.models import BillingAccount
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    env.session.scalar(select(BillingAccount).where(BillingAccount.company_id == env.company.id)).plan_code = plan
+    for index in range(limit):
+        env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+            telnyx_call_control_id=f"live-{index}", status="in_progress"))
+    env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+        telnyx_call_control_id="ended", status="in_progress", ended_at=datetime.now(timezone.utc)))
+    env.session.commit()
+
+    response = env.send(env.event(call_control_id="over-limit"))
+    assert response.status_code == 200 and response.json()["status"] == "concurrency_limit"
+    assert env.service.telnyx.commands == [("reject", "over-limit", "USER_BUSY")]
+    call = env.session.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == "over-limit"))
+    assert call.status == "rejected_busy" and call.ended_at is not None
+    assert env.send(env.event("call.answered", call_control_id="over-limit")).json()["routed"] is False
+
+
+def test_calls_below_the_concurrency_limit_are_answered(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+        telnyx_call_control_id="live-0", status="in_progress"))
+    env.session.commit()
+    response = env.send(env.event(call_control_id="second-line"))
+    assert response.json()["status"] == "answering"
+    assert env.service.telnyx.commands[0][0] == "answer"
 
 
 def test_exhausted_phone_announces_unavailable_without_starting_ai_and_handles_replays(signed_telnyx_webhook):

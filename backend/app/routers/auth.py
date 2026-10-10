@@ -226,11 +226,23 @@ def resend_verification(
 def login(
     request: LoginRequest,
     response: Response,
+    http_request: Request,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthResponse:
     try:
-        result = service.login(str(request.email), request.password)
+        result = service.login(
+            str(request.email),
+            request.password,
+            otp=request.otp,
+            ip_address=http_request.client.host if http_request.client else None,
+            user_agent=http_request.headers.get("user-agent"),
+        )
     except AuthenticationError as exc:
+        if str(exc) == "mfa_required":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "mfa_required", "message": "Code d'authentification requis"},
+            ) from exc
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     _set_auth_cookies(response, result.access_token, result.refresh_token)
     return AuthResponse(

@@ -32,6 +32,7 @@ import {
   Sliders,
   ShieldAlert,
   Layers,
+  Users,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RegionLanguageSelector } from "@/components/region-language-selector";
@@ -115,12 +116,15 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone },
     { href: "/voice", label: t.navigation.voiceAi, icon: Mic2 },
     { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan },
+    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan },
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare },
     { href: "/automations", label: t.navigation.automations, icon: Zap },
     { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: undefined },
   ];
 
   const platformModules = [
+    { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
+    { href: "/marketplace", label: "Marketplace", icon: Layers },
     { href: "/connections", label: t.navigation.connections, icon: Plug },
     { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },

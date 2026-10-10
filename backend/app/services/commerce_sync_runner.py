@@ -233,6 +233,21 @@ class CommerceSyncRunner:
             receipt.error_category = None
             receipt.processed_at = processed_at
         session.commit()
+        for receipt in receipts:
+            topic = (receipt.topic or "").lower()
+            if "order" not in topic:
+                continue
+            try:
+                from backend.app.services.automation_service import AutomationService
+
+                AutomationService(session).dispatch(
+                    receipt.company_id,
+                    "shopify_order",
+                    {"receipt_id": str(receipt.id), "topic": receipt.topic},
+                    idempotency_key=str(receipt.id),
+                )
+            except Exception:
+                logger.exception("Automation dispatch failed for commerce receipt=%s", receipt.id)
 
     @staticmethod
     def _disconnect_uninstalled(

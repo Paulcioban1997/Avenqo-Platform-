@@ -19,14 +19,17 @@ logger = logging.getLogger("avenqo.errors")
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Renvoie une réponse JSON uniforme pour les erreurs HTTP."""
     accept_language = request.headers.get("accept-language")
+    structured = isinstance(exc.detail, dict) and isinstance(exc.detail.get("code"), str)
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
             "error": {
-                "code": "HTTP_ERROR",
+                "code": exc.detail["code"] if structured else "HTTP_ERROR",
                 "message": http_error_message(exc.status_code, accept_language, exc.detail),
-                "details": None,
+                "details": {k: v for k, v in exc.detail.items() if k not in {"code", "message"}}
+                if structured
+                else None,
             },
             "request_id": getattr(request.state, "request_id", None),
         },

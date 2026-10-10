@@ -42,6 +42,18 @@ TENANT_PW = os.environ.get("TEST_USER_PW", "")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 ADMIN_PW = os.environ.get("ADMIN_PW", "")
 
+pytestmark = pytest.mark.skipif(
+    os.environ.get("AVENQO_LIVE_E2E") != "1",
+    reason="Live sandbox suite: set AVENQO_LIVE_E2E=1 and provide credentials via environment",
+)
+
+
+def _connector_keys_from_env() -> list[str]:
+    keys = [k.strip() for k in os.environ.get("CONNECTOR_ENCRYPTION_KEYS", "").split(",") if k.strip()]
+    if not keys:
+        pytest.skip("CONNECTOR_ENCRYPTION_KEYS is not set")
+    return keys
+
 
 
 pytestmark = pytest.mark.skipif(

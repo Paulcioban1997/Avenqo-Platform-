@@ -10,9 +10,18 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from backend.app.models import CompanyOnboarding
+from sqlalchemy import func, select
+
+from backend.app.models import (
+    CommerceConnection,
+    CompanyOnboarding,
+    Dataset,
+    EmployeeResponsibility,
+    User,
+    VoiceBusinessConfig,
+)
 from backend.app.models.base import OnboardingStatus
-from backend.app.schemas.onboarding import OnboardingStatusResponse, OnboardingSubmitRequest
+from backend.app.schemas.onboarding import OnboardingDraftRequest, OnboardingStatusResponse, OnboardingSubmitRequest
 from backend.app.services.module_entitlement_service import (
     ModuleEntitlementError,
     ModuleEntitlementService,
@@ -36,11 +45,25 @@ class OnboardingService:
         record.current_tools = list(request.current_tools)
         record.team_size = request.team_size
         record.refined_industry = request.refined_industry
+        record.current_step = request.current_step or "complete"
         record.status = OnboardingStatus.COMPLETED
         record.completed_at = datetime.now(timezone.utc)
         unavailable = self.activate_selected_modules(tenant, request.selected_modules)
         self._session.commit()
         return self._to_response(record, tenant, unavailable_modules=unavailable)
+
+    def save_draft(self, tenant: TenantContext, request: OnboardingDraftRequest) -> OnboardingStatusResponse:
+        record = self._get_or_create(tenant)
+        if record.status == OnboardingStatus.COMPLETED:
+            return self._to_response(record, tenant)
+        record.current_step = request.current_step
+        record.business_goals = list(request.business_goals)
+        record.current_tools = list(request.current_tools)
+        record.team_size = request.team_size
+        record.refined_industry = request.refined_industry
+        record.draft_payload = {"selected_modules": list(request.selected_modules)}
+        self._session.commit()
+        return self._to_response(record, tenant)
 
     def skip(self, tenant: TenantContext) -> OnboardingStatusResponse:
         record = self._get_or_create(tenant)
@@ -87,6 +110,8 @@ class OnboardingService:
         tenant: TenantContext,
         unavailable_modules: tuple[str, ...] = (),
     ) -> OnboardingStatusResponse:
+        checklist = self._checklist(tenant, record)
+        done = sum(1 for item in checklist if item["done"])
         return OnboardingStatusResponse(
             status=record.status,
             business_goals=tuple(record.business_goals or ()),
@@ -96,4 +121,38 @@ class OnboardingService:
             completed_at=record.completed_at,
             activated_modules=self._active_module_codes(tenant),
             unavailable_modules=unavailable_modules,
+            current_step=record.current_step,
+            progress_percent=int((done / len(checklist)) * 100) if checklist else 0,
+            checklist=tuple(checklist),
         )
+
+    def _checklist(self, tenant: TenantContext, record: CompanyOnboarding) -> list[dict]:
+        company_id = tenant.company_id
+        modules = self._active_module_codes(tenant)
+        connectors = self._session.scalar(
+            select(func.count()).select_from(CommerceConnection).where(CommerceConnection.company_id == company_id)
+        ) or 0
+        datasets = self._session.scalar(
+            select(func.count()).select_from(Dataset).where(Dataset.company_id == company_id)
+        ) or 0
+        employees = self._session.scalar(
+            select(func.count()).select_from(User).where(User.company_id == company_id)
+        ) or 0
+        responsibilities = self._session.scalar(
+            select(func.count()).select_from(EmployeeResponsibility).where(EmployeeResponsibility.company_id == company_id)
+        ) or 0
+        voice = self._session.scalar(
+            select(func.count()).select_from(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id)
+        ) or 0
+        return [
+            {"key": "space", "done": True},
+            {"key": "sector", "done": bool(record.refined_industry)},
+            {"key": "needs", "done": bool(record.business_goals)},
+            {"key": "modules", "done": bool(modules)},
+            {"key": "connectors", "done": connectors > 0},
+            {"key": "data", "done": datasets > 0},
+            {"key": "employees", "done": employees > 1},
+            {"key": "responsibilities", "done": responsibilities > 0},
+            {"key": "agents", "done": voice > 0 or "crm" in modules or "retail" in modules},
+            {"key": "complete", "done": record.status == OnboardingStatus.COMPLETED},
+        ]

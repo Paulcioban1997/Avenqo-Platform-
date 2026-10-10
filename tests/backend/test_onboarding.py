@@ -84,7 +84,7 @@ def test_public_plan_catalog_uses_canonical_module_limits_and_available_modules(
     ]
     assert all(module["availability"] == "available"
         for plan in plans for module in plan["modules"] if module["selectable"])
-    assert all(next(module for module in plan["modules"] if module["key"] == "workflow")["selectable"] is False
+    assert all(next(module for module in plan["modules"] if module["key"] == "hr")["selectable"] is False
         for plan in plans)
 
 
@@ -212,13 +212,13 @@ def test_onboarding_never_activates_coming_soon_modules(onboarding_environment) 
         json={
             "business_goals": ["increase_sales"],
             "team_size": "solo",
-            "selected_modules": ["retail", "workflow"],
+            "selected_modules": ["retail", "hr"],
         },
     )
     assert response.status_code == 200
     body = response.json()
     assert body["activated_modules"] == ["retail"]
-    assert body["unavailable_modules"] == ["workflow"]
+    assert body["unavailable_modules"] == ["hr"]
 
 
 def test_module_entitlement_api_is_tenant_scoped(onboarding_environment) -> None:
@@ -259,7 +259,7 @@ def test_module_entitlement_api_is_tenant_scoped(onboarding_environment) -> None
     assert activated.json()["active_modules"] == ["retail"]
     assert activated.json()["remaining_module_slots"] == 1
 
-    coming_soon = client.post("/api/v1/modules/workflow/activate", headers=headers_a)
+    coming_soon = client.post("/api/v1/modules/hr/activate", headers=headers_a)
     assert coming_soon.status_code == 409
     assert "pas encore disponible" in coming_soon.json()["error"]["message"]
 

@@ -9,7 +9,7 @@ import hmac
 import logging
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -71,6 +71,7 @@ from backend.app.services.audit_log_service import AuditLogService
 from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.plan_limits_service import PlanLimitsService
 from backend.app.schemas.voice import (
     VoiceConfigCreatedResponse,
     VoiceConfigRequest,
@@ -1147,6 +1148,28 @@ def _ensure_voice_access(db: Session, company_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Voice module is not active for this tenant")
 
 
+_LIVE_CALL_STATUSES = ("answering", "routing", "routed", "in_progress", "blocked_announcement")
+# A call whose hangup webhook was lost must not hold a concurrency slot forever.
+_LIVE_CALL_MAX_AGE = timedelta(hours=2)
+
+
+def _concurrent_call_limit_reached(db: Session, call: VoiceCall) -> bool:
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"plan_limit:max_concurrent_calls:{call.company_id}"})
+    limit = PlanLimitsService(db).limits_for(call.company_id).max_concurrent_calls
+    if limit is None:
+        return False
+    live = db.scalar(select(func.count()).select_from(VoiceCall).where(
+        VoiceCall.company_id == call.company_id,
+        VoiceCall.id != call.id,
+        VoiceCall.ended_at.is_(None),
+        VoiceCall.status.in_(_LIVE_CALL_STATUSES),
+        VoiceCall.created_at >= datetime.now(timezone.utc) - _LIVE_CALL_MAX_AGE,
+    )) or 0
+    return live >= limit
+
+
 def _call_event_data(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     raw_data = payload.get("data") if isinstance(payload, dict) else None
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
@@ -1567,6 +1590,18 @@ async def telnyx_webhook(
         return {"received": True}
     if event_type == "call.answered" and (call.ended_at is not None or call.status != "answering"):
         return {"received": True, "routed": False}
+    if event_type == "call.initiated" and _concurrent_call_limit_reached(db, call):
+        call.status = "rejected_busy"
+        call.ended_at = datetime.now(timezone.utc)
+        call.source_context = {**(call.source_context or {}), "access_block_reason": "CONCURRENT_CALL_LIMIT"}
+        receipt.result = {**receipt.result, "status": "concurrency_limit"}
+        db.commit()
+        command_id = str(UUID(hashlib.sha256(f"busy:{call.id}".encode()).hexdigest()[:32]))
+        try:
+            await service.telnyx.reject_call(call_control_id, command_id=command_id)
+        except Exception:
+            logger.warning("Telnyx busy rejection failed for voice call %s", call.id)
+        return {"received": True, "routed": False, "status": "concurrency_limit"}
     if event_type in {"call.initiated", "call.answered"}:
         company = db.get(Company, config.company_id)
         usage = AIUsageService(db, AIQuotaPolicy(settings), settings.avenqo_provider_cost_per_credit_usd,
