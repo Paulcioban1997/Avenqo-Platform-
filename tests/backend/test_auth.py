@@ -1,4 +1,5 @@
-﻿from collections.abc import Generator
+import secrets
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -19,6 +20,9 @@ from modules.registry import BUSINESS_MODULE_REGISTRY
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
 
+
+# Ephemeral fixture for local synthetic test accounts; no deployed credential.
+NON_SENSITIVE_TEST_PASSWORD = secrets.token_urlsafe(24) + "Aa1!"
 
 class RecordingNotifier:
     """Capture les jetons sans envoyer de vrai courriel pendant les tests."""
@@ -70,7 +74,7 @@ def registration_payload(
         "first_name": "Alex",
         "last_name": "Martin",
         "email": email,
-        "password": "Avenqo2026!",
+        "password": NON_SENSITIVE_TEST_PASSWORD,
         "country": "Canada",
         "timezone": "America/Toronto",
         "industry": "E-commerce",
@@ -81,7 +85,7 @@ def verify_and_login(
     client: TestClient,
     notifier: RecordingNotifier,
     email: str,
-    password: str = "Avenqo2026!",
+    password: str = NON_SENSITIVE_TEST_PASSWORD,
 ) -> dict[str, object]:
     verification = client.post(
         "/api/v1/auth/email/verify",
@@ -855,16 +859,16 @@ def test_gestion_employes_respecte_roles_et_tenants(auth_environment) -> None:
 def test_seed_demo_est_idempotent(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     with session_factory() as session:
-        first = seed_demo(session, "Avenqo2026!")
+        first = seed_demo(session, NON_SENSITIVE_TEST_PASSWORD)
         first_id = first.id
     with session_factory() as session:
-        second = seed_demo(session, "Avenqo2026!")
+        second = seed_demo(session, NON_SENSITIVE_TEST_PASSWORD)
         assert second.id == first_id
         assert session.scalars(select(User).where(User.email == DEMO_EMAIL)).all() == [second]
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": DEMO_EMAIL, "password": "Avenqo2026!"},
+        json={"email": DEMO_EMAIL, "password": NON_SENSITIVE_TEST_PASSWORD},
     )
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "owner"

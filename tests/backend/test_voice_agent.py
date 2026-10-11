@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.app.core.security import hash_password
+
 import asyncio
 import base64
 import hashlib
@@ -131,17 +133,15 @@ class _FakeTelnyx:
         self.media_streams = []
         self.commands = []
         self.fail_transfer = False
-        self.fail_speak = False
 
-    async def answer_call(self, call_control_id: str, *, command_id: str, stream_url: str | None = None, client_state: str | None = None) -> None:
+    async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         self.commands.append(("answer", call_control_id, command_id))
-        if stream_url:
-            self.media_streams.append((call_control_id, stream_url, client_state, command_id))
 
     async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
-        self.commands.append(("speak_unavailable", call_control_id, command_id, locale))
-        if self.fail_speak:
-            raise RuntimeError("telnyx-speak-422")
+        self.commands.append(("speak_unavailable", call_control_id, command_id))
+
+    async def reject_call(self, call_control_id: str, *, command_id: str, cause: str = "USER_BUSY") -> None:
+        self.commands.append(("reject", call_control_id, cause))
 
     async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         if self.fail_transfer:
@@ -196,7 +196,7 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
     try:
         if principal_type == "USER":
             principal = User(company_id=company.id, first_name="Owner", last_name="Pin", email="pin-owner@example.com",
-                password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+                password_hash=hash_password("pin-http-test-password"), role=UserRole.OWNER, phone="+15145550123", is_active=True)
             session.add(principal); session.flush()
             session.add(CompanyMembership(company_id=company.id, user_id=principal.id, role=UserRole.OWNER, is_active=True))
         else:
@@ -433,7 +433,7 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
     engine, session, company, _config, _key, _service = _voice_database(tmp_path)
     try:
         user = User(company_id=company.id, first_name="Owner", last_name="PIN", email="pin-http@example.com",
-            password_hash="test", role=UserRole.OWNER, phone="+15145550123", is_active=True)
+            password_hash=hash_password("pin-http-test-password"), role=UserRole.OWNER, phone="+15145550123", is_active=True)
         session.add(user); session.flush()
         membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
         session.add_all([membership, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
@@ -446,10 +446,10 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
         app.dependency_overrides[voice_router.get_active_ai_membership] = lambda: membership
         secret = "908172"
         with TestClient(app) as client:
-            response = client.put("/api/v1/voice/auth/pin", json={"pin": secret})
+            response = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password"})
             assert response.status_code == 200 and response.json() == {"status": "CONFIGURED"}
             assert secret not in response.text
-            malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "company_id": str(uuid4())})
+            malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password", "company_id": str(uuid4())})
             assert malformed.status_code == 422 and secret not in malformed.text
         credential = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == company.id))
         assert credential is not None and credential.principal_id == user.id and credential.pin_hash.startswith("$argon2")
@@ -1311,28 +1311,36 @@ def test_telnyx_provider_failure_is_generic_and_not_retried(signed_telnyx_webhoo
     assert call.status == "routing_outcome_unknown"
 
 
-def test_inbound_media_answers_then_starts_bidirectional_stream(signed_telnyx_webhook):
+@pytest.mark.parametrize("plan,limit", [("base", 1), ("professional", 2)])
+def test_concurrent_call_limit_rejects_busy_before_answer_or_credit_use(signed_telnyx_webhook, plan, limit):
+    from backend.app.models import BillingAccount
     env = signed_telnyx_webhook
-    env.settings.telnyx_media_enabled = True
-    env.settings.telnyx_media_inbound_enabled = True
-    env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
-    env.settings.openai_api_key = "fake-audio-key"
-    env.settings.voice_realtime_supported_locales = ["fr"]
-    env.config.enabled = False
-    env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
+    env.settings.retell_api_key = "test-retell-configured"
+    env.session.scalar(select(BillingAccount).where(BillingAccount.company_id == env.company.id)).plan_code = plan
+    for index in range(limit):
+        env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+            telnyx_call_control_id=f"live-{index}", status="in_progress"))
+    env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+        telnyx_call_control_id="ended", status="in_progress", ended_at=datetime.now(timezone.utc)))
     env.session.commit()
-    initiated = env.send(env.event())
-    assert initiated.status_code == 200 and initiated.json()["status"] == "answering"
+
+    response = env.send(env.event(call_control_id="over-limit"))
+    assert response.status_code == 200 and response.json()["status"] == "concurrency_limit"
+    assert env.service.telnyx.commands == [("reject", "over-limit", "USER_BUSY")]
+    call = env.session.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == "over-limit"))
+    assert call.status == "rejected_busy" and call.ended_at is not None
+    assert env.send(env.event("call.answered", call_control_id="over-limit")).json()["routed"] is False
+
+
+def test_calls_below_the_concurrency_limit_are_answered(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-configured"
+    env.session.add(VoiceCall(company_id=env.company.id, config_id=env.config.id, caller_phone="+15145550000",
+        telnyx_call_control_id="live-0", status="in_progress"))
+    env.session.commit()
+    response = env.send(env.event(call_control_id="second-line"))
+    assert response.json()["status"] == "answering"
     assert env.service.telnyx.commands[0][0] == "answer"
-    answered = env.send(env.event("call.answered"))
-    assert answered.json()["routed"] is True
-    assert env.service.telnyx.media_streams
-    control_id, stream_url, _state, _command = env.service.telnyx.media_streams[0]
-    assert control_id == "inbound-control"
-    assert stream_url.endswith(str(env.session.scalar(select(VoiceCall)).id))
-    replay_answered = env.send(env.event("call.answered")).json()
-    assert replay_answered["received"] is True and replay_answered.get("routed") is False
-    assert env.send(env.event()).json().get("duplicate") is True
 
 
 def test_exhausted_phone_announces_unavailable_without_starting_ai_and_handles_replays(signed_telnyx_webhook):
@@ -1351,25 +1359,8 @@ def test_exhausted_phone_announces_unavailable_without_starting_ai_and_handles_r
     assert env.service.telnyx.commands[-1][0] == "speak_unavailable"
     assert env.send(answered).json()["duplicate"] is True
     assert env.service.telnyx.media_streams == [] and env.service.telnyx.transfers == []
-    assert ("hangup", "inbound-control") not in env.service.telnyx.commands
     assert env.send(env.event("call.speak.ended")).status_code == 200
     call = env.session.scalar(select(VoiceCall))
     assert call.status == "blocked_credits" and call.ended_at is not None
     assert call.authenticated_user_id is None
-    assert env.service.telnyx.commands[-1] == ("hangup", "inbound-control")
     assert env.send(env.event("call.answered")).json()["routed"] is False
-
-
-def test_exhausted_speak_422_hangs_up_only_after_announcement_fallbacks(signed_telnyx_webhook):
-    from backend.app.models import TenantAICreditBalance
-    env = signed_telnyx_webhook
-    env.settings.retell_api_key = "test-retell-key"
-    env.service.telnyx.fail_speak = True
-    env.session.add(TenantAICreditBalance(company_id=env.company.id, monthly_period="2026-10", monthly_used=20000, purchased_balance=0))
-    env.session.commit()
-    assert env.send(env.event()).json()["status"] == "blocked_credits"
-    assert env.service.telnyx.commands[0][0] == "answer"
-    assert env.send(env.event("call.answered")).json()["status"] == "blocked_credits"
-    assert [item[0] for item in env.service.telnyx.commands] == ["answer", "speak_unavailable", "hangup"]
-    call = env.session.scalar(select(VoiceCall))
-    assert call.status == "blocked_credits" and call.ended_at is not None

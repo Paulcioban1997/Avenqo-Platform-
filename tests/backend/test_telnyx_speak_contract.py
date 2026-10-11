@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from types import SimpleNamespace
 
 import httpx
@@ -15,7 +16,7 @@ from backend.app.voice.providers import (
     unavailable_speak_payload,
 )
 
-API_KEY = "KEY-test-secret-never-log"
+API_KEY = "test-only-" + secrets.token_urlsafe(24)
 
 
 def _telnyx_rules(requests: list[dict], *, reject_premium: bool = False, reject_named_voice: bool = False):

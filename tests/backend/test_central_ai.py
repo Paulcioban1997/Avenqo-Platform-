@@ -771,8 +771,6 @@ async def test_context_uses_billing_plan_and_central_ai_does_not_consume_module_
     assert result.status == "success"
     assert '"plan_code":"professional"' in provider.last_prompt
     assert before.active_modules == after.active_modules == ("retail",)
-    # Professional permits five selectable modules; Retail occupies one slot.
-    # Central AI is included and must not consume an additional slot.
     assert before.remaining_module_slots == after.remaining_module_slots == 4
 
 

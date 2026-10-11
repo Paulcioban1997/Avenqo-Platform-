@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from backend.app.models import Base, Company, User, CompanyMembership, BillingAccount, VoicePhoneNumber, VoiceBusinessConfig
 from backend.app.models.accounting import AccountingTransaction
-from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService, ModuleLimitReached
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -39,17 +39,17 @@ def owned_binding_db(tmp_path):
         tenants = []
         for slug in ('target-binding', 'other-binding'):
             company = Company(name=slug, slug=slug, email=f'{slug}@example.com', country='CA',
-                timezone='America/Toronto', industry='Retail', subscription_plan='professional')
+                timezone='America/Toronto', industry='Retail', subscription_plan='base')
             db.add(company); db.flush()
             owner = User(company_id=company.id, first_name='Owner', last_name='Test', email=f'owner-{slug}@example.com',
                 password_hash='test', role=UserRole.OWNER, is_active=True)
             db.add(owner); db.flush()
-            db.add_all([BillingAccount(company_id=company.id, plan_code='professional', status='active'),
+            db.add_all([BillingAccount(company_id=company.id, plan_code='base', status='active'),
                 CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True)])
             db.flush()
             tenant = TenantContext(company.id, owner.id)
             entitlements = ModuleEntitlementService(db)
-            for key in ('retail', 'crm', 'accounting'):
+            for key in ('retail', 'accounting'):
                 entitlements.activate_module(tenant, key)
             tenants.append(tenant)
         entry = AccountingTransaction(company_id=tenants[0].company_id, transaction_date=datetime.now(timezone.utc),
@@ -146,9 +146,11 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
     manager = VoiceNumberManagementService(provider)
     with db.begin():
         entitlements = ModuleEntitlementService(db)
+        with pytest.raises(ModuleLimitReached):
+            entitlements.activate_module(tenant, 'voice')
         entitlements.deactivate_module(tenant, 'accounting')
         state = entitlements.activate_module(tenant, 'voice')
-        assert set(state.active_modules) == {'retail', 'crm', 'voice'} and state.module_limit == 5
+        assert set(state.active_modules) == {'retail', 'voice'} and state.module_limit == 2
         number = await manager.register_owned_number(db, tenant, '+14385550123', confirmed=True)
         number_id = number.id
     with db.begin():
@@ -162,9 +164,9 @@ async def test_atomic_accounting_voice_swap_and_owned_binding_preserves_data_and
         assert refreshed.id == number_id and refreshed.provider_connection_id == "verified-connection"
         assert db.scalar(select(func.count(VoicePhoneNumber.id))) == 1
         assert db.get(AccountingTransaction, entry_id).amount == 123
-        assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'crm', 'accounting'}
+        assert set(ModuleEntitlementService(db).get_active_modules(other)) == {'retail', 'accounting'}
         assert db.scalar(select(func.count(VoiceBusinessConfig.id))) == 0
-        assert db.scalar(select(BillingAccount.plan_code).where(BillingAccount.company_id == tenant.company_id)) == 'professional'
+        assert db.scalar(select(BillingAccount.plan_code).where(BillingAccount.company_id == tenant.company_id)) == 'base'
 
 
 @pytest.mark.asyncio
@@ -178,7 +180,7 @@ async def test_owned_number_conflict_rolls_back_whole_module_swap(owned_binding_
             service = ModuleEntitlementService(db)
             service.deactivate_module(tenant, 'accounting'); service.activate_module(tenant, 'voice')
             await VoiceNumberManagementService(OwnedProvider()).register_owned_number(db, tenant, '+14385550123', confirmed=True)
-    assert set(ModuleEntitlementService(db).get_active_modules(tenant)) == {'retail', 'crm', 'accounting'}
+    assert set(ModuleEntitlementService(db).get_active_modules(tenant)) == {'retail', 'accounting'}
     number = db.scalar(select(VoicePhoneNumber))
     assert number.company_id == other.company_id
 

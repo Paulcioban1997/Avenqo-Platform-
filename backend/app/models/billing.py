@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, JSON, BigInteger, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, JSON, BigInteger, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,6 +74,25 @@ class BillingInvoice(Base):
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BillingTestDocument(TimestampMixin, Base):
+    """Authorized sandbox PDF archive, excluded from all financial ledgers and totals."""
+    __tablename__ = "billing_test_documents"
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_invoice_id", name="uq_test_document_source"),
+        CheckConstraint("total >= 0", name="ck_test_document_total_nonnegative"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_invoice_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_company_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    number: Mapped[str] = mapped_column(String(100), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    total: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pdf_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    pdf_content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+
+
 class AICreditPurchase(TimestampMixin, Base):
     """Achat de crédits créé côté serveur et rapproché avec Stripe."""
 
@@ -104,6 +123,7 @@ class AICreditPurchase(TimestampMixin, Base):
     )
     stripe_customer_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     pack_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    offer_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     plan_code: Mapped[str] = mapped_column(String(64), nullable=False)
     credits_granted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits_remaining: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -118,6 +138,21 @@ class AICreditPurchase(TimestampMixin, Base):
     review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     company: Mapped["Company"] = relationship()
+
+
+class AICreditPackOffer(TimestampMixin, Base):
+    """Versioned optional packs; an issued Checkout keeps its original snapshot."""
+    __tablename__ = "ai_credit_pack_offers"
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    profitability_review: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    __table_args__ = (
+        CheckConstraint("credits > 0", name="ck_credit_offer_credits_positive"),
+        CheckConstraint("price_cents > 0", name="ck_credit_offer_price_positive"),
+    )
 
 
 class StripeWebhookEvent(Base):

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch } from "@/lib/api-request";
 import {
   Volume2,
   VolumeX,
@@ -61,6 +61,7 @@ const PERSONALITY_TONES = [
 export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectionProps) {
   const [catalog, setCatalog] = useState<VoiceCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -84,59 +85,46 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
   const [audioLoadingVoiceId, setAudioLoadingVoiceId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      const authHeaders = getAuthHeaders();
-      try {
-        // Fetch Voice Catalog
-        const catalogRes = await fetch("/api/v1/voice/voices", { headers: authHeaders });
-        if (catalogRes.ok) {
-          const catalogData = await catalogRes.json();
-          const items = Array.isArray(catalogData) ? catalogData : catalogData.voices || [];
-          setCatalog(items);
-        }
+  const applyConfig = (config: VoiceConfig) => {
+    setSelectedVoiceId(config.voice_id);
+    setSpeechSpeed(config.speech_speed);
+    setPersonalityTone(config.personality_tone);
+    setGreetingMessage(config.greeting_message ?? "");
+    setFarewellMessage(config.farewell_message ?? "");
+    setPronunciations(Object.entries(config.custom_pronunciation ?? {}).map(([term, replaceWith]) => ({ term, replaceWith: String(replaceWith) })));
+  };
 
-        // Fetch Current Voice Config
-        const configRes = await fetch("/api/v1/voice/config", { headers: authHeaders });
-        if (configRes.ok) {
-          const configData = await configRes.json();
-          if (configData.voice_id) setSelectedVoiceId(configData.voice_id);
-          if (configData.speech_speed) setSpeechSpeed(configData.speech_speed);
-          if (configData.personality_tone) setPersonalityTone(configData.personality_tone);
-          if (configData.greeting_message) setGreetingMessage(configData.greeting_message);
-          if (configData.farewell_message) setFarewellMessage(configData.farewell_message);
-          if (configData.custom_pronunciation) {
-            let pronObj: Record<string, any> = {};
-            if (typeof configData.custom_pronunciation === "string") {
-              try {
-                pronObj = JSON.parse(configData.custom_pronunciation);
-              } catch {
-                pronObj = { term: configData.custom_pronunciation };
-              }
-            } else if (typeof configData.custom_pronunciation === "object") {
-              pronObj = configData.custom_pronunciation;
-            }
-            const list = Object.entries(pronObj).map(([term, replaceWith]) => ({
-              term,
-              replaceWith: String(replaceWith),
-            }));
-            setPronunciations(list);
-          }
+  useEffect(() => {
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setLoading(true); setLoaded(false); setSaveSuccess(false); setCatalog([]); setErrorMessage(null);
+    });
+    async function loadData() {
+      try {
+        const [catalogRes, configRes] = await Promise.all([
+          apiFetch("/api/v1/voice/voices", { signal: controller.signal }),
+          apiFetch("/api/v1/voice/customization", { signal: controller.signal }),
+        ]);
+        const [items, config] = await Promise.all([catalogRes.json(), configRes.json()]);
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(items) || typeof config.voice_id !== "string" || typeof config.speech_speed !== "number") {
+          throw new Error("Invalid voice configuration response");
         }
-      } catch (err) {
-        console.error("Failed to load voice settings", err);
+        setCatalog(items);
+        applyConfig(config);
+        setLoaded(true);
+      } catch {
+        if (!controller.signal.aborted) setErrorMessage("Impossible de charger les réglages vocaux. Rechargez la page pour réessayer.");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
-    loadData();
-
+    void loadData();
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      controller.abort();
+      audioRef.current?.pause();
+      audioRef.current = null;
     };
   }, [tenantId]);
 
@@ -157,10 +145,9 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     setErrorMessage(null);
 
     try {
-      const authHeaders = getAuthHeaders();
-      const response = await fetch("/api/v1/voice/voices/preview", {
+      const response = await apiFetch("/api/v1/voice/voices/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           voice_id: voice.id,
           text: `Bonjour, je suis votre assistant vocal Avenqo. Comment puis-je vous aider aujourd'hui ?`,
@@ -172,6 +159,9 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
       }
 
       const blob = await response.blob();
+      if (!response.headers.get("Content-Type")?.startsWith("audio/") || blob.size === 0) {
+        throw new Error("Le service n’a pas retourné d’extrait audio valide. Réessayez.");
+      }
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
@@ -218,35 +208,23 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     }
 
     try {
-      const authHeaders = getAuthHeaders();
       const payload = {
         voice_id: selectedVoiceId,
         voice_provider: "openai",
         speech_speed: speechSpeed,
         personality_tone: personalityTone,
-        greeting_message: greetingMessage || undefined,
-        farewell_message: farewellMessage || undefined,
+        greeting_message: greetingMessage,
+        farewell_message: farewellMessage,
         custom_pronunciation: customPronunciationRecord,
       };
 
-      // Try dedicated customization endpoint first, fallback to config endpoint
-      let response = await fetch("/api/v1/voice/customization", {
+      await apiFetch("/api/v1/voice/customization", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        response = await fetch("/api/v1/voice/config", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      if (!response.ok) {
-        throw new Error("Échec de la sauvegarde des paramètres vocaux");
-      }
+      const persisted = await apiFetch("/api/v1/voice/customization");
+      applyConfig(await persisted.json());
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
@@ -283,7 +261,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
                 Personnalisation Vocale & Comportement de l&apos;Agent
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Définissez la voix, la diction, le ton et les règles de politesse téléphoniques en temps réel
+                Définissez la voix, la diction, le ton et les règles de politesse téléphoniques pour votre entreprise
               </p>
             </div>
           </div>
@@ -291,7 +269,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
 
         <button
           type="button"
-          disabled={saving || loading}
+          disabled={saving || loading || !loaded || !catalog.some((voice) => voice.id === selectedVoiceId)}
           onClick={handleSave}
           className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#0052CC] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50 dark:shadow-[0_0_16px_rgba(0,118,255,0.35)]"
         >
@@ -329,7 +307,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
               Catalogue de Voix Réelles Haute Fidélité
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Voix neuronales ultra-faible latence (&lt;250ms) certifiées pour la téléphonie Telnyx
+              Voix disponibles pour le modèle de synthèse configuré. Les extraits sont générés par une IA.
             </p>
           </div>
 
@@ -411,7 +389,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
                       </span>
                     ))}
                     <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-400">
-                      ⚡ &lt;250ms
+                      Synthèse IA
                     </span>
                   </div>
 

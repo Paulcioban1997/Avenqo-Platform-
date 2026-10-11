@@ -9,7 +9,7 @@ import hmac
 import logging
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -71,6 +71,7 @@ from backend.app.services.audit_log_service import AuditLogService
 from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.plan_limits_service import PlanLimitsService
 from backend.app.schemas.voice import (
     VoiceConfigCreatedResponse,
     VoiceConfigRequest,
@@ -177,12 +178,11 @@ async def import_owned_voice_number(
         raise HTTPException(status_code=409, detail="Owned number cannot be imported in this tenant state") from None
 
 
-@router.get("/auth/pin/status", dependencies=[Depends(require_active_subscription)])
+@router.get("/auth/pin/status")
 def get_user_voice_pin_status(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     cred = db.scalar(select(VoiceCallerCredential).where(
         VoiceCallerCredential.company_id == identity.user.company_id,
         VoiceCallerCredential.principal_type == "USER",
@@ -208,7 +208,7 @@ def get_user_voice_pin_status(
     }
 
 
-@router.put("/auth/pin", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
+@router.put("/auth/pin", dependencies=[Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
 def set_user_voice_pin(
     request: VoicePinRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
@@ -216,7 +216,6 @@ def set_user_voice_pin(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     if "ai:use" not in permissions_for(membership.role):
         raise HTTPException(status_code=403, detail="AI permission is required")
 
@@ -230,15 +229,10 @@ def set_user_voice_pin(
     pin_str = _secret_val(request.pin)
     confirm_pin_str = _secret_val(request.confirm_pin or request.pin_confirmation)
 
-    # Strong web re-authentication: required if modifying an existing PIN or if password is provided
-    if existing_cred is not None:
-        if not current_pw:
-            raise HTTPException(status_code=400, detail="Current account password is required to change or reset your Voice PIN")
-        if not verify_password(current_pw, identity.user.password_hash):
-            raise HTTPException(status_code=403, detail="Invalid current account password")
-    elif current_pw:
-        if not verify_password(current_pw, identity.user.password_hash):
-            raise HTTPException(status_code=403, detail="Invalid current account password")
+    if not current_pw:
+        raise HTTPException(status_code=400, detail="Votre mot de passe actuel est requis pour configurer le NIP vocal.")
+    if not verify_password(current_pw, identity.user.password_hash):
+        raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
 
     if current_pw and pin_str == current_pw:
         raise HTTPException(status_code=422, detail="Voice PIN must not be identical to your account password")
@@ -262,9 +256,6 @@ def set_user_voice_pin(
             metadata={"credential_type": "USER", "reauthenticated": bool(request.current_password)},
             commit=False,
         )
-        config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
-        if config is not None and config.telnyx_phone_number:
-            config.enabled = True
         db.commit()
     except (ValueError, PermissionError) as exc:
         db.rollback()
@@ -272,12 +263,11 @@ def set_user_voice_pin(
     return {"status": "CONFIGURED"}
 
 
-@router.post("/auth/sessions/revoke", dependencies=[Depends(require_active_subscription)])
+@router.post("/auth/sessions/revoke")
 def revoke_active_voice_sessions(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     now = datetime.now(timezone.utc)
     count = 0
     for session in db.scalars(select(VoiceAuthSession).where(
@@ -300,13 +290,12 @@ def revoke_active_voice_sessions(
     return {"status": "REVOKED", "revoked_count": count}
 
 
-@router.put("/auth/phone-access", dependencies=[Depends(require_active_subscription)])
+@router.put("/auth/phone-access")
 def set_user_phone_access(
     request: VoicePhoneAccessRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    _ensure_voice_access(db, identity.user.company_id)
     cred = db.scalar(select(VoiceCallerCredential).where(
         VoiceCallerCredential.company_id == identity.user.company_id,
         VoiceCallerCredential.principal_type == "USER",
@@ -648,19 +637,34 @@ VOICE_CATALOG_ITEMS = [
 def get_voice_catalog(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> list[VoiceCatalogItem]:
     _ensure_voice_access(db, identity.user.company_id)
-    return VOICE_CATALOG_ITEMS
+    return _supported_preview_voices(settings)
 
 
-@router.post("/voices/preview", dependencies=[Depends(require_active_subscription)])
+def _supported_preview_voices(settings: Settings) -> list[VoiceCatalogItem]:
+    model = settings.voice_tts_model or "gpt-4o-mini-tts"
+    if model in {"tts-1", "tts-1-hd"}:
+        supported = {"alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"}
+        return [voice for voice in VOICE_CATALOG_ITEMS if voice.id in supported]
+    if model.startswith("gpt-4o-mini-tts"):
+        return VOICE_CATALOG_ITEMS
+    return []
+
+
+@router.post("/voices/preview", dependencies=[Depends(require_active_subscription), Depends(rate_limit("voice_preview", "rate_limit_ai_per_minute"))])
 async def preview_voice(
     request: VoicePreviewRequest,
-    identity: CurrentIdentity = Depends(get_current_identity),
+    identity: CurrentIdentity = Depends(require_permission("ai:use")),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     _ensure_voice_access(db, identity.user.company_id)
+    if request.voice_id not in {voice.id for voice in _supported_preview_voices(settings)}:
+        raise HTTPException(status_code=422, detail="Voice unavailable for the configured speech model")
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=503, detail="Speech preview provider is not configured")
     company = identity.user.company
     lang = resolve_locale(request.language or company.preferred_language or "fr")
     company_name = company.name if company else "Avenqo"
@@ -678,23 +682,19 @@ async def preview_voice(
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=settings.openai_api_key)
-            standard_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
-            tts_voice = request.voice_id if request.voice_id in standard_voices else "alloy"
             audio_response = await client.audio.speech.create(
-                model="tts-1",
-                voice=tts_voice,
+                model=settings.voice_tts_model or "gpt-4o-mini-tts",
+                voice=request.voice_id,
                 input=text_to_speak,
+                response_format="mp3",
             )
             audio_bytes = audio_response.content
+            if not audio_bytes:
+                raise ValueError("Empty speech response")
             return Response(content=audio_bytes, media_type="audio/mpeg")
         except Exception as exc:
-            logging.getLogger("avenqo.voice").warning("TTS audio generation error during preview: %s", exc)
-
-    silent_mp3 = (
-        b"\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    ) * 10
-    return Response(content=silent_mp3, media_type="audio/mpeg")
+            logging.getLogger("avenqo.voice").warning("Speech preview failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="Speech preview is temporarily unavailable") from None
 
 
 @router.get("/status", dependencies=[Depends(require_active_subscription)])
@@ -1148,6 +1148,28 @@ def _ensure_voice_access(db: Session, company_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Voice module is not active for this tenant")
 
 
+_LIVE_CALL_STATUSES = ("answering", "routing", "routed", "in_progress", "blocked_announcement")
+# A call whose hangup webhook was lost must not hold a concurrency slot forever.
+_LIVE_CALL_MAX_AGE = timedelta(hours=2)
+
+
+def _concurrent_call_limit_reached(db: Session, call: VoiceCall) -> bool:
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"plan_limit:max_concurrent_calls:{call.company_id}"})
+    limit = PlanLimitsService(db).limits_for(call.company_id).max_concurrent_calls
+    if limit is None:
+        return False
+    live = db.scalar(select(func.count()).select_from(VoiceCall).where(
+        VoiceCall.company_id == call.company_id,
+        VoiceCall.id != call.id,
+        VoiceCall.ended_at.is_(None),
+        VoiceCall.status.in_(_LIVE_CALL_STATUSES),
+        VoiceCall.created_at >= datetime.now(timezone.utc) - _LIVE_CALL_MAX_AGE,
+    )) or 0
+    return live >= limit
+
+
 def _call_event_data(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     raw_data = payload.get("data") if isinstance(payload, dict) else None
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
@@ -1228,6 +1250,10 @@ def update_voice_customization(
     settings: Settings = Depends(get_settings),
 ) -> VoiceCustomizationResponse:
     _ensure_voice_access(db, identity.user.company_id)
+    if request.voice_id is not None and request.voice_id not in {voice.id for voice in _supported_preview_voices(settings)}:
+        raise HTTPException(status_code=422, detail="Voice unavailable for the configured speech model")
+    if request.voice_provider not in {None, "openai"}:
+        raise HTTPException(status_code=422, detail="Unsupported voice provider")
     service = _orchestrator(db, settings)
     config = service.ensure_config(TenantContext(identity.user.company_id))
 
@@ -1448,10 +1474,7 @@ async def telnyx_webhook(
         try:
             await service.telnyx.speak_unavailable(call_control_id, command_id=command_id, locale=config.preferred_language)
         except Exception:
-            logger.warning(
-                "Telnyx unavailable announcement failed for voice call %s; hanging up only after speak fallbacks",
-                call.id,
-            )
+            logger.warning("Telnyx unavailable announcement failed for voice call %s after speak fallbacks", call.id)
             try:
                 await service.telnyx.hangup(call_control_id)
             except Exception:
@@ -1571,6 +1594,18 @@ async def telnyx_webhook(
         return {"received": True}
     if event_type == "call.answered" and (call.ended_at is not None or call.status != "answering"):
         return {"received": True, "routed": False}
+    if event_type == "call.initiated" and _concurrent_call_limit_reached(db, call):
+        call.status = "rejected_busy"
+        call.ended_at = datetime.now(timezone.utc)
+        call.source_context = {**(call.source_context or {}), "access_block_reason": "CONCURRENT_CALL_LIMIT"}
+        receipt.result = {**receipt.result, "status": "concurrency_limit"}
+        db.commit()
+        command_id = str(UUID(hashlib.sha256(f"busy:{call.id}".encode()).hexdigest()[:32]))
+        try:
+            await service.telnyx.reject_call(call_control_id, command_id=command_id)
+        except Exception:
+            logger.warning("Telnyx busy rejection failed for voice call %s", call.id)
+        return {"received": True, "routed": False, "status": "concurrency_limit"}
     if event_type in {"call.initiated", "call.answered"}:
         company = db.get(Company, config.company_id)
         usage = AIUsageService(db, AIQuotaPolicy(settings), settings.avenqo_provider_cost_per_credit_usd,
@@ -1921,7 +1956,6 @@ async def voice_central_agent(
     )
 
 
-@router.get("/auth/pin/status")
 async def get_voice_pin_status(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -1957,7 +1991,6 @@ async def get_voice_pin_status(
     }
 
 
-@router.put("/auth/pin")
 async def set_voice_pin(
     request: VoicePinRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
@@ -1995,7 +2028,6 @@ async def set_voice_pin(
     return await get_voice_pin_status(identity, db)
 
 
-@router.post("/auth/sessions/revoke")
 async def revoke_voice_auth_sessions(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -2015,7 +2047,6 @@ async def revoke_voice_auth_sessions(
     return {"status": "success", "revoked_sessions_count": count}
 
 
-@router.put("/auth/phone-access")
 async def set_voice_phone_access(
     request: VoicePhoneAccessRequest,
     identity: CurrentIdentity = Depends(get_current_identity),

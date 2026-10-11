@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   CreditCard,
   ExternalLink,
@@ -26,6 +26,8 @@ import {
   ArrowRight,
   Shield,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-request";
+import { useSession } from "@/lib/session-context";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { creditBalanceViewModel } from "@/lib/credit-balance";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -83,11 +85,14 @@ interface AICreditBalance {
 }
 
 interface CreditPack {
+  enabled?: boolean;
   code: string;
-  name: string;
+  name?: string;
   credits: number;
   price_cents?: number;
   price_usd?: number;
+  price_cad?: number;
+  currency?: string;
 }
 
 interface AICreditBreakdownItem {
@@ -124,6 +129,8 @@ interface InvoiceItem {
 
 export function BillingView() {
   const { locale } = useLocale();
+  const { identity, creditBalance } = useSession();
+  const requestVersion = useRef(0);
   const t = getAppTranslations(locale);
   const companyTranslations = getApplicationCatalog(locale).company;
   const billingTranslations = getApplicationCatalog(locale).phase4e;
@@ -136,15 +143,16 @@ export function BillingView() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
-    plan_code: "base",
-    status: "inactive",
-    plan_name: "Base",
+    plan_code: "",
+    status: "unknown",
+    plan_name: "",
     billing_frequency: "monthly",
     currency: "CAD",
     stripe_subscription_linked: false,
   });
 
-  const [credits, setCredits] = useState<AICreditBalance>({});
+  const [loadedCredits, setCredits] = useState<AICreditBalance>({});
+  const credits: AICreditBalance = creditBalance ?? loadedCredits;
 
   const [breakdownPeriod, setBreakdownPeriod] = useState<string>("billing_period");
   const [breakdownItems, setBreakdownItems] = useState<AICreditBreakdownItem[]>([]);
@@ -155,15 +163,14 @@ export function BillingView() {
   const [historyPage, setHistoryPage] = useState<number>(0);
   const historyPageSize = 5;
 
-  const [creditPacks, setCreditPacks] = useState<CreditPack[]>([
-    { code: "pack_6500", name: "Pack Découverte", credits: 6500, price_usd: 10 },
-    { code: "pack_25000", name: "Pack Évolution", credits: 25000, price_usd: 35 },
-    { code: "pack_65000", name: "Pack Business Pro", credits: 65000, price_usd: 80 },
-  ]);
+  const [creditPacks, setCreditPacks] = useState<CreditPack[]>([]);
+  const [loadError, setLoadError] = useState(false);
 
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [testDocuments, setTestDocuments] = useState<Pick<InvoiceItem, "id" | "number" | "currency" | "total" | "issued_at">[]>([]);
+  const [invoiceEnvironment, setInvoiceEnvironment] = useState<"test" | "live" | null>(null);
   const [entitlements, setEntitlements] = useState<EntitlementsInfo | null>(null);
-  const [userRole, setUserRole] = useState<string>("ADMIN");
+  const [userRole, setUserRole] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState<boolean>(false);
   const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] = useState<boolean>(false);
@@ -177,22 +184,27 @@ export function BillingView() {
     notes: "",
   });
 
-  const canManageBilling = ["OWNER", "ADMIN", "SUPER_ADMIN"].includes(userRole?.toUpperCase());
+  const canManageBilling = ["OWNER"].includes(userRole?.toUpperCase());
 
   const loadData = useCallback(async () => {
+    const version = requestVersion.current;
     setLoading(true);
+    setLoadError(false);
     setActionError(null);
     try {
       const headers = getAuthHeaders();
       const [subRes, credRes, packRes, invRes, entRes, userRes] = await Promise.all([
-        fetch("/api/v1/billing/subscription", { headers }).catch(() => null),
-        fetch("/api/v1/billing/ai-credits", { headers }).catch(() => null),
-        fetch("/api/v1/billing/credit-packs", { headers }).catch(() => null),
-        fetch("/api/v1/billing/invoices/history?offset=0&limit=50", { headers }).catch(() => null),
-        fetch("/api/v1/modules/entitlements", { headers }).catch(() => null),
-        fetch("/api/v1/auth/me", { headers }).catch(() => null),
+        apiFetch("/api/v1/billing/subscription", { headers }).catch(() => null),
+        apiFetch("/api/v1/billing/ai-credits", { headers }).catch(() => null),
+        apiFetch("/api/v1/billing/credit-packs", { headers }).catch(() => null),
+        apiFetch("/api/v1/billing/invoices/history?offset=0&limit=50", { headers }).catch(() => null),
+        apiFetch("/api/v1/modules/entitlements", { headers }).catch(() => null),
+        apiFetch("/api/v1/auth/me", { headers }).catch(() => null),
       ]);
+      if (version !== requestVersion.current) return;
 
+      if (!subRes?.ok || !credRes?.ok || !userRes?.ok) throw new Error("unavailable");
+      if (!packRes?.ok || !invRes?.ok || !entRes?.ok) setActionError(companyTranslations.billingUnavailable);
       if (subRes && subRes.ok) {
         const subData = await subRes.json();
         setSubscription(subData);
@@ -203,14 +215,17 @@ export function BillingView() {
       }
       if (packRes && packRes.ok) {
         const packData = await packRes.json();
-        if (Array.isArray(packData) && packData.length > 0) {
+        if (Array.isArray(packData)) {
           setCreditPacks(packData);
         }
       }
       if (invRes && invRes.ok) {
         const invData = await invRes.json();
+        if (invData.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
         if (invData && Array.isArray(invData.items)) {
           setInvoices(invData.items);
+          setTestDocuments(Array.isArray(invData.test_documents) ? invData.test_documents : []);
+          setInvoiceEnvironment(invData.environment === "test" ? "test" : "live");
         }
       }
       if (entRes && entRes.ok) {
@@ -227,29 +242,32 @@ export function BillingView() {
         }
       }
     } catch {
-      // Keep loaded state
+      if (version !== requestVersion.current) return;
+      setLoadError(true);
+      setCreditPacks([]);
+      setUserRole("");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, []);
+  }, [companyTranslations.billingUnavailable]);
 
   const loadBreakdown = useCallback(async (period: string) => {
     try {
       const headers = getAuthHeaders();
-      const res = await fetch(`/api/v1/billing/ai-credits/breakdown?period=${period}`, { headers });
+      const res = await apiFetch(`/api/v1/billing/ai-credits/breakdown?period=${encodeURIComponent(period)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setBreakdownItems(data.items || []);
         setTotalBreakdownUsed(data.total_used || 0);
       }
-    } catch {}
-  }, []);
+    } catch { setActionError(companyTranslations.billingUnavailable); }
+  }, [companyTranslations.billingUnavailable]);
 
   const loadHistory = useCallback(async (page: number, period: string) => {
     try {
       const headers = getAuthHeaders();
       const offset = page * historyPageSize;
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/v1/billing/ai-credits/history?offset=${offset}&limit=${historyPageSize}&period=${encodeURIComponent(period)}`,
         { headers }
       );
@@ -258,42 +276,62 @@ export function BillingView() {
         setHistoryItems(data.items || []);
         setHistoryTotal(data.total || 0);
       }
-    } catch {}
-  }, [historyPageSize]);
+    } catch { setActionError(companyTranslations.billingUnavailable); }
+  }, [historyPageSize, companyTranslations.billingUnavailable]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    requestVersion.current++;
+    const version = requestVersion.current;
+    queueMicrotask(() => {
+      if (version !== requestVersion.current) return;
+      setCredits({}); setInvoices([]); setTestDocuments([]); setInvoiceEnvironment(null); setEntitlements(null);
+      void loadData();
+    });
+    return () => { requestVersion.current++; };
+  }, [loadData, identity?.company.id]);
 
   useEffect(() => {
-    const refreshCreditBalance = async () => {
+    const controller = new AbortController();
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
       try {
-        const response = await fetch("/api/v1/billing/ai-credits", {
-          headers: getAuthHeaders(),
-        });
-        if (response.ok) setCredits(await response.json());
+        const [response, subscriptionResponse] = await Promise.all([
+          apiFetch("/api/v1/billing/invoices/history?offset=0&limit=50", { signal: controller.signal }),
+          apiFetch("/api/v1/billing/subscription", { signal: controller.signal }),
+        ]);
+        const [payload, subscriptionPayload] = await Promise.all([response.json(), subscriptionResponse.json()]);
+        if (!controller.signal.aborted) {
+          setInvoices(payload.items); setSubscription(subscriptionPayload);
+          setTestDocuments(Array.isArray(payload.test_documents) ? payload.test_documents : []);
+          setInvoiceEnvironment(payload.environment === "test" ? "test" : "live");
+          if (payload.synchronization_status === "unavailable") setActionError(companyTranslations.billingUnavailable);
+        }
       } catch {
-        // Keep the last backend balance while temporarily offline.
-      }
+        if (!controller.signal.aborted) setActionError(companyTranslations.billingUnavailable);
+      } finally { pending = false; }
     };
-    window.addEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
-    return () => window.removeEventListener("avenqo:ai-credits-updated", refreshCreditBalance);
-  }, []);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 30_000);
+    return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [identity?.company.id, companyTranslations.billingUnavailable]);
 
   useEffect(() => {
-    loadBreakdown(breakdownPeriod);
-  }, [loadBreakdown, breakdownPeriod]);
+    queueMicrotask(() => { void loadBreakdown(breakdownPeriod); });
+  }, [loadBreakdown, breakdownPeriod, creditBalance]);
 
   useEffect(() => {
-    loadHistory(historyPage, breakdownPeriod);
-  }, [loadHistory, historyPage, breakdownPeriod]);
+    queueMicrotask(() => { void loadHistory(historyPage, breakdownPeriod); });
+  }, [loadHistory, historyPage, breakdownPeriod, creditBalance]);
 
   const handleRefreshBalance = async () => {
     setRefreshing(true);
     try {
       const headers = getAuthHeaders();
       const [res, bdRes] = await Promise.all([
-        fetch("/api/v1/billing/ai-credits", { headers }),
+        apiFetch("/api/v1/billing/ai-credits", { headers }),
         fetch(`/api/v1/billing/ai-credits/breakdown?period=${breakdownPeriod}`, { headers }),
       ]);
       if (res.ok) {
@@ -314,7 +352,7 @@ export function BillingView() {
 
   const handleOpenStripePortal = async () => {
     try {
-      const res = await fetch("/api/v1/billing/portal", {
+      const res = await apiFetch("/api/v1/billing/portal", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       });
@@ -336,6 +374,7 @@ export function BillingView() {
       setActionError(companyTranslations.billingUnavailable);
       return;
     }
+    if (!subscription.stripe_subscription_linked) { void handleSubscribeToBase(); return; }
     const code = (subscription.plan_code || "").toLowerCase();
     if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
@@ -347,7 +386,7 @@ export function BillingView() {
   const handleSubscribeToBase = async () => {
     setActionError(null);
     try {
-      const res = await fetch("/api/v1/billing/checkout", {
+      const res = await apiFetch("/api/v1/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ plan_code: "base" }),
@@ -355,7 +394,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }
@@ -368,7 +407,7 @@ export function BillingView() {
   const handleConfirmUpgradeToProfessional = async () => {
     setActionError(null);
     try {
-      const res = await fetch("/api/v1/billing/checkout", {
+      const res = await apiFetch("/api/v1/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ plan_code: "professional" }),
@@ -376,7 +415,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }
@@ -391,7 +430,7 @@ export function BillingView() {
     setSubmittingQuote(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/v1/billing/enterprise-quote", {
+      const res = await apiFetch("/api/v1/billing/enterprise-quote", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
@@ -423,7 +462,7 @@ export function BillingView() {
 
   const handleBuyCredits = async (packCode: string) => {
     try {
-      const res = await fetch("/api/v1/billing/credit-packs/checkout", {
+      const res = await apiFetch("/api/v1/billing/credit-packs/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ pack_code: packCode }),
@@ -431,7 +470,7 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.location.href = data.url;
+          window.location.assign(data.url);
           return;
         }
       }
@@ -441,16 +480,18 @@ export function BillingView() {
     }
   };
 
-  const handleDownloadInvoice = async (invoice: InvoiceItem, format: "pdf" | "csv" | "xlsx") => {
+  const handleDownloadInvoice = async (invoice: Pick<InvoiceItem, "id" | "number">, format: "pdf" | "csv" | "xlsx", testDocument = false) => {
     setDownloadingId(`${invoice.id}-${format}`);
     setActionError(null);
     try {
       const endpoint =
-        format === "pdf"
-          ? `/api/v1/billing/invoices/${invoice.id}/pdf`
+        testDocument
+          ? `/api/v1/billing/test-invoice-documents/${invoice.id}/pdf`
+          : format === "pdf"
+          ? `/api/v1/billing/invoices/${invoice.id}/avenqo-pdf`
           : `/api/v1/billing/invoices/${invoice.id}/export/${format}`;
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         headers: getAuthHeaders(),
       });
 
@@ -463,7 +504,7 @@ export function BillingView() {
       const a = document.createElement("a");
       a.href = url;
       const num = invoice.number || invoice.id.slice(0, 8);
-      a.download = `facture-avenqo-${num}.${format}`;
+      a.download = `facture-avenqo-${testDocument ? "TEST-" : ""}${num}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -498,7 +539,8 @@ export function BillingView() {
       ? "Paiement en retard"
       : subscription.status === "canceled"
       ? "Annulé"
-      : "Inactif";
+      : subscription.status === "canceling_at_period_end" ? "Annulation en fin de période"
+      : subscription.status === "inactive" ? "Inactif" : "—";
 
   const statusColor =
     subscription.status === "active"
@@ -508,6 +550,11 @@ export function BillingView() {
       : subscription.status === "past_due"
       ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
       : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+
+  if (loadError) return <div role="alert" className="mx-auto max-w-6xl rounded-2xl border border-rose-400 p-6">
+    <p>{companyTranslations.billingUnavailable}</p>
+    <button onClick={() => void loadData()} className="mt-3 underline">{t.common.retry}</button>
+  </div>;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
@@ -560,7 +607,7 @@ export function BillingView() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">{companyTranslations.settingsCompanySection}</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{locale.startsWith("fr") ? "Plan" : "Plan"}</div>
             <div className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-0.5">
               {subscription.plan_name || companyTranslations.settingsPlanLabel}
             </div>
@@ -585,7 +632,7 @@ export function BillingView() {
           </div>
 
           <div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">{invoiceTranslations.nextRenewal}</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{invoiceTranslations.nextRenewal.replace("{date}", "").replace(/[:：]\s*$/, "").trim()}</div>
             <div className="text-sm font-bold text-slate-800 dark:text-[#F4F7FB] mt-1 flex items-center gap-1.5">
               <Calendar size={14} className="text-slate-400" />
               <span>
@@ -599,7 +646,7 @@ export function BillingView() {
               </span>
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
-              {billingTranslations.billingPeriod}: {credits.billing_period || "2026-09"}
+              {billingTranslations.billingPeriod}: {credits.billing_period || "—"}
             </div>
           </div>
 
@@ -629,7 +676,7 @@ export function BillingView() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <CreditCard size={14} />
-              <span>{companyTranslations.settingsPlanLabel}</span>
+              <span>{locale.startsWith("fr") ? "Gérer l’abonnement" : "Manage subscription"}</span>
           </button>
           <button
             onClick={handleOpenStripePortal}
@@ -650,10 +697,10 @@ export function BillingView() {
             </div>
             <div>
               <h2 className="text-sm font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-                {companyTranslations.settingsTitle}
+                {locale.startsWith("fr") ? "Mes modules" : "My modules"}
               </h2>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                {companyTranslations.settingsSubtitle}
+                {locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}
               </p>
             </div>
           </div>
@@ -664,9 +711,9 @@ export function BillingView() {
             </span>
             <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
               {subscription.plan_code?.toLowerCase() === "demo" || subscription.plan_code?.toLowerCase() === "base"
-                ? "(Max 3 pour Base)"
+                ? "(2 modules pour Base)"
                 : subscription.plan_code?.toLowerCase() === "professional"
-                ? "(Max 6 pour Professional)"
+                ? "(5 modules pour Professional)"
                 : "(Sur-mesure Enterprise)"}
             </span>
           </div>
@@ -675,7 +722,7 @@ export function BillingView() {
         {/* Modules List Grid */}
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {companyTranslations.settingsSessionSection}
+                {locale.startsWith("fr") ? "Modules sélectionnés" : "Selected modules"}
           </div>
           <div className="flex flex-wrap gap-2.5">
             {entitlements?.active_modules && entitlements.active_modules.length > 0 ? (
@@ -707,33 +754,33 @@ export function BillingView() {
         </div>
 
         {/* Conditional Upgrade Callout */}
-        {subscription.plan_code?.toLowerCase() === "demo" && (entitlements?.active_modules?.length || 0) >= 3 && (
+        {subscription.plan_code?.toLowerCase() === "base" && (entitlements?.active_modules?.length || 0) >= 2 && (
           <div className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-transparent border border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="text-xs font-bold text-[#0076FF] dark:text-[#00D4FF] flex items-center gap-1.5">
                 <Lock size={14} />
-                <span>{companyTranslations.settingsSubtitle}</span>
+                <span>{locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                {companyTranslations.settingsSubtitle}
+                {locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}
               </p>
             </div>
             <button
               onClick={() => setIsUpgradeModalOpen(true)}
               className="px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-semibold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              <span>{companyTranslations.settingsPlanLabel}</span>
+              <span>{locale.startsWith("fr") ? "Gérer l’abonnement" : "Manage subscription"}</span>
               <ArrowRight size={14} />
             </button>
           </div>
         )}
 
-        {subscription.plan_code?.toLowerCase() === "professional" && (entitlements?.active_modules?.length || 0) >= 6 && (
+        {subscription.plan_code?.toLowerCase() === "professional" && (entitlements?.active_modules?.length || 0) >= 5 && (
           <div className="p-4 rounded-xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-transparent border border-purple-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
                 <Shield size={14} />
-                <span>{companyTranslations.settingsSubtitle}</span>
+                <span>{locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}</span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 {companyTranslations.billingInvoicesTitle}
@@ -762,14 +809,14 @@ export function BillingView() {
                 {t.shell.aiCredits}
               </h2>
               <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-                {companyTranslations.settingsSubtitle}
+                {locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 self-end sm:self-auto">
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {billingTranslations.billingPeriod}: {credits.billing_period || "2026-09"}
+              {billingTranslations.billingPeriod}: {credits.billing_period || "—"}
             </span>
             <button
               onClick={handleRefreshBalance}
@@ -795,7 +842,7 @@ export function BillingView() {
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-              {billingTranslations.monthlyProgress}
+              {locale.startsWith("fr") ? "Crédits utilisés" : "Credits used"}
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
               {monthlyUsed?.toLocaleString() ?? "—"}
@@ -940,10 +987,10 @@ export function BillingView() {
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
                   <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
-                  <th className="py-3 px-4">{billingTranslations.company}</th>
-                  <th className="py-3 px-4">{billingTranslations.aiUsage}</th>
-                  <th className="py-3 px-4">{billingTranslations.monthlyProgress}</th>
-                  <th className="py-3 px-4">{billingTranslations.company}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Module" : "Module"}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Opération" : "Operation"}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Crédits utilisés" : "Credits used"}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Utilisateur" : "User"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -1011,7 +1058,7 @@ export function BillingView() {
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {pack.name}
+                    {pack.name || `${pack.credits.toLocaleString(locale)} ${billingTranslations.creditsUnit}`}
                   </span>
                   <Zap size={15} className="text-[#0076FF]" />
                 </div>
@@ -1019,18 +1066,33 @@ export function BillingView() {
                   {pack.credits.toLocaleString(locale)} {billingTranslations.creditsUnit}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
-                  ${pack.price_usd || ((pack.price_cents || 0) / 100)} USD
+                  {new Intl.NumberFormat(locale, { style: "currency", currency: pack.currency || "CAD" }).format(pack.price_cad ?? ((pack.price_cents || 0) / 100))}
+                  <span className="block mt-1">{locale === "fr" ? "Hors taxes · Achat volontaire, sans dépassement automatique" : "Excludes tax · Voluntary purchase, no automatic overage"}</span>
                 </div>
               </div>
 
               <button
+                disabled={!canManageBilling || pack.enabled === false}
                 onClick={() => handleBuyCredits(pack.code)}
                 className="mt-4 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#111D3D] dark:hover:bg-[#172652] text-xs font-semibold text-slate-800 dark:text-[#F4F7FB] transition-colors cursor-pointer"
               >
-                {billingTranslations.purchase}
+                {pack.enabled === false ? (locale === "fr" ? "Validation commerciale en cours" : "Commercial validation pending") : billingTranslations.purchase}
               </button>
             </div>
           ))}
+        </div>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="font-bold">Enterprise</h3>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8]">{locale === "fr" ? "Crédits et tarifs personnalisés sur devis" : "Custom credits and pricing by quote"}</p>
+          </div>
+          <button type="button" disabled={!canManageBilling} className="rounded-xl px-4 py-2 bg-[#0076FF] text-white text-xs font-semibold disabled:opacity-50"
+            onClick={() => {
+              setEnterpriseForm((previous) => ({ ...previous, notes: previous.notes || (locale === "fr" ? "Demande de pack de crédits IA Enterprise personnalisé." : "Request for a custom Enterprise AI credit pack.") }));
+              setIsEnterpriseModalOpen(true);
+            }}>
+            {locale === "fr" ? "Demander un devis" : "Request a quote"}
+          </button>
         </div>
       </div>
 
@@ -1039,7 +1101,7 @@ export function BillingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              {invoiceTranslations.officialInvoice}
+              {companyTranslations.billingInvoicesTitle}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
               {invoiceTranslations.viewInvoice}
@@ -1052,21 +1114,25 @@ export function BillingView() {
                 "{count}",
                 invoices.length.toLocaleString(locale),
               )}
+              {testDocuments.length > 0 && ` · ${testDocuments.length} ${locale.startsWith("fr") ? "facture(s) de test" : "test invoice(s)"}`}
             </span>
           </div>
         </div>
 
         <div className="rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] overflow-hidden shadow-xs">
-          {invoices.length === 0 ? (
+          {invoices.length === 0 && testDocuments.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500">
               {invoiceTranslations.noInvoices}
+              {invoiceEnvironment && <p className="mt-2 text-xs">{locale === "fr"
+                ? (invoiceEnvironment === "test" ? "Historique sandbox : seuls les paiements de test apparaissent ici." : "Historique de production : les paiements sandbox ne figurent pas ici.")
+                : (invoiceEnvironment === "test" ? "Sandbox history: test payments only." : "Production history: sandbox payments are separate.")}</p>}
             </div>
-          ) : (
+          ) : invoices.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                    <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
+                    <th className="py-3 px-4">{locale.startsWith("fr") ? "Numéro" : "Number"}</th>
                     <th className="py-3 px-4">{invoiceTranslations.invoiceDate}</th>
                     <th className="py-3 px-4">{invoiceTranslations.invoicePeriod}</th>
                     <th className="py-3 px-4">{billingTranslations.plan}</th>
@@ -1077,7 +1143,7 @@ export function BillingView() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                   {invoices.map((inv) => {
-                    const invNumber = inv.number || `AVQ-${inv.id.slice(0, 8).toUpperCase()}`;
+                    const invNumber = inv.number || "—";
                     const dateStr = inv.issued_at ? inv.issued_at.slice(0, 10) : "—";
                     const periodStr =
                       inv.period_start && inv.period_end
@@ -1102,7 +1168,7 @@ export function BillingView() {
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="capitalize font-medium text-slate-700 dark:text-slate-300">
-                            {inv.plan_code || "Professional"}
+                            {inv.plan_code || "—"}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-[#F4F7FB]">
@@ -1117,7 +1183,7 @@ export function BillingView() {
                             }`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {isPaid ? invoiceTranslations.invoicePaid : invoiceTranslations.invoiceOpen}
+                            {isPaid ? invoiceTranslations.invoicePaid : inv.status === "open" ? invoiceTranslations.invoiceOpen : inv.status}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">
@@ -1130,8 +1196,9 @@ export function BillingView() {
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-[#111D3D] dark:text-[#00D4FF] dark:hover:bg-[#172652] font-semibold text-[11px] transition-colors cursor-pointer"
                             >
                               <Download size={13} className={downloadingId === `${inv.id}-pdf` ? "animate-bounce" : ""} />
-                              <span>PDF</span>
+                              <span>PDF Avenqo</span>
                             </button>
+                            {inv.hosted_invoice_url && <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#0076FF] underline">Stripe</a>}
 
                             {/* CSV Export */}
                             <button
@@ -1162,6 +1229,28 @@ export function BillingView() {
                 </tbody>
               </table>
             </div>
+          ) : null}
+          {testDocuments.length > 0 && (
+            <div className="p-4 space-y-3 border-t border-slate-200 dark:border-white/10">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                {locale.startsWith("fr") ? "Factures de test — aucun débit réel" : "Test invoices — no real charge"}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {locale.startsWith("fr") ? "Documents du paiement sandbox, exclus de la comptabilité et des totaux de production." : "Sandbox payment documents, excluded from production accounting and totals."}
+              </p>
+              {testDocuments.map((document) => (
+                <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 dark:bg-white/5 p-3">
+                  <div className="space-y-1 text-xs">
+                    <p className="font-semibold text-slate-900 dark:text-white">{document.number} <span className="ml-2 text-amber-700 dark:text-amber-300">TEST</span></p>
+                    <p className="text-slate-500 dark:text-slate-400">{document.issued_at?.slice(0, 10)} · {new Intl.NumberFormat(locale, { style: "currency", currency: document.currency.toUpperCase() }).format((document.total ?? 0) / 100)}</p>
+                  </div>
+                  <button type="button" onClick={() => handleDownloadInvoice(document, "pdf", true)} disabled={downloadingId === `${document.id}-pdf`}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#0076FF] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                    <Download size={14} /> {locale.startsWith("fr") ? "Télécharger le PDF" : "Download PDF"}
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -1186,31 +1275,31 @@ export function BillingView() {
                   {companyTranslations.settingsPlanLabel}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {companyTranslations.settingsSubtitle}
+                  {locale.startsWith("fr") ? "Vos droits et capacités dépendent de votre abonnement." : "Your permissions and capacity depend on your subscription."}
                 </p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-medium">{billingTranslations.priceUsd}:</span>
-                <span className="text-base font-extrabold text-slate-900 dark:text-white">{new Intl.NumberFormat(locale, { style: "currency", currency: subscription.currency || "CAD" }).format(49.99)} / mois</span>
+                <span className="text-xs text-slate-500 font-medium">{locale.startsWith("fr") ? "Prix de référence CAD" : "CAD reference price"}:</span>
+                <span className="text-base font-extrabold text-slate-900 dark:text-white">{new Intl.NumberFormat(locale, { style: "currency", currency: "CAD" }).format(49.99)} / mois</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">{billingTranslations.billingPeriod}:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{billingTranslations.billingPeriod}</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{locale.startsWith("fr") ? "Mensuelle" : "Monthly"}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">{companyTranslations.connectionsImportedAtLabel}:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{companyTranslations.connectionsImportCompleteTitle}</span>
+                <span className="text-slate-500 font-medium">{locale.startsWith("fr") ? "Modules inclus" : "Included modules"}:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{locale.startsWith("fr") ? "Exactement 5" : "Exactly 5"}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">{billingTranslations.monthlyProgress}:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{billingTranslations.monthlyProgress}</span>
+                <span className="text-slate-500 font-medium">{locale.startsWith("fr") ? "Crédits utilisés" : "Credits used"}:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{locale.startsWith("fr") ? "Selon votre allocation" : "According to your allocation"}</span>
               </div>
               <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
-                <span className="text-slate-500 font-medium">{companyTranslations.settingsSessionSection}:</span>
-                <span className="font-bold text-[#0076FF] dark:text-[#00D4FF]">{companyTranslations.settingsSessionSection}</span>
+                <span className="text-slate-500 font-medium">{locale.startsWith("fr") ? "Modules sélectionnés" : "Selected modules"}:</span>
+                <span className="font-bold text-[#0076FF] dark:text-[#00D4FF]">{locale.startsWith("fr") ? "Modules sélectionnés" : "Selected modules"}</span>
               </div>
             </div>
 
@@ -1242,7 +1331,7 @@ export function BillingView() {
                 onClick={handleConfirmUpgradeToProfessional}
                 className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
               >
-                <span>{companyTranslations.settingsPlanLabel}</span>
+                <span>{locale.startsWith("fr") ? "Gérer l’abonnement" : "Manage subscription"}</span>
                 <ArrowRight size={14} />
               </button>
             </div>
@@ -1302,7 +1391,7 @@ export function BillingView() {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                    {companyTranslations.settingsSessionSection}
+                    {locale.startsWith("fr") ? "Modules sélectionnés" : "Selected modules"}
                   </label>
                   <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.08]">
                     {([

@@ -66,6 +66,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const localeDefaults = CANONICAL_LOCALES.find(item => item.code === locale);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [needsMfa, setNeedsMfa] = useState(false);
+  const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [isError, setIsError] = useState(false);
@@ -152,7 +154,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     } else if (isReset) {
       payload = { token: tokenFromUrl, new_password: password };
     } else {
-      payload = { email: email, password: password };
+      payload = { email: email, password: password, ...(otp.trim() ? { otp: otp.trim() } : {}) };
     }
 
     try {
@@ -180,6 +182,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           .join(" ");
 
         let errorMsg = detail || errorDetails || data.error?.message || data.message;
+        if (isLogin && (String(errorMsg).includes("mfa_required") || response.status === 401 && String(errorMsg).toLowerCase().includes("mfa"))) {
+          setNeedsMfa(true);
+          setIsError(false);
+          setMessage(locale.startsWith("fr") ? "Entrez le code de votre application d’authentification." : "Enter the code from your authenticator app.");
+          setBusy(false);
+          return;
+        }
         if (typeof errorMsg === "string") {
           // Remove Pydantic "Value error, " prefix
           errorMsg = errorMsg.replace(/^Value error,\s*/i, "").trim();
@@ -435,6 +444,21 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     </button>
                   </div>
                   {isRegister && <small>{s.passwordHint}</small>}
+                </label>
+              )}
+
+              {isLogin && needsMfa && (
+                <label className="auth-field">
+                  <span>{locale.startsWith("fr") ? "Code d’authentification ou de récupération" : "Authentication or recovery code"}</span>
+                  <input
+                    name="otp"
+                    autoComplete="one-time-code"
+                    minLength={6}
+                    maxLength={20}
+                    value={otp}
+                    onChange={(event) => setOtp(event.target.value)}
+                    required
+                  />
                 </label>
               )}
 
