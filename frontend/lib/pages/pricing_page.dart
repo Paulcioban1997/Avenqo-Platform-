@@ -369,25 +369,25 @@ class _PricingContent extends StatelessWidget {
     if (index == 0) {
       return switch (language) {
         'fr' => const [
-          '3 agents/modules Avenqo',
+          '2 modules Avenqo',
           '6 500 crédits IA / mois',
-          'Jusqu\'à 5 utilisateurs',
+          'Jusqu\'à 3 utilisateurs',
           'Assistant Avenqo IA',
           'Connexions standards',
           'Support standard',
         ],
         'ro' => const [
-          '3 agenți/module Avenqo',
+          '2 module Avenqo',
           '6 500 credite AI / lună',
-          'Până la 5 utilizatori',
+          'Până la 3 utilizatori',
           'AI Assistant',
           'Conexiuni standard',
           'Suport standard',
         ],
         _ => const [
-          '3 Avenqo agents/modules',
+          '2 Avenqo modules',
           '6,500 AI credits / month',
-          'Up to 5 users',
+          'Up to 3 users',
           'AI Assistant',
           'Standard connections',
           'Standard support',
@@ -396,25 +396,25 @@ class _PricingContent extends StatelessWidget {
     } else if (index == 1) {
       return switch (language) {
         'fr' => const [
-          'Jusqu\'à 6 agents/modules Avenqo',
-          '25 000 crédits IA / mois',
-          'Jusqu\'à 25 utilisateurs',
+          'Jusqu\'à 5 modules Avenqo',
+          '20 000 crédits IA / mois',
+          'Jusqu\'à 10 utilisateurs',
           'Automatisations avancées',
           'Analytics avancés',
           'Accompagnement / support prioritaire',
         ],
         'ro' => const [
-          'Până la 6 agenți/module Avenqo',
-          '25 000 credite AI / lună',
-          'Până la 25 utilizatori',
+          'Până la 5 module Avenqo',
+          '20 000 credite AI / lună',
+          'Până la 10 utilizatori',
           'Automatizări avansate',
           'Analitice avansate',
           'Asistență prioritară',
         ],
         _ => const [
-          'Up to 6 Avenqo agents/modules',
-          '25,000 AI credits / month',
-          'Up to 25 users',
+          'Up to 5 Avenqo modules',
+          '20,000 AI credits / month',
+          'Up to 10 users',
           'Advanced automations',
           'Advanced analytics',
           'Priority onboarding / support',
@@ -423,7 +423,7 @@ class _PricingContent extends StatelessWidget {
     } else {
       return switch (language) {
         'fr' => const [
-          'Tous les agents/modules Avenqo',
+          'Tous les modules Avenqo',
           'Crédits IA sur mesure',
           'Utilisateurs sur mesure',
           'Connexions personnalisées',
@@ -431,7 +431,7 @@ class _PricingContent extends StatelessWidget {
           'Support Enterprise',
         ],
         'ro' => const [
-          'Toate modulele/agenții Avenqo',
+          'Toate modulele Avenqo',
           'Credite AI personalizate',
           'Utilizatori personalizați',
           'Conexiuni personalizate',
@@ -439,7 +439,7 @@ class _PricingContent extends StatelessWidget {
           'Suport Enterprise',
         ],
         _ => const [
-          'All Avenqo agents/modules',
+          'All Avenqo modules',
           'Custom AI credits',
           'Custom users',
           'Custom connections',
