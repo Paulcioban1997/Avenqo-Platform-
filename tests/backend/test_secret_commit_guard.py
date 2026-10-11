@@ -22,6 +22,7 @@ def test_guard_blocks_historical_connector_key_patterns_without_echoing_values()
         'ConnectorSecretCipher(["' + key + '"])',
         'CONNECTOR_ENCRYPTION_KEYS=' + key,
         'CONNECTOR_ENCRYPTION_KEYS = ["' + key + '"]',
+        'MFA_ENCRYPTION_KEYS = ["' + key + '"]',
         "CONNECTOR_ENCRYPTION_KEYS='[\"" + key + "\"]'",
     ):
         assert violations("header\n" + source) == [2]

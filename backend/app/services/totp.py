@@ -49,11 +49,16 @@ def _mfa_fernet():
     import base64
     import hashlib
 
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, MultiFernet
 
     from backend.app.config.settings import get_settings
 
-    material = hashlib.sha256(get_settings().auth_jwt_secret.encode("utf-8")).digest()
+    settings = get_settings()
+    keys = settings.mfa_encryption_keys
+    if keys:
+        return MultiFernet([Fernet(key.encode("ascii")) for key in keys])
+    # Preserve existing MFA while an explicit, separate key ring is prepared.
+    material = hashlib.sha256(settings.auth_jwt_secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(material))
 
 
@@ -63,6 +68,17 @@ def encrypt_mfa_secret(secret: str) -> str:
 
 def decrypt_mfa_secret(token: str) -> str:
     return _mfa_fernet().decrypt(token.encode("ascii")).decode("ascii")
+
+
+def rotate_mfa_secret(token: str) -> str:
+    cipher = _mfa_fernet()
+    if not hasattr(cipher, "rotate"):
+        raise ValueError("Explicit MFA encryption key ring required for rotation")
+    original = cipher.decrypt(token.encode("ascii"))
+    rotated = cipher.rotate(token.encode("ascii"))
+    if cipher.decrypt(rotated) != original:
+        raise ValueError("MFA rotation verification failed")
+    return rotated.decode("ascii")
 
 
 def generate_recovery_codes(count: int = 8) -> list[str]:

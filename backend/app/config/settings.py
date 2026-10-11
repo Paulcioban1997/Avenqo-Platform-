@@ -187,6 +187,10 @@ class Settings(BaseSettings):
         default_factory=list,
         alias="CONNECTOR_ENCRYPTION_KEYS",
     )
+    mfa_encryption_keys: Annotated[List[str], NoDecode] = Field(
+        default_factory=list,
+        alias="MFA_ENCRYPTION_KEYS",
+    )
     shopify_client_id: str | None = Field(default=None, alias="SHOPIFY_CLIENT_ID")
     shopify_client_secret: str | None = Field(default=None, alias="SHOPIFY_CLIENT_SECRET")
     shopify_redirect_uri: str | None = Field(default=None, alias="SHOPIFY_REDIRECT_URI")
@@ -384,7 +388,7 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
-    @field_validator("connector_encryption_keys", "shopify_scopes", mode="before")
+    @field_validator("connector_encryption_keys", "mfa_encryption_keys", "shopify_scopes", mode="before")
     @classmethod
     def parse_string_list(cls, value: object) -> object:
         if isinstance(value, str):

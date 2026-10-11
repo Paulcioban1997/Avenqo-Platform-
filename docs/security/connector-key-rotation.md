@@ -1,7 +1,7 @@
 # Incident 2026-10-10 — secrets exposés dans le dépôt public et rotation
 
 > Mise à jour staging : suivre la procédure progressive de
-> `staging-rotation-and-live-tests-20261010.md`. Ne pas commencer par révoquer
+> `production-cutover-runbook.md`. Ne pas commencer par révoquer
 > l’accès PostgreSQL utilisé par l’API et la sauvegarde. Le writer CLI est
 > atomique, accepte CSV/JSON, exige `--confirm-environment` pour écrire et
 > ne génère plus de clé dans le terminal. `--batch-size` est conservé uniquement

@@ -6,7 +6,7 @@ import subprocess
 
 PATTERN = re.compile(r'''(?i)(?:postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|redis)://[^\s"'<>:@]+:([^\s"'<>@]+)@''')
 CONNECTOR_PATTERN = re.compile(
-    r'''(?i)(?:CONNECTOR_ENCRYPTION_KEYS?\s*[=:][\s\["'`]*|ConnectorSecretCipher\s*\(\s*\[[\s"']*)([A-Za-z0-9_-]{43}=)'''
+    r'''(?i)(?:(?:CONNECTOR|MFA)_ENCRYPTION_KEYS?\s*[=:][\s\["'`]*|ConnectorSecretCipher\s*\(\s*\[[\s"']*)([A-Za-z0-9_-]{43}=)'''
 )
 WEBHOOK_PATTERN = re.compile(
     r'''(?i)(?:\.get\(\s*["']webhook_secret["']\s*,\s*["']|(?:webhook_secret|wh_secret)["']?\s*[:=]\s*["'])([A-Za-z0-9_-]{32,})'''
