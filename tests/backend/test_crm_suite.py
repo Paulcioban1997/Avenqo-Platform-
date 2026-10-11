@@ -665,7 +665,7 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     assert captured == ["alice@customer.ca", None]
 
 
-def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_session, monkeypatch):
+def test_google_calendar_create_failure_keeps_crm_appointment(db_session, monkeypatch):
     company = _create_company(db_session, "tenant-calendar-create-failure")
 
     class FakeCipher:
@@ -704,9 +704,14 @@ def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_se
         {"client_id": client.id, "title": "Unconfirmed booking", "start_time": start},
     ))
 
-    assert appointment is None
-    assert error and "Synchronisation Google Calendar impossible" in error
-    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 0
+    assert error is None
+    assert appointment is not None
+    assert appointment.external_event_id is None
+    assert (appointment.industry_data or {}).get("calendar_sync") == "failed"
+    assert "Synchronisation Google Calendar impossible" in str(
+        (appointment.industry_data or {}).get("calendar_sync_error") or ""
+    )
+    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 1
 
 
 def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
