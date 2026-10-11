@@ -1,6 +1,6 @@
 """Tests obligatoires de production pour les règles d'abonnements et modules Avenqo.
 
-Conforme aux spécifications :
+Conforme aux spécifications officielles :
 - Base (alias Demo) : max 2 modules actifs
 - Professional : max 5 modules actifs
 - Sérialisation des activations concurrentes
@@ -98,9 +98,9 @@ def _service(db: Session) -> ModuleEntitlementService:
     return ModuleEntitlementService(db, registry=TEST_REGISTRY)
 
 
-def test_demo_limit_two_accepted_third_refused(db: Session) -> None:
+def test_base_limit_two_accepted_third_refused(db: Session) -> None:
     """1. Base : deux activations acceptées, troisième refusée."""
-    company = _create_company(db, "demo", "Demo Co")
+    company = _create_company(db, "base", "Base Co")
     tenant = TenantContext(company.id)
     service = _service(db)
 
@@ -108,7 +108,6 @@ def test_demo_limit_two_accepted_third_refused(db: Session) -> None:
     assert summary.module_limit == 2
     assert summary.remaining_module_slots == 2
 
-    # Activer 3 modules -> succès
     service.activate_module(tenant, "retail")
     service.activate_module(tenant, "crm")
 
@@ -116,9 +115,21 @@ def test_demo_limit_two_accepted_third_refused(db: Session) -> None:
     assert len(summary.active_modules) == 2
     assert summary.remaining_module_slots == 0
 
-    # 4ème tentative -> refus avec explication claire
     with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
         service.activate_module(tenant, "marketing")
+
+
+def test_demo_alias_uses_official_base_module_limit(db: Session) -> None:
+    """L'alias Demo conserve la limite officielle Base de 2 modules."""
+    company = _create_company(db, "demo", "Demo Alias Co")
+    tenant = TenantContext(company.id)
+    service = _service(db)
+
+    assert service.summary(tenant).module_limit == 2
+    service.activate_module(tenant, "retail")
+    service.activate_module(tenant, "crm")
+    with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
+        service.activate_module(tenant, "accounting")
 
 
 def test_professional_limit_five_accepted_sixth_refused(db: Session) -> None:
@@ -130,17 +141,15 @@ def test_professional_limit_five_accepted_sixth_refused(db: Session) -> None:
     summary = service.summary(tenant)
     assert summary.module_limit == 5
 
-    # Activer 6 modules
-    for key in ("retail", "crm", "marketing", "accounting", "ocr"):
+    for key in AVAILABLE_KEYS[:5]:
         service.activate_module(tenant, key)
 
     summary = service.summary(tenant)
     assert len(summary.active_modules) == 5
     assert summary.remaining_module_slots == 0
 
-    # 7ème tentative -> refus
     with pytest.raises(ModuleLimitReached, match="supports 5 active modules"):
-        service.activate_module(tenant, "voice")
+        service.activate_module(tenant, AVAILABLE_KEYS[5])
 
 
 def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
