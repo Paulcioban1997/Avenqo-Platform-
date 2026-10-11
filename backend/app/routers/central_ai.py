@@ -19,6 +19,7 @@ from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.schemas.central_ai import CentralAIRequest, CentralAIResponse
+from backend.app.services.tenant_locale_service import get_company_locale
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
@@ -100,7 +101,11 @@ async def message(
             permissions=frozenset(permissions_for(membership.role)),
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=request_id,
-            user_language=resolve_locale(request.locale or company.preferred_language or "fr"),
+            user_language=resolve_locale(
+                request.locale
+                or get_company_locale(db, company.id)
+                or company.preferred_language
+            ),
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",

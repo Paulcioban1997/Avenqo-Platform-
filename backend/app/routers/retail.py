@@ -33,6 +33,7 @@ from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_products_service import TenantProductsService
 from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.services.data_freshness_service import DataFreshnessService
+from backend.app.services.tenant_locale_service import get_company_locale
 from modules.entitlements import ModuleAccessDenied
 from modules.retailsense.assistant import RetailAssistantService
 from shared.ai_engine.contracts import TenantContext
@@ -244,6 +245,7 @@ def retail_status(
     freshness = DataFreshnessService().for_snapshot(snapshot)
 
     return {
+        "tenant_locale": get_company_locale(db, tenant.company_id),
         "is_connected": source_state == "READY" and bool(selected_sources),
         "provider": connection.provider if connection else None,
         "store_url": connection.display_name if connection else None,

@@ -195,7 +195,7 @@ class CreateClientRequest(BaseModel):
     last_name: str
     email: str | None = None
     phone: str | None = None
-    preferred_language: str = "fr"
+    preferred_language: str | None = None
     company_name: str | None = None
     industry_type: str = "general"
     industry_metadata: dict[str, Any] = Field(default_factory=dict)
