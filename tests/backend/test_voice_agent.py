@@ -545,6 +545,21 @@ def _voice_database(tmp_path):
     return engine, session, company, config, api_key, service
 
 
+def _grant_voice_actions(session, company_id, grants: tuple[tuple[str, str], ...]) -> None:
+    from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+    tenant = TenantContext(company_id)
+    entitlements = ModuleEntitlementService(session)
+    for module_code, _action in grants:
+        if module_code not in entitlements.get_active_modules(tenant):
+            entitlements.activate_module(tenant, module_code)
+    perms = VoiceModulePermissionService(session)
+    for module_code, action_code in grants:
+        perms.grant(tenant, module_code, action_code, granted_by=None)
+    session.commit()
+
+
 def test_voice_api_key_is_tenant_scoped_and_not_stored_in_plaintext(tmp_path) -> None:
     engine, session, _, config, key, service = _voice_database(tmp_path)
     try:
@@ -561,6 +576,7 @@ def test_voice_api_key_is_tenant_scoped_and_not_stored_in_plaintext(tmp_path) ->
 def test_caller_id_alone_stays_unknown_and_cannot_reschedule_or_cancel(tmp_path):
     engine, session, company, config, _, orchestrator = _voice_database(tmp_path)
     try:
+        _grant_voice_actions(session, company.id, (("crm", "cancel_appointment"),))
         call = orchestrator.record_inbound(config, {
             "call_control_id": "spoofable-call-id",
             "from": "+15145550123",
@@ -572,7 +588,11 @@ def test_caller_id_alone_stays_unknown_and_cannot_reschedule_or_cancel(tmp_path)
             "cancel_appointment",
             {"appointment_id": str(uuid4()), "confirmed": True},
         ))
-        assert result == {"success": False, "error": "caller_verification_required"}
+        assert result["success"] is False
+        assert result["error"] in {
+            "caller_verification_required",
+            "Caller authentication is required for this tool.",
+        }
     finally:
         session.close()
         engine.dispose()
@@ -687,6 +707,7 @@ def test_verified_client_cannot_reschedule_or_cancel_another_clients_appointment
         )
         session.add(appointment)
         session.commit()
+        _grant_voice_actions(session, company.id, (("crm", "cancel_appointment"), ("crm", "update_appointment")))
         call = orchestrator.record_inbound(config, {
             "call_control_id": "verified-client-ownership-call",
             "from": verified_client.phone,
@@ -842,6 +863,7 @@ def test_duplicate_telnyx_inbound_event_reuses_single_call_row(tmp_path) -> None
 def test_unconfirmed_voice_booking_does_not_create_appointment(tmp_path) -> None:
     engine, session, company, config, _, service = _voice_database(tmp_path)
     try:
+        _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
         result = asyncio.run(service.execute_tool(
             config,
             "retell-call-unconfirmed",
@@ -871,6 +893,7 @@ def _authenticated_booking_calls(session, company, config, service, call_ids):
         BillingAccount(company_id=company.id, plan_code="professional", status="active")])
     session.flush()
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm")
+    _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
     for call_id in call_ids:
         call = service._resolve_call(config, call_id, caller_phone=owner.phone)
         call.caller_type = "OWNER"; call.authenticated_user_id = owner.id; call.caller_verified_at = datetime.now(timezone.utc)

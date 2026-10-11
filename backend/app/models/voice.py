@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -206,3 +206,27 @@ class VoiceCentralSession(TimestampMixin, Base):
     source_context: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VoiceModulePermission(TimestampMixin, Base):
+    """Per-company Voice grant for one module action. Default is fail-closed (no row / not granted)."""
+
+    __tablename__ = "voice_module_permissions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "module_code", "action_code", name="uq_voice_module_permission"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    module_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    action_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    granted_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    permission_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
