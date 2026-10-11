@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -9,6 +11,69 @@ import httpx
 
 from backend.app.config.settings import Settings
 from backend.app.models.voice import VoiceBusinessConfig
+
+logger = logging.getLogger("avenqo.voice.telnyx")
+
+_UNAVAILABLE_MESSAGES = {
+    "fr": "L’assistant téléphonique est temporairement indisponible. Veuillez contacter l’entreprise autrement. Merci.",
+    "en": "The phone assistant is temporarily unavailable. Please contact the business another way. Thank you.",
+}
+_CALL_PATH = re.compile(r"^/calls/[^/]+/")
+# Telnyx rejects voice=male|female unless service_level=basic and language=en-US.
+# Premium (required for fr-CA / fr-FR) needs a provider voice id.
+_PREMIUM_VOICES = {
+    "fr-CA": "Polly.Chantal",
+    "fr-FR": "Polly.Lea",
+    "en-US": "Polly.Joanna",
+}
+
+
+def _speak_language(locale: str) -> str:
+    normalized = locale.lower().replace("_", "-")
+    if normalized.startswith("fr-fr"):
+        return "fr-FR"
+    if normalized.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
+
+
+def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]:
+    """Build a Telnyx speak body that matches the documented basic/premium contract."""
+    language = _speak_language(locale)
+    if language == "en-US":
+        return {
+            "command_id": command_id, "payload_type": "text", "service_level": "basic",
+            "voice": "female", "language": "en-US", "payload": _UNAVAILABLE_MESSAGES["en"],
+        }
+    return {
+        "command_id": command_id, "payload_type": "text", "service_level": "premium",
+        "voice": _PREMIUM_VOICES[language], "language": language,
+        "payload": _UNAVAILABLE_MESSAGES["fr"],
+    }
+
+
+def unavailable_speak_attempts(locale: str, *, command_id: str) -> list[dict[str, str]]:
+    """Primary locale payload, then English basic. Never mix basic with a non-en-US language."""
+    primary = unavailable_speak_payload(locale, command_id=command_id)
+    attempts = [primary]
+    if primary["language"] != "en-US":
+        attempts.append(unavailable_speak_payload("en", command_id=f"{command_id}-en"))
+    return attempts
+
+
+def telnyx_error_summary(response: httpx.Response) -> dict[str, Any]:
+    """Provider error codes only: never request payloads, phone numbers or credentials."""
+    try:
+        errors = response.json().get("errors", [])
+    except (ValueError, AttributeError):
+        errors = []
+    return {
+        "status": response.status_code,
+        "codes": [str(e.get("code")) for e in errors if isinstance(e, dict) and e.get("code")][:5],
+        "titles": [str(e.get("title"))[:120] for e in errors if isinstance(e, dict) and e.get("title")][:5],
+        "sources": [str((e.get("source") or {}).get("pointer"))[:80] for e in errors
+                    if isinstance(e, dict) and isinstance(e.get("source"), dict)][:5],
+    }
 
 
 class VoiceProvider(Protocol):
@@ -118,17 +183,40 @@ class TelnyxClient:
     async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/answer", json={"command_id": command_id})
 
-    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+    async def reject_call(self, call_control_id: str, *, command_id: str, cause: str = "USER_BUSY") -> None:
+        await self._request("POST", f"/calls/{call_control_id}/actions/reject", json={"cause": cause, "command_id": command_id})
+
+    async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
+        last_error: httpx.HTTPStatusError | None = None
+        for payload in unavailable_speak_attempts(locale, command_id=command_id):
+            try:
+                await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
+                return
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 422:
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+
+    def media_stream_payload(self, *, stream_url: str, client_state: str, command_id: str) -> dict[str, str]:
         parsed = urlsplit(stream_url)
         if parsed.scheme != "wss" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("A secure credential-free media URL is required")
         if not self._settings.telnyx_media_enabled:
             raise RuntimeError("Telnyx media transport disabled")
-        await self._request("POST", f"/calls/{call_control_id}/actions/streaming_start", json={
+        return {
             "stream_url": stream_url, "stream_track": "inbound_track", "stream_codec": "PCMU",
             "stream_bidirectional_mode": "rtp", "stream_bidirectional_codec": "PCMU",
             "client_state": client_state, "command_id": command_id,
-        })
+        }
+
+    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+        await self._request(
+            "POST",
+            f"/calls/{call_control_id}/actions/streaming_start",
+            json=self.media_stream_payload(stream_url=stream_url, client_state=client_state, command_id=command_id),
+        )
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
@@ -235,5 +323,11 @@ class TelnyxClient:
         else:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 response = await client.request(method, f"{self.API_BASE}{path}", headers=headers, **kwargs)
+        if response.is_error:
+            logger.warning(
+                "telnyx_request_failed method=%s route=%s summary=%s",
+                method, _CALL_PATH.sub("/calls/{call_control_id}/", path.split("?")[0]),
+                telnyx_error_summary(response),
+            )
         response.raise_for_status()
         return response.json() if response.content else {}

@@ -693,6 +693,81 @@ class AIUsageService:
         self._db.flush()
         return balance
 
+    def restore_included_monthly_credits(
+        self,
+        company_id: UUID,
+        plan_code: str | None,
+        *,
+        idempotency_key: str,
+        reason: str,
+        actor_user_id: UUID | None = None,
+    ) -> dict[str, object]:
+        """Restore this tenant's included monthly allocation to 100%.
+
+        AI credits are a shared company pool, not per-module wallets. This
+        writes one ledger row for the named company only: purchased credits,
+        reservations, Stripe subscriptions and other tenants are untouched.
+        Historical usage rows remain; the adjustment is the audit trail.
+        """
+        if not reason.strip():
+            raise ValueError("A restore reason is required")
+        if not idempotency_key.strip():
+            raise ValueError("An idempotency key is required")
+        balance = self._get_or_create_credits(company_id)
+        self._release_stale_reservations_locked(company_id, balance)
+        included = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
+        before_used = balance.monthly_used
+        before = {
+            "billing_period": balance.monthly_period,
+            "monthly_included": included,
+            "monthly_used": before_used,
+            "monthly_remaining": None if included is None else max(included - before_used, 0),
+            "purchased_remaining": balance.purchased_balance,
+            "total_remaining": (
+                None if included is None else max(included - before_used, 0) + balance.purchased_balance
+            ),
+        }
+        existing = self._db.scalar(
+            select(TenantAICreditLedgerEntry.id).where(
+                TenantAICreditLedgerEntry.idempotency_key == idempotency_key
+            )
+        )
+        applied = existing is None and before_used > 0
+        if applied:
+            module_usage = [
+                {"module": row["dimension"], "avenqo_credits": row["avenqo_credits"]}
+                for row in self.usage_analytics(company_id, group_by="module")
+            ]
+            balance.monthly_used = 0
+            self._record_credit_transaction(
+                company_id,
+                balance,
+                idempotency_key=idempotency_key,
+                transaction_type="manual_included_restore",
+                included_delta=before_used,
+                reference_id=str(actor_user_id) if actor_user_id is not None else None,
+                details={
+                    "reason": reason,
+                    "requested_module": "voice",
+                    "monthly_used_before": before_used,
+                    "monthly_included": included,
+                    "module_usage": module_usage,
+                },
+            )
+            self._db.flush()
+        after = {
+            "billing_period": balance.monthly_period,
+            "monthly_included": included,
+            "monthly_used": balance.monthly_used,
+            "monthly_remaining": None if included is None else max(included - balance.monthly_used, 0),
+            "purchased_remaining": balance.purchased_balance,
+            "total_remaining": (
+                None if included is None
+                else max(included - balance.monthly_used, 0) + balance.purchased_balance
+            ),
+        }
+        return {"before": before, "after": after, "applied": applied}
+
     def release_stale_reservations(self, company_id: UUID) -> int:
         with _tenant_credit_lock(company_id):
             balance = self._get_or_create_credits(company_id)
