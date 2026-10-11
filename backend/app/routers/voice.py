@@ -1516,7 +1516,8 @@ async def telnyx_webhook(
         db.commit()
         command_id = str(UUID(hashlib.sha256(f"blocked:{call.id}".encode()).hexdigest()[:32]))
         try:
-            await service.telnyx.speak_unavailable(call_control_id, command_id=command_id, locale=config.preferred_language)
+            from backend.app.voice.module_actions import voice_agent_language
+            await service.telnyx.speak_unavailable(call_control_id, command_id=command_id, locale=voice_agent_language(db, config))
         except Exception:
             logger.warning("Telnyx unavailable announcement failed for voice call %s after speak fallbacks", call.id)
             try:
@@ -1861,9 +1862,12 @@ async def _voice_central_execute(
     question = redact_voice_secrets(request.arguments.get("question") or request.arguments.get("transcript") or "").strip()
     if not question or len(question) > 12_000:
         raise HTTPException(status_code=422, detail="A valid business metrics question is required")
-    detection = detect_spoken_language(question, preferred_locale=call.locale or config.preferred_language)
-    if detection.locale is not None:
-        call.locale = detection.locale
+    from backend.app.voice.module_actions import company_call_language_session
+    language_session = company_call_language_session(db, config, call)
+    call.locale = language_session.process_utterance(question)
+    call.source_context = {
+        **(call.source_context or {}), "call_language_session": language_session.as_dict(),
+    }
 
     action_key = voice_action_key(config.id, call.id, "get_business_metrics" if metrics_only else "central_ai", request.action_id,
         f"{auth_session.principal_id}:{auth_session.authenticated_at.isoformat()}")

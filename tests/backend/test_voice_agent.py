@@ -88,7 +88,7 @@ def test_native_voice_bridge_uses_membership_permissions_and_blocks_customers(tm
         session.add(user); session.flush()
         session.add_all([
             CompanyMembership(company_id=company.id, user_id=user.id, role=role, is_active=True),
-            BillingAccount(company_id=company.id, plan_code="professional", status="active"),
+            _test_billing_account(session, company),
         ])
         session.commit()
         call = orchestrator.record_inbound(config, {"call_control_id": "native-agent-call", "from": "+15145550123"})
@@ -319,7 +319,7 @@ def test_native_capabilities_handler_uses_server_identity_and_membership(tmp_pat
         user = User(company_id=company.id, first_name="Capability", last_name="Owner", email="capability-owner@example.com",
             password_hash="test", role=UserRole.OWNER, is_active=True)
         session.add(user)
-        session.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
+        session.add(_test_billing_account(session, company))
         session.commit()
         builder = CentralAIContextBuilder(ModuleEntitlementService(session),
             AIUsageService(session, AIQuotaPolicy(Settings(AUTH_JWT_SECRET="a" * 32))),
@@ -436,7 +436,7 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
             password_hash=hash_password("pin-http-test-password"), role=UserRole.OWNER, phone="+15145550123", is_active=True)
         session.add(user); session.flush()
         membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
-        session.add_all([membership, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+        session.add_all([membership, _test_billing_account(session, company)])
         session.commit()
         identity = SimpleNamespace(user=user)
         app = FastAPI(); app.include_router(voice_router.router, prefix="/api/v1")
@@ -492,6 +492,14 @@ def test_voice_status_is_visible_before_entitlement_or_provider_provisioning(tmp
         engine.dispose()
 
 
+def _test_billing_account(session, company):
+    """A shared fixture has exactly one active subscription row per company."""
+    existing = session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    return existing if existing is not None else BillingAccount(
+        company_id=company.id, plan_code="professional", status="active",
+    )
+
+
 def _voice_database(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'voice-agent.db'}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
@@ -534,7 +542,7 @@ def _voice_database(tmp_path):
         voice_api_key_last4=api_key[-4:],
         enabled=True,
     )
-    session.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
+    session.add(_test_billing_account(session, company))
     session.add(config)
     session.commit()
     service = VoiceOrchestrator(
@@ -751,7 +759,7 @@ def test_verified_voice_metrics_reuse_central_ai_and_are_idempotent(tmp_path):
         session.flush()
         session.add_all([
             CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True),
-            BillingAccount(company_id=company.id, plan_code="professional", status="active"),
+            _test_billing_account(session, company),
         ])
         session.commit()
         call = orchestrator.record_inbound(config, {
@@ -891,7 +899,7 @@ def _authenticated_booking_calls(session, company, config, service, call_ids):
         password_hash="test", phone="+15145550123", role=UserRole.OWNER, is_active=True)
     session.add(owner); session.flush()
     session.add_all([CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True),
-        BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+        _test_billing_account(session, company)])
     session.flush()
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm")
     _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
@@ -1085,7 +1093,7 @@ def signed_telnyx_webhook(tmp_path, monkeypatch):
     settings.rate_limit_webhook_per_minute = 100
     binding = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
         country_code="CA", provider="telnyx", number_type="local", status="ACTIVE", capabilities=["voice"])
-    session.add_all([binding, BillingAccount(company_id=company.id, plan_code="professional", status="active")])
+    session.add_all([binding, _test_billing_account(session, company)])
     session.commit()
     app = FastAPI()
     app.include_router(voice_router.router, prefix="/api/v1")

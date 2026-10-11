@@ -822,7 +822,7 @@ def _setup_media_call_for_test(session, company, config, orchestrator, caller_ph
         status="ACTIVE",
         capabilities=["voice"],
     )
-    account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+    account = session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
     session.add_all([number, account])
     session.commit()
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "voice")
@@ -1049,7 +1049,7 @@ def test_23_role_permissions_rbac_for_retail_data(tmp_path):
     from backend.app.services.module_entitlement_service import ModuleEntitlementService
     engine, session, company, _config, _api_key, _orchestrator = _voice_database(tmp_path)
     try:
-        account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+        account = session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
         session.add(account)
         session.commit()
         ModuleEntitlementService(session).activate_module(TenantContext(company.id), "retail")

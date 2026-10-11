@@ -105,3 +105,17 @@ def test_voice_subscription_canceled_in_another_transaction_blocks_next_tool(tmp
         with pytest.raises(VoiceToolDenied, match="subscription"):
             guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
     engine.dispose()
+
+
+def test_public_greeting_uses_explicit_profile_instead_of_stale_voice_config(tmp_path, monkeypatch):
+    from backend.app.voice.telnyx_media import PublicInboundConversation
+    engine = _engine(tmp_path, "greeting-profile.db")
+    with Session(engine) as db:
+        company, _ = _company(db, "greeting-profile")
+        upsert_profile(db, company.id, primary_locale="ro", secondary_locales=[])
+        config = SimpleNamespace(company_id=company.id, preferred_language="en", business_name="Test Only Company")
+        conversation = PublicInboundConversation(db, SimpleNamespace(), uuid4())
+        monkeypatch.setattr(conversation, "context", lambda: (SimpleNamespace(), config, company))
+        greeting = conversation.greeting()
+        assert "Test Only Company" in greeting and "Hello" not in greeting and "Bonjour" not in greeting
+    engine.dispose()

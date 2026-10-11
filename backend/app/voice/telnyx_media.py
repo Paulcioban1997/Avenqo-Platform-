@@ -59,7 +59,7 @@ from shared.ai_engine.contracts import TenantContext
 from backend.app.voice.auth import redact_voice_secrets
 from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from backend.app.voice.language_resolver import CallLanguageSession
-from backend.app.voice.module_actions import company_call_language_session
+from backend.app.voice.module_actions import company_call_language_session, voice_agent_language
 
 
 class InvalidMediaFrame(ValueError):
@@ -241,9 +241,8 @@ class PublicInboundConversation:
 
     def greeting(self) -> str:
         _call, config, _company = self.context()
-        if resolve_locale(config.preferred_language).startswith("fr"):
-            return f"Bonjour, vous êtes bien chez {config.business_name}. Comment puis-je vous aider ?"
-        return f"Hello, you've reached {config.business_name}. How can I help you?"
+        from backend.app.voice.messages import voice_natural_greeting
+        return voice_natural_greeting(voice_agent_language(self.db, config), config.business_name)
 
     def portal_message(self) -> str:
         _call, config, _company = self.context()

@@ -168,7 +168,8 @@ def authorized_media_call(tmp_path):
     number = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
         country_code="CA", provider="telnyx", provider_number_id="owned-media-id", provider_connection_id="verified-connection",
         number_type="local", status="ACTIVE", capabilities=["voice"])
-    account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+    account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert account is not None
     db.add_all([membership, number, account]); db.commit()
     # Keep production authorization strict: this fixture must explicitly activate Voice.
     ModuleEntitlementService(db).activate_module(TenantContext(company.id), "voice")
@@ -2357,4 +2358,4 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
 
 
 
-
+
