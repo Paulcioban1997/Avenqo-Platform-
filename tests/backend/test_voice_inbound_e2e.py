@@ -3,9 +3,10 @@
 Covers the gaps left after PR #29: webhook answer/bridge, mocked media/Realtime
 session, French conversation turns, Voice→CRM appointment booking, then hangup.
 
-Never contacts live Telnyx or OpenAI. Uses signed webhook fixtures, a loopback
-Realtime adapter, and the existing CreateAppointmentTool hook with CRMService
-running against the test SQLite database.
+Never contacts live Telnyx, OpenAI, or Google. Uses signed webhook fixtures, a
+loopback Realtime adapter, and the real CreateAppointmentTool + CRMService path
+against the test SQLite database. Production code — not the test — must set
+VoiceCall.status = appointment_booked.
 """
 
 from __future__ import annotations
@@ -16,17 +17,32 @@ import anyio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
 from starlette.websockets import WebSocketDisconnect
 
+from backend.app.ai.central.service import CentralAIService
+from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.tools.business.crm_tools import CreateAppointmentArgs, CreateAppointmentTool
-from backend.app.ai.tools.contracts import ToolExecutionContext
+from backend.app.ai.tools.contracts import ToolExecutionContext, ToolCall, ToolCallResult, ToolResult
+from backend.app.ai.usage.policy import AIQuotaPolicy
+from backend.app.ai.usage.service import AIUsageService
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.central_ai import get_central_ai_service
-from backend.app.models import CompanyMembership, CRMAppointment, CRMClient, User, UserRole, VoiceCall
+from backend.app.models import (
+    Company,
+    CompanyMembership,
+    CRMAppointment,
+    CRMCalendarConnection,
+    CRMClient,
+    TenantAICreditLedgerEntry,
+    TenantAICreditReservation,
+    User,
+    UserRole,
+    VoiceCall,
+)
 from backend.app.services.crm_service import CRMService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.auth import VoiceCallerAuth
@@ -35,7 +51,6 @@ from shared.ai_engine.contracts import TenantContext
 from tests.backend.test_telnyx_media import (
     FakeAudioAdapter,
     FakeMediaSocket,
-    FakeUsageService,
     configure_local_public_call,
     eventually,
     start_event,
@@ -47,7 +62,7 @@ FRENCH_BOOKING_TURNS = [
     "Allô bonjour",
     "Je voudrais prendre un rendez-vous pour une consultation",
     "Demain à 14 heures s'il vous plaît",
-        "Mon nom est Marie Tremblay, mon courriel est marie.tremblay@clinique.ca",
+    "Mon nom est Marie Tremblay, mon courriel est marie.tremblay@clinique.ca",
     "Oui, confirmez le rendez-vous",
 ]
 
@@ -169,6 +184,59 @@ def _drain_socket(socket) -> None:
     socket.portal.call(receive_close)
 
 
+def _answer_inbound(env) -> VoiceCall:
+    initiated = env.send(env.event())
+    assert initiated.status_code == 200 and initiated.json()["status"] == "answering"
+    answered = env.send(env.event("call.answered"))
+    assert answered.status_code == 200 and answered.json()["routed"] is True
+    call = env.session.scalar(select(VoiceCall))
+    assert call is not None and call.status == "in_progress"
+    return call
+
+
+async def _run_real_create_appointment(env, *, conversation_id, starts_at, title="Consultation"):
+    context = ToolExecutionContext(
+        tenant=TenantContext(env.company.id),
+        user_id=uuid4(),
+        permissions=frozenset({"ai:use", "crm:appointments:write"}),
+        request_id="voice-inbound-e2e-book",
+        conversation_id=conversation_id,
+        locale="fr",
+        company_timezone=env.company.timezone or "America/Toronto",
+    )
+    return await CreateAppointmentTool(env.session).run(
+        context,
+        CreateAppointmentArgs(
+            client_name_or_id="Marie Tremblay",
+            client_email="marie.tremblay@clinique.ca",
+            client_phone="+15145550123",
+            start_time=starts_at.isoformat(),
+            title=title,
+            duration_minutes=30,
+            service_name="Consultation",
+            confirmed=True,
+        ),
+    )
+
+
+def _inject_calendar_cipher(monkeypatch, provider):
+    class FakeCipher:
+        def decrypt(self, value):
+            return {"access_token": "runtime-only"}
+
+        def encrypt(self, value):
+            return "encrypted"
+
+    original = CRMService.__init__
+
+    def with_cipher(self, session, cipher=None):
+        original(self, session, cipher if cipher is not None else FakeCipher())
+
+    monkeypatch.setattr(CRMService, "__init__", with_cipher)
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda *a, **k: provider)
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *a, **k: provider)
+
+
 @pytest.mark.asyncio
 async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
     signed_telnyx_webhook, monkeypatch,
@@ -190,7 +258,7 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
 
     class Central:
         def __init__(self):
-            self.usage_service = FakeUsageService()
+            self.usage_service = AIUsageService(env.session, AIQuotaPolicy(env.settings))
 
         async def execute(self, *args, **kwargs):
             tenant, user_id, conversation_id, transcript = args[:4]
@@ -206,40 +274,17 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
             if "marie tremblay" in lowered:
                 return SimpleNamespace(status="success", answer="Merci madame Tremblay. Souhaitez-vous que je confirme ce rendez-vous ?", selected_agent="crm")
             if "confirmez" in lowered:
-                context = ToolExecutionContext(
-                    tenant=tenant,
-                    user_id=user_id,
-                    permissions=kwargs.get("permissions") or frozenset({"ai:use", "crm:appointments:write"}),
-                    request_id="voice-inbound-e2e-book",
-                    conversation_id=conversation_id,
-                    locale="fr",
-                    company_timezone=env.company.timezone or "America/Toronto",
-                )
-                booked = await CreateAppointmentTool(env.session).run(
-                    context,
-                    CreateAppointmentArgs(
-                        client_name_or_id="Marie Tremblay",
-                        client_email="marie.tremblay@clinique.ca",
-                        client_phone="+15145550123",
-                        start_time=starts_at.isoformat(),
-                        title="Consultation",
-                        duration_minutes=30,
-                        service_name="Consultation",
-                        confirmed=True,
-                    ),
+                booked = await _run_real_create_appointment(
+                    env, conversation_id=conversation_id, starts_at=starts_at,
                 )
                 booking_results.append(booked)
-                if booked.success:
-                    call = env.session.scalar(select(VoiceCall))
-                    call.appointment_id = UUID(str(booked.data["id"]))
-                    call.status = "appointment_booked"
-                    call.source_context = {**(call.source_context or {}), "appointment_confirmed": True}
-                    env.session.commit()
-                return SimpleNamespace(
-                    status="success",
-                    answer="C'est confirmé pour demain à 14 heures. Autre chose ?",
-                    selected_agent="crm",
-                )
+                answer = "C'est confirmé pour demain à 14 heures. Autre chose ?"
+                if booked.success and booked.data.get("calendar_synced") is not True:
+                    answer = (
+                        "Votre rendez-vous est bien enregistré dans Avenqo. "
+                        "La synchronisation du calendrier n'est pas disponible."
+                    )
+                return SimpleNamespace(status="success", answer=answer, selected_agent="crm")
             return SimpleNamespace(status="success", answer="Je suis à votre écoute.", selected_agent="crm")
 
     phrases = [*FRENCH_BOOKING_TURNS, "Au revoir et bonne journée"]
@@ -247,16 +292,12 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
     central = Central()
     _bind_mocked_realtime(env, monkeypatch, adapter, central)
 
-    initiated = env.send(env.event())
-    assert initiated.status_code == 200 and initiated.json()["status"] == "answering"
+    call = _answer_inbound(env)
     assert env.service.telnyx.commands[0][0] == "answer"
-    answered = env.send(env.event("call.answered"))
-    assert answered.status_code == 200 and answered.json()["routed"] is True
     assert env.service.telnyx.media_streams
     control_id, stream_url, client_state, _command = env.service.telnyx.media_streams[0]
     assert control_id == "inbound-control"
-    call = env.session.scalar(select(VoiceCall))
-    assert call.status == "in_progress" and call.caller_type == "UNKNOWN"
+    assert call.caller_type == "UNKNOWN"
     assert stream_url.endswith(str(call.id))
     assert VoiceCallerAuth(env.session, env.settings).valid_session(call) is None
 
@@ -278,8 +319,7 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
         try:
             socket.receive_json()
         except WebSocketDisconnect:
-            # The terminal close was already consumed. Reading again waits
-            # forever on Linux when no buffered audio remains before close.
+            # Closure has already been consumed; never wait for it twice.
             pass
         else:
             try:
@@ -294,11 +334,12 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
     assert all(item == captured_conversations[0] for item in captured_conversations)
     assert len(adapter.spoken) >= 6
     assert "Voice Test Shop" in adapter.spoken[0]
-    assert any("confirmé" in spoken for spoken in adapter.spoken)
+    assert any("confirmé" in spoken or "enregistré" in spoken for spoken in adapter.spoken)
     for spoken in adapter.spoken:
         assert "*" not in spoken and "#" not in spoken
 
     assert len(booking_results) == 1 and booking_results[0].success is True
+    assert booking_results[0].data.get("id")
     assert len(crm_creates) == 1
     assert crm_creates[0]["company_id"] == env.company.id
     assert crm_creates[0]["actor_name"] == "IA Copilot"
@@ -311,6 +352,17 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
     assert appointments[0].title == "Consultation"
     assert appointments[0].client_id == client.id
 
+    env.session.expire_all()
+    booked = env.session.get(VoiceCall, call.id)
+    assert booked.status == "appointment_booked"
+    assert str(booked.appointment_id) == booking_results[0].data["id"]
+    assert booked.company_id == env.company.id == appointments[0].company_id
+    await media_module.complete_media_hangup(env.session, env.settings, call.id)
+    assert ("hangup", "inbound-control") in env.service.telnyx.commands
+    env.session.expire_all()
+    after_media_hangup = env.session.get(VoiceCall, call.id)
+    assert after_media_hangup.status == "appointment_booked"
+
     hangup = env.send(env.event("call.hangup"))
     assert hangup.status_code == 200
     env.session.expire_all()
@@ -322,9 +374,176 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
     assert env.session.scalar(select(func.count()).select_from(CRMAppointment).where(
         CRMAppointment.company_id == env.company.id,
     )) == 1
+
+    other = Company(
+        name="Other Inbound Tenant",
+        slug=f"other-inbound-{uuid4().hex[:8]}",
+        email="other-inbound-e2e@example.com",
+        country="CA",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+    )
+    env.session.add(other)
+    env.session.commit()
+    assert CRMService(env.session).list_appointments(other.id) == []
+    assert env.session.scalars(select(CRMAppointment).where(CRMAppointment.company_id == other.id)).all() == []
     assert env.settings.openai_api_key == "fake-audio-key"
     assert env.settings.telnyx_api_key == "test-secret-never-log"
     assert "test-secret-never-log" not in "".join(adapter.spoken)
+
+
+@pytest.mark.asyncio
+async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_webhook, monkeypatch):
+    env = signed_telnyx_webhook
+    _prepare_inbound_media_tenant(env)
+    usage = AIUsageService(env.session, AIQuotaPolicy(env.settings))
+    claimed_ids: list[str] = []
+
+    class Central:
+        def __init__(self):
+            self.usage_service = usage
+
+        async def execute(self, *args, **kwargs):
+            request_id = kwargs["request_id"]
+            claimed_ids.append(request_id)
+            usage.claim_credit_reservation(args[0].company_id, "professional", request_id, 1)
+            return SimpleNamespace(status="success", answer="Oui, je vous écoute.", selected_agent="crm")
+
+    adapter = InboundLoopbackAdapter(["Allô bonjour"])
+    _bind_mocked_realtime(env, monkeypatch, adapter, Central())
+    call = _answer_inbound(env)
+    event = start_event()
+    event["stream_id"] = "stream-inbound-credits"
+    event["start"].update(
+        call_control_id=call.telnyx_call_control_id,
+        to=env.config.telnyx_phone_number,
+        client_state=env.service.telnyx.media_streams[0][2],
+    )
+    with env.client.websocket_connect(f"/api/v1/voice/telnyx/media/{call.id}") as socket:
+        socket.send_json(event)
+        socket.send_json(_pcmu_frame("stream-inbound-credits", 1))
+        socket.receive_json()
+        try:
+            socket.send_json({"event": "stop", "stream_id": "stream-inbound-credits"})
+        except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+            pass
+        _drain_socket(socket)
+
+    env.session.expire_all()
+    assert len(claimed_ids) == 1
+    turn_id = claimed_ids[0]
+    turn_reservations = env.session.scalars(select(TenantAICreditReservation).where(
+        TenantAICreditReservation.company_id == env.company.id,
+        TenantAICreditReservation.avenqo_request_id == turn_id,
+    )).all()
+    turn_settlements = env.session.scalars(select(TenantAICreditLedgerEntry).where(
+        TenantAICreditLedgerEntry.company_id == env.company.id,
+        TenantAICreditLedgerEntry.reference_id == turn_id,
+        TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
+    )).all()
+    assert len(turn_reservations) == 1
+    assert len(turn_settlements) == 1
+    assert turn_reservations[0].status == "settled"
+
+
+@pytest.mark.asyncio
+async def test_inbound_calendar_failure_keeps_crm_appointment(signed_telnyx_webhook, monkeypatch):
+    env = signed_telnyx_webhook
+    owner = _prepare_inbound_media_tenant(env)
+    starts_at = _weekday_afternoon(hours_utc=16)
+
+    class FailingProvider:
+        async def check_busy_slots(self, *args, **kwargs):
+            return []
+
+        async def create_event(self, *args, **kwargs):
+            raise RuntimeError("provider rejected event")
+
+    _inject_calendar_cipher(monkeypatch, FailingProvider())
+    env.session.add(CRMCalendarConnection(
+        company_id=env.company.id,
+        provider="google",
+        account_email="owner@test.com",
+        encrypted_credentials="encrypted",
+        sync_status="connected",
+    ))
+    env.session.commit()
+    call = _answer_inbound(env)
+    conversation = ConversationService(env.session).create(
+        env.company.id, owner.id, f"Voice call {call.id}", "fr",
+    )
+    call.central_conversation_id = conversation.id
+    env.session.commit()
+
+    booked = await _run_real_create_appointment(env, conversation_id=conversation.id, starts_at=starts_at)
+    assert booked.success is True
+    assert booked.data.get("id")
+    assert booked.data.get("calendar_synced") is False
+    assert booked.data.get("calendar_sync") == "failed"
+    assert booked.data.get("calendar_sync_error")
+    outcomes = CentralAIService._safe_tool_outcomes((
+        ToolCallResult(
+            ToolCall(id="create", name="create_appointment", arguments={}),
+            booked,
+        ),
+    ))
+    assert outcomes == ({"tool": "create_appointment", "success": True, "confirmed": True},)
+    env.session.expire_all()
+    appointment = env.session.get(CRMAppointment, UUID(str(booked.data["id"])))
+    assert appointment is not None
+    assert appointment.company_id == env.company.id
+    assert appointment.external_event_id is None
+    assert "calendar_sync" not in (appointment.industry_data or {})
+    voice = env.session.get(VoiceCall, call.id)
+    assert voice.status == "appointment_booked"
+    assert voice.appointment_id == appointment.id
+    assert voice.company_id == appointment.company_id
+
+
+@pytest.mark.asyncio
+async def test_inbound_calendar_success_sets_external_event(signed_telnyx_webhook, monkeypatch):
+    env = signed_telnyx_webhook
+    owner = _prepare_inbound_media_tenant(env)
+    starts_at = _weekday_afternoon(hours_utc=15)
+
+    class SucceedingProvider:
+        async def check_busy_slots(self, *args, **kwargs):
+            return []
+
+        async def create_event(self, *args, **kwargs):
+            return "google-event-inbound-e2e"
+
+    _inject_calendar_cipher(monkeypatch, SucceedingProvider())
+    env.session.add(CRMCalendarConnection(
+        company_id=env.company.id,
+        provider="google",
+        account_email="owner@test.com",
+        encrypted_credentials="encrypted",
+        sync_status="connected",
+    ))
+    env.session.commit()
+    call = _answer_inbound(env)
+    conversation = ConversationService(env.session).create(
+        env.company.id, owner.id, f"Voice call {call.id}", "fr",
+    )
+    call.central_conversation_id = conversation.id
+    env.session.commit()
+
+    booked = await _run_real_create_appointment(
+        env, conversation_id=conversation.id, starts_at=starts_at, title="Consultation calendrier",
+    )
+    assert booked.success is True
+    assert booked.data.get("calendar_synced") is True
+    assert booked.data.get("calendar_sync") == "synced"
+    env.session.expire_all()
+    appointment = env.session.get(CRMAppointment, UUID(str(booked.data["id"])))
+    assert appointment is not None
+    assert appointment.external_event_id == "google-event-inbound-e2e"
+    assert appointment.calendar_provider == "google"
+    voice = env.session.get(VoiceCall, call.id)
+    assert voice.status == "appointment_booked"
+    assert voice.appointment_id == appointment.id
 
 
 @pytest.mark.asyncio
@@ -390,9 +609,6 @@ async def test_inbound_telnyx_realtime_barge_in_interrupt_then_hangup(signed_tel
         transcript="Au revoir",
     ))
     await eventually(lambda: hangups == [True])
-    # Wait for the provider command, not just entry into the async callback.
-    # Sending stop earlier cancels the pending callback while audio drains.
-    await eventually(lambda: ("hangup", "inbound-control") in env.service.telnyx.commands)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
     await running
 

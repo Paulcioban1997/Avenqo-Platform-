@@ -190,7 +190,7 @@ async def test_central_ai_returns_only_safe_confirmed_crm_tool_outcomes():
     outcomes = CentralAIService._safe_tool_outcomes(tool_results)
 
     assert outcomes == (
-        {"tool": "create_appointment", "success": True, "confirmed": False},
+        {"tool": "create_appointment", "success": True, "confirmed": True},
         {"tool": "check_availability", "success": True, "confirmed": False},
     )
     assert "private-appointment-id" not in str(outcomes)

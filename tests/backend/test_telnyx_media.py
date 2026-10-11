@@ -2066,11 +2066,8 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
                 assert resp.get("event") == "media"
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-multi"})
-            try:
-                for _ in range(10):
-                    socket.receive_json()
-            except (WebSocketDisconnect, Exception):
-                pass
+            from tests.backend.test_voice_inbound_e2e import _drain_socket
+            _drain_socket(socket)
 
     # Verify all 5 conversational turns were executed by Central AI
     assert len(captured_turns) == 5

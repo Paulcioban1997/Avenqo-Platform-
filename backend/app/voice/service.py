@@ -873,9 +873,14 @@ class VoiceOrchestrator:
         )
         if error or appointment is None:
             return {"success": False, "conflict": True, "message": error or "appointment_creation_failed"}
-        call.appointment_id = appointment.id
-        call.status = "appointment_booked"
-        self.db.commit()
+        from backend.app.voice.booking import mark_voice_call_booked
+
+        mark_voice_call_booked(
+            self.db,
+            company_id=config.company_id,
+            appointment_id=appointment.id,
+            call=call,
+        )
         try:
             from backend.app.services.automation_service import AutomationService
 
