@@ -13,8 +13,34 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 from backend.app.config.settings import Settings
+from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
+
+
+def _company_locale(company: object) -> str:
+    """Use the explicit tenant profile, then the legacy setting if absent.
+
+    Profile updates synchronize Company.preferred_language. A stale legacy
+    value must not make invoices disagree with Voice, CRM and Central AI.
+    """
+    company_id = getattr(company, "id", None)
+    try:
+        from sqlalchemy.orm import object_session
+
+        db = object_session(company)
+    except Exception:
+        db = None
+    if db is not None and company_id is not None:
+        resolved = get_company_locale(db, company_id)
+        if resolved:
+            return resolved
+    profile = getattr(company, "locale_profile", None)
+    if profile is not None and getattr(profile, "primary_locale", None):
+        return str(profile.primary_locale)
+    return catalog_code_or_none(getattr(company, "preferred_language", None)) or "fr"
+
+
 _SMTP_CONNECTION_TIMEOUT_SECONDS = 10
 _HTTPS_CONNECTION_TIMEOUT_SECONDS = 10
 _RESEND_EMAIL_API_URL = "https://api.resend.com/emails"
@@ -121,7 +147,7 @@ class AccountNotificationService:
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
 
     def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
-        labels = self._invoice_labels(company.preferred_language)
+        labels = self._invoice_labels(_company_locale(company))
         amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
         period = "—"
         if invoice.period_start and invoice.period_end:

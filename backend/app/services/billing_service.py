@@ -21,6 +21,7 @@ from backend.app.models import (
     UserRole,
 )
 from backend.app.services.account_notifications import AccountNotifier
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.invoice_tax import invoice_tax_snapshot
 from payments import PlanCode, get_plan
@@ -593,6 +594,7 @@ class BillingService:
         if invoice.get("status") == "paid" and existing.email_sent_at is None:
             recipient = self._invoice_recipient(account.company, values["customer_email"])
             if recipient and getattr(self._notifier, "email_delivery_configured", True):
+                get_company_locale(self._session, company_id)
                 self._notifier.send_invoice_paid(recipient, account.company, existing)
                 existing.email_sent_at = datetime.now(timezone.utc)
 

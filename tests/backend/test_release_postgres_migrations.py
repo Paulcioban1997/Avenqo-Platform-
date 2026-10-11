@@ -32,14 +32,19 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0048_billing_test_documents"
         connection.execute(text("CREATE TABLE release_preservation_probe (id integer PRIMARY KEY, value text)"))
         connection.execute(text("INSERT INTO release_preservation_probe VALUES (1, 'test-only-preserve')"))
-    command.upgrade(config, "head")
-    command.upgrade(config, "head")
+    command.upgrade(config, "0050_mfa_recovery_and_lockout")
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0050_mfa_recovery_and_lockout"
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         columns = {item["name"] for item in inspect(connection).get_columns("users")}
         assert {"mfa_secret_encrypted", "mfa_recovery_hashes", "failed_login_count", "locked_until"} <= columns
         assert inspect(connection).get_columns("alembic_version")[0]["type"].length >= 64
+    command.upgrade(config, "head")
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0052_company_locale_profile"
+        assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
+        assert inspect(connection).has_table("company_locale_profiles")
     engine.dispose()
     admin.dispose()
     # Keep the isolated rehearsal database for inspection; no active DB is deleted.
