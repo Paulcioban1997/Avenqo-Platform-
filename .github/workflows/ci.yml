@@ -121,6 +121,11 @@ jobs:
           tests/backend/test_data_freshness_service.py
           tests/backend/test_phase33_billing_admin.py
           tests/backend/test_billing.py
+          tests/backend/test_stripe_sdk_price_shape.py
+          tests/backend/test_cursor_invoice_tax_compatibility.py
+          tests/backend/test_invoice_tax.py
+          tests/backend/test_backup_environment_isolation.py
+          tests/backend/test_backup_s3.py
           tests/backend/test_auth.py
           -q
         env:
@@ -128,6 +133,14 @@ jobs:
           ENVIRONMENT: test
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
+
+      - name: Rehearse PostgreSQL production migration in a new isolated database
+        run: python -m pytest tests/backend/test_release_postgres_migrations.py -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          DATABASE_URL: "sqlite:///:memory:"
+          AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
 
   frontend-flutter:
     name: Frontend App (Flutter)

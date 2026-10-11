@@ -150,7 +150,7 @@ class _FakeTelnyx:
         self.commands.append(("transfer", call_control_id, command_id))
 
     async def hangup(self, call_control_id: str) -> None:
-        return None
+        self.commands.append(("hangup", call_control_id))
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         self.gathers.append((call_control_id, command_id, client_state))

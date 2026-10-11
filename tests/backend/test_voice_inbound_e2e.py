@@ -375,6 +375,9 @@ async def test_inbound_telnyx_realtime_barge_in_interrupt_then_hangup(signed_tel
         transcript="Au revoir",
     ))
     await eventually(lambda: hangups == [True])
+    # Wait for the provider command, not just entry into the async callback.
+    # Sending stop earlier cancels the pending callback while audio drains.
+    await eventually(lambda: ("hangup", "inbound-control") in env.service.telnyx.commands)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
     await running
 

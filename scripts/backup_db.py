@@ -84,7 +84,7 @@ def _load_backup_settings() -> BackupRuntimeSettings:
     try:
         environment = resolve_backup_environment(
             os.getenv("ENVIRONMENT"),
-            os.getenv("RAILWAY_ENVIRONMENT"),
+            os.getenv("RAILWAY_ENVIRONMENT_NAME") or os.getenv("RAILWAY_ENVIRONMENT"),
         )
     except BackupEnvironmentError as exc:
         raise RuntimeError(str(exc)) from exc
