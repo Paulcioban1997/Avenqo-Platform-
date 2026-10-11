@@ -95,9 +95,7 @@ class ModuleEntitlementService:
         return tuple(
             definition.key
             for definition in self._registry
-            if definition.key in stored
-            and definition.is_available
-            and plan.allows_module(definition.key)
+            if definition.key in stored and plan.allows_module(definition.key)
         )
 
     def get_module_limit(self, tenant: TenantContext) -> int | None:
@@ -234,12 +232,12 @@ class ModuleEntitlementService:
     ) -> ModuleEntitlementState:
         if definition is None or definition.availability == ModuleAvailability.UNAVAILABLE:
             return ModuleEntitlementState.UNAVAILABLE
+        if definition.key in active_set:
+            return ModuleEntitlementState.ACTIVE
         if definition.availability == ModuleAvailability.COMING_SOON:
             return ModuleEntitlementState.COMING_SOON
         if not plan.allows_module(definition.key):
             return ModuleEntitlementState.UPGRADE_REQUIRED
-        if definition.key in active_set:
-            return ModuleEntitlementState.ACTIVE
         if remaining == 0:
             return ModuleEntitlementState.LIMIT_REACHED
         return ModuleEntitlementState.AVAILABLE

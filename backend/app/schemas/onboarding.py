@@ -18,6 +18,9 @@ class OnboardingStatusResponse(BaseModel):
     completed_at: datetime | None
     activated_modules: tuple[str, ...] = ()
     unavailable_modules: tuple[str, ...] = ()
+    current_step: str | None = None
+    progress_percent: int = 0
+    checklist: tuple[dict, ...] = ()
 
 
 class OnboardingSubmitRequest(BaseModel):
@@ -29,4 +32,14 @@ class OnboardingSubmitRequest(BaseModel):
     # "accounting"). Activés uniquement si le plan de l'entreprise les
     # autorise (voir `SubscriptionPlan.allows_module`) — jamais en
     # contournement de la facturation.
+    selected_modules: tuple[str, ...] = Field(default=(), max_length=11)
+    current_step: str | None = Field(default=None, max_length=64)
+
+
+class OnboardingDraftRequest(BaseModel):
+    current_step: str = Field(min_length=1, max_length=64)
+    business_goals: tuple[str, ...] = Field(default=(), max_length=10)
+    current_tools: tuple[str, ...] = Field(default=(), max_length=20)
+    team_size: str | None = Field(default=None, max_length=50)
+    refined_industry: str | None = Field(default=None, max_length=120)
     selected_modules: tuple[str, ...] = Field(default=(), max_length=11)

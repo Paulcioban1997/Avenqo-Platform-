@@ -498,17 +498,32 @@ class CreateAppointmentTool(CRMAITool):
         if err or apt is None:
             return ToolResult(success=False, data={"error": err or "Échec de création du rendez-vous."})
 
+        from backend.app.voice.booking import mark_voice_call_booked
+        mark_voice_call_booked(
+            self._crm._session,
+            company_id=context.tenant.company_id,
+            appointment_id=apt.id,
+            conversation_id=context.conversation_id,
+        )
+
+        calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
+        calendar_synced = calendar_sync == "synced" or bool(apt.external_event_id)
+        data = {
+            "id": str(apt.id),
+            "title": apt.title,
+            "client_name": client.full_name,
+            "start_time": apt.start_time.isoformat(),
+            "end_time": apt.end_time.isoformat(),
+            "status": apt.status,
+            "calendar_synced": calendar_synced,
+            "calendar_sync": calendar_sync,
+        }
+        if calendar_sync == "failed" and sync_error:
+            data["calendar_sync_error"] = sync_error
+
         return ToolResult(
             success=True,
-            data={
-                "id": str(apt.id),
-                "title": apt.title,
-                "client_name": client.full_name,
-                "start_time": apt.start_time.isoformat(),
-                "end_time": apt.end_time.isoformat(),
-                "status": apt.status,
-                "calendar_synced": bool(apt.external_event_id),
-            },
+            data=data,
             source_refs=("crm_appointments",),
         )
 

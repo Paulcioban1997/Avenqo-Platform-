@@ -1,7 +1,7 @@
-"""Test ciblé : Settings.database_url lit DATABASE_URL depuis os.environ uniquement.
+"""Test ciblÃ© : Settings.database_url lit DATABASE_URL depuis os.environ uniquement.
 
-Prouve que la lecture ne dépend PAS du fichier .env local et fonctionne en
-production (Railway) où seule la variable OS est définie.
+Prouve que la lecture ne dÃ©pend PAS du fichier .env local et fonctionne en
+production (Railway) oÃ¹ seule la variable OS est dÃ©finie.
 """
 
 from __future__ import annotations
@@ -15,11 +15,11 @@ import pytest
 
 
 def test_database_url_from_os_env_only_without_dotenv(tmp_path, monkeypatch) -> None:
-    """DATABASE_URL défini uniquement dans os.environ (pas de .env) doit être lu."""
+    """DATABASE_URL dÃ©fini uniquement dans os.environ (pas de .env) doit Ãªtre lu."""
 
-    # Isoler dans un répertoire sans backend/.env
+    # Isoler dans un rÃ©pertoire sans backend/.env
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@railway:5432/prod")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:test-only-password@railway:5432/prod")
 
     from backend.app.config.settings import get_settings
 
@@ -27,19 +27,19 @@ def test_database_url_from_os_env_only_without_dotenv(tmp_path, monkeypatch) -> 
     settings = get_settings()
     get_settings.cache_clear()
 
-    assert settings.database_url == "postgresql://u:p@railway:5432/prod"
+    assert settings.database_url == "postgresql://u:test-only-password@railway:5432/prod"
 
 
 def test_database_url_from_os_env_overrides_dotenv(tmp_path, monkeypatch) -> None:
     """DATABASE_URL dans os.environ doit prioriser sur backend/.env local."""
 
-    # Créer un .env avec SQLite (valeur par défaut de dev)
+    # CrÃ©er un .env avec SQLite (valeur par dÃ©faut de dev)
     env_dir = tmp_path / "backend"
     env_dir.mkdir()
     (env_dir / ".env").write_text("DATABASE_URL=sqlite:///./var/local.db\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@railway:5432/prod")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:test-only-password@railway:5432/prod")
 
     from backend.app.config.settings import get_settings
 
@@ -47,7 +47,7 @@ def test_database_url_from_os_env_overrides_dotenv(tmp_path, monkeypatch) -> Non
     settings = get_settings()
     get_settings.cache_clear()
 
-    assert settings.database_url == "postgresql://u:p@railway:5432/prod"
+    assert settings.database_url == "postgresql://u:test-only-password@railway:5432/prod"
     assert "sqlite" not in settings.database_url
 
 
@@ -56,7 +56,7 @@ def test_settings_script_confirms_database_url_reading(tmp_path) -> None:
 
     code = """
 import os
-os.environ['DATABASE_URL'] = 'postgresql://env:secret@host:5432/db'
+os.environ['DATABASE_URL'] = 'postgresql://env:test-only-password@host:5432/db'
 from backend.app.config.settings import get_settings
 s = get_settings()
 print('database_url_present=', bool(s.database_url))

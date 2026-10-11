@@ -1,10 +1,12 @@
 from datetime import datetime
 from uuid import UUID
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
 class VoiceSessionCreate(BaseModel):
+    entrypoint: Literal["voice", "central"] = "voice"
     conversation_id: UUID
     locale: str | None = Field(default=None, min_length=2, max_length=16)
     request_id: str = Field(min_length=1, max_length=100)
@@ -28,6 +30,7 @@ class VoiceSessionResponse(BaseModel):
 class VoiceStreamTicketResponse(BaseModel):
     ticket: str
     realtime: bool
+    stream_url: str | None = None
 
 
 class VoiceTurnRequest(BaseModel):

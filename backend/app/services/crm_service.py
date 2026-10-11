@@ -184,6 +184,25 @@ class CRMService:
             )
         ).first()
 
+    _REFERENCE_MODELS = {
+        "client_id": (CRMClient, "Le client spécifié n'existe pas."),
+        "service_id": (CRMServiceModel, "Le service spécifié n'existe pas."),
+        "employee_id": (CRMEmployee, "L'employé spécifié n'existe pas."),
+        "appointment_id": (CRMAppointment, "Le rendez-vous spécifié n'existe pas."),
+    }
+
+    def _owned(self, model: Any, record_id: Any, company_id: UUID) -> Any:
+        if record_id is None:
+            return None
+        record = self._session.get(model, record_id)
+        return record if record is not None and record.company_id == company_id else None
+
+    def _foreign_reference_error(self, company_id: UUID, data: dict[str, Any]) -> str | None:
+        for key, (model, message) in self._REFERENCE_MODELS.items():
+            if data.get(key) is not None and self._owned(model, data[key], company_id) is None:
+                return message
+        return None
+
     def resolve_client_for_appointment(
         self,
         company_id: UUID,
@@ -457,9 +476,9 @@ class CRMService:
 
         results = []
         for a in apts:
-            client = self._session.get(CRMClient, a.client_id)
-            service = self._session.get(CRMServiceModel, a.service_id) if a.service_id else None
-            employee = self._session.get(CRMEmployee, a.employee_id) if a.employee_id else None
+            client = self._owned(CRMClient, a.client_id, company_id)
+            service = self._owned(CRMServiceModel, a.service_id, company_id)
+            employee = self._owned(CRMEmployee, a.employee_id, company_id)
 
             if search:
                 needle = search.strip().lower()
@@ -512,6 +531,9 @@ class CRMService:
         duration = data.get("duration_minutes", 60)
         end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
         employee_id = data.get("employee_id")
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         idempotency_key = str(data.get("idempotency_key") or "").strip() or None
         if idempotency_key:
@@ -585,13 +607,11 @@ class CRMService:
         self._session.add(appointment)
         self._session.flush()
 
-        # External Calendar Sync (Google Calendar)
+        # External Calendar Sync (Google Calendar). CRM row stays even if sync fails.
         calendar_sync, sync_error = await self._sync_to_external_calendar(
             company_id, appointment, client, action="create"
         )
-        if calendar_sync == "failed":
-            self._session.rollback()
-            return None, sync_error or "Google Calendar did not confirm the appointment."
+        self._record_calendar_sync_state(appointment, calendar_sync, sync_error)
         await CRMNotificationService(self._session).record_appointment_event(
             company_id, appointment, client, "created"
         )
@@ -605,7 +625,11 @@ class CRMService:
             entity_id=appointment.id,
             action="create",
             actor_name=actor_name,
-            details={"title": appointment.title, "start": appointment.start_time.isoformat()},
+            details={
+                "title": appointment.title,
+                "start": appointment.start_time.isoformat(),
+                "calendar_sync": calendar_sync,
+            },
         )
         self._session.commit()
         return appointment, None
@@ -643,6 +667,9 @@ class CRMService:
         ).first()
         if not apt:
             return None, "Rendez-vous introuvable."
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         supplied_start = data.get("start_time", apt.start_time)
         if "start_time" not in data and supplied_start.tzinfo is None:
@@ -794,6 +821,26 @@ class CRMService:
         )
         self._session.commit()
         return AppointmentMutationResult(apt, "deleted")
+
+    def _record_calendar_sync_state(
+        self,
+        appointment: CRMAppointment,
+        calendar_sync: str,
+        sync_error: str | None,
+    ) -> None:
+        """Record calendar sync on the instance / return path — never in industry_data."""
+        appointment._calendar_sync = calendar_sync
+        appointment._calendar_sync_error = sync_error
+
+    @staticmethod
+    def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
+        """Dedicated calendar-sync signal. industry_data remains the tenant industry bag."""
+        status = getattr(appointment, "_calendar_sync", None)
+        if status:
+            return str(status), getattr(appointment, "_calendar_sync_error", None)
+        if appointment.external_event_id:
+            return "synced", None
+        return "not_configured", None
 
     # --- External Calendar Sync Helper ---
 
@@ -1019,15 +1066,22 @@ class CRMService:
             )
         ).first()
 
-        if not conn or not self._cipher:
+        if not conn:
             return "not_configured", None
+
+        cipher = self._cipher
+        if cipher is None:
+            try:
+                cipher = ConnectorSecretCipher(get_settings().connector_encryption_keys)
+            except Exception:
+                return "not_configured", None
 
         if conn.sync_status == "error":
             return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
 
         settings = get_settings()
         try:
-            creds = self._cipher.decrypt(conn.encrypted_credentials)
+            creds = cipher.decrypt(conn.encrypted_credentials)
             if conn.provider == "google":
                 try:
                     provider = GoogleCalendarProvider(
@@ -1075,8 +1129,8 @@ class CRMService:
                         try:
                             refreshed = await provider.refresh_access_token(str(creds["refresh_token"]))
                             creds = {**creds, **refreshed}
-                            if hasattr(self._cipher, "encrypt"):
-                                conn.encrypted_credentials = self._cipher.encrypt(creds)
+                            if hasattr(cipher, "encrypt"):
+                                conn.encrypted_credentials = cipher.encrypt(creds)
                             conn.sync_status = "connected"
                             conn.sync_error = None
                             self._session.commit()
@@ -1157,6 +1211,9 @@ class CRMService:
     # --- Notes ---
 
     def create_note(self, company_id: UUID, data: dict[str, Any], author_name: str = "Système") -> CRMNote:
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            raise LookupError(reference_error)
         note = CRMNote(
             company_id=company_id,
             client_id=data.get("client_id"),

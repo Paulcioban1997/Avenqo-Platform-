@@ -59,6 +59,8 @@ function setAuthCookies(response: NextResponse, tokens: { accessToken: string; r
 
 // Routes qui nécessitent une authentification
 const PROTECTED_ROUTES = [
+  "/security",
+  "/workspace",
   "/dashboard",
   "/crm",
   "/retail",

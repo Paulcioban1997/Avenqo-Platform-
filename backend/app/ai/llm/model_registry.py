@@ -63,8 +63,13 @@ class LLMModelSpec:
     def cost_for(self, usage: LLMUsage) -> Decimal:
         cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
         uncached_tokens = max(usage.input_tokens - cached_tokens, 0)
+        writes = min(max(usage.cache_creation_input_tokens, 0), uncached_tokens)
+        writes_1h = min(max(usage.cache_creation_1h_input_tokens, 0), writes)
+        uncached_tokens -= writes
         token_cost = (
             Decimal(uncached_tokens) * self.input_cost_per_million_usd
+            + Decimal(writes - writes_1h) * self.input_cost_per_million_usd * Decimal("1.25")
+            + Decimal(writes_1h) * self.input_cost_per_million_usd * Decimal("2")
             + Decimal(cached_tokens) * self.cached_input_cost_per_million_usd
             + Decimal(usage.output_tokens) * self.output_cost_per_million_usd
         ) / Decimal(1_000_000)

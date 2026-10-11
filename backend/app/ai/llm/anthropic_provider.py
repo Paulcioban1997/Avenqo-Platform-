@@ -18,13 +18,17 @@ from backend.app.ai.tools.contracts import ToolCall
 def _normalize_anthropic_usage(response, fallback_model: str, *, tool_calls: int = 0) -> LLMUsage:
     raw = getattr(response, "usage", None)
     cached_tokens = int(getattr(raw, "cache_read_input_tokens", 0) or 0)
-    cached_tokens += int(getattr(raw, "cache_creation_input_tokens", 0) or 0)
+    creation_tokens = int(getattr(raw, "cache_creation_input_tokens", 0) or 0)
+    cache_creation = getattr(raw, "cache_creation", None)
+    creation_1h = min(int(getattr(cache_creation, "ephemeral_1h_input_tokens", 0) or 0), creation_tokens)
     uncached_tokens = int(getattr(raw, "input_tokens", 0) or 0)
     return LLMUsage(
         provider="anthropic",
         model=getattr(response, "model", None) or fallback_model,
-        input_tokens=uncached_tokens + cached_tokens,
+        input_tokens=uncached_tokens + cached_tokens + creation_tokens,
         cached_input_tokens=cached_tokens,
+        cache_creation_input_tokens=creation_tokens,
+        cache_creation_1h_input_tokens=creation_1h,
         output_tokens=int(getattr(raw, "output_tokens", 0) or 0),
         tool_calls=max(tool_calls, 0),
         provider_request_id=getattr(response, "id", None),

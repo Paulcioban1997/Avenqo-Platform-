@@ -65,12 +65,32 @@ class InvalidMediaFrame(ValueError):
     pass
 
 
-def media_transport_context(db: Session, settings: Settings, call_id: UUID):
+_LIVE_MEDIA_STATUSES = frozenset({"answering", "routed", "in_progress"})
+_SESSION_MEDIA_STATUSES = _LIVE_MEDIA_STATUSES | frozenset({"appointment_booked"})
+_HANGUP_MEDIA_STATUSES = _SESSION_MEDIA_STATUSES | frozenset({
+    "appointment_cancelled", "transferred", "blocked_credits", "blocked_announcement", "completed",
+})
+
+
+def media_transport_context(
+    db: Session,
+    settings: Settings,
+    call_id: UUID,
+    *,
+    allow_statuses: frozenset[str] | None = None,
+    require_active: bool = True,
+):
     if not settings.telnyx_media_enabled:
         raise PermissionError("Telnyx media transport disabled")
     db.expire_all()
     call = db.get(VoiceCall, call_id)
-    if call is None or call.ended_at is not None or call.status not in {"answering", "routed", "in_progress"} or not call.telnyx_call_control_id:
+    allowed = allow_statuses if allow_statuses is not None else _LIVE_MEDIA_STATUSES
+    if (
+        call is None
+        or not call.telnyx_call_control_id
+        or call.status not in allowed
+        or (require_active and call.ended_at is not None)
+    ):
         raise PermissionError("Active tenant call required")
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id, VoiceBusinessConfig.company_id == call.company_id))
     number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.company_id == call.company_id,
@@ -86,8 +106,8 @@ def media_transport_context(db: Session, settings: Settings, call_id: UUID):
     return call, config, company
 
 
-def media_call_context(db: Session, settings: Settings, call_id: UUID):
-    call, config, company = media_transport_context(db, settings, call_id)
+def media_call_context(db: Session, settings: Settings, call_id: UUID, **context_kwargs):
+    call, config, company = media_transport_context(db, settings, call_id, **context_kwargs)
     auth = VoiceCallerAuth(db, settings).valid_session(call)
     if auth is None or auth.caller_type not in {"OWNER", "EMPLOYEE"} or call.caller_type not in {"OWNER", "EMPLOYEE"} or call.pin_challenge_hash:
         raise PermissionError("Verified staff call required")
@@ -779,9 +799,11 @@ class TelnyxMediaBridge:
                     if turn_ledger is not None:
                         turn_ledger.settle(item_id)
                 if result.get("hangup"):
-                    while not self._output.empty():
-                        await asyncio.sleep(0.06)
-                    await asyncio.sleep(0.5)
+                    drained = 0
+                    while not self._output.empty() and drained < 40:
+                        await asyncio.sleep(0.05)
+                        drained += 1
+                    await asyncio.sleep(0.15)
                     if self.hangup_call is not None:
                         with suppress(Exception):
                             await self.hangup_call()
@@ -794,6 +816,11 @@ class TelnyxMediaBridge:
         while True:
             item_id, transcript, epoch = await self._turns.get()
             await self._execute(item_id, transcript, epoch)
+            # A completed wait_for child can race with cancellation during
+            # shutdown. Do not re-enter the queue with a pending cancellation.
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                raise asyncio.CancelledError
 
     def _enqueue(self, raw: bytes, *, final: bool = False) -> None:
         self._remainder += raw
@@ -1149,6 +1176,27 @@ class BoundedMediaSocket:
         await self.websocket.send_json(event)
 
 
+async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
+    """Hang up Telnyx media without overwriting terminal booking/transfer statuses."""
+    c_call, _cfg, _comp = media_transport_context(
+        db, settings, call_id,
+        allow_statuses=_HANGUP_MEDIA_STATUSES,
+        require_active=False,
+    )
+    if c_call.telnyx_call_control_id:
+        with suppress(Exception):
+            await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
+    if c_call.status not in {
+        "completed", "appointment_booked", "appointment_cancelled",
+        "transferred", "blocked_credits", "blocked_announcement",
+    }:
+        c_call.status = "completed"
+    if c_call.ended_at is None:
+        c_call.ended_at = datetime.now(timezone.utc)
+    db.commit()
+    return c_call
+
+
 def media_audio_available(settings: Settings, locale: str) -> bool:
     return bool(settings.openai_api_key and settings.voice_realtime_provider == "openai" and settings.voice_realtime_model
         and settings.voice_stt_provider == "openai" and settings.voice_stt_model
@@ -1173,6 +1221,10 @@ async def telnyx_media_socket(
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
         service.usage_service.ensure_quota_available(company.id, plan)
     except Exception:
+        # Starlette TestClient (and some ASGI servers) block forever if the
+        # socket is closed in CONNECTING without accept(). Reject after accept.
+        with suppress(Exception):
+            await websocket.accept()
         await websocket.close(code=4403)
         return
 
@@ -1202,11 +1254,15 @@ async def telnyx_media_socket(
 
     async def authorize() -> None:
         nonlocal ledger, principal_id, auth_epoch
-        current_call, current_config, current_company = media_transport_context(db, settings, call_id)
+        current_call, current_config, current_company = media_transport_context(
+            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        )
         if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
             raise PermissionError("Billing plan changed during media session")
         try:
-            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(db, settings, call_id)
+            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
         except PermissionError:
             if not public_mode or principal_id is not None:
                 raise
@@ -1226,10 +1282,13 @@ async def telnyx_media_socket(
             ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
         principal_id = current_user.id
         auth_epoch = current_epoch
-        ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-            company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
-            plan_code=plan, request_namespace=call_id if public_mode else None)
-        bridge.use_ledger(ledger)
+        if ledger is None:
+            ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
+                company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
+                plan_code=plan, request_namespace=call_id if public_mode else None)
+            bridge.use_ledger(ledger)
+        else:
+            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim
@@ -1251,9 +1310,13 @@ async def telnyx_media_socket(
                 return security_check
 
         if principal_id is not None:
-            current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(db, settings, call_id)
+            current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
         else:
-            current_call, current_config, current_company = media_transport_context(db, settings, call_id)
+            current_call, current_config, current_company = media_transport_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
             owner_membership = db.scalar(
                 select(CompanyMembership)
                 .where(
@@ -1333,7 +1396,7 @@ async def telnyx_media_socket(
         }
         db.commit()
 
-        if ledger is None or ledger._user_id is None or ledger._conversation_id is None:
+        if ledger is None:
             ledger = VoiceUsageLedger(
                 service.usage_service,
                 voice_pricing_catalog(settings.ai_model_rate_card),
@@ -1344,6 +1407,8 @@ async def telnyx_media_socket(
                 request_namespace=current_call.id,
             )
             bridge.use_ledger(ledger)
+        else:
+            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
 
         def is_hangup_request(text: str) -> bool:
             normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
@@ -1429,14 +1494,7 @@ async def telnyx_media_socket(
         return public_conversation.consume_pending_auth_query()
 
     async def hangup_call() -> None:
-        c_call, _cfg, _comp = media_transport_context(db, settings, call_id)
-        if c_call.telnyx_call_control_id:
-            with suppress(Exception):
-                await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
-        if c_call.status != "completed":
-            c_call.status = "completed"
-            c_call.ended_at = datetime.now(timezone.utc)
-            db.commit()
+        await complete_media_hangup(db, settings, call_id)
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,

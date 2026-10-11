@@ -84,6 +84,7 @@ export function CRMCopilotPanel({
   const isSpanish = locale === "es";
   const isEnglish = locale.startsWith("en");
   const isRomanian = locale.startsWith("ro");
+  const errorPrompt = t.copilot.errorPrompt?.trim() || (locale.startsWith("fr") ? "La demande n’a pas abouti. Aucune action n’est confirmée. Réessayez." : "The request did not complete. No action is confirmed. Please retry.");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -314,7 +315,7 @@ export function CRMCopilotPanel({
         const copilotMsg: Message = {
           id: messageId("c"),
           sender: "copilot",
-          content: confirmedSuccess ? data.answer : t.copilot.errorPrompt,
+          content: confirmedSuccess ? data.answer : errorPrompt,
           timestamp: messageTimestamp(),
           status: confirmedSuccess ? "success" : "error",
           details: data,
@@ -322,14 +323,14 @@ export function CRMCopilotPanel({
         setMessages((prev) => [...prev, copilotMsg]);
 
         // Auto-refresh calendar and KPIs if appointment created
-        if (data.status === "success") {
+        if (confirmedSuccess && Array.isArray(data.tool_outcomes) && data.tool_outcomes.some((outcome: { tool_name?: string; tool?: string; success?: boolean; confirmed?: boolean }) => outcome.success && outcome.confirmed && ["create_appointment", "update_appointment", "cancel_appointment", "book_appointment"].includes(outcome.tool_name ?? outcome.tool ?? ""))) {
           onAppointmentCreated?.();
         }
       } else {
         const copilotMsg: Message = {
           id: messageId("c"),
           sender: "copilot",
-          content: t.copilot.errorPrompt,
+          content: errorPrompt,
           timestamp: messageTimestamp(),
           status: "error",
         };
@@ -340,7 +341,7 @@ export function CRMCopilotPanel({
       const copilotMsg: Message = {
         id: messageId("c"),
         sender: "copilot",
-          content: t.copilot.errorPrompt,
+          content: errorPrompt,
         timestamp: messageTimestamp(),
         status: "error",
       };

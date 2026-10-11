@@ -1,0 +1,85 @@
+{
+  "connector_and_restore": {
+    "environment": "local-isolated",
+    "production_modified": false,
+    "existing_databases_deleted": false,
+    "tables_preserved": 86,
+    "pre_rotation_dump": true,
+    "new_primary_only_decryption": true,
+    "connector_rotation": {
+      "encrypted": 3,
+      "already_primary": 0,
+      "needs_rotation": 3,
+      "rotated": 3,
+      "verified": 3
+    },
+    "second_restoration_counts_match": true,
+    "restored_new_key_decryption": true,
+    "mfa_database_roundtrip_new_key_only": true,
+    "external_providers_called": false
+  },
+  "api_new_keys": {
+    "environment": "local-isolated",
+    "real_postgresql": true,
+    "next_connector_mfa_and_jwt_keys": true,
+    "external_provider_calls_disabled": true,
+    "subscription_fixture_only_not_stripe_payment": true,
+    "production_modified": false,
+    "http_checks": {
+      "ready": 200,
+      "register_0": 201,
+      "verify_0": 200,
+      "login_0": 200,
+      "register_1": 201,
+      "verify_1": 200,
+      "login_1": 200,
+      "crm_create": 201,
+      "crm_read_own": 200,
+      "crm_other_tenant_rejected": 404,
+      "crm_other_tenant_list": 200,
+      "retail_sources": 200,
+      "retail_status": 200,
+      "retail_products": 200,
+      "retail_orders": 200,
+      "retail_customers": 200,
+      "retail_inventory": 200,
+      "billing_subscription": 200,
+      "billing_ai-credits": 200,
+      "billing_invoices/history": 200,
+      "previous_shared_jwt_rejected": 401,
+      "mfa_enroll_next_key": 200,
+      "mfa_confirm_next_key": 200,
+      "mfa_login_next_keys": 200
+    }
+  },
+  "mfa_writer": {
+    "environment": "local-isolated",
+    "real_postgresql": true,
+    "temporary_table_only": true,
+    "mfa_writer": {
+      "encrypted": 2,
+      "already_primary": 0,
+      "needs_rotation": 2,
+      "rotated": 2,
+      "verified": 2
+    },
+    "enrollment_and_recovery_preserved": true,
+    "new_primary_only_read": true,
+    "existing_users_modified": false,
+    "production_modified": false
+  },
+  "prepared_railway_variables": {
+    "environment": "sandbox",
+    "new_variables_prepared": [
+      "SANDBOX_ROTATION_CONNECTOR_NEXT",
+      "SANDBOX_ROTATION_JWT_NEXT",
+      "SANDBOX_ROTATION_MFA_LEGACY",
+      "SANDBOX_ROTATION_MFA_NEXT",
+      "SANDBOX_ROTATION_WOO_NEXT"
+    ],
+    "existing_runtime_variables_replaced": false,
+    "deploy_triggered": false,
+    "production_modified": false,
+    "values_emitted": false
+  }
+}
