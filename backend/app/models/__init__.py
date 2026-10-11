@@ -28,6 +28,7 @@ from backend.app.models.base import (
 )
 from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, EnterpriseQuote, StripeWebhookEvent
 from backend.app.models.company import Company
+from backend.app.models.company_locale_profile import CompanyLocaleProfile
 from backend.app.models.user_source_selection import UserSourceSelection
 from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.company_module import CompanyModule
@@ -99,6 +100,7 @@ __all__ = [
     "BillingAccount",
     "BillingInvoice",
     "Company",
+    "CompanyLocaleProfile",
     "CompanyModule",
     "CompanyModuleStatus",
     "CompanyOnboarding",

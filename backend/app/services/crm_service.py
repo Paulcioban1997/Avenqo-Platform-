@@ -14,6 +14,7 @@ from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.models.crm import (
     CRMActivity,
     CRMActivityLog,
@@ -52,6 +53,15 @@ def _tenant_month_bounds(now: datetime, timezone_name: str | None) -> tuple[date
     else:
         next_local = datetime(local_now.year, local_now.month + 1, 1, tzinfo=tenant_timezone)
     return start_local.astimezone(timezone.utc), next_local.astimezone(timezone.utc)
+
+
+def _client_preferred_language(session: Session, company_id: UUID, data: dict[str, Any]) -> str:
+    """Use the client's explicit locale, else the tenant profile. Never invent en/fr from country."""
+
+    explicit = data.get("preferred_language")
+    if explicit:
+        return str(explicit).strip()
+    return get_company_locale(session, company_id) or "fr"
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,7 +253,7 @@ class CRMService:
             last_name=data["last_name"].strip(),
             email=email or "",
             phone=phone,
-            preferred_language=data.get("preferred_language", "fr"),
+            preferred_language=_client_preferred_language(self._session, company_id, data),
             company_name=data.get("company_name"),
             industry_type=data.get("industry_type", "general"),
             industry_metadata=data.get("industry_metadata", {}),

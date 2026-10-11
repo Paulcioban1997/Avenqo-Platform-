@@ -30,6 +30,7 @@ from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
+from backend.app.routers.tenant_locale import router as tenant_locale_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.voice import router as voice_router
 from backend.app.routers.ai_voice import router as ai_voice_router
@@ -59,6 +60,7 @@ api_router.include_router(
 	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(auth_router, prefix="/api/v1")
+api_router.include_router(tenant_locale_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
 api_router.include_router(commerce_router, prefix="/api/v1")
 api_router.include_router(
