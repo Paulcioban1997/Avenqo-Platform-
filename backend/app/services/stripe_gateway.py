@@ -45,6 +45,9 @@ class StripeGateway:
 
     def _require_monthly_price(self, price_id: str) -> None:
         price = stripe.Price.retrieve(price_id, api_key=self._api_key)
+        # Stripe SDK resources expose to_dict(), not mapping.get().
+        if hasattr(price, "to_dict"):
+            price = price.to_dict()
         recurring = price.get("recurring") if hasattr(price, "get") else None
         if not recurring or recurring.get("interval") != "month":
             raise ValueError("Avenqo subscription prices must recur monthly")
