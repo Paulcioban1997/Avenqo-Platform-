@@ -1173,6 +1173,10 @@ async def telnyx_media_socket(
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
         service.usage_service.ensure_quota_available(company.id, plan)
     except Exception:
+        # Starlette TestClient (and some ASGI servers) block forever if the
+        # socket is closed in CONNECTING without accept(). Reject after accept.
+        with suppress(Exception):
+            await websocket.accept()
         await websocket.close(code=4403)
         return
 
