@@ -707,10 +707,11 @@ def test_google_calendar_create_failure_keeps_crm_appointment(db_session, monkey
     assert error is None
     assert appointment is not None
     assert appointment.external_event_id is None
-    assert (appointment.industry_data or {}).get("calendar_sync") == "failed"
-    assert "Synchronisation Google Calendar impossible" in str(
-        (appointment.industry_data or {}).get("calendar_sync_error") or ""
-    )
+    assert appointment.industry_data == {}
+    assert "calendar_sync" not in (appointment.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(appointment)
+    assert calendar_sync == "failed"
+    assert "Synchronisation Google Calendar impossible" in str(sync_error or "")
     assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 1
 
 
@@ -895,6 +896,12 @@ def test_create_appointment_accepts_null_industry_data(db_session):
     assert err is None
     assert app is not None
     assert app.industry_data == {}
+    assert "calendar_sync" not in (app.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(app)
+    assert calendar_sync == "not_configured"
+    assert sync_error is None
+    assert app.external_event_id is None
+    assert bool(app.external_event_id) is False
 
 
 def test_availability_engine_open_slots(db_session):

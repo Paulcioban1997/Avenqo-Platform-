@@ -603,7 +603,11 @@ class CRMService:
             entity_id=appointment.id,
             action="create",
             actor_name=actor_name,
-            details={"title": appointment.title, "start": appointment.start_time.isoformat()},
+            details={
+                "title": appointment.title,
+                "start": appointment.start_time.isoformat(),
+                "calendar_sync": calendar_sync,
+            },
         )
         self._session.commit()
         return appointment, None
@@ -799,13 +803,19 @@ class CRMService:
         calendar_sync: str,
         sync_error: str | None,
     ) -> None:
-        industry = dict(appointment.industry_data or {})
-        industry["calendar_sync"] = calendar_sync
-        if sync_error:
-            industry["calendar_sync_error"] = sync_error
-        else:
-            industry.pop("calendar_sync_error", None)
-        appointment.industry_data = industry
+        """Record calendar sync on the instance / return path — never in industry_data."""
+        appointment._calendar_sync = calendar_sync
+        appointment._calendar_sync_error = sync_error
+
+    @staticmethod
+    def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
+        """Dedicated calendar-sync signal. industry_data remains the tenant industry bag."""
+        status = getattr(appointment, "_calendar_sync", None)
+        if status:
+            return str(status), getattr(appointment, "_calendar_sync_error", None)
+        if appointment.external_event_id:
+            return "synced", None
+        return "not_configured", None
 
     # --- External Calendar Sync Helper ---
 

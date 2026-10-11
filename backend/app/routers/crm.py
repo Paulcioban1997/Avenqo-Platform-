@@ -516,7 +516,8 @@ async def create_appointment(
     apt, error = await service.create_appointment(tenant.company_id, data)
     if error:
         raise HTTPException(status_code=400, detail=error)
-    return {
+    calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
+    response = {
         "id": str(apt.id),
         "title": apt.title,
         "start_time": apt.start_time.isoformat(),
@@ -524,7 +525,12 @@ async def create_appointment(
         "status": apt.status,
         "calendar_provider": apt.calendar_provider,
         "external_event_id": apt.external_event_id,
+        "calendar_synced": calendar_sync == "synced" or bool(apt.external_event_id),
+        "calendar_sync": calendar_sync,
     }
+    if calendar_sync == "failed" and sync_error:
+        response["calendar_sync_error"] = sync_error
+    return response
 
 
 @router.put("/appointments/{appointment_id}")

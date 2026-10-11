@@ -506,8 +506,8 @@ class CreateAppointmentTool(CRMAITool):
             conversation_id=context.conversation_id,
         )
 
-        sync_meta = apt.industry_data or {}
-        calendar_synced = bool(apt.external_event_id) or sync_meta.get("calendar_sync") == "synced"
+        calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
+        calendar_synced = calendar_sync == "synced" or bool(apt.external_event_id)
         data = {
             "id": str(apt.id),
             "title": apt.title,
@@ -516,10 +516,10 @@ class CreateAppointmentTool(CRMAITool):
             "end_time": apt.end_time.isoformat(),
             "status": apt.status,
             "calendar_synced": calendar_synced,
-            "calendar_sync": sync_meta.get("calendar_sync") or ("synced" if calendar_synced else "not_configured"),
+            "calendar_sync": calendar_sync,
         }
-        if sync_meta.get("calendar_sync") == "failed":
-            data["calendar_sync_error"] = sync_meta.get("calendar_sync_error")
+        if calendar_sync == "failed" and sync_error:
+            data["calendar_sync_error"] = sync_error
 
         return ToolResult(
             success=True,

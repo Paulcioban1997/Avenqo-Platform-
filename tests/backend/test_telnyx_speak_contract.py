@@ -59,6 +59,8 @@ def _client(requests: list[dict], **rules) -> TelnyxClient:
     ("en", "en-US", "basic", "female"),
     ("es", "en-US", "basic", "female"),
     ("ro", "en-US", "basic", "female"),
+    ("zh-CN", "en-US", "basic", "female"),
+    ("zh", "en-US", "basic", "female"),
 ])
 def test_payload_never_combines_basic_with_non_english(locale, language, level, voice) -> None:
     payload = unavailable_speak_payload(locale, command_id="c1")

@@ -480,7 +480,7 @@ async def test_inbound_calendar_failure_keeps_crm_appointment(signed_telnyx_webh
     assert appointment is not None
     assert appointment.company_id == env.company.id
     assert appointment.external_event_id is None
-    assert (appointment.industry_data or {}).get("calendar_sync") == "failed"
+    assert "calendar_sync" not in (appointment.industry_data or {})
     voice = env.session.get(VoiceCall, call.id)
     assert voice.status == "appointment_booked"
     assert voice.appointment_id == appointment.id
