@@ -1074,7 +1074,18 @@ class TelnyxMediaBridge:
             await self.adapter.open(locale=self.locale)
             if self.initial_answer:
                 self.telemetry["final_state"] = "GREETING"
-                await self._speak_system("inbound-greeting", self.initial_answer)
+                try:
+                    await self._speak_system("inbound-greeting", self.initial_answer)
+                except Exception as exc:
+                    self.tts_failures += 1
+                    self.telemetry["provider_error"] = type(exc).__name__
+                    if self._pending_speech and self._pending_speech[-1][0] == "inbound-greeting":
+                        item_id, _epoch, turn_ledger = self._pending_speech.pop()
+                        if turn_ledger is not None:
+                            turn_ledger.settle(item_id)
+                    logger.warning(
+                        "Inbound greeting synthesis failed; keeping the answered media session open"
+                    )
             reader = asyncio.create_task(self._read_audio())
             self._background = [
                 reader,
