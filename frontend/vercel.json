@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "git": { "deploymentEnabled": { "main": false } },
+  "git": { "deploymentEnabled": { "main": false, "codex/avenqo-pr33-pr37-validation-20261011": false } },
   "framework": null,
   "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "build/web",
