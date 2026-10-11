@@ -65,7 +65,10 @@ function VoiceModulePermissionsSection({ tenantId, canManage }: { tenantId: stri
     queueMicrotask(async () => {
       try {
         const response = await fetch("/api/v1/voice/module-permissions", { signal: controller.signal, cache: "no-store" });
-        if (response.ok && !controller.signal.aborted) setData(await response.json());
+        if (response.ok && !controller.signal.aborted) {
+          const payload = await response.json();
+          if (Array.isArray(payload?.modules)) setData(payload);
+        }
       } catch { /* keep last known state */ }
     });
     return () => controller.abort();
@@ -78,10 +81,13 @@ function VoiceModulePermissionsSection({ tenantId, canManage }: { tenantId: stri
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ grants: [{ module_code, action_code, granted }] }),
       });
-      if (response.ok) setData(await response.json());
+      if (response.ok) {
+        const payload = await response.json();
+        if (Array.isArray(payload?.modules)) setData(payload);
+      }
     } finally { setBusy(false); }
   }
-  if (!canManage || !data) return null;
+  if (!canManage || !Array.isArray(data?.modules)) return null;
   return (
     <section className="space-y-3 border-t border-slate-200 pt-4 text-sm dark:border-white/10">
       <h2 className="font-semibold">Voice module permissions</h2>
