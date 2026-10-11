@@ -20,6 +20,7 @@ from backend.app.models import (
     UserRole,
 )
 from backend.app.services.account_notifications import AccountNotifier
+from backend.app.services.invoice_tax import invoice_tax_snapshot
 from backend.app.services.stripe_gateway import BillingProvider
 from payments import PlanCode, get_plan
 from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
@@ -508,7 +509,7 @@ class BillingService:
             or account.stripe_subscription_id
         )
         discounts = invoice.get("total_discount_amounts") or []
-        taxes = invoice.get("total_tax_amounts") or []
+        taxes = invoice_tax_snapshot(invoice)
         status_transitions = invoice.get("status_transitions") or {}
         values = {
             "company_id": company_id,
@@ -529,6 +530,7 @@ class BillingService:
                 "name": invoice.get("customer_name"),
                 "address": invoice.get("customer_address"),
                 "phone": invoice.get("customer_phone"),
+                "tax_breakdown": taxes,
             },
             "tax_identifiers": invoice.get("customer_tax_ids") or [],
             "customer_email": invoice.get("customer_email"),
