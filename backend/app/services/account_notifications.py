@@ -13,14 +13,21 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 from backend.app.config.settings import Settings
-from backend.app.services.tenant_locale_service import get_company_locale
+from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
 
 
 def _company_locale(company: object) -> str:
-    """Resolve invoice language from the shared tenant profile when a session is available."""
+    """Resolve invoice language from the company setting, then the tenant profile.
 
+    A signup snapshot in company_locale_profiles must not freeze emails in the
+    default language after Company.preferred_language has been updated.
+    """
+
+    mapped = catalog_code_or_none(getattr(company, "preferred_language", None))
+    if mapped:
+        return mapped
     company_id = getattr(company, "id", None)
     try:
         from sqlalchemy.orm import object_session
@@ -35,7 +42,7 @@ def _company_locale(company: object) -> str:
     profile = getattr(company, "locale_profile", None)
     if profile is not None and getattr(profile, "primary_locale", None):
         return str(profile.primary_locale)
-    return getattr(company, "preferred_language", None) or "fr"
+    return "fr"
 
 
 _SMTP_CONNECTION_TIMEOUT_SECONDS = 10
