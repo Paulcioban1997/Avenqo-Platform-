@@ -184,6 +184,11 @@ class ModuleEntitlementService:
         if entitlement is not None:
             entitlement.status = CompanyModuleStatus.INACTIVE
             entitlement.expires_at = None
+            from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
+            if module_key == "voice":
+                VoiceModulePermissionService(self._session).revoke_all(tenant.company_id)
+            else:
+                VoiceModulePermissionService(self._session).revoke_module(tenant.company_id, module_key)
             self._session.flush()
         return self.summary(tenant)
 

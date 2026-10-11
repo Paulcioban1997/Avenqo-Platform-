@@ -310,7 +310,7 @@ class CallLanguageSession:
         self.active_locale = to_bcp47(self.active_locale or self.primary_locale)
         self.last_confirmed_locale = self.active_locale
         if not self.allowed_locales:
-            self.allowed_locales = (self.primary_locale, "en-US", "fr-CA", "es-ES", "ro-RO")
+            self.allowed_locales = (self.primary_locale,)
         else:
             self.allowed_locales = tuple(to_bcp47(loc) for loc in self.allowed_locales)
 
@@ -330,9 +330,9 @@ class CallLanguageSession:
                 target_lang = target_locale.split("-")[0]
                 matching_allowed = next(
                     (loc for loc in self.allowed_locales if loc.split("-")[0] == target_lang),
-                    target_locale,
+                    None,
                 )
-                return to_bcp47(matching_allowed)
+                return to_bcp47(matching_allowed) if matching_allowed else None
         return None
 
     def process_utterance(self, transcript: str) -> str:
@@ -386,6 +386,11 @@ class CallLanguageSession:
 
         # 4. Énoncé dans une autre langue : requiert 3 énoncés consécutifs à haute confiance
         # pour un changement implicite, afin d'éviter les bascules dues à un accent ou à un emprunt.
+        if not any(loc.split("-")[0] == detected_lang for loc in self.allowed_locales):
+            self.consecutive_evidence_count = 0
+            self.pending_candidate_locale = None
+            return self.active_locale
+
         if detection.confidence and detection.confidence >= 0.90 and len(words) >= 4:
             if self.pending_candidate_locale == detected_bcp47:
                 self.consecutive_evidence_count += 1

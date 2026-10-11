@@ -177,13 +177,16 @@ async def test_tool_scope_for_voice_call_never_drops_tools_when_agent_none(tmp_p
     )
 
     # Cas 1 : Énoncé standard sans mot-clé CRM (« Allô, est-ce que vous avez fini ? »)
-    # Sur /voice avec le module "crm" actif : les outils CRM DOIVENT être fournis !
+    # Sur /voice, granted booking actions persist even when no agent is selected.
     active_modules = frozenset({"crm", "voice"})
+    booking = frozenset({"check_availability", "create_appointment", "list_available_slots"})
     scope = service._tool_scope_for_request(
         agent=None,
         query="Allô, est-ce que vous avez fini ?",
         page_context="/voice",
         active_modules=active_modules,
+        permissions=frozenset({"ai:use", "crm:appointments:write"}),
+        granted_voice_tools=booking,
     )
     assert scope is not None
     allowed_tools, tool_agents = scope
@@ -234,12 +237,14 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
         usage_service=cast(Any, None),
     )
 
-    # 1. Tenant avec CRM seul : a les outils CRM, mais ni Retail ni Accounting
+    # 1. Tenant avec CRM seul + booking grants : CRM tools only, never Retail/Accounting
+    crm_grants = frozenset({"check_availability", "create_appointment", "list_available_slots"})
     scope_crm = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "voice"}),
+        granted_voice_tools=crm_grants,
     )
     assert scope_crm is not None
     tools_crm, agents_crm = scope_crm
@@ -248,12 +253,14 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
     assert "get_unpaid_invoices" not in tools_crm
     assert "get_subscription_options" not in tools_crm
 
-    # 2. Tenant avec CRM + Retail : a les outils CRM et Retail, mais pas Accounting
+    # 2. Tenant avec CRM + Retail grants : CRM and Retail tools, never Accounting
+    crm_retail_grants = crm_grants | frozenset({"get_sales_summary"})
     scope_crm_retail = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "retail", "voice"}),
+        granted_voice_tools=crm_retail_grants,
     )
     assert scope_crm_retail is not None
     tools_cr, agents_cr = scope_crm_retail
@@ -263,12 +270,16 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
     assert agents_cr["get_sales_summary"] == "retail"
     assert "get_unpaid_invoices" not in tools_cr
 
-    # 3. Tenant complet CRM + Retail + Accounting : découverte universelle de tous les modules métier
+    # 3. Tenant complet : only explicitly granted Voice actions are discovered
+    all_grants = crm_retail_grants | frozenset({
+        "get_unpaid_invoices", "get_monthly_expenses", "get_cross_agent_business_health",
+    })
     scope_all = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "retail", "accounting", "voice"}),
+        granted_voice_tools=all_grants,
     )
     assert scope_all is not None
     tools_all, agents_all = scope_all
@@ -311,23 +322,33 @@ def test_voice_topic_switching_mid_call_preserves_cross_module_capabilities(tmp_
     )
 
     all_modules = frozenset({"crm", "retail", "accounting", "voice"})
+    granted = frozenset({"check_availability", "get_sales_summary", "get_unpaid_invoices"})
 
     # Tour 1 : Demande de rendez-vous -> scope /voice donne accès à CRM
-    scope_1 = service._tool_scope_for_request(asst_reg.get("crm"), "Prends un rendez-vous demain", "/voice", all_modules)
+    scope_1 = service._tool_scope_for_request(
+        asst_reg.get("crm"), "Prends un rendez-vous demain", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_1 is not None
     tools_1, agents_1 = scope_1
     assert "check_availability" in tools_1
     assert agents_1["check_availability"] == "crm"
 
     # Tour 2 : Changement de sujet -> Combien de commandes aujourd'hui ?
-    scope_2 = service._tool_scope_for_request(asst_reg.get("retail"), "Combien de commandes reçues aujourd'hui ?", "/voice", all_modules)
+    scope_2 = service._tool_scope_for_request(
+        asst_reg.get("retail"), "Combien de commandes reçues aujourd'hui ?", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_2 is not None
     tools_2, agents_2 = scope_2
     assert "get_sales_summary" in tools_2
     assert agents_2["get_sales_summary"] == "retail"
 
     # Tour 3 : Changement de sujet -> Factures impayées ?
-    scope_3 = service._tool_scope_for_request(asst_reg.get("accounting"), "Quelles sont les factures impayées ?", "/voice", all_modules)
+    scope_3 = service._tool_scope_for_request(
+        asst_reg.get("accounting"), "Quelles sont les factures impayées ?", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_3 is not None
     tools_3, agents_3 = scope_3
     assert "get_unpaid_invoices" in tools_3

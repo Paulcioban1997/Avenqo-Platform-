@@ -66,12 +66,17 @@ from backend.app.schemas.voice import (
     VoiceMemberAccessRequest,
     VoiceSetupRequest,
     VoiceOwnedNumberRequest,
+    VoiceModulePermissionsUpdateRequest,
 )
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.plan_limits_service import PlanLimitsService
+from backend.app.services.voice_module_permission_service import (
+    VoiceModulePermissionError,
+    VoiceModulePermissionService,
+)
 from backend.app.schemas.voice import (
     VoiceConfigCreatedResponse,
     VoiceConfigRequest,
@@ -519,6 +524,45 @@ def get_voice_capabilities(
         company_timezone=company.timezone or "UTC",
     )
     return {**context.as_capabilities(), "language_matrix": voice_language_matrix()}
+
+
+@router.get("/module-permissions", dependencies=[Depends(require_active_subscription)])
+def get_voice_module_permissions(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Owner or admin role is required")
+    _ensure_voice_access(db, identity.user.company_id)
+    tenant = TenantContext(identity.user.company_id, identity.user.id)
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+    return VoiceModulePermissionService(db).list_settings(tenant, config=config)
+
+
+@router.put("/module-permissions", dependencies=[Depends(require_active_subscription)])
+def update_voice_module_permissions(
+    request: VoiceModulePermissionsUpdateRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    membership=Depends(get_active_ai_membership),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Owner or admin role is required")
+    _ensure_voice_access(db, identity.user.company_id)
+    tenant = TenantContext(identity.user.company_id, identity.user.id)
+    service = VoiceModulePermissionService(db)
+    try:
+        for item in request.grants:
+            if item.granted:
+                service.grant(tenant, item.module_code, item.action_code, granted_by=identity.user.id)
+            else:
+                service.revoke(tenant, item.module_code, item.action_code)
+    except VoiceModulePermissionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+    return service.list_settings(tenant, config=config)
 
 
 def _orchestrator(db: Session, settings: Settings) -> VoiceOrchestrator:

@@ -18,7 +18,8 @@ from backend.app.ai.usage.included_central import central_is_included
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
 from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
-from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
+from backend.app.voice.caller_scope import is_public_voice_caller
+from backend.app.voice.tool_registry import VoiceToolRegistryService
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -62,27 +63,24 @@ class CentralAIService:
         page_context: str | None,
         active_modules: frozenset[str],
         permissions: frozenset[str] = frozenset(),
+        granted_voice_tools: frozenset[str] | None = None,
+        tenant=None,
     ) -> tuple[frozenset[str], dict[str, str]] | None:
         is_voice = bool(page_context and page_context.startswith("/voice"))
         if is_voice:
-            public_caller = is_public_voice_caller(permissions)
-            voice_tool_names: set[str] = set()
-            voice_tool_agents: dict[str, str] = {}
-            for defn in self._registry.list_authorized(active_modules):
-                # Ne jamais exposer les assistants de gestion de plateforme ou d'administration
-                if defn.category in {"platform", "platform_support"} or defn.slug in {"tenant_capabilities", "platform_support", "voice"}:
-                    continue
-                for tool_name in defn.allowed_tool_names:
-                    if tool_name in {"get_subscription_options"}:
-                        continue
-                    # Appelant non authentifié : réservation publique uniquement
-                    if public_caller and not public_voice_tool_allowed(tool_name):
-                        continue
-                    voice_tool_names.add(tool_name)
-                    voice_tool_agents[tool_name] = defn.agent_id
-            if voice_tool_names:
-                return frozenset(voice_tool_names), voice_tool_agents
-            return frozenset(), {}
+            if tenant is not None and granted_voice_tools is None:
+                session = getattr(getattr(self._context_builder, "_entitlements", None), "_session", None)
+                if session is not None:
+                    return VoiceToolRegistryService(session, self._registry).allowed_tools(
+                        tenant,
+                        permissions,
+                        active_modules=active_modules,
+                    )
+            return self._voice_scope_from_grants(
+                active_modules,
+                permissions,
+                granted_voice_tools if granted_voice_tools is not None else frozenset(),
+            )
 
         if agent is None:
             return frozenset(), {}
@@ -111,6 +109,38 @@ class CentralAIService:
 
         return frozenset(tool_agents), tool_agents
 
+    def _voice_scope_from_grants(
+        self,
+        active_modules: frozenset[str],
+        permissions: frozenset[str],
+        granted_voice_tools: frozenset[str],
+    ) -> tuple[frozenset[str], dict[str, str]]:
+        from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
+        from backend.app.voice.module_actions import VOICE_WRITE_TOOLS
+
+        public_caller = is_public_voice_caller(permissions)
+        names: set[str] = set()
+        owners: dict[str, str] = {}
+        for defn in self._registry.list_authorized(active_modules):
+            if defn.category in {"platform", "platform_support"} or defn.slug in {
+                "tenant_capabilities",
+                "platform_support",
+                "voice",
+            }:
+                continue
+            for tool_name in defn.allowed_tool_names:
+                if tool_name == "get_subscription_options":
+                    continue
+                if public_caller and not public_voice_tool_allowed(tool_name):
+                    continue
+                if tool_name not in granted_voice_tools:
+                    continue
+                if tool_name in VOICE_WRITE_TOOLS and "crm:appointments:write" not in permissions and not public_caller:
+                    continue
+                names.add(tool_name)
+                owners[tool_name] = defn.agent_id
+        return frozenset(names), owners
+
     @bounded_ai_request
     async def execute(
         self,
@@ -132,6 +162,19 @@ class CentralAIService:
         attempt_sink: list[LLMProviderAttempt] | None = None,
         spoken_language_input: bool = False,
     ) -> CentralAIResult:
+        is_voice_request = bool(page_context and page_context.startswith("/voice"))
+        voice_allowed = None
+        db = getattr(self._usage, "_db", None)
+        if is_voice_request and db is not None:
+            from backend.app.services.tenant_locale_service import get_stored_profile
+            from backend.app.voice.language_resolver import to_bcp47
+            profile = get_stored_profile(db, tenant.company_id)
+            primary = profile.primary_locale if profile else user_language
+            voice_allowed = {to_bcp47(code) for code in (
+                [primary, *(profile.secondary_locales or [])] if profile else [primary]
+            )}
+            if to_bcp47(user_language) not in voice_allowed:
+                user_language = primary
         user_language = resolve_locale(user_language)
         language_source = "explicit" if locale_explicit else "fallback"
         language_confidence = None
@@ -144,7 +187,9 @@ class CentralAIService:
             language_source = language_detection.source
             language_confidence = language_detection.confidence
             language_explicitly_requested = language_detection.source == "explicit_request"
-            if language_detection.locale is not None:
+            if language_detection.locale is not None and (voice_allowed is None or any(
+                code.split("-")[0] == language_detection.locale.split("-")[0] for code in voice_allowed
+            )):
                 user_language = language_detection.locale
                 locale_explicit = True
             elif spoken_language_input:
@@ -229,6 +274,7 @@ class CentralAIService:
             page_context,
             frozenset(context.active_modules),
             permissions=permissions,
+            tenant=tenant,
         )
         if central_is_included(tenant.company_id) and context.subscription_status.lower() not in {"active", "trialing"}:
             agent = None
@@ -288,13 +334,14 @@ class CentralAIService:
                 client_context=page_context or "",
                 allowed_tool_names=allowed_tool_names,
                 selected_agent_id=effective_agent_id,
+                voice_path=is_voice,
                 module_id=effective_module_id,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=False if is_public_voice_caller(permissions) else (True if is_voice else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"})),
+                retrieve_tenant_data=False if is_voice or is_public_voice_caller(permissions) else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
-                follow_latest_utterance_language=spoken_language_input,
+                follow_latest_utterance_language=spoken_language_input and not is_voice_request,
                 language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
             )

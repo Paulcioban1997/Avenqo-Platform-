@@ -279,4 +279,14 @@ class VoiceCustomizationResponse(BaseModel):
 
 class RetellWebhookEnvelope(BaseModel):
     event: str
-    call: dict[str, Any]
+    call: dict[str, Any]
+
+
+class VoiceModulePermissionGrant(BaseModel):
+    module_code: str = Field(min_length=1, max_length=64)
+    action_code: str = Field(min_length=1, max_length=64)
+    granted: bool
+
+
+class VoiceModulePermissionsUpdateRequest(BaseModel):
+    grants: list[VoiceModulePermissionGrant] = Field(default_factory=list, max_length=200)

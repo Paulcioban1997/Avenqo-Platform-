@@ -59,6 +59,7 @@ from shared.ai_engine.contracts import TenantContext
 from backend.app.voice.auth import redact_voice_secrets
 from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from backend.app.voice.language_resolver import CallLanguageSession
+from backend.app.voice.module_actions import company_call_language_session
 
 
 class InvalidMediaFrame(ValueError):
@@ -1215,7 +1216,8 @@ async def telnyx_media_socket(
             call, config, company = media_transport_context(db, settings, call_id)
         else:
             call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
-        locale = resolve_locale(call.locale or config.preferred_language)
+        call_lang_session = company_call_language_session(db, config, call)
+        locale = resolve_locale(call_lang_session.active_locale)
         if not media_audio_available(settings, locale) or service.usage_service is None:
             raise PermissionError("Validated audio configuration required")
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
@@ -1233,20 +1235,6 @@ async def telnyx_media_socket(
     principal_id = None
     auth_epoch = None
     public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
-    call_lang_session = CallLanguageSession(
-        tenant_id=company.id,
-        call_session_id=str(call.id),
-        primary_locale=call.locale or config.preferred_language or locale,
-        active_locale=call.locale or config.preferred_language or locale,
-        allowed_locales=tuple((call.source_context or {}).get("allowed_locales", ())) or (
-            resolve_locale(call.locale or config.preferred_language or locale),
-            "en-US", "fr-CA", "es-ES", "ro-RO",
-        ),
-    )
-    saved_lang_state = (call.source_context or {}).get("call_language_session")
-    if isinstance(saved_lang_state, dict) and saved_lang_state.get("active_locale"):
-        call_lang_session.active_locale = resolve_locale(saved_lang_state["active_locale"])
-        call_lang_session.last_confirmed_locale = call_lang_session.active_locale
     selected_voice = getattr(config, "voice_id", None) or settings.voice_tts_voice or "alloy"
     adapter = OpenAIRealtimeAudioAdapter(OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model,
         settings.voice_tts_model, selected_voice), settings.voice_realtime_model)
@@ -1356,6 +1344,7 @@ async def telnyx_media_socket(
                 current_user = db.get(User, owner_membership.user_id)
                 if current_user is None:
                     return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            # Public booking tools still require a live CRM Voice grant.
             permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
 
         if current_call.central_conversation_id is None:
