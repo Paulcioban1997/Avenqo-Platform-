@@ -665,7 +665,7 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     assert captured == ["alice@customer.ca", None]
 
 
-def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_session, monkeypatch):
+def test_google_calendar_create_failure_keeps_crm_appointment(db_session, monkeypatch):
     company = _create_company(db_session, "tenant-calendar-create-failure")
 
     class FakeCipher:
@@ -704,9 +704,15 @@ def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_se
         {"client_id": client.id, "title": "Unconfirmed booking", "start_time": start},
     ))
 
-    assert appointment is None
-    assert error and "Synchronisation Google Calendar impossible" in error
-    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 0
+    assert error is None
+    assert appointment is not None
+    assert appointment.external_event_id is None
+    assert appointment.industry_data == {}
+    assert "calendar_sync" not in (appointment.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(appointment)
+    assert calendar_sync == "failed"
+    assert "Synchronisation Google Calendar impossible" in str(sync_error or "")
+    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 1
 
 
 def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
@@ -890,6 +896,12 @@ def test_create_appointment_accepts_null_industry_data(db_session):
     assert err is None
     assert app is not None
     assert app.industry_data == {}
+    assert "calendar_sync" not in (app.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(app)
+    assert calendar_sync == "not_configured"
+    assert sync_error is None
+    assert app.external_event_id is None
+    assert bool(app.external_event_id) is False
 
 
 def test_availability_engine_open_slots(db_session):

@@ -321,11 +321,7 @@ class CentralAIService:
             if tool_name == "check_availability":
                 confirmed = confirmed and tool_result.data.get("state") == "AVAILABLE"
             elif tool_name == "create_appointment":
-                confirmed = (
-                    confirmed
-                    and bool(tool_result.data.get("id"))
-                    and tool_result.data.get("calendar_synced") is True
-                )
+                confirmed = confirmed and bool(tool_result.data.get("id"))
             elif tool_name == "list_available_slots":
                 confirmed = confirmed and isinstance(tool_result.data.get("slots"), list)
             outcomes.append({"tool": tool_name, "success": bool(tool_result.success), "confirmed": confirmed})

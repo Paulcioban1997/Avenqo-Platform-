@@ -285,16 +285,28 @@ class VoiceUsageLedger:
         self._request_namespace = request_namespace
         self._turns: dict[str, _VoiceTurnUsage] = {}
 
+    def attach_identity(self, user_id: UUID | None, conversation_id: UUID | None) -> None:
+        """Attach owner/conversation for attribution without changing reserved request_ids."""
+        if user_id is not None:
+            self._user_id = user_id
+        if conversation_id is not None:
+            self._conversation_id = conversation_id
+
     def request_id_for(self, item_id: str) -> str:
         if self._request_namespace is not None:
             item_id = hashlib.sha256(f"voice-call:{self._request_namespace}:{item_id}".encode()).hexdigest()
-        request_id = resolve_ai_request_id(
+            return resolve_ai_request_id(
+                item_id,
+                tenant_id=self._company_id,
+                user_id=None,
+                conversation_id=None,
+            )
+        return resolve_ai_request_id(
             item_id,
             tenant_id=self._company_id,
             user_id=self._user_id,
             conversation_id=self._conversation_id,
         )
-        return request_id
 
     def reserve(self, item_id: str) -> bool:
         existing = self._turns.get(item_id)

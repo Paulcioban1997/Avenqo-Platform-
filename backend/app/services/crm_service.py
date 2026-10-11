@@ -585,13 +585,11 @@ class CRMService:
         self._session.add(appointment)
         self._session.flush()
 
-        # External Calendar Sync (Google Calendar)
+        # External Calendar Sync (Google Calendar). CRM row stays even if sync fails.
         calendar_sync, sync_error = await self._sync_to_external_calendar(
             company_id, appointment, client, action="create"
         )
-        if calendar_sync == "failed":
-            self._session.rollback()
-            return None, sync_error or "Google Calendar did not confirm the appointment."
+        self._record_calendar_sync_state(appointment, calendar_sync, sync_error)
         await CRMNotificationService(self._session).record_appointment_event(
             company_id, appointment, client, "created"
         )
@@ -605,7 +603,11 @@ class CRMService:
             entity_id=appointment.id,
             action="create",
             actor_name=actor_name,
-            details={"title": appointment.title, "start": appointment.start_time.isoformat()},
+            details={
+                "title": appointment.title,
+                "start": appointment.start_time.isoformat(),
+                "calendar_sync": calendar_sync,
+            },
         )
         self._session.commit()
         return appointment, None
@@ -794,6 +796,26 @@ class CRMService:
         )
         self._session.commit()
         return AppointmentMutationResult(apt, "deleted")
+
+    def _record_calendar_sync_state(
+        self,
+        appointment: CRMAppointment,
+        calendar_sync: str,
+        sync_error: str | None,
+    ) -> None:
+        """Record calendar sync on the instance / return path — never in industry_data."""
+        appointment._calendar_sync = calendar_sync
+        appointment._calendar_sync_error = sync_error
+
+    @staticmethod
+    def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
+        """Dedicated calendar-sync signal. industry_data remains the tenant industry bag."""
+        status = getattr(appointment, "_calendar_sync", None)
+        if status:
+            return str(status), getattr(appointment, "_calendar_sync_error", None)
+        if appointment.external_event_id:
+            return "synced", None
+        return "not_configured", None
 
     # --- External Calendar Sync Helper ---
 
@@ -1019,15 +1041,22 @@ class CRMService:
             )
         ).first()
 
-        if not conn or not self._cipher:
+        if not conn:
             return "not_configured", None
+
+        cipher = self._cipher
+        if cipher is None:
+            try:
+                cipher = ConnectorSecretCipher(get_settings().connector_encryption_keys)
+            except Exception:
+                return "not_configured", None
 
         if conn.sync_status == "error":
             return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
 
         settings = get_settings()
         try:
-            creds = self._cipher.decrypt(conn.encrypted_credentials)
+            creds = cipher.decrypt(conn.encrypted_credentials)
             if conn.provider == "google":
                 try:
                     provider = GoogleCalendarProvider(
@@ -1075,8 +1104,8 @@ class CRMService:
                         try:
                             refreshed = await provider.refresh_access_token(str(creds["refresh_token"]))
                             creds = {**creds, **refreshed}
-                            if hasattr(self._cipher, "encrypt"):
-                                conn.encrypted_credentials = self._cipher.encrypt(creds)
+                            if hasattr(cipher, "encrypt"):
+                                conn.encrypted_credentials = cipher.encrypt(creds)
                             conn.sync_status = "connected"
                             conn.sync_error = None
                             self._session.commit()

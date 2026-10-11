@@ -36,7 +36,7 @@ SYSTEM_INSTRUCTION = (
     "When data coverage ends before the requested period (e.g. data ends on October 5 and the user asks about October 8, or data_covered is false, or warning is present), "
     "never claim zero orders, zero revenue, or zero activity. Accurately state: 'Les données disponibles s'arrêtent au [date] ; je ne peux pas confirmer les commandes du [date demandée].' "
     "When a business metric includes freshness_status and freshness_timestamp, accurately disclose when the data was last updated; never call SYNCED, NEAR_REALTIME, STALE, or UNAVAILABLE data live. Only say data is live when freshness_status is LIVE. "
-    "Never claim a calendar slot is available unless an availability tool confirms it. Never say an appointment was created, updated, or cancelled unless the corresponding CRM tool succeeds; for creation, require Google Calendar synchronization to be confirmed when Calendar is connected."
+    "Never claim a calendar slot is available unless an availability tool confirms it. Never say an appointment was created, updated, or cancelled unless the corresponding CRM tool succeeds. If create_appointment succeeds but calendar_synced is false, confirm the CRM booking and say Calendar sync failed or is not connected — never claim the event was added to Google Calendar."
 )
 
 def _localized_system_instruction(
@@ -101,7 +101,7 @@ def _localized_system_instruction(
         "When the caller asks an actionable question, call the relevant tool immediately in this exact turn. "
         "NEVER say 'Je vais vérifier, un instant' or ask the caller to wait without executing the tool call in the same response!\n"
         "- Appointments & Calendar (CRM): resolve relative dates based on Current date and time above. Use check_availability for specific slots, list_available_slots for open times. "
-        "If available, ask for name and email to proceed. Summarize details and ask for explicit caller confirmation before calling create_appointment with confirmed=True. Only announce confirmation after the tool succeeds.\n"
+        "If available, ask for name and email to proceed. Summarize details and ask for explicit caller confirmation before calling create_appointment with confirmed=True. Only announce confirmation after the CRM tool succeeds. If calendar_synced is false, say the appointment is booked in Avenqo but Calendar sync failed or is not connected.\n"
         "- Sales & Commerce (Retail): When asked about sales, revenue, top products, or inventory, call get_sales_summary, get_top_products, or get_inventory_levels. "
         "When asked about a specific date (e.g. 'le 5 octobre' or 'October 5'), ALWAYS call get_sales_summary with date_from and date_to set to that specific date. "
         "If data covers that date (data_covered is true), state the exact order count and revenue from the tool result!\n"
