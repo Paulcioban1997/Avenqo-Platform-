@@ -18,6 +18,8 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.voice.messages import voice_natural_greeting
+from backend.app.voice.module_actions import voice_agent_language
 from backend.app.voice.telnyx_media import InvalidMediaFrame, TelnyxAudioCodec, TelnyxMediaBridge, PublicInboundConversation, media_call_context, media_transport_context, issue_media_client_state, claim_media_start, release_media_session, TelnyxAudioReorderBuffer
 from backend.app.config.settings import Settings
 from backend.app.models import BillingAccount, CompanyMembership, User, UserRole, VoicePhoneNumber, VoiceToolAction
@@ -1559,7 +1561,7 @@ def test_public_inbound_greeting_is_conversational_and_concise(authorized_media_
     greeting = conversation.greeting()
     # Greeting is short, polite and conversational
     assert env.config.business_name in greeting
-    assert greeting == f"Bonjour, vous êtes bien chez {env.config.business_name}. Comment puis-je vous aider ?"
+    assert greeting == voice_natural_greeting(voice_agent_language(env.db, env.config), env.config.business_name)
     assert "Pour une demande de rendez-vous" not in greeting
     assert "Cet appel peut être enregistré" not in greeting
 
