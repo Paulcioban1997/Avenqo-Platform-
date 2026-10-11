@@ -1586,7 +1586,8 @@ def test_invoice_email_uses_existing_transport_and_localized_stripe_values(
     with Session(engine) as session:
         company = session.get(Company, UUID(company_id))
         assert company is not None
-        company.preferred_language = "es"
+        from backend.app.services.tenant_locale_service import upsert_profile
+        upsert_profile(session, company.id, primary_locale="es")
         invoice = InvoiceFiscalService(session).get_company_invoices(company.id)[0][0]
         transport = RecordingEmailTransport()
         AccountNotificationService(get_settings(), transport).send_invoice_paid(

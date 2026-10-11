@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "main": false,
-      "codex/avenqo-pr33-pr37-validation-20261011": false
+      "codex/avenqo-pr33-pr37-validation-20261011": false,
+      "codex/avenqo-locale-integration-20261011": false
     }
   }
 }

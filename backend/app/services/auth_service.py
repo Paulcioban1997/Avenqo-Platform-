@@ -125,6 +125,9 @@ class AuthService:
         )
         self._session.add(membership)
         self._session.flush()
+        from backend.app.services.tenant_locale_service import create_profile_for_new_company
+
+        create_profile_for_new_company(self._session, company)
         plan_code = "base" if (request.plan_code or "").lower() in {"base", "demo"} else request.plan_code
         billing_account = BillingAccount(
             company_id=company.id,

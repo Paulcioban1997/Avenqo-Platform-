@@ -30,6 +30,7 @@ from backend.app.dependencies.tenant_business import (
 )
 from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.schemas.ai_chat import ChatMessageResponse, ConversationDetailResponse, ConversationResponse, CreateConversationRequest, MessageResponse, SendMessageRequest, SourceResponse
@@ -189,7 +190,7 @@ async def message(
             capabilities=capabilities,
             request_id=request_id,
             trusted_context=trusted_context,
-            user_language=company.preferred_language or "fr",
+            user_language=get_company_locale(db, company.id) or company.preferred_language,
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
@@ -277,7 +278,7 @@ async def stream(
                 request_id=request_id,
                 trusted_context=trusted_context,
                 is_cancelled=is_cancelled,
-                user_language=company.preferred_language or "fr",
+                user_language=get_company_locale(db, company.id) or company.preferred_language,
                 company_country=company.country or "",
                 company_currency=getattr(company, "currency_code", None) or "USD",
                 company_timezone=company.timezone or "UTC",

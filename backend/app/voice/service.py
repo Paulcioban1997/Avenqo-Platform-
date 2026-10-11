@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.models import (
     Company,
     CRMActivity,
@@ -168,7 +169,11 @@ class VoiceOrchestrator:
         if config is None:
             api_key = new_voice_api_key()
             business_name = company.name if company is not None else "Avenqo Business"
-            pref_lang = (company.preferred_language if company is not None else None) or "fr"
+            pref_lang = get_company_locale(self.db, tenant.company_id) or (
+                company.preferred_language if company is not None else None
+            )
+            if not pref_lang:
+                pref_lang = "fr"
             timezone_name = (company.timezone if company is not None else None) or "America/Toronto"
 
             config = VoiceBusinessConfig(
