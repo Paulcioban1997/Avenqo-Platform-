@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.core.permissions import permissions_for
-from backend.app.models import CompanyMembership, User
+from backend.app.models import BillingAccount, CompanyMembership, User
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
@@ -53,6 +53,12 @@ class VoiceToolGuard:
             if user is None or not user.is_active or user.company_id != tenant.company_id or membership is None:
                 raise VoiceToolDenied("An active tenant membership is required.")
             perms = perms.intersection(permissions_for(membership.role))
+        from sqlalchemy import select
+        account = self._session.scalar(select(BillingAccount).where(
+            BillingAccount.company_id == tenant.company_id,
+        ).execution_options(populate_existing=True))
+        if account is None or account.status.strip().lower() not in {"active", "trialing"}:
+            raise VoiceToolDenied("An active Voice subscription is required.")
         active = set(self._entitlements.get_active_modules(tenant))
         self._grants.revoke_inactive_or_disallowed(tenant)
         if "voice" not in active:

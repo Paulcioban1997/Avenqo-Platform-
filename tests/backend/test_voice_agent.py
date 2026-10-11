@@ -534,6 +534,7 @@ def _voice_database(tmp_path):
         voice_api_key_last4=api_key[-4:],
         enabled=True,
     )
+    session.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
     session.add(config)
     session.commit()
     service = VoiceOrchestrator(

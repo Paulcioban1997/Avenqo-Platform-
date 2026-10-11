@@ -86,3 +86,22 @@ def test_voice_grant_revoked_in_another_transaction_blocks_cached_session(tmp_pa
         with pytest.raises(VoiceToolDenied):
             guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
     engine.dispose()
+
+
+def test_voice_subscription_canceled_in_another_transaction_blocks_next_tool(tmp_path):
+    from sqlalchemy import update
+    from backend.app.models import BillingAccount
+    engine = _engine(tmp_path, "subscription-revoke.db")
+    with Session(engine) as db:
+        company, owner = _company(db, "subscription-revoke")
+        tenant = _activate(db, company, "voice", "crm")
+        _grant(db, company, BOOKING, owner.id)
+        db.commit()
+        guard = VoiceToolGuard(db)
+        guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
+        with Session(engine) as other:
+            other.execute(update(BillingAccount).where(BillingAccount.company_id == company.id).values(status="canceled"))
+            other.commit()
+        with pytest.raises(VoiceToolDenied, match="subscription"):
+            guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
+    engine.dispose()
