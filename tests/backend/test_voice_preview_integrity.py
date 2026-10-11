@@ -15,7 +15,6 @@ from tests.backend.test_voice_agent import _voice_database
 
 def test_preview_preserves_voice_and_model_and_fails_explicitly(tmp_path, monkeypatch):
     engine, db, company, config, *_ = _voice_database(tmp_path)
-    db.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
     db.commit()
     identity = SimpleNamespace(user=SimpleNamespace(company_id=company.id, company=company))
     settings = Settings(OPENAI_API_KEY="test-provider-key", VOICE_TTS_MODEL="gpt-4o-mini-tts")
@@ -44,7 +43,6 @@ def test_preview_preserves_voice_and_model_and_fails_explicitly(tmp_path, monkey
 
 def test_partial_customization_preserves_values_and_can_clear_greeting(tmp_path):
     engine, db, company, config, *_ = _voice_database(tmp_path)
-    db.add(BillingAccount(company_id=company.id, plan_code="professional", status="active"))
     db.commit()
     identity = SimpleNamespace(user=SimpleNamespace(company_id=company.id))
     try:
