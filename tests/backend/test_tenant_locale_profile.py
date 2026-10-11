@@ -289,6 +289,18 @@ def test_unknown_audio_locale_never_claims_validated_french() -> None:
     assert capability["fallback_locale"] is None
 
 
+def test_invoice_language_keeps_explicit_profile_when_legacy_value_is_stale(locale_env) -> None:
+    from backend.app.services.account_notifications import _company_locale
+    _, sessions, _ = locale_env
+    with sessions() as session:
+        company = _make_company(session, suffix="invoice-profile", language="ro")
+        upsert_profile(session, company.id, primary_locale="es")
+        company.preferred_language = "fr"
+        session.flush()
+        assert get_company_locale(session, company.id) == "es"
+        assert _company_locale(company) == "es"
+
+
 def test_suggest_primary_is_suggestion_only_and_catalog_bound() -> None:
     primary, secondaries = suggest_primary("CA", "QC", "America/Toronto")
     assert primary == "fr"
