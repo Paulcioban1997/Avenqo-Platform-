@@ -19,20 +19,46 @@ _UNAVAILABLE_MESSAGES = {
     "en": "The phone assistant is temporarily unavailable. Please contact the business another way. Thank you.",
 }
 _CALL_PATH = re.compile(r"^/calls/[^/]+/")
+# Telnyx rejects voice=male|female unless service_level=basic and language=en-US.
+# Premium (required for fr-CA / fr-FR) needs a provider voice id.
+_PREMIUM_VOICES = {
+    "fr-CA": "Polly.Chantal",
+    "fr-FR": "Polly.Lea",
+    "en-US": "Polly.Joanna",
+}
+
+
+def _speak_language(locale: str) -> str:
+    normalized = locale.lower().replace("_", "-")
+    if normalized.startswith("fr-fr"):
+        return "fr-FR"
+    if normalized.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
 
 
 def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]:
-    """Telnyx only accepts en-US with service_level=basic; any other language requires premium."""
-    if locale.lower().startswith("fr"):
-        language = "fr-FR" if locale.lower() in {"fr-fr", "fr_fr"} else "fr-CA"
+    """Build a Telnyx speak body that matches the documented basic/premium contract."""
+    language = _speak_language(locale)
+    if language == "en-US":
         return {
-            "command_id": command_id, "payload_type": "text", "service_level": "premium",
-            "voice": "female", "language": language, "payload": _UNAVAILABLE_MESSAGES["fr"],
+            "command_id": command_id, "payload_type": "text", "service_level": "basic",
+            "voice": "female", "language": "en-US", "payload": _UNAVAILABLE_MESSAGES["en"],
         }
     return {
-        "command_id": command_id, "payload_type": "text", "service_level": "basic",
-        "voice": "female", "language": "en-US", "payload": _UNAVAILABLE_MESSAGES["en"],
+        "command_id": command_id, "payload_type": "text", "service_level": "premium",
+        "voice": _PREMIUM_VOICES[language], "language": language,
+        "payload": _UNAVAILABLE_MESSAGES["fr"],
     }
+
+
+def unavailable_speak_attempts(locale: str, *, command_id: str) -> list[dict[str, str]]:
+    """Primary locale payload, then English basic. Never mix basic with a non-en-US language."""
+    primary = unavailable_speak_payload(locale, command_id=command_id)
+    attempts = [primary]
+    if primary["language"] != "en-US":
+        attempts.append(unavailable_speak_payload("en", command_id=f"{command_id}-en"))
+    return attempts
 
 
 def telnyx_error_summary(response: httpx.Response) -> dict[str, Any]:
@@ -161,29 +187,36 @@ class TelnyxClient:
         await self._request("POST", f"/calls/{call_control_id}/actions/reject", json={"cause": cause, "command_id": command_id})
 
     async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
-        payload = unavailable_speak_payload(locale, command_id=command_id)
-        try:
-            await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 422 or payload["language"] == "en-US":
-                raise
-            await self._request(
-                "POST",
-                f"/calls/{call_control_id}/actions/speak",
-                json=unavailable_speak_payload("en", command_id=f"{command_id}-en"),
-            )
+        last_error: httpx.HTTPStatusError | None = None
+        for payload in unavailable_speak_attempts(locale, command_id=command_id):
+            try:
+                await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
+                return
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 422:
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
 
-    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+    def media_stream_payload(self, *, stream_url: str, client_state: str, command_id: str) -> dict[str, str]:
         parsed = urlsplit(stream_url)
         if parsed.scheme != "wss" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("A secure credential-free media URL is required")
         if not self._settings.telnyx_media_enabled:
             raise RuntimeError("Telnyx media transport disabled")
-        await self._request("POST", f"/calls/{call_control_id}/actions/streaming_start", json={
+        return {
             "stream_url": stream_url, "stream_track": "inbound_track", "stream_codec": "PCMU",
             "stream_bidirectional_mode": "rtp", "stream_bidirectional_codec": "PCMU",
             "client_state": client_state, "command_id": command_id,
-        })
+        }
+
+    async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+        await self._request(
+            "POST",
+            f"/calls/{call_control_id}/actions/streaming_start",
+            json=self.media_stream_payload(stream_url=stream_url, client_state=client_state, command_id=command_id),
+        )
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={

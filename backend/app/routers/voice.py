@@ -1474,7 +1474,14 @@ async def telnyx_webhook(
         try:
             await service.telnyx.speak_unavailable(call_control_id, command_id=command_id, locale=config.preferred_language)
         except Exception:
-            await service.telnyx.hangup(call_control_id)
+            logger.warning(
+                "Telnyx unavailable announcement failed for voice call %s; hanging up only after speak fallbacks",
+                call.id,
+            )
+            try:
+                await service.telnyx.hangup(call_control_id)
+            except Exception:
+                logger.warning("Telnyx hangup after failed announcement also failed for voice call %s", call.id)
             call.status = "blocked_credits"
             call.ended_at = datetime.now(timezone.utc)
             db.commit()
