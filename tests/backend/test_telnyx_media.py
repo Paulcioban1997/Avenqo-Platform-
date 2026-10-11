@@ -626,6 +626,58 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
 
 
 @pytest.mark.asyncio
+async def test_greeting_tts_failure_keeps_media_session_open():
+    socket = FakeMediaSocket()
+
+    class FailingGreetingAdapter(FakeAudioAdapter):
+        async def speak(self, text):
+            if not self.spoken:
+                self.spoken.append(text)
+                raise RuntimeError("tts-unavailable")
+            await super().speak(text)
+
+    adapter = FailingGreetingAdapter()
+    hangups = []
+
+    async def validate(_event):
+        return None
+
+    async def authorize():
+        return None
+
+    async def execute(item_id, transcript):
+        return {"status": "success", "answer": "Je vous écoute."}
+
+    async def hangup():
+        hangups.append(True)
+
+    bridge = TelnyxMediaBridge(
+        socket, adapter, locale="fr", validate_start=validate, authorize=authorize,
+        execute_turn=execute, initial_answer="Bonjour, vous êtes bien chez Avenqo.",
+        hangup_call=hangup,
+    )
+    await socket.incoming.put(start_event())
+    running = asyncio.create_task(bridge.run())
+    await until(lambda: adapter.opened and bridge.tts_failures == 1)
+    assert hangups == []
+    assert bridge.telemetry["media_connected"] is True
+    assert bridge.telemetry["provider_error"] == "RuntimeError"
+    frame = {"event": "media", "stream_id": "stream-test", "media": {
+        "track": "inbound", "chunk": "1", "payload": base64.b64encode(b"\xff" * 160).decode()}}
+    await socket.incoming.put(frame)
+    await until(lambda: bool(adapter.audio))
+    await adapter.incoming.put(SimpleNamespace(
+        type="conversation.item.input_audio_transcription.completed",
+        item_id="after-tts-fail", transcript="Bonjour",
+    ))
+    await until(lambda: "Je vous écoute." in adapter.spoken)
+    await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
+    await running
+    assert hangups == []
+    assert adapter.closed
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("invalid", ["stream", "codec", "binding"])
 async def test_media_bridge_fails_closed_before_provider_open(invalid):
     socket = FakeMediaSocket(); adapter = FakeAudioAdapter()
@@ -2360,4 +2412,4 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
 
 
 
-
+
