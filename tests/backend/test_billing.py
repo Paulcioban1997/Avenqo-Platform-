@@ -162,12 +162,13 @@ def billing_environment(
 ) -> Generator[tuple[TestClient, FakeStripeProvider, RecordingNotifier], None, None]:
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_avenqo")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_avenqo")
+    monkeypatch.setenv("STRIPE_PRICE_BASE", "price_base")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo")
     monkeypatch.setenv("STRIPE_PRICE_PROFESSIONAL", "price_professional")
     monkeypatch.setenv(
         "STRIPE_PRICES_BY_CURRENCY",
-            '{"CAD":{"demo":"price_demo_cad","professional":"price_professional_cad"},'
-            '"EUR":{"demo":"price_demo_eur","professional":"price_professional_eur"}}',
+            '{"CAD":{"base":"price_base_cad","demo":"price_demo_cad","professional":"price_professional_cad"},'
+            '"EUR":{"base":"price_base_eur","demo":"price_demo_eur","professional":"price_professional_eur"}}',
     )
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_DEMO", "price_credit_demo")
     monkeypatch.setenv("STRIPE_PRICE_CREDIT_PROFESSIONAL", "price_credit_professional")
@@ -404,7 +405,8 @@ def test_country_currency_selects_base_price_and_webhook_plan(
     )
 
     assert checkout.status_code == 200
-    assert checkout.json()["url"].endswith("price_demo_eur")
+    assert checkout.json()["url"].endswith("price_base_eur")
+    assert get_settings().stripe_plan_code("price_base_eur") == "base"
     assert get_settings().stripe_plan_code("price_demo_eur") == "base"
 
 
@@ -436,8 +438,10 @@ def invoice_event(
     billing_reason: str | None = None,
     invoice_id: str = "in_acme",
     plan_code: str = "professional",
+    total_tax_amounts: list[dict[str, Any]] | None = None,
+    total_taxes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "id": event_id,
         "type": event_type,
         "data": {"object": {
@@ -453,7 +457,6 @@ def invoice_event(
             "currency": "cad",
             "subtotal": 6000,
             "total_discount_amounts": [],
-            "total_tax_amounts": [{"amount": 700}],
             "total": 6700,
             "amount_due": 6700,
             "amount_paid": 6700 if event_type == "invoice.paid" else 0,
@@ -474,6 +477,12 @@ def invoice_event(
             }]},
         }},
     }
+    invoice = payload["data"]["object"]
+    if total_taxes is not None:
+        invoice["total_taxes"] = total_taxes
+    else:
+        invoice["total_tax_amounts"] = total_tax_amounts or [{"amount": 700}]
+    return payload
 
 
 def test_checkout_et_cycle_abonnement(billing_environment) -> None:
@@ -495,6 +504,14 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     portal = client.post("/api/v1/billing/portal", headers=headers)
     assert portal.status_code == 200
     assert portal.json()["url"] == "https://billing.stripe.test/session"
+
+    base_checkout = client.post(
+        "/api/v1/billing/checkout",
+        json={"plan_code": "base"},
+        headers=headers,
+    )
+    assert base_checkout.status_code == 200
+    assert base_checkout.json()["url"].endswith("price_base_cad")
 
     checkout = client.post(
         "/api/v1/billing/checkout",
@@ -540,7 +557,7 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
         headers=headers,
     )
     assert changed.status_code == 200
-    assert provider.changed_prices == ["price_demo_cad"]
+    assert provider.changed_prices == ["price_base_cad"]
     canceled = client.post("/api/v1/billing/cancel", headers=headers).json()
     assert canceled["cancel_at_period_end"] is True
     assert canceled["status"] == "canceling_at_period_end"
@@ -1335,6 +1352,55 @@ def test_stripe_subscription_checkout_rejects_non_monthly_price(
             "https://app.test/cancel",
         )
 
+
+def test_modern_stripe_tax_webhook_preserves_base_breakdown(billing_environment) -> None:
+    client, provider, notifier = billing_environment
+    owner = create_owner(client, notifier, email="tax-modern@acme.ca")
+    event = invoice_event(
+        owner["company"]["id"],
+        event_id="evt_tax_modern",
+        invoice_id="in_tax_modern",
+        plan_code="base",
+        total_taxes=[
+            {
+                "amount": 150,
+                "taxable_amount": 2999,
+                "tax_behavior": "exclusive",
+                "tax_rate_details": {"tax_rate": "txr_gst"},
+                "_avenqo_tax_rate": {"tax_type": "gst", "percentage": 5, "country": "CA"},
+                "taxability_reason": "standard_rated",
+            },
+            {
+                "amount": 299,
+                "tax_rate_details": {"tax_rate": "txr_qst"},
+                "_avenqo_tax_rate": {"tax_type": "qst", "percentage": 9.975, "state": "QC"},
+            },
+        ],
+    )
+    # Modern Stripe payloads omit the legacy total_tax_amounts key.
+    event["data"]["object"].pop("total_tax_amounts", None)
+    event["data"]["object"]["subtotal"] = 2999
+    event["data"]["object"]["total"] = 3448
+    event["data"]["object"]["amount_due"] = 3448
+    event["data"]["object"]["amount_paid"] = 3448
+    event["data"]["object"]["lines"]["data"][0]["amount"] = 2999
+    provider.events.append(event)
+
+    webhook = client.post(
+        "/api/v1/billing/webhook",
+        content=b"{}",
+        headers={"Stripe-Signature": "valid_signature"},
+    )
+    assert webhook.status_code == 200
+    invoices = client.get("/api/v1/billing/invoices", headers=auth_headers(owner)).json()
+    assert len(invoices) == 1
+    persisted = invoices[0]
+    assert persisted["plan_code"] == "base"
+    assert persisted["tax_total"] == 449
+    assert persisted["amount_paid"] == 3448
+    assert [tax["name"] for tax in persisted["billing_details"]["tax_breakdown"]] == ["TPS", "TVQ"]
+
+
 def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> None:
     client, provider, notifier = billing_environment
     acme = create_owner(client, notifier)
@@ -1368,6 +1434,7 @@ def test_factures_sont_isolees_et_webhooks_idempotents(billing_environment) -> N
     assert invoice["stripe_subscription_id"] == "sub_acme"
     assert invoice["line_items"][0]["product_id"] == "prod_professional"
     assert invoice["billing_details"]["address"]["country"] == "CA"
+    assert invoice["billing_details"]["tax_breakdown"][0]["amount"] == 700
     assert invoice["tax_identifiers"][0]["type"] == "ca_bn"
     assert invoices[0]["period_start"] is not None
     assert invoices[0]["period_end"] is not None
