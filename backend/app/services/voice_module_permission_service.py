@@ -31,7 +31,7 @@ class VoiceModulePermissionService:
 
     def granted_actions(self, company_id: UUID) -> set[tuple[str, str]]:
         rows = self._session.scalars(
-            select(VoiceModulePermission).where(
+            select(VoiceModulePermission).execution_options(populate_existing=True).where(
                 VoiceModulePermission.company_id == company_id,
                 VoiceModulePermission.granted.is_(True),
                 VoiceModulePermission.revoked_at.is_(None),
@@ -108,7 +108,7 @@ class VoiceModulePermissionService:
 
     def revoke_module(self, company_id: UUID, module_code: str) -> int:
         rows = list(self._session.scalars(
-            select(VoiceModulePermission).where(
+            select(VoiceModulePermission).execution_options(populate_existing=True).where(
                 VoiceModulePermission.company_id == company_id,
                 VoiceModulePermission.module_code == module_code,
                 VoiceModulePermission.granted.is_(True),
@@ -122,7 +122,7 @@ class VoiceModulePermissionService:
 
     def revoke_all(self, company_id: UUID) -> int:
         rows = list(self._session.scalars(
-            select(VoiceModulePermission).where(
+            select(VoiceModulePermission).execution_options(populate_existing=True).where(
                 VoiceModulePermission.company_id == company_id,
                 VoiceModulePermission.granted.is_(True),
             )
@@ -138,7 +138,7 @@ class VoiceModulePermissionService:
         active = set(entitlements.get_active_modules(tenant))
         plan = entitlements.get_company_plan(tenant)
         rows = list(self._session.scalars(
-            select(VoiceModulePermission).where(
+            select(VoiceModulePermission).execution_options(populate_existing=True).where(
                 VoiceModulePermission.company_id == tenant.company_id,
                 VoiceModulePermission.granted.is_(True),
             )
@@ -190,7 +190,7 @@ class VoiceModulePermissionService:
 
     def _row(self, company_id: UUID, module_code: str, action_code: str) -> VoiceModulePermission | None:
         return self._session.scalar(
-            select(VoiceModulePermission).where(
+            select(VoiceModulePermission).execution_options(populate_existing=True).where(
                 VoiceModulePermission.company_id == company_id,
                 VoiceModulePermission.module_code == module_code,
                 VoiceModulePermission.action_code == action_code,

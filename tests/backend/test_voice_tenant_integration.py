@@ -63,3 +63,26 @@ def test_retell_read_guard_rechecks_revoked_membership(tmp_path):
         with pytest.raises(VoiceToolDenied):
             guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
     engine.dispose()
+
+
+def test_voice_grant_revoked_in_another_transaction_blocks_cached_session(tmp_path):
+    from sqlalchemy import select, update
+    from backend.app.models import VoiceModulePermission
+    engine = _engine(tmp_path, "concurrent-revoke.db")
+    with Session(engine) as db:
+        company, owner = _company(db, "external-revoke")
+        tenant = _activate(db, company, "voice", "crm")
+        _grant(db, company, BOOKING, owner.id)
+        db.commit()
+        retained_grant = db.scalar(select(VoiceModulePermission).where(
+            VoiceModulePermission.company_id == company.id,
+            VoiceModulePermission.action_code == "read_availability",
+        ))
+        guard = VoiceToolGuard(db)
+        guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
+        with Session(engine) as other:
+            other.execute(update(VoiceModulePermission).where(VoiceModulePermission.id == retained_grant.id).values(granted=False))
+            other.commit()
+        with pytest.raises(VoiceToolDenied):
+            guard.authorize(tenant, "check_availability", permissions_for(UserRole.OWNER), user_id=owner.id)
+    engine.dispose()

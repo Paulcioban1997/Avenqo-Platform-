@@ -58,10 +58,6 @@ def _client(requests: list[dict], **rules) -> TelnyxClient:
     ("fr-CA", "fr-CA", "premium", "Polly.Chantal"),
     ("fr-FR", "fr-FR", "premium", "Polly.Lea"),
     ("en", "en-US", "basic", "female"),
-    ("es", "en-US", "basic", "female"),
-    ("ro", "en-US", "basic", "female"),
-    ("zh-CN", "en-US", "basic", "female"),
-    ("zh", "en-US", "basic", "female"),
 ])
 def test_payload_never_combines_basic_with_non_english(locale, language, level, voice) -> None:
     payload = unavailable_speak_payload(locale, command_id="c1")
@@ -75,8 +71,8 @@ def test_fallback_chain_never_retries_valid_english() -> None:
     attempts = unavailable_speak_attempts("en", command_id="c1")
     assert len(attempts) == 1
     french = unavailable_speak_attempts("fr-CA", command_id="c1")
-    assert [item["language"] for item in french] == ["fr-CA", "en-US"]
-    assert french[0]["voice"] == "Polly.Chantal" and french[1]["voice"] == "female"
+    assert [item["language"] for item in french] == ["fr-CA"]
+    assert french[0]["voice"] == "Polly.Chantal"
 
 
 @pytest.mark.asyncio
@@ -91,15 +87,14 @@ async def test_french_tenant_unavailable_message_is_accepted_by_telnyx_rules() -
 
 
 @pytest.mark.asyncio
-async def test_rejected_french_voice_falls_back_to_english_instead_of_silence(caplog) -> None:
+async def test_rejected_french_voice_reports_failure_without_english_fallback(caplog) -> None:
     requests: list[dict] = []
     caplog.set_level(logging.WARNING, logger="avenqo.voice.telnyx")
-    await _client(requests, reject_premium=True).speak_unavailable("v3:call-2", command_id="cmd-2", locale="fr")
+    with pytest.raises(httpx.HTTPStatusError):
+        await _client(requests, reject_premium=True).speak_unavailable("v3:call-2", command_id="cmd-2", locale="fr")
     assert [(r["service_level"], r["language"], r["voice"]) for r in requests] == [
         ("premium", "fr-CA", "Polly.Chantal"),
-        ("basic", "en-US", "female"),
     ]
-    assert requests[0]["command_id"] != requests[1]["command_id"]
     assert "status': 422" in caplog.text and "90062" in caplog.text
     assert "/calls/{call_control_id}/actions/speak" in caplog.text
     assert "v3:call-2" not in caplog.text
@@ -108,11 +103,12 @@ async def test_rejected_french_voice_falls_back_to_english_instead_of_silence(ca
 
 
 @pytest.mark.asyncio
-async def test_named_voice_rejection_falls_back_instead_of_hangup_payload(caplog) -> None:
+async def test_named_voice_rejection_does_not_switch_language(caplog) -> None:
     requests: list[dict] = []
     caplog.set_level(logging.WARNING, logger="avenqo.voice.telnyx")
-    await _client(requests, reject_named_voice=True).speak_unavailable("v3:call-4", command_id="cmd-4", locale="fr-CA")
-    assert requests[-1]["language"] == "en-US" and requests[-1]["service_level"] == "basic"
+    with pytest.raises(httpx.HTTPStatusError):
+        await _client(requests, reject_named_voice=True).speak_unavailable("v3:call-4", command_id="cmd-4", locale="fr-CA")
+    assert len(requests) == 1 and requests[0]["language"] == "fr-CA"
     assert "90015" not in caplog.text or "90062" in caplog.text
     assert "v3:call-4" not in caplog.text
 
@@ -142,3 +138,9 @@ async def test_media_stream_payload_stays_credential_free() -> None:
     assert payload["stream_bidirectional_mode"] == "rtp"
     assert payload["stream_bidirectional_codec"] == "PCMU"
     assert "key" not in str(payload).lower()
+
+
+@pytest.mark.parametrize("locale", ["es", "ro", "zh-CN", "zh"])
+def test_unavailable_audio_does_not_invent_english_for_other_locales(locale):
+    with pytest.raises(ValueError, match="No unavailable-message audio"):
+        unavailable_speak_attempts(locale, command_id="test-only-no-fallback")

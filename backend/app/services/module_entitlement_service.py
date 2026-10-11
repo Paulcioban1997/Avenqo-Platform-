@@ -85,7 +85,7 @@ class ModuleEntitlementService:
     def get_company_plan(self, tenant: TenantContext) -> SubscriptionPlan:
         company = self._company(tenant)
         account = self._session.scalar(
-            select(BillingAccount).where(BillingAccount.company_id == tenant.company_id)
+            select(BillingAccount).execution_options(populate_existing=True).where(BillingAccount.company_id == tenant.company_id)
         )
         return get_plan(account.plan_code if account is not None else company.subscription_plan)
 
@@ -269,7 +269,7 @@ class ModuleEntitlementService:
         ))
 
     def _company(self, tenant: TenantContext) -> Company:
-        company = self._session.get(Company, tenant.company_id)
+        company = self._session.get(Company, tenant.company_id, populate_existing=True)
         if company is None:
             raise ModuleEntitlementError("Company not found")
         return company
