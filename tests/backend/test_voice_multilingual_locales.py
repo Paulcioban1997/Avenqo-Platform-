@@ -7,8 +7,9 @@ Honest support (do not claim 44 Voice languages work):
 - Company default language: any of the 44 canonical codes (VoiceConfigRequest).
 - OpenAI Realtime gate (default VOICE_REALTIME_SUPPORTED_LOCALES): fr, en only.
 - No locale is live-audio-certified by these synthetic tests.
-- zh-CN: UI + greeting + script detection + OpenAI tier-1 catalog flag; Telnyx Polly
-  unavailable-message audio is not configured and fails explicitly; no implicit English fallback.
+- zh-CN: UI + greeting + script detection + OpenAI tier-1 catalog flag; Telnyx
+  unavailable audio is fail-closed (no invented English); not live-audio-validated;
+  no explicit mid-call switch phrase.
 - Telnyx hangup copy is French or English only (non-FR uses EN, never forced to FR).
 """
 
@@ -164,10 +165,8 @@ def test_zh_cn_has_partial_support_and_honest_fallbacks():
     assert detection.locale == "zh"
     assert detection.source == "script"
 
-    # Capability metadata does not authorize a telephone-language fallback.
-    import pytest
     with pytest.raises(ValueError, match="No unavailable-message audio"):
-        unavailable_speak_payload("zh-CN", command_id="zh-no-fallback")
+        unavailable_speak_payload("zh-CN", command_id="zh-fallback")
 
     session = CallLanguageSession(
         tenant_id=uuid4(),
