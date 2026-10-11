@@ -1433,10 +1433,15 @@ async def telnyx_media_socket(
         if c_call.telnyx_call_control_id:
             with suppress(Exception):
                 await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
-        if c_call.status != "completed":
+        # Match webhook hangup: keep terminal business states (booking, transfer, credits).
+        if c_call.status not in {
+            "completed", "appointment_booked", "appointment_cancelled",
+            "transferred", "blocked_credits", "blocked_announcement",
+        }:
             c_call.status = "completed"
+        if c_call.ended_at is None:
             c_call.ended_at = datetime.now(timezone.utc)
-            db.commit()
+        db.commit()
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
