@@ -72,8 +72,9 @@ def test_s3_backup_upload_list_download_cycle(s3_settings) -> None:
     metadata = service.create_backup()
 
     names = set(service._s3.list_names())
-    assert f"{metadata.backup_id}.db" in names
-    assert f"{metadata.backup_id}.json" in names
+    prefix = f"{service.environment}/"
+    assert f"{prefix}{metadata.backup_id}.db" in names
+    assert f"{prefix}{metadata.backup_id}.json" in names
 
     listed = service.list_backups()
     assert any(b.backup_id == metadata.backup_id for b in listed)

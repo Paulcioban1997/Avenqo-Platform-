@@ -22,7 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.services.backup_service import BackupService, database_scheme
+from backend.app.services.backup_service import (
+    BackupEnvironmentError,
+    BackupService,
+    database_scheme,
+    resolve_backup_environment,
+)
 
 
 @dataclass(slots=True)
@@ -76,9 +81,17 @@ def _load_backup_settings() -> BackupRuntimeSettings:
     if retention_days < 1:
         raise RuntimeError("BACKUP_RETENTION_DAYS doit être supérieur ou égal à 1.")
 
+    try:
+        environment = resolve_backup_environment(
+            os.getenv("ENVIRONMENT"),
+            os.getenv("RAILWAY_ENVIRONMENT"),
+        )
+    except BackupEnvironmentError as exc:
+        raise RuntimeError(str(exc)) from exc
+
     return BackupRuntimeSettings(
         database_url=database_url,
-        environment=os.getenv("ENVIRONMENT", "production").strip() or "production",
+        environment=environment,
         app_version=os.getenv("APP_VERSION", "0.1.0").strip() or "0.1.0",
         backup_root=os.getenv("BACKUP_ROOT", "var/backups").strip() or "var/backups",
         backup_retention_days=retention_days,
@@ -95,11 +108,24 @@ def main() -> None:
     settings = _load_backup_settings()
     # Diagnostic SAFE : ne journalise jamais DATABASE_URL car elle contient des secrets.
     scheme = database_scheme(settings.database_url)
+    artifact_dir = Path(settings.artifact_root)
+    if not artifact_dir.is_absolute():
+        artifact_dir = Path.cwd() / artifact_dir
+    artifact_exists = artifact_dir.exists()
+    artifact_file_count = 0
+    if artifact_exists:
+        artifact_file_count = sum(1 for path in artifact_dir.rglob("*") if path.is_file())
     print(
         "Backup démarré : "
         "env_database_url_present=true "
         "settings_database_url_present=true "
-        f"database_scheme={scheme or 'unknown'}"
+        f"database_scheme={scheme or 'unknown'} "
+        f"backup_environment={settings.environment} "
+        f"s3_prefix={settings.environment}/ "
+        f"s3_enabled={settings.backup_s3_enabled} "
+        f"artifact_root_configured={bool(settings.artifact_root)} "
+        f"artifact_root_exists={artifact_exists} "
+        f"artifact_file_count={artifact_file_count}"
     )
     service = BackupService(settings)  # type: ignore[arg-type]
     metadata = service.create_backup()
@@ -107,6 +133,10 @@ def main() -> None:
     for key, value in metadata.to_safe_dict().items():
         print(f"  {key}: {value}")
     print(f"Répertoire : {service.root}")
+    print(
+        "artifacts_archived="
+        f"{bool(metadata.artifacts_checksum_sha256)}"
+    )
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ import json
 import sqlite3
 import subprocess
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from backend.app.config.settings import Settings
@@ -67,6 +67,43 @@ def database_scheme(database_url: str) -> str | None:
 
 
 _POSTGRES_SCHEMES = frozenset({"postgresql", "postgres"})
+ALLOWED_BACKUP_ENVIRONMENTS = frozenset(
+    {"production", "sandbox", "staging", "development", "test"}
+)
+_BACKUP_SUFFIXES = (".db", ".sql", ".json", "_artifacts.tar.gz")
+
+
+class BackupEnvironmentError(BackupError):
+    """ENVIRONMENT et RAILWAY_ENVIRONMENT sont absents ou contradictoires."""
+
+
+def normalize_backup_environment(value: str) -> str:
+    environment = (value or "").strip().lower()
+    if environment not in ALLOWED_BACKUP_ENVIRONMENTS:
+        raise BackupEnvironmentError(
+            "ENVIRONMENT doit être production, sandbox, staging, development ou test."
+        )
+    return environment
+
+
+def resolve_backup_environment(
+    explicit: str | None = None,
+    railway: str | None = None,
+) -> str:
+    """Refuse le défaut silencieux `production` et toute contradiction Railway."""
+
+    explicit_name = (explicit or "").strip().lower()
+    railway_name = (railway or "").strip().lower()
+    if explicit_name and railway_name and explicit_name != railway_name:
+        raise BackupEnvironmentError(
+            f"ENVIRONMENT={explicit_name} contredit RAILWAY_ENVIRONMENT={railway_name}."
+        )
+    chosen = explicit_name or railway_name
+    if not chosen:
+        raise BackupEnvironmentError(
+            "ENVIRONMENT ou RAILWAY_ENVIRONMENT est requis pour une sauvegarde."
+        )
+    return normalize_backup_environment(chosen)
 
 
 def _database_kind(database_url: str) -> str:
@@ -151,10 +188,11 @@ class S3BackupStorage:
         self.root = staging_root
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def upload(self, local_path: Path) -> None:
-        self._client.upload_file(str(local_path), self._bucket, local_path.name)
+    def upload(self, local_path: Path, key: str | None = None) -> None:
+        self._client.upload_file(str(local_path), self._bucket, key or local_path.name)
 
     def download(self, name: str, local_path: Path) -> None:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         self._client.download_file(self._bucket, name, str(local_path))
 
     def exists(self, name: str) -> bool:
@@ -168,8 +206,18 @@ class S3BackupStorage:
         self._client.delete_object(Bucket=self._bucket, Key=name)
 
     def list_names(self) -> list[str]:
-        response = self._client.list_objects_v2(Bucket=self._bucket)
-        return [item["Key"] for item in response.get("Contents", [])]
+        names: list[str] = []
+        token = None
+        while True:
+            kwargs: dict[str, object] = {"Bucket": self._bucket}
+            if token:
+                kwargs["ContinuationToken"] = token
+            response = self._client.list_objects_v2(**kwargs)
+            names.extend(item["Key"] for item in response.get("Contents") or [])
+            if not response.get("IsTruncated"):
+                break
+            token = response.get("NextContinuationToken")
+        return names
 
 
 class BackupService:
@@ -191,6 +239,26 @@ class BackupService:
     @property
     def root(self) -> Path:
         return self._storage.root
+
+    @property
+    def environment(self) -> str:
+        return normalize_backup_environment(self._settings.environment)
+
+    def _object_key(self, filename: str, *, prefixed: bool = True) -> str:
+        if prefixed:
+            return f"{self.environment}/{filename}"
+        return filename
+
+    def _candidate_keys(self, filename: str) -> list[str]:
+        return [self._object_key(filename), filename]
+
+    def _s3_exists(self, filename: str) -> str | None:
+        if self._s3 is None:
+            return None
+        for key in self._candidate_keys(filename):
+            if self._s3.exists(key):
+                return key
+        return None
 
     def create_backup(self) -> BackupMetadata:
         kind = _database_kind(self._settings.database_url)
@@ -249,7 +317,7 @@ class BackupService:
         metadata = BackupMetadata(
             backup_id=backup_id,
             created_at=datetime.now(timezone.utc).isoformat(),
-            environment=self._settings.environment,
+            environment=self.environment,
             database_type=kind,
             app_version=self._settings.app_version,
             git_revision=_git_revision(),
@@ -264,20 +332,19 @@ class BackupService:
             json.dumps(metadata.to_safe_dict(), indent=2), encoding="utf-8"
         )
         if self._s3 is not None:
-            self._s3.upload(destination_path)
-            self._s3.upload(metadata_path)
+            self._s3.upload(destination_path, self._object_key(destination_path.name))
+            self._s3.upload(metadata_path, self._object_key(metadata_path.name))
             if artifacts_path is not None and artifacts_path.exists():
-                self._s3.upload(artifacts_path)
+                self._s3.upload(artifacts_path, self._object_key(artifacts_path.name))
         self._apply_retention()
         return metadata
 
     def list_backups(self) -> list[BackupMetadata]:
         if self._s3 is not None:
-            # Liste depuis S3 (source de vérité) : télécharge les métadonnées manquantes.
             names = [n for n in self._s3.list_names() if n.endswith(".json")]
             result = []
             for name in sorted(names):
-                local_meta = self.root / name
+                local_meta = self.root / Path(name).name
                 if not local_meta.exists():
                     self._s3.download(name, local_meta)
                 result.append(self._load_metadata(local_meta))
@@ -301,8 +368,9 @@ class BackupService:
             raise BackupError("Identifiant de sauvegarde invalide.")
         metadata_path = self.root / f"{safe_id}.json"
         if not metadata_path.exists() and self._s3 is not None:
-            if self._s3.exists(f"{safe_id}.json"):
-                self._s3.download(f"{safe_id}.json", metadata_path)
+            meta_key = self._s3_exists(f"{safe_id}.json")
+            if meta_key is not None:
+                self._s3.download(meta_key, metadata_path)
         if not metadata_path.exists():
             raise BackupError(f"Sauvegarde introuvable : {backup_id}")
         db_path = self.root / f"{safe_id}.db"
@@ -310,10 +378,10 @@ class BackupService:
             db_path = self.root / f"{safe_id}.sql"
         if not db_path.exists() and self._s3 is not None:
             for suffix in (".db", ".sql"):
-                name = f"{safe_id}{suffix}"
-                if self._s3.exists(name):
-                    db_path = self.root / name
-                    self._s3.download(name, db_path)
+                archive_key = self._s3_exists(f"{safe_id}{suffix}")
+                if archive_key is not None:
+                    db_path = self.root / f"{safe_id}{suffix}"
+                    self._s3.download(archive_key, db_path)
                     break
         if not db_path.exists():
             raise BackupError(f"Archive introuvable pour la sauvegarde : {backup_id}")
@@ -380,8 +448,9 @@ class BackupService:
 
         metadata_path = self.root / f"{safe_id}.json"
         if not metadata_path.exists() and self._s3 is not None:
-            if self._s3.exists(f"{safe_id}.json"):
-                self._s3.download(f"{safe_id}.json", metadata_path)
+            meta_key = self._s3_exists(f"{safe_id}.json")
+            if meta_key is not None:
+                self._s3.download(meta_key, metadata_path)
         if not metadata_path.exists():
             raise BackupError(f"Métadonnées introuvables : {backup_id}")
 
@@ -389,8 +458,9 @@ class BackupService:
         archive_name = f"{safe_id}_artifacts.tar.gz"
         archive_path = self.root / archive_name
         if not archive_path.exists() and self._s3 is not None:
-            if self._s3.exists(archive_name):
-                self._s3.download(archive_name, archive_path)
+            archive_key = self._s3_exists(archive_name)
+            if archive_key is not None:
+                self._s3.download(archive_key, archive_path)
         if not archive_path.exists():
             raise BackupError(f"Archive d'artefacts introuvable pour la sauvegarde {backup_id}")
 
@@ -415,26 +485,44 @@ class BackupService:
                     extracted_manifest[member.name] = _sha256_of_file(file_path)
         return extracted_manifest
 
+    def _metadata_created_at(self, metadata_path: Path) -> datetime | None:
+        try:
+            metadata = self._load_metadata(metadata_path)
+            return datetime.fromisoformat(metadata.created_at)
+        except Exception:
+            return None
+
     def _apply_retention(self) -> None:
-        cutoff = datetime.now(timezone.utc).timestamp() - (
-            self._settings.backup_retention_days * 86400
-        )
-        candidates: set[str] = set()
-        for metadata_path in self.root.glob("*.json"):
-            if metadata_path.stat().st_mtime < cutoff:
-                candidates.add(metadata_path.stem)
+        """Purge uniquement les objets préfixés trop anciens.
+
+        Les sauvegardes plates historiques ne sont pas supprimées : la
+        rétention `created_at` s'applique aux nouvelles clés `{env}/…`.
+        """
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self._settings.backup_retention_days)
+        prefix = f"{self.environment}/"
+        expired_ids: set[str] = set()
         if self._s3 is not None:
             for name in self._s3.list_names():
-                stem = name.rsplit(".", 1)[0]
-                if name.endswith(".json"):
-                    meta_local = self.root / name
-                    if not meta_local.exists():
-                        self._s3.download(name, meta_local)
-                    if meta_local.stat().st_mtime < cutoff:
-                        candidates.add(stem)
-        for backup_id in candidates:
-            for suffix in (".db", ".sql", ".json", "_artifacts.tar.gz"):
-                name = f"{backup_id}{suffix}"
-                (self.root / name).unlink(missing_ok=True)
-                if self._s3 is not None and self._s3.exists(name):
-                    self._s3.delete(name)
+                if not name.startswith(prefix) or not name.endswith(".json"):
+                    continue
+                backup_id = Path(name).name.removesuffix(".json")
+                local_meta = self.root / f"{backup_id}.json"
+                if not local_meta.exists():
+                    self._s3.download(name, local_meta)
+                created_at = self._metadata_created_at(local_meta)
+                if created_at is not None and created_at < cutoff:
+                    expired_ids.add(backup_id)
+        else:
+            for metadata_path in self.root.glob("*.json"):
+                created_at = self._metadata_created_at(metadata_path)
+                if created_at is not None and created_at < cutoff:
+                    expired_ids.add(metadata_path.stem)
+        for backup_id in expired_ids:
+            for suffix in _BACKUP_SUFFIXES:
+                filename = f"{backup_id}{suffix}"
+                (self.root / filename).unlink(missing_ok=True)
+                if self._s3 is not None:
+                    key = self._object_key(filename)
+                    if self._s3.exists(key):
+                        self._s3.delete(key)
