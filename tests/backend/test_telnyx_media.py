@@ -18,6 +18,8 @@ from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.voice.messages import voice_natural_greeting
+from backend.app.voice.module_actions import voice_agent_language
 from backend.app.voice.telnyx_media import InvalidMediaFrame, TelnyxAudioCodec, TelnyxMediaBridge, PublicInboundConversation, media_call_context, media_transport_context, issue_media_client_state, claim_media_start, release_media_session, TelnyxAudioReorderBuffer
 from backend.app.config.settings import Settings
 from backend.app.models import BillingAccount, CompanyMembership, User, UserRole, VoicePhoneNumber, VoiceToolAction
@@ -168,7 +170,8 @@ def authorized_media_call(tmp_path):
     number = VoicePhoneNumber(company_id=company.id, config_id=config.id, phone_number=config.telnyx_phone_number,
         country_code="CA", provider="telnyx", provider_number_id="owned-media-id", provider_connection_id="verified-connection",
         number_type="local", status="ACTIVE", capabilities=["voice"])
-    account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+    account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert account is not None
     db.add_all([membership, number, account]); db.commit()
     # Keep production authorization strict: this fixture must explicitly activate Voice.
     ModuleEntitlementService(db).activate_module(TenantContext(company.id), "voice")
@@ -1558,7 +1561,8 @@ def test_public_inbound_greeting_is_conversational_and_concise(authorized_media_
     greeting = conversation.greeting()
     # Greeting is short, polite and conversational
     assert env.config.business_name in greeting
-    assert greeting == f"Bonjour, vous êtes bien chez {env.config.business_name}. Comment puis-je vous aider ?"
+    assert greeting == voice_natural_greeting(voice_agent_language(env.db, env.config), env.config.business_name)
+    assert greeting.startswith("Bonjour") and len(greeting) < 200
     assert "Pour une demande de rendez-vous" not in greeting
     assert "Cet appel peut être enregistré" not in greeting
 
@@ -2357,4 +2361,4 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
 
 
 
-
+

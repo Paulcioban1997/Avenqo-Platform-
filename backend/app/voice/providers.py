@@ -34,7 +34,9 @@ def _speak_language(locale: str) -> str:
         return "fr-FR"
     if normalized.startswith("fr"):
         return "fr-CA"
-    return "en-US"
+    if normalized.startswith("en"):
+        return "en-US"
+    raise ValueError("No unavailable-message audio configured for this language")
 
 
 def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]:
@@ -53,12 +55,8 @@ def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]
 
 
 def unavailable_speak_attempts(locale: str, *, command_id: str) -> list[dict[str, str]]:
-    """Primary locale payload, then English basic. Never mix basic with a non-en-US language."""
-    primary = unavailable_speak_payload(locale, command_id=command_id)
-    attempts = [primary]
-    if primary["language"] != "en-US":
-        attempts.append(unavailable_speak_payload("en", command_id=f"{command_id}-en"))
-    return attempts
+    """Keep the configured language; never silently retry in English."""
+    return [unavailable_speak_payload(locale, command_id=command_id)]
 
 
 def telnyx_error_summary(response: httpx.Response) -> dict[str, Any]:

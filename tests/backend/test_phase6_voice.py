@@ -449,7 +449,7 @@ def voice_route(monkeypatch):
                 return membership if membership.is_active else None
             return voice
 
-        def get(self, entity, key):
+        def get(self, entity, key, **kwargs):
             if entity is Company:
                 return company
             return user if entity is User else auth
@@ -604,7 +604,7 @@ async def test_voice_stream_rejects_cross_tenant_token_and_unsupported_locale(vo
 @pytest.mark.asyncio
 async def test_browser_ticket_is_bound_to_authenticated_voice_session(voice_route, monkeypatch):
     auth_id = uuid4()
-    voice_route.db.get = lambda entity, key: (
+    voice_route.db.get = lambda entity, key, **kwargs: (
         SimpleNamespace(id=auth_id, revoked_at=None, expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
         if entity is AuthSession else SimpleNamespace(
             id=voice_route.voice.user_id, company_id=voice_route.voice.company_id,

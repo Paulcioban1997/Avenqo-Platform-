@@ -14,6 +14,7 @@ from backend.app.models import CompanyMembership, User
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.ai.tools.plans import plan_meets_minimum
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
+from backend.app.voice.tool_guard import VoiceToolGuard
 
 
 class ToolAuthorizationPolicy:
@@ -28,6 +29,13 @@ class ToolAuthorizationPolicy:
         # for transport purposes only: never let that grant private tools.
         if is_public_voice_caller(context.permissions) and not public_voice_tool_allowed(tool.name):
             raise ToolAuthorizationError("Caller authentication is required for this tool.")
+        if context.voice_path or is_public_voice_caller(context.permissions):
+            VoiceToolGuard(self._db).assert_policy(
+                context.tenant,
+                tool.name,
+                context.permissions,
+                user_id=context.user_id,
+            )
 
         user = self._db.get(User, context.user_id)
         if (

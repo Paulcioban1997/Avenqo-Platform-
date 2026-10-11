@@ -42,9 +42,10 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0052_company_locale_profile"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0053_voice_module_permissions"
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         assert inspect(connection).has_table("company_locale_profiles")
+        assert inspect(connection).has_table("voice_module_permissions")
     engine.dispose()
     admin.dispose()
     # Keep the isolated rehearsal database for inspection; no active DB is deleted.
