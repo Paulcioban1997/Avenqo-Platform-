@@ -37,6 +37,7 @@ def test_backup_script_logs_safe_presence_and_scheme(tmp_path) -> None:
     script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
     env = os.environ.copy()
     env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
+    env["ENVIRONMENT"] = "test"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     # Forcer un cwd sans .env pour isoler le test
     env["BACKUP_ROOT"] = str(tmp_path / "backups")
@@ -54,9 +55,11 @@ def test_backup_script_logs_safe_presence_and_scheme(tmp_path) -> None:
     assert "env_database_url_present=true" in output
     assert "settings_database_url_present=true" in output
     assert "database_scheme=postgresql" in output
+    assert "backup_environment=test" in output
+    assert "s3_prefix=test/" in output
     # Jamais de secret dans la sortie
-    assert "secret" not in output
-    assert "user:secret" not in output
+    assert "test-only-password" not in output
+    assert "user:test-only-password" not in output
 
 
 def test_backup_script_detects_env_settings_mismatch(tmp_path) -> None:
@@ -66,6 +69,7 @@ def test_backup_script_detects_env_settings_mismatch(tmp_path) -> None:
     script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
     env = os.environ.copy()
     env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
+    env["ENVIRONMENT"] = "test"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env["BACKUP_ROOT"] = str(tmp_path / "backups")
 
@@ -82,4 +86,50 @@ def test_backup_script_detects_env_settings_mismatch(tmp_path) -> None:
     output = result.stdout + result.stderr
     # Doit quand mÃªme fonctionner car env OS est prioritaire
     assert "settings_database_url_present=true" in output
-    assert "secret" not in output
+    assert "test-only-password" not in output
+
+
+def test_backup_script_refuses_missing_environment(tmp_path) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    env["BACKUP_ROOT"] = str(tmp_path / "backups")
+    env.pop("ENVIRONMENT", None)
+    env.pop("RAILWAY_ENVIRONMENT", None)
+
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "ENVIRONMENT" in (result.stdout + result.stderr)
+    assert "test-only-password" not in result.stdout + result.stderr
+
+
+def test_backup_script_refuses_environment_contradiction(tmp_path) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql://user:test-only-password@host:5432/db"
+    env["ENVIRONMENT"] = "production"
+    env["RAILWAY_ENVIRONMENT"] = "sandbox"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    env["BACKUP_ROOT"] = str(tmp_path / "backups")
+
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "contredit" in (result.stdout + result.stderr)
+    assert "test-only-password" not in result.stdout + result.stderr
