@@ -313,6 +313,7 @@ class ChatService:
         client_context: str = "",
         allowed_tool_names: frozenset[str] | None = None,
         selected_agent_id: str | None = None,
+        voice_path: bool = False,
         module_id: str | None = None,
         locale_explicit: bool = False,
         authorized_tool_agents: dict[str, str] | None = None,
@@ -369,6 +370,7 @@ class ChatService:
             locale=resolve_locale(user_language),
             company_timezone=company_timezone,
             authorized_tool_agents=authorized_tool_agents or {},
+            voice_path=voice_path or client_context.startswith("/voice"),
         )
         routing_context = routing_context_for_chat(
             query=query,
@@ -654,6 +656,7 @@ class ChatService:
                         user_message=query,
                         company_timezone=company_timezone,
                         authorized_tool_agents=authorized_tool_agents or {},
+                        voice_path=False,
                     )
                     async for event in self._orchestrator.run_streaming(
                         system_instruction=system_instruction,

@@ -1293,6 +1293,7 @@ async def telnyx_media_socket(
                 current_user = db.get(User, owner_membership.user_id)
                 if current_user is None:
                     return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            # Public booking tools still require a live CRM Voice grant.
             permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
 
         if current_call.central_conversation_id is None:

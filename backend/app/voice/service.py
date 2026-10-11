@@ -44,6 +44,8 @@ from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
 from backend.app.voice.messages import voice_auth_message
 from backend.app.assistants.registry import build_default_assistant_registry, agent_entitlements
 from backend.app.ai.tools.business.crm_tools import CreateAppointmentTool, UpdateAppointmentTool, CancelAppointmentTool
+from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
+from backend.app.voice.tool_guard import VoiceToolDenied, VoiceToolGuard
 from shared.ai_engine.contracts import TenantContext
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -399,6 +401,30 @@ class VoiceOrchestrator:
         self.db.flush()
         return call
 
+    def _authorize_voice_tool(self, config: VoiceBusinessConfig, call: VoiceCall, tool_name: str) -> dict[str, Any] | None:
+        tenant = TenantContext(config.company_id, call.authenticated_user_id)
+        if call.caller_type in {"OWNER", "EMPLOYEE"} and call.authenticated_user_id is not None:
+            membership = self.db.scalar(select(CompanyMembership).where(
+                CompanyMembership.company_id == config.company_id,
+                CompanyMembership.user_id == call.authenticated_user_id,
+                CompanyMembership.is_active.is_(True),
+            ))
+            permissions = frozenset(permissions_for(membership.role)) if membership is not None else frozenset()
+        elif call.caller_type == "CLIENT" and call.verified_client_id is not None:
+            permissions = frozenset({"ai:use", "crm:appointments:read", "crm:appointments:write"})
+        else:
+            permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
+        try:
+            VoiceToolGuard(self.db).authorize(
+                tenant,
+                tool_name,
+                permissions,
+                user_id=call.authenticated_user_id,
+            )
+        except VoiceToolDenied as exc:
+            return {"success": False, "error": str(exc)}
+        return None
+
     async def execute_tool(
         self,
         config: VoiceBusinessConfig,
@@ -411,6 +437,9 @@ class VoiceOrchestrator:
         call = self._resolve_call(config, call_id)
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected", "routing_outcome_unknown"}:
             return {"success": False, "error": "voice_call_not_active"}
+        denied = self._authorize_voice_tool(config, call, tool_name)
+        if denied is not None:
+            return denied
         mutations = {"book_appointment": CreateAppointmentTool, "reschedule_appointment": UpdateAppointmentTool, "cancel_appointment": CancelAppointmentTool}
         actor_scope = ""
         if tool_name in mutations:
@@ -516,6 +545,9 @@ class VoiceOrchestrator:
     ) -> dict[str, Any]:
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected"}:
             raise ValueError("L'appel est terminé; aucune action ne peut être exécutée.")
+        denied = self._authorize_voice_tool(config, call, tool_name)
+        if denied is not None:
+            return denied
         if tool_name == "request_caller_verification":
             return await self._request_caller_verification(config, call)
         if tool_name == "request_pin_authentication":

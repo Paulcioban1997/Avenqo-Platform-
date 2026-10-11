@@ -74,7 +74,16 @@ from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
-from backend.app.models.voice import VoiceCallerCredential, VoiceAuthSession, VoiceBusinessConfig, VoiceCall, VoiceCentralSession, VoicePhoneNumber, VoiceToolAction
+from backend.app.models.voice import (
+    VoiceCallerCredential,
+    VoiceAuthSession,
+    VoiceBusinessConfig,
+    VoiceCall,
+    VoiceCentralSession,
+    VoiceModulePermission,
+    VoicePhoneNumber,
+    VoiceToolAction,
+)
 
 __all__ = [
     "VoiceCallerCredential",
@@ -156,6 +165,7 @@ __all__ = [
     "UserRole",
     "VoiceBusinessConfig",
     "VoiceCall",
+    "VoiceModulePermission",
     "VoicePhoneNumber",
     "VoiceToolAction",
 ]

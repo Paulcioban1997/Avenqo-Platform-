@@ -30,6 +30,7 @@ class ToolExecutionContext:
     locale: str = "fr"
     company_timezone: str = "UTC"
     authorized_tool_agents: Mapping[str, str] = field(default_factory=dict)
+    voice_path: bool = False
 
     @property
     def tenant_id(self) -> UUID:
