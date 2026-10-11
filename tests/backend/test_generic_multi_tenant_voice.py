@@ -579,6 +579,11 @@ def test_dynamic_agent_registry_per_tenant_and_changes(multi_tenant_db):
 
     ent = ModuleEntitlementService(db)
 
+    # Three modules require Professional; Base allows two.
+    comp_a.subscription_plan = "professional"
+    billing_a = db.scalar(select(BillingAccount).where(BillingAccount.company_id == comp_a.id))
+    if billing_a is not None:
+        billing_a.plan_code = "professional"
     # Tenant A: Retail + CRM + Voice
     ent.activate_module(tenant_a, "retail")
     ent.activate_module(tenant_a, "crm")

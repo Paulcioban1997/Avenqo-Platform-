@@ -131,9 +131,17 @@ class _FakeTelnyx:
         self.media_streams = []
         self.commands = []
         self.fail_transfer = False
+        self.fail_speak = False
 
-    async def answer_call(self, call_control_id: str, *, command_id: str) -> None:
+    async def answer_call(self, call_control_id: str, *, command_id: str, stream_url: str | None = None, client_state: str | None = None) -> None:
         self.commands.append(("answer", call_control_id, command_id))
+        if stream_url:
+            self.media_streams.append((call_control_id, stream_url, client_state, command_id))
+
+    async def speak_unavailable(self, call_control_id: str, *, command_id: str, locale: str) -> None:
+        self.commands.append(("speak_unavailable", call_control_id, command_id, locale))
+        if self.fail_speak:
+            raise RuntimeError("telnyx-speak-422")
 
     async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
         if self.fail_transfer:
@@ -142,7 +150,7 @@ class _FakeTelnyx:
         self.commands.append(("transfer", call_control_id, command_id))
 
     async def hangup(self, call_control_id: str) -> None:
-        return None
+        self.commands.append(("hangup", call_control_id))
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         self.gathers.append((call_control_id, command_id, client_state))
@@ -1301,3 +1309,67 @@ def test_telnyx_provider_failure_is_generic_and_not_retried(signed_telnyx_webhoo
     assert env.send(answered).json()["duplicate"] is True
     call = env.session.scalar(select(VoiceCall))
     assert call.status == "routing_outcome_unknown"
+
+
+def test_inbound_media_answers_then_starts_bidirectional_stream(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.telnyx_media_enabled = True
+    env.settings.telnyx_media_inbound_enabled = True
+    env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
+    env.settings.openai_api_key = "fake-audio-key"
+    env.settings.voice_realtime_supported_locales = ["fr"]
+    env.config.enabled = False
+    env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
+    env.session.commit()
+    initiated = env.send(env.event())
+    assert initiated.status_code == 200 and initiated.json()["status"] == "answering"
+    assert env.service.telnyx.commands[0][0] == "answer"
+    answered = env.send(env.event("call.answered"))
+    assert answered.json()["routed"] is True
+    assert env.service.telnyx.media_streams
+    control_id, stream_url, _state, _command = env.service.telnyx.media_streams[0]
+    assert control_id == "inbound-control"
+    assert stream_url.endswith(str(env.session.scalar(select(VoiceCall)).id))
+    replay_answered = env.send(env.event("call.answered")).json()
+    assert replay_answered["received"] is True and replay_answered.get("routed") is False
+    assert env.send(env.event()).json().get("duplicate") is True
+
+
+def test_exhausted_phone_announces_unavailable_without_starting_ai_and_handles_replays(signed_telnyx_webhook):
+    from backend.app.models import TenantAICreditBalance
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-key"
+    env.session.add(TenantAICreditBalance(company_id=env.company.id, monthly_period="2026-10", monthly_used=20000, purchased_balance=0))
+    env.session.commit()
+    initiated = env.event()
+    result = env.send(initiated)
+    assert result.status_code == 200 and result.json()["status"] == "blocked_credits"
+    assert len(env.service.telnyx.commands) == 1
+    assert env.send(initiated).json()["duplicate"] is True
+    answered = env.event("call.answered")
+    assert env.send(answered).json()["status"] == "blocked_credits"
+    assert env.service.telnyx.commands[-1][0] == "speak_unavailable"
+    assert env.send(answered).json()["duplicate"] is True
+    assert env.service.telnyx.media_streams == [] and env.service.telnyx.transfers == []
+    assert ("hangup", "inbound-control") not in env.service.telnyx.commands
+    assert env.send(env.event("call.speak.ended")).status_code == 200
+    call = env.session.scalar(select(VoiceCall))
+    assert call.status == "blocked_credits" and call.ended_at is not None
+    assert call.authenticated_user_id is None
+    assert env.service.telnyx.commands[-1] == ("hangup", "inbound-control")
+    assert env.send(env.event("call.answered")).json()["routed"] is False
+
+
+def test_exhausted_speak_422_hangs_up_only_after_announcement_fallbacks(signed_telnyx_webhook):
+    from backend.app.models import TenantAICreditBalance
+    env = signed_telnyx_webhook
+    env.settings.retell_api_key = "test-retell-key"
+    env.service.telnyx.fail_speak = True
+    env.session.add(TenantAICreditBalance(company_id=env.company.id, monthly_period="2026-10", monthly_used=20000, purchased_balance=0))
+    env.session.commit()
+    assert env.send(env.event()).json()["status"] == "blocked_credits"
+    assert env.service.telnyx.commands[0][0] == "answer"
+    assert env.send(env.event("call.answered")).json()["status"] == "blocked_credits"
+    assert [item[0] for item in env.service.telnyx.commands] == ["answer", "speak_unavailable", "hangup"]
+    call = env.session.scalar(select(VoiceCall))
+    assert call.status == "blocked_credits" and call.ended_at is not None

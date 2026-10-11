@@ -500,3 +500,51 @@ def test_credit_operation_releases_transaction_before_network_wait(credit_db, op
         with credit_db() as other:
             other_service = AIUsageService(other, AIQuotaPolicy(_settings(6500)))
             assert other_service.claim_credit_reservation(company.id, "professional", "turn-2", 1).acquired
+
+
+def test_manual_included_restore_is_tenant_scoped_idempotent_and_leaves_purchases(credit_db) -> None:
+    with credit_db() as session:
+        admin = _company(session, "admin-voice-restore")
+        other = _company(session, "other-voice-untouched")
+        service = AIUsageService(session, AIQuotaPolicy(_settings(20_000)))
+        session.add(TenantAICreditBalance(
+            company_id=admin.id, monthly_period="2026-10", monthly_used=20_000, purchased_balance=7,
+        ))
+        session.add(TenantAICreditBalance(
+            company_id=other.id, monthly_period="2026-10", monthly_used=4_000, purchased_balance=3,
+        ))
+        session.commit()
+
+        first = service.restore_included_monthly_credits(
+            admin.id,
+            "professional",
+            idempotency_key="manual-included-restore:admin:2026-10:voice",
+            reason="Owner-requested Voice included-credit restore to 100%",
+        )
+        replay = service.restore_included_monthly_credits(
+            admin.id,
+            "professional",
+            idempotency_key="manual-included-restore:admin:2026-10:voice",
+            reason="Owner-requested Voice included-credit restore to 100%",
+        )
+        admin_after = service.get_credit_balance(admin.id, "professional")
+        other_after = service.get_credit_balance(other.id, "professional")
+        ledger = session.query(TenantAICreditLedgerEntry).filter_by(
+            company_id=admin.id,
+            transaction_type="manual_included_restore",
+        ).one()
+        assert first["applied"] is True and replay["applied"] is False
+        assert first["before"]["monthly_used"] == 20_000
+        assert first["after"]["monthly_used"] == 0
+        assert first["after"]["monthly_remaining"] == 20_000
+        assert first["after"]["purchased_remaining"] == 7
+        assert first["after"]["total_remaining"] == 20_007
+        assert admin_after["monthly_used"] == 0
+        assert other_after["monthly_used"] == 4_000
+        assert other_after["purchased_remaining"] == 3
+        assert ledger.included_delta == 20_000
+        assert ledger.purchased_delta == 0
+        assert session.query(TenantAICreditLedgerEntry).filter_by(
+            company_id=other.id,
+            transaction_type="manual_included_restore",
+        ).count() == 0

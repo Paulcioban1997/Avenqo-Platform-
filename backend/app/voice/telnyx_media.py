@@ -1074,7 +1074,18 @@ class TelnyxMediaBridge:
             await self.adapter.open(locale=self.locale)
             if self.initial_answer:
                 self.telemetry["final_state"] = "GREETING"
-                await self._speak_system("inbound-greeting", self.initial_answer)
+                try:
+                    await self._speak_system("inbound-greeting", self.initial_answer)
+                except Exception as exc:
+                    self.tts_failures += 1
+                    self.telemetry["provider_error"] = type(exc).__name__
+                    if self._pending_speech and self._pending_speech[-1][0] == "inbound-greeting":
+                        item_id, _epoch, turn_ledger = self._pending_speech.pop()
+                        if turn_ledger is not None:
+                            turn_ledger.settle(item_id)
+                    logger.warning(
+                        "Inbound greeting synthesis failed; keeping the answered media session open"
+                    )
             reader = asyncio.create_task(self._read_audio())
             self._background = [
                 reader,
@@ -1449,14 +1460,16 @@ async def telnyx_media_socket(
         await websocket.close(code=1011)
     finally:
         db.rollback()
+        # Only the socket that claimed the signed media ticket owns the call lifecycle;
+        # an unauthenticated socket for a known call_id must not end someone else's call.
         if claim is not None:
             with suppress(Exception):
                 release_media_session(db, call_id, claim)
-        try:
-            current_call = db.get(VoiceCall, call_id)
-            if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                current_call.ended_at = datetime.now(timezone.utc)
-                current_call.status = "completed"
-                db.commit()
-        except Exception:
-            db.rollback()
+            try:
+                current_call = db.get(VoiceCall, call_id)
+                if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
+                    current_call.ended_at = datetime.now(timezone.utc)
+                    current_call.status = "completed"
+                    db.commit()
+            except Exception:
+                db.rollback()
