@@ -1,3 +1,4 @@
+import secrets
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -33,6 +34,9 @@ from backend.app.services.account_notifications import AccountNotificationServic
 from backend.app.services.invoice_fiscal_service import InvoiceFiscalService
 from backend.main import create_application
 
+
+# Ephemeral fixture for local synthetic test accounts; no deployed credential.
+NON_SENSITIVE_TEST_PASSWORD = secrets.token_urlsafe(24) + "Aa1!"
 
 class RecordingNotifier:
     def __init__(self) -> None:
@@ -210,7 +214,7 @@ def create_owner(
         "first_name": "Alex",
         "last_name": "Martin",
         "email": email,
-        "password": "Avenqo2026!",
+        "password": NON_SENSITIVE_TEST_PASSWORD,
         "country": country,
         "timezone": "America/Toronto",
         "industry": "E-commerce",
