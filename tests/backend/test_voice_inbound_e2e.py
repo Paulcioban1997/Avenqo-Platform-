@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import anyio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -150,11 +151,22 @@ def _pcmu_frame(stream_id: str, chunk: int) -> dict[str, Any]:
 
 
 def _drain_socket(socket) -> None:
-    try:
-        for _ in range(20):
-            socket.receive_json()
-    except (WebSocketDisconnect, Exception):
-        pass
+    async def receive_close() -> None:
+        # Bound the actual receive on the TestClient portal, not a worker
+        # thread that would remain blocked after the timeout.
+        try:
+            with anyio.fail_after(5):
+                for _ in range(20):
+                    message = await socket._send_rx.receive()
+                    if message["type"] == "websocket.close":
+                        return
+        except TimeoutError:
+            for task in asyncio.all_tasks():
+                task.print_stack()
+            raise
+        raise AssertionError("Inbound media did not close after stop")
+
+    socket.portal.call(receive_close)
 
 
 @pytest.mark.asyncio
@@ -266,12 +278,15 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
         try:
             socket.receive_json()
         except WebSocketDisconnect:
+            # The terminal close was already consumed. Reading again waits
+            # forever on Linux when no buffered audio remains before close.
             pass
-        try:
-            socket.send_json({"event": "stop", "stream_id": "stream-inbound-e2e"})
-        except Exception:
-            pass
-        _drain_socket(socket)
+        else:
+            try:
+                socket.send_json({"event": "stop", "stream_id": "stream-inbound-e2e"})
+            except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+                pass
+            _drain_socket(socket)
 
     assert captured_turns == FRENCH_BOOKING_TURNS
     assert len(captured_conversations) == 5
