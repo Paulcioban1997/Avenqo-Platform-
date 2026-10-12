@@ -62,3 +62,26 @@ def test_disabled_retention_performs_no_listing_or_deletion(s3_settings,monkeypa
     service._settings=s3_settings
     service._s3=object()  # no storage access is valid while retention is paused
     service._apply_retention()
+
+
+@pytest.mark.parametrize('raw,expected',[('true',True),('1',True),('false',False),('0',False),(' FALSE ',False)])
+def test_actual_cron_settings_load_retention_flag(monkeypatch,raw,expected):
+    from scripts.backup_db import _load_backup_settings
+    monkeypatch.setenv('DATABASE_URL','sqlite:///:memory:')
+    monkeypatch.setenv('ENVIRONMENT','sandbox')
+    monkeypatch.setenv('BACKUP_RETENTION_ENABLED',raw)
+    loaded=_load_backup_settings()
+    assert loaded.backup_retention_enabled is expected
+    if not expected:
+        service=BackupService.__new__(BackupService)
+        service._settings=loaded
+        service._s3=object()
+        service._apply_retention()
+
+
+def test_actual_cron_refuses_invalid_retention_flag(monkeypatch):
+    from scripts.backup_db import _load_backup_settings
+    monkeypatch.setenv('DATABASE_URL','sqlite:///:memory:')
+    monkeypatch.setenv('ENVIRONMENT','sandbox')
+    monkeypatch.setenv('BACKUP_RETENTION_ENABLED','invalid')
+    with pytest.raises(RuntimeError,match='BACKUP_RETENTION_ENABLED'):_load_backup_settings()

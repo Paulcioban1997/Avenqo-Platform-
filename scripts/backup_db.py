@@ -50,6 +50,7 @@ class BackupRuntimeSettings:
     backup_s3_secret_key: str | None
     backup_s3_region: str
     artifact_root: str = "var/artifacts"
+    backup_retention_enabled: bool = True
 
     @property
     def backup_s3_enabled(self) -> bool:
@@ -80,6 +81,9 @@ def _load_backup_settings() -> BackupRuntimeSettings:
         raise RuntimeError("BACKUP_RETENTION_DAYS doit être un entier positif.") from exc
     if retention_days < 1:
         raise RuntimeError("BACKUP_RETENTION_DAYS doit être supérieur ou égal à 1.")
+    retention_enabled_raw = os.getenv("BACKUP_RETENTION_ENABLED", "true").strip().lower()
+    if retention_enabled_raw not in {"true", "false", "1", "0"}:
+        raise RuntimeError("BACKUP_RETENTION_ENABLED doit être true, false, 1 ou 0.")
 
     try:
         environment = resolve_backup_environment(
@@ -95,6 +99,7 @@ def _load_backup_settings() -> BackupRuntimeSettings:
         app_version=os.getenv("APP_VERSION", "0.1.0").strip() or "0.1.0",
         backup_root=os.getenv("BACKUP_ROOT", "var/backups").strip() or "var/backups",
         backup_retention_days=retention_days,
+        backup_retention_enabled=retention_enabled_raw in {"true", "1"},
         backup_s3_endpoint_url=_optional_env("BACKUP_S3_ENDPOINT_URL"),
         backup_s3_bucket=_optional_env("BACKUP_S3_BUCKET"),
         backup_s3_access_key=_optional_env("BACKUP_S3_ACCESS_KEY"),
