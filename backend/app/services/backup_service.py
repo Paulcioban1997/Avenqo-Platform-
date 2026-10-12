@@ -522,6 +522,9 @@ class BackupService:
         rétention `created_at` s'applique aux nouvelles clés `{env}/…`.
         """
 
+        # A repair/recovery run may append backups without pruning any archive.
+        if not getattr(self._settings, "backup_retention_enabled", True):
+            return
         cutoff = datetime.now(timezone.utc) - timedelta(days=self._settings.backup_retention_days)
         prefix = f"{self.environment}/"
         expired_ids: set[str] = set()
