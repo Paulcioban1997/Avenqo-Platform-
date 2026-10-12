@@ -113,6 +113,7 @@ jobs:
         run: >-
           python -m pytest
           tests/backend/test_voice_agent.py
+          tests/backend/test_voice_first_call_preflight.py
           tests/backend/test_voice_module_permissions.py
           tests/backend/test_voice_tenant_integration.py
           tests/backend/test_telnyx_media.py
