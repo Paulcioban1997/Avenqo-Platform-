@@ -359,6 +359,7 @@ class Settings(BaseSettings):
     # et docs/backup-and-disaster-recovery.md.
     backup_root: str = Field(default="var/backups", alias="BACKUP_ROOT")
     backup_retention_days: int = Field(default=30, ge=1, alias="BACKUP_RETENTION_DAYS")
+    backup_retention_enabled: bool = Field(default=True, alias="BACKUP_RETENTION_ENABLED")
     # Stockage S3-compatible (Railway Storage Bucket / MinIO / AWS S3) — optionnel.
     # Si non configuré, les backups restent sur le disque local (comportement actuel).
     backup_s3_endpoint_url: str | None = Field(default=None, alias="BACKUP_S3_ENDPOINT_URL")

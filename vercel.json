@@ -5,7 +5,8 @@
       "main": false,
       "codex/avenqo-pr33-pr37-validation-20261011": false,
       "codex/avenqo-locale-integration-20261011": false,
-      "codex/avenqo-voice-tenant-candidate-20261011": false
+      "codex/avenqo-voice-tenant-candidate-20261011": false,
+      "codex/avenqo-sandbox-backup-repair-20261012": false
     }
   },
   "rewrites": [

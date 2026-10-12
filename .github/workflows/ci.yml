@@ -133,6 +133,7 @@ jobs:
           tests/backend/test_invoice_tax.py
           tests/backend/test_backup_environment_isolation.py
           tests/backend/test_backup_s3.py
+          tests/backend/test_backup_repair_preservation.py
           tests/backend/test_auth.py
           -vv --durations=15 --timeout=120 --timeout-method=thread
           -o faulthandler_timeout=60
