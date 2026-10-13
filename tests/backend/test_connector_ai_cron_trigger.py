@@ -85,3 +85,14 @@ def test_delayed_backoff_never_sends_request_after_retry_deadline(settings):
     def sleep(delay):now[0]=21
     assert cron.run_trigger(settings,opener=opener,sleep=sleep,clock=lambda:now[0])==1
     assert calls==[1]
+
+
+def test_main_uses_only_injected_scheduler_environment(monkeypatch):
+    monkeypatch.setenv("CONNECTOR_AI_SCHEDULER_URL", "https://example.com/synthetic")
+    monkeypatch.setenv("CONNECTOR_AI_SCHEDULER_TOKEN", "synthetic-not-a-credential")
+    def trigger(settings):
+        assert settings.connector_ai_scheduler_url == "https://example.com/synthetic"
+        assert settings.connector_ai_scheduler_token == "synthetic-not-a-credential"
+        return 0
+    monkeypatch.setattr(cron,"run_trigger",trigger)
+    assert cron.main()==0

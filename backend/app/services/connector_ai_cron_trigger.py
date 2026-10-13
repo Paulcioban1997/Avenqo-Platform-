@@ -8,8 +8,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
-
-from backend.app.config.settings import get_settings
+from types import SimpleNamespace
 
 
 SANDBOX_ID = "e5adc24d-23b9-4275-84de-91a7801649b8"
@@ -85,7 +84,11 @@ def run_trigger(settings, *, opener=None, sleep=None, clock=None) -> int:
 
 
 def main() -> int:
-    return run_trigger(get_settings())
+    # This HTTP-only cron does not require the API's ML/database dependencies.
+    return run_trigger(SimpleNamespace(
+        connector_ai_scheduler_url=os.environ.get("CONNECTOR_AI_SCHEDULER_URL", ""),
+        connector_ai_scheduler_token=os.environ.get("CONNECTOR_AI_SCHEDULER_TOKEN", ""),
+    ))
 
 
 if __name__ == "__main__":
