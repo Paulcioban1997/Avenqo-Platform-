@@ -1,0 +1,22 @@
+name: Sandbox connector cron validation
+on:
+  push:
+    branches: [codex/avenqo-sandbox-connector-cron-retry-20261013]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest
+      - run: python -m pytest --confcutdir=tests/backend tests/backend/test_connector_ai_cron_trigger.py -q
+        env:
+          PYTHONPATH: .
+      - run: docker build -f backend/Dockerfile.connector-ai-cron -t connector-cron-validation .
+      - run: docker run --rm connector-cron-validation python -c "import os; import backend.app.services.connector_ai_cron_trigger; assert os.getuid() != 0"

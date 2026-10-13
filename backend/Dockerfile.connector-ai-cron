@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /srv
+# HTTP trigger only: no database client, ML dependencies, migrations or volume.
+COPY backend/app/services/connector_ai_cron_trigger.py backend/app/services/connector_ai_cron_trigger.py
+USER 65532:65532
+CMD ["python", "-m", "backend.app.services.connector_ai_cron_trigger"]

@@ -36,6 +36,33 @@ class _Dispatcher:
         }
 
 
+def test_cron_gateway_error_after_processing_does_not_duplicate_evaluation(monkeypatch):
+    """Real isolated queue: a proxy failure after commit must not re-dispatch."""
+    import io
+    import json
+    from types import SimpleNamespace
+    from urllib.error import HTTPError
+    from backend.app.services import connector_ai_cron_trigger as cron
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_ID", cron.SANDBOX_ID)
+    factory = _session_factory()
+    dispatcher = _Dispatcher()
+    with factory() as session:
+        session.add(_evaluation(company_id=uuid4(), connection_id=uuid4(), dataset_id=uuid4(), generation=1))
+        session.commit()
+    service = ConnectorAIEvaluationService(factory, dispatcher)
+    attempts=[]
+    def opener(request, timeout):
+        claimed=service.run_due();attempts.append(claimed)
+        if len(attempts)==1:
+            raise HTTPError(request.full_url,502,"synthetic proxy failure after response",{},io.BytesIO())
+        return io.BytesIO(json.dumps({"claimed":claimed}).encode())
+    settings=SimpleNamespace(connector_ai_scheduler_url="https://avenqo-platform-sandbox.up.railway.app/internal/connector-ai/evaluate",
+        connector_ai_scheduler_token="synthetic-not-a-credential")
+    assert cron.run_trigger(settings,opener=opener,sleep=lambda _:None,clock=lambda:0)==0
+    assert attempts==[1,0] and len(dispatcher.calls)==1
+
+
 def _session_factory():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)

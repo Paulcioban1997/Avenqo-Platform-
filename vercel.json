@@ -5,5 +5,10 @@
       "source": "/((?!.*\\.(?:js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|json|ico|webmanifest)$).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "codex/avenqo-sandbox-connector-cron-retry-20261013": false
+    }
+  }
 }

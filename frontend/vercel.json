@@ -4,6 +4,14 @@
   "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "build/web",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "codex/avenqo-sandbox-connector-cron-retry-20261013": false
+    }
+  }
 }
