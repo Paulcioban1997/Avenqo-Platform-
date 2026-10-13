@@ -1139,6 +1139,49 @@ def test_signed_telnyx_called_number_routes_tenant_not_caller_and_no_unconfigure
     assert env.service.telnyx.commands == []
 
 
+def test_sandbox_unconfigured_inbound_rejected_once_without_answer_or_stream(signed_telnyx_webhook, caplog):
+    env = signed_telnyx_webhook
+    env.settings.environment = "sandbox"
+    event = env.event(tenant_id=str(uuid4()))
+    assert env.send(event).json()["status"] == "READY_FOR_OWNER_ACTION"
+    assert env.send(event).json()["duplicate"] is True
+    call = env.session.scalar(select(VoiceCall))
+    assert call.company_id == env.company.id
+    assert call.status == "rejected_configuration" and call.ended_at is None
+    assert [x[0] for x in env.service.telnyx.commands] == ["reject"]
+    assert env.service.telnyx.media_streams == []
+    assert "test-secret-never-log" not in caplog.text
+    assert env.send(env.event("call.hangup")).status_code == 200
+    env.session.refresh(call)
+    assert call.ended_at is not None
+
+
+def test_sandbox_unavailable_reject_failure_returns_502_and_signed_retry_recovers(signed_telnyx_webhook, monkeypatch, caplog):
+    env = signed_telnyx_webhook
+    env.settings.environment = "sandbox"
+    original = env.service.telnyx.reject_call
+    ids = []
+    async def fail_once(control, *, command_id, cause):
+        ids.append(command_id)
+        if len(ids) == 1:
+            raise RuntimeError("provider-secret-must-not-log")
+        await original(control, command_id=command_id, cause=cause)
+    monkeypatch.setattr(env.service.telnyx, "reject_call", fail_once)
+    event = env.event()
+    assert env.send(event).status_code == 502
+    assert env.send(event).status_code == 200
+    assert ids[0] == ids[1]
+    assert [x[0] for x in env.service.telnyx.commands] == ["reject"]
+    assert "provider-secret-must-not-log" not in caplog.text
+
+
+def test_sandbox_unavailable_invalid_signature_never_sends_provider_command(signed_telnyx_webhook):
+    env = signed_telnyx_webhook
+    env.settings.environment = "sandbox"
+    assert env.send(env.event(), valid=False).status_code == 401
+    assert env.service.telnyx.commands == []
+
+
 @pytest.mark.parametrize("case", ["unknown_number", "wrong_connection", "outgoing", "inactive_binding", "unassigned", "wrong_config", "no_voice", "inactive_subscription", "inactive_module"])
 def test_telnyx_readiness_rejects_wrong_binding_or_access_without_commands(signed_telnyx_webhook, case):
     env = signed_telnyx_webhook
@@ -1297,6 +1340,27 @@ def test_local_media_inbound_answers_then_streams_without_retell_or_caller_auth(
     call = env.session.scalar(select(VoiceCall))
     assert call.caller_type == "UNKNOWN" and call.authenticated_user_id is None
     assert call.status == "in_progress" and call.central_conversation_id is None
+
+
+def test_sandbox_media_start_failure_requests_hangup_and_never_claims_ended(signed_telnyx_webhook, monkeypatch, caplog):
+    env = signed_telnyx_webhook
+    env.settings.environment = "sandbox"
+    env.settings.telnyx_media_enabled = True
+    env.settings.telnyx_media_inbound_enabled = True
+    env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
+    env.settings.openai_api_key = "fake-audio-key"
+    env.settings.voice_realtime_supported_locales = ["fr"]
+    env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
+    env.session.commit()
+    assert env.send(env.event()).json()["status"] == "answering"
+    async def fail_stream(*args, **kwargs):
+        raise RuntimeError("audio-provider-secret-must-not-log")
+    monkeypatch.setattr(env.service.telnyx, "start_media_stream", fail_stream)
+    assert env.send(env.event("call.answered")).status_code == 502
+    assert [x[0] for x in env.service.telnyx.commands] == ["answer", "hangup"]
+    call = env.session.scalar(select(VoiceCall))
+    assert call.status == "media_failure_hangup_requested" and call.ended_at is None
+    assert "audio-provider-secret-must-not-log" not in caplog.text
 
 
 def test_retell_webhook_correlates_only_to_existing_tenant_telnyx_call(signed_telnyx_webhook):

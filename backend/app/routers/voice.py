@@ -1672,16 +1672,39 @@ async def telnyx_webhook(
                 call.ended_at = datetime.now(timezone.utc)
                 db.commit()
             return {"received": True, "routed": False, "status": "blocked_credits"}
-    if not media_mode and not settings.retell_api_key:
+    async def unavailable_transport() -> dict[str, Any]:
+        # Sandbox tests must not ring indefinitely or incur answered audio costs
+        # while the owner has deliberately left the transport disabled.
         call.status = "awaiting_configuration"
+        receipt.result = {**receipt.result, "status": "READY_FOR_OWNER_ACTION"}
         db.commit()
+        logger.warning("Voice inbound transport unavailable; call_id=%s event=%s", call.id, event_type)
+        if settings.environment == "sandbox":
+            command_id = str(UUID(hashlib.sha256(f"unconfigured-reject:{call.id}".encode()).hexdigest()[:32]))
+            try:
+                if event_type == "call.initiated":
+                    await service.telnyx.reject_call(call_control_id, command_id=command_id, cause="CALL_REJECTED")
+                else:
+                    await service.telnyx.hangup(call_control_id)
+            except Exception as exc:
+                # Permit a signed retry using the same idempotent command ID.
+                # Do not acknowledge a provider failure as a successful rejection.
+                db.delete(receipt)
+                call.status = "incoming" if event_type == "call.initiated" else "answering"
+                db.commit()
+                logger.warning("Voice unavailable termination failed; call_id=%s error_class=%s", call.id, type(exc).__name__)
+                raise HTTPException(status_code=502, detail="Unable to terminate unavailable inbound call") from None
+            call.status = "rejected_configuration" if event_type == "call.initiated" else "configuration_hangup_requested"
+            receipt.result = {**receipt.result, "termination_requested": True}
+            db.commit()
         return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
+
+    if not media_mode and not settings.retell_api_key:
+        return await unavailable_transport()
     try:
         target = service.provider.inbound_target(config) if not media_mode else None
     except ValueError:
-        call.status = "awaiting_configuration"
-        db.commit()
-        return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
+        return await unavailable_transport()
     claim = db.scalar(
         select(VoiceCall)
         .where(VoiceCall.id == call.id)
@@ -1721,7 +1744,16 @@ async def telnyx_webhook(
         if call.ended_at is None:
             call.status = "routing_outcome_unknown"
         db.commit()
-        logger.warning("Telnyx inbound routing failed for voice call %s", call.id)
+        logger.warning("Telnyx inbound routing failed; call_id=%s event=%s error_class=%s", call.id, event_type, type(exc).__name__)
+        if settings.environment == "sandbox" and media_mode and event_type == "call.answered":
+            # The leg is already answered: don't leave a silent billable call
+            # after streaming initialization failed. No fabricated ended_at.
+            try:
+                await service.telnyx.hangup(call_control_id)
+                call.status = "media_failure_hangup_requested"
+                db.commit()
+            except Exception as stop_exc:
+                logger.warning("Voice media failure termination failed; call_id=%s error_class=%s", call.id, type(stop_exc).__name__)
         raise HTTPException(status_code=502, detail="Unable to route inbound call") from exc
     db.refresh(call)
     if call.ended_at is None:

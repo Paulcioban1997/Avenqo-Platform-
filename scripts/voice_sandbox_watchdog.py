@@ -7,12 +7,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from backend.app.config.settings import get_settings
 from backend.app.database import SessionLocal
 from backend.app.models import VoiceCall
 from backend.app.voice.providers import TelnyxClient
-from backend.app.voice.sandbox_deadline import GARAGE_ID, CONFIG_ID, CONNECTION_ID, remaining_seconds, stop_expired_call
+from backend.app.voice.sandbox_deadline import approved_test_bindings, CONNECTION_ID, remaining_seconds, stop_expired_call
 
 
 async def main():
@@ -29,7 +29,7 @@ async def main():
     while True:
         with SessionLocal() as db:
             calls = db.scalars(select(VoiceCall).where(
-                VoiceCall.company_id == GARAGE_ID, VoiceCall.config_id == CONFIG_ID,
+                tuple_(VoiceCall.company_id, VoiceCall.config_id).in_(approved_test_bindings()),
                 VoiceCall.ended_at.is_(None))).all()
             expired = [call.id for call in calls if remaining_seconds(call.started_at) <= 0]
         if not args.execute:

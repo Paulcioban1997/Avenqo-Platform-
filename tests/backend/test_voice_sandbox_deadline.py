@@ -20,6 +20,19 @@ def test_elapsed_call_budget_is_not_reset_by_media_reconnect():
     assert guard.remaining_seconds(start + timedelta(hours=1), now=start) == 90
 
 
+def test_produits_deadline_matches_exact_tenant_agent_and_sandbox_connection():
+    settings = SimpleNamespace(environment="sandbox", telnyx_voice_connection_id=guard.CONNECTION_ID)
+    call = SimpleNamespace(company_id=guard.PRODUITS_ID, config_id=guard.PRODUITS_CONFIG_ID)
+    assert guard.is_sandbox_test_call(call, settings)
+    call.config_id = guard.CONFIG_ID
+    assert not guard.is_sandbox_test_call(call, settings)
+    call.config_id = guard.PRODUITS_CONFIG_ID
+    settings.environment = "production"
+    assert not guard.is_sandbox_test_call(call, settings)
+    settings.environment = "sandbox";settings.telnyx_voice_connection_id = "foreign-connection"
+    assert not guard.is_sandbox_test_call(call, settings)
+
+
 @pytest.fixture
 def calls(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path/'deadline.db'}")
@@ -89,5 +102,5 @@ async def test_sandbox_media_hangup_failure_preserves_open_call_for_watchdog(mon
         hangup=AsyncMock(side_effect=RuntimeError("Synthetic failure"))))
     db = SimpleNamespace(commit=lambda: pytest.fail("Must not commit a false termination"))
     with pytest.raises(RuntimeError):
-        await media.complete_media_hangup(db, SimpleNamespace(environment="sandbox"), "synthetic-id")
+        await media.complete_media_hangup(db, SimpleNamespace(environment="sandbox", telnyx_voice_connection_id=guard.CONNECTION_ID), "synthetic-id")
     assert call.ended_at is None and call.status == "in_progress"

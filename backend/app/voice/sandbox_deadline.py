@@ -6,11 +6,23 @@ from uuid import UUID
 
 GARAGE_ID = UUID("96f25272-f659-4323-b158-4fc76d761a92")
 CONFIG_ID = UUID("dd5c1f24-353f-4f68-a6f8-743c02011152")
+PRODUITS_ID = UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff")
+PRODUITS_CONFIG_ID = UUID("ae35875f-b2f9-442c-b73e-8d3a9f78a272")
 CONNECTION_ID = "3069110156336826311"
 PHONE = "+14386075438"
 _tasks = set()
 _scheduled_ids = set()
 logger = logging.getLogger("avenqo.voice.deadline")
+
+
+def approved_test_bindings():
+    return ((GARAGE_ID, CONFIG_ID), (PRODUITS_ID, PRODUITS_CONFIG_ID))
+
+
+def is_sandbox_test_call(call, settings):
+    return (settings.environment == "sandbox"
+            and settings.telnyx_voice_connection_id == CONNECTION_ID
+            and (call.company_id, call.config_id) in approved_test_bindings())
 
 
 def remaining_seconds(started_at, *, now=None):
@@ -31,12 +43,12 @@ async def stop_expired_call(call_id, *, session_factory, settings, client):
         raise PermissionError("Sandbox connection required")
     with session_factory() as db:
         call = db.scalar(select(VoiceCall).where(VoiceCall.id == call_id).with_for_update())
-        if call is None or call.company_id != GARAGE_ID or call.config_id != CONFIG_ID:
+        if call is None or not is_sandbox_test_call(call, settings):
             raise PermissionError("Synthetic call ownership required")
         if call.ended_at is not None:
             return False
         binding = db.scalar(select(VoicePhoneNumber).where(
-            VoicePhoneNumber.company_id == GARAGE_ID, VoicePhoneNumber.config_id == CONFIG_ID,
+            VoicePhoneNumber.company_id == call.company_id, VoicePhoneNumber.config_id == call.config_id,
             VoicePhoneNumber.phone_number == PHONE, VoicePhoneNumber.status == "ACTIVE",
             VoicePhoneNumber.provider == "telnyx", VoicePhoneNumber.provider_connection_id == CONNECTION_ID))
         if binding is None:
@@ -55,7 +67,7 @@ async def stop_expired_call(call_id, *, session_factory, settings, client):
 
 
 def schedule_deadline(call, settings):
-    if settings.environment != "sandbox" or call.company_id != GARAGE_ID or call.config_id != CONFIG_ID:
+    if not is_sandbox_test_call(call, settings):
         return
     from backend.app.database import SessionLocal
     from backend.app.voice.providers import TelnyxClient
