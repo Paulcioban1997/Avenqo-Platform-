@@ -966,6 +966,13 @@ def http_error_message(
     detail: object | None = None,
 ) -> str:
     locale = resolve_api_locale(accept_language)
+    if isinstance(detail, dict) and detail.get("code") == "APPOINTMENT_CONFLICT":
+        messages = {
+            "fr": "Ce créneau est occupé dans le CRM ou Google Calendar. Choisissez un autre horaire.",
+            "en": "This slot is occupied in CRM or Google Calendar. Choose another time.",
+            "es": "Este horario está ocupado en CRM o Google Calendar. Elija otro horario.",
+        }
+        return messages.get(locale, ERROR_MESSAGES[locale]["conflict"])
     detail_text = str(detail or "").strip().casefold()
     if "price analysis requires unit price" in detail_text:
         return ERROR_MESSAGES[locale]["price_unit_required"]

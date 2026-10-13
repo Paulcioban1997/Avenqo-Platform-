@@ -25,6 +25,60 @@ from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.calendar.base import CalendarProviderError
 
 
+@pytest.mark.parametrize("reason", ["GOOGLE_BUSY", "Conflit CRM_BUSY"])
+def test_busy_calendar_slot_returns_actionable_conflict(reason):
+    from fastapi import HTTPException
+    from backend.app.routers.crm import CreateAppointmentRequest, create_appointment
+    from backend.app.core.error_localization import http_error_message
+
+    class Service:
+        async def create_appointment(self, company_id, data):
+            return None, reason
+
+    tenant = SimpleNamespace(company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"))
+    payload = CreateAppointmentRequest(client_id=tenant.company_id, start_time=datetime.now(timezone.utc))
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(create_appointment(payload, idempotency_key=None, tenant=tenant, service=Service()))
+    assert raised.value.status_code == 409
+    assert raised.value.detail == {"code": "APPOINTMENT_CONFLICT"}
+    assert "créneau est occupé" in http_error_message(409, "fr-CA", raised.value.detail)
+
+
+@pytest.mark.parametrize("operation", ["exchange_code", "refresh_access_token", "list_calendars"])
+def test_google_provider_errors_do_not_expose_response_or_credentials(monkeypatch, caplog, operation):
+    import urllib.error
+    from io import BytesIO
+
+    sensitive_fixture = "non-sensitive-response-marker-example.test"
+
+    def failed_request(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            "https://oauth2.googleapis.com/token", 401, sensitive_fixture,
+            {}, BytesIO(json.dumps({"error_description": sensitive_fixture}).encode()),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", failed_request)
+    provider = GoogleCalendarProvider("fixture-client", "fixture-secret", "https://example.test/callback")
+    argument = {"access_token": "fixture-token"} if operation == "list_calendars" else "fixture-value"
+    with pytest.raises(CalendarProviderError) as raised:
+        asyncio.run(getattr(provider, operation)(argument))
+    assert sensitive_fixture not in str(raised.value)
+    assert sensitive_fixture not in caplog.text
+    assert "fixture-secret" not in caplog.text
+    assert isinstance(raised.value.__cause__, urllib.error.HTTPError)
+
+
+def test_google_network_errors_do_not_echo_request_details(monkeypatch, caplog):
+    def failed_request(*args, **kwargs):
+        raise RuntimeError("fixture-private-request-details")
+
+    monkeypatch.setattr("urllib.request.urlopen", failed_request)
+    with pytest.raises(CalendarProviderError) as raised:
+        asyncio.run(GoogleCalendarProvider().exchange_code("fixture-code"))
+    assert "fixture-private-request-details" not in str(raised.value)
+    assert "fixture-private-request-details" not in caplog.text
+
+
 def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")

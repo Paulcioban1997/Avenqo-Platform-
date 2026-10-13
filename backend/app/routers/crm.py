@@ -551,6 +551,8 @@ async def create_appointment(
         data["idempotency_key"] = idempotency_key
     apt, error = await service.create_appointment(tenant.company_id, data)
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
     calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
     response = {
@@ -580,6 +582,8 @@ async def update_appointment(
         tenant.company_id, appointment_id, payload.model_dump(exclude_unset=True)
     )
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
     return {
         "id": str(apt.id),
