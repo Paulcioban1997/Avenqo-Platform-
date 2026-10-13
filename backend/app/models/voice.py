@@ -73,6 +73,7 @@ class VoiceBusinessConfig(TimestampMixin, Base):
     custom_pronunciation: Mapped[str | None] = mapped_column(String(255), nullable=True)
     farewell_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    call_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class VoiceCall(TimestampMixin, Base):

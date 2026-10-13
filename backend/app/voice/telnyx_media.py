@@ -5,6 +5,7 @@ from __future__ import annotations
 import array
 import audioop
 import asyncio
+import time
 import base64
 import binascii
 from collections import deque
@@ -631,6 +632,7 @@ class TelnyxMediaBridge:
         hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
         max_session_seconds: float | None = None,
+        idle_seconds: float | None = None,
     ) -> None:
         self.socket = socket
         self.adapter = adapter
@@ -650,6 +652,8 @@ class TelnyxMediaBridge:
         if max_session_seconds is not None and max_session_seconds <= 0:
             raise ValueError("Session duration must be positive")
         self.max_session_seconds = max_session_seconds
+        self.idle_seconds = idle_seconds
+        self._last_activity = time.monotonic()
         self._authorized_session = False
         self._termination_requested = False
         self._stop_event = asyncio.Event()
@@ -892,6 +896,7 @@ class TelnyxMediaBridge:
                 logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
                 self.telemetry["final_state"] = "LISTENING"
             elif kind == "input_audio_buffer.speech_started" and not self.input_paused:
+                self._last_activity = time.monotonic()
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
                 self.telemetry["final_state"] = "USER_SPEAKING"
@@ -904,6 +909,7 @@ class TelnyxMediaBridge:
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
                 self.telemetry["final_state"] = "PROCESSING"
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
+                self._last_activity = time.monotonic()
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
                 logger.info("Caller speech transcribed (item_id=%s, length=%d)", item_id, len(transcript) if isinstance(transcript, str) else 0)
@@ -1084,6 +1090,10 @@ class TelnyxMediaBridge:
         while True:
             await asyncio.sleep(5.0)
             await self.authorize()
+            if self.idle_seconds is not None and time.monotonic() - self._last_activity >= self.idle_seconds:
+                self.telemetry["final_state"] = "IDLE_LIMIT"
+                await self.request_stop("idle_limit")
+                return
 
     async def run(self) -> None:
         if self.max_session_seconds is None:
@@ -1101,7 +1111,7 @@ class TelnyxMediaBridge:
             await self.request_stop("duration_limit")
 
     async def request_stop(self, reason: str = "manual") -> None:
-        if reason not in {"manual", "duration_limit"}:
+        if reason not in {"manual", "duration_limit", "idle_limit"}:
             raise ValueError("Unsupported stop reason")
         self._stop_event.set()
         if self._authorized_session and not self._termination_requested:
@@ -1219,6 +1229,13 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
         require_active=False,
     )
     if c_call.telnyx_call_control_id:
+        if settings.voice_long_calls_enabled:
+            # Command acceptance is not proof that the phone call ended. Keep the
+            # concurrency reservation until a signed Telnyx hangup confirms it.
+            await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
+            c_call.source_context = {**(c_call.source_context or {}), "stop_requested_at": datetime.now(timezone.utc).isoformat()}
+            db.commit()
+            return c_call
         from backend.app.voice.sandbox_deadline import is_sandbox_test_call
         if is_sandbox_test_call(c_call, settings):
             await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
@@ -1283,6 +1300,8 @@ async def telnyx_media_socket(
         current_call, current_config, current_company = media_transport_context(
             db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
         )
+        from backend.app.voice.call_policy import check
+        check(db, settings, current_call)
         if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
             raise PermissionError("Billing plan changed during media session")
         try:
@@ -1311,7 +1330,8 @@ async def telnyx_media_socket(
         if ledger is None:
             ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
                 company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
-                plan_code=plan, request_namespace=call_id if public_mode else None)
+                plan_code=plan, request_namespace=call_id,
+                on_settlement=record_call_cost)
             bridge.use_ledger(ledger)
         else:
             ledger.attach_identity(current_user.id, current_call.central_conversation_id)
@@ -1324,7 +1344,8 @@ async def telnyx_media_socket(
             current_call.source_context = {**(current_call.source_context or {}), "public_conversation_id": str(current_call.id)}
             db.commit()
             ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id)
+                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id,
+                on_settlement=record_call_cost)
             bridge.use_ledger(ledger)
         await authorize()
 
@@ -1432,6 +1453,7 @@ async def telnyx_media_socket(
                 conversation_id=current_call.central_conversation_id,
                 plan_code=plan,
                 request_namespace=current_call.id,
+                on_settlement=record_call_cost,
             )
             bridge.use_ledger(ledger)
         else:
@@ -1523,6 +1545,12 @@ async def telnyx_media_socket(
     async def hangup_call() -> None:
         await complete_media_hangup(db, settings, call_id)
 
+    def record_call_cost(request_id, attempts):
+        if settings.voice_long_calls_enabled:
+            from backend.app.voice.call_policy import record_ai_cost
+            current = db.get(VoiceCall, call_id)
+            record_ai_cost(db, current, request_id, attempts)
+
     from backend.app.voice.sandbox_deadline import is_sandbox_test_call, remaining_seconds
     sandbox_duration = None
     if is_sandbox_test_call(call, settings):
@@ -1531,6 +1559,17 @@ async def telnyx_media_socket(
     if settings.voice_commercial_enabled and managed_order(db,call):
         limit=max(0.001,remaining(call,settings))
         sandbox_duration=min(sandbox_duration,limit) if sandbox_duration is not None else limit
+    idle_seconds = None
+    if settings.voice_long_calls_enabled:
+        from backend.app.voice.call_policy import remaining as policy_remaining, policy_for
+        from backend.app.voice.realtime_rotation import RotatingRealtimeAdapter
+        policy = policy_for(db, config, settings)
+        limit = max(0.001, policy_remaining(call) or 0.0)
+        sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
+        idle_seconds = policy.idle_seconds
+        adapter = RotatingRealtimeAdapter(lambda: OpenAIRealtimeAudioAdapter(
+            OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model, settings.voice_tts_model, selected_voice),
+            settings.voice_realtime_model), authorize, rotation_seconds=settings.voice_realtime_rotation_seconds)
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
@@ -1540,6 +1579,7 @@ async def telnyx_media_socket(
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,
+        idle_seconds=idle_seconds,
         max_output_queue=2000)
     await websocket.accept()
     try:
@@ -1563,7 +1603,7 @@ async def telnyx_media_socket(
             try:
                 current_call = db.get(VoiceCall, call_id)
                 if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                    if is_sandbox_test_call(current_call, settings):
+                    if settings.voice_long_calls_enabled or is_sandbox_test_call(current_call, settings):
                         await complete_media_hangup(db, settings, call_id)
                     else:
                         current_call.ended_at = datetime.now(timezone.utc)
