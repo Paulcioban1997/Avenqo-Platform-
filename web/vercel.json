@@ -6,7 +6,8 @@
       "codex/avenqo-pr33-pr37-validation-20261011": false,
       "codex/avenqo-locale-integration-20261011": false,
       "codex/avenqo-voice-tenant-candidate-20261011": false,
-      "codex/avenqo-voice-first-call-preflight-20261012": false
+      "codex/avenqo-voice-first-call-preflight-20261012": false,
+      "codex/avenqo-voice-sandbox-call-limits-20261013": false
     }
   }
 }
