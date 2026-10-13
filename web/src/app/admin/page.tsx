@@ -19,6 +19,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { AdminCreditPacks } from "@/components/billing/admin-credit-packs";
+import { AdminVoiceTariffs } from "@/components/voice/admin-voice-tariffs";
 
 interface AdminUserRecord {
   role?: string;
@@ -113,6 +114,7 @@ export default function AdminPage() {
         ) : (
           <div className="space-y-6">
             <AdminCreditPacks isFr={isFr} />
+            <AdminVoiceTariffs isFr={isFr} />
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-white/[0.08] pb-6">
               <div>

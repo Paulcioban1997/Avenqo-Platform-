@@ -241,7 +241,7 @@ describe("native Voice module read-only selection", () => {
     expect(params.get('area_code')).toBe('438');
     expect(params.has('organization_id')).toBe(false);
     expect(calls.every(item => item.method === 'GET')).toBe(true);
-    expect(calls.some(item => /provision|number_orders|reserve|release/.test(item.path))).toBe(false);
+    expect(calls.some(item => item.method !== 'GET' && /provision|number_orders|reserve|release/.test(item.path))).toBe(false);
     act(() => window.dispatchEvent(new Event('avenqo:session-expired')));
     await waitFor(() => expect(screen.queryByText(offer.phone_number)).not.toBeInTheDocument());
   });
@@ -255,7 +255,7 @@ describe("native Voice module read-only selection", () => {
     expect(calls.every(item => item.method === 'GET')).toBe(true);
   });
 
-  it("requires a current quote and explicit confirmation before provisioning", async () => {
+  it("a provider quote cannot bypass the commercial Stripe consent flow", async () => {
     window.localStorage.setItem('avenqo-locale', 'en');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const calls = mockVoice(true, true);
@@ -269,11 +269,10 @@ describe("native Voice module read-only selection", () => {
     const quoteCall = calls.find(item => item.path.includes('/voice/numbers/quote?'));
     expect(quoteCall?.method).toBe('GET');
     expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: VOICE_NUMBER_COPY.en.purchase }));
-    await waitFor(() => expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(true));
-    const purchase = calls.find(item => item.path.endsWith('/voice/numbers/provision'));
-    expect(purchase?.method).toBe('POST');
-    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: VOICE_NUMBER_COPY.en.purchase })).not.toBeInTheDocument();
+    expect(screen.getByText(/Use the business-number payment flow above/)).toBeInTheDocument();
+    expect(calls.some(item => item.method === 'POST')).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it("creates the owner PIN only through authenticated Voice security and clears the masked field", async () => {

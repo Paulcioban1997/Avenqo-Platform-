@@ -81,7 +81,7 @@ class OnboardingService:
         return record
 
     def activate_selected_modules(
-        self, tenant: TenantContext, module_codes: tuple[str, ...], *, auto_init_voice: bool = False
+        self, tenant: TenantContext, module_codes: tuple[str, ...], *, auto_init_voice: bool = True
     ) -> tuple[str, ...]:
         """Active les modules optionnels choisis, en respectant le plan.
 

@@ -42,10 +42,50 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0053_voice_module_permissions"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0054_voice_provisioning"
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         assert inspect(connection).has_table("company_locale_profiles")
         assert inspect(connection).has_table("voice_module_permissions")
+        assert inspect(connection).has_table("voice_provisioning_orders")
+        assert inspect(connection).has_table("voice_provisioning_claims")
+        for table in ("voice_provisioning_orders", "voice_provisioning_claims", "voice_telecom_costs"):
+            protected = connection.execute(text("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname=:table"), {"table": table}).scalar_one()
+            assert protected
+    # Exercise the real PostgreSQL policies as a non-superuser, not just SQLite filters.
+    from datetime import datetime, timezone
+    from sqlalchemy.orm import Session
+    from backend.app.models import Company, User
+    from backend.app.models.voice_provisioning import VoiceProvisioningOrder, VoiceProvisioningClaim
+    with Session(engine) as db:
+        tenants=[]
+        for suffix in ("alpha", "beta"):
+            company=Company(name="Fixture "+suffix,slug=suffix,email=suffix+"@example.test",country="CA",timezone="America/Montreal",industry="Garage",subscription_plan="base")
+            db.add(company);db.flush()
+            import secrets
+            user=User(company_id=company.id,first_name="Fixture",last_name=suffix,email="owner-"+suffix+"@example.test",password_hash=secrets.token_hex(32))
+            db.add(user);db.flush()
+            at=datetime.now(timezone.utc)
+            order=VoiceProvisioningOrder(company_id=company.id,actor_id=user.id,phone_number="fixture-"+suffix,snapshot={},expires_at=at,available_at=at,stripe_customer_id="fixture",stripe_subscription_id="fixture")
+            db.add(order);db.flush()
+            db.add(VoiceProvisioningClaim(phone_number=order.phone_number,order_id=order.id,company_id=company.id))
+            tenants.append(company.id)
+        db.commit()
+    role="voice_rls_rehearsal_"+uuid4().hex[:12]
+    with engine.begin() as connection:
+        connection.execute(text('CREATE ROLE "'+role+'" NOLOGIN NOSUPERUSER NOBYPASSRLS'))
+        connection.execute(text('GRANT USAGE ON SCHEMA public TO "'+role+'"'))
+        connection.execute(text('GRANT SELECT,UPDATE ON voice_provisioning_orders,voice_provisioning_claims,voice_telecom_costs TO "'+role+'"'))
+    for tenant in tenants:
+        with engine.begin() as connection:
+            connection.execute(text('SET LOCAL ROLE "'+role+'"'))
+            connection.execute(text("SELECT set_config('app.bypass_rls','off',true),set_config('app.current_company_id',:tenant,true)"),{"tenant":str(tenant)})
+            for table in ("voice_provisioning_orders", "voice_provisioning_claims"):
+                assert connection.execute(text('SELECT company_id FROM '+table)).scalars().all()==[tenant]
+            assert connection.execute(text("UPDATE voice_provisioning_orders SET status='FOREIGN' WHERE company_id=:other"),{"other":str(next(x for x in tenants if x!=tenant))}).rowcount==0
+    with engine.begin() as connection:
+        connection.execute(text('SET LOCAL ROLE "'+role+'"'))
+        connection.execute(text("SELECT set_config('app.bypass_rls','off',true),set_config('app.current_company_id','',true)"))
+        assert connection.execute(text("SELECT count(*) FROM voice_provisioning_orders")).scalar_one()==0
     engine.dispose()
     admin.dispose()
     # Keep the isolated rehearsal database for inspection; no active DB is deleted.

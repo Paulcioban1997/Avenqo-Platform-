@@ -1527,6 +1527,10 @@ async def telnyx_media_socket(
     sandbox_duration = None
     if is_sandbox_test_call(call, settings):
         sandbox_duration = max(0.001, remaining_seconds(call.started_at))
+    from backend.app.services.voice_commercial_controls import managed_order,remaining
+    if settings.voice_commercial_enabled and managed_order(db,call):
+        limit=max(0.001,remaining(call,settings))
+        sandbox_duration=min(sandbox_duration,limit) if sandbox_duration is not None else limit
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,

@@ -940,134 +940,12 @@ async def provision_voice_number(
     settings: Settings = Depends(get_settings),
     membership=Depends(get_active_ai_membership),
 ) -> dict[str, Any]:
-    company_id = identity.user.company_id
-    _ensure_voice_access(db, company_id)
+    _ensure_voice_access(db,identity.user.company_id)
     if "modules:manage" not in permissions_for(membership.role):
-        raise HTTPException(status_code=403, detail="Module management permission is required")
-    existing = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == request.phone_number))
-    if existing is not None:
-        if existing.company_id != company_id:
-            raise HTTPException(status_code=409, detail="This number is assigned to another tenant")
-        state = "ALREADY_ASSIGNED" if existing.status == "ACTIVE" else "READY_FOR_OWNER_ACTION"
-        return {"status": state, "number": _voice_number_response(existing)}
+        raise HTTPException(status_code=403,detail="Module management permission is required")
     if not request.confirmed:
-        return {"status": "READY_FOR_OWNER_ACTION", "reason": "explicit_purchase_confirmation_required"}
-    if not settings.telnyx_voice_connection_id:
-        return {"status": "READY_FOR_OWNER_ACTION", "reason": "TELNYX_VOICE_CONNECTION_ID_required"}
-    try:
-        quote = verify_number_quote(settings, request.quote_token, company_id, identity.user.id, request.phone_number)
-    except (ValueError, PermissionError):
-        raise HTTPException(status_code=409, detail="A current tenant-owned confirmed quote is required") from None
-    if quote.get("regulatory_status") != "verified_no_requirements":
-        return {"status": "READY_FOR_OWNER_ACTION", "reason": "regulatory_verification_required_no_order_placed"}
-    manager = _voice_number_service(settings)
-    reservation = None
-    try:
-        search = await manager.search(PhoneNumberSearch(
-            request.country_code, request.region, request.locality, request.number_type, 100
-        ))
-        offer = next((item for item in search["offers"] if item["phone_number"] == request.phone_number), None)
-        if offer is None:
-            raise HTTPException(status_code=409, detail="The selected number is no longer available")
-        costs = offer.get("cost_information") or {}
-        if quote["country_code"] != request.country_code.upper() or quote["number_type"] != offer["number_type"] or quote["currency"] != str(costs.get("currency") or "").upper() or quote["monthly_cost"] != valid_cost(costs.get("monthly_cost")) or quote["upfront_cost"] != valid_cost(costs.get("upfront_cost")):
-            raise HTTPException(status_code=409, detail="The provider quote changed; confirm a new quote")
-        regulatory = await TelnyxClient(settings).number_requirements(request.phone_number, request.country_code.upper(), offer["number_type"])
-        if regulatory["status"] != "verified_no_requirements":
-            return {"status": "READY_FOR_OWNER_ACTION", "reason": "regulatory_verification_required_no_order_placed"}
-        offer["regulatory_status"] = regulatory["status"]
-        if offer.get("monthly_cost") is None:
-            return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_price_unavailable_no_order_placed"}
-        if offer.get("regulatory_requirements"):
-            return {
-                "status": "READY_FOR_OWNER_ACTION",
-                "reason": "regulatory_documents_required_no_order_placed",
-                "regulatory_requirements": offer["regulatory_requirements"],
-            }
-        reservation = VoicePhoneNumber(
-            company_id=company_id,
-            phone_number=offer["phone_number"],
-            country_code=offer["country_code"],
-            region=offer.get("region"),
-            locality=offer.get("locality"),
-            provider="telnyx",
-            number_type=offer["number_type"],
-            capabilities=[name for name in ("voice", "sms") if offer.get(f"{name}_capability")],
-            regulatory_status=offer["regulatory_status"],
-            regulatory_requirements=offer["regulatory_requirements"],
-            status="ORDERING",
-            monthly_cost=offer["monthly_cost"],
-            monthly_cost_currency=offer["monthly_cost_currency"],
-            upfront_cost=quote["upfront_cost"], provider_connection_id=settings.telnyx_voice_connection_id,
-        )
-        db.add(reservation)
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
-            existing = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == request.phone_number))
-            if existing is not None:
-                if existing.company_id != company_id:
-                    raise HTTPException(status_code=409, detail="This number is assigned to another tenant")
-                return {"status": "READY_FOR_OWNER_ACTION", "number": _voice_number_response(existing)}
-            raise
-        db.refresh(reservation)
-        order = await manager.provision(
-            offer=offer,
-            confirmed=True,
-            connection_id=settings.telnyx_voice_connection_id,
-            messaging_profile_id=settings.telnyx_messaging_profile_id,
-            idempotency_key=hashlib.sha256(f"{company_id}:{request.phone_number}".encode()).hexdigest(),
-        )
-    except HTTPException:
-        raise
-    except VoiceNumberOwnerActionRequired as exc:
-        return {"status": "READY_FOR_OWNER_ACTION", "reason": str(exc)}
-    except (ValueError, HTTPStatusError) as exc:
-        if reservation is not None:
-            db.delete(reservation)
-            db.commit()
-        logger.warning("Telnyx number order rejected and cleanly rolled back", extra={"company_id": str(company_id)})
-        if isinstance(exc, HTTPStatusError) and exc.response.status_code in {400, 422}:
-            raise HTTPException(status_code=422, detail="Provider rejected number purchase") from exc
-        raise HTTPException(status_code=502, detail="Provider number order failed; no number was purchased") from exc
-    except Exception as exc:
-        if reservation is None:
-            raise HTTPException(status_code=502, detail="Number offer verification is unavailable; no order placed") from None
-        reservation.status = "OUTCOME_UNKNOWN"
-        db.commit()
-        logger.warning("Telnyx number order outcome requires reconciliation", extra={"company_id": str(company_id)})
-        return {"status": "READY_FOR_OWNER_ACTION", "reason": "provider_order_outcome_unknown", "number": _voice_number_response(reservation)}
-
-    raw_data = order.get("data") if isinstance(order, dict) else None
-    order_data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
-    reservation.provider_order_id = str(order_data["id"]) if "id" in order_data and order_data["id"] else None
-    raw_numbers = order_data.get("phone_numbers")
-    returned_numbers = raw_numbers if isinstance(raw_numbers, list) else []
-    raw_first = returned_numbers[0] if returned_numbers else None
-    number_data: dict[str, Any] = raw_first if isinstance(raw_first, dict) else {}
-    provider_number_id = None
-    order_status = str(number_data.get("status") or order_data.get("status") or "order_outcome_unknown").upper()
-    reservation.provider_number_id = str(provider_number_id) if provider_number_id else None
-    reservation.status = "VERIFYING" if order_status in {"SUCCESS", "ACTIVE", "COMPLETED"} else (
-        "PENDING_REGULATORY" if reservation.regulatory_requirements else order_status
-    )
-    if reservation.status == "VERIFYING":
-        try:
-            owned = await TelnyxClient(settings).get_owned_number(request.phone_number)
-            reservation.provider_number_id = str(owned["id"])
-            reservation.status = "ACTIVE"
-        except Exception:
-            reservation.status = "VERIFYING"
-    if reservation.status == "ACTIVE":
-        reservation.purchased_at = datetime.now(timezone.utc)
-        orchestrator = _orchestrator(db, settings)
-        config = orchestrator.ensure_config(TenantContext(company_id), reservation.phone_number)
-        reservation.config_id = config.id
-        config.telnyx_phone_number = reservation.phone_number
-    db.commit()
-    db.refresh(reservation)
-    return {"status": reservation.status, "number": _voice_number_response(reservation)}
+        return {"status":"READY_FOR_OWNER_ACTION","reason":"explicit_purchase_confirmation_required"}
+    raise HTTPException(status_code=409,detail="Use the tenant-owned Voice quote and confirmed Stripe invoice flow")
 
 
 @router.post(
@@ -1089,6 +967,13 @@ async def release_voice_number(
     ))
     if number is None:
         raise HTTPException(status_code=404, detail="Voice number not found")
+    from backend.app.models.voice_provisioning import VoiceProvisioningOrder
+    managed = db.scalar(select(VoiceProvisioningOrder.id).where(
+        VoiceProvisioningOrder.number_id == number.id,
+        VoiceProvisioningOrder.company_id == company_id,
+    ))
+    if managed:
+        raise HTTPException(status_code=409, detail="Cancel the commercial Voice order to release this number and its billing add-on")
     if number.status == "RELEASED":
         return {"status": "RELEASED", "number": _voice_number_response(number)}
     if number.status != "ACTIVE":
@@ -1414,6 +1299,10 @@ async def telnyx_webhook(
     data, call_payload = _call_event_data(envelope)
     event_type = str(data.get("event_type") or "")
     call_control_id = str(call_payload.get("call_control_id") or "")
+    if event_type=="call.cost":
+        from backend.app.services.voice_commercial_controls import cost_receipt
+        try:return {"received":True,"handled":cost_receipt(db,settings,data,call_payload)}
+        except (ValueError,TypeError):raise HTTPException(status_code=422,detail="Invalid telecom cost receipt") from None
     if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup", "call.gather.ended", "call.speak.ended"}:
         return {"received": True, "handled": False}
     event_id = str(data.get("id") or "")
@@ -1424,6 +1313,31 @@ async def telnyx_webhook(
     if event_type == "call.initiated" and call_payload.get("direction") != "incoming":
         return {"received": True, "routed": False}
     destination = str(call_payload.get("to") or "")
+    suspended_number=db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number==destination,
+        VoicePhoneNumber.provider=="telnyx",VoicePhoneNumber.provider_connection_id==settings.telnyx_voice_connection_id))
+    if suspended_number:
+        from backend.app.models.voice_provisioning import VoiceProvisioningOrder
+        managed=db.scalar(select(VoiceProvisioningOrder).where(VoiceProvisioningOrder.number_id==suspended_number.id,
+            VoiceProvisioningOrder.company_id==suspended_number.company_id,VoiceProvisioningOrder.config_id==suspended_number.config_id))
+        if managed and (managed.status!="ACTIVE" or suspended_number.status!="ACTIVE" or not settings.voice_commercial_enabled):
+            if event_type=="call.hangup":
+                ended=db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id==call_control_id,
+                    VoiceCall.company_id==managed.company_id,VoiceCall.config_id==managed.config_id))
+                if ended:
+                    ended.ended_at=ended.ended_at or datetime.now(timezone.utc)
+                    for auth in db.scalars(select(VoiceAuthSession).where(VoiceAuthSession.call_id==ended.id,VoiceAuthSession.revoked_at.is_(None))):auth.revoked_at=datetime.now(timezone.utc)
+                    db.commit()
+                return {"received":True}
+            # A signed call to an owned, suspended commercial number must not
+            # remain ringing. No answering, audio generation or CRM action.
+            try:
+                if event_type=="call.initiated":
+                    command=str(UUID(hashlib.sha256(f"suspended:{call_control_id}".encode()).hexdigest()[:32]))
+                    await TelnyxClient(settings).reject_call(call_control_id,command_id=command,cause="CALL_REJECTED")
+                elif event_type=="call.answered":await TelnyxClient(settings).hangup(call_control_id)
+            except Exception:
+                raise HTTPException(status_code=502,detail="Unable to terminate suspended Voice call") from None
+            return {"received":True,"routed":False,"status":"VOICE_SUSPENDED"}
     binding = db.scalar(select(VoicePhoneNumber).where(
         VoicePhoneNumber.phone_number == destination,
         VoicePhoneNumber.provider == "telnyx",
@@ -1479,6 +1393,8 @@ async def telnyx_webhook(
     if event_type == "call.initiated":
         from backend.app.voice.sandbox_deadline import schedule_deadline
         schedule_deadline(call, settings)
+        from backend.app.services.voice_commercial_controls import schedule
+        schedule(db,settings,call)
     if event_type == "call.initiated" and (call.ended_at is not None or call.status != "incoming"):
         return {"received": True, "routed": call.status in {"routing", "routed", "in_progress"}, "duplicate": True}
     if db.get_bind().dialect.name == "postgresql":

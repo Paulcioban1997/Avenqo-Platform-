@@ -39,7 +39,18 @@ async def lifespan(app: FastAPI):
         # exécuté comme étape de déploiement explicite — voir
         # docs/production-deployment.md § Migrations.
         create_database_tables()
-    yield  # yield = "pause" the context manager, allowing the app to run
+    import asyncio
+    task=None;stop=asyncio.Event()
+    if settings.voice_commercial_enabled and settings.voice_provisioning_worker_enabled:
+        from backend.app.services.voice_provisioning_worker import loop
+        task=asyncio.create_task(loop(settings,stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        if task:
+            try:await asyncio.wait_for(task,timeout=20)
+            except asyncio.TimeoutError:task.cancel()
 
 
 def create_application() -> FastAPI:

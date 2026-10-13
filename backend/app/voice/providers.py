@@ -298,6 +298,7 @@ class TelnyxClient:
         connection_id: str,
         messaging_profile_id: str | None = None,
         idempotency_key: str | None = None,
+        customer_reference: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         payload: dict[str, object] = {
@@ -306,7 +307,23 @@ class TelnyxClient:
         }
         if messaging_profile_id:
             payload["messaging_profile_id"] = messaging_profile_id
+        if customer_reference:
+            payload["customer_reference"] = customer_reference
         return await self._request("POST", "/number_orders", json=payload, idempotency_key=idempotency_key)
+
+    async def get_number_order(self, order_id: str) -> dict[str, Any]:
+        return (await self._request("GET", f"/number_orders/{order_id}"))["data"]
+
+    async def find_number_order(self, customer_reference: str) -> dict[str, Any] | None:
+        data = (await self._request("GET", "/number_orders", params={
+            "filter[customer_reference]": customer_reference, "page[size]": 2})).get("data", [])
+        matches = [x for x in data if x.get("customer_reference") == customer_reference]
+        if len(matches) > 1:
+            raise ValueError("Ambiguous number order")
+        return matches[0] if matches else None
+
+    async def voice_application(self, connection_id: str) -> dict[str, Any]:
+        return (await self._request("GET", f"/call_control_applications/{connection_id}"))["data"]
 
     async def release_phone_number(self, provider_number_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/phone_numbers/{provider_number_id}")
