@@ -1476,6 +1476,9 @@ async def telnyx_webhook(
         return {"received": True, "routed": False}
     if call is None:
         return {"received": True, "routed": False}
+    if event_type == "call.initiated":
+        from backend.app.voice.sandbox_deadline import schedule_deadline
+        schedule_deadline(call, settings)
     if event_type == "call.initiated" and (call.ended_at is not None or call.status != "incoming"):
         return {"received": True, "routed": call.status in {"routing", "routed", "in_progress"}, "duplicate": True}
     if db.get_bind().dialect.name == "postgresql":
