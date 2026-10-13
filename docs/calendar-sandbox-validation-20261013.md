@@ -20,6 +20,18 @@ La Production, les paiements, Telnyx et le streaming n'ont pas été modifiés.
 - Ne plus reprendre les corps d'erreur Google ou détails des exceptions réseau dans les messages/logs publics. Conserver le statut HTTP utile et la cause interne.
 - Renvoyer 409/APPOINTMENT_CONFLICT et un message utile pour les conflits CRM_BUSY et GOOGLE_BUSY, en création et modification.
 - Désactiver les déploiements automatiques Vercel pour cette branche de correction.
+- Vérifier l'événement exact après DELETE Google : cancelled, 404 ou 410 requis ; un événement encore actif ou une vérification réseau en échec ne constitue pas un succès.
+- Conserver calendar_id et event_id dans l'audit d'annulation avant de libérer la liaison active.
+- Refuser l'annulation d'un événement lié si sa connexion Calendar est indisponible.
+- Empêcher un changement de calendrier ou de compte Google tant que des événements Google restent liés, pour éviter une suppression sur le mauvais calendrier.
+
+## Contre-vérification de l'annulation
+
+Après le signalement de visibilité persistante par le propriétaire, recherche API sur les quatre calendriers accessibles du compte autorisé, puis GET par ID exact : un seul événement correspond au titre, à la description fictive, à sa création et à son horaire.
+ID `pjloasb0tpk0f5de9thitslt24`, calendrier principal ; statut Google `cancelled` depuis `2026-10-13T22:51:26.497Z`.
+Suppression idempotente limitée à cet ID, après vérification de l'identité : DELETE retourne 410 Gone ; GET retourne 200 avec status cancelled. Google conserve une trace annulée, ce qui n'est pas un événement actif.
+La recherche du titre exact dans Google Calendar affiche « Aucun résultat trouvé ». Aucun échec de suppression initiale n'est démontré pour cet événement précis ; la cause de l'ancienne visibilité signalée n'est pas établie.
+Les autres rendez-vous n'ont pas été modifiés.
 
 ## Tests et limites
 

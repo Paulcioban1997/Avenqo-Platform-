@@ -25,6 +25,62 @@ from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.calendar.base import CalendarProviderError
 
 
+@pytest.mark.parametrize("delete_status,get_status,event_status,expected", [
+    (204, 200, "cancelled", True),
+    (204, 200, "confirmed", False),
+    (204, 404, None, True),
+    (410, 200, "cancelled", True),
+    (404, 200, "confirmed", False),
+])
+def test_google_delete_confirms_exact_event_inactive(monkeypatch, delete_status, get_status, event_status, expected):
+    import urllib.error
+    from io import BytesIO
+
+    calls = []
+
+    class Response:
+        def __init__(self, status, data):
+            self.status = status
+            self.data = data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return json.dumps(self.data).encode()
+
+    def request(req, timeout):
+        calls.append((req.get_method(), req.full_url))
+        code = delete_status if req.get_method() == "DELETE" else get_status
+        if code >= 400:
+            raise urllib.error.HTTPError(req.full_url, code, "fixture", {}, BytesIO(b"{}"))
+        return Response(code, {"id": "fixture-event", "status": event_status})
+
+    monkeypatch.setattr("urllib.request.urlopen", request)
+    result = asyncio.run(GoogleCalendarProvider().delete_event({"access_token": "fixture"}, "fixture-event", "fixture-calendar"))
+    assert result is expected
+    assert [method for method, _ in calls] == ["DELETE", "GET"]
+    assert calls[0][1] == calls[1][1]
+
+
+def test_google_delete_confirmation_network_failure_is_not_success(monkeypatch):
+    class Response:
+        status = 204
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return b""
+    def request(req, timeout):
+        if req.get_method() == "GET":
+            raise TimeoutError("fixture")
+        return Response()
+    monkeypatch.setattr("urllib.request.urlopen", request)
+    with pytest.raises(CalendarProviderError, match="Vérification suppression"):
+        asyncio.run(GoogleCalendarProvider().delete_event({"access_token": "fixture"}, "fixture-event"))
+
+
 @pytest.mark.parametrize("reason", ["GOOGLE_BUSY", "Conflit CRM_BUSY"])
 def test_busy_calendar_slot_returns_actionable_conflict(reason):
     from fastapi import HTTPException

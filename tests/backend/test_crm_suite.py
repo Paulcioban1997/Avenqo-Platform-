@@ -901,6 +901,51 @@ def test_cancel_is_idempotent_and_preserves_history(db_session, monkeypatch):
     }
 
 
+def test_cancel_with_external_event_and_disconnected_calendar_fails_closed(db_session, monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.services.crm_notification_service.get_settings",
+        lambda: SimpleNamespace(email_delivery_configured=False, telnyx_api_key=None),
+    )
+    company = _create_company(db_session, "tenant-cancel-disconnected")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {"first_name": "Fixture", "last_name": "Calendar"})
+    appointment, error = asyncio.run(service.create_appointment(company.id, {
+        "client_id": client.id, "title": "Fixture calendar appointment",
+        "start_time": datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone)),
+        "duration_minutes": 30,
+    }))
+    assert error is None
+    appointment.external_event_id = "fixture-external-event"
+    appointment.calendar_provider = "google"
+    db_session.commit()
+    result = asyncio.run(service.cancel_appointment_detailed(company.id, appointment.id))
+    assert result.appointment is None and result.calendar_sync == "failed"
+    db_session.refresh(appointment)
+    assert appointment.status == "confirmed"
+    assert appointment.external_event_id == "fixture-external-event"
+
+
+def test_calendar_switch_does_not_orphan_existing_external_events(db_session):
+    from fastapi import HTTPException
+    from backend.app.routers.crm import GoogleCalendarSelectionRequest, select_google_calendar
+    company = _create_company(db_session, "tenant-calendar-switch")
+    client = CRMAppService(db_session).create_client(company.id, {"first_name": "Fixture", "last_name": "Switch"})
+    conn = CRMCalendarConnection(company_id=company.id, provider="google", account_email="fixture@example.test",
+                                 calendar_id="primary", encrypted_credentials="fixture-encrypted", sync_status="connected")
+    db_session.add(conn)
+    db_session.add(CRMAppointment(company_id=company.id, client_id=client.id, title="Fixture event",
+        start_time=datetime(2027, 2, 8, 14, tzinfo=timezone.utc), end_time=datetime(2027, 2, 8, 15, tzinfo=timezone.utc),
+        calendar_provider="google", external_event_id="fixture-event"))
+    db_session.commit()
+    tenant = TenantContext(company_id=company.id)
+    with pytest.raises(HTTPException) as raised:
+        select_google_calendar(GoogleCalendarSelectionRequest(calendar_id="different-calendar"), tenant=tenant, db=db_session)
+    assert raised.value.status_code == 409
+    assert conn.calendar_id == "primary"
+    same = select_google_calendar(GoogleCalendarSelectionRequest(calendar_id="fixture@example.test"), tenant=tenant, db=db_session)
+    assert same["status"] == "selected"
+
+
 def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):
     company_a = _create_company(db_session, "tenant-delete-a")
     company_b = _create_company(db_session, "tenant-delete-b")

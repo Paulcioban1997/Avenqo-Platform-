@@ -767,6 +767,9 @@ class CRMService:
         if apt.status == "cancelled" and not apt.external_event_id:
             return AppointmentMutationResult(apt, "already_cancelled")
 
+        original_external_event_id = apt.external_event_id
+        calendar_connection = self.get_calendar_connection(company_id)
+        original_calendar_id = calendar_connection.calendar_id if calendar_connection else None
         apt.status = "cancelled"
 
         client = self.get_client(company_id, apt.client_id)
@@ -789,7 +792,8 @@ class CRMService:
             entity_id=apt.id,
             action="cancel",
             actor_name=actor_name,
-            details={"status": "cancelled", "calendar_sync": calendar_sync},
+            details={"status": "cancelled", "calendar_sync": calendar_sync,
+                     "external_event_id": original_external_event_id, "calendar_id": original_calendar_id},
         )
         self._session.commit()
         return AppointmentMutationResult(apt, calendar_sync, sync_error)
@@ -1077,6 +1081,8 @@ class CRMService:
         ).first()
 
         if not conn:
+            if action in {"update", "delete"} and appointment.external_event_id:
+                return "failed", "Calendrier connecté indisponible : la synchronisation doit être confirmée avant cette action."
             return "not_configured", None
 
         cipher = self._cipher

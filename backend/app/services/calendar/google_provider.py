@@ -306,13 +306,27 @@ class GoogleCalendarProvider(CalendarProvider):
         )
         try:
             async with _open_response(req, timeout=15) as resp:
-                return resp.status in {200, 204}
+                if resp.status not in {200, 204}:
+                    return False
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {404, 410}:
+                raise CalendarProviderError(f"Erreur suppression événement Google ({exc.code}).") from exc
+        except Exception as exc:
+            raise CalendarProviderError("Erreur suppression événement Google.") from exc
+
+        # Google retains cancelled tombstones. Confirm the exact resource is
+        # inactive before CRM clears its external ID, even after an accepted DELETE.
+        confirmation = urllib.request.Request(url, headers=self._auth_headers(credentials), method="GET")
+        try:
+            async with _open_response(confirmation, timeout=15) as resp:
+                event = json.loads(resp.read().decode("utf-8"))
+                return event.get("id") == external_event_id and event.get("status") == "cancelled"
         except urllib.error.HTTPError as exc:
             if exc.code in {404, 410}:
                 return True
-            raise CalendarProviderError(f"Erreur suppression événement Google ({exc.code}).") from exc
+            raise CalendarProviderError(f"Vérification suppression Google impossible ({exc.code}).") from exc
         except Exception as exc:
-            raise CalendarProviderError("Erreur suppression événement Google.") from exc
+            raise CalendarProviderError("Vérification suppression Google impossible.") from exc
 
     async def check_busy_slots(
         self,
