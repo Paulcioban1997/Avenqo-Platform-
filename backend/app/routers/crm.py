@@ -27,6 +27,7 @@ from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.models.crm import (
     CRMActivity,
+    CRMAppointment,
     CRMCalendarConnection,
     CRMCustomFieldDefinition,
     CRMContact,
@@ -551,6 +552,8 @@ async def create_appointment(
         data["idempotency_key"] = idempotency_key
     apt, error = await service.create_appointment(tenant.company_id, data)
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
     calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
     response = {
@@ -580,6 +583,8 @@ async def update_appointment(
         tenant.company_id, appointment_id, payload.model_dump(exclude_unset=True)
     )
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
     return {
         "id": str(apt.id),
@@ -920,6 +925,15 @@ async def google_calendar_callback(
         )
     ).first()
     if conn:
+        if conn.account_email.strip().lower() != email.strip().lower() and db.scalar(
+            select(CRMAppointment.id).where(
+                CRMAppointment.company_id == tenant_id,
+                CRMAppointment.calendar_provider == "google",
+                CRMAppointment.external_event_id.is_not(None),
+                CRMAppointment.is_deleted.is_(False),
+            ).limit(1)
+        ) is not None:
+            raise HTTPException(status_code=409, detail={"code": "CALENDAR_HAS_LINKED_APPOINTMENTS"})
         conn.provider = "google"
         conn.user_id = user_id
         conn.account_email = email
@@ -1150,6 +1164,17 @@ def select_google_calendar(
     ).first()
     if not conn:
         raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
+    old_calendar = conn.account_email if conn.calendar_id == "primary" else conn.calendar_id
+    new_calendar = conn.account_email if payload.calendar_id == "primary" else payload.calendar_id
+    if old_calendar != new_calendar and db.scalar(
+        select(CRMAppointment.id).where(
+            CRMAppointment.company_id == tenant.company_id,
+            CRMAppointment.calendar_provider == "google",
+            CRMAppointment.external_event_id.is_not(None),
+            CRMAppointment.is_deleted.is_(False),
+        ).limit(1)
+    ) is not None:
+        raise HTTPException(status_code=409, detail={"code": "CALENDAR_HAS_LINKED_APPOINTMENTS"})
     conn.calendar_id = payload.calendar_id
     conn.last_synced_at = datetime.now(timezone.utc)
     db.commit()

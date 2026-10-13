@@ -92,6 +92,14 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
           AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
 
+      - name: Run Calendar OAuth and cancellation regression suite
+        timeout-minutes: 5
+        run: python -m pytest tests/backend/test_google_calendar_integration.py tests/backend/test_error_localization.py -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          DATABASE_URL: "sqlite:///:memory:"
+
       - name: Run security regression suite
         run: >-
           python -m pytest
