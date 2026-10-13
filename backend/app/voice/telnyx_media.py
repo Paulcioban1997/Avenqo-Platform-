@@ -1229,7 +1229,7 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
         require_active=False,
     )
     if c_call.telnyx_call_control_id:
-        if settings.voice_long_calls_enabled:
+        if getattr(settings, "voice_long_calls_enabled", False):
             # Command acceptance is not proof that the phone call ended. Keep the
             # concurrency reservation until a signed Telnyx hangup confirms it.
             await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
