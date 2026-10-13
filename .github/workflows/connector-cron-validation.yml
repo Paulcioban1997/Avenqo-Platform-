@@ -1,5 +1,7 @@
 name: Sandbox connector cron validation
 on:
+  push:
+    branches: [codex/avenqo-sandbox-connector-cron-retry-20261013]
   workflow_dispatch:
 permissions:
   contents: read
