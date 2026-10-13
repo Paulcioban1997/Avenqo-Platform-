@@ -178,6 +178,8 @@ class VoiceProvisioningService:
                     self.suspend(order,"SUSPENDED_PAYMENT")
             elif kind=="customer.subscription.deleted":
                 self.suspend(order,"STOP_REQUESTED");order.available_at=now()
+            elif kind=="customer.subscription.pending_update_expired" and order.paid_at is None:
+                self.suspend(order,"STOP_REQUESTED");order.available_at=now()
             elif kind=="customer.subscription.updated" and order.paid_at:
                 prices={x["price"]["id"] for x in data.get("items",{}).get("data",[])}
                 if order.snapshot["billing"]["price_id"] not in prices:
@@ -242,6 +244,16 @@ class VoiceProvisioningService:
             if claim and claim.order_id==order.id:self.db.delete(claim)
             self.audit(order,"voice_number_compensated");return
         if order.status=="STOP_REQUESTED":
+            if order.snapshot.get("stopped_from") in {"BILLING_CREATING","BILLING_RECONCILE"} and not order.stripe_invoice_id:
+                sub=self.billing.subscription(order.stripe_subscription_id)
+                if sub.get("customer")!=order.stripe_customer_id or (sub.get("metadata") or {}).get("avenqo_voice_order_id")!=str(order.id):
+                    if order.attempts>=5:order.status="REVIEW_REQUIRED"
+                    return
+                invoice=sub.get("latest_invoice")
+                if isinstance(invoice,str):invoice=self.billing.invoice(invoice)
+                self.validate_invoice(order,invoice)
+                order.stripe_invoice_id=invoice["id"]
+                self.db.commit()
             from backend.app.models import VoiceCall
             if order.config_id:
                 active_calls=list(self.db.scalars(select(VoiceCall).where(VoiceCall.company_id==order.company_id,

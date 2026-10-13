@@ -267,11 +267,12 @@ class BillingService:
             self._mark_credit_checkout_failed(data)
         elif event_type == "charge.refunded":
             self._refund_credit_purchase(data)
-        if self._settings.voice_commercial_enabled:
-            from backend.app.services.voice_provisioning_service import VoiceProvisioningService
-            from backend.app.services.voice_billing_gateway import VoiceBillingGateway
-            from backend.app.voice.providers import TelnyxClient
-            VoiceProvisioningService(self._session,self._settings,TelnyxClient(self._settings),VoiceBillingGateway(self._settings)).handle_verified_event(event)
+        # Disabling new sales must not discard payments or suspension events for
+        # existing orders. Provider purchases remain gated in the worker.
+        from backend.app.services.voice_provisioning_service import VoiceProvisioningService
+        from backend.app.services.voice_billing_gateway import VoiceBillingGateway
+        from backend.app.voice.providers import TelnyxClient
+        VoiceProvisioningService(self._session,self._settings,TelnyxClient(self._settings),VoiceBillingGateway(self._settings)).handle_verified_event(event)
         self._session.add(StripeWebhookEvent(
             stripe_event_id=event_id,
             event_type=event_type,

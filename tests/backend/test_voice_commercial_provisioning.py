@@ -64,7 +64,7 @@ def setup(tmp_path):
  yield SimpleNamespace(db=db,settings=settings,tenants=tenants,tel=tel,bill=bill,svc=svc,notifier=notifier)
  db.close();engine.dispose()
 
-async def paid_order(env,index=0):
+async def paid_order(env,index=0,*,disable_sales_during_callback=False):
  t=env.tenants[index];o=await env.svc.quote(t,'+1514555000'+str(index+1),'CA','local','CAD')
  env.svc.confirm(t,o.id,consent=True,max_initial_amount=574,monthly_total=3498,allow_crm_bookings=True)
  assert not env.tel.writes
@@ -73,10 +73,35 @@ async def paid_order(env,index=0):
   def construct_event(self,payload,signature,secret):return stripe.Webhook.construct_event(payload,signature,secret).to_dict()
  payload=json.dumps(event).encode();stamp=str(int(time.time()));signature=hmac.new(env.settings.stripe_webhook_secret.encode(),stamp.encode()+b'.'+payload,hashlib.sha256).hexdigest()
  billing=BillingService(env.db,SignedProvider(),env.settings,None,env.notifier)
+ if disable_sales_during_callback:env.settings.voice_commercial_enabled=False
  assert billing.process_webhook(payload,'t='+stamp+',v1='+signature)
  assert not billing.process_webhook(payload,'t='+stamp+',v1='+signature)
  assert o.status=='QUEUED'
  return o
+
+@pytest.mark.asyncio
+async def test_signed_payment_is_not_lost_when_sales_are_disabled(setup):
+ e=setup;o=await paid_order(e,disable_sales_during_callback=True)
+ assert o.status=='QUEUED' and o.paid_at is not None
+ with pytest.raises(VoiceProvisioningError):await e.svc.run_one()
+ assert not e.tel.writes
+ e.settings.voice_commercial_enabled=True
+ await e.svc.run_one()
+ assert o.status=='ACTIVE' and len(e.tel.writes)==1
+
+@pytest.mark.asyncio
+async def test_cancel_reconciles_ambiguous_billing_before_releasing_claim(setup):
+ e=setup
+ o=await e.svc.quote(e.tenants[0],'+15145550001','CA','local','CAD')
+ original=e.bill.add_number
+ def lost(order):original(order);raise TimeoutError('Synthetic lost response')
+ e.bill.add_number=lost
+ e.svc.confirm(e.tenants[0],o.id,consent=True,max_initial_amount=574,monthly_total=3498)
+ assert o.status=='BILLING_RECONCILE' and o.stripe_invoice_id is None
+ e.svc.owner_action(e.tenants[0],o.id,'cancel')
+ await e.svc.run_one()
+ assert o.status=='CANCELED' and o.stripe_invoice_id
+ assert e.bill.compensations==[o.id] and not e.tel.writes
 
 @pytest.mark.asyncio
 async def test_registration_payment_two_tenants_provision_agent_invoice_isolation(setup):
