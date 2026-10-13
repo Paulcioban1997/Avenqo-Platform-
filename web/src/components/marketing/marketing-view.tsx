@@ -9,18 +9,12 @@ import {
   TrendingUp,
   Target,
   Send,
-  Plus,
-  ArrowUpRight,
-  Mail,
-  MessageSquare,
-  Zap,
   Plug,
-  CheckCircle2,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
-import { apiFetch } from "@/lib/api-request";
+import { ApiRequestError, apiFetch } from "@/lib/api-request";
 
 export function MarketingView() {
   const { locale } = useLocale();
@@ -29,24 +23,37 @@ export function MarketingView() {
 
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [generatedCampaign, setGeneratedCampaign] = useState<any>(null);
+  const [generatedCampaign, setGeneratedCampaign] = useState<{ content: string; provider: string } | null>(null);
+
+  const [generationError, setGenerationError] = useState("");
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignPrompt.trim()) return;
     setGenerating(true);
+    setGenerationError("");
+    setGeneratedCampaign(null);
     try {
       const response = await apiFetch("/api/v1/media/generations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: campaignPrompt, kind: "marketing_text" }),
       });
-      if (!response.ok) {
-        setGeneratedCampaign({ content: locale.startsWith("fr") ? "Activez Marketing AI ou Media AI pour générer un brouillon réel." : "Activate Marketing AI or Media AI to generate a real draft." });
-      } else {
-        const payload = await response.json();
-        setGeneratedCampaign({ content: payload.output_text, provider: payload.provider });
-      }
+      const payload: unknown = await response.json();
+      if (!payload || typeof payload !== "object" ||
+          !("output_text" in payload) || typeof payload.output_text !== "string" ||
+          !payload.output_text.trim()) throw new Error("Invalid generation response");
+      setGeneratedCampaign({ content: payload.output_text,
+        provider: "provider" in payload && typeof payload.provider === "string" ? payload.provider : "" });
+    } catch (error) {
+      const fr = locale.startsWith("fr");
+      setGenerationError(error instanceof ApiRequestError && error.status === 403
+        ? (fr ? "Accès refusé. Vérifiez les permissions et l’activation de Marketing IA dans Mes modules." : "Access denied. Check permissions and Marketing AI activation in My modules.")
+        : error instanceof ApiRequestError && error.status === 401
+        ? (fr ? "Votre session a expiré. Reconnectez-vous." : "Your session expired. Sign in again.")
+        : error instanceof ApiRequestError && error.status === 402
+        ? (fr ? "Vérifiez votre abonnement et votre solde de crédits IA." : "Check your subscription and AI credit balance.")
+        : (fr ? "La génération a échoué. Réessayez ou vérifiez la disponibilité du service IA." : "Generation failed. Retry or check AI service availability."));
     } finally {
       setGenerating(false);
     }
@@ -87,10 +94,10 @@ export function MarketingView() {
             <Users size={16} className="text-blue-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            0 {company.customersSearch}
+            —
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.connectionsConnectedDataTitle}
+            {company.analyticsUnavailable}
           </div>
         </div>
 
@@ -100,10 +107,10 @@ export function MarketingView() {
             <Megaphone size={16} className="text-purple-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            0 {company.connectionsProcessingError}
+            —
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.businessRecommendationsDescription}
+            {company.analyticsUnavailable}
           </div>
         </div>
 
@@ -129,7 +136,7 @@ export function MarketingView() {
             —
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.salesForecastTitle}
+            {company.analyticsUnavailable}
           </div>
         </div>
       </div>
@@ -168,6 +175,9 @@ export function MarketingView() {
           </div>
         </form>
 
+        {generationError && <div role="alert" className="rounded-xl border border-rose-300 p-3 text-sm text-rose-700 dark:text-rose-300">
+          <p>{generationError}</p><Link href="/workspace/modules" className="underline">{locale.startsWith("fr") ? "Mes modules" : "My modules"}</Link>
+        </div>}
         {generatedCampaign && (
           <div className="mt-4 p-4 rounded-xl bg-blue-50/50 dark:bg-[#111D3D]/60 border border-blue-100 dark:border-blue-900/40 space-y-3 animate-in fade-in">
             <p className="text-xs font-bold text-slate-900 dark:text-white">
@@ -187,36 +197,7 @@ export function MarketingView() {
         <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
           {company.customersSegment}
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">
-              {t.marketing.loyalVip}
-            </div>
-            <div className="text-lg font-extrabold text-[#0076FF] dark:text-[#00D4FF] mt-1">
-              {t.marketing.topPercent.replace(
-                "{percent}",
-                new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(0.15),
-              )}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.repeatPurchase}</div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">{t.marketing.churnRisk}</div>
-            <div className="text-lg font-extrabold text-amber-600 dark:text-amber-400 mt-1">
-              {company.customerSegmentDormant}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.lastPurchase60Days}</div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
-            <div className="text-xs font-bold text-slate-800 dark:text-[#F4F7FB]">{t.marketing.abandonedCarts}</div>
-            <div className="text-lg font-extrabold text-purple-600 dark:text-purple-400 mt-1">
-              {t.marketing.reactivate}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">{t.marketing.recentPurchaseIntent}</div>
-          </div>
-        </div>
+        <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>
       </div>
     </div>
   );
