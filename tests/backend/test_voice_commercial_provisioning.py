@@ -238,6 +238,7 @@ async def test_signed_cost_receipt_and_duration_stop_do_not_bill_or_touch_other_
  from backend.app.models.voice_provisioning import VoiceTelecomCost
  from unittest.mock import AsyncMock
  e=setup;o=await paid_order(e);await e.svc.run_one()
+ e.settings.voice_commercial_max_call_seconds=90  # Explicit short-test policy, never the product default.
  call=VoiceCall(company_id=o.company_id,config_id=o.config_id,telnyx_call_control_id='cost-control',caller_phone='synthetic',status='in_progress',started_at=now()-timedelta(seconds=91))
  e.db.add(call);e.db.commit()
  data={'id':str(uuid4()),'occurred_at':now().isoformat()}

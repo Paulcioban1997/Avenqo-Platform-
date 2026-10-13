@@ -239,7 +239,7 @@ class Settings(BaseSettings):
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
     voice_commercial_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_ENABLED")
-    voice_commercial_max_call_seconds:int=Field(default=90,ge=15,le=1800,alias="VOICE_COMMERCIAL_MAX_CALL_SECONDS")
+    voice_commercial_max_call_seconds:int=Field(default=3600,ge=60,le=86400,alias="VOICE_COMMERCIAL_MAX_CALL_SECONDS")
     voice_commercial_payments_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_PAYMENTS_ENABLED")
     voice_telecom_purchases_enabled: bool = Field(default=False, alias="VOICE_TELECOM_PURCHASES_ENABLED")
     voice_provisioning_worker_enabled: bool = Field(default=False, alias="VOICE_PROVISIONING_WORKER_ENABLED")
