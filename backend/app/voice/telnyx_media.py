@@ -1219,8 +1219,12 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
         require_active=False,
     )
     if c_call.telnyx_call_control_id:
-        with suppress(Exception):
-            await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
+        from backend.app.voice.sandbox_deadline import GARAGE_ID, CONFIG_ID
+        if settings.environment == "sandbox" and c_call.company_id == GARAGE_ID and c_call.config_id == CONFIG_ID:
+            await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
+        else:
+            with suppress(Exception):
+                await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
     if c_call.status not in {
         "completed", "appointment_booked", "appointment_cancelled",
         "transferred", "blocked_credits", "blocked_announcement",
@@ -1519,6 +1523,11 @@ async def telnyx_media_socket(
     async def hangup_call() -> None:
         await complete_media_hangup(db, settings, call_id)
 
+    from backend.app.voice.sandbox_deadline import GARAGE_ID, CONFIG_ID, remaining_seconds
+    sandbox_duration = None
+    if settings.environment == "sandbox" and call.company_id == GARAGE_ID and call.config_id == CONFIG_ID:
+        sandbox_duration = max(0.001, remaining_seconds(call.started_at))
+
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=settings.voice_realtime_model,
@@ -1526,7 +1535,7 @@ async def telnyx_media_socket(
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
-        max_session_seconds=90 if settings.environment == "sandbox" else None,
+        max_session_seconds=sandbox_duration,
         max_output_queue=2000)
     await websocket.accept()
     try:
@@ -1550,8 +1559,13 @@ async def telnyx_media_socket(
             try:
                 current_call = db.get(VoiceCall, call_id)
                 if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                    current_call.ended_at = datetime.now(timezone.utc)
-                    current_call.status = "completed"
-                    db.commit()
+                    if settings.environment == "sandbox" and current_call.company_id == GARAGE_ID and current_call.config_id == CONFIG_ID:
+                        await complete_media_hangup(db, settings, call_id)
+                    else:
+                        current_call.ended_at = datetime.now(timezone.utc)
+                        current_call.status = "completed"
+                        db.commit()
             except Exception:
                 db.rollback()
+                if settings.environment == "sandbox":
+                    logger.error("Sandbox media cleanup could not confirm provider hangup; call_id=%s", call_id)
