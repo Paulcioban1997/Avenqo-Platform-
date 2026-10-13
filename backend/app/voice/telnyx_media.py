@@ -1219,8 +1219,8 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
         require_active=False,
     )
     if c_call.telnyx_call_control_id:
-        from backend.app.voice.sandbox_deadline import GARAGE_ID, CONFIG_ID
-        if settings.environment == "sandbox" and c_call.company_id == GARAGE_ID and c_call.config_id == CONFIG_ID:
+        from backend.app.voice.sandbox_deadline import is_sandbox_test_call
+        if is_sandbox_test_call(c_call, settings):
             await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
         else:
             with suppress(Exception):
@@ -1523,9 +1523,9 @@ async def telnyx_media_socket(
     async def hangup_call() -> None:
         await complete_media_hangup(db, settings, call_id)
 
-    from backend.app.voice.sandbox_deadline import GARAGE_ID, CONFIG_ID, remaining_seconds
+    from backend.app.voice.sandbox_deadline import is_sandbox_test_call, remaining_seconds
     sandbox_duration = None
-    if settings.environment == "sandbox" and call.company_id == GARAGE_ID and call.config_id == CONFIG_ID:
+    if is_sandbox_test_call(call, settings):
         sandbox_duration = max(0.001, remaining_seconds(call.started_at))
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
@@ -1559,7 +1559,7 @@ async def telnyx_media_socket(
             try:
                 current_call = db.get(VoiceCall, call_id)
                 if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                    if settings.environment == "sandbox" and current_call.company_id == GARAGE_ID and current_call.config_id == CONFIG_ID:
+                    if is_sandbox_test_call(current_call, settings):
                         await complete_media_hangup(db, settings, call_id)
                     else:
                         current_call.ended_at = datetime.now(timezone.utc)
