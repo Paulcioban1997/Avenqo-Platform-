@@ -252,6 +252,18 @@ class VoiceCallerAuth:
         session.caller_type = caller_type; session.principal_id = principal_id; session.permissions = permissions
         session.authenticated_at = now
         session.expires_at = now + timedelta(seconds=getattr(self.settings, "voice_auth_session_ttl_seconds", 600))
+        if getattr(self.settings, "voice_long_calls_enabled", False):
+            from backend.app.voice.call_policy import policy_for, remaining
+            from backend.app.models import VoiceBusinessConfig
+            config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id,
+                                                                      VoiceBusinessConfig.company_id == call.company_id))
+            if config is None:
+                raise PermissionError("Voice configuration unavailable")
+            policy = policy_for(self.db, config, self.settings)
+            seconds = remaining(call)
+            if seconds is None or seconds <= 0:
+                raise PermissionError("Call allowance exhausted")
+            session.expires_at = now + timedelta(seconds=min(policy.auth_seconds, seconds))
         session.revoked_at = None
         self.db.flush()
         return session

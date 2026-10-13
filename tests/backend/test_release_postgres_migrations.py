@@ -42,7 +42,8 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0054_voice_provisioning"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0055_voice_call_policy"
+        assert "call_policy" in {c["name"] for c in inspect(connection).get_columns("voice_business_configs")}
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         assert inspect(connection).has_table("company_locale_profiles")
         assert inspect(connection).has_table("voice_module_permissions")
@@ -86,6 +87,39 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
         connection.execute(text('SET LOCAL ROLE "'+role+'"'))
         connection.execute(text("SELECT set_config('app.bypass_rls','off',true),set_config('app.current_company_id','',true)"))
         assert connection.execute(text("SELECT count(*) FROM voice_provisioning_orders")).scalar_one()==0
+    # Concurrent admissions use the actual PostgreSQL transaction lock, not a mocked lock.
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from decimal import Decimal
+    import secrets
+    from backend.app.models import VoiceBusinessConfig, VoiceCall
+    from backend.app.config.settings import Settings
+    from backend.app.voice.call_policy import admit, CallPolicy
+    ids=[]
+    with Session(engine) as db:
+        config=VoiceBusinessConfig(company_id=tenants[0],business_name="Fixture concurrency",
+            greeting_message="Fixture",voice_api_key_hash=secrets.token_hex(32),voice_api_key_last4="TEST",enabled=True,
+            call_policy=CallPolicy().model_dump(mode="json"))
+        db.add(config);db.flush()
+        for index in range(2):
+            call=VoiceCall(company_id=tenants[0],config_id=config.id,caller_phone="fixture",
+                telnyx_call_control_id="fixture-pg-"+uuid4().hex,started_at=datetime.now(timezone.utc),status="incoming")
+            db.add(call);db.flush();ids.append(call.id)
+        config_id=config.id;db.commit()
+    barrier=Barrier(2)
+    def admission(call_id):
+        settings=Settings();settings.voice_long_calls_enabled=True
+        settings.voice_budget_rate_ceiling_usd_per_minute=Decimal("0.05")
+        with Session(engine) as db:
+            call=db.get(VoiceCall,call_id);config=db.get(VoiceBusinessConfig,config_id)
+            barrier.wait(timeout=10)
+            try:admit(db,settings,call,config);return "ACCEPTED"
+            except PermissionError:db.rollback();return "BLOCKED"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results=list(pool.map(admission,ids))
+    assert sorted(results)==["ACCEPTED","BLOCKED"]
+    with Session(engine) as db:
+        assert sum(bool(db.get(VoiceCall,id).source_context.get("runtime_policy")) for id in ids)==1
     engine.dispose()
     admin.dispose()
     # Keep the isolated rehearsal database for inspection; no active DB is deleted.

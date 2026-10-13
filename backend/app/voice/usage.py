@@ -275,6 +275,7 @@ class VoiceUsageLedger:
         conversation_id: UUID | None,
         plan_code: str | None,
         request_namespace: UUID | None = None,
+        on_settlement=None,
     ) -> None:
         self._usage = usage_service
         self._catalog = catalog
@@ -284,6 +285,7 @@ class VoiceUsageLedger:
         self._plan_code = plan_code
         self._request_namespace = request_namespace
         self._turns: dict[str, _VoiceTurnUsage] = {}
+        self._on_settlement = on_settlement
 
     def attach_identity(self, user_id: UUID | None, conversation_id: UUID | None) -> None:
         """Attach owner/conversation for attribution without changing reserved request_ids."""
@@ -477,6 +479,8 @@ class VoiceUsageLedger:
             attempts=tuple(turn.attempts),
             count_request=True,
         )
+        if self._on_settlement is not None:
+            self._on_settlement(turn.request_id, tuple(turn.attempts))
         turn.settled = True
         return True
 

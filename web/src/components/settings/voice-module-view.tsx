@@ -12,6 +12,7 @@ import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from 
 import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
 import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
+import { VoiceCallPolicy } from "@/components/voice/voice-call-policy";
 
 interface Capabilities {
   tenant_id: string;
@@ -284,6 +285,7 @@ export function VoiceModuleView() {
       </section>}
       {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
       {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
+      {enabled && <VoiceCallPolicy key={tenantId} tenantId={tenantId} canManage={canManageVoice} />}
       {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
       {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
         <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
