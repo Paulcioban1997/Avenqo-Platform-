@@ -11,6 +11,7 @@ import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
 import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
+import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
 
 interface Capabilities {
   tenant_id: string;
@@ -233,16 +234,6 @@ export function VoiceModuleView() {
     } catch { setError(true); } finally { setBusy(false); }
   }
 
-  async function confirmNumberPurchase() {
-    if (!quote || !quote.purchase_allowed || !window.confirm(`${quote.offer.phone_number} · ${selectionCopy[4]}: ${price(quote.offer, "upfront_cost")} · ${copy.monthlyPrice}: ${price(quote.offer, "monthly_cost")}`)) return;
-    setBusy(true); setError(false);
-    try {
-      const response = await fetch("/api/v1/voice/numbers/provision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone_number: quote.offer.phone_number, country_code: quote.offer.country_code ?? filters.country_code, region: quote.offer.region, locality: quote.offer.locality, number_type: quote.offer.number_type, confirmed: true, quote_token: quote.quote_token }) });
-      if (!response.ok) throw new Error("number_provision_unavailable");
-      setQuote(null); setSelected(null); setResult(null); await refreshVoiceStatus();
-    } catch { setError(true); } finally { setBusy(false); }
-  }
-
   async function search(event: React.FormEvent) {
     event.preventDefault();
     if (!tenantId || !enabled || !canManageVoice) return;
@@ -292,6 +283,7 @@ export function VoiceModuleView() {
         <button type="button" disabled={busy} onClick={() => void configureOwnedNumber()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{selectionCopy[0]}</button>
       </section>}
       {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
+      {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
       {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
       {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
         <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
@@ -321,7 +313,7 @@ export function VoiceModuleView() {
           {quote && <section className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-white/10">
             <p>{quote.offer.phone_number} · {selectionCopy[4]}: {price(quote.offer, "upfront_cost")} · {copy.monthlyPrice}: {price(quote.offer, "monthly_cost")} · {quote.expires_in_seconds}s</p>
             <p>{copy.regulatoryRequirements}: {quote.offer.regulatory_status === "verified_no_requirements" ? "0" : t.common.insufficientData}</p>
-            {quote.purchase_allowed && <button type="button" disabled={busy} onClick={() => void confirmNumberPurchase()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{copy.purchase}</button>}
+            {quote.purchase_allowed && <p className="text-sm">{locale === "fr" ? "Utilisez le parcours de paiement de votre numéro professionnel ci-dessus." : "Use the business-number payment flow above."}</p>}
           </section>}
         </>}
       </section>

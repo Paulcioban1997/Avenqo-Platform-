@@ -58,6 +58,9 @@ def _set_context(session: Session, company_id: str, bypass: bool) -> None:
 
 
 TENANT_SCOPED_TABLES = (
+    "voice_provisioning_orders",
+    "voice_provisioning_claims",
+    "voice_telecom_costs",
     "datasets",
     "commerce_connections",
     "crm_clients",

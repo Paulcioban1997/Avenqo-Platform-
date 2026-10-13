@@ -9,6 +9,7 @@ from backend.app.routers.admin import router as admin_router
 from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
+from backend.app.routers.voice_provisioning import router as voice_provisioning_router
 from backend.app.routers.central_ai import router as central_ai_router
 from backend.app.routers.commerce import router as commerce_router
 from backend.app.routers.crm import (
@@ -138,6 +139,7 @@ api_router.include_router(
 # the transaction with its signed, tenant-bound OAuth state instead.
 api_router.include_router(google_oauth_callback_router, prefix="/api/v1")
 api_router.include_router(voice_router, prefix="/api/v1")
+api_router.include_router(voice_provisioning_router, prefix="/api/v1")
 api_router.include_router(
 	accounting_router,
 	prefix="/api/v1",

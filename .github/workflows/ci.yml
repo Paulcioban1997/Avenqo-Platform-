@@ -113,6 +113,8 @@ jobs:
         run: >-
           python -m pytest
           tests/backend/test_voice_agent.py
+          tests/backend/test_voice_commercial_provisioning.py
+          tests/backend/test_voice_billing_gateway.py
           tests/backend/test_voice_first_call_preflight.py
           tests/backend/test_voice_sandbox_session_stop.py
           tests/backend/test_voice_sandbox_deadline.py

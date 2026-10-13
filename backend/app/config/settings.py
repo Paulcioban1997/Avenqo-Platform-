@@ -238,6 +238,13 @@ class Settings(BaseSettings):
     voice_tts_model: str | None = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
+    voice_commercial_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_ENABLED")
+    voice_commercial_max_call_seconds:int=Field(default=90,ge=15,le=1800,alias="VOICE_COMMERCIAL_MAX_CALL_SECONDS")
+    voice_commercial_payments_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_PAYMENTS_ENABLED")
+    voice_telecom_purchases_enabled: bool = Field(default=False, alias="VOICE_TELECOM_PURCHASES_ENABLED")
+    voice_provisioning_worker_enabled: bool = Field(default=False, alias="VOICE_PROVISIONING_WORKER_ENABLED")
+    voice_certified_realtime_locales: list[str] = Field(default_factory=list, alias="VOICE_CERTIFIED_REALTIME_LOCALES")
+    voice_approved_realtime_models: list[str] = Field(default_factory=list, alias="VOICE_APPROVED_REALTIME_MODELS")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
     voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
 

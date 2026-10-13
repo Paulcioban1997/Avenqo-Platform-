@@ -117,26 +117,16 @@ async def test_number_purchase_requires_current_actor_quote_and_truthful_provide
     monkeypatch.setattr(voice_router, 'TelnyxClient', lambda _: Telecom())
     request = VoiceNumberProvisionRequest(phone_number=offer['phone_number'], country_code='CA',
         confirmed=scenario != 'unconfirmed', quote_token=None if scenario == 'missing_quote' else token)
-    blocked = scenario in {'missing_quote', 'expired', 'wrong_actor', 'wrong_tenant', 'price_changed'}
-    if blocked:
+    if scenario == 'unconfirmed':
+        result=await voice_router.provision_voice_number(request,identity,db,settings,membership)
+        assert result['status']=='READY_FOR_OWNER_ACTION'
+    else:
         with pytest.raises(HTTPException) as failure:
-            await voice_router.provision_voice_number(request, identity, db, settings, membership)
-        assert failure.value.status_code == 409
-    else:
-        result = await voice_router.provision_voice_number(request, identity, db, settings, membership)
-        assert result['status'] == {'pending': 'PENDING', 'verified': 'ACTIVE'}.get(scenario, 'READY_FOR_OWNER_ACTION')
-        assert 'provider-secret-must-not-leak' not in str(result)
-    paid_path = scenario in {'pending', 'ambiguous', 'verified'}
-    assert len(orders) == int(paid_path)
-    binding = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == offer['phone_number']))
-    if paid_path:
-        assert binding.status == {'pending': 'PENDING', 'ambiguous': 'OUTCOME_UNKNOWN', 'verified': 'ACTIVE'}[scenario]
-        if scenario != 'ambiguous': assert binding.provider_order_id == 'order-test-id'
-        replay = await voice_router.provision_voice_number(request, identity, db, settings, membership)
-        assert replay['number']['id'] == str(binding.id)
-        assert len(orders) == 1
-    else:
-        assert binding is None
+            await voice_router.provision_voice_number(request,identity,db,settings,membership)
+        assert failure.value.status_code==409
+    assert orders == []
+    assert db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number==offer['phone_number'])) is None
+
 
 
 @pytest.mark.asyncio

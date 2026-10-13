@@ -267,6 +267,11 @@ class BillingService:
             self._mark_credit_checkout_failed(data)
         elif event_type == "charge.refunded":
             self._refund_credit_purchase(data)
+        if self._settings.voice_commercial_enabled:
+            from backend.app.services.voice_provisioning_service import VoiceProvisioningService
+            from backend.app.services.voice_billing_gateway import VoiceBillingGateway
+            from backend.app.voice.providers import TelnyxClient
+            VoiceProvisioningService(self._session,self._settings,TelnyxClient(self._settings),VoiceBillingGateway(self._settings)).handle_verified_event(event)
         self._session.add(StripeWebhookEvent(
             stripe_event_id=event_id,
             event_type=event_type,
@@ -497,16 +502,18 @@ class BillingService:
     def _sync_subscription(self, subscription: dict[str, Any]) -> None:
         company_id = self._company_id(subscription)
         account = self.get_account(company_id)
-        price_id = str(subscription["items"]["data"][0]["price"]["id"])
-        plan_code = self._settings.stripe_plan_code(price_id)
-        if plan_code is None:
-            raise BillingConfigurationError(f"Prix Stripe inconnu: {price_id}")
+        core_items=[x for x in subscription["items"]["data"] if self._settings.stripe_plan_code(str(x["price"]["id"]))]
+        if len(core_items)!=1:
+            raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
+        core_item=core_items[0]
+        price_id=str(core_item["price"]["id"])
+        plan_code=self._settings.stripe_plan_code(price_id)
         account.stripe_customer_id = str(subscription["customer"])
         account.stripe_subscription_id = str(subscription["id"])
         account.plan_code = plan_code
         account.status = str(subscription["status"])
         account.cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
-        period_end = subscription.get("current_period_end") or subscription["items"]["data"][0].get("current_period_end")
+        period_end = subscription.get("current_period_end") or core_item.get("current_period_end")
         account.current_period_end = (
             datetime.fromtimestamp(int(period_end), timezone.utc) if period_end else None
         )
