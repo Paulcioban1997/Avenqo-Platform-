@@ -20,7 +20,8 @@ def approved_test_bindings():
 
 
 def is_sandbox_test_call(call, settings):
-    return (settings.environment == "sandbox"
+    return (getattr(settings, "voice_sandbox_test_guard_enabled", True)
+            and settings.environment == "sandbox"
             and settings.telnyx_voice_connection_id == CONNECTION_ID
             and (call.company_id, call.config_id) in approved_test_bindings())
 

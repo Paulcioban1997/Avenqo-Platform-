@@ -573,6 +573,52 @@ def _config_response(config: VoiceBusinessConfig) -> VoiceConfigResponse:
     return VoiceConfigResponse.model_validate(VoiceOrchestrator.public_config(config))
 
 
+@router.get("/call-policy", dependencies=[Depends(require_active_subscription)])
+def get_call_policy(identity: CurrentIdentity = Depends(get_current_identity),
+                    membership=Depends(get_active_ai_membership), db: Session = Depends(get_db),
+                    settings: Settings = Depends(get_settings)):
+    from backend.app.voice.call_policy import CallPolicy
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(403, "Owner or admin role is required")
+    _ensure_voice_access(db, identity.user.company_id)
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+    if config is None:
+        raise HTTPException(404, "Voice configuration required")
+    limits = PlanLimitsService(db).limits_for(config.company_id)
+    return {"policy": CallPolicy.model_validate(config.call_policy or {}).model_dump(mode="json"),
+            "enabled": settings.voice_long_calls_enabled,
+            "plan_duration_seconds": settings.voice_plan_max_call_seconds.get(limits.plan_code, 3600),
+            "plan_concurrent_calls": limits.max_concurrent_calls,
+            "auth_max_seconds": settings.voice_auth_max_session_seconds,
+            "cost_rate_configured": settings.voice_budget_rate_ceiling_usd_per_minute is not None,
+            "provider_hard_cap": False}
+
+
+# Explicit import lets FastAPI resolve the body schema; clients cannot set operator rates.
+from backend.app.voice.call_policy import CallPolicy
+
+
+@router.put("/call-policy", dependencies=[Depends(require_active_subscription)])
+def update_call_policy(request: CallPolicy, identity: CurrentIdentity = Depends(get_current_identity),
+                       membership=Depends(get_active_ai_membership), db: Session = Depends(get_db),
+                       settings: Settings = Depends(get_settings)):
+    from backend.app.voice.call_policy import policy_for
+    if membership.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(403, "Owner or admin role is required")
+    _ensure_voice_access(db, identity.user.company_id)
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+    if config is None:
+        raise HTTPException(404, "Voice configuration required")
+    config.call_policy = request.model_dump(mode="json")
+    try:
+        policy_for(db, config, settings)
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from None
+    db.commit()
+    return get_call_policy(identity, membership, db, settings)
+
+
 def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
@@ -1391,6 +1437,18 @@ async def telnyx_webhook(
     if call is None:
         return {"received": True, "routed": False}
     if event_type == "call.initiated":
+        from backend.app.voice.call_policy import admit
+        try:
+            admit(db, settings, call, config)
+        except PermissionError:
+            db.rollback()
+            try:
+                await service.telnyx.reject_call(call_control_id, command_id=str(UUID(hashlib.sha256(f"policy-reject:{call.id}".encode()).hexdigest()[:32])))
+            except Exception:
+                raise HTTPException(502, "Provider rejection pending; retry the signed event") from None
+            call.status = "rejected"
+            db.commit()
+            return {"received": True, "routed": False, "status": "CALL_POLICY_BLOCKED"}
         from backend.app.voice.sandbox_deadline import schedule_deadline
         schedule_deadline(call, settings)
         from backend.app.services.voice_commercial_controls import schedule
@@ -1860,7 +1918,7 @@ async def _voice_central_execute(
         raise
 
     tenant = TenantContext(company_id=config.company_id, user_id=user.id)
-    call.source_context = resolve_voice_source_context(db, tenant)
+    call.source_context = {**(call.source_context or {}), **resolve_voice_source_context(db, tenant)}
     db.commit()
     if call.central_conversation_id is None:
         conversation = ConversationService(db).create(
