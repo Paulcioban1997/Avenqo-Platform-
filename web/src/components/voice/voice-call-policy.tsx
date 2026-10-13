@@ -30,7 +30,14 @@ export function VoiceCallPolicy({ tenantId, canManage }: { tenantId?: string; ca
       const tenant = tenantId;
       void fetch("/api/v1/voice/call-policy", { signal: abort.signal, cache: "no-store" })
         .then(async response => { if (!response.ok) throw new Error("Unavailable"); return response.json() as Promise<Limits>; })
-        .then(limits => { if (!abort.signal.aborted && activeTenant.current === tenant) { setLoaded({ tenant, limits }); setNotice(""); } })
+        .then(limits => {
+          if (!limits || typeof limits !== "object" || !limits.policy ||
+              typeof limits.policy.concurrent_calls !== "number" ||
+              (limits.policy.max_call_seconds !== null && typeof limits.policy.max_call_seconds !== "number")) {
+            throw new Error("Invalid call-policy response");
+          }
+          if (!abort.signal.aborted && activeTenant.current === tenant) { setLoaded({ tenant, limits }); setNotice(""); }
+        })
         .catch(() => { if (!abort.signal.aborted) setNotice(t.error); });
     }
     return () => abort.abort();

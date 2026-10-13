@@ -9,6 +9,12 @@ const limits = { enabled: false, plan_duration_seconds: 3600, plan_concurrent_ca
     idle_seconds: 120, concurrent_calls: 1, call_budget_usd: "5", monthly_budget_usd: "50",
     monthly_minutes: 600, alert_percent: 80, auth_seconds: 600 } };
 describe("Voice tenant call rules", () => {
+  it("reports an invalid backend response without crashing or showing fabricated limits", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    render(<VoiceCallPolicy tenantId="alpha" canManage />);
+    await screen.findByRole("alert");
+    expect(screen.queryByLabelText("Durée maximale (minutes)")).toBeNull();
+  });
   it("saves hour-long limits without activating audio or exposing operator configuration", async () => {
     const fetcher = vi.fn(async () => ({ ok: true, json: async () => limits }));
     vi.stubGlobal("fetch", fetcher);
