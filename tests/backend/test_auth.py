@@ -612,7 +612,14 @@ def test_native_voice_onboarding_never_requires_phone_setup(auth_environment, pl
         modules = session.scalars(select(Module.code).join(CompanyModule, CompanyModule.module_id == Module.id)
             .where(CompanyModule.company_id == company.id)).all()
         assert set(modules) == set(selected)
-        assert session.scalar(select(VoiceBusinessConfig.id).where(VoiceBusinessConfig.company_id == company.id)) is None
+        config=session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+        if "voice" in selected:
+            assert config is not None and config.company_id==company.id
+            assert config.telnyx_phone_number is None
+        else:
+            assert config is None
+        from backend.app.models.voice_provisioning import VoiceProvisioningOrder
+        assert session.scalar(select(VoiceProvisioningOrder.id).where(VoiceProvisioningOrder.company_id==company.id)) is None
         assert session.scalar(select(VoicePhoneNumber.id).where(VoicePhoneNumber.company_id == company.id)) is None
 
 
