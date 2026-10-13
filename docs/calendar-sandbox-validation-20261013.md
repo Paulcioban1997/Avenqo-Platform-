@@ -33,6 +33,19 @@ Suppression idempotente limitée à cet ID, après vérification de l'identité 
 La recherche du titre exact dans Google Calendar affiche « Aucun résultat trouvé ». Aucun échec de suppression initiale n'est démontré pour cet événement précis ; la cause de l'ancienne visibilité signalée n'est pas établie.
 Les autres rendez-vous n'ont pas été modifiés.
 
+Déconnexion applicative réelle de Produits_Ero suivie d'une reconnexion OAuth avec intervention du propriétaire sur l'avertissement Google : connexion rétablie.
+La révocation côté Google n'est pas lancée : Google documente qu'elle invalide les scopes et jetons de tous les clients du même projet pour l'utilisateur concerné. Le projet `avenqo-509823` contient le client Sandbox et un client Avenqo préexistant ; un projet Google séparé est nécessaire pour garantir un essai de révocation sans impact potentiel sur Production.
+Source : https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke
+
+## Ordre de livraison préparé
+
+- PR #48 : `71512cb`, déjà déployée en Sandbox, migration 0054.
+- PR #49 : `32ae194`, migration 0055, encore non déployée.
+- PR #50 : intégration de #49 et durcissement Calendar, sans nouvelle migration ; doit suivre #49. Les seuls conflits d'intégration étaient les trois fichiers vercel.json et leurs exclusions de déploiement, réunies sans supprimer de protection.
+- Tests locaux sur l'intégration : 124 PASS, 1 ignoré (Calendar, CRM, appels longs et permissions Voice).
+- Sauvegarde Sandbox fraîche restaurée en PostgreSQL isolé, répétition 0054 → 0055 et préservation vérifiée des données CRM, connexions chiffrées, utilisateurs et configurations Voice ; aucune migration sur la base active.
+- Aucun déploiement, achat de numéro ni appel audio déclenché par ces opérations.
+
 ## Tests et limites
 
 Tests existants Calendar/CRM/Voice CRM : 86 PASS, 1 ignoré. Nouveaux tests ciblés : 16 PASS.
