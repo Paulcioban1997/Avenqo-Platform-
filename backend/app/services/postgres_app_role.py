@@ -36,7 +36,8 @@ def ensure_application_roles(connection: Connection) -> None:
         return
     connection.execute(text(_CREATE_ROLES_SQL))
     connection.execute(text("GRANT avenqo_owner TO avenqo_migrate"))
-    connection.execute(text("GRANT USAGE ON SCHEMA public TO avenqo_app, avenqo_migrate"))
+    connection.execute(text("GRANT USAGE ON SCHEMA public TO avenqo_app"))
+    connection.execute(text("GRANT USAGE, CREATE ON SCHEMA public TO avenqo_migrate"))
     database = connection.execute(text("SELECT current_database()")).scalar_one()
     connection.execute(text(f'GRANT CONNECT ON DATABASE "{database}" TO avenqo_app, avenqo_migrate'))
     inspector = inspect(connection)
@@ -65,6 +66,28 @@ def ensure_application_roles(connection: Connection) -> None:
             "GRANT USAGE, SELECT ON SEQUENCES TO avenqo_app, avenqo_migrate"
         )
     )
+    connection.execute(
+        text(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE avenqo_migrate IN SCHEMA public "
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO avenqo_app, avenqo_migrate"
+        )
+    )
+
+
+_ISOLATED_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
+def application_database_url(admin_url: str, password: str, *, role: str = APP_ROLE) -> str:
+    """Build a role-specific URL for isolated rehearsals. Never log the return value."""
+
+    from sqlalchemy.engine import make_url
+
+    parsed = make_url(admin_url)
+    if parsed.host not in _ISOLATED_HOSTS:
+        raise ValueError("application_database_url is isolated-host only")
+    if role not in {APP_ROLE, MIGRATE_ROLE}:
+        raise ValueError("unsupported role")
+    return parsed.set(username=role, password=password).render_as_string(hide_password=False)
 
 
 def role_is_constrained(connection: Connection, role_name: str) -> bool:

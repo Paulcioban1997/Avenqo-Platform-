@@ -34,6 +34,28 @@ def test_scheduler_post_retries_502_then_succeeds(monkeypatch) -> None:
     assert attempts["n"] == 3
 
 
+def test_scheduler_post_retries_503_and_504(monkeypatch) -> None:
+    from urllib.error import URLError
+
+    attempts = {"n": 0}
+
+    def fake_urlopen(request, timeout=0):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise HTTPError(request.full_url, 503, "Service Unavailable", hdrs=None, fp=BytesIO())
+        if attempts["n"] == 2:
+            raise HTTPError(request.full_url, 504, "Gateway Timeout", hdrs=None, fp=BytesIO())
+        if attempts["n"] == 3:
+            raise URLError("temporarily unreachable")
+        return _Response(b'{"claimed": 1}')
+
+    monkeypatch.setattr("backend.app.services.scheduler_http.urlopen", fake_urlopen)
+    monkeypatch.setattr("backend.app.services.scheduler_http.time.sleep", lambda _seconds: None)
+    payload = post_scheduler_json("https://sandbox.example/internal", "token", timeout=5)
+    assert payload == {"claimed": 1}
+    assert attempts["n"] == 4
+
+
 def test_scheduler_post_does_not_retry_unauthorized(monkeypatch) -> None:
     def fake_urlopen(request, timeout=0):
         raise HTTPError(request.full_url, 401, "Unauthorized", hdrs=None, fp=BytesIO())
