@@ -83,18 +83,23 @@ def test_app_role_force_rls_hides_foreign_tenant_rows():
 
 
 def test_application_database_url_rejects_remote_hosts():
-    with pytest.raises(ValueError, match="isolated-host only"):
-        application_database_url(
-            "postgresql+psycopg2://postgres:x@postgres.railway.internal:5432/railway",
-            "unused-password",
-        )
-    local = application_database_url(
-        "postgresql+psycopg2://postgres:admin@127.0.0.1:5432/rotation_test_ci",
-        "role-password-value",
+    remote = (
+        make_url("postgresql+psycopg2://127.0.0.1:5432/rotation_test_ci")
+        .set(username="postgres", password="test-only-password", host="postgres.railway.internal")
+        .render_as_string(hide_password=False)
     )
-    assert "avenqo_app" in local
-    assert "127.0.0.1" in local
-    assert local.split("@")[0].endswith("avenqo_app:role-password-value")
+    isolated = (
+        make_url("postgresql+psycopg2://127.0.0.1:5432/rotation_test_ci")
+        .set(username="postgres", password="test-only-password", host="127.0.0.1")
+        .render_as_string(hide_password=False)
+    )
+    with pytest.raises(ValueError, match="isolated-host only"):
+        application_database_url(remote, "test-only-password")
+    local = application_database_url(isolated, "test-only-password")
+    parsed = make_url(local)
+    assert parsed.username == APP_ROLE
+    assert parsed.host == "127.0.0.1"
+    assert parsed.password == "test-only-password"
 
 
 @pytest.mark.skipif(not os.getenv("AVENQO_ROTATION_TEST_ADMIN_URL"), reason="Isolated PostgreSQL required")
