@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { resolveAvenqoApiOrigin } from "./src/lib/avenqo-api-base";
+
+// Evaluated at build time. Vercel preview inherits Production BACKEND_API_URL
+// (api.avenqo.ca); resolveAvenqoApiOrigin() keeps preview/sandbox on Railway.
+const backendOrigin = resolveAvenqoApiOrigin();
 
 const nextConfig: NextConfig = {
   async rewrites() {
@@ -7,7 +12,7 @@ const nextConfig: NextConfig = {
       // Toutes les routes SaaS sont servies nativement par Next.js App Router
       {
         source: "/api/v1/:path*",
-        destination: `${process.env.BACKEND_API_URL || "http://127.0.0.1:8000"}/api/v1/:path*`,
+        destination: `${backendOrigin}/api/v1/:path*`,
       },
     ];
   },

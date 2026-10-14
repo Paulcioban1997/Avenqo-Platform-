@@ -33,6 +33,12 @@ it("does not send preview traffic to production even if the env points there", (
       AVENQO_API_BASE_URL: "https://api.avenqo.ca",
     }),
   ).toBe("https://avenqo-platform-sandbox.up.railway.app");
+  expect(
+    resolveAvenqoApiOrigin({
+      VERCEL_ENV: "preview",
+      BACKEND_API_URL: "https://api.avenqo.ca",
+    }),
+  ).toBe("https://avenqo-platform-sandbox.up.railway.app");
 });
 
 it("uses localhost for local development", () => {
