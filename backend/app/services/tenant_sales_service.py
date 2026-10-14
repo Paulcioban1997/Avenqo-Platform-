@@ -232,6 +232,10 @@ class TenantSalesService:
         end = max(timestamps)
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
+        # Historical averages are only actionable for a recently updated source.
+        # Stale imported data must not be presented as a current forecast.
+        if end < datetime.now(timezone.utc) - timedelta(days=14):
+            return None
         history = compute_sales_trend(
             source,
             date_from=end - timedelta(days=28),
