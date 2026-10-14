@@ -24,6 +24,7 @@ from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.invoice_tax import invoice_tax_snapshot
+from backend.app.services.tenant_rls import apply_tenant_rls
 from payments import PlanCode, get_plan
 from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
 
@@ -326,6 +327,7 @@ class BillingService:
             pack_code = str(metadata["avenqo_credit_pack"])
         except (KeyError, TypeError, ValueError) as exc:
             raise BillingOperationError("Métadonnées du pack de crédits invalides") from exc
+        apply_tenant_rls(self._session, company_id)
         account = self._session.scalar(
             select(BillingAccount).where(BillingAccount.company_id == company_id)
         )
@@ -643,25 +645,31 @@ class BillingService:
         metadata = subscription_details.get("metadata") or invoice.get("metadata") or {}
         raw_company_id = metadata.get("avenqo_company_id")
         if raw_company_id:
-            return UUID(str(raw_company_id))
+            company_id = UUID(str(raw_company_id))
+            apply_tenant_rls(self._session, company_id)
+            return company_id
         customer_id = str(invoice["customer"])
         account = self._session.scalar(select(BillingAccount).where(
             BillingAccount.stripe_customer_id == customer_id,
         ))
         if account is None:
             raise BillingOperationError("Tenant introuvable pour la facture Stripe")
+        apply_tenant_rls(self._session, account.company_id)
         return account.company_id
 
     def _company_id(self, resource: dict[str, Any]) -> UUID:
         raw_company_id = (resource.get("metadata") or {}).get("avenqo_company_id")
         if raw_company_id:
-            return UUID(str(raw_company_id))
+            company_id = UUID(str(raw_company_id))
+            apply_tenant_rls(self._session, company_id)
+            return company_id
         customer_id = str(resource.get("customer") or "")
         if customer_id:
             account = self._session.scalar(select(BillingAccount).where(
                 BillingAccount.stripe_customer_id == customer_id,
             ))
             if account is not None:
+                apply_tenant_rls(self._session, account.company_id)
                 return account.company_id
         raise BillingOperationError("Métadonnée avenqo_company_id absente")
 

@@ -873,6 +873,7 @@ def test_unconfirmed_voice_booking_does_not_create_appointment(tmp_path) -> None
     engine, session, company, config, _, service = _voice_database(tmp_path)
     try:
         _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
+        _seed_retell_call(session, config, "retell-call-unconfirmed")
         result = asyncio.run(service.execute_tool(
             config,
             "retell-call-unconfirmed",
@@ -893,6 +894,22 @@ def test_unconfirmed_voice_booking_does_not_create_appointment(tmp_path) -> None
         engine.dispose()
 
 
+def _seed_retell_call(session, config, retell_call_id, *, caller_phone="+15145550123", **updates):
+    call = VoiceCall(
+        company_id=config.company_id,
+        config_id=config.id,
+        retell_call_id=retell_call_id,
+        caller_phone=caller_phone,
+        status="in_progress",
+        started_at=datetime.now(timezone.utc),
+    )
+    for key, value in updates.items():
+        setattr(call, key, value)
+    session.add(call)
+    session.flush()
+    return call
+
+
 def _authenticated_booking_calls(session, company, config, service, call_ids):
     from backend.app.services.module_entitlement_service import ModuleEntitlementService
     owner = User(company_id=company.id, first_name="Verified", last_name="Scheduler", email="scheduler@example.com",
@@ -904,7 +921,7 @@ def _authenticated_booking_calls(session, company, config, service, call_ids):
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm")
     _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
     for call_id in call_ids:
-        call = service._resolve_call(config, call_id, caller_phone=owner.phone)
+        call = _seed_retell_call(session, config, call_id, caller_phone=owner.phone)
         call.caller_type = "OWNER"; call.authenticated_user_id = owner.id; call.caller_verified_at = datetime.now(timezone.utc)
         VoiceCallerAuth(session, Settings()).establish(call)
     session.commit()
@@ -978,6 +995,7 @@ def test_one_hundred_parallel_confirmed_calls_cannot_double_book(tmp_path) -> No
 def test_after_hours_message_is_saved_in_crm(tmp_path) -> None:
     engine, session, company, config, _, service = _voice_database(tmp_path)
     try:
+        _seed_retell_call(session, config, "retell-after-hours-call", caller_phone="+15145550124")
         result = asyncio.run(service.execute_tool(
             config,
             "retell-after-hours-call",

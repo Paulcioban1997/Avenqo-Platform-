@@ -52,13 +52,16 @@ def create_database_tables() -> None:
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Fournit une session courte à une requête FastAPI."""
+    """Fournit une session courte à une requête FastAPI.
+
+    Bypass RLS n'est pas activé par défaut. Les routes authentifiées
+    appliquent le tenant via ``apply_tenant_rls``. Les webhooks non
+    authentifiés peuvent activer le bypass seulement jusqu'à la
+    résolution de ``company_id``, puis doivent lier le tenant.
+    """
 
     session = SessionLocal()
     try:
-        from backend.app.services.tenant_rls import set_rls_bypass
-
-        set_rls_bypass(session, enabled=True)
         yield session
     finally:
         session.rollback()
