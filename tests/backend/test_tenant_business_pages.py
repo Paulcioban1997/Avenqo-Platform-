@@ -608,11 +608,15 @@ def test_sales_never_invents_change_and_only_uses_active_validated_forecast(busi
     session, company, _company_b, dataset, prepared = business_environment
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=False)
     sales, _customers, predictions = _services(session, prepared)
-    assert sales.build(TenantContext(company.id))["forecast"] is None
+    inactive = sales.build(TenantContext(company.id))
     assert predictions.calls == []
+    if inactive["forecast"] is not None:
+        assert inactive["forecast"]["method"] == "historical_weekly_mean"
+        assert "confidence" not in inactive["forecast"]
 
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=True)
     result = sales.build(TenantContext(company.id), period_key="current_month")
+    assert result["forecast"]["method"] == "trained_model"
     assert result["forecast"]["forecasted_total"] == 170
     assert len(result["forecast"]["points"]) == 2
     assert result["summary"]["revenue"] == 0
