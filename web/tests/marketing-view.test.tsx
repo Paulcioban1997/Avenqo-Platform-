@@ -20,6 +20,7 @@ describe("Marketing results and failures", () => {
     await screen.findByText("793");
     expect(screen.getByRole("status")).toHaveTextContent("Superstore-utf8.csv");
     expect(screen.getByText("127")).toBeVisible();
+    expect(screen.getByRole("img", { name: "vip: 127 / 793" })).toBeVisible();
     expect((request.mock.calls as unknown as [string, RequestInit?][])[0][0]).toBe("/api/v1/customers/summary?period=all&page_size=1");
   });
   it("never displays a late response from the previous tenant", async () => {

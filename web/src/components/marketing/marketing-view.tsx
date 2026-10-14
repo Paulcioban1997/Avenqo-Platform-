@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Megaphone,
@@ -28,6 +28,11 @@ export function MarketingView() {
   const session = useSession();
   const tenant = session.identity?.company.id;
   const revision = session.sourceRevision;
+  const contextRef = useRef({ tenant, revision });
+  useEffect(() => {
+    contextRef.current = { tenant, revision };
+    setGeneratedCampaign(null); setGenerationError(""); setGenerating(false);
+  }, [tenant, revision]);
   const [analysis, setAnalysis] = useState<{ tenant: string; revision: number; data: CustomerAnalysis } | null>(null);
   const [analysisError, setAnalysisError] = useState("");
   useEffect(() => {
@@ -56,6 +61,7 @@ export function MarketingView() {
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignPrompt.trim()) return;
+    const requestContext = contextRef.current;
     setGenerating(true);
     setGenerationError("");
     setGeneratedCampaign(null);
@@ -69,9 +75,11 @@ export function MarketingView() {
       if (!payload || typeof payload !== "object" ||
           !("output_text" in payload) || typeof payload.output_text !== "string" ||
           !payload.output_text.trim()) throw new Error("Invalid generation response");
+      if (contextRef.current !== requestContext) return;
       setGeneratedCampaign({ content: payload.output_text,
         provider: "provider" in payload && typeof payload.provider === "string" ? payload.provider : "" });
     } catch (error) {
+      if (contextRef.current !== requestContext) return;
       const fr = locale.startsWith("fr");
       setGenerationError(error instanceof ApiRequestError && error.status === 403
         ? (fr ? "Accès refusé. Vérifiez les permissions et l’activation de Marketing IA dans Mes modules." : "Access denied. Check permissions and Marketing AI activation in My modules.")
@@ -81,7 +89,7 @@ export function MarketingView() {
         ? (fr ? "Vérifiez votre abonnement et votre solde de crédits IA." : "Check your subscription and AI credit balance.")
         : (fr ? "La génération a échoué. Réessayez ou vérifiez la disponibilité du service IA." : "Generation failed. Retry or check AI service availability."));
     } finally {
-      setGenerating(false);
+      if (contextRef.current === requestContext) setGenerating(false);
     }
   };
 
@@ -163,7 +171,7 @@ export function MarketingView() {
             <TrendingUp size={16} className="text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            {number(data?.summary?.average_customer_value)}
+            {number(data?.summary?.average_customer_value)} {data?.summary?.average_customer_value != null ? data.currency : ""}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
@@ -228,7 +236,12 @@ export function MarketingView() {
           {company.customersSegment}
         </h2>
         {data?.available && data.segments.length ? <ul className="grid gap-3 sm:grid-cols-3">{data.segments.map(segment =>
-          <li key={segment.label} className="rounded-xl border p-4"><span>{segment.label}</span><strong className="ml-3">{number(segment.count)}</strong></li>)}</ul>
+          <li key={segment.label} className="rounded-xl border p-4">
+            <div className="flex items-center justify-between"><span>{locale.startsWith("fr") ? ({ dormant: "Inactifs", loyal: "Fidèles", vip: "VIP", regular: "Réguliers", high_value: "Forte valeur" } as Record<string, string>)[segment.label] || segment.label : segment.label}</span><strong>{number(segment.count)}</strong></div>
+            <div role="img" aria-label={`${segment.label}: ${segment.count} / ${data.summary?.total_customers ?? 0}`} className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, segment.count / Math.max(1, data.summary?.total_customers ?? 0) * 100))}%` }} />
+            </div>
+          </li>)}</ul>
           : <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>}
       </div>
     </div>
