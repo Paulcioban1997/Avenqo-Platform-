@@ -16,6 +16,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
 from backend.app.models import AuditLogEntry, AuthSession, Company, CompanyMembership, User
 from backend.app.models.base import CompanyStatus, OnboardingStatus
+from backend.app.core.locale_catalog import BY_BCP47, BY_LOCALE, resolve_locale
 from backend.app.schemas.auth import (
     AuthResponse,
     CompanyResponse,
@@ -24,6 +25,7 @@ from backend.app.schemas.auth import (
     LoginRequest,
     MessageResponse,
     OrganizationMembershipResponse,
+    PreferredLanguageRequest,
     RefreshTokenRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -324,6 +326,22 @@ def _get_user_organizations(db: Session, user: User) -> list[OrganizationMembers
             )
 
     return list(memberships_dict.values())
+
+
+@router.patch("/preferred-language", response_model=CompanyResponse)
+def update_preferred_language(
+    request: PreferredLanguageRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> CompanyResponse:
+    normalized = request.preferred_language.strip().casefold().replace("_", "-")
+    if normalized not in BY_LOCALE and normalized not in BY_BCP47:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unsupported_locale")
+    company = identity.user.company
+    company.preferred_language = resolve_locale(request.preferred_language)
+    db.commit()
+    db.refresh(company)
+    return _company_response(company)
 
 
 @router.get("/me", response_model=CurrentAccountResponse)

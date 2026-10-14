@@ -27,7 +27,8 @@ def supports_rls(session: Session) -> bool:
 def set_rls_bypass(session: Session, *, enabled: bool) -> None:
     if not supports_rls(session):
         return
-    previous = session.info.get("avenqo_rls", {})
+    info = getattr(session, "info", None)
+    previous = info.get("avenqo_rls", {}) if isinstance(info, dict) else {}
     _set_context(session, previous.get("cid", ""), enabled)
 
 
@@ -60,11 +61,15 @@ def _restore_transaction_context(session: Session, transaction, connection) -> N
 
 def _set_context(session: Session, company_id: str, bypass: bool) -> None:
     context = {"flag": "on" if bypass else "off", "cid": company_id}
-    session.info["avenqo_rls"] = context
-    if session.in_transaction():
-        session.execute(_CONTEXT_SQL, context)
-    else:
-        session.connection()  # after_begin installs this transaction's context.
+    info = getattr(session, "info", None)
+    if isinstance(info, dict):
+        info["avenqo_rls"] = context
+        if session.in_transaction():
+            session.execute(_CONTEXT_SQL, context)
+        elif hasattr(session, "connection"):
+            session.connection()
+        return
+    session.execute(_CONTEXT_SQL, context)
 
 
 TENANT_SCOPED_TABLES = (

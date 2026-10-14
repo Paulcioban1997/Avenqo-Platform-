@@ -9,6 +9,7 @@ import {
   type AppMarketingExtraWords,
   type AppMarketingWords,
 } from "./app-locale-overrides";
+import { COPILOT_CHIPS_COPY } from "./copilot-chips-copy";
 import { getTranslations } from "./dictionary";
 import { getApplicationCatalog } from "./generated-app-catalogs";
 
@@ -1146,6 +1147,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     },
     copilot: {
       ...base.copilot,
+      quickPills: COPILOT_CHIPS_COPY[locale as LocaleCode] ?? base.copilot.quickPills,
       title: assistant.avenqoAi,
       subtitle: assistant.subtitle,
       statusThinking: assistant.thinking,

@@ -13,6 +13,7 @@ import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
 import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
 import { VoiceCallPolicy } from "@/components/voice/voice-call-policy";
+import { VoiceModulePermissionsSection } from "@/components/settings/voice-module-permissions";
 
 interface Capabilities {
   tenant_id: string;

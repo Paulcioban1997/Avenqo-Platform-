@@ -8,6 +8,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { RegionLanguageSelector } from "./region-language-selector";
 import { ThemeToggle } from "./theme-toggle";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { hasExplicitLocaleThisSession, reconcileLoginLocale } from "@/lib/i18n/locale-persistence";
 import { getAuthStrings } from "@/lib/i18n/auth-dictionary";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { CANONICAL_LOCALES } from "@/lib/i18n/canonical-locales.generated";
@@ -35,6 +36,7 @@ type ApiPayload = {
   access_token?: string;
   refresh_token?: string;
   user?: { first_name?: string };
+  company?: { preferred_language?: string | null };
 };
 
 function isPasswordStrong(pw: string): boolean {
@@ -60,7 +62,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     }
   }, []);
 
-  const { locale } = useLocale();
+  const { locale, setLocale } = useLocale();
   const s = getAuthStrings(locale);
   const t = getAppTranslations(locale);
   const localeDefaults = CANONICAL_LOCALES.find(item => item.code === locale);
@@ -222,6 +224,16 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       }
 
       if (isLogin) {
+        const reconciled = reconcileLoginLocale(data.company?.preferred_language, locale, hasExplicitLocaleThisSession());
+        if (reconciled.locale !== locale) setLocale(reconciled.locale, { explicit: false });
+        if (reconciled.persistCompany) {
+          void fetch("/api/v1/auth/preferred-language", {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "avenqo-web" },
+            body: JSON.stringify({ preferred_language: reconciled.locale }),
+          }).catch(() => undefined);
+        }
         router.push("/dashboard");
         return;
       }
