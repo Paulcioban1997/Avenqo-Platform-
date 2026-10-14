@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Megaphone,
@@ -15,11 +15,37 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { ApiRequestError, apiFetch } from "@/lib/api-request";
+import { useSession } from "@/lib/session-context";
+
+type CustomerAnalysis = { available: boolean; currency: string; source_context: { name?: string };
+  summary: { total_customers: number; active_customers: number | null; purchase_frequency: number; average_customer_value: number | null } | null;
+  segments: { label: string; count: number }[] };
 
 export function MarketingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
+  const session = useSession();
+  const tenant = session.identity?.company.id;
+  const revision = session.sourceRevision;
+  const [analysis, setAnalysis] = useState<{ tenant: string; revision: number; data: CustomerAnalysis } | null>(null);
+  const [analysisError, setAnalysisError] = useState("");
+  useEffect(() => {
+    const abort = new AbortController();
+    setAnalysis(null); setAnalysisError("");
+    if (tenant) void apiFetch("/api/v1/customers/summary?period=all&page_size=1", { signal: abort.signal })
+      .then(r => r.json()).then(data => {
+        if (abort.signal.aborted) return;
+        if (!data || typeof data.available !== "boolean" || !Array.isArray(data.segments) ||
+          (data.summary && typeof data.summary.total_customers !== "number")) throw new Error("Invalid analysis");
+        setAnalysis({ tenant, revision, data });
+      }).catch(() => { if (!abort.signal.aborted) setAnalysisError(locale.startsWith("fr")
+        ? "L’analyse de la source sélectionnée n’a pas pu être chargée." : "Could not load the selected source analysis."); });
+    return () => abort.abort();
+  }, [tenant, revision, locale]);
+  const data = analysis?.tenant === tenant && analysis?.revision === revision ? analysis.data : null;
+  const number = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) : "—";
+
 
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -86,31 +112,35 @@ export function MarketingView() {
         </Link>
       </div>
 
+      {analysisError && <p role="alert" className="text-sm text-rose-600">{analysisError}</p>}
+      <p role="status" className="text-xs text-slate-500">{data ? (data.available
+        ? `${data.source_context?.name || (locale.startsWith("fr") ? "Source sélectionnée" : "Selected source")} · ${locale.startsWith("fr") ? "Historique complet disponible" : "Full available history"}`
+        : company.analyticsUnavailable) : (analysisError || (locale.startsWith("fr") ? "Chargement de l’analyse…" : "Loading analysis…"))}</p>
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{company.customersActive}</span>
+            <span>{locale.startsWith("fr") ? "Clients identifiés" : "Identified customers"}</span>
             <Users size={16} className="text-blue-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            —
+            {number(data?.summary?.total_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
           </div>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{t.navigation.marketingAi}</span>
+            <span>{locale.startsWith("fr") ? "Clients actifs (30 derniers jours)" : "Active customers (last 30 days)"}</span>
             <Megaphone size={16} className="text-purple-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            —
+            {number(data?.summary?.active_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
           </div>
         </div>
 
@@ -120,10 +150,10 @@ export function MarketingView() {
             <Target size={16} className="text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            —
+            {number(data?.summary?.purchase_frequency)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
           </div>
         </div>
 
@@ -133,10 +163,10 @@ export function MarketingView() {
             <TrendingUp size={16} className="text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            —
+            {number(data?.summary?.average_customer_value)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
           </div>
         </div>
       </div>
@@ -197,7 +227,9 @@ export function MarketingView() {
         <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
           {company.customersSegment}
         </h2>
-        <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>
+        {data?.available && data.segments.length ? <ul className="grid gap-3 sm:grid-cols-3">{data.segments.map(segment =>
+          <li key={segment.label} className="rounded-xl border p-4"><span>{segment.label}</span><strong className="ml-3">{number(segment.count)}</strong></li>)}</ul>
+          : <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>}
       </div>
     </div>
   );
