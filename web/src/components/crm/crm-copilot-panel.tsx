@@ -305,25 +305,27 @@ export function CRMCopilotPanel({
 
       if (res.ok) {
         const data = await res.json();
-        const unconfirmedAction = Array.isArray(data.tool_outcomes)
-          && data.tool_outcomes.some((outcome: { success?: boolean; confirmed?: boolean }) => !outcome.success || !outcome.confirmed);
-        const confirmedSuccess = data.status === "success"
-          && !unconfirmedAction
-          && typeof data.answer === "string"
-          && data.answer.trim().length > 0;
-        if (confirmedSuccess) pendingRequestRef.current = null;
+        const answer = typeof data.answer === "string" ? data.answer.trim() : "";
+        const outcomes: Array<{ tool_name?: string; tool?: string; success?: boolean; confirmed?: boolean; error?: string; data?: { error?: string } }> = Array.isArray(data.tool_outcomes) ? data.tool_outcomes : [];
+        const bookingTools = ["create_appointment", "update_appointment", "cancel_appointment", "book_appointment"];
+        const fakeBookingClaim = outcomes.some((outcome) => bookingTools.includes(outcome.tool_name ?? outcome.tool ?? "") && outcome.success && !outcome.confirmed);
+        const confirmedBooking = outcomes.some((outcome) => outcome.success && outcome.confirmed && bookingTools.includes(outcome.tool_name ?? outcome.tool ?? ""));
+        const toolError = outcomes.find((outcome) => !outcome.success)?.data?.error || outcomes.find((outcome) => outcome.error)?.error;
+        if ((answer && !fakeBookingClaim) || confirmedBooking) pendingRequestRef.current = null;
         const copilotMsg: Message = {
           id: messageId("c"),
           sender: "copilot",
-          content: confirmedSuccess ? data.answer : errorPrompt,
+          content: fakeBookingClaim
+            ? errorPrompt
+            : (answer || (typeof toolError === "string" ? toolError : errorPrompt)),
           timestamp: messageTimestamp(),
-          status: confirmedSuccess ? "success" : "error",
+          status: fakeBookingClaim ? "error" : (data.status === "success" || answer ? "success" : "error"),
           details: data,
         };
         setMessages((prev) => [...prev, copilotMsg]);
 
         // Auto-refresh calendar and KPIs if appointment created
-        if (confirmedSuccess && Array.isArray(data.tool_outcomes) && data.tool_outcomes.some((outcome: { tool_name?: string; tool?: string; success?: boolean; confirmed?: boolean }) => outcome.success && outcome.confirmed && ["create_appointment", "update_appointment", "cancel_appointment", "book_appointment"].includes(outcome.tool_name ?? outcome.tool ?? ""))) {
+        if (confirmedBooking) {
           onAppointmentCreated?.();
         }
       } else {

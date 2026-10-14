@@ -529,7 +529,7 @@ describe("Retail inventory rendering", () => {
     expect(await screen.findByText("Moyenne historique hebdomadaire")).toBeInTheDocument();
     expect(screen.getByText("Week A")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
-    expect(await screen.findByText("Produits: Seasonal item")).toBeInTheDocument();
+    expect(await screen.findByText("Les revenus de ce produit progressent — Seasonal item")).toBeInTheDocument();
     expect(screen.getByText("Shopify · Avenqo Retail Test")).toBeInTheDocument();
     expect(screen.queryByText(/product_growth|product_revenue_changed|Review the next purchase order/)).not.toBeInTheDocument();
   });

@@ -143,10 +143,13 @@ export function AvenqoCopilot({
         const data = await res.json();
         pendingRequestRef.current = null;
         window.dispatchEvent(new Event("avenqo:ai-credits-updated"));
+        const outcomes: Array<{ success?: boolean; error?: string; data?: { error?: string } }> = Array.isArray(data.tool_outcomes) ? data.tool_outcomes : [];
+        const toolError = outcomes.find((outcome) => !outcome.success)?.error
+          || outcomes.find((outcome) => outcome.data?.error)?.data?.error;
         const copilotMsg: ChatMessage = {
           id: crypto.randomUUID(),
           sender: "copilot",
-          content: data.answer || t.copilot.errorPrompt,
+          content: (typeof data.answer === "string" && data.answer.trim()) || (typeof toolError === "string" ? toolError : t.copilot.errorPrompt),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           grounded: Boolean(data.grounded_source && data.status === "success"),
         };
@@ -207,9 +210,12 @@ export function AvenqoCopilot({
     const speechWindow = window as Window & { SpeechRecognition?: new () => BrowserSpeechRecognition; webkitSpeechRecognition?: new () => BrowserSpeechRecognition };
     const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!Recognition) {
+      setIsListening(false);
       setMessages((prev) => [...prev, {
         id: crypto.randomUUID(), sender: "copilot",
-        content: "Voice input is not available in this browser. You can continue with text.",
+        content: locale.startsWith("fr")
+          ? "La dictée vocale n’est pas disponible dans ce navigateur. Continuez en texte, ou autorisez le microphone."
+          : "Voice dictation is not available in this browser. Continue with text, or allow the microphone.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       }]);
       return;
@@ -294,10 +300,8 @@ export function AvenqoCopilot({
         startFallbackRecognition(sessionId);
         return;
       }
-      const host = ["localhost", "127.0.0.1"].includes(window.location.hostname)
-        ? `${window.location.hostname}:8000` : "api.avenqo.ca";
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(streamUrl || `${protocol}//${host}/api/v1/ai/voice/sessions/${sessionId}/stream`, ["avenqo.voice", `ticket.${ticket}`]);
+      const origin = window.location.origin.replace(/^http/, "ws");
+      const socket = new WebSocket(streamUrl || `${origin}/api/v1/ai/voice/sessions/${sessionId}/stream`, ["avenqo.voice", `ticket.${ticket}`]);
       voiceSocketRef.current = socket;
       let sequence = -1;
       socket.onmessage = (message) => {

@@ -97,8 +97,11 @@ interface InventoryItem {
 
 interface RetailInventoryAnomaly {
   id: string;
+  type?: string;
   product: string;
   sku: string;
+  metric?: string;
+  explanation?: string;
   expected_range: { lower: number; upper: number | null };
   observed_value: number;
   delta: number;
@@ -294,22 +297,38 @@ export function RetailIntelligenceView({
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
   );
-  const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
   const forecast = salesSummary?.forecast ?? null;
   const forecastPoints = forecast?.points ?? [];
   const catalog = getApplicationCatalog(locale);
   const anomalyCopy = RETAIL_ANOMALY_COPY[locale];
 
   const recommendationTitle = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    const productName = recommendation.affected_product?.name;
     if (recommendation.type === "revenue_decline") return catalog.dashboardHome.revenueDeclineTitle;
     if (recommendation.type === "revenue_growth") return catalog.dashboardHome.revenueGrowthTitle;
-    const productName = recommendation.affected_product?.name;
+    if (recommendation.type === "product_decline") {
+      return productName ? `${phase4d.productDeclineTitle} — ${productName}` : phase4d.productDeclineTitle;
+    }
+    if (recommendation.type === "product_growth") {
+      return productName ? `${phase4d.productGrowthTitle} — ${productName}` : phase4d.productGrowthTitle;
+    }
+    if (recommendation.type === "product_concentration") {
+      return productName ? `${phase4d.productConcentrationTitle} — ${productName}` : phase4d.productConcentrationTitle;
+    }
     return productName ? `${retail.products}: ${productName}` : retail.recommendations;
   };
-  const recommendationDescription = (recommendation: RetailRecommendation) =>
-    recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth"
-      ? catalog.dashboardHome.revenueChangedExplanation
-      : retail.recommendationsDescription;
+  const recommendationDescription = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    if (recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth") {
+      return catalog.dashboardHome.revenueChangedExplanation;
+    }
+    if (recommendation.type === "product_decline" || recommendation.type === "product_growth") {
+      return phase4d.productRevenueChangedExplanation;
+    }
+    if (recommendation.type === "product_concentration") return phase4d.productConcentrationExplanation;
+    return retail.recommendationsDescription;
+  };
   const recommendationSource = (recommendation: RetailRecommendation) => {
     if (recommendation.source?.selection === "all") return SOURCE_SELECTOR_COPY[locale][1];
     const provider = recommendation.source?.provider === "shopify" ? "Shopify"
@@ -351,6 +370,24 @@ export function RetailIntelligenceView({
       ].filter(Boolean).join(" · ");
   const formatStock = (value: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
+    if (value == null || !Number.isFinite(value)) return "—";
+    if (metric === "product_revenue") {
+      return new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: salesSummary?.currency || recommendationsCurrency || "CAD",
+        maximumFractionDigits: 0,
+      }).format(value);
+    }
+    return `${formatStock(value)}${metric === "inventory_stock_quantity" ? ` ${retail.unit}` : ""}`;
+  };
+  const anomalyExplanation = (anom: RetailInventoryAnomaly) => {
+    if (anom.type === "stockout" || anom.explanation === "inventory_stockout") return retail.stockoutRiskAlert;
+    if (anom.type === "sales_drop" || anom.type === "sales_decline" || anom.explanation === "product_sales_dropped_to_zero" || anom.explanation === "product_revenue_declined") {
+      return catalog.phase4d.productDeclineTitle;
+    }
+    return anomalyCopy.explanation;
+  };
   const maxForecastValue = Math.max(1, ...forecastPoints.map((point) => Math.abs(point.value)));
   const forecastMethodLabel = forecast?.method === "trained_model"
     ? retail.forecastMethodModel
@@ -943,7 +980,7 @@ export function RetailIntelligenceView({
                           <span className="text-[10px] font-mono text-slate-400">({anom.sku})</span>
                         </div>
                         <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-1">
-                          {anomalyCopy.explanation}
+                          {anomalyExplanation(anom)}
                         </p>
                         {sourceLabel(anom.source) && (
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
@@ -956,13 +993,13 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {anomalyCopy.observed}: {formatStock(anom.observed_value)} {retail.unit}
+                          {anomalyCopy.observed}: {formatAnomalyValue(anom.observed_value, anom.metric)}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}{anom.expected_range.upper == null ? "+" : `–${formatStock(anom.expected_range.upper)}`} {retail.unit}
+                          {anomalyCopy.expectedRange}: {formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.difference}: {formatStock(anom.delta)} {retail.unit}
+                          {anomalyCopy.difference}: {formatAnomalyValue(anom.delta, anom.metric)}
                         </div>
                       </div>
                       <button
@@ -976,9 +1013,7 @@ export function RetailIntelligenceView({
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  {anomalyState === "insufficient_data" || (inventory.length > 0 && !inventoryHasStockData)
-                    ? t.common.insufficientData
-                    : anomalyCopy.none}
+                  {anomalyState === "insufficient_data" ? t.common.insufficientData : anomalyCopy.none}
                 </div>
               )}
             </div>
@@ -1029,12 +1064,8 @@ export function RetailIntelligenceView({
               ))
             ) : recommendationState === "INSUFFICIENT_DATA" ? (
               <EmptyState title={retail.recommendations} description={retail.recommendationsNeedOrders} />
-            ) : inventory.length === 0 || !inventoryHasStockData ? (
-              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             ) : (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                {retail.recommendationsUnavailable}
-              </div>
+              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             )}
           </div>
         </AvenqoCard>

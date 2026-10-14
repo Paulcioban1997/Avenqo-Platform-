@@ -43,7 +43,11 @@ CANONICAL_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "product_category": (
         "category", "product_category", "item_category", "categorie",
-        "categorie_produit",
+        "categorie_produit", "product_type",
+    ),
+    "customer_region": (
+        "region", "customer_region", "geo_region", "territory",
+        "province", "province_state", "state", "etat", "région",
     ),
     "inventory_level": (
         "stock", "stock_level", "inventory", "inventory_level",
@@ -137,6 +141,7 @@ CANONICAL_FIELD_SEMANTIC_TYPE: dict[str, tuple[SemanticType, ...]] = {
     "review_id": (SemanticType.IDENTIFIER,),
     "product_name": (SemanticType.TEXT, SemanticType.CATEGORICAL),
     "product_category": (SemanticType.TEXT, SemanticType.CATEGORICAL),
+    "customer_region": (SemanticType.REGION, SemanticType.CATEGORICAL, SemanticType.TEXT),
     "inventory_level": (SemanticType.INTEGER, SemanticType.FLOAT),
     "order_timestamp": (SemanticType.DATETIME,),
     "delivery_timestamp": (SemanticType.DATETIME,),

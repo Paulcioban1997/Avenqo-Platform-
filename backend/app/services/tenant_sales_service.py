@@ -220,11 +220,22 @@ class TenantSalesService:
         source = snapshot.source_for(frozenset({"total_amount", "order_timestamp"}))
         if source is None:
             return None
-        today = datetime.now(timezone.utc)
+        reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
+        date_column = reverse.get("order_timestamp")
+        timestamps = [
+            value
+            for row in source.rows
+            if date_column and (value := parse_business_datetime(row.get(date_column))) is not None
+        ]
+        if not timestamps:
+            return None
+        end = max(timestamps)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
         history = compute_sales_trend(
             source,
-            date_from=today - timedelta(days=28),
-            date_to=today,
+            date_from=end - timedelta(days=28),
+            date_to=end,
             granularity="week",
         )["points"]
         observations = [float(point["revenue"]) for point in history[-4:]]

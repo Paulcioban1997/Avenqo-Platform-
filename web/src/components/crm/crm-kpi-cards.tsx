@@ -10,6 +10,7 @@ export interface CRMKpis {
   active_clients?: number | null;
   appointments_this_month?: number | null;
   attendance_rate_percent?: number | null;
+  attendance_tracked_count?: number | null;
   total_revenue_generated?: number | null;
   currency?: string;
 }
@@ -25,6 +26,9 @@ export function CRMKpiCards({ kpis, t, isLoading = false }: CRMKpiCardsProps) {
   const unavailable = t.common.insufficientData;
   const number = (value: unknown, digits = 0) => isLoading ? t.crm.calendar.loadingAppointments : metricText(value, locale, unavailable, digits);
   const hasRevenue = finiteMetric(kpis?.total_revenue_generated) !== null && typeof kpis?.currency === "string" && /^[A-Z]{3}$/.test(kpis.currency);
+  const attendanceValue = finiteMetric(kpis?.attendance_rate_percent);
+  const trackedAttendance = finiteMetric(kpis?.attendance_tracked_count);
+  const dummyAttendance = attendanceValue === 100 && (trackedAttendance === 0 || (trackedAttendance === null && finiteMetric(kpis?.appointments_this_month) === 0));
   const cards = [
     {
       title: t.crm.kpis.activeClients,
@@ -42,7 +46,7 @@ export function CRMKpiCards({ kpis, t, isLoading = false }: CRMKpiCardsProps) {
     },
     {
       title: t.crm.kpis.attendanceRate,
-      value: isLoading ? number(null) : finiteMetric(kpis?.attendance_rate_percent) === null ? unavailable : `${number(kpis.attendance_rate_percent, 1)}%`,
+      value: isLoading ? number(null) : attendanceValue === null || dummyAttendance ? unavailable : `${number(kpis.attendance_rate_percent, 1)}%`,
       icon: CheckCircle2,
       color: "text-emerald-500",
       bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/40",

@@ -40,6 +40,8 @@ from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/retail", tags=["retail"])
 _MIN_INVENTORY_ANOMALY_SAMPLE = 30
+_MAX_SALES_ANOMALIES = 20
+_SALES_DECLINE_THRESHOLD = -40.0
 
 
 def _inventory_item_from_product(product: dict) -> dict:
@@ -62,6 +64,69 @@ def _inventory_item_from_product(product: dict) -> dict:
             else "normal"
         ),
     }
+
+
+def _sales_operational_anomalies(
+    products: list[dict],
+    *,
+    source: dict,
+    detected_at: datetime | None = None,
+) -> list[dict]:
+    timestamp = (detected_at or datetime.now(timezone.utc)).isoformat()
+    anomalies: list[dict] = []
+    for product in products:
+        current = product.get("current_revenue")
+        previous = product.get("previous_revenue")
+        change = product.get("change_percent")
+        if current is None or previous is None:
+            continue
+        try:
+            current_value = float(current)
+            previous_value = float(previous)
+            change_value = float(change) if change is not None else None
+        except (TypeError, ValueError):
+            continue
+        if previous_value <= 0:
+            continue
+        name = str(product.get("name") or product.get("product_id") or "")
+        sku = str(product.get("sku") or product.get("product_id") or "")
+        product_id = str(product.get("product_id") or "")
+        if current_value <= 0:
+            anomalies.append({
+                "id": f"sales-drop:{product_id}",
+                "type": "sales_drop",
+                "product": name,
+                "sku": sku,
+                "metric": "product_revenue",
+                "period": "last_30_days_vs_previous",
+                "expected_value": round(previous_value, 2),
+                "expected_range": {"lower": round(previous_value * 0.5, 2), "upper": None},
+                "observed_value": round(current_value, 2),
+                "delta": round(current_value - previous_value, 2),
+                "severity": "critical",
+                "source": source,
+                "detected_at": timestamp,
+                "explanation": "product_sales_dropped_to_zero",
+            })
+        elif change_value is not None and change_value <= _SALES_DECLINE_THRESHOLD:
+            anomalies.append({
+                "id": f"sales-decline:{product_id}",
+                "type": "sales_decline",
+                "product": name,
+                "sku": sku,
+                "metric": "product_revenue",
+                "period": "last_30_days_vs_previous",
+                "expected_value": round(previous_value, 2),
+                "expected_range": {"lower": round(previous_value * 0.6, 2), "upper": None},
+                "observed_value": round(current_value, 2),
+                "delta": round(current_value - previous_value, 2),
+                "severity": "critical" if change_value <= -70 else "medium",
+                "source": source,
+                "detected_at": timestamp,
+                "explanation": "product_revenue_declined",
+            })
+    anomalies.sort(key=lambda item: float(item.get("delta") or 0))
+    return anomalies[:_MAX_SALES_ANOMALIES]
 
 
 def _operational_stock_anomalies(
@@ -463,6 +528,7 @@ def list_retail_inventory(
     """Retourne l'inventaire disponible sur les produits des sources activées."""
     display_limit = min(max(limit, 1), 500)
     catalog: list[dict] = []
+    products: list[dict] = []
     total = 0
     source_context: dict = {}
     freshness = None
@@ -473,6 +539,7 @@ def list_retail_inventory(
         source_context = product_result.get("source_context") or source_context
         freshness = product_result.get("data_freshness") or freshness
         total = int(product_result["pagination"]["total"])
+        products.extend(product_result["items"])
         catalog.extend(
             _inventory_item_from_product(product) for product in product_result["items"]
         )
@@ -485,6 +552,11 @@ def list_retail_inventory(
         source=source_context,
         population_complete=len(catalog) >= total,
     )
+    sales_anomalies = _sales_operational_anomalies(products, source=source_context)
+    if sales_anomalies:
+        anomalies = list(anomalies) + sales_anomalies
+        anomaly_state = "detected"
+        sample_size = max(sample_size, len(products))
 
     return {
         "inventory": catalog[:display_limit],

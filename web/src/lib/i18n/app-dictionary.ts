@@ -137,6 +137,9 @@ export type AppTranslations = {
     trendSubtitle: string;
     categorySplitTitle: string;
     regionalSalesTitle: string;
+    conversionUnavailable: string;
+    categorySplitUnavailable: string;
+    regionalSalesUnavailable: string;
     aiInsightTitle: string;
     aiInsightEmpty: string;
     aiInsightInsufficient: string;
@@ -461,6 +464,9 @@ const frApp: AppTranslations = {
     trendSubtitle: "Évolution temporelle consolidée multi-sources",
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
+    conversionUnavailable: "Indisponible : cette source n’inclut pas les visites ou sessions.",
+    categorySplitUnavailable: "Aucune colonne de catégorie n’est présente dans cette source.",
+    regionalSalesUnavailable: "Aucune colonne de région ou de pays n’est présente dans cette source.",
     aiInsightTitle: "Insight IA Avenqo",
     aiInsightEmpty: "Aucun flux de données disponible pour générer une analyse.",
     aiInsightInsufficient: "Données insuffisantes. Activez un jeu de données ou une source connectée.",
@@ -785,6 +791,9 @@ const enApp: AppTranslations = {
     trendSubtitle: "Multi-source consolidated timeline",
     categorySplitTitle: "Sales breakdown by category",
     regionalSalesTitle: "Regional sales distribution",
+    conversionUnavailable: "Unavailable: this source has no visit or session data.",
+    categorySplitUnavailable: "No category column is present in this source.",
+    regionalSalesUnavailable: "No region or country column is present in this source.",
     aiInsightTitle: "Avenqo AI Insight",
     aiInsightEmpty: "No data stream available to produce insights.",
     aiInsightInsufficient: "Insufficient data. Enable a dataset or connected source to continue.",

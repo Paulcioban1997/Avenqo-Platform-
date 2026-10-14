@@ -126,7 +126,7 @@ class CRMService:
         ) or 0
 
         total_tracked = completed_count + no_show_count
-        attendance_rate = round((completed_count / total_tracked * 100), 1) if total_tracked > 0 else 100.0
+        attendance_rate = round((completed_count / total_tracked * 100), 1) if total_tracked > 0 else None
 
         # 4. Total revenue generated (completed appointments + won opportunities)
         apt_revenue = self._session.scalar(
@@ -150,6 +150,7 @@ class CRMService:
             "active_clients": active_clients,
             "appointments_this_month": apts_this_month,
             "attendance_rate_percent": attendance_rate,
+            "attendance_tracked_count": total_tracked,
             "total_revenue_generated": round(total_revenue, 2),
             "currency": "CAD",
         }

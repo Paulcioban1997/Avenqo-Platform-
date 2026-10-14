@@ -382,7 +382,18 @@ class CentralAIService:
                 confirmed = confirmed and bool(tool_result.data.get("id"))
             elif tool_name == "list_available_slots":
                 confirmed = confirmed and isinstance(tool_result.data.get("slots"), list)
-            outcomes.append({"tool": tool_name, "success": bool(tool_result.success), "confirmed": confirmed})
+            error = None
+            if not tool_result.success:
+                payload = tool_result.data if isinstance(tool_result.data, dict) else {}
+                error = tool_result.error or payload.get("error")
+            outcome: dict[str, object] = {
+                "tool": tool_name,
+                "success": bool(tool_result.success),
+                "confirmed": confirmed,
+            }
+            if error:
+                outcome["error"] = str(error)
+            outcomes.append(outcome)
         return tuple(outcomes)
 
     def _log_result(

@@ -107,6 +107,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           active_clients: finiteMetric(kData?.active_clients),
           appointments_this_month: finiteMetric(kData?.appointments_this_month),
           attendance_rate_percent: finiteMetric(kData?.attendance_rate_percent),
+          attendance_tracked_count: finiteMetric(kData?.attendance_tracked_count),
           total_revenue_generated: finiteMetric(kData?.total_revenue_generated),
           currency: typeof kData?.currency === "string" ? kData.currency : undefined,
         });

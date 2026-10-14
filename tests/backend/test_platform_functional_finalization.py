@@ -1,10 +1,11 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi.routing import APIRoute
 
 from backend.app.routers.billing import _plan_display_price, subscription_response
 from backend.app.routers.crm import get_crm_kpis, get_crm_summary, router as crm_router
-from backend.app.routers.retail import _inventory_anomalies
+from backend.app.routers.retail import _inventory_anomalies, _sales_operational_anomalies
 from backend.app.services.billing_service import BillingService
 from payments.plans import get_plan
 
@@ -76,3 +77,40 @@ def test_small_catalog_reports_low_stock_anomaly() -> None:
     assert anomalies[0]["type"] == "low_stock"
     assert anomalies[0]["source"]["provider"] == "woocommerce"
     assert "superstore" not in str(anomalies).lower()
+
+
+def test_sales_operational_anomalies_use_real_revenue_drops() -> None:
+    anomalies = _sales_operational_anomalies(
+        [
+            {
+                "product_id": "p-1",
+                "name": "Binders",
+                "sku": "BIN",
+                "current_revenue": 0,
+                "previous_revenue": 420,
+                "change_percent": -100,
+            },
+            {
+                "product_id": "p-2",
+                "name": "Phones",
+                "sku": "PHN",
+                "current_revenue": 80,
+                "previous_revenue": 200,
+                "change_percent": -60,
+            },
+            {
+                "product_id": "p-3",
+                "name": "Stable chairs",
+                "sku": "CHR",
+                "current_revenue": 190,
+                "previous_revenue": 200,
+                "change_percent": -5,
+            },
+        ],
+        source={"selection": "dataset", "name": "Superstore-utf8.csv"},
+        detected_at=datetime(2026, 10, 14, tzinfo=timezone.utc),
+    )
+    types = {item["type"] for item in anomalies}
+    assert types == {"sales_drop", "sales_decline"}
+    assert {item["sku"] for item in anomalies} == {"BIN", "PHN"}
+    assert all(item["metric"] == "product_revenue" for item in anomalies)

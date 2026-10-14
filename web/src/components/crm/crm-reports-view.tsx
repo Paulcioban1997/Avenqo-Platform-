@@ -105,7 +105,10 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {finiteMetric(kpis.attendance_rate_percent) === null ? unavailable : `${metricText(kpis.attendance_rate_percent, locale, unavailable, 1)} %`}
+            {finiteMetric(kpis.attendance_rate_percent) === null
+              || (finiteMetric(kpis.attendance_rate_percent) === 100 && (finiteMetric(kpis.attendance_tracked_count) === 0 || (finiteMetric(kpis.attendance_tracked_count) === null && finiteMetric(kpis.appointments_this_month) === 0)))
+              ? unavailable
+              : `${metricText(kpis.attendance_rate_percent, locale, unavailable, 1)} %`}
           </div>
           <div className="text-[10px] text-slate-400">{t.crm.kpis.attendanceRate}</div>
         </div>

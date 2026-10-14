@@ -1595,13 +1595,18 @@ async def crm_copilot_chat(
         rev = kpis.get("total_revenue_generated", 0.0)
         clients_count = kpis.get("active_clients", 0)
         appts_count = kpis.get("appointments_this_month", 0)
-        att_rate = kpis.get("attendance_rate_percent", 0.0)
+        att_rate = kpis.get("attendance_rate_percent")
+        att_display = (
+            f"{att_rate:.1f} %"
+            if isinstance(att_rate, (int, float))
+            else ("insufficient data" if is_en else "données insuffisantes")
+        )
         if is_en:
             msg_reply = (
                 f"Live CRM performance overview:\n"
                 f"• Active clients: {clients_count}\n"
                 f"• Appointments this month: {appts_count}\n"
-                f"• Attendance rate: {att_rate:.1f} %\n"
+                f"• Attendance rate: {att_display}\n"
                 f"• Revenue generated: {rev:,.2f} {cur}\n"
                 f"All metrics are computed live from your tenant registry."
             )
@@ -1610,7 +1615,7 @@ async def crm_copilot_chat(
                 f"Synthèse de vos indicateurs CRM en direct :\n"
                 f"• Clients actifs : {clients_count}\n"
                 f"• Rendez-vous ce mois : {appts_count}\n"
-                f"• Taux de présence : {att_rate:.1f} %\n"
+                f"• Taux de présence : {att_display}\n"
                 f"• Revenus générés : {rev:,.2f} {cur}\n"
                 f"Toutes ces données sont issues du registre normalisé de votre entreprise."
             )

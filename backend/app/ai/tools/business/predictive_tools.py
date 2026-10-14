@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import ToolArguments
 from backend.app.ai.tools.business.predictive_base import PredictiveAITool
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+from pathlib import Path
+
+from backend.app.config.settings import get_settings
+from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services.portfolio_decision_service import (
+    PortfolioAnalysisUnavailable,
     build_anomaly_signal,
     build_churn_segmentation_signals,
     build_demand_signal,
@@ -21,6 +27,10 @@ from backend.app.services.portfolio_decision_service import (
     build_segmentation_signal,
 )
 from backend.app.services.prediction_runtime import resolve_active_model_type
+from backend.app.services.tenant_analytics_service import TenantAnalyticsService
+from backend.app.services.tenant_sales_service import TenantSalesService
+from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
 from shared.ai_engine.prediction.service import PredictionService
 
 RETAIL_MODULE_CODE = "retail"
@@ -111,28 +121,35 @@ class DemandForecastArgs(ToolArguments):
 class GetDemandForecastTool(PredictiveAITool):
     name = "get_demand_forecast"
     description = (
-        "Return the tenant's recent demand trend, based on the already trained demand model, "
-        "compared to historical demand."
+        "Return a demand/sales forecast from the tenant's selected retail source. "
+        "Uses a trained demand model when one exists, otherwise the latest weeks of "
+        "actual sales history. Never invents numbers; says why if history is too short."
     )
     input_schema = DemandForecastArgs
     required_permissions = ("ai:use",)
-    requires_capability = "demand_forecast"
+    requires_capability = None
     task_type = "demand"
+    evaluate_freshness_flag = False
 
     def __init__(self, session: Session, prediction_service: PredictionService) -> None:
         self._session, self._prediction_service = session, prediction_service
 
     async def build_prediction(self, context: ToolExecutionContext, arguments: DemandForecastArgs) -> ToolResult:
-        signal = build_demand_signal(self._session, context.tenant, RETAIL_MODULE_CODE, self._prediction_service)
-        return ToolResult(
-            success=True,
-            data={
-                "entity": signal.entity,
-                "demand_trend_value": signal.value,
-                "direction": signal.direction.value,
-            },
-            metadata={"model_capability": "demand", "task_code": "demand"},
-        )
+        try:
+            signal = build_demand_signal(self._session, context.tenant, RETAIL_MODULE_CODE, self._prediction_service)
+            return ToolResult(
+                success=True,
+                data={
+                    "available": True,
+                    "method": "trained_model",
+                    "entity": signal.entity,
+                    "demand_trend_value": signal.value,
+                    "direction": signal.direction.value,
+                },
+                metadata={"model_capability": "demand", "task_code": "demand"},
+            )
+        except PortfolioAnalysisUnavailable:
+            return _historical_forecast_result(self._session, context.tenant, self._prediction_service)
 
 
 class SalesForecastArgs(ToolArguments):
@@ -142,31 +159,37 @@ class SalesForecastArgs(ToolArguments):
 class GetSalesForecastTool(PredictiveAITool):
     name = "get_sales_forecast"
     description = (
-        "Return a sales forecast for the next periods, based on the tenant's already trained "
-        "forecasting model. Never trains a new model; the horizon defaults to what the model "
-        "was trained for."
+        "Return a sales forecast for the next periods from the tenant's selected retail source. "
+        "Uses a trained forecasting model when one exists, otherwise a historical weekly mean "
+        "from the latest dated sales. Never invents a forecast when history is insufficient."
     )
     input_schema = SalesForecastArgs
     required_permissions = ("ai:use",)
-    requires_capability = "sales_forecast"
+    requires_capability = None
     task_type = "weekly_forecast"
+    evaluate_freshness_flag = False
 
     def __init__(self, session: Session, prediction_service: PredictionService) -> None:
         self._session, self._prediction_service = session, prediction_service
 
     async def build_prediction(self, context: ToolExecutionContext, arguments: SalesForecastArgs) -> ToolResult:
-        signal = build_sales_forecast_signal(
-            self._session, context.tenant, RETAIL_MODULE_CODE, self._prediction_service, horizon=arguments.horizon
-        )
-        return ToolResult(
-            success=True,
-            data={
-                "forecast_points": signal.metadata.get("forecast_points"),
-                "horizon": signal.metadata.get("horizon"),
-                "forecasted_total": signal.value,
-            },
-            metadata={"model_capability": "forecasting", "task_code": "weekly_forecast"},
-        )
+        try:
+            signal = build_sales_forecast_signal(
+                self._session, context.tenant, RETAIL_MODULE_CODE, self._prediction_service, horizon=arguments.horizon
+            )
+            return ToolResult(
+                success=True,
+                data={
+                    "available": True,
+                    "method": "trained_model",
+                    "forecast_points": signal.metadata.get("forecast_points"),
+                    "horizon": signal.metadata.get("horizon"),
+                    "forecasted_total": signal.value,
+                },
+                metadata={"model_capability": "forecasting", "task_code": "weekly_forecast"},
+            )
+        except PortfolioAnalysisUnavailable:
+            return _historical_forecast_result(self._session, context.tenant, self._prediction_service)
 
 
 class AnomaliesArgs(ToolArguments):
@@ -231,3 +254,46 @@ class GetPredictionSummaryTool(PredictiveAITool):
             model_type = resolve_active_model_type(self._session, context.tenant, RETAIL_MODULE_CODE, task_code)
             available[label] = model_type is not None
         return ToolResult(success=True, data={"available_predictions": available})
+
+
+def _historical_forecast_result(
+    session: Session,
+    tenant: TenantContext,
+    prediction_service: PredictionService,
+) -> ToolResult:
+    settings = get_settings()
+    ingestion = CompanyDatasetIngestionService(
+        session,
+        LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets"),
+        DataImportPolicy(session),
+        settings.dataset_max_upload_mb * 1024 * 1024,
+    )
+    analytics = TenantAnalyticsService(session, ingestion)
+    summary = TenantSalesService(session, analytics, prediction_service).build(
+        tenant, period_key="all"
+    )
+    forecast = summary.get("forecast")
+    if not forecast:
+        reason = summary.get("forecast_unavailable_reason") or "insufficient_weekly_history"
+        return ToolResult(
+            success=True,
+            data={
+                "available": False,
+                "reason": reason,
+                "message": (
+                    "Pas assez d'historique hebdomadaire de ventes datées sur la source active "
+                    "pour une prévision (au moins deux semaines de ventes sont nécessaires)."
+                ),
+            },
+        )
+    return ToolResult(
+        success=True,
+        data={
+            "available": True,
+            "method": forecast.get("method"),
+            "granularity": forecast.get("granularity"),
+            "horizon": forecast.get("horizon"),
+            "forecasted_total": forecast.get("forecasted_total"),
+            "points": forecast.get("points"),
+        },
+    )

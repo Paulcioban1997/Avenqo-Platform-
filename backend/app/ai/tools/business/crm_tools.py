@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.base import CRMAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+from backend.app.ai.tools.natural_confirmation import is_explicit_booking_request
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
@@ -423,7 +424,7 @@ class CreateAppointmentTool(CRMAITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CreateAppointmentArgs) -> ToolResult:
-        if not arguments.confirmed:
+        if not arguments.confirmed and not is_explicit_booking_request(context.user_message):
             return ToolResult(
                 success=False,
                 data={"confirmation_required": True},
@@ -435,14 +436,18 @@ class CreateAppointmentTool(CRMAITool):
             return ToolResult(success=False, data={"error": "Format de date/heure invalide."})
 
         # Resolve only tenant-scoped exact identity or one unique CRM match.
+        requested_name = (arguments.client_name_or_id or "").strip()
+        placeholder_names = {"", "vous", "moi", "me", "client", "customer", "un client"}
+        if requested_name.casefold() in placeholder_names:
+            requested_name = (arguments.title or arguments.service_name or "Client").strip() or "Client"
         try:
-            cid = UUID(arguments.client_name_or_id)
+            cid = UUID(requested_name)
             client = self._crm.get_client(context.tenant.company_id, cid)
             resolution_error = None if client else "Client introuvable."
         except ValueError:
             client, resolution_error = self._crm.resolve_client_for_appointment(
                 context.tenant.company_id,
-                arguments.client_name_or_id,
+                requested_name,
                 email=arguments.client_email,
             )
 
@@ -453,8 +458,8 @@ class CreateAppointmentTool(CRMAITool):
                 if (arguments.client_email and self._crm.is_valid_customer_email(arguments.client_email))
                 else None
             )
-            if client_email or client_phone or arguments.client_name_or_id:
-                parts = arguments.client_name_or_id.strip().split(" ", 1)
+            if client_email or client_phone or requested_name:
+                parts = requested_name.split(" ", 1)
                 first_name = parts[0]
                 last_name = parts[1] if len(parts) > 1 else ""
                 client = self._crm.create_client(
@@ -470,10 +475,10 @@ class CreateAppointmentTool(CRMAITool):
             else:
                 return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
 
-        if not client.email and not client.phone:
+        if not client.email and not client.phone and not requested_name:
             return ToolResult(
                 success=False,
-                data={"error": "J'ai besoin du courriel ou du numéro de téléphone du client pour confirmer le rendez-vous."},
+                data={"error": "Indiquez le nom du client, plus un courriel ou un téléphone, pour confirmer le rendez-vous."},
             )
 
         service_id = None
@@ -486,7 +491,7 @@ class CreateAppointmentTool(CRMAITool):
         apt_data = {
             "client_id": client.id,
             "service_id": service_id,
-            "title": arguments.title,
+            "title": arguments.title or arguments.service_name or f"Rendez-vous - {client.full_name}",
             "start_time": start_dt,
             "duration_minutes": arguments.duration_minutes,
             "notes": arguments.notes,

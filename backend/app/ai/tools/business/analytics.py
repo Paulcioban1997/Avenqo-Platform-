@@ -6,13 +6,163 @@ tenant (Phase 26/27). Aucun entraînement de modèle n'est déclenché ici.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELD_ALIASES
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 
 TOP_PRODUCTS_METRICS = ("revenue", "quantity", "orders")
+_COLUMN_NORMALIZE = re.compile(r"[^a-z0-9]")
+_SESSION_ALIASES = ("session_id", "session", "visit_id", "ga_session_id")
+_SPLIT_LIMIT = 6
+
+
+def normalize_column_name(name: str) -> str:
+    return _COLUMN_NORMALIZE.sub("", str(name).lower())
+
+
+def resolve_canonical_source_column(
+    canonical: str,
+    canonical_columns: dict[str, str],
+    sample_columns: Iterable[str] | None = None,
+    extra_aliases: tuple[str, ...] = (),
+) -> str | None:
+    reverse = _reverse_mapping(canonical_columns)
+    mapped = reverse.get(canonical)
+    if mapped:
+        return mapped
+    alias_order = [
+        normalize_column_name(canonical),
+        *(normalize_column_name(alias) for alias in CANONICAL_FIELD_ALIASES.get(canonical, ())),
+        *(normalize_column_name(alias) for alias in extra_aliases),
+    ]
+    wanted = {alias: index for index, alias in enumerate(alias_order)}
+    candidates: list[str] = []
+    for source in canonical_columns:
+        if source not in candidates:
+            candidates.append(source)
+    if sample_columns is not None:
+        for source in sample_columns:
+            if source not in candidates:
+                candidates.append(str(source))
+    ranked = [
+        (wanted[key], column)
+        for column in candidates
+        if (key := normalize_column_name(column)) in wanted
+    ]
+    ranked.sort()
+    return ranked[0][1] if ranked else None
+
+
+def split_from_dimension_totals(
+    totals: dict[str, dict[str, float | int]],
+    *,
+    limit: int = _SPLIT_LIMIT,
+) -> dict[str, Any]:
+    ranked = sorted(
+        (
+            (label, stats)
+            for label, stats in totals.items()
+            if str(label).strip()
+        ),
+        key=lambda item: (-float(item[1].get("revenue") or 0), str(item[0])),
+    )
+    if not ranked:
+        return {"available": False, "reason": "missing_dimension", "items": []}
+    top, rest = ranked[:limit], ranked[limit:]
+    grand = sum(float(stats.get("revenue") or 0) for _, stats in ranked)
+
+    def as_item(label: str, stats: dict[str, float | int]) -> dict[str, Any]:
+        revenue = round(float(stats.get("revenue") or 0), 2)
+        return {
+            "label": label,
+            "revenue": revenue,
+            "orders": int(stats.get("orders") or 0),
+            "share": round((revenue / grand) * 100, 1) if grand else 0.0,
+        }
+
+    items = [as_item(str(label), stats) for label, stats in top]
+    if rest:
+        other_revenue = sum(float(stats.get("revenue") or 0) for _, stats in rest)
+        other_orders = sum(int(stats.get("orders") or 0) for _, stats in rest)
+        items.append(as_item("Other", {"revenue": other_revenue, "orders": other_orders}))
+    return {"available": True, "reason": None, "items": items}
+
+
+def compute_dimension_split(
+    prepared: PreparedCompanyDataset,
+    canonical: str,
+    *,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    extra_aliases: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    reverse = _reverse_mapping(prepared.canonical_columns)
+    sample = prepared.rows[0].keys() if prepared.rows else ()
+    column = resolve_canonical_source_column(
+        canonical, prepared.canonical_columns, sample, extra_aliases
+    )
+    if column is None:
+        return {"available": False, "reason": "missing_dimension", "items": []}
+    rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
+    totals: dict[str, dict[str, float | int]] = {}
+    for row in rows:
+        label = str(row.get(column) or "").strip()
+        if not label:
+            continue
+        stats = totals.setdefault(label, {"revenue": 0.0, "orders": 0})
+        amount = _as_float(_value(row, reverse, "total_amount"))
+        if amount is None:
+            quantity = _as_float(_value(row, reverse, "quantity"))
+            unit_price = _as_float(_value(row, reverse, "unit_price"))
+            if quantity is not None and unit_price is not None:
+                amount = quantity * unit_price
+        stats["revenue"] = float(stats["revenue"]) + (amount or 0.0)
+        stats["orders"] = int(stats["orders"]) + 1
+    return split_from_dimension_totals(totals)
+
+
+def compute_conversion_rate(
+    prepared: PreparedCompanyDataset,
+    *,
+    date_from: datetime | None,
+    date_to: datetime | None,
+) -> dict[str, Any]:
+    reverse = _reverse_mapping(prepared.canonical_columns)
+    sample = prepared.rows[0].keys() if prepared.rows else ()
+    session_column = resolve_canonical_source_column(
+        "session_id",
+        prepared.canonical_columns,
+        sample,
+        extra_aliases=_SESSION_ALIASES,
+    )
+    if session_column is None:
+        return {"available": False, "reason": "missing_sessions", "value": None}
+    rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
+    sessions: set[str] = set()
+    orders: set[str] = set()
+    order_rows = 0
+    for row in rows:
+        session = row.get(session_column)
+        if session not in {None, ""}:
+            sessions.add(str(session).strip())
+        order_id = _value(row, reverse, "order_id")
+        if order_id is not None and str(order_id).strip():
+            orders.add(str(order_id).strip())
+        else:
+            order_rows += 1
+    if not sessions:
+        return {"available": False, "reason": "missing_sessions", "value": None}
+    order_count = len(orders) or order_rows
+    return {
+        "available": True,
+        "reason": None,
+        "value": round((order_count / len(sessions)) * 100, 1),
+    }
 
 
 def with_dataset_rows(prepared: PreparedCompanyDataset, rows) -> PreparedCompanyDataset:
