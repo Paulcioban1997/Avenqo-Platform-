@@ -20,11 +20,13 @@ import {
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { MARKETING_SURFACE_COPY } from "@/lib/i18n/marketing-surface-copy";
 
 export function MarketingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
+  const marketing = MARKETING_SURFACE_COPY[locale];
 
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -36,12 +38,12 @@ export function MarketingView() {
     setGenerating(true);
     setTimeout(() => {
       setGeneratedCampaign({
-        title: "Campagne Flash — Réactivation Clients",
-        subject: "Offre Spéciale Exclusivité Avenqo pour Vous",
-        channel: "Email & SMS",
-        target_segment: "Clients inactifs > 30 jours",
+        title: marketing.draftTitle,
+        subject: marketing.draftSubject,
+        channel: marketing.draftChannel,
+        target_segment: marketing.draftSegment,
         predicted_roi: "3.8x",
-        content: `Bonjour,\n\nNous avons remarqué que vous n'aviez pas visité notre boutique récemment. Profitez d'un avantage exceptionnel de 15 % sur votre prochaine commande avec le code FLASH15.\n\nÀ très vite sur notre boutique !`,
+        content: marketing.draftContent,
       });
       setGenerating(false);
     }, 900);
@@ -78,7 +80,7 @@ export function MarketingView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{company.customersActive}</span>
+            <span>{marketing.kpiAudience}</span>
             <Users size={16} className="text-blue-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
@@ -91,7 +93,7 @@ export function MarketingView() {
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{t.navigation.marketingAi}</span>
+            <span>{marketing.kpiCampaigns}</span>
             <Megaphone size={16} className="text-purple-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
@@ -104,7 +106,7 @@ export function MarketingView() {
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{company.customersFrequency}</span>
+            <span>{marketing.kpiConversion}</span>
             <Target size={16} className="text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
@@ -117,7 +119,7 @@ export function MarketingView() {
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{company.customersAverageValue}</span>
+            <span>{marketing.kpiRoi}</span>
             <TrendingUp size={16} className="text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
@@ -165,7 +167,7 @@ export function MarketingView() {
 
         {generatedCampaign && (
           <div className="mt-4 p-4 rounded-xl bg-blue-50/50 dark:bg-[#111D3D]/60 border border-blue-100 dark:border-blue-900/40 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-900 dark:text-white">
                 {generatedCampaign.title}
               </span>
@@ -186,6 +188,10 @@ export function MarketingView() {
             <div className="p-3 rounded-lg bg-white dark:bg-[#0B132B] border border-slate-200/60 dark:border-white/[0.08] text-xs font-mono whitespace-pre-line text-slate-700 dark:text-slate-300">
               {generatedCampaign.content}
             </div>
+            <p className="text-[11px] text-slate-500">{marketing.activationHint}</p>
+            <button type="button" className="text-[11px] font-semibold underline">
+              {marketing.activate}
+            </button>
           </div>
         )}
       </div>

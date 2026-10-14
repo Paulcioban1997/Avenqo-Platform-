@@ -11,6 +11,7 @@ import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
 import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
+import { VoiceModulePermissionsSection } from "@/components/settings/voice-module-permissions";
 
 interface Capabilities {
   tenant_id: string;
@@ -228,6 +229,7 @@ export function VoiceModuleView() {
         <button type="button" disabled={busy} onClick={() => void configureOwnedNumber()} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40 dark:border-white/20">{selectionCopy[0]}</button>
       </section>}
       {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
+      {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
       {enabled && <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
         <h2 className="text-sm font-semibold">{t.shell.profile} · {messages[3]}</h2>
         <form onSubmit={saveVoicePin} className="flex flex-wrap items-end gap-3">

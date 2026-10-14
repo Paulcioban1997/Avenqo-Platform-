@@ -89,6 +89,10 @@ class ResetPasswordRequest(TokenRequest):
     )
 
 
+class PreferredLanguageRequest(BaseModel):
+    preferred_language: str = Field(min_length=2, max_length=16)
+
+
 class CompanyResponse(BaseModel):
     id: UUID
     name: str
