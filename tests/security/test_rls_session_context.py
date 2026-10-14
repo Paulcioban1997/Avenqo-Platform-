@@ -150,3 +150,25 @@ def test_retell_webhook_binds_tenant_after_company_id(monkeypatch) -> None:
     assert resolved is config
     assert returned_service is service
     assert observed == [(db, company_id)]
+
+
+def test_admin_support_enables_bypass_before_cross_tenant_audit() -> None:
+    from pathlib import Path
+
+    from backend.app.dependencies import admin as admin_mod
+
+    source = Path(admin_mod.__file__).read_text(encoding="utf-8")
+    apply_at = source.index("apply_tenant_rls(db, company_id, bypass=True)")
+    audit_at = source.index('action="support_retail_access"')
+    assert apply_at < audit_at
+
+
+def test_commerce_reconcile_bypasses_rls_before_cross_tenant_scan() -> None:
+    from pathlib import Path
+
+    from backend.app.services import commerce_sync_runner as runner_mod
+
+    source = Path(runner_mod.__file__).read_text(encoding="utf-8")
+    bypass_at = source.index("apply_tenant_rls(session, UUID(int=0), bypass=True)")
+    scan_at = source.index("select(CommerceConnection.id, CommerceConnection.company_id)")
+    assert bypass_at < scan_at

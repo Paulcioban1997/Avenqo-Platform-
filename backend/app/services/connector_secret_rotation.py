@@ -2,13 +2,17 @@
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from uuid import UUID
+
 from backend.app.models.commerce_connection import CommerceConnection
 from backend.app.models.crm import CRMCalendarConnection
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher, ConnectorSecretError
+from backend.app.services.tenant_rls import apply_tenant_rls
 
 
 def rotate_connector_secrets(session: Session, cipher: ConnectorSecretCipher, *, apply: bool = False) -> dict:
     """Caller commits only after all rows pass; an exception requires rollback."""
+    apply_tenant_rls(session, UUID(int=0), bypass=True)
     result = {"encrypted": 0, "already_primary": 0, "needs_rotation": 0, "rotated": 0, "verified": 0}
     for model in (CommerceConnection, CRMCalendarConnection):
         query = select(model.id, model.encrypted_credentials).where(model.encrypted_credentials.is_not(None))
