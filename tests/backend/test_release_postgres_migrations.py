@@ -42,7 +42,7 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0057_rls_invoices_ai_voice"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0058_sandbox_app_db_roles"
         assert "call_policy" in {c["name"] for c in inspect(connection).get_columns("voice_business_configs")}
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         assert inspect(connection).has_table("company_locale_profiles")
@@ -81,11 +81,11 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
             db.add(VoiceProvisioningClaim(phone_number=order.phone_number,order_id=order.id,company_id=company.id))
             tenants.append(company.id)
         db.commit()
-    role="voice_rls_rehearsal_"+uuid4().hex[:12]
-    with engine.begin() as connection:
-        connection.execute(text('CREATE ROLE "'+role+'" NOLOGIN NOSUPERUSER NOBYPASSRLS'))
-        connection.execute(text('GRANT USAGE ON SCHEMA public TO "'+role+'"'))
-        connection.execute(text('GRANT SELECT,UPDATE ON voice_provisioning_orders,voice_provisioning_claims,voice_telecom_costs TO "'+role+'"'))
+    from backend.app.services.postgres_app_role import APP_ROLE, role_is_constrained
+    with engine.connect() as connection:
+        assert role_is_constrained(connection, APP_ROLE)
+        assert connection.execute(text("SELECT rolcanlogin FROM pg_roles WHERE rolname=:n"), {"n": APP_ROLE}).scalar_one() is False
+    role = APP_ROLE
     for tenant in tenants:
         with engine.begin() as connection:
             connection.execute(text('SET LOCAL ROLE "'+role+'"'))
