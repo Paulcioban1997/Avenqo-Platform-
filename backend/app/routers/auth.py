@@ -13,7 +13,7 @@ from backend.app.core.error_localization import catalog_message, localized_api_m
 from backend.app.core.permissions import permissions_for
 from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_auth_service, get_current_identity
+from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
 from backend.app.models import AuditLogEntry, AuthSession, Company, CompanyMembership, User
 from backend.app.models.base import CompanyStatus, OnboardingStatus
 from backend.app.core.locale_catalog import BY_BCP47, BY_LOCALE, resolve_locale
@@ -453,6 +453,7 @@ def forgot_password(
     http_request: Request,
     request: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
+    notifier=Depends(get_account_notifier),
 ) -> MessageResponse:
     service.forgot_password(str(request.email))
     return MessageResponse(
@@ -461,7 +462,8 @@ def forgot_password(
             "auth",
             "forgotSuccess",
             "Si le compte existe, un email a été envoyé.",
-        )
+        ),
+        email_delivery_configured=bool(getattr(notifier, "email_delivery_configured", False)),
     )
 
 

@@ -855,6 +855,7 @@ def test_reset_password_revoque_les_sessions_existantes(auth_environment) -> Non
         json={"email": payload["email"]},
     )
     assert forgot.status_code == 200
+    assert forgot.json()["email_delivery_configured"] is True
     reset = client.post(
         "/api/v1/auth/password/reset",
         json={
