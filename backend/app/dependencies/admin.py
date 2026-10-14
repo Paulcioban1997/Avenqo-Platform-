@@ -12,6 +12,7 @@ from backend.app.dependencies.auth import CurrentIdentity, require_platform_admi
 from backend.app.models import Company
 from backend.app.services.admin_service import AdminService
 from backend.app.services.audit_log_service import AuditLogService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -25,6 +26,7 @@ def get_admin_tenant_context(
     del identity
     if db.get(Company, company_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    apply_tenant_rls(db, company_id, bypass=True)
     return TenantContext(company_id=company_id)
 
 

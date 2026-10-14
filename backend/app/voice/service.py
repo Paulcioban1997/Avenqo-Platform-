@@ -359,44 +359,39 @@ class VoiceOrchestrator:
         config: VoiceBusinessConfig,
         call_id: str,
         caller_phone: str | None = None,
+        *,
+        avenqo_call_id: str | None = None,
     ) -> VoiceCall:
+        del caller_phone
+        if isinstance(avenqo_call_id, str) and avenqo_call_id.strip():
+            try:
+                reference_id = UUID(str(avenqo_call_id))
+            except ValueError as exc:
+                raise LookupError("Invalid call correlation") from exc
+            call = self.db.scalar(
+                select(VoiceCall).where(
+                    VoiceCall.id == reference_id,
+                    VoiceCall.company_id == config.company_id,
+                    VoiceCall.config_id == config.id,
+                )
+            )
+            if call is None:
+                raise LookupError("Correlated tenant call not found")
+            if call.retell_call_id not in {None, call_id}:
+                raise PermissionError("Call correlation conflict")
+            if call.retell_call_id is None:
+                call.retell_call_id = call_id
+                self.db.flush()
+            return call
         call = self.db.scalar(
             select(VoiceCall).where(
+                VoiceCall.company_id == config.company_id,
                 VoiceCall.config_id == config.id,
                 (VoiceCall.retell_call_id == call_id) | (VoiceCall.telnyx_call_control_id == call_id),
             )
         )
-        if call:
-            return call
-        # Retell can issue function calls before its first call-status callback.
-        unmatched_calls = list(self.db.scalars(
-            select(VoiceCall)
-            .where(
-                VoiceCall.config_id == config.id,
-                VoiceCall.retell_call_id.is_(None),
-                VoiceCall.ended_at.is_(None),
-            )
-            .order_by(VoiceCall.created_at.desc())
-            .limit(10)
-        ).all())
-        if caller_phone:
-            call = next((item for item in unmatched_calls if item.caller_phone == caller_phone), None)
-        else:
-            call = unmatched_calls[0] if len(unmatched_calls) == 1 else None
-        if call:
-            call.retell_call_id = call_id
-            self.db.flush()
-            return call
-        call = VoiceCall(
-            company_id=config.company_id,
-            config_id=config.id,
-            retell_call_id=call_id,
-            caller_phone=caller_phone or "unknown",
-            status="in_progress",
-            started_at=datetime.now(timezone.utc),
-        )
-        self.db.add(call)
-        self.db.flush()
+        if call is None:
+            raise LookupError("Correlated tenant call not found")
         return call
 
     async def execute_tool(
@@ -406,9 +401,13 @@ class VoiceOrchestrator:
         action_id: str,
         tool_name: str,
         arguments: dict[str, Any],
+        avenqo_call_id: str | None = None,
     ) -> dict[str, Any]:
         started_at = perf_counter()
-        call = self._resolve_call(config, call_id)
+        try:
+            call = self._resolve_call(config, call_id, avenqo_call_id=avenqo_call_id)
+        except (LookupError, PermissionError) as exc:
+            return {"success": False, "error": str(exc)}
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected", "routing_outcome_unknown"}:
             return {"success": False, "error": "voice_call_not_active"}
         mutations = {"book_appointment": CreateAppointmentTool, "reschedule_appointment": UpdateAppointmentTool, "cancel_appointment": CancelAppointmentTool}
