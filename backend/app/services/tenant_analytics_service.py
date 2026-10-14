@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -21,6 +22,10 @@ from backend.app.models import (
 from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services import retail_kpi_cache
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.commerce_normalized_source import (
+    prepared_from_normalized_connection,
+    try_restore_connector_retail_dataset,
+)
 from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.models import CommerceConnectionStatus
 from shared.ai_engine.contracts import TenantContext
@@ -401,7 +406,29 @@ class TenantAnalyticsService:
             selected_id = active_source.dataset_id
             if active_source.connection_id is not None:
                 connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
-                selected_id = RetailSourceService._connection_dataset_id(connection) if connection is not None and connection.status == CommerceConnectionStatus.READY.value else None
+                if connection is not None and connection.status != CommerceConnectionStatus.DISCONNECTED.value:
+                    source_service = RetailSourceService(self._session)
+                    if not source_service._connector_artifact_ready(connection):
+                        restored = try_restore_connector_retail_dataset(
+                            self._session, self._ingestion, tenant, connection
+                        )
+                        if restored is not None:
+                            self._session.refresh(connection)
+                            datasets = tuple(
+                                self._session.scalars(
+                                    select(Dataset)
+                                    .where(Dataset.company_id == tenant.company_id)
+                                    .options(
+                                        selectinload(Dataset.training_jobs),
+                                        selectinload(Dataset.versions),
+                                        selectinload(Dataset.mapping),
+                                    )
+                                    .order_by(Dataset.uploaded_at.desc())
+                                ).all()
+                            )
+                    selected_id = RetailSourceService._connection_dataset_id(connection)
+                else:
+                    selected_id = None
             source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
             datasets = source_datasets
         elif enabled_dataset_ids is not None:
@@ -427,6 +454,25 @@ class TenantAnalyticsService:
         prepared, deferred_dataset_ids, summaries, retail_states = self._prepared_ready_datasets(
             tenant, source_datasets, max_prepared_rows=max_prepared_rows
         )
+        if (
+            not prepared
+            and active_source is not None
+            and active_source.connection_id is not None
+        ):
+            connection = self._session.get(CommerceConnection, active_source.connection_id)
+            if (
+                connection is not None
+                and connection.company_id == tenant.company_id
+                and connection.status != CommerceConnectionStatus.DISCONNECTED.value
+            ):
+                fallback = prepared_from_normalized_connection(
+                    self._session,
+                    tenant,
+                    connection,
+                    RetailSourceService._connection_dataset_id(connection) or connection.id,
+                )
+                if fallback is not None:
+                    prepared = (fallback,)
         prepared_ids = {item.dataset_id for item in prepared}
         relationships = tuple(
             self._session.scalars(
@@ -453,7 +499,7 @@ class TenantAnalyticsService:
         status = self._status(
             tenant_datasets, statuses, prepared, deferred_dataset_ids
         )
-        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets and not prepared:
             status = "source_unavailable"
         if enabled_dataset_ids == frozenset() and not retail_states:
             status = "no_data"
@@ -462,7 +508,7 @@ class TenantAnalyticsService:
                 status = "partial_ready" if deferred_dataset_ids or any(s != "ready" for s in source_statuses) else "ready"
             else:
                 status = "source_unavailable" if "SOURCE_UNAVAILABLE" in retail_states else "processing"
-        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets and not prepared:
             status = "source_unavailable"
         snapshot = TenantAnalyticsSnapshot(
             company=company,
@@ -518,6 +564,10 @@ class TenantAnalyticsService:
             try:
                 result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
             except Exception:
+                fallback = self._prepared_from_connector_records(tenant, dataset.id)
+                if fallback is not None:
+                    result.append(fallback)
+                    continue
                 _log.exception(
                     "Tenant analytics dataset unavailable endpoint=/api/v1/dashboard "
                     "status=degraded tenant=%s dataset=%s category=prepared_dataset_unavailable",
@@ -526,6 +576,30 @@ class TenantAnalyticsService:
                 )
                 continue
         return tuple(result), deferred_dataset_ids, summaries, retail_states
+
+    def _prepared_from_connector_records(
+        self,
+        tenant: TenantContext,
+        dataset_id: object,
+    ) -> PreparedCompanyDataset | None:
+        connections = self._session.scalars(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+            )
+        ).all()
+        for connection in connections:
+            if RetailSourceService._connection_dataset_id(connection) != dataset_id:
+                continue
+            prepared = prepared_from_normalized_connection(
+                self._session,
+                tenant,
+                connection,
+                dataset_id if isinstance(dataset_id, UUID) else None,
+            )
+            if prepared is not None:
+                return prepared
+        return None
 
     @staticmethod
     def _capabilities(

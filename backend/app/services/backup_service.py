@@ -67,6 +67,7 @@ class BackupMetadata:
     size_bytes: int
     artifacts_checksum_sha256: str | None = None
     artifacts_size_bytes: int | None = None
+    alembic_revision: str | None = None
 
     def to_safe_dict(self) -> dict:
         """Jamais de secret dans les métadonnées — uniquement des faits techniques."""
@@ -171,6 +172,67 @@ def _git_revision() -> str | None:
     except Exception:
         return None
     return result.stdout.strip() or None
+
+
+def read_alembic_revision(database_url: str) -> str | None:
+    """Return alembic_version.version_num without logging the connection URL."""
+    try:
+        kind = _database_kind(database_url)
+    except Exception:
+        return None
+    try:
+        if kind == "sqlite":
+            path = _sqlite_path_from_url(database_url)
+            connection = sqlite3.connect(str(path))
+            try:
+                row = connection.execute(
+                    "SELECT version_num FROM alembic_version LIMIT 1"
+                ).fetchone()
+                return str(row[0]) if row and row[0] else None
+            except sqlite3.Error:
+                return None
+            finally:
+                connection.close()
+        from sqlalchemy import create_engine, text
+
+        engine = create_engine(database_url)
+        try:
+            with engine.connect() as connection:
+                value = connection.execute(
+                    text("SELECT version_num FROM alembic_version LIMIT 1")
+                ).scalar()
+        finally:
+            engine.dispose()
+        return str(value) if value else None
+    except Exception:
+        return None
+
+
+def extract_alembic_revision_from_dump(sql_text: str) -> str | None:
+    """Read alembic_version from a pg_dump plain SQL archive without restoring it."""
+    if "alembic_version" not in sql_text:
+        return None
+    copy_marker = "COPY public.alembic_version"
+    copy_at = sql_text.find(copy_marker)
+    if copy_at == -1:
+        copy_marker = "COPY alembic_version"
+        copy_at = sql_text.find(copy_marker)
+    if copy_at != -1:
+        stdin_at = sql_text.find("FROM stdin;", copy_at)
+        if stdin_at != -1:
+            remainder = sql_text[stdin_at + len("FROM stdin;") :].lstrip()
+            revision = remainder.splitlines()[0].strip() if remainder else ""
+            if revision and revision != "\\." and " " not in revision:
+                return revision
+    import re
+
+    match = re.search(
+        r"INSERT INTO (?:public\.)?alembic_version[^;]*?'([^']+)'",
+        sql_text,
+    )
+    if match:
+        return match.group(1)
+    return None
 
 
 class LocalBackupStorage:
@@ -347,6 +409,7 @@ class BackupService:
             size_bytes=destination_path.stat().st_size,
             artifacts_checksum_sha256=artifacts_checksum,
             artifacts_size_bytes=artifacts_size,
+            alembic_revision=read_alembic_revision(self._settings.database_url),
         )
         metadata_path = self.root / f"{backup_id}.json"
         metadata_path.write_text(
@@ -385,6 +448,7 @@ class BackupService:
         filtered.setdefault("size_bytes", 0)
         filtered.setdefault("checksum_sha256", "")
         filtered.setdefault("database_type", "unknown")
+        filtered.setdefault("alembic_revision", None)
         return BackupMetadata(**filtered)
 
     def _resolve_backup_id(self, backup_id: str) -> tuple[Path, Path]:

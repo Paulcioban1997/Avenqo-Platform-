@@ -136,6 +136,18 @@ class Settings(BaseSettings):
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
     auth_cookie_secure: bool | None = Field(default=None, alias="AUTH_COOKIE_SECURE")
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+
+    def public_api_origin(self) -> str:
+        """Canonical public API origin for this environment. Never logs secrets."""
+        env = self.environment.strip().lower()
+        if env == "sandbox":
+            return "https://avenqo-platform-sandbox.up.railway.app"
+        if env == "production":
+            return "https://api.avenqo.ca"
+        return f"http://{self.host}:{self.port}"
+
+    def public_frontend_origin(self) -> str:
+        return self.frontend_url.strip().rstrip("/")
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")

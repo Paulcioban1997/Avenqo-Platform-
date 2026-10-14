@@ -390,8 +390,14 @@ class TenantCustomersService:
 
     @staticmethod
     def _safe_item(customer: dict[str, object]) -> dict[str, object]:
+        latest_row = customer.get("latest_row")
+        row = latest_row if isinstance(latest_row, dict) else {}
+        email = row.get("customer_email")
+        name = row.get("customer_name") or customer["customer_id"]
         return {
             "customer_id": customer["customer_id"],
+            "name": name,
+            "email": email,
             "orders": customer["orders"],
             "total_value": customer["total_value"],
             "first_purchase": customer["first_purchase"],
