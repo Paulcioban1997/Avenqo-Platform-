@@ -190,7 +190,7 @@ def test_media_generation_does_not_invent_kpis(auth_environment, monkeypatch):
         headers=headers(owner),
         json={"prompt": "Relancer les clients inactifs de la boutique"},
     )
-    assert generated.status_code == 201
+    assert generated.status_code == 201, generated.json()
     body = generated.json()["output_text"]
     assert "Relancer les clients inactifs" in body
     assert generated.json()["provider"] == "test-llm"

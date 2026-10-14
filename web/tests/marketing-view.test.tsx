@@ -11,16 +11,30 @@ function submit() {
   fireEvent.click(screen.getByRole("button", { name: "Envoyer" }));
 }
 describe("Marketing results and failures", () => {
+  it("does not request incomplete custom dates and sends the selected complete range", async () => {
+    session.tenant = "alpha";
+    const request = vi.fn(async () => ({ ok: true, json: async () => ({ available: false, summary: null, segments: [] }) }));
+    vi.stubGlobal("fetch", request); render(<MarketingView />);
+    await screen.findByText(/Cette analyse n’est pas disponible/, { selector: "p[role=status]" });
+    fireEvent.change(screen.getByLabelText("Période des indicateurs"), { target: { value: "custom" } });
+    fireEvent.change(screen.getByLabelText("Date de début"), { target: { value: "2017-01-01" } });
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Date de fin"), { target: { value: "2017-12-31" } });
+    await screen.findByText(/Cette analyse n’est pas disponible/, { selector: "p[role=status]" });
+    expect((request.mock.calls as unknown as [string, RequestInit?][])[1][0]).toContain("date_from=2017-01-01&date_to=2017-12-31");
+  });
   it("computes its displayed metrics from the actual selected-source response", async () => {
     session.tenant = "alpha";
     const request = vi.fn(async () => ({ ok: true, json: async () => ({ available: true, currency: "CAD",
       source_context: { name: "Superstore-utf8.csv" }, summary: { total_customers: 793, active_customers: 0, purchase_frequency: 6.32, average_customer_value: 2896.85 },
-      segments: [{ label: "vip", count: 127 }] }) }));
+      segments: [{ label: "vip", count: 127 }, { label: "other", count: 666 }] }) }));
     vi.stubGlobal("fetch", request); render(<MarketingView />);
     await screen.findByText("793");
     expect(screen.getByRole("status")).toHaveTextContent("Superstore-utf8.csv");
     expect(screen.getByText("127")).toBeVisible();
     expect(screen.getByRole("img", { name: "vip: 127 / 793" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Afficher un segment"), { target: { value: "vip" } });
+    expect(screen.queryByRole("img", { name: "other: 666 / 793" })).toBeNull();
     expect((request.mock.calls as unknown as [string, RequestInit?][])[0][0]).toBe("/api/v1/customers/summary?period=all&page_size=1");
   });
   it("never displays a late response from the previous tenant", async () => {

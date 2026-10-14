@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import compute_customer_portfolio
@@ -50,6 +50,8 @@ class TenantCustomersService:
         sort_direction: str = "desc",
         exact_customer_id: str | None = None,
         period_key: str = "last_30_days",
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> dict[str, Any]:
         if sort_by not in _SORT_FIELDS or sort_direction not in {"asc", "desc"}:
             raise InvalidCustomerQuery("Unsupported customer sorting")
@@ -94,6 +96,7 @@ class TenantCustomersService:
                 period_key,
                 timezone_name=getattr(snapshot.company, "timezone", None) or "UTC",
                 source=source,
+                date_from=date_from, date_to=date_to,
             )
         except ValueError as exc:
             raise InvalidCustomerQuery("Unsupported customer metrics period") from exc

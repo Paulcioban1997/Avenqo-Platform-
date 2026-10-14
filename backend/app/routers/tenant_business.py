@@ -57,6 +57,8 @@ def customers_summary(
     segment: str | None = Query(default=None, max_length=120),
     risk: str | None = Query(default=None, max_length=120),
     period: str = Query(default="last_30_days", max_length=32),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     sort_by: str = Query(default="total_value"),
     sort_direction: str = Query(default="desc"),
     tenant: TenantContext = Depends(get_tenant_context),
@@ -72,6 +74,7 @@ def customers_summary(
                 segment=segment,
                 risk=risk,
                 period_key=period,
+                date_from=date_from, date_to=date_to,
                 sort_by=sort_by,
                 sort_direction=sort_direction,
             )
