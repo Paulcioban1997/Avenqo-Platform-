@@ -152,6 +152,13 @@ def test_production_accepts_valid_canonical_configuration():
         FRONTEND_URL="https://avenqo.ca",
         CORS_ORIGINS=["https://avenqo.ca", "https://www.avenqo.ca"],
         ALLOWED_HOSTS=["api.avenqo.ca", "avenqo.ca", "backend.railway.internal"],
+        shopify_client_id=None,
+        shopify_client_secret=None,
+        woocommerce_callback_uri=None,
+        woocommerce_webhook_uri=None,
+        google_calendar_client_id=None,
+        google_calendar_client_secret=None,
+        connector_encryption_keys=[],
     )
     assert settings.environment == "production"
     assert settings.is_secure_cookie is True

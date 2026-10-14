@@ -22,6 +22,7 @@ from backend.app.services.account_notifications import (
     SMTPAccountNotifier,
 )
 from backend.app.services.auth_service import AuthenticationError, AuthService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 _bearer = HTTPBearer(auto_error=False)
@@ -95,6 +96,7 @@ def get_current_identity(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     service: AuthService = Depends(get_auth_service),
+    db: Session = Depends(get_db),
 ) -> CurrentIdentity:
     """Transforme le Bearer token ou le cookie HttpOnly en utilisateur et tenant vérifiés."""
 
@@ -134,14 +136,21 @@ def get_current_identity(
         ) from exc
     if request.url.path.endswith("/auth/me"):
         logger.info("auth_identity_resolved request_id=%s user_id=%s tenant_id=%s", request_id_var.get(), user.id, user.company_id)
+    apply_tenant_rls(db, user.company_id, bypass=bool(getattr(user, "is_platform_admin", False)))
     return CurrentIdentity(auth_session, user, token)
 
 
 def get_tenant_context(
     identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
 ) -> TenantContext:
     """Construit le contexte AI Engine depuis l'identité authentifiée."""
 
+    apply_tenant_rls(
+        db,
+        identity.user.company_id,
+        bypass=bool(getattr(identity.user, "is_platform_admin", False)),
+    )
     return TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
 
 

@@ -30,6 +30,15 @@ def test_connector_key_rotation_can_read_previous_ciphertext() -> None:
     }
 
 
+def test_settings_loaded_multifernet_still_decrypts_previous_tokens() -> None:
+    previous_key = Fernet.generate_key().decode("ascii")
+    current_key = Fernet.generate_key().decode("ascii")
+    encrypted = ConnectorSecretCipher([previous_key]).encrypt({"refresh_token": "legacy"})
+    cipher = ConnectorSecretCipher([current_key, previous_key])
+    assert cipher.decrypt(encrypted) == {"refresh_token": "legacy"}
+    assert cipher.encrypt({"refresh_token": "legacy"}) != encrypted
+
+
 def test_connector_cipher_rejects_missing_or_wrong_keys() -> None:
     with pytest.raises(ConnectorSecretError, match="not configured"):
         ConnectorSecretCipher([])
