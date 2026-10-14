@@ -136,7 +136,9 @@ def get_current_identity(
         ) from exc
     if request.url.path.endswith("/auth/me"):
         logger.info("auth_identity_resolved request_id=%s user_id=%s tenant_id=%s", request_id_var.get(), user.id, user.company_id)
-    apply_tenant_rls(db, user.company_id, bypass=bool(getattr(user, "is_platform_admin", False)))
+    # Platform admins keep their tenant GUC. Cross-tenant support must go
+    # through admin dependencies that re-check access, then set bypass.
+    apply_tenant_rls(db, user.company_id, bypass=False)
     return CurrentIdentity(auth_session, user, token)
 
 
@@ -146,11 +148,7 @@ def get_tenant_context(
 ) -> TenantContext:
     """Construit le contexte AI Engine depuis l'identité authentifiée."""
 
-    apply_tenant_rls(
-        db,
-        identity.user.company_id,
-        bypass=bool(getattr(identity.user, "is_platform_admin", False)),
-    )
+    apply_tenant_rls(db, identity.user.company_id, bypass=False)
     return TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
 
 

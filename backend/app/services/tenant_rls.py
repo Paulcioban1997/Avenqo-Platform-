@@ -72,6 +72,9 @@ def _set_context(session: Session, company_id: str, bypass: bool) -> None:
     session.execute(_CONTEXT_SQL, context)
 
 
+# Tables that must have PostgreSQL FORCE RLS + tenant policy.
+# 0049/0054 cover workspace + voice provisioning. 0056 covers the CRM,
+# commerce, dataset and audit tables that were listed here without a policy.
 TENANT_SCOPED_TABLES = (
     "voice_provisioning_orders",
     "voice_provisioning_claims",

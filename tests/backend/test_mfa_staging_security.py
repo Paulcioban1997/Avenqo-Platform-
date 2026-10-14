@@ -29,7 +29,10 @@ def test_identity_only_workspace_route_binds_verified_company(auth_environment, 
     client, factory, notifier = auth_environment
     login = account(client, notifier, "rls-staging@example.com", "RLS staging")
     observed = []
-    monkeypatch.setattr("backend.app.services.tenant_rls.apply_tenant_rls", lambda db,cid,**options: observed.append((cid,options)))
+    monkeypatch.setattr(
+        "backend.app.dependencies.auth.apply_tenant_rls",
+        lambda db, cid, **options: observed.append((cid, options)),
+    )
     response = client.get("/api/v1/workspace/team", headers=headers(login))
     assert response.status_code == 200
     assert observed

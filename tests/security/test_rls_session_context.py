@@ -79,6 +79,27 @@ def test_get_current_identity_applies_tenant_rls(monkeypatch) -> None:
     assert observed == [(db, company_id, False)]
 
 
+def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), company_id=company_id, is_platform_admin=True)
+    auth_session = SimpleNamespace()
+    db = object()
+    observed: list[tuple[object, object, bool]] = []
+
+    monkeypatch.setattr(
+        "backend.app.dependencies.auth.apply_tenant_rls",
+        lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
+    )
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
+    get_current_identity(
+        request,
+        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+        service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
+        db=db,
+    )
+    assert observed == [(db, company_id, False)]
+
+
 def test_get_tenant_context_applies_tenant_rls_on_auth_path() -> None:
     company_id = uuid4()
     user_id = uuid4()
