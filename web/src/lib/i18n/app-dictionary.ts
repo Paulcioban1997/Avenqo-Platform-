@@ -171,6 +171,7 @@ export type AppTranslations = {
     freshness: string;
     demandForecastTitle: string;
     forecastUnavailable: string;
+    forecastNeedHistory: string;
     forecastMethodModel: string;
     forecastMethodHistorical: string;
     forecastDisclaimer: string;
@@ -179,6 +180,7 @@ export type AppTranslations = {
     noAnomaliesMessage: string;
     recommendationsDescription: string;
     recommendationsUnavailable: string;
+    recommendationsNeedOrders: string;
     overstockAlert: string;
     stockoutRiskAlert: string;
   };
@@ -493,6 +495,7 @@ const frApp: AppTranslations = {
     freshness: "Fraîcheur",
     demandForecastTitle: "Prévisions de Demande & Réapprovisionnement",
     forecastUnavailable: "Aucune prévision n’est disponible pour ces données.",
+    forecastNeedHistory: "Les prévisions nécessitent au moins deux semaines de ventes datées sur la source sélectionnée.",
     forecastMethodModel: "Modèle de prévision actif",
     forecastMethodHistorical: "Moyenne historique hebdomadaire",
     forecastDisclaimer: "Modèle prédictif basé sur l'historique de ventes. Ne constitue pas une garantie contractuelle de vente.",
@@ -501,6 +504,7 @@ const frApp: AppTranslations = {
     noAnomaliesMessage: "Surveillez les changements qui demandent votre attention.",
     recommendationsDescription: "Avenqo classera les opportunités selon leur impact potentiel sur votre activité.",
     recommendationsUnavailable: "Aucune recommandation n’a été générée pour ces données.",
+    recommendationsNeedOrders: "Les recommandations commerciales nécessitent au moins 10 commandes distinctes sur la source sélectionnée.",
     overstockAlert: "Alerte Surstock Détecté",
     stockoutRiskAlert: "Risque de Rupture Imminente",
   },
@@ -815,6 +819,7 @@ const enApp: AppTranslations = {
     freshness: "Freshness",
     demandForecastTitle: "Demand Forecast & Replenishment Planning",
     forecastUnavailable: "No forecast is available for this data.",
+    forecastNeedHistory: "Forecasts require at least two weeks of dated sales on the selected source.",
     forecastMethodModel: "Active forecast model",
     forecastMethodHistorical: "Historical weekly average",
     forecastDisclaimer: "Predictive model based on historical sales velocity. Does not constitute a contractual sales guarantee.",
@@ -823,6 +828,7 @@ const enApp: AppTranslations = {
     noAnomaliesMessage: "Watch for changes that need your attention.",
     recommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
     recommendationsUnavailable: "No recommendations have been generated for this data.",
+    recommendationsNeedOrders: "Sales recommendations require at least 10 distinct orders on the selected source.",
     overstockAlert: "Excess Inventory Detected",
     stockoutRiskAlert: "Imminent Stockout Risk",
   },

@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -97,7 +99,7 @@ interface RetailInventoryAnomaly {
   id: string;
   product: string;
   sku: string;
-  expected_range: { lower: number; upper: number };
+  expected_range: { lower: number; upper: number | null };
   observed_value: number;
   delta: number;
   severity: string;
@@ -113,6 +115,7 @@ interface RetailSalesSummary {
     forecasted_total: number;
     points: Array<{ period: string; value: number }>;
   } | null;
+  forecast_unavailable_reason?: string | null;
 }
 
 interface RetailRecommendation {
@@ -163,6 +166,7 @@ export function RetailIntelligenceView({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const loadRevision = useRef(0);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -191,7 +195,7 @@ export function RetailIntelligenceView({
         apiFetch("/api/v1/retail/products?limit=100", { headers }),
         apiFetch("/api/v1/retail/orders?limit=100", { headers }),
         apiFetch("/api/v1/retail/customers?limit=100", { headers }),
-        apiFetch("/api/v1/retail/inventory?limit=100", { headers }),
+        apiFetch("/api/v1/retail/inventory?limit=500", { headers }),
         apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
         apiFetch("/api/v1/recommendations", { headers }),
       ]);
@@ -434,7 +438,30 @@ export function RetailIntelligenceView({
       </div>
 
       {/* 8-Tab Subnavigation Bar */}
-      <div className="overflow-x-auto pb-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets précédents" : "Previous tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      <div
+        ref={tabScrollRef}
+        className="overflow-x-auto pb-1 flex-1"
+        onKeyDown={(event) => {
+          const index = navTabs.findIndex((tab) => tab.id === activeTab);
+          if (event.key === "ArrowRight" && index < navTabs.length - 1) {
+            event.preventDefault();
+            setActiveTab(navTabs[index + 1].id as RetailSubTab);
+          }
+          if (event.key === "ArrowLeft" && index > 0) {
+            event.preventDefault();
+            setActiveTab(navTabs[index - 1].id as RetailSubTab);
+          }
+        }}
+      >
         <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] min-w-max">
           {navTabs.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -459,6 +486,15 @@ export function RetailIntelligenceView({
             );
           })}
         </nav>
+      </div>
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets suivants" : "Next tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {/* Tab 1: Overview backed by tenant source data */}
@@ -857,9 +893,12 @@ export function RetailIntelligenceView({
           </AvenqoCard>
         ) : (
           <EmptyState
-            icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
             title={retail.forecasts}
-            description={retail.forecastUnavailable}
+            description={
+              salesSummary?.forecast_unavailable_reason === "insufficient_weekly_history"
+                ? retail.forecastNeedHistory
+                : retail.forecastUnavailable
+            }
           />
         )
       )}
@@ -920,7 +959,7 @@ export function RetailIntelligenceView({
                           {anomalyCopy.observed}: {formatStock(anom.observed_value)} {retail.unit}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}–{formatStock(anom.expected_range.upper)} {retail.unit}
+                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}{anom.expected_range.upper == null ? "+" : `–${formatStock(anom.expected_range.upper)}`} {retail.unit}
                         </div>
                         <div className="text-[10px] text-slate-400">
                           {anomalyCopy.difference}: {formatStock(anom.delta)} {retail.unit}
@@ -989,7 +1028,7 @@ export function RetailIntelligenceView({
                 </div>
               ))
             ) : recommendationState === "INSUFFICIENT_DATA" ? (
-              <EmptyState title={retail.recommendations} description={t.common.insufficientData} />
+              <EmptyState title={retail.recommendations} description={retail.recommendationsNeedOrders} />
             ) : inventory.length === 0 || !inventoryHasStockData ? (
               <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             ) : (

@@ -42,6 +42,21 @@ interface VoiceStatus {
   recent_calls?: { id: string; status: string; started_at: string | null }[];
   data_freshness?: { freshness_status: string };
 }
+function voiceCallStatusLabel(status: string, locale: string): string {
+  const french = locale.startsWith("fr");
+  const labels: Record<string, [string, string]> = {
+    blocked_credits: ["Bloqué : crédits IA insuffisants", "Blocked: insufficient AI credits"],
+    blocked_announcement: ["Bloqué : message d'accueil requis", "Blocked: greeting announcement required"],
+    completed: ["Terminé", "Completed"],
+    failed: ["Échoué", "Failed"],
+    in_progress: ["En cours", "In progress"],
+    ringing: ["Sonnerie", "Ringing"],
+    answered: ["Répondu", "Answered"],
+  };
+  const pair = labels[status];
+  return pair ? (french ? pair[0] : pair[1]) : status.replaceAll("_", " ");
+}
+
 interface Offer {
   phone_number: string;
   is_orderable: boolean;
@@ -238,7 +253,7 @@ export function VoiceModuleView() {
         {pinMessage && <span role="status" className="text-xs">{pinMessage}</span>}
         </form>
       </section>}
-      {!!currentStatus?.recent_calls?.length && <section className="space-y-2 text-sm"><h2 className="font-semibold">{health.calls}</h2>{currentStatus.recent_calls.map(call => <div key={call.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-white/10"><span>{call.started_at ? new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short', timeZone: active.timezone }).format(new Date(call.started_at)) : t.common.insufficientData}</span><span>{call.status}</span></div>)}</section>}
+      {!!currentStatus?.recent_calls?.length && <section className="space-y-2 text-sm"><h2 className="font-semibold">{health.calls}</h2>{currentStatus.recent_calls.map(call => <div key={call.id} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-white/10"><span>{call.started_at ? new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short', timeZone: active.timezone }).format(new Date(call.started_at)) : t.common.insufficientData}</span><span>{voiceCallStatusLabel(call.status, locale)}</span></div>)}</section>}
       <section className="space-y-4 border-t border-slate-200 pt-5 dark:border-white/10">
         <h2 className="font-semibold">{selectionCopy[0]}</h2>
         {!enabled || !canManageVoice ? <Link href="/settings" className="inline-flex items-center gap-2 text-sm underline"><Settings size={15} />{t.navigation.settings}</Link> : <>

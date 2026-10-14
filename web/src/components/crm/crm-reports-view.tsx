@@ -134,7 +134,7 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{t.crm.tabs.clients}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {metricText(summary?.total_leads, locale, unavailable)}
+              {metricText(summary?.total_contacts ?? summary?.total_leads ?? kpis.active_clients, locale, unavailable)}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
@@ -146,7 +146,7 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{t.crm.actions.modify}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {metricText(summary?.pending_tasks_count, locale, unavailable)}
+              {metricText(summary?.pending_tasks_count ?? summary?.pending_follow_ups, locale, unavailable)}
             </div>
           </div>
         </div>

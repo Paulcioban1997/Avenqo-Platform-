@@ -364,13 +364,29 @@ class CreateOpportunityRequest(BaseModel):
 # --- KPI & Summary Endpoints ---
 
 @router.get("/kpis")
-@router.get("/summary")
 def get_crm_kpis(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
     """Retourne les KPIs réels calculés directement depuis la base du tenant."""
     return service.get_kpis(tenant.company_id)
+
+
+@router.get("/summary")
+def get_crm_summary(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Combine les KPI opérationnels et l'intelligence pipeline du tenant."""
+    kpis = service.get_kpis(tenant.company_id)
+    intelligence = CRMIntelligenceService(db).get_crm_summary(tenant.company_id)
+    return {
+        **kpis,
+        **intelligence,
+        "pending_tasks_count": intelligence.get("pending_follow_ups", 0),
+        "available": True,
+    }
 
 
 # --- Global CRM Search ---

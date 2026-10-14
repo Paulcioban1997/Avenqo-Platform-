@@ -147,17 +147,40 @@ class BillingService:
     ) -> list[dict[str, Any]]:
         offers = list(self._session.scalars(select(AICreditPackOffer).order_by(AICreditPackOffer.credits)))
         if offers:
-            return [{"code": offer.code, "name": offer.name, "credits": offer.credits,
-                     "price_usd": offer.price_cents / 100, "price_cad": offer.price_cents / 100,
-                     "price_cents": offer.price_cents, "currency": "CAD", "enabled": offer.enabled,
-                     "tax_exclusive": True} for offer in offers]
+            return self._unique_credit_packs([{
+                "code": offer.code, "name": offer.name, "credits": offer.credits,
+                "price_usd": offer.price_cents / 100, "price_cad": offer.price_cents / 100,
+                "price_cents": offer.price_cents, "currency": "CAD", "enabled": offer.enabled,
+                "tax_exclusive": True,
+            } for offer in offers])
         # Existing test installations and delayed checkouts retain their legacy terms.
         account = self._session.scalar(select(BillingAccount).where(BillingAccount.company_id == company_id))
         plan_code = account.plan_code if account is not None else fallback_plan_code
-        return [{"code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd,
-                 "price_cad": pack.price_cad, "price_cents": pack.price_cad * 100, "currency": "CAD"}
-                for pack in AI_CREDIT_PACKS if pack.plan_code.value == ("base" if plan_code == "demo" else plan_code)
-                and pack.code.startswith("credits_")]
+        return self._unique_credit_packs([{
+            "code": pack.code, "credits": pack.credits, "price_usd": pack.price_usd,
+            "price_cad": pack.price_cad, "price_cents": pack.price_cad * 100, "currency": "CAD",
+        } for pack in AI_CREDIT_PACKS if pack.plan_code.value == ("base" if plan_code == "demo" else plan_code)
+            and pack.code.startswith("credits_")])
+
+    @staticmethod
+    def _unique_credit_packs(packs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        unique: dict[int, dict[str, Any]] = {}
+        for pack in packs:
+            credits = int(pack.get("credits") or 0)
+            price_cents = int(pack.get("price_cents") or 0)
+            if credits <= 0 or price_cents <= 0:
+                continue
+            existing = unique.get(credits)
+            code = str(pack.get("code") or "")
+            prefer_canonical = existing is None or (
+                code.startswith("credits_")
+                and not str(existing.get("code") or "").startswith("credits_")
+            ) or (
+                pack.get("enabled") is not False and existing.get("enabled") is False
+            )
+            if prefer_canonical:
+                unique[credits] = pack
+        return [unique[key] for key in sorted(unique)]
 
     def get_credit_balance(self, company_id: UUID, fallback_plan_code: str) -> dict[str, Any]:
         account = self._session.scalar(

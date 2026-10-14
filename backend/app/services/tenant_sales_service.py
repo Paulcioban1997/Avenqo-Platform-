@@ -90,6 +90,7 @@ class TenantSalesService:
                 "strongest_period": None,
                 "weakest_period": None,
                 "forecast": None,
+                "forecast_unavailable_reason": "no_sales_source",
                 "metrics": [],
             }
 
@@ -162,6 +163,7 @@ class TenantSalesService:
         points = trend["points"]
         strongest = max(points, key=lambda item: item["revenue"]) if points else None
         weakest = min(points, key=lambda item: item["revenue"]) if points else None
+        forecast = self._forecast(tenant, snapshot)
         return {
             **base,
             "period": {"key": period_key, **bounds},
@@ -169,7 +171,8 @@ class TenantSalesService:
             "trend": trend,
             "strongest_period": strongest,
             "weakest_period": weakest,
-            "forecast": self._forecast(tenant, snapshot),
+            "forecast": forecast,
+            "forecast_unavailable_reason": None if forecast else "insufficient_weekly_history",
             "metrics": structured_metrics,
         }
 

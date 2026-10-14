@@ -1,0 +1,12 @@
+{
+  "name": "Avenqo",
+  "short_name": "Avenqo",
+  "icons": [
+    { "src": "/brand/avenqo-icon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/brand/avenqo-icon.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#0B132B",
+  "background_color": "#0B132B",
+  "display": "standalone",
+  "start_url": "/"
+}

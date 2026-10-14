@@ -59,9 +59,10 @@ class CRMIntelligenceService:
 
         high_risk_customers = sum(1 for c in contacts if c.churn_risk == "high")
 
-        # Determine if CRM data is simulated/demo mode
-        has_real_crm_source = False
-        crm_demo_mode = not has_real_crm_source or all(getattr(l, "source", "") in {"demo", "seed", "onboarding", "website"} for l in leads)
+        demo_sources = {"demo", "seed", "onboarding"}
+        crm_demo_mode = bool(leads) and all(
+            (getattr(lead, "source", "") or "") in demo_sources for lead in leads
+        )
 
         return {
             "total_leads": total_leads,

@@ -455,8 +455,8 @@ class _CrmPageState extends State<CrmPage> with SingleTickerProviderStateMixin {
                       semanticLabel: AvenqoLocaleScope.translationsOf(context).company.navCustomersLabel,
                       minWidth: 950,
                       columns: [
-                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customerSegmentHighValue)),
-                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersSearch)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.employeesColumnName)),
+                        DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.employeesColumnEmail)),
                         DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.employeesColumnStatus)),
                         DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).dashboardHome.planLabel)),
                         DataColumn(label: Text(AvenqoLocaleScope.translationsOf(context).company.customersRisk)),
