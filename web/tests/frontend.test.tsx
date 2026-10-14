@@ -28,6 +28,10 @@ import { GlobalSourceSelector } from "@/components/shell/global-source-selector"
 import { CRMCopilotPanel } from "@/components/crm/crm-copilot-panel";
 import { SettingsView } from "@/components/settings/settings-view";
 import { VoiceModuleView } from "@/components/settings/voice-module-view";
+import { VOICE_PERMISSIONS_COPY } from "@/lib/i18n/voice-permissions-copy";
+import { MODULE_PREVIEW_COPY } from "@/lib/i18n/module-preview-copy";
+import { ModulePreview } from "@/components/common/module-preview";
+import { reconcileLoginLocale } from "@/lib/i18n/locale-persistence";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -46,6 +50,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("public trust content", () => {
@@ -290,6 +295,32 @@ describe("native Voice module read-only selection", () => {
     expect(window.localStorage.getItem('voice-pin')).toBeNull();
     expect(screen.queryByText('907182')).not.toBeInTheDocument();
     expect(calls.some(call => /\/tools\/|\/sessions\//.test(call.path))).toBe(false);
+  });
+
+  it("translates Voice permission chrome while keeping action_code checkbox values", async () => {
+    window.localStorage.setItem("avenqo-locale", "ro");
+    const grants: { module_code: string; action_code: string; granted: boolean }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input, options) => {
+      const path = String(input);
+      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "owner", role: "owner" }, company: { id: "voice-tenant", name: "Voice Company" } });
+      if (path.endsWith("/voice/capabilities")) return Response.json({ tenant_id: "voice-tenant", subscription_plan: "base", subscription_status: "active", enabled_modules: ["voice"], plan_compatible_modules: ["voice"], available_agents: ["retail"], permissions: ["ai:use", "modules:manage"], locale: "ro", timezone: "America/Toronto", authorized_sources: { sources: [] }, language_matrix: [] });
+      if (path.endsWith("/voice/status")) return Response.json({ voice_status: "NOT_CONFIGURED", business_number: null, call_count: 0, call_minutes: 0, voice_ai_credits_charged: 0, recent_calls: [], data_freshness: { freshness_status: "SYNCED" } });
+      if (path.endsWith("/voice/module-permissions") && (options?.method ?? "GET") === "GET") {
+        return Response.json({ modules: [{ module_code: "crm", active: true, locked: false, actions: [{ action_code: "create_appointment", granted: false, locked: false, tools: ["create_appointment"] }] }] });
+      }
+      if (path.endsWith("/voice/module-permissions") && options?.method === "PUT") {
+        grants.push(...JSON.parse(String(options.body)).grants);
+        return Response.json({ modules: [{ module_code: "crm", active: true, locked: false, actions: [{ action_code: "create_appointment", granted: true, locked: false, tools: ["create_appointment"] }] }] });
+      }
+      if (path.endsWith("/sources") || path.endsWith("/sources/context")) return Response.json(path.endsWith("/sources/context") ? { state: "NO_SOURCE_SELECTED", sources: [] } : []);
+      return Response.json({});
+    }));
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    expect(await screen.findByText(VOICE_PERMISSIONS_COPY.ro.title)).toBeInTheDocument();
+    const checkbox = await screen.findByRole("checkbox", { name: "create_appointment" });
+    expect(checkbox).toHaveAttribute("value", "create_appointment");
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(grants).toEqual([{ module_code: "crm", action_code: "create_appointment", granted: true }]));
   });
 });
 
@@ -858,6 +889,26 @@ describe("Copilot production response", () => {
     expect(requestKeys).toHaveLength(2);
     expect(requestKeys[0]).toBeTruthy();
     expect(requestKeys[1]).toBe(requestKeys[0]);
+  });
+});
+
+describe("module preview locale", () => {
+  it("uses French chrome for fr-FR instead of English", async () => {
+    window.localStorage.setItem("avenqo-locale", "fr-FR");
+    render(
+      <LocaleProvider>
+        <ModulePreview titleEn="English title" titleFr="Titre français" descriptionEn="English description" descriptionFr="Description française" featuresEn={["English feature"]} featuresFr={["Fonctionnalité française"]} />
+      </LocaleProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Titre français"));
+    expect(screen.getByText(MODULE_PREVIEW_COPY["fr-FR"].restrictedAccess)).toBeInTheDocument();
+    expect(screen.queryByText(MODULE_PREVIEW_COPY.en.restrictedAccess)).not.toBeInTheDocument();
+  });
+});
+
+describe("login locale reconciliation", () => {
+  it("keeps an explicit client locale over company preferred_language", () => {
+    expect(reconcileLoginLocale("en", "ja", true)).toEqual({ locale: "ja", persistCompany: true });
   });
 });
 

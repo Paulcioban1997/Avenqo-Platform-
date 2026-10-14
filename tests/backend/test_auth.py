@@ -538,6 +538,31 @@ def test_renvoi_masque_lexistence_du_compte_si_https_echoue(
         assert user.email_verified_at is None
 
 
+def test_preferred_language_patch_updates_company_without_changing_currency(auth_environment) -> None:
+    client, session_factory, notifier = auth_environment
+    payload = registration_payload("locale@acme.ca", "Locale Company") | {"preferred_language": "fr"}
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+    tokens = verify_and_login(client, notifier, "locale@acme.ca")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["company"]["preferred_language"] == "fr"
+
+    updated = client.patch("/api/v1/auth/preferred-language", json={"preferred_language": "ro"}, headers=headers)
+    assert updated.status_code == 200
+    assert updated.json()["preferred_language"] == "ro"
+
+    rejected = client.patch("/api/v1/auth/preferred-language", json={"preferred_language": "xx"}, headers=headers)
+    assert rejected.status_code == 422
+
+    with session_factory() as session:
+        company = session.scalar(select(Company).where(Company.name == "Locale Company"))
+        assert company is not None
+        assert company.preferred_language == "ro"
+        assert company.currency_code == "CAD"
+
+
 def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     payload = registration_payload("profile@acme.ca", "Profile Company") | {
