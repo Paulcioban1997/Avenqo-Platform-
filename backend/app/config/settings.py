@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", alias="ENVIRONMENT")
     debug: bool = Field(default=True, alias="DEBUG")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
-    host: str = Field(default="127.0.0.1", alias="HOST")
+    host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_origins: Annotated[List[str], NoDecode] = Field(
@@ -366,6 +366,23 @@ class Settings(BaseSettings):
     billing_legal_business_name: str | None = Field(default=None, alias="BILLING_LEGAL_BUSINESS_NAME")
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def validate_database_url(cls, value: object) -> object:
+        """Valide que DATABASE_URL n'est pas vide/blanc pour éviter une erreur
+        SQLAlchemy cryptique ("Could not parse SQLAlchemy URL") au démarrage."""
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError(
+                    "DATABASE_URL ne peut pas être vide. Vérifiez que la variable "
+                    "d'environnement DATABASE_URL est correctement définie (ex. "
+                    "fournie par le service de base de données Railway)."
+                )
+            return stripped
+        return value
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod
