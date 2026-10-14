@@ -19,6 +19,7 @@ from backend.app.services.commerce_sync_service import (
     CommerceSyncAlreadyRunning,
     CommerceSyncService,
 )
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class CommerceSyncRunner:
         max_pages_per_entity: int | None = None,
     ) -> None:
         with self._session_factory() as session:
+            apply_tenant_rls(session, tenant.company_id)
             service = self._service_factory(session)
             try:
                 if max_pages_per_entity is None:
@@ -79,6 +81,7 @@ class CommerceSyncRunner:
         connection_id: UUID,
     ) -> None:
         with self._session_factory() as session:
+            apply_tenant_rls(session, tenant.company_id)
             service = self._service_factory(session)
             try:
                 await service.initialize_woocommerce(tenant, connection_id)
@@ -94,6 +97,7 @@ class CommerceSyncRunner:
 
     async def reconcile_active(self) -> int:
         with self._session_factory() as session:
+            apply_tenant_rls(session, UUID(int=0), bypass=True)
             candidates = list(
                 session.execute(
                     select(CommerceConnection.id, CommerceConnection.company_id).where(
@@ -114,6 +118,7 @@ class CommerceSyncRunner:
         for connection_id, company_id in candidates:
             tenant = TenantContext(company_id=company_id)
             with self._session_factory() as session:
+                apply_tenant_rls(session, company_id)
                 service = self._service_factory(session)
                 try:
                     service.reserve(tenant, connection_id)
@@ -136,6 +141,7 @@ class CommerceSyncRunner:
             if receipt is None or receipt.status == "PROCESSED":
                 return
             tenant = TenantContext(company_id=receipt.company_id)
+            apply_tenant_rls(session, receipt.company_id)
             service = self._service_factory(session)
             try:
                 if service.is_active(tenant, receipt.connection_id):
@@ -254,6 +260,7 @@ class CommerceSyncRunner:
         session: Session,
         receipt: CommerceWebhookReceipt,
     ) -> None:
+        apply_tenant_rls(session, receipt.company_id)
         connection = session.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.id == receipt.connection_id,

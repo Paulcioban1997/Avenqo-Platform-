@@ -18,10 +18,12 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 from backend.app.models.commerce_connection import CommerceConnection
 from backend.app.models.crm import CRMCalendarConnection
 from backend.app.services.connector_secret_cipher import ConnectorSecretError
+from backend.app.services.tenant_rls import apply_tenant_rls
 
 ENCRYPTED_CREDENTIAL_MODELS: tuple[type, ...] = (CommerceConnection, CRMCalendarConnection)
 UNDECRYPTABLE = "undecryptable"
@@ -105,6 +107,7 @@ class ConnectorKeyRotationService:
         except (ValueError, UnicodeEncodeError) as exc:
             raise ConnectorSecretError("Connector encryption key is invalid") from exc
         self._session = session
+        apply_tenant_rls(session, UUID(int=0), bypass=True)
         self._primary_fp, self._primary = self._fernets[0]
         self._multi = MultiFernet([f for _, f in self._fernets])
 

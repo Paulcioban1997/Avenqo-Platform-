@@ -19,6 +19,22 @@ from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 
+def enable_admin_rls_bypass(
+    identity: CurrentIdentity = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+) -> CurrentIdentity:
+    """Allow platform-admin Command Center routes to read and write all audit rows.
+
+    ``get_current_identity`` keeps the admin on their own tenant GUC. The
+    ``/admin`` router is already fail-closed behind ``require_platform_admin``;
+    0056 FORCE RLS would otherwise hide other tenants' ``audit_log_entries``
+    and reject platform-level inserts with ``company_id`` NULL.
+    """
+
+    apply_tenant_rls(db, identity.company_id, bypass=True)
+    return identity
+
+
 def get_admin_tenant_context(
     company_id: UUID,
     identity: CurrentIdentity = Depends(require_platform_admin),
@@ -37,9 +53,9 @@ def get_admin_tenant_context(
     member_access = membership is not None and "data:read" in permissions_for(membership.role)
     if not (own_access or member_access or support_can_read_retail(db, company_id, identity.user_id)):
         raise HTTPException(403, "Un accès support explicite, valide et limité est requis")
+    apply_tenant_rls(db, company_id, bypass=True)
     AuditLogService(db).record(actor_user_id=identity.user_id, company_id=company_id,
                                action="support_retail_access", target_type="company", target_id=str(company_id))
-    apply_tenant_rls(db, company_id, bypass=True)
     return TenantContext(company_id=company_id, user_id=identity.user_id)
 
 

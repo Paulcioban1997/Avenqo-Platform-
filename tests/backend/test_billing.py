@@ -385,6 +385,23 @@ def test_enterprise_quote_success_message_uses_accept_language(billing_environme
     assert body["message"].startswith("Ihre Enterprise-Angebotsanfrage ist eingegangen.")
 
 
+def test_subscription_webhook_rejects_metadata_customer_mismatch(billing_environment) -> None:
+    client, provider, notifier = billing_environment
+    login_a = create_owner(client, notifier, email="meta-a@acme.ca", company_name="Meta A")
+    login_b = create_owner(client, notifier, email="meta-b@acme.ca", company_name="Meta B")
+    company_a = login_a["company"]["id"]
+    company_b = login_b["company"]["id"]
+    provider.events.append(subscription_event(company_a, event_id="evt_meta_a"))
+    assert client.post("/api/v1/billing/webhook", content=b"{}", headers={"Stripe-Signature": "valid_signature"}).status_code == 200
+    provider.events.append(subscription_event(company_b, event_id="evt_meta_b"))
+    assert client.post("/api/v1/billing/webhook", content=b"{}", headers={"Stripe-Signature": "valid_signature"}).status_code == 200
+    mismatched = subscription_event(company_a, event_id="evt_meta_mismatch")
+    mismatched["data"]["object"]["customer"] = f"cus_{company_b}"
+    provider.events.append(mismatched)
+    response = client.post("/api/v1/billing/webhook", content=b"{}", headers={"Stripe-Signature": "valid_signature"})
+    assert response.status_code == 400
+
+
 def test_country_currency_selects_base_price_and_webhook_plan(
     billing_environment,
 ) -> None:

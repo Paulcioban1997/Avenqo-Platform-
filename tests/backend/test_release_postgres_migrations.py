@@ -42,14 +42,24 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0055_voice_call_policy"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0056_rls_crm_commerce_datasets"
         assert "call_policy" in {c["name"] for c in inspect(connection).get_columns("voice_business_configs")}
         assert connection.execute(text("SELECT value FROM release_preservation_probe")).scalar_one() == "test-only-preserve"
         assert inspect(connection).has_table("company_locale_profiles")
         assert inspect(connection).has_table("voice_module_permissions")
         assert inspect(connection).has_table("voice_provisioning_orders")
         assert inspect(connection).has_table("voice_provisioning_claims")
-        for table in ("voice_provisioning_orders", "voice_provisioning_claims", "voice_telecom_costs"):
+        for table in (
+            "voice_provisioning_orders",
+            "voice_provisioning_claims",
+            "voice_telecom_costs",
+            "datasets",
+            "commerce_connections",
+            "crm_clients",
+            "crm_appointments",
+            "crm_notes",
+            "audit_log_entries",
+        ):
             protected = connection.execute(text("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname=:table"), {"table": table}).scalar_one()
             assert protected
     # Exercise the real PostgreSQL policies as a non-superuser, not just SQLite filters.

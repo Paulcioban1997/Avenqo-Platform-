@@ -19,6 +19,7 @@ from backend.app.database import get_db
 from backend.app.config.settings import Settings, get_settings
 
 from backend.app.dependencies.admin import (
+    enable_admin_rls_bypass,
     get_admin_service,
     get_admin_tenant_context,
     get_audit_log_service,
@@ -82,6 +83,7 @@ router = APIRouter(
     tags=["avenqo-admin"],
     dependencies=[
         Depends(require_platform_admin),
+        Depends(enable_admin_rls_bypass),
         Depends(rate_limit("admin", "rate_limit_admin_per_minute")),
     ],
 )

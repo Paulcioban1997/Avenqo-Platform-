@@ -79,6 +79,27 @@ def test_get_current_identity_applies_tenant_rls(monkeypatch) -> None:
     assert observed == [(db, company_id, False)]
 
 
+def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), company_id=company_id, is_platform_admin=True)
+    auth_session = SimpleNamespace()
+    db = object()
+    observed: list[tuple[object, object, bool]] = []
+
+    monkeypatch.setattr(
+        "backend.app.dependencies.auth.apply_tenant_rls",
+        lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
+    )
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
+    get_current_identity(
+        request,
+        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+        service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
+        db=db,
+    )
+    assert observed == [(db, company_id, False)]
+
+
 def test_get_tenant_context_applies_tenant_rls_on_auth_path() -> None:
     company_id = uuid4()
     user_id = uuid4()
@@ -129,3 +150,36 @@ def test_retell_webhook_binds_tenant_after_company_id(monkeypatch) -> None:
     assert resolved is config
     assert returned_service is service
     assert observed == [(db, company_id)]
+
+
+def test_admin_support_enables_bypass_before_cross_tenant_audit() -> None:
+    from pathlib import Path
+
+    from backend.app.dependencies import admin as admin_mod
+
+    source = Path(admin_mod.__file__).read_text(encoding="utf-8")
+    apply_at = source.index("apply_tenant_rls(db, company_id, bypass=True)")
+    audit_at = source.index('action="support_retail_access"')
+    assert apply_at < audit_at
+
+
+def test_admin_router_enables_rls_bypass_after_platform_admin_gate() -> None:
+    from pathlib import Path
+
+    from backend.app.routers import admin as admin_router_mod
+
+    source = Path(admin_router_mod.__file__).read_text(encoding="utf-8")
+    gate_at = source.index("Depends(require_platform_admin)")
+    bypass_at = source.index("Depends(enable_admin_rls_bypass)")
+    assert gate_at < bypass_at
+
+
+def test_commerce_reconcile_bypasses_rls_before_cross_tenant_scan() -> None:
+    from pathlib import Path
+
+    from backend.app.services import commerce_sync_runner as runner_mod
+
+    source = Path(runner_mod.__file__).read_text(encoding="utf-8")
+    bypass_at = source.index("apply_tenant_rls(session, UUID(int=0), bypass=True)")
+    scan_at = source.index("select(CommerceConnection.id, CommerceConnection.company_id)")
+    assert bypass_at < scan_at

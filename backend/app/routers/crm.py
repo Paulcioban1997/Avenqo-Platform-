@@ -12,7 +12,7 @@ import secrets
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
@@ -22,6 +22,7 @@ from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_token
 from backend.app.core.permissions import permissions_for
 from backend.app.database import get_db
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.commerce import get_connector_secret_cipher
@@ -188,6 +189,37 @@ def _verify_outlook_oauth_state(state: str, secret: str) -> dict[str, str]:
         return payload
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou expiré.") from exc
+
+
+_OAUTH_BIND_COOKIE = "avenqo_oauth_bind"
+_OAUTH_BIND_PATH = "/api/v1/crm/calendar"
+
+
+def _oauth_bind_value(state: str) -> str:
+    return hash_token(state)
+
+
+def _set_oauth_bind_cookie(response: Response, state: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=_OAUTH_BIND_COOKIE,
+        value=_oauth_bind_value(state),
+        max_age=600,
+        httponly=True,
+        secure=settings.is_secure_cookie,
+        samesite="lax",
+        path=_OAUTH_BIND_PATH,
+    )
+
+
+def _require_oauth_bind(request: Request, state: str) -> None:
+    cookie = request.cookies.get(_OAUTH_BIND_COOKIE)
+    expected = _oauth_bind_value(state)
+    if not cookie or not hmac.compare_digest(cookie, expected):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Liaison OAuth navigateur manquante ou invalide.",
+        )
 
 
 def _outlook_redirect_uri(settings) -> str:
@@ -825,6 +857,7 @@ def get_calendar_connection(
 
 @router.get("/calendar/google/auth-url")
 def get_google_calendar_auth_url(
+    response: Response,
     tenant: TenantContext = Depends(get_tenant_context),
     identity=Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -874,15 +907,18 @@ def get_google_calendar_auth_url(
     )
     db.commit()
     auth_url = provider.get_auth_url(state)
+    _set_oauth_bind_cookie(response, state)
     return {"auth_url": auth_url}
 
 
 @google_oauth_callback_router.get("/calendar/google/callback")
 async def google_calendar_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    _require_oauth_bind(request, state)
     settings = get_settings()
     state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
     tenant_id = UUID(state_data["tenant_id"])
@@ -904,6 +940,7 @@ async def google_calendar_callback(
         or oauth_state.actor_user_id != user_id
     ):
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou déjà utilisé.")
+    apply_tenant_rls(db, tenant_id)
     oauth_state.consumed_at = now
     db.add(oauth_state)
     db.commit()
@@ -959,14 +996,17 @@ async def google_calendar_callback(
         await CRMService(db, cipher).sync_from_google(tenant_id)
     except Exception:
         pass
-    return RedirectResponse(
+    redirect = RedirectResponse(
         url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
         status_code=303,
     )
+    redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
+    return redirect
 
 
 @router.get("/calendar/outlook/auth-url")
 def get_outlook_calendar_auth_url(
+    response: Response,
     tenant: TenantContext = Depends(get_tenant_context),
     identity=Depends(get_current_identity),
     db: Session = Depends(get_db),
@@ -1011,15 +1051,19 @@ def get_outlook_calendar_auth_url(
         )
     )
     db.commit()
-    return {"auth_url": provider.get_auth_url(state)}
+    auth_url = provider.get_auth_url(state)
+    _set_oauth_bind_cookie(response, state)
+    return {"auth_url": auth_url}
 
 
 @google_oauth_callback_router.get("/calendar/outlook/callback")
 async def outlook_calendar_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    _require_oauth_bind(request, state)
     settings = get_settings()
     state_data = _verify_outlook_oauth_state(state, settings.auth_jwt_secret)
     tenant_id = UUID(state_data["tenant_id"])
@@ -1041,6 +1085,7 @@ async def outlook_calendar_callback(
         or oauth_state.actor_user_id != user_id
     ):
         raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou déjà utilisé.")
+    apply_tenant_rls(db, tenant_id)
     oauth_state.consumed_at = now
     db.commit()
     provider = OutlookCalendarProvider(
@@ -1080,10 +1125,12 @@ async def outlook_calendar_callback(
             )
         )
     db.commit()
-    return RedirectResponse(
+    redirect = RedirectResponse(
         url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=outlook_calendar&status=connected",
         status_code=303,
     )
+    redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
+    return redirect
 
 
 @router.get("/calendar/google/calendars")
