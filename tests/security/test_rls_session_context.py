@@ -163,6 +163,17 @@ def test_admin_support_enables_bypass_before_cross_tenant_audit() -> None:
     assert apply_at < audit_at
 
 
+def test_admin_router_enables_rls_bypass_after_platform_admin_gate() -> None:
+    from pathlib import Path
+
+    from backend.app.routers import admin as admin_router_mod
+
+    source = Path(admin_router_mod.__file__).read_text(encoding="utf-8")
+    gate_at = source.index("Depends(require_platform_admin)")
+    bypass_at = source.index("Depends(enable_admin_rls_bypass)")
+    assert gate_at < bypass_at
+
+
 def test_commerce_reconcile_bypasses_rls_before_cross_tenant_scan() -> None:
     from pathlib import Path
 

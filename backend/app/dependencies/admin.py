@@ -19,6 +19,22 @@ from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 
+def enable_admin_rls_bypass(
+    identity: CurrentIdentity = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+) -> CurrentIdentity:
+    """Allow platform-admin Command Center routes to read and write all audit rows.
+
+    ``get_current_identity`` keeps the admin on their own tenant GUC. The
+    ``/admin`` router is already fail-closed behind ``require_platform_admin``;
+    0056 FORCE RLS would otherwise hide other tenants' ``audit_log_entries``
+    and reject platform-level inserts with ``company_id`` NULL.
+    """
+
+    apply_tenant_rls(db, identity.company_id, bypass=True)
+    return identity
+
+
 def get_admin_tenant_context(
     company_id: UUID,
     identity: CurrentIdentity = Depends(require_platform_admin),
