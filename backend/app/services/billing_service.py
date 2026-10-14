@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
@@ -243,10 +244,18 @@ class BillingService:
             self._settings.stripe_webhook_secret,
         )
         event_id = str(event["id"])
-        if self._session.get(StripeWebhookEvent, event_id):
+        event_type = str(event["type"])
+        self._session.add(StripeWebhookEvent(
+            stripe_event_id=event_id,
+            event_type=event_type,
+            processed_at=datetime.now(timezone.utc),
+        ))
+        try:
+            self._session.flush()
+        except IntegrityError:
+            self._session.rollback()
             return False
 
-        event_type = str(event["type"])
         data = event["data"]["object"]
         if hasattr(data, "to_dict_recursive"):
             data = data.to_dict_recursive()
@@ -274,11 +283,6 @@ class BillingService:
         from backend.app.services.voice_billing_gateway import VoiceBillingGateway
         from backend.app.voice.providers import TelnyxClient
         VoiceProvisioningService(self._session,self._settings,TelnyxClient(self._settings),VoiceBillingGateway(self._settings)).handle_verified_event(event)
-        self._session.add(StripeWebhookEvent(
-            stripe_event_id=event_id,
-            event_type=event_type,
-            processed_at=datetime.now(timezone.utc),
-        ))
         self._session.commit()
         return True
 
@@ -643,35 +647,51 @@ class BillingService:
         parent = invoice.get("parent") or {}
         subscription_details = parent.get("subscription_details") or {}
         metadata = subscription_details.get("metadata") or invoice.get("metadata") or {}
-        raw_company_id = metadata.get("avenqo_company_id")
-        if raw_company_id:
-            company_id = UUID(str(raw_company_id))
-            apply_tenant_rls(self._session, company_id)
-            return company_id
-        customer_id = str(invoice["customer"])
-        account = self._session.scalar(select(BillingAccount).where(
-            BillingAccount.stripe_customer_id == customer_id,
-        ))
-        if account is None:
-            raise BillingOperationError("Tenant introuvable pour la facture Stripe")
-        apply_tenant_rls(self._session, account.company_id)
-        return account.company_id
+        return self._resolve_stripe_company_id(
+            metadata_company_id=metadata.get("avenqo_company_id"),
+            customer_id=str(invoice.get("customer") or ""),
+            missing_message="Tenant introuvable pour la facture Stripe",
+        )
 
     def _company_id(self, resource: dict[str, Any]) -> UUID:
-        raw_company_id = (resource.get("metadata") or {}).get("avenqo_company_id")
-        if raw_company_id:
-            company_id = UUID(str(raw_company_id))
+        return self._resolve_stripe_company_id(
+            metadata_company_id=(resource.get("metadata") or {}).get("avenqo_company_id"),
+            customer_id=str(resource.get("customer") or ""),
+            missing_message="Métadonnée avenqo_company_id absente",
+        )
+
+    def _resolve_stripe_company_id(
+        self,
+        *,
+        metadata_company_id: object,
+        customer_id: str,
+        missing_message: str,
+    ) -> UUID:
+        account_by_customer = None
+        if customer_id:
+            account_by_customer = self._session.scalar(
+                select(BillingAccount).where(BillingAccount.stripe_customer_id == customer_id)
+            )
+        if metadata_company_id:
+            company_id = UUID(str(metadata_company_id))
+            if account_by_customer is not None and account_by_customer.company_id != company_id:
+                raise BillingOperationError("Client Stripe incompatible avec le tenant des métadonnées")
+            account = self._session.scalar(
+                select(BillingAccount).where(BillingAccount.company_id == company_id)
+            )
+            if (
+                account is not None
+                and account.stripe_customer_id
+                and customer_id
+                and account.stripe_customer_id != customer_id
+            ):
+                raise BillingOperationError("Client Stripe incompatible avec le tenant des métadonnées")
             apply_tenant_rls(self._session, company_id)
             return company_id
-        customer_id = str(resource.get("customer") or "")
-        if customer_id:
-            account = self._session.scalar(select(BillingAccount).where(
-                BillingAccount.stripe_customer_id == customer_id,
-            ))
-            if account is not None:
-                apply_tenant_rls(self._session, account.company_id)
-                return account.company_id
-        raise BillingOperationError("Métadonnée avenqo_company_id absente")
+        if account_by_customer is not None:
+            apply_tenant_rls(self._session, account_by_customer.company_id)
+            return account_by_customer.company_id
+        raise BillingOperationError(missing_message)
 
     def _required_price(self, plan_code: PlanCode, currency_code: str) -> str:
         price_id = self._settings.stripe_price_id(plan_code.value, currency_code)

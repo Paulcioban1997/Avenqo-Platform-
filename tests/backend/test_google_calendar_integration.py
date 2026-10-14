@@ -12,6 +12,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from starlette.requests import Request
 
 from backend.app.api.router import api_router
 from backend.app.core.security import hash_token
@@ -135,6 +136,19 @@ def test_google_network_errors_do_not_echo_request_details(monkeypatch, caplog):
     assert "fixture-private-request-details" not in caplog.text
 
 
+def _callback_request(state: str, *, bind: bool = True) -> Request:
+    headers = []
+    if bind:
+        headers.append((b"cookie", f"avenqo_oauth_bind={hash_token(state)}".encode()))
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/crm/calendar/google/callback",
+        "headers": headers,
+        "query_string": b"",
+    })
+
+
 def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -248,17 +262,43 @@ def test_callback_without_jwt_consumes_valid_state_and_rejects_replay(monkeypatc
                 expires_at=now + timedelta(minutes=10),
             ),
         )
+        with pytest.raises(Exception, match="navigateur manquante"):
+            asyncio.run(
+                google_calendar_callback(
+                    request=_callback_request(state, bind=False),
+                    code="google-code",
+                    state=state,
+                    db=db,
+                )
+            )
         with pytest.raises(Exception, match="invalide"):
             asyncio.run(
                 google_calendar_callback(
-                    code="google-code", state=cross_tenant_state, db=cross_tenant_db
+                    request=_callback_request(cross_tenant_state),
+                    code="google-code",
+                    state=cross_tenant_state,
+                    db=cross_tenant_db,
                 )
             )
 
-        response = asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+        response = asyncio.run(
+            google_calendar_callback(
+                request=_callback_request(state),
+                code="google-code",
+                state=state,
+                db=db,
+            )
+        )
         assert response.status_code == 303
         with pytest.raises(Exception, match="déjà utilisé"):
-            asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+            asyncio.run(
+                google_calendar_callback(
+                    request=_callback_request(state),
+                    code="google-code",
+                    state=state,
+                    db=db,
+                )
+            )
 
 
 def test_callback_rejects_expired_and_cross_tenant_persisted_states(tmp_path) -> None:
