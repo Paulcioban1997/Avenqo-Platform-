@@ -346,6 +346,9 @@ def test_email_verification_https_envoie_le_payload_attendu(
     class SuccessfulResponse:
         status = 200
 
+        def read(self) -> bytes:
+            return b'{"id":"re_fixture_message"}'
+
         def __enter__(self):
             return self
 
@@ -422,6 +425,108 @@ def test_echec_email_https_est_journalise_sans_secrets(
     assert secret not in logs
     assert token not in logs
     assert recipient not in logs
+
+
+def test_https_email_requires_provider_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    class EmptyIdResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        lambda request, timeout: EmptyIdResponse(),
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY="provider-api-key",
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with pytest.raises(RuntimeError):
+        notifier.send_email_verification("customer@example.ca", "safe-token")
+
+
+def test_https_error_body_is_logged_without_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "provider-secret-value"
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    def failing_urlopen(request, timeout: int):
+        payload = json.dumps({"name": "validation_error", "message": "domain is not verified"}).encode()
+        raise HTTPError(request.full_url, 403, "Forbidden", hdrs=None, fp=BytesIO(payload))
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY=secret,
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with caplog.at_level("WARNING"), pytest.raises(HTTPError):
+        notifier.send_email_verification("private@example.ca", "verification-secret-token")
+    logs = caplog.text
+    assert "status=403" in logs
+    assert "error_name=validation_error" in logs
+    assert secret not in logs
+    assert "private@example.ca" not in logs
+    assert "verification-secret-token" not in logs
+
+
+def test_https_cloudflare_1010_is_logged_without_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "provider-secret-value"
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    def failing_urlopen(request, timeout: int):
+        raise HTTPError(
+            request.full_url,
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=BytesIO(b"error code: 1010\n"),
+        )
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY=secret,
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with caplog.at_level("WARNING"), pytest.raises(HTTPError):
+        notifier.send_email_verification("private@example.ca", "verification-secret-token")
+    logs = caplog.text
+    assert "status=403" in logs
+    assert "error_name=cloudflare_1010" in logs
+    assert secret not in logs
+    assert "private@example.ca" not in logs
+    assert "verification-secret-token" not in logs
 
 
 def test_smtp_respecte_la_desactivation_starttls(

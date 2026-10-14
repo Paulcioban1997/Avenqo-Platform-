@@ -274,13 +274,21 @@ class ResendHTTPSEmailTransport:
         try:
             with urlopen(request, timeout=_HTTPS_CONNECTION_TIMEOUT_SECONDS) as response:
                 status_code = response.status
-                if not 200 <= status_code < 300:
+                raw = response.read()
+                payload_response = _parse_email_api_payload(raw)
+                if not 200 <= status_code < 300 or not payload_response.get("id"):
                     raise RuntimeError("Transactional email API rejected the request")
+                logger.info(
+                    "HTTPS email accepted status=%s provider_id_present=true",
+                    status_code,
+                )
         except (HTTPError, URLError, OSError, RuntimeError) as exc:
+            error_name = _email_api_error_name(exc)
             logger.warning(
-                "HTTPS email delivery failed status=%s error_type=%s",
+                "HTTPS email delivery failed status=%s error_type=%s error_name=%s",
                 getattr(exc, "code", None),
                 type(exc).__name__,
+                error_name,
             )
             raise
 
@@ -294,6 +302,37 @@ class SMTPAccountNotifier(AccountNotificationService):
                 "SMTP non configuré : définir l'hôte et les identifiants d'envoi"
             )
         super().__init__(settings, SMTPEmailTransport(settings))
+
+
+def _parse_email_api_payload(raw: bytes | str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    if isinstance(raw, bytes):
+        text_body = raw.decode("utf-8", errors="replace")
+    else:
+        text_body = raw
+    try:
+        parsed = json.loads(text_body)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _email_api_error_name(exc: BaseException) -> str:
+    raw = b""
+    if isinstance(exc, HTTPError):
+        try:
+            raw = exc.read()
+        except Exception:
+            raw = b""
+    payload = _parse_email_api_payload(raw)
+    name = payload.get("name") or payload.get("message") or ""
+    if name:
+        return str(name)[:80]
+    text_body = raw.decode("utf-8", errors="replace") if raw else ""
+    if "1010" in text_body:
+        return "cloudflare_1010"
+    return text_body.strip()[:80]
 
 
 class HTTPSAccountNotifier(AccountNotificationService):

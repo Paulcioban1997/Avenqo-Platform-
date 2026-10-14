@@ -1305,12 +1305,20 @@ async def crm_copilot_chat(
 
     # 1. Natural Language Appointment Creation (Target workflow §12)
     # Example: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes."
-    is_create_intent = any(k in msg for k in [
+    # Do not treat the letter "h" in "aujourd'hui" as a time hint — that made
+    # "mes rendez-vous aujourd'hui" look like a create command (HTTP 200, wrong action).
+    has_create_verb = any(k in msg for k in [
         "crée un rendez-vous", "créer un rendez-vous", "planifie", "planifier",
-        "prendre rendez-vous", "nouveau rendez-vous", "rendez-vous",
+        "prendre rendez-vous", "nouveau rendez-vous",
         "create an appointment", "create appointment", "schedule appointment",
-        "book appointment", "new appointment", "appointment"
-    ]) and any(h in msg for h in ["h", ":", "heure", "am", "pm", "at "])
+        "book appointment", "new appointment",
+    ])
+    has_time_hint = bool(
+        re.search(r"\d{1,2}\s*[h:]\s*\d{0,2}", msg)
+        or re.search(r"\b(heure|am|pm)\b", msg)
+        or " at " in msg
+    )
+    is_create_intent = has_create_verb and has_time_hint
 
     if is_create_intent:
         if "crm:appointments:write" not in permissions:

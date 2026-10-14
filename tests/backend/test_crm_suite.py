@@ -1283,6 +1283,46 @@ def test_copilot_multilingual_availability_is_read_only(db_session, monkeypatch,
     assert not db_session.new and not db_session.dirty
 
 
+def test_copilot_today_agenda_is_not_treated_as_create_intent(db_session, monkeypatch):
+    from types import SimpleNamespace
+    from backend.app.models import UserRole
+    from backend.app.routers.crm import CRMCopilotChatRequest, crm_copilot_chat
+
+    company = _create_company(db_session, "agenda-reader")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {"first_name": "Marie", "last_name": "Tremblay"})
+    start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    db_session.add(
+        CRMAppointment(
+            company_id=company.id,
+            client_id=client.id,
+            title="Physiotherapie probe",
+            start_time=start,
+            end_time=start + timedelta(minutes=30),
+            duration_minutes=30,
+            status="confirmed",
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "backend.app.routers.crm.ModuleEntitlementService",
+        lambda session: SimpleNamespace(can_use_module=lambda *args: True),
+    )
+    response = asyncio.run(
+        crm_copilot_chat(
+            CRMCopilotChatRequest(message="mes rendez-vous aujourd'hui", locale="fr"),
+            TenantContext(company.id),
+            SimpleNamespace(user=SimpleNamespace(id=client.id)),
+            SimpleNamespace(role=UserRole.OWNER),
+            db_session,
+            service,
+        )
+    )
+    assert response["status"] == "success"
+    assert response.get("action") != "appointment_not_created"
+    assert any(item.get("title") == "Physiotherapie probe" for item in response.get("appointments") or [])
+
+
 def test_booking_lock_precedes_combined_check(db_session, monkeypatch, combined_availability):
     company, client, _, start, _, _ = combined_availability
     service = CRMAppService(db_session)
