@@ -17,6 +17,9 @@ from backend.app.models import (
     RetailSourceState,
     UserSourceSelection,
 )
+from backend.app.services.commerce_normalized_source import (
+    connection_has_normalized_records,
+)
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -273,11 +276,8 @@ class RetailSourceService:
             )
             if connection is None:
                 raise RetailSourceNotFound("Retail source not found")
-            if tenant.user_id is not None:
-                dataset_id = self._connection_dataset_id(connection)
-                dataset = self._session.scalar(select(Dataset).where(Dataset.id == dataset_id, Dataset.company_id == tenant.company_id, Dataset.status == DatasetStatus.READY))
-                if connection.status != CommerceConnectionStatus.READY.value or dataset is None or self._dataset_source(dataset, None).status.upper() != "READY":
-                    raise RetailSourceNotFound("Retail source is unavailable")
+            if tenant.user_id is not None and not self._connector_is_readable(connection):
+                raise RetailSourceNotFound("Retail source is unavailable")
             selection = self._store_selection(
                 tenant,
                 source_type="connector",
@@ -518,14 +518,39 @@ class RetailSourceService:
             return {"state": "READY" if any(source.enabled and source.status.upper() == "READY" for source in sources) else "NO_SOURCES", "source_type": "all", "source_id": None, "sources": sources}
         source_id = selection.connection_id if selection.source_type == "connector" else selection.dataset_id
         source = next((item for item in sources if item.source_type == selection.source_type and item.source_id == source_id), None)
-        state = "READY" if source is not None and source.dataset_id is not None and source.status.upper() == "READY" else "SOURCE_UNAVAILABLE"
+        readable = source is not None and source.status.upper() == "READY" and (
+            source.dataset_id is not None or selection.source_type == "connector"
+        )
+        state = "READY" if readable else "SOURCE_UNAVAILABLE"
+        reauthorization_required = False
+        reauthorization_provider = None
+        reauthorization_shop = None
         if selection.source_type == "connector":
             connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == selection.connection_id, CommerceConnection.company_id == tenant.company_id))
             if connection is not None and connection.status == "DISCONNECTED":
                 state = "SOURCE_DISCONNECTED"
-            elif connection is not None and connection.status in {"ERROR", "FAILED", "REAUTH_REQUIRED"}:
+            elif connection is not None and connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value:
+                reauthorization_required = True
+                reauthorization_provider = connection.provider
+                reauthorization_shop = connection.external_account_id
+                if not readable:
+                    state = "SOURCE_ERROR"
+            elif connection is not None and connection.status in {"ERROR", "FAILED"}:
                 state = "SOURCE_ERROR"
-        return {"state": state, "source_type": selection.source_type, "source_id": source_id, "sources": sources}
+        return {
+            "state": state,
+            "source_type": selection.source_type,
+            "source_id": source_id,
+            "sources": sources,
+            "reauthorization_required": reauthorization_required,
+            "reauthorization_provider": reauthorization_provider,
+            "reauthorization_shop": reauthorization_shop,
+            "authorize_path": (
+                f"/api/v1/connectors/{reauthorization_provider}/authorize"
+                if reauthorization_provider
+                else None
+            ),
+        }
 
     @staticmethod
     def _source_key(source_type: str, source_id: UUID) -> str:
@@ -541,17 +566,39 @@ class RetailSourceService:
         except ValueError:
             return None
 
+    def _connector_artifact_ready(self, connection: CommerceConnection) -> bool:
+        dataset_id = self._connection_dataset_id(connection)
+        if dataset_id is None:
+            return False
+        dataset = self._session.scalar(
+            select(Dataset).where(
+                Dataset.id == dataset_id,
+                Dataset.company_id == connection.company_id,
+                Dataset.status == DatasetStatus.READY,
+            )
+        )
+        return dataset is not None and self._dataset_source(dataset, None).status.upper() == "READY"
+
+    def _connector_is_readable(self, connection: CommerceConnection) -> bool:
+        if connection.status == CommerceConnectionStatus.DISCONNECTED.value:
+            return False
+        if self._connector_artifact_ready(connection):
+            return True
+        return connection_has_normalized_records(self._session, connection)
+
     def _connection_source(
         self,
         connection: CommerceConnection,
         active: RetailActiveSource | None,
     ) -> RetailSource:
-        status = connection.status
-        dataset_id = self._connection_dataset_id(connection)
-        if status == CommerceConnectionStatus.READY.value:
-            dataset = self._session.scalar(select(Dataset).where(Dataset.id == dataset_id, Dataset.company_id == connection.company_id))
-            if dataset is None or self._dataset_source(dataset, None).status.upper() != "READY":
-                status = "SOURCE_UNAVAILABLE"
+        if connection.status == CommerceConnectionStatus.DISCONNECTED.value:
+            status = connection.status
+        elif self._connector_is_readable(connection):
+            status = "READY"
+        elif connection.status == CommerceConnectionStatus.READY.value:
+            status = "SOURCE_UNAVAILABLE"
+        else:
+            status = connection.status
         return RetailSource(
             source_type="connector",
             source_id=connection.id,

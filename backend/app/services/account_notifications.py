@@ -187,8 +187,12 @@ class AccountNotificationService:
         return {**fallback, **json.loads(catalog_path.read_text(encoding="utf-8")).get("invoiceEmail", {})}
 
     def _account_link(self, path: str, token: str) -> str:
-        base_url = self._settings.frontend_url.rstrip("/")
-        return f"{base_url}{path}?{urlencode({'token': token})}"
+        params = {"token": token}
+        environment = self._settings.environment.strip().lower()
+        if environment == "sandbox":
+            params["env"] = "sandbox"
+        base_url = self._settings.public_frontend_origin()
+        return f"{base_url}{path}?{urlencode(params)}"
 
     def _send(self, recipient: str, subject: str, body: str) -> None:
         html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"

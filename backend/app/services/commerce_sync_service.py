@@ -1058,6 +1058,20 @@ class CommerceSyncService:
             self._db.commit()
         return dataset
 
+    def ensure_retail_snapshot(
+        self,
+        tenant: TenantContext,
+        connection: CommerceConnection,
+        *,
+        changed_records: int = 0,
+    ) -> Dataset | None:
+        """Rebuild the Retail CSV dataset from persisted normalized commerce records."""
+        return self._materialize_retail_snapshot(
+            tenant,
+            connection,
+            changed_records=changed_records,
+        )
+
     def _canonical_retail_dataset(
         self,
         tenant: TenantContext,
