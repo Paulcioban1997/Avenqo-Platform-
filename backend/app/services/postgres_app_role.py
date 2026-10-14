@@ -40,12 +40,14 @@ def ensure_application_roles(connection: Connection) -> None:
     database = connection.execute(text("SELECT current_database()")).scalar_one()
     connection.execute(text(f'GRANT CONNECT ON DATABASE "{database}" TO avenqo_app, avenqo_migrate'))
     inspector = inspect(connection)
-    tables = [name for name in inspector.get_table_names(schema="public") if name != "alembic_version"]
-    if tables:
-        quoted = ", ".join(f'"{name}"' for name in tables)
+    tables = inspector.get_table_names(schema="public")
+    dml_tables = [name for name in tables if name != "alembic_version"]
+    if dml_tables:
+        quoted = ", ".join(f'"{name}"' for name in dml_tables)
         connection.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {quoted} TO avenqo_app, avenqo_migrate"))
-    connection.execute(text("GRANT SELECT ON alembic_version TO avenqo_app"))
-    connection.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON alembic_version TO avenqo_migrate"))
+    if "alembic_version" in tables:
+        connection.execute(text("GRANT SELECT ON alembic_version TO avenqo_app"))
+        connection.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON alembic_version TO avenqo_migrate"))
     sequences = inspector.get_sequence_names(schema="public") if hasattr(inspector, "get_sequence_names") else []
     if sequences:
         quoted_seq = ", ".join(f'"{name}"' for name in sequences)
