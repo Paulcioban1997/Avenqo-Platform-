@@ -419,7 +419,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) {
+      if (url.includes("/retail/inventory?")) {
         return Response.json({
           inventory: [{
             id: "product-1",
@@ -461,7 +461,7 @@ describe("Retail inventory rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
     expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
-    expect(await screen.findByText(getAppTranslations("fr").common.insufficientData)).toBeInTheDocument();
+    expect(await screen.findByText(getAppTranslations("fr").retail.recommendationsNeedOrders)).toBeInTheDocument();
   });
 
   it("renders forecast and recommendation data returned by their tenant APIs", async () => {
@@ -485,7 +485,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) return Response.json({ inventory: [], anomalies: [] });
+      if (url.includes("/retail/inventory?")) return Response.json({ inventory: [], anomalies: [] });
       if (url.endsWith("/sales/summary?period=last_30_days")) {
         return Response.json({
           currency: "CAD",
