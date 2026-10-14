@@ -10,7 +10,7 @@ export interface OrganizationItem {
 }
 interface Identity {
   user: { id: string; first_name: string; last_name: string; job_title?: string; role: string; is_platform_admin: boolean };
-  company: { id: string; name: string; subscription_plan: string };
+  company: { id: string; name: string; subscription_plan: string; preferred_language?: string | null };
   organizations: OrganizationItem[];
 }
 interface SessionState {
@@ -91,6 +91,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tenantId.current = data.company.id;
         }
         setIdentity(data); setError(null);
+        if (typeof window !== "undefined" && data.company.preferred_language) {
+          window.dispatchEvent(new CustomEvent("avenqo:company-preferred-language", { detail: data.company.preferred_language }));
+        }
         await Promise.all([
           refreshCredits(),
           (async () => {
@@ -163,4 +166,8 @@ export function useSession() {
   const session = useContext(SessionContext);
   if (!session) throw new Error("SessionProvider required");
   return session;
+}
+
+export function useOptionalSession() {
+  return useContext(SessionContext);
 }

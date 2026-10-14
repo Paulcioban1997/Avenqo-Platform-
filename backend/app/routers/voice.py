@@ -73,6 +73,7 @@ from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.plan_limits_service import PlanLimitsService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.services.voice_module_permission_service import (
     VoiceModulePermissionError,
     VoiceModulePermissionService,
@@ -1111,6 +1112,7 @@ def _authenticated_voice_config(
     config = service.config_from_api_key(api_key)
     if config is None:
         raise HTTPException(status_code=401, detail="Invalid tenant voice API key")
+    apply_tenant_rls(db, config.company_id)
     _ensure_voice_access(db, config.company_id)
     return config, service
 
@@ -1398,6 +1400,7 @@ async def telnyx_webhook(
     ))
     if config is None:
         return {"received": True, "routed": False}
+    apply_tenant_rls(db, config.company_id)
     media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
     if not config.enabled and not media_mode:
         return {"received": True, "routed": False}
@@ -1753,6 +1756,7 @@ async def retell_webhook(
     ))
     if config is None or not hmac.compare_digest(config.voice_api_key_hash, _api_key_hash(x_avenqo_voice_key or "")):
         raise HTTPException(status_code=401, detail="Invalid tenant voice API key")
+    apply_tenant_rls(db, config.company_id)
     _ensure_voice_access(db, config.company_id)
     service = _orchestrator(db, settings)
     event = str(envelope.get("event") or "")
@@ -1790,10 +1794,18 @@ async def _run_tool(
     api_key: str | None,
     db: Session,
     settings: Settings,
+    avenqo_call_id: str | None = None,
 ) -> dict[str, Any]:
     config, service = _authenticated_voice_config(db, settings, api_key)
     try:
-        return await service.execute_tool(config, request.call_id, request.action_id, tool_name, request.arguments)
+        return await service.execute_tool(
+            config,
+            request.call_id,
+            request.action_id,
+            tool_name,
+            request.arguments,
+            avenqo_call_id=avenqo_call_id,
+        )
     except (ValueError, LookupError, PermissionError) as exc:
         return {"success": False, "error": str(exc)}
 
@@ -1802,10 +1814,11 @@ def _tool_route(tool_name: str):
     async def endpoint(
         request: VoiceToolRequest,
         x_avenqo_voice_key: str | None = Header(default=None),
+        x_avenqo_call_id: str | None = Header(default=None),
         db: Session = Depends(get_db),
         settings: Settings = Depends(get_settings),
     ) -> dict[str, Any]:
-        return await _run_tool(tool_name, request, x_avenqo_voice_key, db, settings)
+        return await _run_tool(tool_name, request, x_avenqo_voice_key, db, settings, x_avenqo_call_id)
     return endpoint
 
 
@@ -1838,11 +1851,19 @@ async def _voice_central_execute(
     settings: Settings = Depends(get_settings),
     central_ai: CentralAIService = Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
+    x_avenqo_call_id: str | None = None,
     *,
     metrics_only: bool = True,
 ) -> dict[str, Any]:
     config, orchestrator = _authenticated_voice_config(db, settings, x_avenqo_voice_key)
-    call = orchestrator._resolve_call(config, request.call_id)
+    try:
+        call = orchestrator._resolve_call(
+            config,
+            request.call_id,
+            avenqo_call_id=x_avenqo_call_id if isinstance(x_avenqo_call_id, str) else None,
+        )
+    except (LookupError, PermissionError) as exc:
+        return {"success": False, "status": "not_found", "error": str(exc)}
     if call.ended_at is not None or call.status in {"ended", "failed", "rejected"}:
         return {"success": False, "status": "call_ended", "error": "voice_call_not_active"}
     if call.caller_type not in {"OWNER", "EMPLOYEE"} or call.authenticated_user_id is None:
@@ -1995,8 +2016,11 @@ async def voice_business_metrics(
     settings: Settings = Depends(get_settings),
     central_ai: CentralAIService = Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
+    x_avenqo_call_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    return await _voice_central_execute(request, x_avenqo_voice_key, db, settings, central_ai, prediction_service)
+    return await _voice_central_execute(
+        request, x_avenqo_voice_key, db, settings, central_ai, prediction_service, x_avenqo_call_id
+    )
 
 
 @router.post("/tools/central_ai", dependencies=[Depends(rate_limit("voice_central_ai", "rate_limit_ai_per_minute"))])
@@ -2007,9 +2031,17 @@ async def voice_central_agent(
     settings: Settings = Depends(get_settings),
     central_ai: CentralAIService = Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
+    x_avenqo_call_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
     return await _voice_central_execute(
-        request, x_avenqo_voice_key, db, settings, central_ai, prediction_service, metrics_only=False,
+        request,
+        x_avenqo_voice_key,
+        db,
+        settings,
+        central_ai,
+        prediction_service,
+        x_avenqo_call_id,
+        metrics_only=False,
     )
 
 

@@ -517,6 +517,8 @@ class Settings(BaseSettings):
                 missing.append("CORS_ORIGINS")
             if not self.allowed_hosts or "*" in self.allowed_hosts:
                 missing.append("ALLOWED_HOSTS")
+            if self._connectors_or_calendar_enabled() and not self.connector_encryption_keys:
+                missing.append("CONNECTOR_ENCRYPTION_KEYS")
             if missing:
                 raise ValueError(
                     "Configuration production manquante ou non sécurisée : "
@@ -575,6 +577,12 @@ class Settings(BaseSettings):
             and (self.stripe_price_base or self.stripe_price_demo)
             and self.stripe_price_professional
         )
+
+    def _connectors_or_calendar_enabled(self) -> bool:
+        shopify = bool(self.shopify_client_id and self.shopify_client_secret)
+        woocommerce = bool(self.woocommerce_callback_uri or self.woocommerce_webhook_uri)
+        calendar = bool(self.google_calendar_client_id and self.google_calendar_client_secret)
+        return shopify or woocommerce or calendar
 
     @property
     def shopify_connector_configured(self) -> bool:

@@ -15,6 +15,7 @@ from backend.app.core.permissions import permissions_for
 from backend.app.services.support_access import support_can_read_retail
 from backend.app.services.admin_service import AdminService
 from backend.app.services.audit_log_service import AuditLogService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -38,6 +39,7 @@ def get_admin_tenant_context(
         raise HTTPException(403, "Un accès support explicite, valide et limité est requis")
     AuditLogService(db).record(actor_user_id=identity.user_id, company_id=company_id,
                                action="support_retail_access", target_type="company", target_id=str(company_id))
+    apply_tenant_rls(db, company_id, bypass=True)
     return TenantContext(company_id=company_id, user_id=identity.user_id)
 
 

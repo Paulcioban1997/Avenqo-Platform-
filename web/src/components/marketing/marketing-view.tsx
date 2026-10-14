@@ -16,6 +16,7 @@ import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { ApiRequestError, apiFetch } from "@/lib/api-request";
 import { useSession } from "@/lib/session-context";
+import { MARKETING_SURFACE_COPY } from "@/lib/i18n/marketing-surface-copy";
 
 type CustomerAnalysis = { available: boolean; currency: string; source_context: { name?: string };
   summary: { total_customers: number; active_customers: number | null; new_customers?: number | null; purchase_frequency: number; average_customer_value: number | null } | null;
@@ -25,6 +26,7 @@ export function MarketingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
+  const marketing = MARKETING_SURFACE_COPY[locale];
   const session = useSession();
   const tenant = session.identity?.company.id;
   const [period, setPeriod] = useState("all");
@@ -58,7 +60,6 @@ export function MarketingView() {
   }, [tenant, revision, locale, period, dateFrom, dateTo, invalidRange]);
   const data = analysis?.tenant === tenant && analysis?.revision === revision ? analysis.data : null;
   const number = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) : "—";
-
 
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -247,6 +248,10 @@ export function MarketingView() {
             <div className="p-3 rounded-lg bg-white dark:bg-[#0B132B] border border-slate-200/60 dark:border-white/[0.08] text-xs font-mono whitespace-pre-line text-slate-700 dark:text-slate-300">
               {generatedCampaign.content}
             </div>
+            <p className="text-[11px] text-slate-500">{marketing.activationHint}</p>
+            <button type="button" className="text-[11px] font-semibold underline">
+              {marketing.activate}
+            </button>
           </div>
         )}
       </div>

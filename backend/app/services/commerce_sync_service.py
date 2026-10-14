@@ -29,6 +29,7 @@ from backend.app.connectors.woocommerce import (
     WooCommerceRateLimitError,
     WooCommerceTemporaryError,
 )
+from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
 from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
@@ -454,6 +455,7 @@ class CommerceSyncService:
 
         connector = self._registry.get("shopify")
         normalized_shop = shop.strip().lower()
+        set_rls_bypass(self._db, enabled=True)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.provider == "shopify",
@@ -461,6 +463,8 @@ class CommerceSyncService:
                 CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
+        if connection is not None:
+            apply_tenant_rls(self._db, connection.company_id)
         tenant_id = connection.company_id if connection is not None else UUID(int=0)
         payload = await connector.handle_webhook(
             tenant_id=tenant_id,
@@ -558,6 +562,7 @@ class CommerceSyncService:
         )
         if len(delivery_id) > 255 or len(topic) > 120:
             raise CommerceSyncDataError("WooCommerce webhook metadata is invalid")
+        set_rls_bypass(self._db, enabled=True)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.id == connection_id,
@@ -575,6 +580,7 @@ class CommerceSyncService:
                 duplicate=False,
                 should_process=False,
             )
+        apply_tenant_rls(self._db, connection.company_id)
         tenant = TenantContext(company_id=connection.company_id)
         context = await self._connections.sync_context(tenant, connection.id)
         connector = self._registry.get("woocommerce")

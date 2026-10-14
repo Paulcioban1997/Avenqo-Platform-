@@ -379,6 +379,12 @@ class BackupService:
         data = json.loads(metadata_path.read_text(encoding="utf-8"))
         valid_fields = set(BackupMetadata.__dataclass_fields__.keys())
         filtered = {k: v for k, v in data.items() if k in valid_fields}
+        filtered.setdefault("app_version", "unknown")
+        filtered.setdefault("git_revision", None)
+        filtered.setdefault("format_version", 1)
+        filtered.setdefault("size_bytes", 0)
+        filtered.setdefault("checksum_sha256", "")
+        filtered.setdefault("database_type", "unknown")
         return BackupMetadata(**filtered)
 
     def _resolve_backup_id(self, backup_id: str) -> tuple[Path, Path]:

@@ -1,8 +1,12 @@
-"""PostgreSQL Row-Level Security helpers.
+"""PostgreSQL Row-Level Security session helpers.
 
-SQLite tests are a no-op. On PostgreSQL, verified identities bind their company
-and disable bypass unless explicitly authorized as platform administrators.
-Authentication/internal sessions start with the bypass set in ``get_db``.
+SQLite tests are a no-op. On PostgreSQL these functions bind
+``app.current_company_id`` and ``app.bypass_rls`` for the current transaction.
+
+``get_db`` does not enable bypass. Authenticated tenant routes must call
+``apply_tenant_rls`` after the identity is known. Unauthenticated webhooks may
+enable bypass only until ``company_id`` is resolved, then must bind the tenant.
+
 Transaction-local settings are restored across commits and rollbacks and never
 persist on a pooled connection after the transaction ends.
 """
@@ -23,7 +27,8 @@ def supports_rls(session: Session) -> bool:
 def set_rls_bypass(session: Session, *, enabled: bool) -> None:
     if not supports_rls(session):
         return
-    previous = session.info.get("avenqo_rls", {})
+    info = getattr(session, "info", None)
+    previous = info.get("avenqo_rls", {}) if isinstance(info, dict) else {}
     _set_context(session, previous.get("cid", ""), enabled)
 
 
@@ -31,6 +36,12 @@ def apply_tenant_rls(session: Session, company_id: UUID, *, bypass: bool = False
     if not supports_rls(session):
         return
     _set_context(session, str(company_id), bypass)
+
+
+def bind_webhook_tenant(session: Session, company_id: UUID) -> None:
+    """Bind tenant RLS immediately after an unauthenticated webhook resolves company_id."""
+
+    apply_tenant_rls(session, company_id, bypass=False)
 
 
 _CONTEXT_SQL = text(
@@ -50,11 +61,15 @@ def _restore_transaction_context(session: Session, transaction, connection) -> N
 
 def _set_context(session: Session, company_id: str, bypass: bool) -> None:
     context = {"flag": "on" if bypass else "off", "cid": company_id}
-    session.info["avenqo_rls"] = context
-    if session.in_transaction():
-        session.execute(_CONTEXT_SQL, context)
-    else:
-        session.connection()  # after_begin installs this transaction's context.
+    info = getattr(session, "info", None)
+    if isinstance(info, dict):
+        info["avenqo_rls"] = context
+        if session.in_transaction():
+            session.execute(_CONTEXT_SQL, context)
+        elif hasattr(session, "connection"):
+            session.connection()
+        return
+    session.execute(_CONTEXT_SQL, context)
 
 
 TENANT_SCOPED_TABLES = (
