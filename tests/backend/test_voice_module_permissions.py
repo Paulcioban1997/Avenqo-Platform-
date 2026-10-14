@@ -468,7 +468,8 @@ def test_alembic_0053_follows_integrated_locale_profile():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0056_rls_crm_commerce_datasets"]
+    assert script.get_heads() == ["0057_rls_invoices_ai_voice"]
+    assert script.get_revision("0057_rls_invoices_ai_voice").down_revision == "0056_rls_crm_commerce_datasets"
     assert script.get_revision("0056_rls_crm_commerce_datasets").down_revision == "0055_voice_call_policy"
     assert script.get_revision("0055_voice_call_policy").down_revision == "0054_voice_provisioning"
     assert script.get_revision("0054_voice_provisioning").down_revision == "0053_voice_module_permissions"

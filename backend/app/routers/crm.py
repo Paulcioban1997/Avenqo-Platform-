@@ -1518,7 +1518,14 @@ async def crm_copilot_chat(
     # 3. View Today's Appointments
     if any(k in msg for k in ["mes rendez-vous", "rendez-vous aujourd'hui", "agenda", "today's appointments", "my appointments"]):
         today_date = datetime.now(timezone.utc).date()
-        appts = service.list_appointments(tenant.company_id, target_date=today_date, limit=10)
+        day_start = datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        appts = service.list_appointments(
+            tenant.company_id,
+            start_date=day_start,
+            end_date=day_end,
+            limit=10,
+        )
         if not appts:
             msg_reply = (
                 "Your calendar is completely open for today. No appointments scheduled."
@@ -1531,15 +1538,15 @@ async def crm_copilot_chat(
                 "appointments": [],
             }
         lines = [
-            f"• {a.title} ({a.client.full_name if a.client else ('Client' if not is_en else 'Customer')}) "
-            f"{'at' if is_en else 'à'} {a.start_time.strftime('%H:%M')}"
+            f"• {a['title']} ({a.get('client_name') or ('Client' if not is_en else 'Customer')}) "
+            f"{'at' if is_en else 'à'} {str(a.get('start_time') or '')[11:16]}"
             for a in appts
         ]
         header = f"You have {len(appts)} appointment(s) scheduled today:\n" if is_en else f"Vous avez {len(appts)} rendez-vous prévu(s) aujourd'hui :\n"
         return {
             "reply": header + "\n".join(lines),
             "status": "success",
-            "appointments": [{"id": str(a.id), "title": a.title} for a in appts],
+            "appointments": [{"id": a["id"], "title": a["title"]} for a in appts],
         }
 
     # 4. Search Client
