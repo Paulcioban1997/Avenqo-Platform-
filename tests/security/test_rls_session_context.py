@@ -183,3 +183,22 @@ def test_commerce_reconcile_bypasses_rls_before_cross_tenant_scan() -> None:
     bypass_at = source.index("apply_tenant_rls(session, UUID(int=0), bypass=True)")
     scan_at = source.index("select(CommerceConnection.id, CommerceConnection.company_id)")
     assert bypass_at < scan_at
+
+
+def test_voice_sweeper_and_cost_receipt_bind_rls_before_voice_call_lookup() -> None:
+    from pathlib import Path
+
+    from backend.app.services import voice_commercial_controls as controls
+    from backend.app.voice import sandbox_deadline as deadline
+
+    controls_src = Path(controls.__file__).read_text(encoding="utf-8")
+    assert controls_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < controls_src.index(
+        "select(VoiceCall).where(VoiceCall.ended_at.is_(None))"
+    )
+    assert controls_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < controls_src.index(
+        "VoiceCall.telnyx_call_control_id==payload.get(\"call_control_id\")"
+    )
+    deadline_src = Path(deadline.__file__).read_text(encoding="utf-8")
+    assert deadline_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < deadline_src.index(
+        "select(VoiceCall).where(VoiceCall.id == call_id)"
+    )

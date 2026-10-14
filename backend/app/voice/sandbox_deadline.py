@@ -43,7 +43,11 @@ async def stop_expired_call(call_id, *, session_factory, settings, client):
     if settings.environment != "sandbox" or settings.telnyx_voice_connection_id != CONNECTION_ID:
         raise PermissionError("Sandbox connection required")
     with session_factory() as db:
+        from backend.app.services.tenant_rls import apply_tenant_rls
+        apply_tenant_rls(db, UUID(int=0), bypass=True)
         call = db.scalar(select(VoiceCall).where(VoiceCall.id == call_id).with_for_update())
+        if call is not None:
+            apply_tenant_rls(db, call.company_id)
         if call is None or not is_sandbox_test_call(call, settings):
             raise PermissionError("Synthetic call ownership required")
         if call.ended_at is not None:

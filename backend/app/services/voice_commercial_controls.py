@@ -25,6 +25,9 @@ def remaining(call,settings):
 
 async def stop_expired(db,settings,client):
     if not settings.voice_commercial_enabled and not getattr(settings, "voice_long_calls_enabled", False):return 0
+    from uuid import UUID
+    from backend.app.services.tenant_rls import apply_tenant_rls
+    apply_tenant_rls(db, UUID(int=0), bypass=True)
     stopped=0
     calls=db.scalars(select(VoiceCall).where(VoiceCall.ended_at.is_(None))).all()
     for call in calls:
@@ -73,8 +76,12 @@ def schedule(db,settings,call):
 def cost_receipt(db,settings,data,payload):
     """Caller must verify Ed25519 first. Resolve solely by stored provider call ID."""
     if str(payload.get("connection_id"))!=settings.telnyx_voice_connection_id:return False
+    from uuid import UUID
+    from backend.app.services.tenant_rls import apply_tenant_rls
+    apply_tenant_rls(db, UUID(int=0), bypass=True)
     call=db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id==payload.get("call_control_id")))
     if not call:return False
+    apply_tenant_rls(db, call.company_id)
     order=managed_order(db,call)
     binding=db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.company_id==call.company_id,
         VoicePhoneNumber.config_id==call.config_id,VoicePhoneNumber.provider_connection_id==settings.telnyx_voice_connection_id))

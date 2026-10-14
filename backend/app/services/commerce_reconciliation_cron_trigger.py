@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from urllib.request import Request, urlopen
-
 from backend.app.config.settings import get_settings
+from backend.app.services.scheduler_http import post_scheduler_json
 
 
 def main() -> int:
@@ -15,17 +13,11 @@ def main() -> int:
         or not settings.connector_ai_scheduler_token
     ):
         raise RuntimeError("Commerce reconciliation URL and scheduler token are required")
-    request = Request(
+    payload = post_scheduler_json(
         settings.commerce_reconciliation_scheduler_url,
-        data=b"{}",
-        headers={
-            "Content-Type": "application/json",
-            "X-Avenqo-Scheduler-Token": settings.connector_ai_scheduler_token,
-        },
-        method="POST",
+        settings.connector_ai_scheduler_token,
+        timeout=600,
     )
-    with urlopen(request, timeout=600) as response:
-        payload = json.loads(response.read().decode("utf-8"))
     claimed = int(payload.get("claimed", 0))
     print(f"Commerce reconciliation trigger completed claimed={claimed}")
     return 0
