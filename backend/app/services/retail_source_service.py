@@ -322,7 +322,7 @@ class RetailSourceService:
             return self._dataset_source(dataset, selection)
         raise RetailSourceNotFound("Retail source not found")
 
-    def active_selection(self, tenant: TenantContext) -> RetailActiveSource | None:
+    def active_selection(self, tenant: TenantContext) -> UserSourceSelection | RetailActiveSource | None:
         user_selection = self._user_selection(tenant)
         if user_selection is not None:
             return user_selection
@@ -497,7 +497,7 @@ class RetailSourceService:
         source_type: str,
         dataset_id: UUID | None,
         connection_id: UUID | None,
-    ) -> RetailActiveSource:
+    ) -> UserSourceSelection | RetailActiveSource:
         if tenant.user_id is not None:
             selection = self._user_selection(tenant)
             if selection is None:
