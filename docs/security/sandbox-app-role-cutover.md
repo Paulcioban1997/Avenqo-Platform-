@@ -54,10 +54,11 @@ Cette procédure prépare le LOGIN du rôle applicatif `avenqo_app` sur **Sandbo
 | E | Lecture CRM/Retail entreprise A | 200, données A |
 | F | Même jeton, ressource entreprise B | 404/403, jamais le corps B |
 | G | `GET /api/v1/health` et `/ready` | 200, `environment=sandbox` |
-| H | Worker migrateur `alembic current` | head `0061_tenant_hotpath_indexes`, pas d’erreur de droit |
+| H | Worker migrateur `alembic current` | head `0061b_harden_tenant_rls_no_bypass`, pas d’erreur de droit |
 | I | Neuf connecteurs (lecture, pas d’appel payant) | voir checklist ci-dessous |
 | J | Pool API | `pool_size` + `max_overflow` ≤ `max_connections` PostgreSQL, `pool_timeout` 5s, threads sync ≤ plafond pool |
 | K | Timeouts PG | `statement_timeout` 15s et `idle_in_transaction_session_timeout` 60s (défaut) : un LLM lent ne doit plus garder une transaction ouverte ; Central AI libère le pool avant l’await. Un outil SQL >15s échoue proprement — ajuster seulement si un rapport métier mesuré le justifie |
+| L | **Avenqo Voice AI (Pré-Production Obligatoire)** | Exécution complète du plan `docs/voice/voice-ai-end-to-end-validation-plan.md` : Webhooks, audio bidirectionnel, vrai appel test (sous accord), création rendez-vous CRM synchronisé, multilingue (FR, EN, RO), zéro fuite inter-tenant et rollback prêt. **Condition bloquante pour tout passage en Production**. |
 
 ## Neuf connecteurs existants (après LOGIN, Sandbox test only)
 
@@ -77,13 +78,24 @@ Vérifier **déchiffrement et lecture isolée**, jamais un appel Shopify/Stripe/
 
 `CONNECTOR_ENCRYPTION_KEYS` est applicatif : le cutover `avenqo_app` ne le rotate pas. Si le déchiffrement échoue, rollback LOGIN propriétaire, **ne pas** régénérer les clés.
 
-## Rollback
+## Rollback Sécurisé (Contrôle d'exposition inter-tenant)
 
-1. Remettre `DATABASE_URL` API sur le rôle propriétaire **actuel** (celui qui marche aujourd’hui), redéployer.
-2. `ALTER ROLE avenqo_app NOLOGIN` (mot de passe invalidé). L’API ne doit plus pouvoir ouvrir de session avec ce rôle.
-3. Si données corrompues : restaurer le dump vérifié sur **copie**, comparer, puis seulement GO restore Sandbox (opération destructrice séparée, hors de cette PR).
-4. Ne pas downgrade Alembic 0060/0061 en urgence : `NO FORCE` élargit la visibilité, et drop d’index n’est pas nécessaire au rollback LOGIN. Préférer revenir au login propriétaire.
-5. Répétition rollback déjà exécutée sur replica isolé : `ALTER ROLE avenqo_app NOLOGIN` puis connexion `avenqo_app` refusée. Cette répétition **n’est pas** un cutover Sandbox.
+> [!WARNING]
+> Un retour direct de l'API au rôle propriétaire `postgres` désactive le verrouillage RLS au niveau base. Pour éviter tout risque d'exposition de données inter-entreprises :
+
+1. **Quarantaine du trafic public immédiate** : Si l'API doit être reconnectée au rôle propriétaire pour diagnostic d'urgence, activer le mode maintenance ou restreindre le domaine Sandbox pour bloquer toute requête externe non contrôlée pendant l'intervention.
+2. **Invalidation immédiate du rôle applicatif et rupture des connexions actives** :
+   - Bloquer les nouvelles connexions : `ALTER ROLE avenqo_app NOLOGIN;`
+   - **CRITIQUE** : `NOLOGIN` n'interrompt PAS les connexions déjà établies dans le pool SQLAlchemy. Il faut obligatoirement forcer la clôture immédiate de tous les backends actifs de l'application :
+     ```sql
+     SELECT pg_terminate_backend(pid) 
+     FROM pg_stat_activity 
+     WHERE usename = 'avenqo_app';
+     ```
+3. **Remise de `DATABASE_URL` sur le rôle d'administration** en environnement de quarantaine uniquement.
+4. **En cas de régression de code ou de migration** : Préférer le rollback de révision Git sur Railway (redéploiement du SHA antérieur stable) plutôt qu'un contournement manuel des rôles.
+5. **Si données corrompues** : Restaurer l'archive vérifiée `sandbox_20261015T121732Z...dump.age` (disponible localement et sur Tigris `pre-cutover-pr61/`) sur une base isolée avant toute décision de réécriture Sandbox.
+6. Ne pas tenter de downgrade Alembic 0060/0061 à chaud : `NO FORCE RLS` élargit la visibilité de manière non désirée. Maintenir le schéma et réparer en avant.
 
 ## Preuves à consigner (sans secrets)
 

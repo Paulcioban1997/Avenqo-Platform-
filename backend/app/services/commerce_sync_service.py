@@ -6,14 +6,14 @@ import csv
 import hashlib
 import io
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -167,7 +167,7 @@ class CommerceSyncService:
         ("inventory", ConnectorCapability.INVENTORY, "sync_inventory"),
         ("refunds", ConnectorCapability.REFUNDS, "sync_refunds"),
     )
-    _SNAPSHOT_FIELDS = (
+    _SNAPSHOT_FIELDS: tuple[str, ...] = (
         "product_name",
         "product_id",
         "sku",
@@ -455,7 +455,17 @@ class CommerceSyncService:
 
         connector = self._registry.get("shopify")
         normalized_shop = shop.strip().lower()
-        set_rls_bypass(self._db, enabled=True)
+        # Secure tenant resolution without global RLS bypass
+        resolved_tenant = None
+        try:
+            resolved_tenant = self._db.scalar(
+                text("SELECT public.resolve_commerce_connection_tenant(:p, :id)"),
+                {"p": "shopify", "id": normalized_shop},
+            )
+        except Exception:
+            pass
+        if resolved_tenant:
+            apply_tenant_rls(self._db, resolved_tenant)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.provider == "shopify",
@@ -463,7 +473,7 @@ class CommerceSyncService:
                 CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
-        if connection is not None:
+        if connection is not None and not resolved_tenant:
             apply_tenant_rls(self._db, connection.company_id)
         tenant_id = connection.company_id if connection is not None else UUID(int=0)
         payload = await connector.handle_webhook(
@@ -562,7 +572,16 @@ class CommerceSyncService:
         )
         if len(delivery_id) > 255 or len(topic) > 120:
             raise CommerceSyncDataError("WooCommerce webhook metadata is invalid")
-        set_rls_bypass(self._db, enabled=True)
+        resolved_tenant = None
+        try:
+            resolved_tenant = self._db.scalar(
+                text("SELECT public.resolve_commerce_connection_tenant(:p, :id)"),
+                {"p": "woocommerce", "id": str(connection_id)},
+            )
+        except Exception:
+            pass
+        if resolved_tenant:
+            apply_tenant_rls(self._db, resolved_tenant)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.id == connection_id,
@@ -571,6 +590,8 @@ class CommerceSyncService:
                 != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
+        if connection is not None and not resolved_tenant:
+            apply_tenant_rls(self._db, connection.company_id)
         if connection is None:
             return CommerceWebhookAcceptance(
                 receipt_id=None,
@@ -1129,7 +1150,7 @@ class CommerceSyncService:
     def _snapshot_rows(
         self,
         connection: CommerceConnection,
-        records: list[NormalizedCommerceRecord],
+        records: Sequence[NormalizedCommerceRecord],
     ) -> list[dict[str, Any]]:
         data_by_entity: dict[str, list[dict[str, Any]]] = {}
         for record in records:

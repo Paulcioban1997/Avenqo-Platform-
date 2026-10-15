@@ -16,7 +16,7 @@ import base64
 import anyio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -44,6 +44,7 @@ from backend.app.models import (
     VoiceCall,
 )
 from backend.app.services.crm_service import CRMService
+from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.auth import VoiceCallerAuth
 import backend.app.voice.telnyx_media as media_module
@@ -229,8 +230,8 @@ def _inject_calendar_cipher(monkeypatch, provider):
 
     original = CRMService.__init__
 
-    def with_cipher(self, session, cipher=None):
-        original(self, session, cipher if cipher is not None else FakeCipher())
+    def with_cipher(self, session, cipher: ConnectorSecretCipher | None = None):
+        original(self, session, cipher if cipher is not None else cast(ConnectorSecretCipher, FakeCipher()))
 
     monkeypatch.setattr(CRMService, "__init__", with_cipher)
     monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", lambda *a, **k: provider)
@@ -423,7 +424,10 @@ async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_we
     with env.client.websocket_connect(f"/api/v1/voice/telnyx/media/{call.id}") as socket:
         socket.send_json(event)
         socket.send_json(_pcmu_frame("stream-inbound-credits", 1))
-        socket.receive_json()
+        for _ in range(10):
+            socket.receive_json()
+            if claimed_ids and adapter.spoken:
+                break
         try:
             socket.send_json({"event": "stop", "stream_id": "stream-inbound-credits"})
         except (anyio.BrokenResourceError, anyio.ClosedResourceError):

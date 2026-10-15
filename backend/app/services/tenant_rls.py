@@ -82,8 +82,8 @@ def release_tenant_connection(session: object | None) -> None:
 
 
 _CONTEXT_SQL = text(
-    "SELECT set_config('app.bypass_rls', :flag, true), "
-    "set_config('app.current_company_id', :cid, true)"
+    "SELECT set_config('app.current_company_id', :cid, true), "
+    "set_config('app.bypass_rls', :flag, true)"
 )
 
 
@@ -96,8 +96,8 @@ def _restore_transaction_context(session: Session, transaction, connection) -> N
         connection.execute(_CONTEXT_SQL, context)
 
 
-def _set_context(session: Session, company_id: str, bypass: bool) -> None:
-    context = {"flag": "on" if bypass else "off", "cid": company_id}
+def _set_context(session: Session, company_id: str, bypass: bool = False) -> None:
+    context = {"cid": company_id, "flag": "on" if bypass else "off"}
     info = getattr(session, "info", None)
     if isinstance(info, dict):
         info["avenqo_rls"] = context
@@ -202,17 +202,116 @@ RLS_EXPANSION_0060 = (
 TENANT_SCOPED_TABLES = TENANT_SCOPED_TABLES + RLS_EXPANSION_0060
 
 
+DATASET_CHILD_TABLES = (
+    "dataset_profiles",
+    "dataset_versions",
+    "data_quality_reports",
+    "mappings",
+)
+
+# Hardened policy: strictly enforces tenant isolation with NO app.bypass_rls backdoor.
 _POLICY_SQL = """
 CREATE POLICY {table}_tenant_isolation ON {table}
-USING (
-  current_setting('app.bypass_rls', true) = 'on'
-  OR company_id = avenqo_tenant_id()
-)
-WITH CHECK (
-  current_setting('app.bypass_rls', true) = 'on'
-  OR company_id = avenqo_tenant_id()
-)
+USING (company_id = avenqo_tenant_id())
+WITH CHECK (company_id = avenqo_tenant_id())
 """
+
+# Child dataset tables without direct company_id: scoped via datasets relation.
+_DATASET_CHILD_POLICY_SQL = """
+CREATE POLICY {table}_tenant_isolation ON {table}
+USING (dataset_id IN (SELECT id FROM datasets WHERE company_id = avenqo_tenant_id()))
+WITH CHECK (dataset_id IN (SELECT id FROM datasets WHERE company_id = avenqo_tenant_id()))
+"""
+
+_COMMERCE_RESOLVER_SQL = """
+CREATE OR REPLACE FUNCTION public.resolve_commerce_connection_tenant(
+    p_provider text,
+    p_identifier text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_company_id uuid;
+BEGIN
+    SELECT company_id INTO v_company_id
+    FROM commerce_connections
+    WHERE provider = p_provider
+      AND (
+          lower(external_account_id) = lower(p_identifier)
+          OR (id::text = p_identifier)
+      )
+      AND status != 'disconnected'
+    LIMIT 1;
+
+    RETURN v_company_id;
+END;
+$$;
+"""
+
+
+def harden_all_tenant_rls_policies(connection) -> None:
+    """Harden RLS on all scoped tables and dataset children, removing bypass_rls door."""
+    if connection.dialect.name != "postgresql":
+        return
+
+    # 1. Create secure resolver function for inbound commerce webhooks
+    connection.execute(text(_COMMERCE_RESOLVER_SQL))
+    connection.execute(text("GRANT EXECUTE ON FUNCTION public.resolve_commerce_connection_tenant(text, text) TO PUBLIC"))
+
+    inspector = inspect(connection)
+
+    # 2. Re-create hardened RLS on all direct company_id tables
+    for table in TENANT_SCOPED_TABLES:
+        if not inspector.has_table(table):
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table)}
+        if "company_id" not in columns:
+            continue
+        connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+        connection.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+        # Drop any and all existing policies on this table
+        existing_policies = connection.execute(
+            text("SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = :t"),
+            {"t": table},
+        ).fetchall()
+        for p in existing_policies:
+            connection.execute(text(f'DROP POLICY IF EXISTS "{p[0]}" ON {table}'))
+        connection.execute(text(_POLICY_SQL.format(table=table)))
+
+    # 3. Secure child dataset tables
+    for table in DATASET_CHILD_TABLES:
+        if not inspector.has_table(table):
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table)}
+        if "dataset_id" not in columns:
+            continue
+        connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+        connection.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+        existing_policies = connection.execute(
+            text("SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = :t"),
+            {"t": table},
+        ).fetchall()
+        for p in existing_policies:
+            connection.execute(text(f'DROP POLICY IF EXISTS "{p[0]}" ON {table}'))
+        connection.execute(text(_DATASET_CHILD_POLICY_SQL.format(table=table)))
+
+
+def revert_harden_all_tenant_rls_policies(connection) -> None:
+    """Reversible rollback for migration downgrades."""
+    if connection.dialect.name != "postgresql":
+        return
+
+    # Drop child policies
+    for table in DATASET_CHILD_TABLES:
+        connection.execute(text(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}"))
+        connection.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        connection.execute(text(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY"))
+
+    connection.execute(text("DROP FUNCTION IF EXISTS public.resolve_commerce_connection_tenant(text, text)"))
 
 
 def apply_force_rls_policies(connection, tables: tuple[str, ...]) -> None:
