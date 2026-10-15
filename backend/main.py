@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -33,7 +34,8 @@ async def lifespan(app: FastAPI):
     if storage_status.status != "ok":
         logger.error("Application starting with degraded artifact storage")
     is_production = settings.environment.lower() in {"production", "prod"}
-    if not is_production:
+    skip_create_all = os.getenv("AVENQO_SKIP_CREATE_ALL", "").strip().lower() in {"1", "true", "yes"}
+    if not is_production and not skip_create_all:
         # Dev/test uniquement : filet de sécurité pratique. En production, le
         # schéma doit être géré exclusivement par `alembic upgrade head`
         # exécuté comme étape de déploiement explicite — voir

@@ -377,6 +377,8 @@ class Settings(BaseSettings):
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+    db_pool_size: int = Field(default=10, ge=1, le=100, alias="AVENQO_DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=20, ge=0, le=100, alias="AVENQO_DB_MAX_OVERFLOW")
 
     # Sauvegarde/restauration (remédiation post-Phase 34) : répertoire local de
     # stockage des archives et politique de rétention par défaut (technique,

@@ -368,6 +368,7 @@ async def _stream_session(
         await websocket.close(code=4401)
         return
 
+    apply_tenant_rls(db, tenant_id, bypass=False)
     session = db.scalar(
         select(VoiceCentralSession).where(
             VoiceCentralSession.id == session_id,
@@ -689,5 +690,5 @@ async def stream_session(
     central = session is not None and (getattr(session, "source_context", None) or {}).get("entrypoint") == "central"
     # Sponsorship only applies to this persisted Central session. The stream still
     # validates the JWT, session owner, membership and every private tool action.
-    with included_central(session.company_id) if central else nullcontext():
+    with included_central(session.company_id) if session is not None and central else nullcontext():
         await _stream_session(websocket, session_id, db, service)

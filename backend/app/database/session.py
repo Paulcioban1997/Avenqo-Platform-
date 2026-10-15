@@ -33,8 +33,8 @@ def _build_engine():
         "pool_pre_ping": True,
     }
     if not database_url.startswith("sqlite"):
-        engine_kwargs["pool_size"] = 10
-        engine_kwargs["max_overflow"] = 20
+        engine_kwargs["pool_size"] = settings.db_pool_size
+        engine_kwargs["max_overflow"] = settings.db_max_overflow
         engine_kwargs["pool_recycle"] = 300
         engine_kwargs["pool_reset_on_return"] = "rollback"
 

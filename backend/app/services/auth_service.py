@@ -18,6 +18,7 @@ from backend.app.core.security import (
     hash_token,
     verify_password,
 )
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.models import (
     AccountToken,
     AccountTokenPurpose,
@@ -174,6 +175,7 @@ class AuthService:
         return company, user, verification_email_sent
 
     def create_auth_session(self, user: User) -> AuthResult:
+        apply_tenant_rls(self._session, user.company_id)
         now = datetime.now(timezone.utc)
         refresh_token = generate_token()
         refresh_expires_at = now + timedelta(days=get_settings().auth_refresh_days)
@@ -232,6 +234,8 @@ class AuthService:
         user = self._session.scalar(
             select(User).where(User.email == email.strip().lower()).with_for_update()
         )
+        if user is not None:
+            apply_tenant_rls(self._session, user.company_id)
         now = datetime.now(timezone.utc)
         if user is not None and self._is_locked(user, now):
             self._record_login(user, "locked", ip_address, user_agent)
