@@ -70,12 +70,18 @@ class TenantAnalyticsSnapshot:
     active_source_name: str | None = None
     active_source_last_updated_at: datetime | None = None
     active_source_last_event_received_at: datetime | None = None
+    allow_multi_currency: bool = False
 
     @property
     def currency(self) -> str:
         return self.company.currency_code if self.company is not None else "USD"
 
-    def source_for(self, required_fields: frozenset[str]) -> PreparedCompanyDataset | None:
+    def source_for(
+        self,
+        required_fields: frozenset[str],
+        *,
+        convert_currencies: bool = False,
+    ) -> PreparedCompanyDataset | None:
         candidates = [
             (item, self._with_derived_revenue(self._compose_from(item)))
             for item in self.prepared
@@ -134,6 +140,16 @@ class TenantAnalyticsSnapshot:
             len(item.canonical_columns),
             len(item.rows),
         ))
+        if not (convert_currencies or self.allow_multi_currency) and ("total_amount" in required_fields or "unit_price" in required_fields):
+            currencies = {
+                str(row["currency"]).upper()
+                for item in components
+                for row in self._canonical_rows(item)
+                if row.get("currency")
+            }
+            if len(currencies) > 1:
+                raise ValueError("INCOMPATIBLE_SOURCE_CURRENCIES")
+
         if len(components) == 1:
             return selected
 

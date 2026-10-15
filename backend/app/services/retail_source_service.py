@@ -454,13 +454,6 @@ class RetailSourceService:
             for item in connections
             if item.status == CommerceConnectionStatus.READY.value
         ]
-        if len(ready_connections) + len(datasets) > 1:
-            return self._store_selection(
-                tenant,
-                source_type="all",
-                dataset_id=None,
-                connection_id=None,
-            )
         if ready_connections:
             connection = ready_connections[0]
             return self._store_selection(

@@ -170,7 +170,7 @@ class GetProductDetailTool(RetailAITool):
                         pass
                 scope_conn_ids = parsed
         elif active_source is not None:
-            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
+            if getattr(active_source, "source_type", None) in ("single", "connector") and getattr(active_source, "connection_id", None) is not None:
                 scope_conn_ids = [active_source.connection_id]
             elif getattr(active_source, "source_type", None) == "custom_set":
                 scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
@@ -418,7 +418,7 @@ class GetInventorySummaryTool(RetailAITool):
                         pass
                 scope_conn_ids = parsed
         elif active_source is not None:
-            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
+            if getattr(active_source, "source_type", None) in ("single", "connector") and getattr(active_source, "connection_id", None) is not None:
                 scope_conn_ids = [active_source.connection_id]
             elif getattr(active_source, "source_type", None) == "custom_set":
                 scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])

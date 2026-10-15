@@ -348,7 +348,7 @@ def test_lot3_consolidated_kpi_multi_currency_and_refunds(db_session: Session):
     )
 
     # Reconcile across components
-    reconciled = snapshot.source_for(frozenset({"total_amount", "order_id"}))
+    reconciled = snapshot.source_for(frozenset({"total_amount", "order_id"}), convert_currencies=True)
     assert reconciled is not None
     assert len(reconciled.rows) == 2
 
