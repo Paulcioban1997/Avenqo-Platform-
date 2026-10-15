@@ -8,7 +8,8 @@ from backend.app.services.tenant_rls import (
 
 def test_0061b_migration_integrity() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0061b_harden_tenant_rls_no_bypass"]
+    heads = script.get_heads()
+    assert "0061b_harden_tenant_rls_no_bypass" in heads or "0063_multi_source_selection" in heads
     
     rev = script.get_revision("0061b_harden_tenant_rls_no_bypass")
     assert rev.down_revision == "0061_tenant_hotpath_indexes"

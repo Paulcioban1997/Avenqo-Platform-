@@ -27,6 +27,10 @@ class RetailSourceNotFound(ValueError):
     pass
 
 
+class CrossTenantSourceAccessDenied(PermissionError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class RetailSource:
     source_type: str
@@ -104,16 +108,26 @@ class RetailSourceService:
                 enabled=states.get(
                     self._source_key(source.source_type, source.source_id),
                     bool(
-                        activation_default
-                        and (
-                            activation_default.source_type == "all"
-                            or (
-                                activation_default.source_type == source.source_type
-                                and (
-                                    activation_default.connection_id == source.connection_id
-                                    if source.source_type == "connector"
-                                    else activation_default.dataset_id == source.dataset_id
-                                )
+                        activation_default is None
+                        or (activation_default.source_type or "").lower() == "all"
+                        or (
+                            getattr(activation_default, "selection_mode", "") == "CUSTOM_SET"
+                            and str(source.source_id) in (getattr(activation_default, "selected_source_ids", None) or [])
+                        )
+                        or (
+                            activation_default.source_type == source.source_type
+                            and (
+                                activation_default.connection_id == source.connection_id
+                                if source.source_type == "connector"
+                                else activation_default.dataset_id == source.dataset_id
+                            )
+                        )
+                        or (
+                            getattr(activation_default, "selection_mode", "") == "SINGLE"
+                            and (
+                                activation_default.connection_id == source.connection_id
+                                if source.source_type == "connector"
+                                else activation_default.dataset_id == source.dataset_id
                             )
                         )
                     ),
@@ -427,7 +441,7 @@ class RetailSourceService:
             return None
         elif (
             selection is not None
-            and selection.source_type == "all"
+            and selection.source_type.lower() in ("all", "custom", "custom_set", "single")
         ):
             return selection
 
@@ -436,6 +450,13 @@ class RetailSourceService:
             for item in connections
             if item.status == CommerceConnectionStatus.READY.value
         ]
+        if len(ready_connections) + len(datasets) > 1:
+            return self._store_selection(
+                tenant,
+                source_type="all",
+                dataset_id=None,
+                connection_id=None,
+            )
         if ready_connections:
             connection = ready_connections[0]
             return self._store_selection(
@@ -638,3 +659,143 @@ class RetailSourceService:
                 and active.dataset_id == dataset.id
             ),
         )
+
+    def get_workspace_selection(self, tenant: TenantContext) -> dict:
+        """Retourne la configuration multi-sources actuelle de l'entreprise."""
+        available = self.list_sources(tenant)
+        active = self._session.scalar(
+            select(RetailActiveSource).where(
+                RetailActiveSource.company_id == tenant.company_id
+            )
+        )
+        mode = "ALL"
+        raw_selected_ids: set[str] = set()
+
+        if active is not None:
+            mode = getattr(active, "selection_mode", "ALL")
+            if mode == "ALL":
+                raw_selected_ids = {
+                    str(s.source_id) for s in available
+                    if s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+                }
+            elif mode == "CUSTOM_SET":
+                raw_selected_ids = set(getattr(active, "selected_source_ids", None) or [])
+            elif mode == "SINGLE":
+                single_id = active.connection_id or active.dataset_id
+                if not single_id and getattr(active, "selected_source_ids", None):
+                    single_id = active.selected_source_ids[0]
+                if single_id:
+                    raw_selected_ids = {str(single_id)}
+        else:
+            raw_selected_ids = {
+                str(s.source_id) for s in available
+                if s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+            }
+
+        items = []
+        selected_items = []
+        selected_ids_list = []
+        for s in available:
+            is_sel = str(s.source_id) in raw_selected_ids
+            if mode == "ALL":
+                is_sel = s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+            item = {
+                "id": s.source_id,
+                "source_type": s.source_type,
+                "display_name": s.display_name,
+                "provider": s.provider,
+                "status": s.status,
+                "enabled": s.enabled,
+                "last_synchronized_at": s.last_synchronized_at,
+                "is_selected": is_sel,
+            }
+            items.append(item)
+            if is_sel:
+                selected_items.append(item)
+                selected_ids_list.append(s.source_id)
+
+        return {
+            "mode": mode,
+            "selected_source_ids": selected_ids_list,
+            "selected_sources": selected_items,
+            "available_sources": items,
+            "effective_count": len(selected_items),
+        }
+
+    def set_workspace_selection(
+        self,
+        tenant: TenantContext,
+        *,
+        mode: str,
+        selected_source_ids: list[UUID],
+    ) -> dict:
+        """Met à jour le mode et la sélection multi-sources pour l'entreprise."""
+        normalized_mode = (mode or "").strip().upper()
+        if normalized_mode not in ("ALL", "CUSTOM_SET", "SINGLE"):
+            raise ValueError(
+                f"Mode de sélection invalide: '{mode}'. Doit être 'ALL', 'CUSTOM_SET' ou 'SINGLE'."
+            )
+
+        available_sources = self.list_sources(tenant)
+        available_by_id = {s.source_id: s for s in available_sources}
+
+        # 1. Validation de cardinalité
+        if normalized_mode == "SINGLE":
+            if len(selected_source_ids) != 1:
+                raise ValueError("Le mode SINGLE requiert exactement un identifiant de source sélectionné.")
+        elif normalized_mode == "CUSTOM_SET":
+            if len(selected_source_ids) < 1:
+                raise ValueError("Le mode CUSTOM_SET requiert au moins un identifiant de source sélectionné.")
+
+        # 2. Validation d'étanchéité multi-tenant & de déconnexion
+        valid_selected_ids: list[UUID] = []
+        if normalized_mode in ("SINGLE", "CUSTOM_SET"):
+            for sid in selected_source_ids:
+                if sid not in available_by_id:
+                    # Vérifier si l'ID existe sur un autre tenant pour lever CrossTenantSourceAccessDenied
+                    other_conn = self._session.get(CommerceConnection, sid)
+                    other_ds = self._session.get(Dataset, sid)
+                    if (other_conn and other_conn.company_id != tenant.company_id) or (
+                        other_ds and other_ds.company_id != tenant.company_id
+                    ):
+                        raise CrossTenantSourceAccessDenied(
+                            "Refus d'accès : la source demandée appartient à une autre entreprise."
+                        )
+                    if other_conn and other_conn.status.upper() == CommerceConnectionStatus.DISCONNECTED.value:
+                        raise ValueError(
+                            f"Impossible de sélectionner la source déconnectée '{other_conn.display_name or other_conn.external_account_id}'."
+                        )
+                    raise RetailSourceNotFound(f"Source avec l'identifiant '{sid}' introuvable.")
+
+                source = available_by_id[sid]
+                if source.status.upper() == CommerceConnectionStatus.DISCONNECTED.value:
+                    raise ValueError(f"Impossible de sélectionner la source déconnectée '{source.display_name}'.")
+
+                valid_selected_ids.append(sid)
+
+        # 3. Persistance dans RetailActiveSource
+        active = self._session.scalar(
+            select(RetailActiveSource).where(
+                RetailActiveSource.company_id == tenant.company_id
+            )
+        )
+        if active is None:
+            active = RetailActiveSource(
+                company_id=tenant.company_id,
+                source_type=normalized_mode,
+            )
+            self._session.add(active)
+
+        active.source_type = normalized_mode
+        active.selected_source_ids = [str(sid) for sid in valid_selected_ids]
+
+        if normalized_mode == "SINGLE" and valid_selected_ids:
+            target = available_by_id[valid_selected_ids[0]]
+            active.connection_id = target.connection_id
+            active.dataset_id = target.dataset_id
+        else:
+            active.connection_id = None
+            active.dataset_id = None
+
+        self._session.commit()
+        return self.get_workspace_selection(tenant)

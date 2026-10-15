@@ -10,10 +10,21 @@ from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity
 from backend.app.models import UserRole
+from backend.app.core.permissions import permissions_for
+from backend.app.schemas.workspace_sources import (
+    WorkspaceSourceSelectionRequest,
+    WorkspaceSourceSelectionResponse,
+)
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.routers.employees import plan_limit_exception
 from backend.app.services.plan_limits_service import PlanLimitReached
+from backend.app.services.retail_source_service import (
+    CrossTenantSourceAccessDenied,
+    RetailSourceNotFound,
+    RetailSourceService,
+)
 from backend.app.services.workspace_service import WorkspaceError, WorkspaceService
+from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
 
@@ -196,3 +207,43 @@ def ask_guidance(
         return service.answer_question(identity.user, payload.question, confirm_token=payload.confirm_token)
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/sources/selection", response_model=WorkspaceSourceSelectionResponse)
+def get_sources_selection(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> WorkspaceSourceSelectionResponse:
+    """Retourne la configuration multi-sources actuelle de l'entreprise."""
+    if "data:read" not in permissions_for(identity.user.role):
+        raise HTTPException(status_code=403, detail="Permission refusée: data:read requise")
+    tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
+    service = RetailSourceService(db)
+    result = service.get_workspace_selection(tenant)
+    return WorkspaceSourceSelectionResponse.model_validate(result)
+
+
+@router.post("/sources/selection", response_model=WorkspaceSourceSelectionResponse)
+def set_sources_selection(
+    payload: WorkspaceSourceSelectionRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> WorkspaceSourceSelectionResponse:
+    """Met à jour le mode et la sélection multi-sources pour l'entreprise."""
+    if "data:manage" not in permissions_for(identity.user.role):
+        raise HTTPException(status_code=403, detail="Permission refusée: data:manage requise")
+    tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
+    service = RetailSourceService(db)
+    try:
+        result = service.set_workspace_selection(
+            tenant,
+            mode=payload.mode,
+            selected_source_ids=payload.selected_source_ids,
+        )
+    except CrossTenantSourceAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RetailSourceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return WorkspaceSourceSelectionResponse.model_validate(result)
