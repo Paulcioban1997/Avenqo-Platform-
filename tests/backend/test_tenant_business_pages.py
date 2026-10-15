@@ -35,6 +35,7 @@ from backend.app.models import (
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services.tenant_customers_service import CustomerNotFound, TenantCustomersService
 from backend.app.schemas.tenant_business import TenantCustomersResponse
+from backend.app.schemas.tenant_products_recommendations import TenantRecommendationsResponse
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
 from backend.app.services.tenant_products_service import ProductNotFound, TenantProductsService
 from backend.app.services.tenant_recommendations_service import TenantRecommendationsService
@@ -999,6 +1000,18 @@ def test_recommendations_are_evidence_backed_ranked_deduplicated_and_have_no_fak
     items = result["recommendations"]
 
     assert items
+    # Match the actual HTTP response contract, not just the raw service dict.
+    parsed = TenantRecommendationsResponse.model_validate(result)
+    assert len(parsed.recommendations) == len(items)
+    period_bounds = [
+        item for item in items
+        if isinstance(item["evidence"].get("period"), dict)
+    ]
+    assert period_bounds, "Fixture must cover structured product comparison periods"
+    assert all(
+        isinstance(item["period"], str) and "/" in item["period"]
+        for item in period_bounds
+    )
     assert len({item["id"] for item in items}) == len(items)
     assert all(item["evidence"] for item in items)
     assert all(item["lifecycle"] == "active" for item in items)
