@@ -409,7 +409,7 @@ class RetailSourceService:
         tenant: TenantContext,
         connections: tuple[CommerceConnection, ...],
         datasets: tuple[Dataset, ...],
-    ) -> RetailActiveSource | None:
+    ) -> UserSourceSelection | RetailActiveSource | None:
         selection = self._session.scalar(
             select(RetailActiveSource).where(
                 RetailActiveSource.company_id == tenant.company_id
