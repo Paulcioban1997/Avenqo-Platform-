@@ -57,6 +57,7 @@ Cette procédure prépare le LOGIN du rôle applicatif `avenqo_app` sur **Sandbo
 | H | Worker migrateur `alembic current` | head `0061_tenant_hotpath_indexes`, pas d’erreur de droit |
 | I | Neuf connecteurs (lecture, pas d’appel payant) | voir checklist ci-dessous |
 | J | Pool API | `pool_size` + `max_overflow` ≤ `max_connections` PostgreSQL, `pool_timeout` 5s, threads sync ≤ plafond pool |
+| K | Timeouts PG | `statement_timeout` 15s et `idle_in_transaction_session_timeout` 60s (défaut) : un LLM lent ne doit plus garder une transaction ouverte ; Central AI libère le pool avant l’await. Un outil SQL >15s échoue proprement — ajuster seulement si un rapport métier mesuré le justifie |
 
 ## Neuf connecteurs existants (après LOGIN, Sandbox test only)
 

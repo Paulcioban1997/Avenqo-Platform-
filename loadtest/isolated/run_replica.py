@@ -843,6 +843,7 @@ def main() -> int:
     }
     api_proc = None
     mock_httpd = None
+    mock_thread = None
     log_handle = None
     try:
         _docker_up()
@@ -850,9 +851,8 @@ def main() -> int:
         evidence["app_role"] = _enable_app_role_and_reown()
         evidence["tenants_seeded"] = companies
         tenants = _seed(companies)
-        from loadtest.isolated.openai_mock import serve as serve_mock
-        mock_httpd = serve_mock("127.0.0.1", MOCK_PORT)
-        threading.Thread(target=mock_httpd.serve_forever, daemon=True).start()
+        from loadtest.isolated.openai_mock import start as start_mock, stop as stop_mock
+        mock_httpd, mock_thread = start_mock("127.0.0.1", MOCK_PORT)
         env = os.environ.copy()
         env.update({
             "ENVIRONMENT": "test",
@@ -921,8 +921,8 @@ def main() -> int:
                 api_proc.kill()
         if log_handle is not None:
             log_handle.close()
-        if mock_httpd is not None:
-            mock_httpd.shutdown()
+        from loadtest.isolated.openai_mock import stop as stop_mock
+        stop_mock(mock_httpd, mock_thread)
         if api_proc is not None and not args.keep:
             try:
                 evidence["rollback_rehearsal"] = _rehearse_nologin_rollback()

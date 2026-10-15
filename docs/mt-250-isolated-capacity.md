@@ -1,6 +1,6 @@
 # Isolated replica capacity — PR #61
 
-Generated: 2026-10-15T02:38:10.444133+00:00
+Generated: 2026-10-15T03:55:11.898387+00:00
 Production and live Sandbox were **not** modified. Paid providers were **not** called.
 
 **Sandbox cutover recommendation: CONDITIONAL-GO**
@@ -63,13 +63,10 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
 
 | Companies | Pass | RPS | p50 | p95 | p99 | 5xx | CPU % | RSS MB | PG active | idle-in-xact | locks |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 10 | True | 87.9 | 90.4 | 212.4 | 452.1 | 0.0 | 128.4 | 440.9 | 1 | 0 | 0 |
-| 25 | True | 95.9 | 224.5 | 499.9 | 534.7 | 0.0 | 130.8 | 472.1 | 1 | 0 | 0 |
-| 50 | True | 93.2 | 227.9 | 632.5 | 1062.8 | 0.0 | 132.9 | 474.5 | 1 | 0 | 0 |
-| 100 | True | 87.9 | 230.8 | 648.9 | 790.5 | 0.0 | 122.3 | 478.3 | 1 | 0 | 0 |
-| 150 | True | 88.6 | 307.6 | 686.9 | 775.3 | 0.0 | 132.4 | 477.2 | 1 | 0 | 0 |
-| 200 | True | 88.5 | 275.1 | 677.7 | 904.8 | 0.0 | 131.5 | 475.9 | 1 | 0 | 0 |
-| 250 | True | 90.4 | 303.9 | 666.0 | 937.6 | 0.0 | 131.2 | 479.0 | 1 | 0 | 0 |
+| 25 | True | 84.3 | 237.6 | 515.2 | 544.6 | 0.0 | 137.2 | 451.3 | 1 | 0 | 0 |
+| 50 | True | 90.3 | 239.5 | 669.3 | 1242.4 | 0.0 | 132.3 | 471.0 | 1 | 0 | 0 |
+| 100 | True | 82.7 | 283.8 | 681.6 | 803.1 | 0.0 | 125.8 | 473.2 | 1 | 0 | 0 |
+| 250 | True | 70.7 | 378.1 | 857.3 | 1082.2 | 0.0 | 131.0 | 475.4 | 1 | 0 | 0 |
 
 ## Burst 250 simultaneous GET /health
 
@@ -81,11 +78,11 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
   "requests": 250,
   "failures_5xx_or_timeout": 0,
   "error_rate_5xx": 0.0,
-  "elapsed_s": 0.497,
-  "rps": 503.2,
-  "p50_ms": 229.3,
-  "p95_ms": 324.9,
-  "p99_ms": 327.7,
+  "elapsed_s": 0.696,
+  "rps": 359.1,
+  "p50_ms": 305.7,
+  "p95_ms": 448.2,
+  "p99_ms": 449.1,
   "pg_activity": 17,
   "pg_active": 1,
   "pg_idle": 16,
@@ -109,11 +106,11 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
   "requests": 250,
   "failures_5xx_or_timeout": 0,
   "error_rate_5xx": 0.0,
-  "elapsed_s": 1.912,
-  "rps": 130.7,
-  "p50_ms": 1006.0,
-  "p95_ms": 1549.8,
-  "p99_ms": 1557.6,
+  "elapsed_s": 2.452,
+  "rps": 102.0,
+  "p50_ms": 1284.1,
+  "p95_ms": 2170.0,
+  "p99_ms": 2178.6,
   "pg_activity": 17,
   "pg_active": 1,
   "pg_idle": 16,
@@ -130,27 +127,116 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
 ## Central AI (simulated)
 
 ```json
-{
-  "companies": 25,
-  "logins": 25,
-  "requests": 50,
-  "failures_5xx_or_timeout": 0,
-  "error_rate_5xx": 0.0,
-  "elapsed_s": 10.309,
-  "rps": 4.9,
-  "p50_ms": 4401.1,
-  "p95_ms": 5961.6,
-  "p99_ms": 6050.8,
-  "pg_activity": 17,
-  "pg_active": 1,
-  "pg_idle": 16,
-  "pg_idle_in_xact": 0,
-  "pg_lock_waits": 0,
-  "pg_app_sessions": 16,
-  "pg_waiting": 0,
-  "pass": true,
-  "paid_provider": false
-}
+[
+  {
+    "companies": 25,
+    "logins": 25,
+    "requests": 26,
+    "failures_5xx_or_timeout": 0,
+    "error_rate_5xx": 0.0,
+    "elapsed_s": 7.972,
+    "rps": 3.3,
+    "p50_ms": 7142.6,
+    "p95_ms": 7955.6,
+    "p99_ms": 7955.6,
+    "pg_activity": 17,
+    "pg_active": 1,
+    "pg_idle": 16,
+    "pg_idle_in_xact": 0,
+    "pg_lock_waits": 0,
+    "pg_app_sessions": 16,
+    "pg_waiting": 0,
+    "peak_pg_active": 2,
+    "peak_pg_idle_in_xact": 25,
+    "peak_pg_app_sessions": 25,
+    "peak_pg_lock_waits": 0,
+    "pg_samples": 42,
+    "pass": true,
+    "paid_provider": false,
+    "note": "LLM mock holds 0.4s; pool connections must not stay idle-in-transaction during that await"
+  },
+  {
+    "companies": 50,
+    "logins": 50,
+    "requests": 69,
+    "failures_5xx_or_timeout": 0,
+    "error_rate_5xx": 0.0,
+    "elapsed_s": 17.825,
+    "rps": 3.9,
+    "p50_ms": 5960.8,
+    "p95_ms": 10590.9,
+    "p99_ms": 10592.5,
+    "pg_activity": 17,
+    "pg_active": 1,
+    "pg_idle": 16,
+    "pg_idle_in_xact": 0,
+    "pg_lock_waits": 0,
+    "pg_app_sessions": 16,
+    "pg_waiting": 0,
+    "peak_pg_active": 3,
+    "peak_pg_idle_in_xact": 32,
+    "peak_pg_app_sessions": 32,
+    "peak_pg_lock_waits": 0,
+    "pg_samples": 94,
+    "pass": true,
+    "paid_provider": false,
+    "note": "LLM mock holds 0.4s; pool connections must not stay idle-in-transaction during that await"
+  },
+  {
+    "companies": 100,
+    "logins": 100,
+    "requests": 122,
+    "failures_5xx_or_timeout": 0,
+    "error_rate_5xx": 0.0,
+    "elapsed_s": 31.663,
+    "rps": 3.9,
+    "p50_ms": 8029.0,
+    "p95_ms": 9926.8,
+    "p99_ms": 11562.8,
+    "pg_activity": 17,
+    "pg_active": 1,
+    "pg_idle": 16,
+    "pg_idle_in_xact": 0,
+    "pg_lock_waits": 0,
+    "pg_app_sessions": 16,
+    "pg_waiting": 0,
+    "peak_pg_active": 3,
+    "peak_pg_idle_in_xact": 31,
+    "peak_pg_app_sessions": 32,
+    "peak_pg_lock_waits": 0,
+    "pg_samples": 167,
+    "pass": true,
+    "paid_provider": false,
+    "note": "LLM mock holds 0.4s; pool connections must not stay idle-in-transaction during that await"
+  },
+  {
+    "companies": 250,
+    "logins": 250,
+    "requests": 254,
+    "failures_5xx_or_timeout": 0,
+    "error_rate_5xx": 0.0,
+    "elapsed_s": 68.573,
+    "rps": 3.7,
+    "p50_ms": 7695.6,
+    "p95_ms": 11302.9,
+    "p99_ms": 13799.2,
+    "pg_activity": 17,
+    "pg_active": 1,
+    "pg_idle": 16,
+    "pg_idle_in_xact": 0,
+    "pg_lock_waits": 0,
+    "pg_app_sessions": 16,
+    "pg_waiting": 0,
+    "peak_pg_active": 2,
+    "peak_pg_idle_in_xact": 32,
+    "peak_pg_app_sessions": 32,
+    "peak_pg_lock_waits": 0,
+    "pg_samples": 359,
+    "pass": true,
+    "paid_provider": false,
+    "note": "LLM mock holds 0.4s; pool connections must not stay idle-in-transaction during that await"
+  }
+]
 ```
 
 
@@ -162,7 +248,7 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
   "vus": 25,
   "hold": "12s",
   "returncode": 0,
-  "stdout_tail": "nning (10.0s), 25/25 VUs, 143 complete and 0 interrupted iterations\npalier   [  83% ] 25 VUs  10.0s/12s\n\nrunning (11.0s), 25/25 VUs, 167 complete and 0 interrupted iterations\npalier   [  92% ] 25 VUs  11.0s/12s\n\nrunning (12.0s), 25/25 VUs, 175 complete and 0 interrupted iterations\npalier   [ 100% ] 25 VUs  12.0s/12s\n\n\n  \u00e2\u2013\u02c6 THRESHOLDS \n\n    http_req_failed\n    \u00e2\u0153\u201c 'rate<0.05' rate=0.00%\n\n\n  \u00e2\u2013\u02c6 TOTAL RESULTS \n\n    checks_total.......: 800     64.129795/s\n    checks_succeeded...: 100.00% 800 out of 800\n    checks_failed......: 0.00%   0 out of 800\n\n    \u00e2\u0153\u201c login 200\n    \u00e2\u0153\u201c me\n    \u00e2\u0153\u201c retail\n    \u00e2\u0153\u201c crm\n\n    HTTP\n    http_req_duration..............: avg=384.27ms min=24.35ms  med=276.4ms max=1.31s p(90)=799.66ms p(95)=866.78ms\n      { expected_response:true }...: avg=384.27ms min=24.35ms  med=276.4ms max=1.31s p(90)=799.66ms p(95)=866.78ms\n    http_req_failed................: 0.00%  0 out of 800\n    http_reqs......................: 800    64.129795/s\n\n    EXECUTION\n    iteration_duration.............: avg=1.53s    min=526.13ms med=1.65s   max=2.19s p(90)=1.89s    p(95)=2.13s   \n    iterations.....................: 200    16.032449/s\n    vus............................: 25     min=25       max=25\n    vus_max........................: 25     min=25       max=25\n\n    NETWORK\n    data_received..................: 1.1 MB 89 kB/s\n    data_sent......................: 736 kB 59 kB/s\n\n\n\n\nrunning (12.5s), 00/25 VUs, 200 complete and 0 interrupted iterations\npalier \u00e2\u0153\u201c [ 100% ] 25 VUs  12s\n",
+  "stdout_tail": "2s\n\nrunning (10.0s), 25/25 VUs, 116 complete and 0 interrupted iterations\npalier   [  83% ] 25 VUs  10.0s/12s\n\nrunning (11.0s), 25/25 VUs, 124 complete and 0 interrupted iterations\npalier   [  92% ] 25 VUs  11.0s/12s\n\nrunning (12.0s), 25/25 VUs, 143 complete and 0 interrupted iterations\npalier   [ 100% ] 25 VUs  12.0s/12s\n\n\n  \u00e2\u2013\u02c6 THRESHOLDS \n\n    http_req_failed\n    \u00e2\u0153\u201c 'rate<0.05' rate=0.00%\n\n\n  \u00e2\u2013\u02c6 TOTAL RESULTS \n\n    checks_total.......: 672     52.284798/s\n    checks_succeeded...: 100.00% 672 out of 672\n    checks_failed......: 0.00%   0 out of 672\n\n    \u00e2\u0153\u201c login 200\n    \u00e2\u0153\u201c me\n    \u00e2\u0153\u201c retail\n    \u00e2\u0153\u201c crm\n\n    HTTP\n    http_req_duration..............: avg=471.66ms min=22.04ms  med=355.28ms max=1.21s p(90)=890.04ms p(95)=1s   \n      { expected_response:true }...: avg=471.66ms min=22.04ms  med=355.28ms max=1.21s p(90)=890.04ms p(95)=1s   \n    http_req_failed................: 0.00%  0 out of 672\n    http_reqs......................: 672    52.284798/s\n\n    EXECUTION\n    iteration_duration.............: avg=1.88s    min=688.84ms med=2.06s    max=2.37s p(90)=2.29s    p(95)=2.29s\n    iterations.....................: 168    13.071199/s\n    vus............................: 25     min=25       max=25\n    vus_max........................: 25     min=25       max=25\n\n    NETWORK\n    data_received..................: 936 kB 73 kB/s\n    data_sent......................: 618 kB 48 kB/s\n\n\n\n\nrunning (12.9s), 00/25 VUs, 168 complete and 0 interrupted iterations\npalier \u00e2\u0153\u201c [ 100% ] 25 VUs  12s\n",
   "paid_provider": false
 }
 ```
@@ -171,41 +257,7 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
 ## Voice (simulated, no paid STT/TTS)
 
 ```json
-{
-  "concurrent": 10,
-  "ok": 10,
-  "failed": 0,
-  "text_fallback": 10,
-  "pass": true,
-  "samples": [
-    {
-      "ok": true,
-      "fallback": true,
-      "first": "lifecycle"
-    },
-    {
-      "ok": true,
-      "fallback": true,
-      "first": "lifecycle"
-    },
-    {
-      "ok": true,
-      "fallback": true,
-      "first": "lifecycle"
-    },
-    {
-      "ok": true,
-      "fallback": true,
-      "first": "lifecycle"
-    },
-    {
-      "ok": true,
-      "fallback": true,
-      "first": "lifecycle"
-    }
-  ],
-  "paid_provider": false
-}
+null
 ```
 
 
