@@ -30,9 +30,10 @@ def test_postgres_adversarial_suite() -> None:
     4. Child dataset tables protection via dataset_id.
     5. Secure commerce connection resolution without global bypass.
     """
+    import secrets
     admin_engine = create_engine(ADMIN_URL)
-    app_role = "avenqo_adv_test"
-    app_pw = "advsecurepw123"
+    app_role = f"adv_role_{uuid4().hex[:8]}"
+    app_pw = secrets.token_urlsafe(32)
     with admin_engine.begin() as conn:
         conn.execute(text(f"""
             DO $$
@@ -46,7 +47,7 @@ def test_postgres_adversarial_suite() -> None:
             END
             $$;
         """))
-        conn.execute(text(f"CREATE ROLE {app_role} LOGIN PASSWORD '{app_pw}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;"))
+        conn.execute(text(f"CREATE ROLE {app_role} LOGIN PASSWORD '{app_pw}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;"))  # ggignore
         conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {app_role};"))
         conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {app_role};"))
         conn.execute(text(f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO {app_role};"))
