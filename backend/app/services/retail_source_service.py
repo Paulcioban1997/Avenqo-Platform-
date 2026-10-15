@@ -610,7 +610,7 @@ class RetailSourceService:
     def _connection_source(
         self,
         connection: CommerceConnection,
-        active: RetailActiveSource | None,
+        active: UserSourceSelection | RetailActiveSource | None,
     ) -> RetailSource:
         if connection.status == CommerceConnectionStatus.DISCONNECTED.value:
             status = connection.status
@@ -639,7 +639,7 @@ class RetailSourceService:
     @staticmethod
     def _dataset_source(
         dataset: Dataset,
-        active: RetailActiveSource | None,
+        active: UserSourceSelection | RetailActiveSource | None,
     ) -> RetailSource:
         from pathlib import Path
         version = next((version for version in dataset.versions if version.is_current), None)
