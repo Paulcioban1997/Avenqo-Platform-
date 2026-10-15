@@ -119,7 +119,7 @@ class TenantRecommendationsService:
                     } if assessment is not None else {},
                     "source_capability": signal.capability,
                     "metric": signal.metric,
-                    "period": metadata["evidence"].get("period"),
+                    "period": self._period_label(metadata["evidence"].get("period")),
                     "source": source_context,
                     "freshness_status": freshness.freshness_status,
                     "freshness_timestamp": freshness.last_updated_at,
@@ -144,6 +144,22 @@ class TenantRecommendationsService:
             "data_freshness": freshness.as_dict(),
             "recommendations": self._rank_and_limit(recommendations),
         }
+
+    @staticmethod
+    def _period_label(value: Any) -> str | None:
+        """Preserve source period evidence but expose a stable display string.
+
+        Product comparison periods can contain datetime start/end boundaries;
+        RecommendationResponse.period is strictly str | None. Never stringify
+        arbitrary dicts into misleading period labels.
+        """
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            start, end = value.get("start"), value.get("end")
+            if isinstance(start, datetime) and isinstance(end, datetime):
+                return f"{start.isoformat()}/{end.isoformat()}"
+        return None
 
     @staticmethod
     def _distinct_order_count(snapshot: TenantAnalyticsSnapshot) -> int:
