@@ -90,6 +90,7 @@ class TenantSalesService:
                 "strongest_period": None,
                 "weakest_period": None,
                 "forecast": None,
+                "forecast_unavailable_reason": "no_sales_source",
                 "metrics": [],
             }
 
@@ -162,6 +163,7 @@ class TenantSalesService:
         points = trend["points"]
         strongest = max(points, key=lambda item: item["revenue"]) if points else None
         weakest = min(points, key=lambda item: item["revenue"]) if points else None
+        forecast = self._forecast(tenant, snapshot)
         return {
             **base,
             "period": {"key": period_key, **bounds},
@@ -169,7 +171,8 @@ class TenantSalesService:
             "trend": trend,
             "strongest_period": strongest,
             "weakest_period": weakest,
-            "forecast": self._forecast(tenant, snapshot),
+            "forecast": forecast,
+            "forecast_unavailable_reason": None if forecast else "insufficient_weekly_history",
             "metrics": structured_metrics,
         }
 
@@ -217,11 +220,26 @@ class TenantSalesService:
         source = snapshot.source_for(frozenset({"total_amount", "order_timestamp"}))
         if source is None:
             return None
-        today = datetime.now(timezone.utc)
+        reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
+        date_column = reverse.get("order_timestamp")
+        timestamps = [
+            value
+            for row in source.rows
+            if date_column and (value := parse_business_datetime(row.get(date_column))) is not None
+        ]
+        if not timestamps:
+            return None
+        end = max(timestamps)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        # Historical averages are only actionable for a recently updated source.
+        # Stale imported data must not be presented as a current forecast.
+        if end < datetime.now(timezone.utc) - timedelta(days=14):
+            return None
         history = compute_sales_trend(
             source,
-            date_from=today - timedelta(days=28),
-            date_to=today,
+            date_from=end - timedelta(days=28),
+            date_to=end,
             granularity="week",
         )["points"]
         observations = [float(point["revenue"]) for point in history[-4:]]

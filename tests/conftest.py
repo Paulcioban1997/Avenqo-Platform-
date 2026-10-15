@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from backend.app.core.rate_limit import reset_rate_limiter
+from backend.app.core.tenant_execution import clear_tenant_execution
 
 
 @pytest.fixture(autouse=True)
@@ -20,3 +21,10 @@ def _reset_rate_limiter_between_tests():
     reset_rate_limiter()
     yield
     reset_rate_limiter()
+
+
+@pytest.fixture(autouse=True)
+def _reset_tenant_execution_between_tests():
+    clear_tenant_execution()
+    yield
+    clear_tenant_execution()

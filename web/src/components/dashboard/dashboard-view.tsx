@@ -45,11 +45,13 @@ interface DashboardKPI {
 
 interface DashboardPriority {
   id: string;
+  type?: string;
   title: string;
   explanation: string;
   suggested_action: string;
   severity: string;
   source_capability: string;
+  evidence?: { product_name?: string; change_percent?: number };
 }
 
 interface DashboardTrendPoint {
@@ -58,13 +60,35 @@ interface DashboardTrendPoint {
   orders: number;
 }
 
+interface DashboardSplitItem {
+  label: string;
+  revenue: number;
+  orders: number;
+  share: number;
+}
+
+interface DashboardSplit {
+  available: boolean;
+  reason?: string | null;
+  items: DashboardSplitItem[];
+}
+
+interface DashboardConversion {
+  available: boolean;
+  reason?: string | null;
+  value: number | null;
+}
+
 export function DashboardView({
   tenantName = "",
   userName = "",
 }: DashboardViewProps) {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
-  const company = getApplicationCatalog(locale).company;
+  const application = getApplicationCatalog(locale);
+  const company = application.company;
+  const phase4d = application.phase4d;
+  const dashboardHome = application.dashboardHome;
   const [greeting, setGreeting] = useState(t.dashboard.greetingMorning);
 
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "quarter">("30d");
@@ -73,6 +97,9 @@ export function DashboardView({
   const [kpis, setKpis] = useState<Record<string, DashboardKPI>>({});
   const [priorities, setPriorities] = useState<DashboardPriority[]>([]);
   const [trendPoints, setTrendPoints] = useState<DashboardTrendPoint[]>([]);
+  const [categorySplit, setCategorySplit] = useState<DashboardSplit>({ available: false, items: [] });
+  const [regionalSplit, setRegionalSplit] = useState<DashboardSplit>({ available: false, items: [] });
+  const [conversion, setConversion] = useState<DashboardConversion>({ available: false, value: null });
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
   const session = useSession();
@@ -121,6 +148,15 @@ export function DashboardView({
         }
         const points = data.trend?.points;
         setTrendPoints(Array.isArray(points) ? points : []);
+        setCategorySplit(data.category_split && Array.isArray(data.category_split.items)
+          ? data.category_split
+          : { available: false, items: [] });
+        setRegionalSplit(data.regional_split && Array.isArray(data.regional_split.items)
+          ? data.regional_split
+          : { available: false, items: [] });
+        setConversion(data.conversion && typeof data.conversion === "object"
+          ? data.conversion
+          : { available: false, value: null });
       }
     } catch (error) {
       if (revision === loadRevision.current) setError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
@@ -284,9 +320,9 @@ export function DashboardView({
             {/* Taux de conversion */}
             <MetricCard
               title={t.dashboard.conversionRate}
-              value={kpis.conversion_rate?.available ? `${(kpis.conversion_rate.value ?? 0).toFixed(1)}%` : "—"}
+              value={conversion.available && conversion.value != null ? `${conversion.value.toFixed(1)}%` : "—"}
               delta={kpis.conversion_rate?.change_percent ?? null}
-              period={periodLabel}
+              period={conversion.available ? periodLabel : t.dashboard.conversionUnavailable}
               icon={<Percent className="w-4 h-4" />}
             />
           </>
@@ -329,8 +365,8 @@ export function DashboardView({
             {isLoading ? (
               <ChartSkeleton height={240} />
             ) : hasData && trendPoints.length > 0 ? (
-              <div className="relative pt-4">
-                <div className="h-60 w-full flex items-end justify-between gap-3 pt-4">
+              <div className="relative pt-4 overflow-x-auto">
+                <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 28, 100)}%` }}>
                   {trendPoints.map((point, idx) => {
                     const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
                     const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
@@ -388,9 +424,15 @@ export function DashboardView({
                 </div>
               </div>
 
-              <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                {company.analyticsUnavailable}
-              </div>
+              {isLoading ? (
+                <ChartSkeleton height={120} />
+              ) : categorySplit.available && categorySplit.items.length > 0 ? (
+                <DashboardSplitList items={categorySplit.items} formatMoney={formatMoney} />
+              ) : (
+                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+                  {t.dashboard.categorySplitUnavailable}
+                </div>
+              )}
             </AvenqoCard>
 
             {/* Regional Distribution */}
@@ -404,9 +446,15 @@ export function DashboardView({
                 </div>
               </div>
 
-              <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
-                {company.analyticsUnavailable}
-              </div>
+              {isLoading ? (
+                <ChartSkeleton height={120} />
+              ) : regionalSplit.available && regionalSplit.items.length > 0 ? (
+                <DashboardSplitList items={regionalSplit.items} formatMoney={formatMoney} />
+              ) : (
+                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+                  {t.dashboard.regionalSalesUnavailable}
+                </div>
+              )}
             </AvenqoCard>
           </div>
         </div>
@@ -450,19 +498,19 @@ export function DashboardView({
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {p.title}
+                          {priorityTitle(p, dashboardHome, phase4d)}
                         </span>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-[#0076FF]/20 dark:text-[#00D4FF]">
-                          {p.severity}
+                          {prioritySeverity(p.severity, phase4d)}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-[#94A3B8] leading-relaxed">
-                        {p.explanation}
+                        {priorityExplanation(p, dashboardHome, phase4d)}
                       </p>
                       {p.suggested_action && (
                         <div className="pt-2 border-t border-slate-100 dark:border-white/[0.06] text-[11px] font-semibold text-[#0076FF] dark:text-[#00D4FF] flex items-center gap-1">
                           <ArrowRight className="w-3 h-3" />
-                          <span>{p.suggested_action}</span>
+                          <span>{priorityAction(p.suggested_action, phase4d, company)}</span>
                         </div>
                       )}
                     </div>
@@ -497,4 +545,98 @@ export function DashboardView({
       </div>
     </div>
   );
+}
+
+function DashboardSplitList({
+  items,
+  formatMoney,
+}: {
+  items: DashboardSplitItem[];
+  formatMoney: (val: number | null | undefined) => string;
+}) {
+  const max = Math.max(...items.map((item) => item.revenue), 1);
+  return (
+    <ul className="space-y-2.5">
+      {items.map((item) => (
+        <li key={item.label} className="space-y-1">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-semibold text-slate-800 dark:text-[#F4F7FB] truncate">{item.label}</span>
+            <span className="shrink-0 text-slate-500 dark:text-[#94A3B8]">
+              {formatMoney(item.revenue)} · {item.share.toFixed(1)}%
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06]">
+            <div
+              className="h-1.5 rounded-full bg-[#0076FF]"
+              style={{ width: `${Math.max((item.revenue / max) * 100, 4)}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function priorityTitle(
+  priority: DashboardPriority,
+  dashboardHome: { revenueDeclineTitle: string; revenueGrowthTitle: string },
+  phase4d: {
+    productDeclineTitle: string;
+    productGrowthTitle: string;
+    productConcentrationTitle: string;
+    crossSellOpportunityTitle: string;
+  },
+) {
+  const type = priority.type || priority.title;
+  const productName = priority.evidence?.product_name;
+  if (type === "revenue_decline") return dashboardHome.revenueDeclineTitle;
+  if (type === "revenue_growth") return dashboardHome.revenueGrowthTitle;
+  if (type === "product_decline") {
+    return productName ? `${phase4d.productDeclineTitle} — ${productName}` : phase4d.productDeclineTitle;
+  }
+  if (type === "product_growth") {
+    return productName ? `${phase4d.productGrowthTitle} — ${productName}` : phase4d.productGrowthTitle;
+  }
+  if (type === "product_concentration") {
+    return productName ? `${phase4d.productConcentrationTitle} — ${productName}` : phase4d.productConcentrationTitle;
+  }
+  if (type === "cross_sell_opportunity") return phase4d.crossSellOpportunityTitle;
+  return priority.title;
+}
+
+function priorityExplanation(
+  priority: DashboardPriority,
+  dashboardHome: { revenueChangedExplanation: string },
+  phase4d: { productRevenueChangedExplanation: string; productConcentrationExplanation: string; crossSellOpportunityExplanation: string },
+) {
+  const type = priority.type || priority.title;
+  if (type === "revenue_decline" || type === "revenue_growth") return dashboardHome.revenueChangedExplanation;
+  if (type === "product_decline" || type === "product_growth") return phase4d.productRevenueChangedExplanation;
+  if (type === "product_concentration") return phase4d.productConcentrationExplanation;
+  if (type === "cross_sell_opportunity") return phase4d.crossSellOpportunityExplanation;
+  return priority.explanation;
+}
+
+function priorityAction(
+  action: string,
+  phase4d: { reviewProductPerformance: string; reviewProductConcentration: string; reviewCrossSellOpportunities: string },
+  company: { navSalesLabel: string; navRecommendationsLabel: string },
+) {
+  if (action === "review_product_performance") return phase4d.reviewProductPerformance;
+  if (action === "review_product_concentration") return phase4d.reviewProductConcentration;
+  if (action === "review_cross_sell_opportunities") return phase4d.reviewCrossSellOpportunities;
+  if (action === "review_sales_performance") return company.navSalesLabel;
+  return company.navRecommendationsLabel;
+}
+
+function prioritySeverity(
+  severity: string,
+  phase4d: { severityHigh: string; severityMedium: string; severityLow: string; severityCritical: string; severityInformational: string },
+) {
+  if (severity === "critical") return phase4d.severityCritical;
+  if (severity === "high") return phase4d.severityHigh;
+  if (severity === "medium") return phase4d.severityMedium;
+  if (severity === "low") return phase4d.severityLow;
+  if (severity === "informational") return phase4d.severityInformational;
+  return severity;
 }

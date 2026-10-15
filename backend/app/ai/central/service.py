@@ -20,6 +20,7 @@ from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.voice.caller_scope import is_public_voice_caller
 from backend.app.voice.tool_registry import VoiceToolRegistryService
+from backend.app.core.tenant_execution import TenantExecutionError, peek_tenant_execution
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -195,6 +196,9 @@ class CentralAIService:
             elif spoken_language_input:
                 language_auto_detect = True
         started_at = perf_counter()
+        bound = peek_tenant_execution()
+        if bound is not None and bound.company_id != tenant.company_id:
+            raise TenantExecutionError("Central AI cannot run outside the bound tenant.")
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         tenant = type(tenant)(company_id=tenant.company_id, user_id=user_id)
         context = self._context_builder.build(
@@ -244,6 +248,9 @@ class CentralAIService:
                 classification_request_id = (
                     request_id if allow_existing_reservation else f"{request_id}:classification"
                 )
+                from backend.app.services.tenant_rls import release_tenant_connection
+
+                release_tenant_connection(getattr(self._usage, "_db", None))
                 return await self._chat.classify_intent(
                     system_instruction,
                     prompt,
@@ -317,6 +324,9 @@ class CentralAIService:
         effective_agent_id = agent.agent_id if agent is not None else fallback_agent_id
 
         try:
+            from backend.app.services.tenant_rls import release_tenant_connection
+
+            release_tenant_connection(getattr(self._usage, "_db", None))
             message, _ = await self._chat.send(
                 tenant.company_id,
                 user_id,
@@ -382,7 +392,18 @@ class CentralAIService:
                 confirmed = confirmed and bool(tool_result.data.get("id"))
             elif tool_name == "list_available_slots":
                 confirmed = confirmed and isinstance(tool_result.data.get("slots"), list)
-            outcomes.append({"tool": tool_name, "success": bool(tool_result.success), "confirmed": confirmed})
+            error = None
+            if not tool_result.success:
+                payload = tool_result.data if isinstance(tool_result.data, dict) else {}
+                error = tool_result.error or payload.get("error")
+            outcome: dict[str, object] = {
+                "tool": tool_name,
+                "success": bool(tool_result.success),
+                "confirmed": confirmed,
+            }
+            if error:
+                outcome["error"] = str(error)
+            outcomes.append(outcome)
         return tuple(outcomes)
 
     def _log_result(

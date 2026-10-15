@@ -9,8 +9,11 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
 from backend.app.database import get_db
 from backend.app.models import Company
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -37,4 +40,16 @@ def get_internal_service_tenant(
 ) -> TenantContext:
     if db.get(Company, x_avenqo_tenant_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    return TenantContext(company_id=x_avenqo_tenant_id)
+    apply_tenant_rls(db, x_avenqo_tenant_id, bypass=False)
+    tenant = TenantContext(company_id=x_avenqo_tenant_id)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=tenant,
+            user_id=x_avenqo_tenant_id,
+            permissions=frozenset(),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            source="internal_scheduler",
+        )
+    )
+    return tenant

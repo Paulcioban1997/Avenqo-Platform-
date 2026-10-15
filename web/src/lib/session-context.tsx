@@ -104,9 +104,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 setActiveDataSources(sources.filter(source => source.enabled).map(source => source.display_name));
                 setSourceError(null);
               }
-              const contextResponse = await apiFetch("/api/v1/retail/sources/context");
-              const context = await contextResponse.json();
-              if (version === revision.current && context && !Array.isArray(context) && Array.isArray(context.sources)) { setSourceContext(context); setActiveDataSources(namesForContext(context)); }
+              try {
+                const contextResponse = await apiFetch("/api/v1/retail/sources/context");
+                const context = await contextResponse.json();
+                if (version === revision.current && context && !Array.isArray(context) && Array.isArray(context.sources)) { setSourceContext(context); setActiveDataSources(namesForContext(context)); }
+              } catch {
+                if (version === revision.current) setSourceContext(null);
+              }
             } catch (error) {
               if (version === revision.current) setSourceError(asError(error));
             }

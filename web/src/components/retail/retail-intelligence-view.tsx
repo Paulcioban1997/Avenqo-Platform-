@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -95,9 +97,12 @@ interface InventoryItem {
 
 interface RetailInventoryAnomaly {
   id: string;
+  type?: string;
   product: string;
   sku: string;
-  expected_range: { lower: number; upper: number };
+  metric?: string;
+  explanation?: string;
+  expected_range: { lower: number; upper: number | null };
   observed_value: number;
   delta: number;
   severity: string;
@@ -113,6 +118,7 @@ interface RetailSalesSummary {
     forecasted_total: number;
     points: Array<{ period: string; value: number }>;
   } | null;
+  forecast_unavailable_reason?: string | null;
 }
 
 interface RetailRecommendation {
@@ -163,6 +169,7 @@ export function RetailIntelligenceView({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const loadRevision = useRef(0);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -186,15 +193,26 @@ export function RetailIntelligenceView({
     setLoadError(null);
     try {
       const headers = getAuthHeaders();
+      const loadResource = async (url: string) => {
+        try {
+          return await apiFetch(url, { headers });
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.category === "session_expired") throw error;
+          return null;
+        }
+      };
       const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
-        apiFetch("/api/v1/retail/status", { headers }),
-        apiFetch("/api/v1/retail/products?limit=100", { headers }),
-        apiFetch("/api/v1/retail/orders?limit=100", { headers }),
-        apiFetch("/api/v1/retail/customers?limit=100", { headers }),
-        apiFetch("/api/v1/retail/inventory?limit=100", { headers }),
-        apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
-        apiFetch("/api/v1/recommendations", { headers }),
+        loadResource("/api/v1/retail/status"),
+        loadResource("/api/v1/retail/products?limit=100"),
+        loadResource("/api/v1/retail/orders?limit=100"),
+        loadResource("/api/v1/retail/customers?limit=100"),
+        loadResource("/api/v1/retail/inventory?limit=500"),
+        loadResource("/api/v1/sales/summary?period=last_30_days"),
+        loadResource("/api/v1/recommendations"),
       ]);
+      if (!statusRes && !prodRes && !ordRes && !custRes && !invRes && !salesRes && !recommendationsRes) {
+        throw new ApiRequestError("backend_error");
+      }
       if (revision !== loadRevision.current) return;
 
       if (statusRes && statusRes.ok) {
@@ -290,22 +308,38 @@ export function RetailIntelligenceView({
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
   );
-  const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
   const forecast = salesSummary?.forecast ?? null;
   const forecastPoints = forecast?.points ?? [];
   const catalog = getApplicationCatalog(locale);
   const anomalyCopy = RETAIL_ANOMALY_COPY[locale];
 
   const recommendationTitle = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    const productName = recommendation.affected_product?.name;
     if (recommendation.type === "revenue_decline") return catalog.dashboardHome.revenueDeclineTitle;
     if (recommendation.type === "revenue_growth") return catalog.dashboardHome.revenueGrowthTitle;
-    const productName = recommendation.affected_product?.name;
+    if (recommendation.type === "product_decline") {
+      return productName ? `${phase4d.productDeclineTitle} — ${productName}` : phase4d.productDeclineTitle;
+    }
+    if (recommendation.type === "product_growth") {
+      return productName ? `${phase4d.productGrowthTitle} — ${productName}` : phase4d.productGrowthTitle;
+    }
+    if (recommendation.type === "product_concentration") {
+      return productName ? `${phase4d.productConcentrationTitle} — ${productName}` : phase4d.productConcentrationTitle;
+    }
     return productName ? `${retail.products}: ${productName}` : retail.recommendations;
   };
-  const recommendationDescription = (recommendation: RetailRecommendation) =>
-    recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth"
-      ? catalog.dashboardHome.revenueChangedExplanation
-      : retail.recommendationsDescription;
+  const recommendationDescription = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    if (recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth") {
+      return catalog.dashboardHome.revenueChangedExplanation;
+    }
+    if (recommendation.type === "product_decline" || recommendation.type === "product_growth") {
+      return phase4d.productRevenueChangedExplanation;
+    }
+    if (recommendation.type === "product_concentration") return phase4d.productConcentrationExplanation;
+    return retail.recommendationsDescription;
+  };
   const recommendationSource = (recommendation: RetailRecommendation) => {
     if (recommendation.source?.selection === "all") return SOURCE_SELECTOR_COPY[locale][1];
     const provider = recommendation.source?.provider === "shopify" ? "Shopify"
@@ -347,6 +381,24 @@ export function RetailIntelligenceView({
       ].filter(Boolean).join(" · ");
   const formatStock = (value: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
+    if (value == null || !Number.isFinite(value)) return "—";
+    if (metric === "product_revenue") {
+      return new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: salesSummary?.currency || recommendationsCurrency || "CAD",
+        maximumFractionDigits: 0,
+      }).format(value);
+    }
+    return `${formatStock(value)}${metric === "inventory_stock_quantity" ? ` ${retail.unit}` : ""}`;
+  };
+  const anomalyExplanation = (anom: RetailInventoryAnomaly) => {
+    if (anom.type === "stockout" || anom.explanation === "inventory_stockout") return retail.stockoutRiskAlert;
+    if (anom.type === "sales_drop" || anom.type === "sales_decline" || anom.explanation === "product_sales_dropped_to_zero" || anom.explanation === "product_revenue_declined") {
+      return catalog.phase4d.productDeclineTitle;
+    }
+    return anomalyCopy.explanation;
+  };
   const maxForecastValue = Math.max(1, ...forecastPoints.map((point) => Math.abs(point.value)));
   const forecastMethodLabel = forecast?.method === "trained_model"
     ? retail.forecastMethodModel
@@ -434,7 +486,30 @@ export function RetailIntelligenceView({
       </div>
 
       {/* 8-Tab Subnavigation Bar */}
-      <div className="overflow-x-auto pb-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets précédents" : "Previous tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      <div
+        ref={tabScrollRef}
+        className="overflow-x-auto pb-1 flex-1"
+        onKeyDown={(event) => {
+          const index = navTabs.findIndex((tab) => tab.id === activeTab);
+          if (event.key === "ArrowRight" && index < navTabs.length - 1) {
+            event.preventDefault();
+            setActiveTab(navTabs[index + 1].id as RetailSubTab);
+          }
+          if (event.key === "ArrowLeft" && index > 0) {
+            event.preventDefault();
+            setActiveTab(navTabs[index - 1].id as RetailSubTab);
+          }
+        }}
+      >
         <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] min-w-max">
           {navTabs.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -459,6 +534,15 @@ export function RetailIntelligenceView({
             );
           })}
         </nav>
+      </div>
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets suivants" : "Next tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {/* Tab 1: Overview backed by tenant source data */}
@@ -857,9 +941,12 @@ export function RetailIntelligenceView({
           </AvenqoCard>
         ) : (
           <EmptyState
-            icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
             title={retail.forecasts}
-            description={retail.forecastUnavailable}
+            description={
+              salesSummary?.forecast_unavailable_reason === "insufficient_weekly_history"
+                ? retail.forecastNeedHistory
+                : retail.forecastUnavailable
+            }
           />
         )
       )}
@@ -904,7 +991,7 @@ export function RetailIntelligenceView({
                           <span className="text-[10px] font-mono text-slate-400">({anom.sku})</span>
                         </div>
                         <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-1">
-                          {anomalyCopy.explanation}
+                          {anomalyExplanation(anom)}
                         </p>
                         {sourceLabel(anom.source) && (
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
@@ -917,13 +1004,13 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {anomalyCopy.observed}: {formatStock(anom.observed_value)} {retail.unit}
+                          {anomalyCopy.observed}: {formatAnomalyValue(anom.observed_value, anom.metric)}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}–{formatStock(anom.expected_range.upper)} {retail.unit}
+                          {anomalyCopy.expectedRange}: {formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.difference}: {formatStock(anom.delta)} {retail.unit}
+                          {anomalyCopy.difference}: {formatAnomalyValue(anom.delta, anom.metric)}
                         </div>
                       </div>
                       <button
@@ -937,9 +1024,7 @@ export function RetailIntelligenceView({
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  {anomalyState === "insufficient_data" || (inventory.length > 0 && !inventoryHasStockData)
-                    ? t.common.insufficientData
-                    : anomalyCopy.none}
+                  {anomalyState === "insufficient_data" ? t.common.insufficientData : anomalyCopy.none}
                 </div>
               )}
             </div>
@@ -989,13 +1074,9 @@ export function RetailIntelligenceView({
                 </div>
               ))
             ) : recommendationState === "INSUFFICIENT_DATA" ? (
-              <EmptyState title={retail.recommendations} description={t.common.insufficientData} />
-            ) : inventory.length === 0 || !inventoryHasStockData ? (
-              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
+              <EmptyState title={retail.recommendations} description={retail.recommendationsNeedOrders} />
             ) : (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                {retail.recommendationsUnavailable}
-              </div>
+              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             )}
           </div>
         </AvenqoCard>

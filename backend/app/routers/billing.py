@@ -125,14 +125,22 @@ def _debited_attempt_credits(
     }
 
 
+def _plan_display_price(plan_obj: Any, currency: str) -> tuple[float | None, float | None]:
+    usd = getattr(plan_obj, "monthly_price_usd", None) if plan_obj is not None else None
+    cad = getattr(plan_obj, "monthly_price_cad", None) if plan_obj is not None else None
+    code = (currency or "CAD").upper()
+    if code == "CAD":
+        display = cad if cad is not None else usd
+    else:
+        display = usd if usd is not None else cad
+    return usd, display
+
+
 def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
     plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
     currency = (company.currency_code or "CAD").upper() if company else "CAD"
-    if currency == "CAD":
-        price = plan_obj.monthly_price_cad if (plan_obj and plan_obj.monthly_price_cad is not None) else 29.99
-    else:
-        price = plan_obj.monthly_price_usd if (plan_obj and plan_obj.monthly_price_usd is not None) else 21.99
+    usd, price = _plan_display_price(plan_obj, currency)
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
     return SubscriptionResponse(
@@ -147,7 +155,7 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
         current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
-        monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else None,
+        monthly_price_usd=usd,
         monthly_price=price,
         billing_frequency="monthly",
         currency=currency,
@@ -203,16 +211,18 @@ def subscription(
     )
     if account is None:
         plan_obj = next((p for p in PLANS if p.code.value == identity.user.company.subscription_plan), None)
+        currency = (identity.user.company.currency_code or "CAD").upper()
+        usd, price = _plan_display_price(plan_obj, currency)
         return SubscriptionResponse(
             plan_code=identity.user.company.subscription_plan,
             status="inactive",
             current_period_end=None,
             cancel_at_period_end=False,
             plan_name=plan_obj.name if plan_obj else identity.user.company.subscription_plan.capitalize(),
-            monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else 0,
-            monthly_price=plan_obj.monthly_price_usd if plan_obj else 0,
+            monthly_price_usd=usd,
+            monthly_price=price,
             billing_frequency="monthly",
-            currency=(identity.user.company.currency_code or "USD").upper(),
+            currency=currency,
             stripe_subscription_linked=False,
             company_name=identity.user.company.name,
             payment_method=None,

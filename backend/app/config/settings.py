@@ -377,6 +377,18 @@ class Settings(BaseSettings):
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+    db_pool_size: int = Field(default=10, ge=1, le=100, alias="AVENQO_DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=20, ge=0, le=100, alias="AVENQO_DB_MAX_OVERFLOW")
+    db_pool_timeout: float = Field(default=5.0, ge=1.0, le=60.0, alias="AVENQO_DB_POOL_TIMEOUT")
+    # statement_timeout applies only to running SQL, not to LLM HTTP awaits.
+    # After Central AI releases the pooled connection, a slow model cannot trip it.
+    db_statement_timeout_ms: int = Field(default=15000, ge=0, le=120000, alias="AVENQO_DB_STATEMENT_TIMEOUT_MS")
+    # idle_in_transaction applies only while a transaction is open. Central AI
+    # commits and returns the connection before awaiting a provider.
+    db_idle_in_transaction_timeout_ms: int = Field(
+        default=60000, ge=0, le=300000, alias="AVENQO_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS"
+    )
+    http_sync_thread_limit: int = Field(default=40, ge=8, le=256, alias="AVENQO_HTTP_SYNC_THREAD_LIMIT")
 
     # Sauvegarde/restauration (remédiation post-Phase 34) : répertoire local de
     # stockage des archives et politique de rétention par défaut (technique,

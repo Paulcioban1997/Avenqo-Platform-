@@ -92,6 +92,26 @@ def is_natural_confirmation(locale: str, text: str) -> bool:
     }
 
 
+_BOOKING_INTENT = re.compile(
+    r"(rdv|rendez[\s-]?vous|appointment|booking|\bbook\b|r[eé]serv(?:er|ation)|"
+    r"prendre.{0,40}(?:rdv|rendez))",
+    re.IGNORECASE,
+)
+_BOOKING_WHEN = re.compile(
+    r"(\d{1,2}\s*h(?:\s*\d{2})?|\d{1,2}:\d{2}|aujourd.?hui|today|demain|tomorrow|"
+    r"\d{1,2}\s+(?:janv|f[eé]vr|mars|avr|mai|juin|juil|ao[uû]t|sept|oct|nov|d[eé]c)|"
+    r"20\d{2})",
+    re.IGNORECASE,
+)
+
+
+def is_explicit_booking_request(text: str) -> bool:
+    """True when the user asks to book a specific date/time, not merely to confirm later."""
+
+    normalized = unicodedata.normalize("NFKC", text or "")
+    return bool(_BOOKING_INTENT.search(normalized) and _BOOKING_WHEN.search(normalized))
+
+
 def confirmation_required_message(locale: str) -> str:
     return _REQUIRED.get(locale, _REQUIRED["en"])
 

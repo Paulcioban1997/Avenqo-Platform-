@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
+from backend.app.core.tenant_execution import peek_tenant_execution, reset_tenant_execution, tenant_execution_var
 from backend.app.database.session import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
@@ -20,6 +21,11 @@ class _FakeSession:
 
     def execute(self, statement, params=None):
         self.statements.append((str(statement), dict(params or {})))
+
+
+def test_apply_tenant_rls_is_noop_when_session_has_no_bind() -> None:
+    apply_tenant_rls(SimpleNamespace(), uuid4())
+    apply_tenant_rls(SimpleNamespace(get_bind=lambda: None), uuid4())
 
 
 def test_apply_tenant_rls_binds_company_and_disables_bypass() -> None:
@@ -38,6 +44,27 @@ def test_set_rls_bypass_is_transaction_local() -> None:
     assert session.statements[-1][1]["flag"] == "on"
     set_rls_bypass(session, enabled=False)
     assert session.statements[-1][1]["flag"] == "off"
+
+
+def test_get_db_drops_prior_rls_info_when_the_session_closes(monkeypatch) -> None:
+    class _Session:
+        def __init__(self) -> None:
+            self.info = {"avenqo_rls": {"cid": "leftover", "flag": "on"}}
+            self.closed = False
+
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            self.closed = True
+
+    leftover = _Session()
+    monkeypatch.setattr("backend.app.database.session.SessionLocal", lambda: leftover)
+    generator = get_db()
+    next(generator)
+    generator.close()
+    assert leftover.closed is True
+    assert "avenqo_rls" not in leftover.info
 
 
 def test_get_db_does_not_enable_rls_bypass_by_default(monkeypatch) -> None:
@@ -69,14 +96,20 @@ def test_get_current_identity_applies_tenant_rls(monkeypatch) -> None:
         lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
     )
     request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
-    identity = get_current_identity(
-        request,
-        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
-        service=SimpleNamespace(authenticate=authenticate),
-        db=db,
-    )
-    assert identity.user is user
-    assert observed == [(db, company_id, False)]
+    previous = tenant_execution_var.set(None)
+    try:
+        identity = get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=authenticate),
+            db=db,
+        )
+        assert identity.user is user
+        assert observed == [(db, company_id, False)]
+        bound = peek_tenant_execution()
+        assert bound is not None and bound.company_id == company_id
+    finally:
+        reset_tenant_execution(previous)
 
 
 def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) -> None:
@@ -91,13 +124,17 @@ def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) ->
         lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
     )
     request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
-    get_current_identity(
-        request,
-        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
-        service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
-        db=db,
-    )
-    assert observed == [(db, company_id, False)]
+    previous = tenant_execution_var.set(None)
+    try:
+        get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
+            db=db,
+        )
+        assert observed == [(db, company_id, False)]
+    finally:
+        reset_tenant_execution(previous)
 
 
 def test_get_tenant_context_applies_tenant_rls_on_auth_path() -> None:

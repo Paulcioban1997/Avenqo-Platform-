@@ -364,13 +364,29 @@ class CreateOpportunityRequest(BaseModel):
 # --- KPI & Summary Endpoints ---
 
 @router.get("/kpis")
-@router.get("/summary")
 def get_crm_kpis(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
     """Retourne les KPIs réels calculés directement depuis la base du tenant."""
     return service.get_kpis(tenant.company_id)
+
+
+@router.get("/summary")
+def get_crm_summary(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Combine les KPI opérationnels et l'intelligence pipeline du tenant."""
+    kpis = service.get_kpis(tenant.company_id)
+    intelligence = CRMIntelligenceService(db).get_crm_summary(tenant.company_id)
+    return {
+        **kpis,
+        **intelligence,
+        "pending_tasks_count": intelligence.get("pending_follow_ups", 0),
+        "available": True,
+    }
 
 
 # --- Global CRM Search ---
@@ -1579,13 +1595,18 @@ async def crm_copilot_chat(
         rev = kpis.get("total_revenue_generated", 0.0)
         clients_count = kpis.get("active_clients", 0)
         appts_count = kpis.get("appointments_this_month", 0)
-        att_rate = kpis.get("attendance_rate_percent", 0.0)
+        att_rate = kpis.get("attendance_rate_percent")
+        att_display = (
+            f"{att_rate:.1f} %"
+            if isinstance(att_rate, (int, float))
+            else ("insufficient data" if is_en else "données insuffisantes")
+        )
         if is_en:
             msg_reply = (
                 f"Live CRM performance overview:\n"
                 f"• Active clients: {clients_count}\n"
                 f"• Appointments this month: {appts_count}\n"
-                f"• Attendance rate: {att_rate:.1f} %\n"
+                f"• Attendance rate: {att_display}\n"
                 f"• Revenue generated: {rev:,.2f} {cur}\n"
                 f"All metrics are computed live from your tenant registry."
             )
@@ -1594,7 +1615,7 @@ async def crm_copilot_chat(
                 f"Synthèse de vos indicateurs CRM en direct :\n"
                 f"• Clients actifs : {clients_count}\n"
                 f"• Rendez-vous ce mois : {appts_count}\n"
-                f"• Taux de présence : {att_rate:.1f} %\n"
+                f"• Taux de présence : {att_display}\n"
                 f"• Revenus générés : {rev:,.2f} {cur}\n"
                 f"Toutes ces données sont issues du registre normalisé de votre entreprise."
             )

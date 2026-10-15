@@ -36,7 +36,9 @@ SYSTEM_INSTRUCTION = (
     "When data coverage ends before the requested period (e.g. data ends on October 5 and the user asks about October 8, or data_covered is false, or warning is present), "
     "never claim zero orders, zero revenue, or zero activity. Accurately state: 'Les données disponibles s'arrêtent au [date] ; je ne peux pas confirmer les commandes du [date demandée].' "
     "When a business metric includes freshness_status and freshness_timestamp, accurately disclose when the data was last updated; never call SYNCED, NEAR_REALTIME, STALE, or UNAVAILABLE data live. Only say data is live when freshness_status is LIVE. "
-    "Never claim a calendar slot is available unless an availability tool confirms it. Never say an appointment was created, updated, or cancelled unless the corresponding CRM tool succeeds. If create_appointment succeeds but calendar_synced is false, confirm the CRM booking and say Calendar sync failed or is not connected — never claim the event was added to Google Calendar."
+    "Never claim a calendar slot is available unless an availability tool confirms it. Never say an appointment was created, updated, or cancelled unless the corresponding CRM tool succeeds. If create_appointment succeeds but calendar_synced is false, confirm the CRM booking and say Calendar sync failed or is not connected — never claim the event was added to Google Calendar. "
+    "When a signed-in user asks to book a specific date and time (even with typos), call check_availability then create_appointment. If they clearly request the booking now, set confirmed=true. If the client name is missing, use a walk-in name from the request (service + time). Surface tool errors (conflict, missing service, credits) instead of a generic failure. "
+    "For demand or sales forecasts, call get_demand_forecast or get_sales_forecast on the active retail source. If the tool returns available=false, explain the specific reason (insufficient weekly history, no dated sales) — never say the data is unreliable when sales history exists."
 )
 
 def _localized_system_instruction(
@@ -162,11 +164,24 @@ class ChatService:
     ) -> None:
         self._conversations, self._retrieval, self._provider = conversations, retrieval, provider
         self._tool_registry = tool_registry
-        self._orchestrator = ToolOrchestrator(provider, tool_executor) if tool_executor is not None else None
+        self._orchestrator = (
+            ToolOrchestrator(provider, tool_executor, on_before_llm=self._release_db_before_llm)
+            if tool_executor is not None
+            else None
+        )
         self._usage_service = usage_service
         self._debug_mode = debug_mode
         self.last_stream_sources = []
         self.last_tool_call_results = ()
+
+    def _release_db_before_llm(self) -> None:
+        from backend.app.services.tenant_rls import release_tenant_connection
+
+        for holder in (self._conversations, self._retrieval, self._usage_service):
+            session = getattr(holder, "_db", None)
+            if session is not None:
+                release_tenant_connection(session)
+                return
 
     @property
     def provider_name(self) -> str:
@@ -220,6 +235,7 @@ class ChatService:
                 raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
         try:
             with self._provider.routing(routing_context):
+                self._release_db_before_llm()
                 generation = await self._provider.generate(
                     system_instruction=system_instruction,
                     prompt=prompt,
@@ -438,6 +454,7 @@ class ChatService:
                     attempts = result.attempts
                     self.last_tool_call_results = result.tool_call_results
                 else:
+                    self._release_db_before_llm()
                     generation = await self._provider.generate(system_instruction=system_instruction, prompt=prompt)
                     content, provider_name, model_name, token_usage = generation.content, generation.provider, generation.model, generation.token_usage
                     attempts = generation.attempts
@@ -628,6 +645,7 @@ class ChatService:
             with self._provider.routing(routing_context):
                 if self._orchestrator is None or not available_tools:
                     chunks: list[str] = []
+                    self._release_db_before_llm()
                     async for event in self._provider.stream_events(system_instruction=system_instruction, prompt=prompt):
                         if event.usage is not None:
                             provider_name = event.usage.provider

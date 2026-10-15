@@ -94,11 +94,17 @@ class ToolOrchestrator:
         executor: ToolExecutor,
         max_iterations: int = MAX_TOOL_ITERATIONS,
         max_tools_per_request: int = MAX_TOOLS_PER_REQUEST,
+        on_before_llm=None,
     ) -> None:
         self._provider = provider
         self._executor = executor
         self._max_iterations = max_iterations
         self._max_tools_per_request = max_tools_per_request
+        self._on_before_llm = on_before_llm
+
+    def _release_before_llm(self) -> None:
+        if self._on_before_llm is not None:
+            self._on_before_llm()
 
     async def run(
         self,
@@ -141,6 +147,7 @@ class ToolOrchestrator:
             return
 
         if not self._provider.supports_tool_calling or not available_tools:
+            self._release_before_llm()
             generation = await self._provider.generate(system_instruction=system_instruction, prompt=user_query)
             yield OrchestrationEvent(
                 kind="final",
@@ -187,6 +194,7 @@ class ToolOrchestrator:
                     return
 
                 try:
+                    self._release_before_llm()
                     response = await self._provider.generate_with_tools(
                         system_instruction=system_instruction, messages=messages, tools=definitions
                     )
@@ -195,6 +203,7 @@ class ToolOrchestrator:
                     for attempt in prior_attempts:
                         attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
                     try:
+                        self._release_before_llm()
                         generation = await self._provider.generate(
                             system_instruction=system_instruction,
                             prompt=user_query,

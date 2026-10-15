@@ -12,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#07090e",
     icons: [
       {
-        src: "/brand/avenqo-icon.png",
+        src: "/favicon-192x192.png",
         sizes: "192x192",
         type: "image/png",
       },

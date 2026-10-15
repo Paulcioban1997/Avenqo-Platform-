@@ -558,7 +558,10 @@ def test_inventory_anomaly_detection_requires_sufficient_complete_source_data():
         population_complete=True,
         detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
     )
-    assert (anomalies, state, sample_size) == ([], "insufficient_data", 29)
+    assert state == "detected"
+    assert sample_size == 29
+    assert {item["type"] for item in anomalies} == {"low_stock"}
+    assert {item["sku"] for item in anomalies} == {"1", "2", "3", "4", "5"}
 
 
 def test_inventory_anomaly_detection_returns_quantitative_provenance():
@@ -574,7 +577,8 @@ def test_inventory_anomaly_detection_returns_quantitative_provenance():
         detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
     )
     assert state == "detected" and sample_size == 31
-    assert anomalies == [{
+    assert {item["sku"] for item in anomalies if item["type"] == "low_stock"} == {"1", "2", "3", "4", "5"}
+    assert [item for item in anomalies if item["type"] == "inventory_outlier"] == [{
         "id": "inventory-iqr:outlier",
         "type": "inventory_outlier",
         "product": "Outlier",

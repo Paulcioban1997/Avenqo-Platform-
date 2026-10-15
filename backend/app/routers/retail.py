@@ -40,6 +40,128 @@ from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/retail", tags=["retail"])
 _MIN_INVENTORY_ANOMALY_SAMPLE = 30
+_MAX_SALES_ANOMALIES = 20
+_SALES_DECLINE_THRESHOLD = -40.0
+
+
+def _inventory_item_from_product(product: dict) -> dict:
+    stock_value = product.get("stock_level")
+    name = str(product.get("name") or product["product_id"])
+    sku = str(product.get("sku") or product["product_id"])
+    price = float(product.get("unit_price") or 0)
+    stock = int(float(stock_value)) if stock_value is not None else None
+    product_id = str(product["product_id"])
+    return {
+        "id": product_id,
+        "product_name": name,
+        "sku": sku,
+        "stock_quantity": stock,
+        "unit_price": price,
+        "status": (
+            "unknown" if stock is None
+            else "critical" if stock <= 5
+            else "warning" if stock <= 15
+            else "normal"
+        ),
+    }
+
+
+def _sales_operational_anomalies(
+    products: list[dict],
+    *,
+    source: dict,
+    detected_at: datetime | None = None,
+) -> list[dict]:
+    timestamp = (detected_at or datetime.now(timezone.utc)).isoformat()
+    anomalies: list[dict] = []
+    for product in products:
+        current = product.get("current_revenue")
+        previous = product.get("previous_revenue")
+        change = product.get("change_percent")
+        if current is None or previous is None:
+            continue
+        try:
+            current_value = float(current)
+            previous_value = float(previous)
+            change_value = float(change) if change is not None else None
+        except (TypeError, ValueError):
+            continue
+        if previous_value <= 0:
+            continue
+        name = str(product.get("name") or product.get("product_id") or "")
+        sku = str(product.get("sku") or product.get("product_id") or "")
+        product_id = str(product.get("product_id") or "")
+        if current_value <= 0:
+            anomalies.append({
+                "id": f"sales-drop:{product_id}",
+                "type": "sales_drop",
+                "product": name,
+                "sku": sku,
+                "metric": "product_revenue",
+                "period": "last_30_days_vs_previous",
+                "expected_value": round(previous_value, 2),
+                "expected_range": {"lower": round(previous_value * 0.5, 2), "upper": None},
+                "observed_value": round(current_value, 2),
+                "delta": round(current_value - previous_value, 2),
+                "severity": "critical",
+                "source": source,
+                "detected_at": timestamp,
+                "explanation": "product_sales_dropped_to_zero",
+            })
+        elif change_value is not None and change_value <= _SALES_DECLINE_THRESHOLD:
+            anomalies.append({
+                "id": f"sales-decline:{product_id}",
+                "type": "sales_decline",
+                "product": name,
+                "sku": sku,
+                "metric": "product_revenue",
+                "period": "last_30_days_vs_previous",
+                "expected_value": round(previous_value, 2),
+                "expected_range": {"lower": round(previous_value * 0.6, 2), "upper": None},
+                "observed_value": round(current_value, 2),
+                "delta": round(current_value - previous_value, 2),
+                "severity": "critical" if change_value <= -70 else "medium",
+                "source": source,
+                "detected_at": timestamp,
+                "explanation": "product_revenue_declined",
+            })
+    anomalies.sort(key=lambda item: float(item.get("delta") or 0))
+    return anomalies[:_MAX_SALES_ANOMALIES]
+
+
+def _operational_stock_anomalies(
+    inventory: list[dict],
+    *,
+    source: dict,
+    detected_at: datetime | None = None,
+) -> list[dict]:
+    timestamp = (detected_at or datetime.now(timezone.utc)).isoformat()
+    anomalies: list[dict] = []
+    for item in inventory:
+        stock = item.get("stock_quantity")
+        if not isinstance(stock, (int, float)) or not isfinite(float(stock)):
+            continue
+        observed = float(stock)
+        if observed > 5:
+            continue
+        critical = observed <= 0
+        anomalies.append({
+            "id": f"inventory-stock:{item['id']}",
+            "type": "stockout" if critical else "low_stock",
+            "product": item["product_name"],
+            "sku": item["sku"],
+            "metric": "inventory_stock_quantity",
+            "period": "current_snapshot",
+            "expected_value": None,
+            "expected_range": {"lower": 6.0, "upper": None},
+            "observed_value": observed,
+            "delta": round(observed - 6.0, 2),
+            "severity": "critical" if critical else "medium",
+            "source": source,
+            "detected_at": timestamp,
+            "explanation": "inventory_stockout" if critical else "inventory_low_stock",
+        })
+    return anomalies
 
 
 def _inventory_anomalies(
@@ -57,7 +179,17 @@ def _inventory_anomalies(
         and float(item["stock_quantity"]) >= 0
     ]
     sample_size = len(observations)
+    operational = _operational_stock_anomalies(
+        inventory, source=source, detected_at=detected_at
+    )
+    flagged_ids = {item["id"] for item in inventory if any(
+        anomaly["id"].endswith(f":{item['id']}") for anomaly in operational
+    )}
     if not population_complete or sample_size < _MIN_INVENTORY_ANOMALY_SAMPLE:
+        if operational:
+            return operational, "detected", sample_size
+        if sample_size > 0:
+            return [], "no_anomalies", sample_size
         return [], "insufficient_data", sample_size
 
     values = sorted(value for _, value in observations)
@@ -76,7 +208,7 @@ def _inventory_anomalies(
     timestamp = (detected_at or datetime.now(timezone.utc)).isoformat()
     anomalies = []
     for item, observed in observations:
-        if lower_bound <= observed <= upper_bound:
+        if item["id"] in flagged_ids or lower_bound <= observed <= upper_bound:
             continue
         boundary = lower_bound if observed < lower_bound else upper_bound
         extreme_boundary = max(0.0, first_quartile - 3 * interquartile_range) if observed < lower_bound else third_quartile + 3 * interquartile_range
@@ -96,7 +228,10 @@ def _inventory_anomalies(
             "detected_at": timestamp,
             "explanation": "inventory_stock_outside_iqr_range",
         })
-    return anomalies, "detected" if anomalies else "no_anomalies", sample_size
+    merged = operational + anomalies
+    if merged:
+        return merged, "detected", sample_size
+    return [], "no_anomalies", sample_size
 
 
 @router.get("/sources", response_model=list[RetailSourceResponse])
@@ -391,47 +526,44 @@ def list_retail_inventory(
     limit: int = 100,
 ):
     """Retourne l'inventaire disponible sur les produits des sources activées."""
-    product_result = products_service.build(
-        tenant, page=1, page_size=min(max(limit, 1), 500)
-    )
+    display_limit = min(max(limit, 1), 500)
+    catalog: list[dict] = []
+    products: list[dict] = []
+    total = 0
+    source_context: dict = {}
+    freshness = None
+    page = 1
+    page_size = 500
+    while page <= 20:
+        product_result = products_service.build(tenant, page=page, page_size=page_size)
+        source_context = product_result.get("source_context") or source_context
+        freshness = product_result.get("data_freshness") or freshness
+        total = int(product_result["pagination"]["total"])
+        products.extend(product_result["items"])
+        catalog.extend(
+            _inventory_item_from_product(product) for product in product_result["items"]
+        )
+        if len(catalog) >= total or not product_result["items"]:
+            break
+        page += 1
 
-    items = []
-    for product in product_result["items"]:
-        stock_value = product.get("stock_level")
-        name = str(product.get("name") or product["product_id"])
-        sku = str(product.get("sku") or product["product_id"])
-        price = float(product.get("unit_price") or 0)
-        stock = int(float(stock_value)) if stock_value is not None else None
-        product_id = str(product["product_id"])
-
-        item = {
-            "id": product_id,
-            "product_name": name,
-            "sku": sku,
-            "stock_quantity": stock,
-            "unit_price": price,
-            "status": (
-                "unknown" if stock is None
-                else "critical" if stock <= 5
-                else "warning" if stock <= 15
-                else "normal"
-            ),
-        }
-        items.append(item)
-
-    source_context = product_result.get("source_context") or {}
     anomalies, anomaly_state, sample_size = _inventory_anomalies(
-        items,
+        catalog,
         source=source_context,
-        population_complete=product_result["pagination"]["total"] == len(product_result["items"]),
+        population_complete=len(catalog) >= total,
     )
+    sales_anomalies = _sales_operational_anomalies(products, source=source_context)
+    if sales_anomalies:
+        anomalies = list(anomalies) + sales_anomalies
+        anomaly_state = "detected"
+        sample_size = max(sample_size, len(products))
 
     return {
-        "inventory": items,
-        "total": len(items),
+        "inventory": catalog[:display_limit],
+        "total": total,
         "anomalies": anomalies,
         "anomaly_state": anomaly_state,
         "anomaly_sample_size": sample_size,
         "source": source_context,
-        "data_freshness": product_result.get("data_freshness"),
+        "data_freshness": freshness,
     }

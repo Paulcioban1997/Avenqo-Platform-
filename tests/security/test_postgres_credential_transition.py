@@ -1,20 +1,14 @@
 """Exercise dual-login transition only in an isolated local/CI PostgreSQL database."""
-import os
 import secrets
 from uuid import uuid4
-import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 from psycopg2 import sql
+
+from tests.security.isolated_postgres import require_isolated_admin_url
 
 
 def test_new_login_preserves_data_then_old_login_is_effectively_revoked():
-    value = os.environ.get("AVENQO_ROTATION_TEST_ADMIN_URL")
-    if not value:
-        pytest.skip("Isolated PostgreSQL test service not available")
-    url = make_url(value)
-    assert os.environ.get("ENVIRONMENT") == "test"
-    assert url.host in {"localhost", "127.0.0.1"} and url.database.startswith("rotation_test_")
+    url = require_isolated_admin_url()
     admin = create_engine(url, echo=False)
     suffix = uuid4().hex[:12]; old = "old_" + suffix; new = "new_" + suffix; schema = "rotation_" + suffix
     owner = "owner_" + suffix; migrator = "migrator_" + suffix

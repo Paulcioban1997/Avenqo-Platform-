@@ -23,6 +23,13 @@ from backend.app.core.locale_catalog import (
     resolve_locale,
 )
 from backend.app.core.permissions import permissions_for
+from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import (
+    TenantExecutionContext,
+    bind_tenant_execution,
+    reset_tenant_execution,
+)
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.core.security import decode_access_token
@@ -361,6 +368,7 @@ async def _stream_session(
         await websocket.close(code=4401)
         return
 
+    apply_tenant_rls(db, tenant_id, bypass=False)
     session = db.scalar(
         select(VoiceCentralSession).where(
             VoiceCentralSession.id == session_id,
@@ -402,9 +410,22 @@ async def _stream_session(
             return None
         return membership
 
-    if authorized() is None:
+    membership = authorized()
+    if membership is None:
         await websocket.close(code=4403)
         return
+
+    apply_tenant_rls(db, tenant_id, bypass=False)
+    tenant_token = bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=TenantContext(company_id=tenant_id, user_id=user_id),
+            user_id=user_id,
+            permissions=frozenset(permissions_for(membership.role)) if membership is not None else frozenset(),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            source="voice_stream",
+        )
+    )
 
     _audit_session_source(session, db)
     db.commit()
@@ -648,6 +669,7 @@ async def _stream_session(
     except WebSocketDisconnect:
         pass
     finally:
+        reset_tenant_execution(tenant_token)
         if provider_task is not None:
             provider_task.cancel()
             await asyncio.gather(provider_task, return_exceptions=True)
@@ -668,5 +690,5 @@ async def stream_session(
     central = session is not None and (getattr(session, "source_context", None) or {}).get("entrypoint") == "central"
     # Sponsorship only applies to this persisted Central session. The stream still
     # validates the JWT, session owner, membership and every private tool action.
-    with included_central(session.company_id) if central else nullcontext():
+    with included_central(session.company_id) if session is not None and central else nullcontext():
         await _stream_session(websocket, session_id, db, service)

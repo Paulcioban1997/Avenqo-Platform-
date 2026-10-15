@@ -29,7 +29,12 @@ from backend.app.ai.tools.exceptions import (
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.ai.tools.natural_confirmation import (
     confirmation_required_message,
+    is_explicit_booking_request,
     is_natural_confirmation,
+)
+from backend.app.core.tenant_execution import (
+    peek_tenant_execution,
+    strip_client_tenant_arguments,
 )
 
 logger = logging.getLogger("avenqo.tool_calling")
@@ -66,10 +71,15 @@ class ToolExecutor:
 
             if self._authorization_policy is None:
                 raise ToolAuthorizationError("Tool authorization is not configured.")
+            bound = peek_tenant_execution()
+            if bound is not None and bound.company_id != context.tenant_id:
+                raise ToolAuthorizationError("The tool cannot run outside the bound tenant.")
             self._authorization_policy.authorize(tool, context)
 
             try:
-                arguments = tool.input_schema.model_validate(raw_arguments)
+                arguments = tool.input_schema.model_validate(
+                    strip_client_tenant_arguments(raw_arguments)
+                )
             except ValidationError as exc:
                 raise ToolValidationError(f"Invalid arguments for '{name}'.") from exc
 
@@ -79,7 +89,7 @@ class ToolExecutor:
                 confirmed = getattr(arguments, tool.confirmation_field, False) is True
                 explicit_confirmation = (
                     confirmed and context.user_message.strip().casefold() == "/confirm"
-                )
+                ) or is_explicit_booking_request(context.user_message)
                 natural_confirmation = False
                 if (
                     not explicit_confirmation

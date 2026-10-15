@@ -419,7 +419,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) {
+      if (url.includes("/retail/inventory?")) {
         return Response.json({
           inventory: [{
             id: "product-1",
@@ -461,7 +461,7 @@ describe("Retail inventory rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
     expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
-    expect(await screen.findByText(getAppTranslations("fr").common.insufficientData)).toBeInTheDocument();
+    expect(await screen.findByText(getAppTranslations("fr").retail.recommendationsNeedOrders)).toBeInTheDocument();
   });
 
   it("renders forecast and recommendation data returned by their tenant APIs", async () => {
@@ -485,7 +485,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) return Response.json({ inventory: [], anomalies: [] });
+      if (url.includes("/retail/inventory?")) return Response.json({ inventory: [], anomalies: [] });
       if (url.endsWith("/sales/summary?period=last_30_days")) {
         return Response.json({
           currency: "CAD",
@@ -529,9 +529,49 @@ describe("Retail inventory rendering", () => {
     expect(await screen.findByText("Moyenne historique hebdomadaire")).toBeInTheDocument();
     expect(screen.getByText("Week A")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
-    expect(await screen.findByText("Produits: Seasonal item")).toBeInTheDocument();
+    expect(await screen.findByText("Les revenus de ce produit progressent — Seasonal item")).toBeInTheDocument();
     expect(screen.getByText("Shopify · Avenqo Retail Test")).toBeInTheDocument();
     expect(screen.queryByText(/product_growth|product_revenue_changed|Review the next purchase order/)).not.toBeInTheDocument();
+  });
+
+  it("still renders Retail when inventory fails after status succeeds", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
+      if (url.endsWith("/retail/status")) {
+        return Response.json({
+          is_connected: true,
+          provider: "dataset",
+          store_url: null,
+          status: "READY",
+          last_synced_at: null,
+          records_count: 1,
+          product_count: 1,
+          order_count: 0,
+          customer_count: 0,
+          source_context: { state: "READY", selection: "dataset", name: "Superstore-utf8.csv", provider: "dataset", dataset_id: "ds-1" },
+        });
+      }
+      if (url.includes("/retail/inventory?")) return new Response("unavailable", { status: 503 });
+      if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [{ id: "p1", source_record_id: "p1", provider: "dataset", product_name: "Paper", sku: "PAP-1", product_category: "Office", unit_price: 12, stock_quantity: 4, stock_status: "instock" }] });
+      if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
+      if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
+      if (url.endsWith("/sales/summary?period=last_30_days")) return Response.json({ currency: "CAD", summary: null, forecast: null });
+      if (url.endsWith("/recommendations")) return Response.json({ recommendation_state: "INSUFFICIENT_DATA", recommendations: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(
+      <LocaleProvider>
+        <RetailIntelligenceView defaultTab="products" />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText(getAppTranslations("fr").navigation.retailAi)).toBeInTheDocument();
+    expect(screen.getByText(/Superstore-utf8\.csv/)).toBeInTheDocument();
+    expect(screen.getByText("Paper")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

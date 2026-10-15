@@ -22,7 +22,7 @@ RETAIL_INTENT_KEYWORDS = frozenset({
 CRM_INTENT_KEYWORDS = frozenset({
     "crm", "lead", "leads", "opportunity", "opportunities", "prospect",
     "prospects", "deal", "deals", "relance", "relances", "contact", "contacts",
-    "appointment", "appointments", "rendez", "creneau", "creneaux", "disponibilite",
+    "appointment", "appointments", "rendez", "rdv", "creneau", "creneaux", "disponibilite",
     "disponibilites", "slot", "slots", "reservation", "reservations", "schedule",
     "scheduling", "booking", "calendrier", "agenda",
 })

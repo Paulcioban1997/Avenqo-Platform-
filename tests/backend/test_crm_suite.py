@@ -174,7 +174,10 @@ def test_crm_appointments_this_month_uses_tenant_local_month(db_session, monkeyp
 
     monkeypatch.setattr(crm_service_module, "datetime", FrozenDateTime)
 
-    assert crm_service.get_kpis(company.id)["appointments_this_month"] == 1
+    kpis = crm_service.get_kpis(company.id)
+    assert kpis["appointments_this_month"] == 1
+    assert kpis["attendance_rate_percent"] is None
+    assert kpis["attendance_tracked_count"] == 0
 
 
 def test_strict_multi_tenant_isolation(db_session):
@@ -1460,6 +1463,36 @@ def test_ai_copilot_crm_tools_execution(db_session):
     )
     assert create_res.success is True
     assert create_res.data["title"] == "Consultation IA"
+
+
+def test_create_appointment_tool_books_explicit_user_request(db_session):
+    company = _create_company(db_session, "tenant-explicit-booking")
+    crm_svc = CRMAppService(db_session)
+    ctx = ToolExecutionContext(
+        tenant=TenantContext(company_id=company.id),
+        user_id=uuid4(),
+        permissions=frozenset(["ai:use"]),
+        request_id="explicit-booking-1",
+        user_message="tu peu me prendre un rdv vous pour aujourd'hui au gym a 10h30 ? c'est le 14 octobre 2026",
+    )
+    create_res = asyncio.run(
+        CreateAppointmentTool(db_session).run(
+            ctx,
+            CreateAppointmentArgs(
+                client_name_or_id="vous",
+                title="Gym",
+                start_time=datetime(2026, 10, 14, 10, 30, tzinfo=ZoneInfo(company.timezone)).isoformat(),
+                duration_minutes=60,
+                service_name="gym",
+                confirmed=False,
+            ),
+        )
+    )
+    assert create_res.success is True
+    assert create_res.data["id"]
+    assert create_res.data["title"] == "Gym"
+    appointments = crm_svc.list_appointments(company.id, limit=10)
+    assert len(appointments) == 1
 
 
 def test_calendar_provider_abstractions():

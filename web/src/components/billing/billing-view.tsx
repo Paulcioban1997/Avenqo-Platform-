@@ -524,8 +524,8 @@ export function BillingView() {
   const monthlyRem = creditView.remaining;
   const monthlyUsed = creditView.used;
   const totalAvail = credits.total_available ?? creditView.remaining;
-  const progressPercent = monthlyAlloc && monthlyUsed !== null
-    ? Math.min(100, Math.round((monthlyUsed / monthlyAlloc) * 100))
+  const progressPercent = monthlyAlloc && monthlyRem !== null
+    ? Math.min(100, Math.max(0, Math.round((monthlyRem / monthlyAlloc) * 100)))
     : 0;
 
   const totalHistoryPages = Math.ceil(historyTotal / historyPageSize) || 1;

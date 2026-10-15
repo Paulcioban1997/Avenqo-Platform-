@@ -75,6 +75,8 @@ class TenantRecommendationsService:
                 "currency": snapshot.currency,
                 "generated_at": generated_at,
                 "recommendation_state": "INSUFFICIENT_DATA" if order_count < _MIN_RECOMMENDATION_ORDERS else "NO_RECOMMENDATIONS",
+                "order_count": order_count,
+                "min_orders_required": _MIN_RECOMMENDATION_ORDERS,
                 "data_freshness": freshness.as_dict(),
                 "recommendations": [],
             }

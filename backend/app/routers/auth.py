@@ -380,19 +380,20 @@ def switch_tenant(
             detail="Organisation introuvable",
         )
 
-    if target_company.status != CompanyStatus.ACTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Organisation inactive",
-        )
-
     membership = db.scalar(select(CompanyMembership).where(
         CompanyMembership.user_id == identity.user.id,
         CompanyMembership.company_id == target_company.id,
         CompanyMembership.is_active.is_(True),
     ))
+    # Membership first: a non-member must not learn the status of a foreign company.
     if target_company.id != identity.company_id and membership is None:
         raise HTTPException(403, "Accès non autorisé à cette organisation")
+
+    if target_company.status != CompanyStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organisation inactive",
+        )
 
     # Preserve the existing primary membership and never carry its role into
     # another organization. Platform administration grants no tenant bypass.

@@ -468,7 +468,9 @@ def test_alembic_0053_follows_integrated_locale_profile():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0059_migrate_role_schema_create"]
+    assert script.get_heads() == ["0061_tenant_hotpath_indexes"]
+    assert script.get_revision("0061_tenant_hotpath_indexes").down_revision == "0060_rls_remaining_tenant_tables"
+    assert script.get_revision("0060_rls_remaining_tenant_tables").down_revision == "0059_migrate_role_schema_create"
     assert script.get_revision("0059_migrate_role_schema_create").down_revision == "0058_sandbox_app_db_roles"
     assert script.get_revision("0058_sandbox_app_db_roles").down_revision == "0057_rls_invoices_ai_voice"
     assert script.get_revision("0057_rls_invoices_ai_voice").down_revision == "0056_rls_crm_commerce_datasets"
