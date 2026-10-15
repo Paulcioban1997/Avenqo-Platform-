@@ -418,7 +418,11 @@ class RetailSourceService:
         connections_by_id = {item.id: item for item in connections}
         datasets_by_id = {item.id: item for item in datasets}
         if selection is not None and selection.source_type == "connector":
-            connection = connections_by_id.get(selection.connection_id)
+            connection = (
+                connections_by_id.get(selection.connection_id)
+                if selection.connection_id is not None
+                else None
+            )
             if connection is not None:
                 current_dataset_id = self._connection_dataset_id(connection)
                 if selection.dataset_id != current_dataset_id:
@@ -433,7 +437,7 @@ class RetailSourceService:
             selection is not None
             and selection.source_type == "dataset"
         ):
-            if selection.dataset_id in datasets_by_id:
+            if selection.dataset_id is not None and selection.dataset_id in datasets_by_id:
                 return selection
             # Selected dataset is no longer present
             self._session.delete(selection)
