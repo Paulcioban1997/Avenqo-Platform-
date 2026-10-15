@@ -42,7 +42,7 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0061_tenant_hotpath_indexes"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0061b_harden_tenant_rls_no_bypass"
         conversation_indexes = {item["name"] for item in inspect(connection).get_indexes("ai_conversations")}
         assert "ix_ai_conversations_company_user" in conversation_indexes
         assert connection.execute(text("SELECT has_schema_privilege('avenqo_migrate', 'public', 'CREATE')")).scalar_one() is True
