@@ -75,6 +75,12 @@ def reset_tenant_execution(token: Token | None) -> None:
         tenant_execution_var.reset(token)
 
 
+def clear_tenant_execution() -> None:
+    """Drop any leftover bind. Used after websocket/jobs and between tests."""
+
+    tenant_execution_var.set(None)
+
+
 def peek_tenant_execution() -> TenantExecutionContext | None:
     return tenant_execution_var.get()
 

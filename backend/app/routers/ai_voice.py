@@ -24,7 +24,11 @@ from backend.app.core.locale_catalog import (
 )
 from backend.app.core.permissions import permissions_for
 from backend.app.core.request_context import request_id_var
-from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
+from backend.app.core.tenant_execution import (
+    TenantExecutionContext,
+    bind_tenant_execution,
+    reset_tenant_execution,
+)
 from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
@@ -411,7 +415,7 @@ async def _stream_session(
         return
 
     apply_tenant_rls(db, tenant_id, bypass=False)
-    bind_tenant_execution(
+    tenant_token = bind_tenant_execution(
         TenantExecutionContext(
             tenant=TenantContext(company_id=tenant_id, user_id=user_id),
             user_id=user_id,
@@ -664,6 +668,7 @@ async def _stream_session(
     except WebSocketDisconnect:
         pass
     finally:
+        reset_tenant_execution(tenant_token)
         if provider_task is not None:
             provider_task.cancel()
             await asyncio.gather(provider_task, return_exceptions=True)

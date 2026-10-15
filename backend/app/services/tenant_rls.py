@@ -20,8 +20,15 @@ from sqlalchemy.orm import Session
 
 
 def supports_rls(session: Session) -> bool:
-    bind = session.get_bind()
-    return bind is not None and bind.dialect.name == "postgresql"
+    getter = getattr(session, "get_bind", None)
+    if not callable(getter):
+        return False
+    try:
+        bind = getter()
+    except Exception:
+        return False
+    dialect = getattr(bind, "dialect", None)
+    return dialect is not None and getattr(dialect, "name", None) == "postgresql"
 
 
 def set_rls_bypass(session: Session, *, enabled: bool) -> None:

@@ -463,6 +463,9 @@ def voice_route(monkeypatch):
         def commit(self):
             pass
 
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
     calls = []
 
     class Service:

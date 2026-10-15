@@ -1,118 +1,134 @@
-# Lot 8 — 250 private Central AIs: status report
+# Lot 8 — 250 private Central AIs: security validation (2026-10-14)
 
-Date: 2026-10-14  
 Branch: `feat/mt-250-private-central-ai`  
-Parent: `feat/sandbox-platform-functional-finalization` @ `ab4391d` (PR #60, not overwritten)  
-PR target: `promotion/sandbox` — **do not merge** without explicit user Merge/GO.  
-Production `avenqo.ca` / `api.avenqo.ca`: **unchanged**.
+PR #61 vs `promotion/sandbox` — **do not merge** without explicit GO.  
+Production `avenqo.ca` / `api.avenqo.ca`: **unchanged**. Live Sandbox DB: **unchanged**.
 
-## 1. Scope
+## Verdict
 
-Shared LLM infra with per-request `TenantExecutionContext`. Business context, memory, docs, tools and sessions must not leak across companies. 250 tenants ≠ 250 AI servers.
+**Do not merge yet.** Isolation is demonstrated on an isolated Postgres copy and in SQLite app-layer tests. Capacity for 250 **live** companies is **not** demonstrated. GitHub Backend Core was red on HEAD `5284339`; the fixes below are local until pushed.
 
-## 2. Git / environments
+## 1. GitHub PR #61 checks (HEAD `5284339`, run 38663674804)
 
-| Item | Status |
+| Check | Result |
 |---|---|
-| Dedicated branch | `feat/mt-250-private-central-ai` |
-| PR #60 | Still OPEN vs `promotion/sandbox`; this work is a sibling |
-| Railway Sandbox API | Older until #60 Merge/GO |
-| Production | Untouched |
-| Catalog | Base 29.99 CAD / 6500; Professional 49.99 CAD / 20000; Enterprise custom |
+| Backend Core | **FAIL** — 10 failed / 491 passed |
+| Frontend App (Flutter) | PASS |
+| Frontend Web | PASS |
+| Secret guard and credential transition | PASS |
+| GitGuardian | PASS |
+| Vercel previews | PASS |
 
-## 3. Tenant identity
+Backend Core root cause (measured locally, then fixed):
 
-**PASS** at application layer: JWT `tenant_id` must match `user.company_id`; `CurrentIdentity` uses the DB user; client headers/query/tool args cannot bind tenant.  
-`TenantExecutionContext` is request-scoped and reset by `RequestIDMiddleware`.
+- Voice FakeSocket never reached `accept` because `apply_tenant_rls` called `session.get_bind()` on the test DB stub → `AttributeError` swallowed by the task, `until(..., timeout=2)` → `TimeoutError` (7 tests).
+- Leftover `TenantExecutionContext` after websocket bind made `ConversationService.create` raise `ConversationNotFoundError` (3 included-central tests).
+- `permissions_for("owner")` already resolved on CPython 3.11 `str, Enum`; still coerced explicitly.
 
-## 4. RBAC / tools
+Local re-run after fix: `tests/backend/test_phase6_voice.py` + `tests/backend/test_included_central.py` + RLS session tests = **44 passed**.
 
-**PASS** for wired tools: `ToolAuthorizationPolicy` rechecks membership; executor strips `company_id`/`tenant_id` and rejects a tool context that does not match the bound tenant. Prompt-injected tenant selectors cannot switch company.
+## 2. PR #60 inclusion and Alembic
 
-## 5. Postgres RLS
+**PASS.** PR #61 contains every PR #60 commit (`699aa64` … `ab4391d`) plus mt-250 commits.
 
-**PARTIAL.** 0060 adds reversible FORCE RLS for remaining `company_id` business tables. Users/memberships/auth sessions stay unscoped (login + tenant switch).  
-Live Sandbox/Production still connect as table-owner / `avenqo_app` NOLOGIN — **RLS inert until app-role LOGIN GO**. Not applied to Production.
+Alembic linear head (tested):
 
-## 6. Caches / files / memory
+`0057_rls_invoices_ai_voice` → `0058_sandbox_app_db_roles` → `0059_migrate_role_schema_create` → `0060_rls_remaining_tenant_tables`
 
-**PASS** in-process: cache keys include `company_id`; invalidation is per tenant. Model artifacts under `{company_id}/`. Conversations/messages filtered by `company_id` + bound context. No Redis cluster cache.
+No missing revision between #60 and #61. 0060 is reversible (`revoke_force_rls_policies`). Not applied to Sandbox or Production.
 
-## 7. Central AI text sessions
+## 3. Isolated RLS 0060 rehearsal (localhost Docker Postgres 16, `rotation_test_ci` on `127.0.0.1:54329`)
 
-**PASS** for wired paths: conversations cannot be listed/read across A/B/C; Central execute refuses a mismatched bound tenant. Shared gateway + router.
+**PASS.** Role `avenqo_app` LOGIN on a disposable copy only; LOGIN disabled after. `DATABASE_URL` unchanged.
 
-## 8. Voice sessions
+Script `scripts/rehearse_rls_0060_isolated.py` exit 0:
 
-**PARTIAL.** Websocket now binds tenant + RLS after JWT/session checks. Paid Telnyx/OpenAI realtime **GO not given** — no live provider load. Simulated transport ≠ real audio.
+```
+host_isolated=true tables_forced=5 app_direct_login=true session_user_is_app=true
+rls_hides_foreign_tenant=true empty_guc_sees_zero=true pooled_connection_does_not_leak=true
+app_cannot_disable_rls=true app_cannot_set_role_postgres=true login_disabled_after=true
+database_url_unchanged=true
+```
 
-## 9. Credits / quotas
+Pytest with `AVENQO_ROTATION_TEST_ADMIN_URL` (same instance): **31 passed**, including `test_rls_0060_isolated`, `test_postgres_app_role`, `test_rls_transaction_context`.
 
-**PASS** for single worker: DB reservation + advisory lock + process lock; settlement idempotent by `avenqo_request_id`; cannot reserve for a foreign bound tenant.  
-**PARTIAL** if workers scale: in-process lock is not cluster-wide.
+Non-contournement measured:
 
-## 10. Concurrency / backpressure / circuit breakers
-
-**PARTIAL.** In-memory LLM circuit breaker, request timeouts, Railway `workers 1`, pool 10+20. No distributed fair scheduler. Not proven at 250 concurrent companies.
-
-## 11. Multi-model router
-
-**PASS** as existing `SmartModelRouter` + provider registry. Cost attribution already on `tenant_ai_provider_attempts`. No catalog/price change.
-
-## 12. Retail P0 (live screenshot)
-
-**PARTIAL / mitigated in this branch.** `/retail` no longer blanks the module when one sibling API fails (inventory 503 still shows status/products). Live Vercel preview still talks to **older Sandbox API** until #60 is merged — remaining 500s on the old API are **BLOCKED on user Merge/GO**.
-
-## 13. Security tests (companies A/B/C)
-
-**PASS** (SQLite app-layer): A cannot list/read B or C conversations; `X-Company-Id` / `X-Avenqo-Tenant-Id` on a user JWT does not switch tenant; tool args cannot select a foreign company; credit reserve refuses foreign bound tenant.
-
-Postgres FORCE RLS with `avenqo_app`: **NOT TESTED** here (requires isolated Postgres URL + LOGIN role GO).
-
-## 14. Load tests
-
-**NOT TESTED.** Scripts: `loadtest/k6-mt-250.js`, `loadtest/locustfile.py`. They refuse Production. No palier was executed in this run. Do not treat this as 250 real voice sessions.
-
-| Palier | Result |
+| Attempt as `avenqo_app` | Result |
 |---|---|
-| A — health smoke | NOT TESTED |
-| B — authenticated reads | NOT TESTED |
-| C — Central AI text | NOT TESTED / would need non-prod keys |
-| Real audio provider | BLOCKED (no paid GO) |
+| Tenant A GUC | sees only A rows |
+| Tenant B GUC | sees only B rows |
+| Empty `app.current_company_id` | 0 rows |
+| `ALTER TABLE … DISABLE ROW LEVEL SECURITY` | refused |
+| `SET ROLE postgres` | refused |
+| `rolsuper` / `rolbypassrls` | false |
 
-## 15. Capacity (code, not measured)
+## 4. Pooled connections
 
-Single API worker, ~30 DB clients, in-memory rate limits. **FAIL** as a production 250-tenant SLO until load is measured and workers/pool/Redis are designed. Isolation ≠ capacity.
+**PASS** on isolated Postgres `pool_size=1`, `pool_reset_on_return=rollback`.
 
-## 16. Requirement matrix
+- After a Session with tenant A commits and closes, the next checkout without GUC sees **0** rows.
+- `get_db` rolls back and drops `session.info["avenqo_rls"]` so `after_begin` cannot restore a previous tenant on a recycled Session object.
+- HTTP resets `TenantExecutionContext` in `RequestIDMiddleware`; websockets reset in `_stream_session` `finally`; pytest autouse clears leftovers.
 
-| Requirement | Result |
+Live Sandbox/Production still connect as table owner: **RLS remains inert there** until a LOGIN cutover GO.
+
+## 5. Sandbox role cutover
+
+**PREPARED, NOT EXECUTED.** Procedure: `docs/security/sandbox-app-role-cutover.md`.
+
+Isolated cutover rehearsal `scripts/rehearse_app_role_cutover.py` exit 0 (localhost only):
+
+```
+app_direct_login=true session_user_is_app=true rls_hides_foreign_tenant=true
+worker_guc_bypass_sees_all=true app_cannot_create_table=true
+app_cannot_set_role_postgres=true migrate_can_create_table=true
+app_reads_migrate_table=true login_disabled_after=true database_url_unchanged=true
+```
+
+No Sandbox `ALTER ROLE`, no Railway `DATABASE_URL` change.
+
+## 6. Load paliers (loopback mock, simulated AI, no paid providers)
+
+k6 and Locust are **not installed** on this machine. Harnesses exist: `loadtest/k6-mt-250.js`, `loadtest/locustfile.py` (refuse Production; paliers ≥50 refuse non-loopback).
+
+Measured with `python loadtest/run_isolated_paliers.py` against `127.0.0.1` mock (health + simulated login + simulated `/ai/chat`):
+
+| Companies | Concurrency | Requests | Failures | RPS | p50 ms | p95 ms | Result |
+|---|---|---|---|---|---|---|---|
+| 10 | 10 | 90 | 0 | 145.5 | 6.8 | 243.4 | PASS mock |
+| 25 | 25 | 225 | 0 | 136.8 | 8.2 | 524.4 | PASS mock |
+| 50 | 50 | 450 | 0 | 122.2 | 8.2 | 1542.5 | PASS mock |
+| 100 | 100 | 900 | 28 | 172.6 | 7.7 | 2040.4 | FAIL mock (timeouts) |
+| 150 | 150 | 1350 | 45 | 253.8 | 8.0 | 2046.0 | FAIL mock (timeouts) |
+| 200 | 200 | 1800 | 52 | 339.5 | 8.0 | 2044.7 | FAIL mock (timeouts) |
+| 250 | 250 | 2250 | 95 | 425.1 | 7.9 | 2034.6 | FAIL mock (timeouts) |
+| 100 | 25 | 900 | 0 | 421.0 | 6.8 | 22.9 | PASS mock (capped) |
+| 150 | 25 | 1350 | 0 | 505.3 | 7.0 | 10.7 | PASS mock (capped) |
+| 200 | 25 | 1800 | 0 | 679.7 | 7.0 | 14.5 | PASS mock (capped) |
+| 250 | 20 | 2250 | 0 | 730.1 | 7.3 | 10.0 | PASS mock (capped) |
+
+**These numbers are not Avenqo API capacity.** They are a stdlib mock. Live Sandbox/Production load is **NOT TESTED** (forbidden without GO).
+
+## 7. Merge gate
+
+| Item | Result |
 |---|---|
-| Two companies cannot read/modify/infer each other (app layer) | PASS |
-| Same at live Postgres role | PARTIAL (RLS prepared, inert until GO) |
-| company_id only from server session | PASS |
-| Tool/prompt cannot switch tenant | PASS |
-| Shared LLM, private context | PASS (wired) |
-| Additive reversible migrations | PASS (0060 downgrades) |
-| RLS on Production | NOT DONE (forbidden) |
-| 250 concurrent proven | NOT TESTED |
-| Paid voice/OpenAI GO | BLOCKED |
-| Catalog prices unchanged | PASS |
-| Merge to main / Production deploy | NOT DONE (forbidden) |
+| Two tenants cannot read each other (app layer, SQLite) | PASS |
+| Two tenants cannot read each other (`avenqo_app` + FORCE RLS, isolated PG) | PASS |
+| Pooled connection does not keep the previous tenant | PASS (isolated PG) |
+| Alembic 0060 present and reversible | PASS |
+| PR #60 commits included | PASS |
+| GitHub Backend Core on pushed HEAD | **FAIL** until this commit is pushed |
+| Live Sandbox RLS / `avenqo_app` LOGIN | **NOT DONE** (no GO) |
+| 250 live companies on shared infra | **NOT TESTED** |
+| Paid OpenAI/Telnyx | **BLOCKED** |
+| Merge / Production | **FORBIDDEN** |
 
-## 17. BLOCKED on user GO
+## 8. Remaining blockers
 
-- Merge PR #60 and/or this PR to `promotion/sandbox`
-- Sandbox `avenqo_app` LOGIN cutover (not Production)
-- Isolated Postgres RLS rehearsal with the real app role
-- Any Locust/k6 palier against Sandbox
-- Paid Telnyx / OpenAI realtime
-- Production RLS or secret/DB cutover
-
-## 18. Commits on this branch
-
-1. Lot 1 — Phase 0 audit  
-2. Lot 2 — `TenantExecutionContext`, tool hardening, Retail fail-soft  
-3. Lot 3 — reversible 0060 RLS expansion + cache isolation test  
-4. Lot 4–6 — Central/voice/credit bind + A/B/C tests  
-5. Lot 7–8 — load-test harness (unrun) + this report  
+1. Push this commit and wait for GitHub Backend Core + security-incident-guard green.
+2. Owner GO before Sandbox backup + `avenqo_app` LOGIN + `DATABASE_URL` cutover (`docs/security/sandbox-app-role-cutover.md`).
+3. Owner GO before any Locust/k6 palier against Sandbox.
+4. Workers, pool, and rate limits are still sized for one API replica — isolation ≠ 250-tenant SLO.
+5. Do not merge PR #60 or #61 without an explicit Merge/GO.

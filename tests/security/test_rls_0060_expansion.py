@@ -41,6 +41,9 @@ def test_0060_is_reversible_alembic_head() -> None:
     assert script.get_heads() == ["0060_rls_remaining_tenant_tables"]
     revision = script.get_revision("0060_rls_remaining_tenant_tables")
     assert revision.down_revision == "0059_migrate_role_schema_create"
-    assert revision.module.downgrade.__doc__ is None or True
     source = revision.module.downgrade.__code__.co_names
     assert "revoke_force_rls_policies" in source
+    migrate_role = script.get_revision("0059_migrate_role_schema_create")
+    assert migrate_role.down_revision == "0058_sandbox_app_db_roles"
+    app_roles = script.get_revision("0058_sandbox_app_db_roles")
+    assert app_roles.down_revision == "0057_rls_invoices_ai_voice"

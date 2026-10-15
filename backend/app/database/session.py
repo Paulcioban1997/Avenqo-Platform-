@@ -65,6 +65,9 @@ def get_db() -> Generator[Session, None, None]:
         yield session
     finally:
         session.rollback()
+        info = getattr(session, "info", None)
+        if isinstance(info, dict):
+            info.pop("avenqo_rls", None)
         session.close()
 
 

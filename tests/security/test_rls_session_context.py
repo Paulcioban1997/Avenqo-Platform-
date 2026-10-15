@@ -23,6 +23,11 @@ class _FakeSession:
         self.statements.append((str(statement), dict(params or {})))
 
 
+def test_apply_tenant_rls_is_noop_when_session_has_no_bind() -> None:
+    apply_tenant_rls(SimpleNamespace(), uuid4())
+    apply_tenant_rls(SimpleNamespace(get_bind=lambda: None), uuid4())
+
+
 def test_apply_tenant_rls_binds_company_and_disables_bypass() -> None:
     session = _FakeSession()
     company_id = uuid4()
