@@ -94,3 +94,45 @@ Vérifier **déchiffrement et lecture isolée**, jamais un appel Shopify/Stripe/
 - Head Alembic `0061_tenant_hotpath_indexes` sur la copie isolée.
 
 Tant que cette checklist n’est pas signée par le propriétaire, Sandbox reste sur le login actuel et `avenqo_app` reste NOLOGIN.
+
+## Écarts relevés par la répétition PostgreSQL 16.15 (2026-10-15, base locale jetable, données synthétiques)
+
+Mesures réelles, sans aucun accès à Sandbox ni Production. Seule la version **16.15** a été testée (ni 15 ni 18).
+
+| Constat mesuré | Conséquence pour cette procédure |
+|---|---|
+| Rejeu Alembic 0001 → 0061 sur base vide : OK, head `0061_tenant_hotpath_indexes`, 70 tables FORCE RLS, 5 index 0061 présents | La chaîne est rejouable de zéro. Cela ne prouve rien sur l’état réel de Sandbox, dont la version Alembic n’a **pas** été lue. |
+| `downgrade` 0061 → 0059 : 70 → 21 tables FORCE RLS, 0 index 0061, **toutes les lignes conservées** ; re-`upgrade` OK | Le downgrade ne perd pas de données mais **retire la protection RLS** des tables ajoutées par 0060. Il ne remet ni `DATABASE_URL` ni le rôle. |
+| Restauration du dump pris **avant** déploiement : retour à alembic 0059, 21 tables FORCE RLS, 325 index sur 325, **15 clients CRM au lieu de 16** | **Toute écriture postérieure à la sauvegarde est perdue** si on restaure. |
+| `ALTER ROLE avenqo_app LOGIN` puis `NOLOGIN` : connexion refusée après retour | Le retour de rôle est instantané et sans perte, mais c’est un état séparé de la base et du schéma. |
+| `pg_dump --no-owner --no-privileges` (utilisé par `scripts/backup_db.py`) | Propriétaires et GRANT ne sont pas restaurés. Après une restauration, ré-appliquer propriétaires et privilèges (rôles `avenqo_*`) avant toute connexion applicative. |
+
+### Écart critique : le déploiement applique les migrations
+
+`railway.json` lance `python -m alembic upgrade head && uvicorn ...` à **chaque démarrage** du service API. Donc, si le déploiement Sandbox se déclenche à la fusion de la PR #61, les migrations 0060 et 0061 s’appliqueront **au démarrage, avant** la sauvegarde exigée ci-dessus. L’ordre « pré-requis 1 : fusion, puis sauvegarde » est donc dangereux. Non vérifié : si la fusion dans `promotion/sandbox` déclenche réellement un déploiement automatique Railway.
+
+Règle à appliquer : **la sauvegarde vérifiée doit être terminée avant la fusion**, ou le déclenchement automatique doit être suspendu et le déploiement lancé à la main après sauvegarde.
+
+### Risque de perte des écritures postérieures à la sauvegarde
+
+- Le dump fige l’état à un instant T. Les écritures entre T et un éventuel retour arrière (inscriptions, CRM, messages Central AI, crédits IA, factures, événements Stripe) sont **absentes** du dump.
+- Le downgrade Alembic **conserve** ces écritures, la restauration les **perd** : à privilégier tant que la base n’est pas corrompue (voir Rollback, point 4).
+- Les événements externes déjà émis (paiement Stripe, appel Telnyx) ne se « restaurent » pas : leur écriture locale perdue crée un écart avec le fournisseur. À réconcilier à la main.
+
+### Procédure à perte minimale (fenêtre de maintenance)
+
+1. Annoncer la fenêtre ; faire cette bascule hors des heures d’usage.
+2. Suspendre les écritures : arrêter les crons `avenqo-connector-ai-cron` (toutes les 5 min) et `avenqo-commerce-reconciliation-cron` (toutes les 15 min) **de l’environnement Sandbox**, puis passer l’API en lecture seule ou la mettre en maintenance.
+3. Prendre le dump **après** l’arrêt des écritures. Écart T → bascule ≈ 0 donc perte ≈ 0 si rollback immédiat.
+4. Vérifier le dump (checksum + restauration isolée + comparaison de comptages), comme dans « Sauvegarde vérifiée ».
+5. Appliquer, tester (tableau A–K), et ne **réouvrir les écritures** qu’après les tests verts.
+6. Après réouverture, la fenêtre de perte repart de zéro : en cas d’échec tardif, préférer le retour au rôle propriétaire + `NOLOGIN` (aucune perte) à la restauration.
+7. Critères d’arrêt immédiat : 5xx sur login, refus de login légitime, `42501`, déchiffrement de connecteur en échec, ligne d’une autre entreprise visible, pool saturé (`QueuePool limit`).
+
+### Contrôles à ajouter avant GO (non encore faits)
+
+- Version Alembic **réelle** de Sandbox (lecture seule) : non lue à ce jour.
+- Première sauvegarde Sandbox : le job `avenqo-daily-backup` de Sandbox existe, mais aucune exécution n’est visible dans ses journaux ; sa capacité à produire un dump restaurable est **non démontrée**.
+- Chiffrement : `scripts/backup_db.py` produit un dump SQL en clair (SHA-256 seulement). Chiffrer côté client avant tout stockage durable.
+- `users` et `company_memberships` n’ont pas de RLS (voulu : connexion et changement d’entreprise) ; leur isolation est applicative et couverte par `tests/security/test_users_memberships_access.py`.
+
