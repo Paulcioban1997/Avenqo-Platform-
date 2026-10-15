@@ -42,7 +42,7 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0059_migrate_role_schema_create"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0060_rls_remaining_tenant_tables"
         assert connection.execute(text("SELECT has_schema_privilege('avenqo_migrate', 'public', 'CREATE')")).scalar_one() is True
         assert connection.execute(text("SELECT has_schema_privilege('avenqo_app', 'public', 'CREATE')")).scalar_one() is False
         assert "call_policy" in {c["name"] for c in inspect(connection).get_columns("voice_business_configs")}
