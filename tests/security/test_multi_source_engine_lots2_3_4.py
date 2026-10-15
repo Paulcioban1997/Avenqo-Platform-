@@ -249,8 +249,14 @@ async def test_lot2_parallel_sync_fault_tolerance(db_session: Session):
     assert conn1.id != conn2.id
 
 
-def test_lot2_sync_all_endpoint(client: TestClient, db_session: Session):
+def test_lot2_sync_all_endpoint(client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch):
     """Test Lot 2 : L'endpoint POST /connections/sync-all accepte la synchronisation globale."""
+    from cryptography.fernet import Fernet
+    from backend.app.config.settings import get_settings
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("CONNECTOR_ENCRYPTION_KEYS", key)
+    get_settings.cache_clear()
+
     company, user, token = _setup_company_with_user(db_session, "Multi Sync Co")
 
     conn = CommerceConnection(

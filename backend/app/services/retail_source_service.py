@@ -668,12 +668,12 @@ class RetailSourceService:
         mode = "ALL"
         raw_selected_ids: set[str] = set()
 
-        if active is not None:
-            mode = getattr(active, "selection_mode", "ALL")
+        if active is not None and (active.source_type or "").upper() in ("ALL", "CUSTOM_SET", "SINGLE"):
+            mode = active.source_type.upper()
             if mode == "ALL":
                 raw_selected_ids = {
                     str(s.source_id) for s in available
-                    if s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+                    if s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
                 }
             elif mode == "CUSTOM_SET":
                 raw_selected_ids = set(getattr(active, "selected_source_ids", None) or [])
@@ -686,7 +686,7 @@ class RetailSourceService:
         else:
             raw_selected_ids = {
                 str(s.source_id) for s in available
-                if s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+                if s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
             }
 
         items = []
@@ -695,7 +695,7 @@ class RetailSourceService:
         for s in available:
             is_sel = str(s.source_id) in raw_selected_ids
             if mode == "ALL":
-                is_sel = s.enabled and s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
+                is_sel = s.status.upper() != CommerceConnectionStatus.DISCONNECTED.value
             item = {
                 "id": s.source_id,
                 "source_type": s.source_type,
