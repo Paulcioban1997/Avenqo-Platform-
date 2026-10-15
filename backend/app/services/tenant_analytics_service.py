@@ -137,20 +137,27 @@ class TenantAnalyticsSnapshot:
         if len(components) == 1:
             return selected
 
-        if "total_amount" in required_fields or "unit_price" in required_fields:
-            currencies = {str(row["currency"]).upper() for item in components for row in self._canonical_rows(item) if row.get("currency")}
-            if len(currencies) > 1:
-                raise ValueError("INCOMPATIBLE_SOURCE_CURRENCIES")
-
         canonical_fields = set().union(
             *(set(item.canonical_columns.values()) for item in components)
         )
+        canonical_fields.update({
+            "net_amount",
+            "source_currency",
+            "source_total_amount",
+            "source_refund_amount",
+            "exchange_rate",
+        })
+        from backend.app.services.currency_service import CurrencyService
+
+        currency_service = CurrencyService()
+        base_currency = self.currency
+
         reconciled_rows: list[dict[str, object]] = []
         seen_rows: set[tuple[tuple[str, str], ...]] = set()
         seen_commerce: set[tuple] = set()
         for item in components:
             for row in self._canonical_rows(item):
-                normalized = {field: row.get(field) for field in canonical_fields}
+                normalized = {field: row.get(field) for field in canonical_fields if field in row}
                 provider = row.get("source_provider")
                 store = row.get("source_store") or row.get("source_connection_id")
                 record = row.get("source_order_id") or row.get("shopify_order_gid")
@@ -160,6 +167,50 @@ class TenantAnalyticsSnapshot:
                     if identity in seen_commerce:
                         continue
                     seen_commerce.add(identity)
+
+                row_currency = str(row.get("currency") or base_currency).strip().upper()
+                if row_currency != base_currency:
+                    normalized["source_currency"] = row_currency
+                    rate = float(currency_service.get_rate(row_currency, base_currency))
+                    normalized["exchange_rate"] = rate
+                    if "total_amount" in row and row["total_amount"] is not None:
+                        try:
+                            s_amt = float(row["total_amount"])
+                            normalized["source_total_amount"] = s_amt
+                            normalized["total_amount"] = round(s_amt * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "unit_price" in row and row["unit_price"] is not None:
+                        try:
+                            normalized["unit_price"] = round(float(row["unit_price"]) * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "discount_amount" in row and row["discount_amount"] is not None:
+                        try:
+                            normalized["discount_amount"] = round(float(row["discount_amount"]) * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "refund_amount" in row and row["refund_amount"] is not None:
+                        try:
+                            s_ref = float(row["refund_amount"])
+                            normalized["source_refund_amount"] = s_ref
+                            normalized["refund_amount"] = round(s_ref * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    normalized["currency"] = base_currency
+                else:
+                    normalized["currency"] = base_currency
+                    normalized["exchange_rate"] = 1.0
+
+                if "total_amount" in normalized and normalized["total_amount"] is not None:
+                    try:
+                        tot = float(normalized["total_amount"])
+                        disc = float(normalized.get("discount_amount") or 0)
+                        ref = float(normalized.get("refund_amount") or 0)
+                        normalized["net_amount"] = round(tot - disc - ref, 2)
+                    except (ValueError, TypeError):
+                        pass
+
                 fingerprint = tuple(
                     sorted((field, repr(value)) for field, value in normalized.items())
                 )
@@ -403,34 +454,46 @@ class TenantAnalyticsService:
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
         if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
-            selected_id = active_source.dataset_id
-            if active_source.connection_id is not None:
-                connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
-                if connection is not None and connection.status != CommerceConnectionStatus.DISCONNECTED.value:
-                    source_service = RetailSourceService(self._session)
-                    if not source_service._connector_artifact_ready(connection):
-                        restored = try_restore_connector_retail_dataset(
-                            self._session, self._ingestion, tenant, connection
-                        )
-                        if restored is not None:
-                            self._session.refresh(connection)
-                            datasets = tuple(
-                                self._session.scalars(
-                                    select(Dataset)
-                                    .where(Dataset.company_id == tenant.company_id)
-                                    .options(
-                                        selectinload(Dataset.training_jobs),
-                                        selectinload(Dataset.versions),
-                                        selectinload(Dataset.mapping),
-                                    )
-                                    .order_by(Dataset.uploaded_at.desc())
-                                ).all()
+            if active_source.source_type == "custom_set":
+                selected_ds_ids = set(getattr(active_source, "dataset_ids", []) or [])
+                selected_conn_ids = set(getattr(active_source, "connection_ids", []) or [])
+                for cid in selected_conn_ids:
+                    conn = self._session.get(CommerceConnection, cid)
+                    if conn is not None and conn.company_id == tenant.company_id:
+                        ds_id = RetailSourceService._connection_dataset_id(conn)
+                        if ds_id:
+                            selected_ds_ids.add(ds_id)
+                source_datasets = tuple(dataset for dataset in datasets if dataset.id in selected_ds_ids)
+                datasets = source_datasets
+            else:
+                selected_id = active_source.dataset_id
+                if active_source.connection_id is not None:
+                    connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
+                    if connection is not None and connection.status != CommerceConnectionStatus.DISCONNECTED.value:
+                        source_service = RetailSourceService(self._session)
+                        if not source_service._connector_artifact_ready(connection):
+                            restored = try_restore_connector_retail_dataset(
+                                self._session, self._ingestion, tenant, connection
                             )
-                    selected_id = RetailSourceService._connection_dataset_id(connection)
-                else:
-                    selected_id = None
-            source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
-            datasets = source_datasets
+                            if restored is not None:
+                                self._session.refresh(connection)
+                                datasets = tuple(
+                                    self._session.scalars(
+                                        select(Dataset)
+                                        .where(Dataset.company_id == tenant.company_id)
+                                        .options(
+                                            selectinload(Dataset.training_jobs),
+                                            selectinload(Dataset.versions),
+                                            selectinload(Dataset.mapping),
+                                        )
+                                        .order_by(Dataset.uploaded_at.desc())
+                                    ).all()
+                                )
+                        selected_id = RetailSourceService._connection_dataset_id(connection)
+                    else:
+                        selected_id = None
+                source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
+                datasets = source_datasets
         elif enabled_dataset_ids is not None:
             source_datasets = tuple(
                 dataset for dataset in datasets if dataset.id in enabled_dataset_ids
@@ -454,26 +517,33 @@ class TenantAnalyticsService:
         prepared, deferred_dataset_ids, summaries, retail_states = self._prepared_ready_datasets(
             tenant, source_datasets, max_prepared_rows=max_prepared_rows
         )
-        if (
-            not prepared
-            and active_source is not None
-            and active_source.connection_id is not None
-        ):
-            connection = self._session.get(CommerceConnection, active_source.connection_id)
-            if (
-                connection is not None
-                and connection.company_id == tenant.company_id
-                and connection.status != CommerceConnectionStatus.DISCONNECTED.value
-            ):
-                fallback = prepared_from_normalized_connection(
-                    self._session,
-                    tenant,
-                    connection,
-                    RetailSourceService._connection_dataset_id(connection) or connection.id,
-                )
-                if fallback is not None:
-                    prepared = (fallback,)
         prepared_ids = {item.dataset_id for item in prepared}
+        candidate_conn_ids: list[UUID] = []
+        if active_source is not None:
+            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
+                candidate_conn_ids = [active_source.connection_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                candidate_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+            elif getattr(active_source, "source_type", None) == "all":
+                conns = self._session.scalars(
+                    select(CommerceConnection.id).where(
+                        CommerceConnection.company_id == tenant.company_id,
+                        CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                    )
+                ).all()
+                candidate_conn_ids = list(conns)
+
+        fallback_list = list(prepared)
+        for cid in candidate_conn_ids:
+            conn = self._session.get(CommerceConnection, cid)
+            if conn is not None and conn.company_id == tenant.company_id and conn.status != CommerceConnectionStatus.DISCONNECTED.value:
+                ds_id = RetailSourceService._connection_dataset_id(conn) or conn.id
+                if ds_id not in prepared_ids:
+                    fb = prepared_from_normalized_connection(self._session, tenant, conn, ds_id)
+                    if fb is not None:
+                        fallback_list.append(fb)
+                        prepared_ids.add(ds_id)
+        prepared = tuple(fallback_list)
         relationships = tuple(
             self._session.scalars(
                 select(DatasetRelationship).where(

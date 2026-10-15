@@ -431,6 +431,35 @@ class CommerceSyncService:
             raise CommerceSyncAlreadyRunning("Commerce synchronization is already running")
         self._begin_or_resume(connection)
 
+    def reserve_all(
+        self,
+        tenant: TenantContext,
+        connection_ids: Sequence[UUID] | None = None,
+    ) -> list[UUID]:
+        query = select(CommerceConnection).where(
+            CommerceConnection.company_id == tenant.company_id,
+            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+        )
+        if connection_ids is not None:
+            query = query.where(CommerceConnection.id.in_(list(connection_ids)))
+
+        connections = self._db.scalars(
+            query.with_for_update().execution_options(populate_existing=True)
+        ).all()
+
+        reserved: list[UUID] = []
+        for connection in connections:
+            if connection.status in {
+                CommerceConnectionStatus.DISCONNECTED.value,
+                CommerceConnectionStatus.REAUTH_REQUIRED.value,
+            }:
+                continue
+            if self._is_active_sync(connection):
+                continue
+            self._begin_or_resume(connection)
+            reserved.append(connection.id)
+        return reserved
+
     def is_active(
         self,
         tenant: TenantContext,

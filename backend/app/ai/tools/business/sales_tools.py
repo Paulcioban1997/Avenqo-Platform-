@@ -84,6 +84,7 @@ class SalesSummaryArgs(ToolArguments):
     location: str | None = None
     category: str | None = None
     product: str | None = None
+    source_scope: list[str] | str | None = None
 
 
 class GetSalesSummaryTool(RetailAITool):
@@ -130,6 +131,16 @@ class GetSalesSummaryTool(RetailAITool):
             period_end=bounds["end"],
             product=arguments.product,
         )
+        # Multi-source provenance and breakdown
+        sources = set()
+        for r in prepared.rows:
+            store = r.get("source_store") or r.get("source_provider")
+            if store:
+                sources.add(str(store))
+        if sources:
+            data["provenance"] = f"Données de ventes issues de : {', '.join(sorted(sources))}"
+            data["sources_breakdown"] = sorted(sources)
+
         unsupported = [name for name, value in (("location", arguments.location), ("category", arguments.category)) if value is not None]
         metadata: dict[str, Any] = {"unsupported_filters": unsupported} if unsupported else {}
         if not data.get("data_covered", True):

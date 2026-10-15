@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -57,19 +58,21 @@ def _normalize_query(q: str) -> str:
 def _product_to_dict(record: NormalizedCommerceRecord) -> dict[str, object]:
     """Extrait les champs canoniques depuis le JSON normalisé d'un produit."""
     data: dict[str, Any] = record.normalized_data or {}
+    price_val = data.get("unit_price")
+    if price_val is None:
+        price_val = data.get("price") if data.get("price") is not None else data.get("regular_price")
+
+    inv_val = data.get("inventory_level")
+    if inv_val is None:
+        inv_val = data.get("stock_quantity")
+
     return {
         "product_name": _safe_str(data.get("product_name") or data.get("name")),
         "product_id": _safe_str(data.get("product_id") or data.get("id")),
         "sku": _safe_str(data.get("sku")),
-        "unit_price": _safe_float(
-            data.get("unit_price") or data.get("price") or data.get("regular_price")
-        ),
-        "inventory_level": _safe_float(
-            data.get("inventory_level") or data.get("stock_quantity")
-        ),
-        "stock_quantity": _safe_float(
-            data.get("stock_quantity") or data.get("inventory_level")
-        ),
+        "unit_price": _safe_float(price_val),
+        "inventory_level": _safe_float(inv_val),
+        "stock_quantity": _safe_float(inv_val),
         "product_category": _safe_str(data.get("product_category") or data.get("category")),
         "in_stock": data.get("in_stock"),
         "stock_status": _safe_str(data.get("stock_status")),
@@ -115,6 +118,7 @@ class ProductDetailArgs(ToolArguments):
     product_name: str | None = None
     product_id: str | None = None
     sku: str | None = None
+    source_scope: list[str] | str | None = None
 
 
 class GetProductDetailTool(RetailAITool):
@@ -154,6 +158,23 @@ class GetProductDetailTool(RetailAITool):
                 },
             )
 
+        scope_conn_ids: list[UUID] | None = None
+        if arguments.source_scope is not None:
+            raw_scopes = [arguments.source_scope] if isinstance(arguments.source_scope, str) else list(arguments.source_scope)
+            if "all" not in [s.lower() for s in raw_scopes]:
+                parsed = []
+                for s in raw_scopes:
+                    try:
+                        parsed.append(UUID(s))
+                    except (ValueError, TypeError):
+                        pass
+                scope_conn_ids = parsed
+        elif active_source is not None:
+            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
+                scope_conn_ids = [active_source.connection_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+
         base_query = (
             select(NormalizedCommerceRecord)
             .where(
@@ -162,9 +183,9 @@ class GetProductDetailTool(RetailAITool):
                 NormalizedCommerceRecord.deleted.is_(False),
             )
         )
-        if active_source is not None and active_source.connection_id is not None:
+        if scope_conn_ids is not None:
             base_query = base_query.where(
-                NormalizedCommerceRecord.connection_id == active_source.connection_id
+                NormalizedCommerceRecord.connection_id.in_(scope_conn_ids)
             )
         base_query = base_query.order_by(NormalizedCommerceRecord.source_updated_at.desc())
 
@@ -236,8 +257,35 @@ class GetProductDetailTool(RetailAITool):
                 },
             )
 
-        products = [_product_to_dict(r) for r in records]
+        from backend.app.models.commerce_connection import CommerceConnection
+        conn_map: dict[UUID, str] = {}
+        if records:
+            conn_ids = {r.connection_id for r in records if r.connection_id}
+            conns = self._session.scalars(
+                select(CommerceConnection).where(CommerceConnection.id.in_(conn_ids))
+            ).all()
+            conn_map = {c.id: (c.display_name or c.provider) for c in conns}
+
+        products = []
+        for r in records:
+            p = _product_to_dict(r)
+            cid = r.connection_id
+            p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            products.append(p)
+
         source_refs = tuple({str(r.id) for r in records})
+        store_names = sorted(set(conn_map.values())) if conn_map else ["Catalogue connecté"]
+        provenance = f"Données issues de : {', '.join(store_names)}"
+
+        breakdown_by_source = {}
+        for p in products:
+            s_name = p.get("store_name") or "Autre"
+            breakdown_by_source.setdefault(s_name, []).append({
+                "product_name": p.get("product_name"),
+                "sku": p.get("sku"),
+                "inventory_level": p.get("inventory_level"),
+                "unit_price": p.get("unit_price"),
+            })
 
         logger.info(
             "commerce_product_lookup tenant_id=%s query=%r found=%d",
@@ -249,13 +297,24 @@ class GetProductDetailTool(RetailAITool):
         if len(products) == 1:
             return ToolResult(
                 success=True,
-                data={"found": True, "product": products[0]},
+                data={
+                    "found": True,
+                    "product": products[0],
+                    "provenance": provenance,
+                    "breakdown_by_source": breakdown_by_source,
+                },
                 source_refs=source_refs,
             )
 
         return ToolResult(
             success=True,
-            data={"found": True, "matches": len(products), "products": products},
+            data={
+                "found": True,
+                "matches": len(products),
+                "products": products,
+                "provenance": provenance,
+                "breakdown_by_source": breakdown_by_source,
+            },
             source_refs=source_refs,
         )
 
@@ -266,6 +325,7 @@ class GetProductDetailTool(RetailAITool):
 
 class InventorySummaryArgs(ToolArguments):
     low_stock_threshold: int = 10
+    source_scope: list[str] | str | None = None
 
 
 class GetInventorySummaryTool(RetailAITool):
@@ -346,6 +406,23 @@ class GetInventorySummaryTool(RetailAITool):
                 },
             )
 
+        scope_conn_ids: list[UUID] | None = None
+        if arguments.source_scope is not None:
+            raw_scopes = [arguments.source_scope] if isinstance(arguments.source_scope, str) else list(arguments.source_scope)
+            if "all" not in [s.lower() for s in raw_scopes]:
+                parsed = []
+                for s in raw_scopes:
+                    try:
+                        parsed.append(UUID(s))
+                    except (ValueError, TypeError):
+                        pass
+                scope_conn_ids = parsed
+        elif active_source is not None:
+            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
+                scope_conn_ids = [active_source.connection_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+
         try:
             inv_query = (
                 select(NormalizedCommerceRecord)
@@ -355,9 +432,9 @@ class GetInventorySummaryTool(RetailAITool):
                     NormalizedCommerceRecord.deleted.is_(False),
                 )
             )
-            if active_source is not None and active_source.connection_id is not None:
+            if scope_conn_ids is not None:
                 inv_query = inv_query.where(
-                    NormalizedCommerceRecord.connection_id == active_source.connection_id
+                    NormalizedCommerceRecord.connection_id.in_(scope_conn_ids)
                 )
             records = list(
                 self._session.scalars(
@@ -403,6 +480,31 @@ class GetInventorySummaryTool(RetailAITool):
             else:
                 healthy.append(item)
 
+        from backend.app.models.commerce_connection import CommerceConnection
+        conn_map: dict[UUID, str] = {}
+        if records:
+            conn_ids = {r.connection_id for r in records if r.connection_id}
+            conns = self._session.scalars(
+                select(CommerceConnection).where(CommerceConnection.id.in_(conn_ids))
+            ).all()
+            conn_map = {c.id: (c.display_name or c.provider) for c in conns}
+
+        breakdown_by_source: dict[str, dict[str, int]] = {}
+        for r in records:
+            s_name = conn_map.get(r.connection_id, r.provider or "Commerce Store")
+            entry = breakdown_by_source.setdefault(s_name, {"total": 0, "out_of_stock": 0, "low_stock": 0})
+            entry["total"] += 1
+            p = _product_to_dict(r)
+            lvl = p.get("inventory_level")
+            if lvl is not None:
+                if float(lvl) <= 0:
+                    entry["out_of_stock"] += 1
+                elif float(lvl) <= threshold:
+                    entry["low_stock"] += 1
+
+        store_names = sorted(set(conn_map.values())) if conn_map else ["Boutiques connectées"]
+        provenance = f"Données issues de : {', '.join(store_names)}"
+
         source_refs = tuple({str(r.id) for r in records})
 
         logger.info(
@@ -423,6 +525,8 @@ class GetInventorySummaryTool(RetailAITool):
                 "low_stock_threshold": threshold,
                 "out_of_stock": out_of_stock[:20],
                 "low_stock": low_stock[:20],
+                "provenance": provenance,
+                "breakdown_by_source": breakdown_by_source,
             },
             source_refs=source_refs,
         )

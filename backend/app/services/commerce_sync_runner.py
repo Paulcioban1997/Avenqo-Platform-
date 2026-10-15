@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -74,6 +75,43 @@ class CommerceSyncRunner:
                 )
             finally:
                 session.close()
+
+    async def run_all_reserved(
+        self,
+        tenant: TenantContext,
+        connection_ids: Sequence[UUID] | None = None,
+        max_pages_per_entity: int | None = None,
+    ) -> None:
+        target_ids: list[UUID] = []
+        if connection_ids is None:
+            with self._session_factory() as session:
+                apply_tenant_rls(session, tenant.company_id)
+                conns = session.scalars(
+                    select(CommerceConnection.id).where(
+                        CommerceConnection.company_id == tenant.company_id,
+                        CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                    )
+                ).all()
+                target_ids = list(conns)
+        else:
+            target_ids = list(connection_ids)
+
+        if not target_ids:
+            return
+
+        tasks = [
+            self.run_reserved(tenant, cid, max_pages_per_entity=max_pages_per_entity)
+            for cid in target_ids
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for cid, res in zip(target_ids, results):
+            if isinstance(res, Exception):
+                logger.error(
+                    "Parallel sync error for company=%s connection=%s: %s",
+                    tenant.company_id,
+                    cid,
+                    res,
+                )
 
     async def initialize_woocommerce(
         self,
