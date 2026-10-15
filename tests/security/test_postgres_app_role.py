@@ -5,7 +5,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-import os
 
 from backend.app.services.postgres_app_role import (
     APP_ROLE,
@@ -15,13 +14,11 @@ from backend.app.services.postgres_app_role import (
     ensure_application_roles,
     role_is_constrained,
 )
+from tests.security.isolated_postgres import require_isolated_admin_url
 
 
-@pytest.mark.skipif(not os.getenv("AVENQO_ROTATION_TEST_ADMIN_URL"), reason="Isolated PostgreSQL required")
 def test_app_role_force_rls_hides_foreign_tenant_rows():
-    url = make_url(os.environ["AVENQO_ROTATION_TEST_ADMIN_URL"])
-    assert os.environ.get("ENVIRONMENT") == "test"
-    assert url.host in {"localhost", "127.0.0.1"}
+    url = require_isolated_admin_url()
     from sqlalchemy import create_engine
 
     admin = create_engine(url)
@@ -102,7 +99,6 @@ def test_application_database_url_rejects_remote_hosts():
     assert parsed.password == "test-only-password"
 
 
-@pytest.mark.skipif(not os.getenv("AVENQO_ROTATION_TEST_ADMIN_URL"), reason="Isolated PostgreSQL required")
 def test_direct_app_role_login_enforces_rls_and_blocks_ddl():
     """Connect as avenqo_app (session_user), not SET ROLE from a superuser."""
     import secrets
@@ -110,10 +106,7 @@ def test_direct_app_role_login_enforces_rls_and_blocks_ddl():
     from psycopg2 import sql
     from sqlalchemy import create_engine
 
-    admin_url = os.environ["AVENQO_ROTATION_TEST_ADMIN_URL"]
-    url = make_url(admin_url)
-    assert os.environ.get("ENVIRONMENT") == "test"
-    assert url.host in {"localhost", "127.0.0.1"}
+    url = require_isolated_admin_url()
     admin = create_engine(url)
     a, b = uuid4(), uuid4()
     app_password = secrets.token_urlsafe(32)

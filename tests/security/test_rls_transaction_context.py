@@ -1,24 +1,17 @@
 """Verify transaction/pool isolation with a disposable non-superuser PostgreSQL login."""
-import os
 import secrets
 from uuid import uuid4
 
-import pytest
 from psycopg2 import sql
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
+from tests.security.isolated_postgres import require_isolated_admin_url
 
 
 def test_tenant_context_survives_commit_rollback_without_pool_leakage():
-    value = os.environ.get("AVENQO_ROTATION_TEST_ADMIN_URL")
-    if not value:
-        pytest.skip("Isolated PostgreSQL service required")
-    url = make_url(value)
-    assert os.environ.get("ENVIRONMENT") == "test"
-    assert url.host in {"localhost", "127.0.0.1"} and url.database.startswith("rotation_test_")
+    url = require_isolated_admin_url()
     admin = create_engine(url, echo=False)
     suffix = uuid4().hex[:12]
     role, schema = "rls_" + suffix, "rls_" + suffix

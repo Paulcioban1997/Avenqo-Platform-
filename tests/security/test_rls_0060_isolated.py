@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import secrets
 from uuid import uuid4
 
-import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
+
+from tests.security.isolated_postgres import require_isolated_admin_url
 
 from backend.app.services.postgres_app_role import (
     APP_ROLE,
@@ -42,22 +41,10 @@ $$ LANGUAGE plpgsql STABLE;
 """
 
 
-def _require_isolated_admin():
-    value = os.environ.get("AVENQO_ROTATION_TEST_ADMIN_URL")
-    if not value:
-        pytest.skip("Isolated PostgreSQL required")
-    url = make_url(value)
-    assert os.environ.get("ENVIRONMENT") == "test"
-    assert url.host in {"localhost", "127.0.0.1"}
-    assert url.database and str(url.database).startswith("rotation_test")
-    return url
-
-
-@pytest.mark.skipif(not os.getenv("AVENQO_ROTATION_TEST_ADMIN_URL"), reason="Isolated PostgreSQL required")
 def test_0060_force_rls_with_avenqo_app_login_hides_foreign_tenants_and_blocks_bypass_ddl():
     from psycopg2 import sql
 
-    url = _require_isolated_admin()
+    url = require_isolated_admin_url()
     admin = create_engine(url)
     tenant_a, tenant_b = uuid4(), uuid4()
     app_password = secrets.token_urlsafe(32)
