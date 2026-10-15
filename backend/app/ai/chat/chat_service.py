@@ -164,11 +164,24 @@ class ChatService:
     ) -> None:
         self._conversations, self._retrieval, self._provider = conversations, retrieval, provider
         self._tool_registry = tool_registry
-        self._orchestrator = ToolOrchestrator(provider, tool_executor) if tool_executor is not None else None
+        self._orchestrator = (
+            ToolOrchestrator(provider, tool_executor, on_before_llm=self._release_db_before_llm)
+            if tool_executor is not None
+            else None
+        )
         self._usage_service = usage_service
         self._debug_mode = debug_mode
         self.last_stream_sources = []
         self.last_tool_call_results = ()
+
+    def _release_db_before_llm(self) -> None:
+        from backend.app.services.tenant_rls import release_tenant_connection
+
+        for holder in (self._conversations, self._retrieval, self._usage_service):
+            session = getattr(holder, "_db", None)
+            if session is not None:
+                release_tenant_connection(session)
+                return
 
     @property
     def provider_name(self) -> str:
@@ -222,6 +235,7 @@ class ChatService:
                 raise AIRequestConflictError(AI_REQUEST_ALREADY_PROCESSED)
         try:
             with self._provider.routing(routing_context):
+                self._release_db_before_llm()
                 generation = await self._provider.generate(
                     system_instruction=system_instruction,
                     prompt=prompt,
@@ -440,6 +454,7 @@ class ChatService:
                     attempts = result.attempts
                     self.last_tool_call_results = result.tool_call_results
                 else:
+                    self._release_db_before_llm()
                     generation = await self._provider.generate(system_instruction=system_instruction, prompt=prompt)
                     content, provider_name, model_name, token_usage = generation.content, generation.provider, generation.model, generation.token_usage
                     attempts = generation.attempts
@@ -630,6 +645,7 @@ class ChatService:
             with self._provider.routing(routing_context):
                 if self._orchestrator is None or not available_tools:
                     chunks: list[str] = []
+                    self._release_db_before_llm()
                     async for event in self._provider.stream_events(system_instruction=system_instruction, prompt=prompt):
                         if event.usage is not None:
                             provider_name = event.usage.provider

@@ -248,6 +248,9 @@ class CentralAIService:
                 classification_request_id = (
                     request_id if allow_existing_reservation else f"{request_id}:classification"
                 )
+                from backend.app.services.tenant_rls import release_tenant_connection
+
+                release_tenant_connection(getattr(self._usage, "_db", None))
                 return await self._chat.classify_intent(
                     system_instruction,
                     prompt,
@@ -321,6 +324,9 @@ class CentralAIService:
         effective_agent_id = agent.agent_id if agent is not None else fallback_agent_id
 
         try:
+            from backend.app.services.tenant_rls import release_tenant_connection
+
+            release_tenant_connection(getattr(self._usage, "_db", None))
             message, _ = await self._chat.send(
                 tenant.company_id,
                 user_id,

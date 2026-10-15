@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -41,6 +43,7 @@ class OpenAIMockHandler(BaseHTTPRequestHandler):
                     last = str(item.get("content") or "")
                     break
             answer = f"simulated-central:{last[:120] or 'ok'}"
+            time.sleep(float(os.environ.get("AVENQO_ISOLATED_LLM_HOLD_S", "0.4")))
             self._json(
                 200,
                 {

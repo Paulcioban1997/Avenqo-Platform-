@@ -51,6 +51,36 @@ def bind_webhook_tenant(session: Session, company_id: UUID) -> None:
     apply_tenant_rls(session, company_id, bypass=False)
 
 
+def release_tenant_connection(session: object | None) -> None:
+    """Persist pending SQL and return the pooled connection before a network await.
+
+    ``session.info['avenqo_rls']`` is kept so the next autobegin re-applies
+    SET LOCAL. Fake/test sessions without commit/close are ignored.
+    """
+
+    if session is None:
+        return
+    info = getattr(session, "info", None)
+    rls = dict(info.get("avenqo_rls") or {}) if isinstance(info, dict) else {}
+    commit = getattr(session, "commit", None)
+    rollback = getattr(session, "rollback", None)
+    close = getattr(session, "close", None)
+    try:
+        if callable(commit):
+            commit()
+    except Exception:
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:
+                pass
+    if callable(close):
+        close()
+    restored = getattr(session, "info", None)
+    if rls and isinstance(restored, dict):
+        restored["avenqo_rls"] = rls
+
+
 _CONTEXT_SQL = text(
     "SELECT set_config('app.bypass_rls', :flag, true), "
     "set_config('app.current_company_id', :cid, true)"

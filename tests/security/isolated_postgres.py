@@ -1,6 +1,12 @@
 """Gate isolated PostgreSQL RLS rehearsals.
 
-These tests must never fail a local or CI suite because a leftover
+Canonical URLs (never Sandbox/Production):
+- CI: ``postgresql+psycopg2://postgres:test-only-password@localhost:5432/rotation_test_ci``
+- Local replica load tests: ``127.0.0.1:55432`` (see loadtest/isolated/run_replica.py)
+
+Port ``54329`` is an obsolete leftover mapping. Skip it instead of failing.
+
+These tests must never fail a local suite because a leftover
 ``AVENQO_ROTATION_TEST_ADMIN_URL`` points at a stopped container.
 Skip when the service is absent. Fail only on a reachable, mis-scoped URL.
 """
@@ -25,6 +31,8 @@ def require_isolated_admin_url():
     url = make_url(value)
     if url.host not in {"localhost", "127.0.0.1"}:
         pytest.fail("Isolated PostgreSQL URL must be localhost")
+    if int(url.port or 5432) == 54329:
+        pytest.skip("Obsolete local Postgres port 54329; CI uses localhost:5432/rotation_test_ci")
     database = str(url.database or "")
     if not database.startswith("rotation_test"):
         pytest.fail("Isolated PostgreSQL database name must start with rotation_test")

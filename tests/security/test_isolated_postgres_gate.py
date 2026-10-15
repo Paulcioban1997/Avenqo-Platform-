@@ -10,11 +10,21 @@ def test_missing_url_skips(monkeypatch) -> None:
         require_isolated_admin_url()
 
 
-def test_stopped_server_skips_instead_of_failing(monkeypatch) -> None:
+def test_obsolete_54329_mapping_is_skipped(monkeypatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv(
         "AVENQO_ROTATION_TEST_ADMIN_URL",
         "postgresql+psycopg2://postgres:test-only-password@127.0.0.1:54329/rotation_test_ci",
+    )
+    with pytest.raises(pytest.skip.Exception, match="54329"):
+        require_isolated_admin_url()
+
+
+def test_stopped_server_skips_instead_of_failing(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv(
+        "AVENQO_ROTATION_TEST_ADMIN_URL",
+        "postgresql+psycopg2://postgres:test-only-password@127.0.0.1:1/rotation_test_ci",
     )
     with pytest.raises(pytest.skip.Exception, match="not reachable"):
         require_isolated_admin_url()

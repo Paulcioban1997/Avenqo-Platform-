@@ -599,6 +599,14 @@ def _wave(base: str, tenants: list[dict], path: str, simultaneous: int, authenti
     }
 
 
+def _sample_pg_during(stop: threading.Event, samples: list[dict]) -> None:
+    while not stop.wait(0.15):
+        try:
+            samples.append(_snapshot_pg())
+        except Exception:
+            continue
+
+
 def _central_load(base: str, tenants: list[dict], concurrent: int, hold_s: float) -> dict:
     subset = tenants[:concurrent]
     tokens = {}
@@ -626,16 +634,31 @@ def _central_load(base: str, tenants: list[dict], concurrent: int, hold_s: float
             rows.append((status if simulated or status >= 400 else 599, elapsed))
         return rows
 
+    samples: list[dict] = []
+    stop = threading.Event()
+    sampler = threading.Thread(target=_sample_pg_during, args=(stop, samples), daemon=True)
+    sampler.start()
     started = time.perf_counter()
     rows: list[tuple[int, float]] = []
     workers = max(1, min(len(tokens), REALISTIC_CONCURRENCY))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(worker, email) for email in tokens]
-        for future in as_completed(futures):
-            rows.extend(future.result())
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(worker, email) for email in tokens]
+            for future in as_completed(futures):
+                rows.extend(future.result())
+    finally:
+        stop.set()
+        sampler.join(timeout=2)
     elapsed = time.perf_counter() - started
     latencies = [ms for _, ms in rows]
     failures = sum(1 for status, _ in rows if status >= 500 or status == 0)
+    peak = {
+        "peak_pg_active": max((item.get("pg_active") or 0 for item in samples), default=0),
+        "peak_pg_idle_in_xact": max((item.get("pg_idle_in_xact") or 0 for item in samples), default=0),
+        "peak_pg_app_sessions": max((item.get("pg_app_sessions") or 0 for item in samples), default=0),
+        "peak_pg_lock_waits": max((item.get("pg_lock_waits") or 0 for item in samples), default=0),
+        "pg_samples": len(samples),
+    }
     return {
         "companies": concurrent,
         "logins": len(tokens),
@@ -646,8 +669,10 @@ def _central_load(base: str, tenants: list[dict], concurrent: int, hold_s: float
         "rps": round(len(rows) / elapsed, 1) if elapsed else 0,
         **_percentiles(latencies),
         **_snapshot_pg(),
+        **peak,
         "pass": failures == 0 and len(tokens) == concurrent,
         "paid_provider": False,
+        "note": "LLM mock holds 0.4s; pool connections must not stay idle-in-transaction during that await",
     }
 
 
@@ -878,7 +903,11 @@ def main() -> int:
             evidence["paliers"].append(result)
         evidence["burst_health_250"] = _wave(base, tenants, "/api/v1/health", min(250, companies), False)
         evidence["burst_auth_me_250"] = _wave(base, tenants, "/api/v1/auth/me", min(250, companies), True)
-        evidence["central"] = _central_load(base, tenants, concurrent=min(25, companies), hold_s=min(8.0, args.hold))
+        evidence["central"] = [
+            _central_load(base, tenants, concurrent=min(palier, companies), hold_s=min(6.0, args.hold))
+            for palier in (25, 50, 100, 250)
+            if palier <= companies
+        ]
         evidence["k6"] = _run_k6(base, vus=min(25, companies), hold="12s")
         if not args.skip_voice:
             evidence["voice"] = _voice(base, tenants, concurrent=min(10, companies))

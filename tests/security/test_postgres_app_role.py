@@ -152,9 +152,9 @@ def test_direct_app_role_login_enforces_rls_and_blocks_ddl():
             )
             cursor.close()
 
-        app_engine = create_engine(application_database_url(admin_url, app_password), echo=False)
+        app_engine = create_engine(application_database_url(url, app_password), echo=False)
         migrate_engine = create_engine(
-            application_database_url(admin_url, migrate_password, role=MIGRATE_ROLE),
+            application_database_url(url, migrate_password, role=MIGRATE_ROLE),
             echo=False,
         )
 
