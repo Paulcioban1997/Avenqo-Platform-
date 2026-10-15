@@ -193,15 +193,26 @@ export function RetailIntelligenceView({
     setLoadError(null);
     try {
       const headers = getAuthHeaders();
+      const loadResource = async (url: string) => {
+        try {
+          return await apiFetch(url, { headers });
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.category === "session_expired") throw error;
+          return null;
+        }
+      };
       const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
-        apiFetch("/api/v1/retail/status", { headers }),
-        apiFetch("/api/v1/retail/products?limit=100", { headers }),
-        apiFetch("/api/v1/retail/orders?limit=100", { headers }),
-        apiFetch("/api/v1/retail/customers?limit=100", { headers }),
-        apiFetch("/api/v1/retail/inventory?limit=500", { headers }),
-        apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
-        apiFetch("/api/v1/recommendations", { headers }),
+        loadResource("/api/v1/retail/status"),
+        loadResource("/api/v1/retail/products?limit=100"),
+        loadResource("/api/v1/retail/orders?limit=100"),
+        loadResource("/api/v1/retail/customers?limit=100"),
+        loadResource("/api/v1/retail/inventory?limit=500"),
+        loadResource("/api/v1/sales/summary?period=last_30_days"),
+        loadResource("/api/v1/recommendations"),
       ]);
+      if (!statusRes && !prodRes && !ordRes && !custRes && !invRes && !salesRes && !recommendationsRes) {
+        throw new ApiRequestError("backend_error");
+      }
       if (revision !== loadRevision.current) return;
 
       if (statusRes && statusRes.ok) {

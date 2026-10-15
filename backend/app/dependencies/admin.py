@@ -12,6 +12,8 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, require_platform_admin
 from backend.app.models import Company, CompanyMembership
 from backend.app.core.permissions import permissions_for
+from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
 from backend.app.services.support_access import support_can_read_retail
 from backend.app.services.admin_service import AdminService
 from backend.app.services.audit_log_service import AuditLogService
@@ -32,6 +34,17 @@ def enable_admin_rls_bypass(
     """
 
     apply_tenant_rls(db, identity.company_id, bypass=True)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=TenantContext(company_id=identity.company_id, user_id=identity.user_id),
+            user_id=identity.user_id,
+            permissions=frozenset(permissions_for(identity.user.role)),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            rls_bypass=True,
+            source="platform_admin",
+        )
+    )
     return identity
 
 
@@ -54,9 +67,21 @@ def get_admin_tenant_context(
     if not (own_access or member_access or support_can_read_retail(db, company_id, identity.user_id)):
         raise HTTPException(403, "Un accès support explicite, valide et limité est requis")
     apply_tenant_rls(db, company_id, bypass=True)
+    tenant = TenantContext(company_id=company_id, user_id=identity.user_id)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=tenant,
+            user_id=identity.user_id,
+            permissions=frozenset(permissions_for(identity.user.role)),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            rls_bypass=True,
+            source="platform_admin_support",
+        )
+    )
     AuditLogService(db).record(actor_user_id=identity.user_id, company_id=company_id,
                                action="support_retail_access", target_type="company", target_id=str(company_id))
-    return TenantContext(company_id=company_id, user_id=identity.user_id)
+    return tenant
 
 
 def get_audit_log_service(db: Session = Depends(get_db)) -> AuditLogService:

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
+from backend.app.core.tenant_execution import peek_tenant_execution, reset_tenant_execution, tenant_execution_var
 from backend.app.database.session import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
@@ -69,14 +70,20 @@ def test_get_current_identity_applies_tenant_rls(monkeypatch) -> None:
         lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
     )
     request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
-    identity = get_current_identity(
-        request,
-        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
-        service=SimpleNamespace(authenticate=authenticate),
-        db=db,
-    )
-    assert identity.user is user
-    assert observed == [(db, company_id, False)]
+    previous = tenant_execution_var.set(None)
+    try:
+        identity = get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=authenticate),
+            db=db,
+        )
+        assert identity.user is user
+        assert observed == [(db, company_id, False)]
+        bound = peek_tenant_execution()
+        assert bound is not None and bound.company_id == company_id
+    finally:
+        reset_tenant_execution(previous)
 
 
 def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) -> None:
@@ -91,13 +98,17 @@ def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) ->
         lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
     )
     request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
-    get_current_identity(
-        request,
-        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
-        service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
-        db=db,
-    )
-    assert observed == [(db, company_id, False)]
+    previous = tenant_execution_var.set(None)
+    try:
+        get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
+            db=db,
+        )
+        assert observed == [(db, company_id, False)]
+    finally:
+        reset_tenant_execution(previous)
 
 
 def test_get_tenant_context_applies_tenant_rls_on_auth_path() -> None:

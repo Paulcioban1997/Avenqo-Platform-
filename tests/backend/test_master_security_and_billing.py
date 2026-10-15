@@ -159,6 +159,36 @@ def test_authenticated_user_identity_real_names_and_organizations(sec_env) -> No
     assert orgs_mircea[0]["name"] == "Produits Miro Inc"
 
 
+def test_two_companies_cannot_read_or_infer_each_others_ai_conversations(sec_env) -> None:
+    client, session_factory, notifier = sec_env
+    token_a = _register_and_login(client, notifier, "Alice", "alice@tenant-a.ca", "Tenant A Inc")
+    token_b = _register_and_login(client, notifier, "Bob", "bob@tenant-b.ca", "Tenant B Inc")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    created = client.post("/api/v1/ai/chat/conversations", headers=headers_a, json={"title": "secret-a"})
+    assert created.status_code == 201
+    conversation_id = created.json()["id"]
+
+    listed_b = client.get("/api/v1/ai/chat/conversations", headers=headers_b)
+    assert listed_b.status_code == 200
+    assert listed_b.json() == []
+
+    foreign = client.get(f"/api/v1/ai/chat/conversations/{conversation_id}", headers=headers_b)
+    assert foreign.status_code == 404
+
+    with session_factory() as session:
+        company_b = session.scalar(select(Company).where(Company.name == "Tenant B Inc"))
+        assert company_b is not None
+        spoofed = client.get(
+            f"/api/v1/ai/chat/conversations/{conversation_id}",
+            headers={**headers_a, "X-Company-Id": str(company_b.id), "X-Avenqo-Tenant-Id": str(company_b.id)},
+        )
+    assert spoofed.status_code == 200
+    assert spoofed.json()["id"] == conversation_id
+    assert spoofed.json()["title"] == "secret-a"
+
+
 def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     client, session_factory, notifier = sec_env
 

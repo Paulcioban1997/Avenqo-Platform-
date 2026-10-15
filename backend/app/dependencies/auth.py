@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import permissions_for
 from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.models import AuthSession, User
@@ -139,6 +140,17 @@ def get_current_identity(
     # Platform admins keep their tenant GUC. Cross-tenant support must go
     # through admin dependencies that re-check access, then set bypass.
     apply_tenant_rls(db, user.company_id, bypass=False)
+    role = getattr(user, "role", None)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=TenantContext(company_id=user.company_id, user_id=user.id),
+            user_id=user.id,
+            permissions=frozenset(permissions_for(role)) if role is not None else frozenset(),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            source="session",
+        )
+    )
     return CurrentIdentity(auth_session, user, token)
 
 

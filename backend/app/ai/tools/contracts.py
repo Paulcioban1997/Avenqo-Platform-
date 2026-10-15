@@ -36,6 +36,18 @@ class ToolExecutionContext:
     def tenant_id(self) -> UUID:
         return self.tenant.company_id
 
+    @classmethod
+    def from_execution(cls, execution, **kwargs: Any) -> "ToolExecutionContext":
+        """Build a tool context from the bound server tenant. Never from LLM args."""
+
+        return cls(
+            tenant=execution.tenant,
+            user_id=execution.user_id,
+            permissions=execution.permissions,
+            request_id=execution.request_id,
+            **kwargs,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ToolResult:
