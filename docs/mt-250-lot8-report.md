@@ -6,18 +6,20 @@ Production `avenqo.ca` / `api.avenqo.ca`: **unchanged**. Live Sandbox DB: **unch
 
 ## Verdict
 
-**Do not merge yet.** Isolation is demonstrated on an isolated Postgres copy and in SQLite app-layer tests. Capacity for 250 **live** companies is **not** demonstrated. GitHub Backend Core was red on HEAD `5284339`; the fixes below are local until pushed.
+**Do not merge yet.** Isolation is demonstrated on an isolated Postgres copy and in SQLite app-layer tests. Capacity for 250 **live** companies is **not** demonstrated.
 
-## 1. GitHub PR #61 checks (HEAD `5284339`, run 38663674804)
+## 1. GitHub PR #61 checks (HEAD `eef2e3e`, run 38665178238)
 
 | Check | Result |
 |---|---|
-| Backend Core | **FAIL** — 10 failed / 491 passed |
+| Backend Core | **PASS** (9m2s) |
 | Frontend App (Flutter) | PASS |
 | Frontend Web | PASS |
 | Secret guard and credential transition | PASS |
 | GitGuardian | PASS |
 | Vercel previews | PASS |
+
+Previous HEAD `5284339` (run 38663674804) Backend Core was **FAIL** — 10 failed / 491 passed.
 
 Backend Core root cause (measured locally, then fixed):
 
@@ -119,7 +121,7 @@ Measured with `python loadtest/run_isolated_paliers.py` against `127.0.0.1` mock
 | Pooled connection does not keep the previous tenant | PASS (isolated PG) |
 | Alembic 0060 present and reversible | PASS |
 | PR #60 commits included | PASS |
-| GitHub Backend Core on pushed HEAD | **FAIL** until this commit is pushed |
+| GitHub Backend Core on pushed HEAD `eef2e3e` | **PASS** (run 38665178238) |
 | Live Sandbox RLS / `avenqo_app` LOGIN | **NOT DONE** (no GO) |
 | 250 live companies on shared infra | **NOT TESTED** |
 | Paid OpenAI/Telnyx | **BLOCKED** |
@@ -127,8 +129,7 @@ Measured with `python loadtest/run_isolated_paliers.py` against `127.0.0.1` mock
 
 ## 8. Remaining blockers
 
-1. Push this commit and wait for GitHub Backend Core + security-incident-guard green.
-2. Owner GO before Sandbox backup + `avenqo_app` LOGIN + `DATABASE_URL` cutover (`docs/security/sandbox-app-role-cutover.md`).
-3. Owner GO before any Locust/k6 palier against Sandbox.
-4. Workers, pool, and rate limits are still sized for one API replica — isolation ≠ 250-tenant SLO.
-5. Do not merge PR #60 or #61 without an explicit Merge/GO.
+1. Owner GO before Sandbox backup + `avenqo_app` LOGIN + `DATABASE_URL` cutover (`docs/security/sandbox-app-role-cutover.md`).
+2. Owner GO before any Locust/k6 palier against Sandbox.
+3. Workers, pool, and rate limits are still sized for one API replica — isolation ≠ 250-tenant SLO.
+4. Do not merge PR #60 or #61 without an explicit Merge/GO.
