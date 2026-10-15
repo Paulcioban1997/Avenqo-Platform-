@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import statistics
 import subprocess
 import sys
@@ -38,6 +39,31 @@ APP_PASSWORD = secrets.token_urlsafe(32)
 SYNTHETIC_PASSWORD = "Isolated-Synthetic-Pass-1!"
 PALIERS = (10, 25, 50, 100, 150, 200, 250)
 FORBIDDEN_HOSTS = {"api.avenqo.ca", "avenqo.ca", "www.avenqo.ca"}
+REALISTIC_CONCURRENCY = 32
+POOL_SIZE = 16
+POOL_OVERFLOW = 16
+NINE_CONNECTORS = (
+    "shopify",
+    "woocommerce",
+    "etsy",
+    "google_calendar",
+    "outlook_calendar",
+    "stripe",
+    "telnyx",
+    "openai",
+    "internal_commerce_scheduler",
+)
+CONNECTOR_TABLES = (
+    "commerce_connections",
+    "crm_calendar_connections",
+    "billing_accounts",
+    "voice_business_configs",
+    "ai_conversations",
+    "ai_messages",
+    "login_events",
+    "auth_sessions",
+    "crm_clients",
+)
 
 
 def _refuse_live() -> None:
@@ -258,11 +284,13 @@ def _seed(companies: int) -> list[dict]:
     return tenants
 
 
-def _http(base: str, method: str, path: str, token: str | None = None, payload: dict | None = None, timeout: float = 20.0):
+def _http(base: str, method: str, path: str, token: str | None = None, payload: dict | None = None, timeout: float = 20.0, extra_headers: dict | None = None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(f"{base}{path}", data=data, headers=headers, method=method)
     started = time.perf_counter()
     try:
@@ -314,6 +342,8 @@ def _functional(base: str, tenants: list[dict], admin_url: str) -> dict:
         "app_role_empty_guc": False,
         "app_session_user": False,
         "app_cannot_disable_rls": False,
+        "header_spoof_ignored": False,
+        "crm_idor_hidden": False,
     }
     checks["login_status"] = _LAST_LOGIN.get("status")
     checks["login_detail"] = _LAST_LOGIN.get("detail")
@@ -322,6 +352,14 @@ def _functional(base: str, tenants: list[dict], admin_url: str) -> dict:
     me_status, me, _ = _http(base, "GET", "/api/v1/auth/me", token_a)
     company_payload = me.get("company") if isinstance(me.get("company"), dict) else {}
     checks["me_a"] = me_status == 200 and str(company_payload.get("id") or "") == a["company_id"]
+    spoof_status, spoof, _ = _http(
+        base, "GET", "/api/v1/auth/me", token_a,
+        extra_headers={"X-Company-Id": b["company_id"], "X-Avenqo-Tenant-Id": b["company_id"]},
+    )
+    spoof_company = spoof.get("company") if isinstance(spoof.get("company"), dict) else {}
+    checks["header_spoof_ignored"] = (
+        spoof_status == 200 and str(spoof_company.get("id") or "") == a["company_id"]
+    )
     retail_status, _, _ = _http(base, "GET", "/api/v1/retail/status", token_a)
     checks["retail_a"] = retail_status < 500
     crm_status, crm, _ = _http(base, "GET", "/api/v1/crm/clients", token_a)
@@ -344,6 +382,11 @@ def _functional(base: str, tenants: list[dict], admin_url: str) -> dict:
     emails_a = {item.get("email") for item in (clients_a if isinstance(clients_a, list) else clients_a.get("items", []) if isinstance(clients_a, dict) else [])}
     emails_b = {item.get("email") for item in (clients_b if isinstance(clients_b, list) else clients_b.get("items", []) if isinstance(clients_b, dict) else [])}
     checks["pooled_logins_isolated"] = bool(emails_a) and emails_a.isdisjoint(emails_b)
+    client_rows = clients_a if isinstance(clients_a, list) else (clients_a.get("items", []) if isinstance(clients_a, dict) else [])
+    if client_rows:
+        foreign_status, foreign_body, _ = _http(base, "GET", f"/api/v1/crm/clients/{client_rows[0].get('id')}", token_b)
+        leaked = json.dumps(foreign_body) if isinstance(foreign_body, dict) else str(foreign_body)
+        checks["crm_idor_hidden"] = foreign_status in {403, 404} and a["slug"] not in leaked
 
     app = create_engine(_app_url(), pool_size=1, max_overflow=0, pool_reset_on_return="rollback")
     with app.connect() as connection:
@@ -365,11 +408,85 @@ def _snapshot_pg() -> dict:
     from sqlalchemy import create_engine, text
 
     engine = create_engine(_admin_url())
+    query = text(
+        """
+        SELECT
+          count(*) AS activity,
+          count(*) FILTER (WHERE state = 'active') AS active,
+          count(*) FILTER (WHERE state = 'idle') AS idle,
+          count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_xact,
+          count(*) FILTER (WHERE wait_event_type = 'Lock') AS lock_waits,
+          count(*) FILTER (WHERE usename = 'avenqo_app') AS app_sessions
+        FROM pg_stat_activity
+        WHERE datname = :db
+        """
+    )
     with engine.connect() as connection:
-        activity = connection.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname=:db"), {"db": DB_NAME}).scalar_one()
-        waiting = connection.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname=:db AND wait_event IS NOT NULL"), {"db": DB_NAME}).scalar_one()
+        row = connection.execute(query, {"db": DB_NAME}).one()
     engine.dispose()
-    return {"pg_activity": int(activity), "pg_waiting": int(waiting)}
+    return {
+        "pg_activity": int(row.activity),
+        "pg_active": int(row.active),
+        "pg_idle": int(row.idle),
+        "pg_idle_in_xact": int(row.idle_in_xact),
+        "pg_lock_waits": int(row.lock_waits),
+        "pg_app_sessions": int(row.app_sessions),
+        "pg_waiting": int(row.lock_waits),
+    }
+
+
+def _percentiles(latencies: list[float]) -> dict:
+    if not latencies:
+        return {"p50_ms": None, "p95_ms": None, "p99_ms": None}
+    ordered = sorted(latencies)
+
+    def pct(p: float) -> float:
+        if len(ordered) == 1:
+            return round(ordered[0], 1)
+        index = min(len(ordered) - 1, max(0, round((p / 100) * (len(ordered) - 1))))
+        return round(ordered[index], 1)
+
+    return {"p50_ms": pct(50), "p95_ms": pct(95), "p99_ms": pct(99)}
+
+
+class _CpuSampler:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self.samples: list[dict] = []
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        def run() -> None:
+            try:
+                import psutil
+                proc = psutil.Process(self.pid)
+                proc.cpu_percent(interval=None)
+                while not self._stop.wait(0.4):
+                    self.samples.append({
+                        "cpu_percent": proc.cpu_percent(interval=None),
+                        "rss_mb": round(proc.memory_info().rss / (1024 * 1024), 1),
+                    })
+            except Exception:
+                return
+
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> dict:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if not self.samples:
+            return {"cpu_percent": None, "rss_mb": None, "cpu_peak": None, "rss_peak_mb": None}
+        cpu = [item["cpu_percent"] for item in self.samples]
+        rss = [item["rss_mb"] for item in self.samples]
+        return {
+            "cpu_percent": round(statistics.mean(cpu), 1),
+            "cpu_peak": round(max(cpu), 1),
+            "rss_mb": round(statistics.mean(rss), 1),
+            "rss_peak_mb": round(max(rss), 1),
+        }
 
 
 def _process_metrics(pid: int) -> dict:
@@ -406,9 +523,11 @@ def _palier(base: str, tenants: list[dict], companies: int, hold_s: float, pid: 
                 rows.append((path, status, elapsed))
         return rows
 
+    sampler = _CpuSampler(pid)
+    sampler.start()
     started = time.perf_counter()
     rows: list[tuple[str, int, float]] = []
-    workers = max(1, min(len(tokens), 40))
+    workers = max(1, min(len(tokens), REALISTIC_CONCURRENCY))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [
             pool.submit(worker, email, token, tenant)
@@ -417,30 +536,202 @@ def _palier(base: str, tenants: list[dict], companies: int, hold_s: float, pid: 
         for future in as_completed(futures):
             rows.extend(future.result())
     elapsed = time.perf_counter() - started
+    proc = sampler.stop()
     latencies = [ms for _, _, ms in rows]
     failures = sum(1 for _, status, _ in rows if status >= 500 or status == 0)
     http_errors = sum(1 for _, status, _ in rows if status >= 400)
     pg = _snapshot_pg()
-    proc = _process_metrics(pid)
-    p95 = round(statistics.quantiles(latencies, n=20)[18], 1) if len(latencies) >= 20 else (round(max(latencies), 1) if latencies else None)
     return {
         "companies": companies,
         "logins": len(tokens),
         "concurrency_cap": workers,
+        "pool_size": POOL_SIZE,
+        "max_overflow": POOL_OVERFLOW,
         "requests": len(rows),
         "failures_5xx_or_timeout": failures,
         "http_4xx_plus": http_errors,
         "error_rate_5xx": round(failures / max(len(rows), 1), 4),
         "elapsed_s": round(elapsed, 3),
         "rps": round(len(rows) / elapsed, 1) if elapsed else 0,
-        "p50_ms": round(statistics.median(latencies), 1) if latencies else None,
-        "p95_ms": p95,
+        **_percentiles(latencies),
         **pg,
         **proc,
         "pass": failures == 0 and len(tokens) == companies,
         "origin": f"http://127.0.0.1:{API_PORT}",
         "note": "isolated replica, synthetic LLM, not live Sandbox/Production",
     }
+
+
+def _wave(base: str, tenants: list[dict], path: str, simultaneous: int, authenticated: bool) -> dict:
+    subset = tenants[:simultaneous]
+    tokens: list[str | None] = [None] * len(subset)
+    if authenticated:
+        for index, tenant in enumerate(subset):
+            tokens[index] = _login(base, tenant["email"])
+
+    def one(index: int) -> tuple[int, float]:
+        token = tokens[index] if authenticated else None
+        status, _, elapsed = _http(base, "GET", path, token, timeout=20)
+        return status, elapsed
+
+    started = time.perf_counter()
+    rows: list[tuple[int, float]] = []
+    with ThreadPoolExecutor(max_workers=simultaneous) as pool:
+        futures = [pool.submit(one, index) for index in range(len(subset))]
+        for future in as_completed(futures):
+            rows.append(future.result())
+    elapsed = time.perf_counter() - started
+    latencies = [ms for _, ms in rows]
+    failures = sum(1 for status, _ in rows if status >= 500 or status == 0)
+    return {
+        "path": path,
+        "simultaneous": simultaneous,
+        "logins": sum(1 for token in tokens if token) if authenticated else 0,
+        "requests": len(rows),
+        "failures_5xx_or_timeout": failures,
+        "error_rate_5xx": round(failures / max(len(rows), 1), 4),
+        "elapsed_s": round(elapsed, 3),
+        "rps": round(len(rows) / elapsed, 1) if elapsed else 0,
+        **_percentiles(latencies),
+        **_snapshot_pg(),
+        "pass": failures == 0 and (not authenticated or all(tokens)),
+        "note": "one-shot simultaneous wave, isolated replica only",
+    }
+
+
+def _central_load(base: str, tenants: list[dict], concurrent: int, hold_s: float) -> dict:
+    subset = tenants[:concurrent]
+    tokens = {}
+    conversations = {}
+    for tenant in subset:
+        token = _login(base, tenant["email"])
+        if not token:
+            continue
+        status, conv, _ = _http(base, "POST", "/api/v1/ai/chat/conversations", token, {"title": "central-iso"})
+        if status == 201:
+            tokens[tenant["email"]] = token
+            conversations[tenant["email"]] = conv["id"]
+
+    def worker(email: str) -> list[tuple[int, float]]:
+        rows = []
+        deadline = time.time() + hold_s
+        cid = conversations[email]
+        token = tokens[email]
+        while time.time() < deadline:
+            status, payload, elapsed = _http(
+                base, "POST", f"/api/v1/ai/central/conversations/{cid}/messages",
+                token, {"content": "Bonjour"}, timeout=20,
+            )
+            simulated = "simulated-central" in str((payload or {}).get("answer") or "")
+            rows.append((status if simulated or status >= 400 else 599, elapsed))
+        return rows
+
+    started = time.perf_counter()
+    rows: list[tuple[int, float]] = []
+    workers = max(1, min(len(tokens), REALISTIC_CONCURRENCY))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(worker, email) for email in tokens]
+        for future in as_completed(futures):
+            rows.extend(future.result())
+    elapsed = time.perf_counter() - started
+    latencies = [ms for _, ms in rows]
+    failures = sum(1 for status, _ in rows if status >= 500 or status == 0)
+    return {
+        "companies": concurrent,
+        "logins": len(tokens),
+        "requests": len(rows),
+        "failures_5xx_or_timeout": failures,
+        "error_rate_5xx": round(failures / max(len(rows), 1), 4),
+        "elapsed_s": round(elapsed, 3),
+        "rps": round(len(rows) / elapsed, 1) if elapsed else 0,
+        **_percentiles(latencies),
+        **_snapshot_pg(),
+        "pass": failures == 0 and len(tokens) == concurrent,
+        "paid_provider": False,
+    }
+
+
+def _run_k6(base: str, vus: int, hold: str) -> dict:
+    binary = shutil.which("k6")
+    if not binary:
+        return {"skipped": True, "reason": "k6 binary not on PATH"}
+    script = ROOT / "loadtest" / "k6-isolated-replica.js"
+    env = os.environ.copy()
+    env.update({
+        "AVENQO_LOADTEST_BASE_URL": base,
+        "AVENQO_LOADTEST_VUS": str(vus),
+        "AVENQO_LOADTEST_HOLD": hold,
+        "AVENQO_LOADTEST_PASSWORD": SYNTHETIC_PASSWORD,
+        "AVENQO_LOADTEST_EMAIL_PREFIX": "owner-iso-",
+        "AVENQO_LOADTEST_EMAIL_DOMAIN": "example.com",
+    })
+    result = subprocess.run(
+        [binary, "run", str(script)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return {
+        "pass": result.returncode == 0,
+        "vus": vus,
+        "hold": hold,
+        "returncode": result.returncode,
+        "stdout_tail": result.stdout[-1500:],
+        "paid_provider": False,
+    }
+
+
+def _connector_inventory() -> dict:
+    from sqlalchemy import create_engine, inspect, text
+
+    engine = create_engine(_admin_url())
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    present = {name: name in tables for name in CONNECTOR_TABLES}
+    indexes = {}
+    if "ai_conversations" in tables:
+        indexes["ix_ai_conversations_company_user"] = any(
+            item["name"] == "ix_ai_conversations_company_user"
+            for item in inspector.get_indexes("ai_conversations")
+        )
+    engine.dispose()
+    return {
+        "connectors": list(NINE_CONNECTORS),
+        "tables_present": present,
+        "all_tables_present": all(present.values()),
+        "hotpath_indexes": indexes,
+        "sandbox_modified": False,
+        "production_modified": False,
+    }
+
+
+def _rehearse_nologin_rollback() -> dict:
+    from psycopg2 import sql
+    from sqlalchemy import create_engine, text
+
+    admin = create_engine(_admin_url())
+    report = {"login_disabled": False, "app_connect_rejected": False, "sandbox_modified": False}
+    try:
+        with admin.begin() as connection:
+            cursor = connection.connection.driver_connection.cursor()
+            cursor.execute(sql.SQL("ALTER ROLE {} NOLOGIN").format(sql.Identifier("avenqo_app")))
+            cursor.close()
+            report["login_disabled"] = connection.execute(
+                text("SELECT rolcanlogin FROM pg_roles WHERE rolname='avenqo_app'")
+            ).scalar_one() is False
+        try:
+            probe = create_engine(_app_url(), pool_pre_ping=False)
+            with probe.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            probe.dispose()
+        except Exception:
+            report["app_connect_rejected"] = True
+    finally:
+        admin.dispose()
+    report["pass"] = report["login_disabled"] and report["app_connect_rejected"]
+    return report
 
 
 def _voice(base: str, tenants: list[dict], concurrent: int) -> dict:
@@ -510,7 +801,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--companies", type=int, default=250)
     parser.add_argument("--paliers", default=",".join(str(item) for item in PALIERS))
-    parser.add_argument("--hold", type=float, default=12.0)
+    parser.add_argument("--hold", type=float, default=8.0)
     parser.add_argument("--keep", action="store_true", help="Leave Postgres/API running (loopback only).")
     parser.add_argument("--skip-voice", action="store_true")
     args = parser.parse_args()
@@ -548,8 +839,12 @@ def main() -> int:
             "RATE_LIMIT_AUTH_PER_MINUTE": "10000",
             "RATE_LIMIT_AI_PER_MINUTE": "10000",
             "RATE_LIMIT_DEFAULT_PER_MINUTE": "10000",
-            "AVENQO_DB_POOL_SIZE": "40",
-            "AVENQO_DB_MAX_OVERFLOW": "40",
+            "AVENQO_DB_POOL_SIZE": str(POOL_SIZE),
+            "AVENQO_DB_MAX_OVERFLOW": str(POOL_OVERFLOW),
+            "AVENQO_DB_POOL_TIMEOUT": "5",
+            "AVENQO_HTTP_SYNC_THREAD_LIMIT": str(REALISTIC_CONCURRENCY),
+            "AVENQO_DB_STATEMENT_TIMEOUT_MS": "15000",
+            "AVENQO_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS": "30000",
             "AVENQO_SKIP_CREATE_ALL": "1",
             "ALLOWED_HOSTS": "*",
             "CORS_ORIGINS": "http://127.0.0.1:18000",
@@ -568,17 +863,26 @@ def main() -> int:
         base = f"http://127.0.0.1:{API_PORT}"
         _wait_health(base)
         evidence["functional"] = _functional(base, tenants, _admin_url())
+        evidence["connectors"] = _connector_inventory()
+        evidence["pool"] = {
+            "pool_size": POOL_SIZE,
+            "max_overflow": POOL_OVERFLOW,
+            "pool_timeout_s": 5,
+            "http_sync_thread_limit": REALISTIC_CONCURRENCY,
+            "aligned_max_connections": POOL_SIZE + POOL_OVERFLOW,
+            "previous_misread_pg_waiting": "wait_event IS NOT NULL counted idle ClientRead as saturation",
+        }
         evidence["paliers"] = []
         for palier in paliers:
             result = _palier(base, tenants, palier, args.hold, api_proc.pid)
             evidence["paliers"].append(result)
-            if not result["pass"] and palier >= 100:
-                env["AVENQO_DB_POOL_SIZE"] = "60"
-                # Document saturation; do not silently restart Production-like defaults.
+        evidence["burst_health_250"] = _wave(base, tenants, "/api/v1/health", min(250, companies), False)
+        evidence["burst_auth_me_250"] = _wave(base, tenants, "/api/v1/auth/me", min(250, companies), True)
+        evidence["central"] = _central_load(base, tenants, concurrent=min(25, companies), hold_s=min(8.0, args.hold))
+        evidence["k6"] = _run_k6(base, vus=min(25, companies), hold="12s")
         if not args.skip_voice:
             evidence["voice"] = _voice(base, tenants, concurrent=min(10, companies))
         evidence["app_role"]["database_url_uses_avenqo_app"] = True
-        evidence["recommendation"] = _recommend(evidence)
     finally:
         if api_proc is not None:
             api_proc.terminate()
@@ -590,16 +894,22 @@ def main() -> int:
             log_handle.close()
         if mock_httpd is not None:
             mock_httpd.shutdown()
+        if api_proc is not None and not args.keep:
+            try:
+                evidence["rollback_rehearsal"] = _rehearse_nologin_rollback()
+            except Exception as exc:
+                evidence["rollback_rehearsal"] = {"pass": False, "error": type(exc).__name__}
         if not args.keep:
             _docker_down()
         else:
             evidence["kept"] = True
     evidence["finished_at"] = datetime.now(timezone.utc).isoformat()
+    evidence["recommendation"] = _recommend(evidence)
     out = ROOT / "docs" / "mt-250-isolated-capacity.json"
     out.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
     _write_markdown(evidence)
     print(json.dumps({"recommendation": evidence.get("recommendation"), "functional": evidence.get("functional"), "paliers": [
-        {k: item[k] for k in ("companies", "pass", "p50_ms", "p95_ms", "error_rate_5xx", "rps", "cpu_percent", "rss_mb", "pg_activity") if k in item}
+        {k: item[k] for k in ("companies", "pass", "p50_ms", "p95_ms", "p99_ms", "error_rate_5xx", "rps", "cpu_percent", "rss_mb", "pg_active", "pg_idle_in_xact") if k in item}
         for item in evidence.get("paliers", [])
     ]}, indent=2))
     functional_flags = [
@@ -617,11 +927,13 @@ def _recommend(evidence: dict) -> dict:
     isolation_ok = all(functional.get(key) for key in (
         "login_a", "cross_tenant_hidden", "pooled_logins_isolated",
         "app_role_empty_guc", "app_session_user", "app_cannot_disable_rls",
+        "header_spoof_ignored", "crm_idor_hidden",
     )) if functional else False
     passing = [item for item in paliers if item.get("pass")]
     failing = [item for item in paliers if not item.get("pass")]
     max_pass = max((item["companies"] for item in passing), default=0)
     voice_ok = (evidence.get("voice") or {}).get("pass")
+    burst = evidence.get("burst_auth_me_250") or {}
     sandbox = "NO-GO"
     if isolation_ok and max_pass >= 50:
         sandbox = "CONDITIONAL-GO"
@@ -631,14 +943,20 @@ def _recommend(evidence: dict) -> dict:
         "max_measured_companies_pass": max_pass,
         "failing_paliers": [item["companies"] for item in failing],
         "voice_simulated_pass": bool(voice_ok),
+        "burst_auth_me_250_pass": bool(burst.get("pass")),
+        "burst_auth_me_250_p95_ms": burst.get("p95_ms"),
         "reason": (
             "RLS with avenqo_app LOGIN holds on the isolated replica. "
-            "HTTP paliers 10→250 passed here with 1 worker, pool 40+40, simulated LLM, and raised rate limits. "
+            f"HTTP paliers used 1 worker, pool {POOL_SIZE}+{POOL_OVERFLOW}, "
+            f"thread cap {REALISTIC_CONCURRENCY}, pool_timeout 5s, simulated LLM. "
+            "250 simultaneous HTTP is a separate burst, not the palier concurrency. "
             "Live Sandbox still uses the table-owner login and default pool 10+20 / 30 AI req/min. "
-            "Do not treat this as a Production GO."
+            "Do not treat this as a Production GO or a 250-client capacity claim."
         ),
         "go_live_sandbox": False,
         "go_sandbox_app_role_cutover": isolation_ok,
+        "go_live_250_clients": False,
+        "go_production": False,
     }
 
 
@@ -664,18 +982,33 @@ def _write_markdown(evidence: dict) -> None:
         json.dumps(evidence.get("functional"), indent=2),
         "```",
         "",
+        "## Pool",
+        "",
+        "```json",
+        json.dumps(evidence.get("pool"), indent=2),
+        "```",
+        "",
         "## Paliers",
         "",
-        "| Companies | Pass | RPS | p50 ms | p95 ms | 5xx rate | CPU % | RSS MB | PG sessions |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Companies | Pass | RPS | p50 | p95 | p99 | 5xx | CPU % | RSS MB | PG active | idle-in-xact | locks |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in evidence.get("paliers") or []:
         lines.append(
             f"| {item.get('companies')} | {item.get('pass')} | {item.get('rps')} | {item.get('p50_ms')} | "
-            f"{item.get('p95_ms')} | {item.get('error_rate_5xx')} | {item.get('cpu_percent')} | "
-            f"{item.get('rss_mb')} | {item.get('pg_activity')} |"
+            f"{item.get('p95_ms')} | {item.get('p99_ms')} | {item.get('error_rate_5xx')} | {item.get('cpu_percent')} | "
+            f"{item.get('rss_mb')} | {item.get('pg_active')} | {item.get('pg_idle_in_xact')} | {item.get('pg_lock_waits')} |"
         )
-    lines.extend(["", "## Voice (simulated, no paid STT/TTS)", "", "```json", json.dumps(evidence.get("voice"), indent=2), "```", ""])
+    for key, title in (
+        ("burst_health_250", "Burst 250 simultaneous GET /health"),
+        ("burst_auth_me_250", "Burst 250 simultaneous GET /auth/me"),
+        ("central", "Central AI (simulated)"),
+        ("k6", "k6 palier"),
+        ("voice", "Voice (simulated, no paid STT/TTS)"),
+        ("connectors", "Nine connectors / hot-path tables"),
+        ("rollback_rehearsal", "Rollback rehearsal (isolated NOLOGIN)"),
+    ):
+        lines.extend(["", f"## {title}", "", "```json", json.dumps(evidence.get(key), indent=2), "```", ""])
     lines.extend(["## Recommendation", "", rec.get("reason", ""), ""])
     (ROOT / "docs" / "mt-250-isolated-capacity.md").write_text("\n".join(lines), encoding="utf-8")
 

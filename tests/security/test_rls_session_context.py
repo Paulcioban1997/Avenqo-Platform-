@@ -46,6 +46,27 @@ def test_set_rls_bypass_is_transaction_local() -> None:
     assert session.statements[-1][1]["flag"] == "off"
 
 
+def test_get_db_drops_prior_rls_info_when_the_session_closes(monkeypatch) -> None:
+    class _Session:
+        def __init__(self) -> None:
+            self.info = {"avenqo_rls": {"cid": "leftover", "flag": "on"}}
+            self.closed = False
+
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            self.closed = True
+
+    leftover = _Session()
+    monkeypatch.setattr("backend.app.database.session.SessionLocal", lambda: leftover)
+    generator = get_db()
+    next(generator)
+    generator.close()
+    assert leftover.closed is True
+    assert "avenqo_rls" not in leftover.info
+
+
 def test_get_db_does_not_enable_rls_bypass_by_default(monkeypatch) -> None:
     observed: list[bool] = []
     monkeypatch.setattr(

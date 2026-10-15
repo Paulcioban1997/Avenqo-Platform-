@@ -1,6 +1,6 @@
 # Isolated replica capacity — PR #61
 
-Generated: 2026-10-15T02:12:09.907417+00:00
+Generated: 2026-10-15T02:38:10.444133+00:00
 Production and live Sandbox were **not** modified. Paid providers were **not** called.
 
 **Sandbox cutover recommendation: CONDITIONAL-GO**
@@ -39,22 +39,134 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
   "app_role_empty_guc": true,
   "app_session_user": true,
   "app_cannot_disable_rls": true,
+  "header_spoof_ignored": true,
+  "crm_idor_hidden": true,
   "login_status": 200,
   "login_detail": null
 }
 ```
 
+## Pool
+
+```json
+{
+  "pool_size": 16,
+  "max_overflow": 16,
+  "pool_timeout_s": 5,
+  "http_sync_thread_limit": 32,
+  "aligned_max_connections": 32,
+  "previous_misread_pg_waiting": "wait_event IS NOT NULL counted idle ClientRead as saturation"
+}
+```
+
 ## Paliers
 
-| Companies | Pass | RPS | p50 ms | p95 ms | 5xx rate | CPU % | RSS MB | PG sessions |
-|---|---|---|---|---|---|---|---|---|
-| 10 | True | 92.5 | 85.4 | 199.9 | 0.0 | 0.0 | 454.2 | 11 |
-| 25 | True | 99.6 | 184.4 | 488.0 | 0.0 | 0.0 | 469.8 | 26 |
-| 50 | True | 92.6 | 177.1 | 757.8 | 0.0 | 0.0 | 458.4 | 41 |
-| 100 | True | 96.0 | 296.4 | 799.3 | 0.0 | 0.0 | 489.9 | 41 |
-| 150 | True | 99.7 | 313.6 | 777.4 | 0.0 | 0.0 | 478.3 | 41 |
-| 200 | True | 94.1 | 339.4 | 838.4 | 0.0 | 0.0 | 482.8 | 41 |
-| 250 | True | 92.8 | 319.2 | 848.0 | 0.0 | 0.0 | 471.4 | 41 |
+| Companies | Pass | RPS | p50 | p95 | p99 | 5xx | CPU % | RSS MB | PG active | idle-in-xact | locks |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 10 | True | 87.9 | 90.4 | 212.4 | 452.1 | 0.0 | 128.4 | 440.9 | 1 | 0 | 0 |
+| 25 | True | 95.9 | 224.5 | 499.9 | 534.7 | 0.0 | 130.8 | 472.1 | 1 | 0 | 0 |
+| 50 | True | 93.2 | 227.9 | 632.5 | 1062.8 | 0.0 | 132.9 | 474.5 | 1 | 0 | 0 |
+| 100 | True | 87.9 | 230.8 | 648.9 | 790.5 | 0.0 | 122.3 | 478.3 | 1 | 0 | 0 |
+| 150 | True | 88.6 | 307.6 | 686.9 | 775.3 | 0.0 | 132.4 | 477.2 | 1 | 0 | 0 |
+| 200 | True | 88.5 | 275.1 | 677.7 | 904.8 | 0.0 | 131.5 | 475.9 | 1 | 0 | 0 |
+| 250 | True | 90.4 | 303.9 | 666.0 | 937.6 | 0.0 | 131.2 | 479.0 | 1 | 0 | 0 |
+
+## Burst 250 simultaneous GET /health
+
+```json
+{
+  "path": "/api/v1/health",
+  "simultaneous": 250,
+  "logins": 0,
+  "requests": 250,
+  "failures_5xx_or_timeout": 0,
+  "error_rate_5xx": 0.0,
+  "elapsed_s": 0.497,
+  "rps": 503.2,
+  "p50_ms": 229.3,
+  "p95_ms": 324.9,
+  "p99_ms": 327.7,
+  "pg_activity": 17,
+  "pg_active": 1,
+  "pg_idle": 16,
+  "pg_idle_in_xact": 0,
+  "pg_lock_waits": 0,
+  "pg_app_sessions": 16,
+  "pg_waiting": 0,
+  "pass": true,
+  "note": "one-shot simultaneous wave, isolated replica only"
+}
+```
+
+
+## Burst 250 simultaneous GET /auth/me
+
+```json
+{
+  "path": "/api/v1/auth/me",
+  "simultaneous": 250,
+  "logins": 250,
+  "requests": 250,
+  "failures_5xx_or_timeout": 0,
+  "error_rate_5xx": 0.0,
+  "elapsed_s": 1.912,
+  "rps": 130.7,
+  "p50_ms": 1006.0,
+  "p95_ms": 1549.8,
+  "p99_ms": 1557.6,
+  "pg_activity": 17,
+  "pg_active": 1,
+  "pg_idle": 16,
+  "pg_idle_in_xact": 0,
+  "pg_lock_waits": 0,
+  "pg_app_sessions": 16,
+  "pg_waiting": 0,
+  "pass": true,
+  "note": "one-shot simultaneous wave, isolated replica only"
+}
+```
+
+
+## Central AI (simulated)
+
+```json
+{
+  "companies": 25,
+  "logins": 25,
+  "requests": 50,
+  "failures_5xx_or_timeout": 0,
+  "error_rate_5xx": 0.0,
+  "elapsed_s": 10.309,
+  "rps": 4.9,
+  "p50_ms": 4401.1,
+  "p95_ms": 5961.6,
+  "p99_ms": 6050.8,
+  "pg_activity": 17,
+  "pg_active": 1,
+  "pg_idle": 16,
+  "pg_idle_in_xact": 0,
+  "pg_lock_waits": 0,
+  "pg_app_sessions": 16,
+  "pg_waiting": 0,
+  "pass": true,
+  "paid_provider": false
+}
+```
+
+
+## k6 palier
+
+```json
+{
+  "pass": true,
+  "vus": 25,
+  "hold": "12s",
+  "returncode": 0,
+  "stdout_tail": "nning (10.0s), 25/25 VUs, 143 complete and 0 interrupted iterations\npalier   [  83% ] 25 VUs  10.0s/12s\n\nrunning (11.0s), 25/25 VUs, 167 complete and 0 interrupted iterations\npalier   [  92% ] 25 VUs  11.0s/12s\n\nrunning (12.0s), 25/25 VUs, 175 complete and 0 interrupted iterations\npalier   [ 100% ] 25 VUs  12.0s/12s\n\n\n  \u00e2\u2013\u02c6 THRESHOLDS \n\n    http_req_failed\n    \u00e2\u0153\u201c 'rate<0.05' rate=0.00%\n\n\n  \u00e2\u2013\u02c6 TOTAL RESULTS \n\n    checks_total.......: 800     64.129795/s\n    checks_succeeded...: 100.00% 800 out of 800\n    checks_failed......: 0.00%   0 out of 800\n\n    \u00e2\u0153\u201c login 200\n    \u00e2\u0153\u201c me\n    \u00e2\u0153\u201c retail\n    \u00e2\u0153\u201c crm\n\n    HTTP\n    http_req_duration..............: avg=384.27ms min=24.35ms  med=276.4ms max=1.31s p(90)=799.66ms p(95)=866.78ms\n      { expected_response:true }...: avg=384.27ms min=24.35ms  med=276.4ms max=1.31s p(90)=799.66ms p(95)=866.78ms\n    http_req_failed................: 0.00%  0 out of 800\n    http_reqs......................: 800    64.129795/s\n\n    EXECUTION\n    iteration_duration.............: avg=1.53s    min=526.13ms med=1.65s   max=2.19s p(90)=1.89s    p(95)=2.13s   \n    iterations.....................: 200    16.032449/s\n    vus............................: 25     min=25       max=25\n    vus_max........................: 25     min=25       max=25\n\n    NETWORK\n    data_received..................: 1.1 MB 89 kB/s\n    data_sent......................: 736 kB 59 kB/s\n\n\n\n\nrunning (12.5s), 00/25 VUs, 200 complete and 0 interrupted iterations\npalier \u00e2\u0153\u201c [ 100% ] 25 VUs  12s\n",
+  "paid_provider": false
+}
+```
+
 
 ## Voice (simulated, no paid STT/TTS)
 
@@ -96,30 +208,54 @@ Production and live Sandbox were **not** modified. Paid providers were **not** c
 }
 ```
 
-## Voice (simulated)
 
-10 concurrent websocket sessions: **PASS**, `text_fallback=true`, no paid STT/TTS/realtime.
+## Nine connectors / hot-path tables
 
-## Tools installed in this isolated run
+```json
+{
+  "connectors": [
+    "shopify",
+    "woocommerce",
+    "etsy",
+    "google_calendar",
+    "outlook_calendar",
+    "stripe",
+    "telnyx",
+    "openai",
+    "internal_commerce_scheduler"
+  ],
+  "tables_present": {
+    "commerce_connections": true,
+    "crm_calendar_connections": true,
+    "billing_accounts": true,
+    "voice_business_configs": true,
+    "ai_conversations": true,
+    "ai_messages": true,
+    "login_events": true,
+    "auth_sessions": true,
+    "crm_clients": true
+  },
+  "all_tables_present": true,
+  "hotpath_indexes": {
+    "ix_ai_conversations_company_user": true
+  },
+  "sandbox_modified": false,
+  "production_modified": false
+}
+```
 
-- k6 2.3.0 (Windows)
-- locust (pip)
-- Python palier harness against the **real isolated API** (not the stdlib mock)
 
-## Quotas and saturation
+## Rollback rehearsal (isolated NOLOGIN)
 
-- Replica rate limits were raised to 10 000/min so the limiter would not hide app/DB capacity. Default Avenqo is 10 login/min and 30 AI/min **per process**.
-- Postgres sessions peaked at **41** with `AVENQO_DB_POOL_SIZE=40` (default in code remains 10+20). At 250 companies, `pg_waiting` reached 40 — the pool is the limiter, not 5xx.
-- RSS ~450–500 MB for one uvicorn worker. CPU sampling after each palier under-reported (often 0%).
-- Professional included credits + simulated LLM; no Stripe/OpenAI/Telnyx calls.
+```json
+{
+  "login_disabled": true,
+  "app_connect_rejected": true,
+  "sandbox_modified": false,
+  "pass": true
+}
+```
 
 ## Recommendation
 
-| Decision | Verdict |
-|---|---|
-| Isolation proof (`avenqo_app` LOGIN + FORCE RLS, not table owner) | **PASS** |
-| Sandbox `avenqo_app` cutover (after backup GO) | **CONDITIONAL-GO** |
-| Announce 250 live companies on current Sandbox/Production | **NO-GO** |
-| Production | **NO-GO** (forbidden, untested) |
-
-RLS with `avenqo_app` LOGIN holds on the isolated replica. HTTP paliers 10→250 passed here with 1 worker, pool 40+40, simulated LLM, and raised rate limits. Live Sandbox still uses the table-owner login and default pool 10+20 / 30 AI req/min. Do not treat this as a Production GO. Need an explicit owner GO before backup + LOGIN on the real Sandbox copy.
+RLS with avenqo_app LOGIN holds on the isolated replica. HTTP paliers used 1 worker, pool 16+16, thread cap 32, pool_timeout 5s, simulated LLM. 250 simultaneous HTTP is a separate burst, not the palier concurrency. Live Sandbox still uses the table-owner login and default pool 10+20 / 30 AI req/min. Do not treat this as a Production GO or a 250-client capacity claim.

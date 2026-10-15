@@ -38,7 +38,9 @@ def test_0060_is_reversible_alembic_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["0060_rls_remaining_tenant_tables"]
+    assert script.get_heads() == ["0061_tenant_hotpath_indexes"]
+    head = script.get_revision("0061_tenant_hotpath_indexes")
+    assert head.down_revision == "0060_rls_remaining_tenant_tables"
     revision = script.get_revision("0060_rls_remaining_tenant_tables")
     assert revision.down_revision == "0059_migrate_role_schema_create"
     source = revision.module.downgrade.__code__.co_names

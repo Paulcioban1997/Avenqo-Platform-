@@ -24,9 +24,9 @@ function origin() {
 export default function () {
   const base = origin();
   const index = String((__VU % vus) + 1).padStart(3, "0");
-  const email = __ENV.AVENQO_LOADTEST_EMAIL_PREFIX
-    ? `${__ENV.AVENQO_LOADTEST_EMAIL_PREFIX}${index}@isolated.avenqo.test`
-    : `owner-iso-${index}@isolated.avenqo.test`;
+  const prefix = __ENV.AVENQO_LOADTEST_EMAIL_PREFIX || "owner-iso-";
+  const domain = __ENV.AVENQO_LOADTEST_EMAIL_DOMAIN || "example.com";
+  const email = `${prefix}${index}@${domain}`;
   const login = http.post(
     `${base}/api/v1/auth/login`,
     JSON.stringify({ email, password: __ENV.AVENQO_LOADTEST_PASSWORD || "" }),

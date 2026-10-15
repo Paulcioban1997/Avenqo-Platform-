@@ -12,6 +12,19 @@ from backend.app.models import Base
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+def _postgres_connect_args(settings) -> dict[str, str]:
+    """Server-side timeouts so a stuck transaction cannot occupy a pooled connection."""
+
+    parts: list[str] = []
+    if settings.db_statement_timeout_ms > 0:
+        parts.append(f"-c statement_timeout={int(settings.db_statement_timeout_ms)}")
+    if settings.db_idle_in_transaction_timeout_ms > 0:
+        parts.append(
+            f"-c idle_in_transaction_session_timeout={int(settings.db_idle_in_transaction_timeout_ms)}"
+        )
+    return {"options": " ".join(parts)} if parts else {}
+
+
 def _build_engine():
     settings = get_settings()
     database_url = settings.database_url
@@ -26,7 +39,7 @@ def _build_engine():
     connect_args = (
         {"check_same_thread": False}
         if database_url.startswith("sqlite")
-        else {}
+        else _postgres_connect_args(settings)
     )
     engine_kwargs: dict[str, object] = {
         "connect_args": connect_args,
@@ -35,8 +48,10 @@ def _build_engine():
     if not database_url.startswith("sqlite"):
         engine_kwargs["pool_size"] = settings.db_pool_size
         engine_kwargs["max_overflow"] = settings.db_max_overflow
+        engine_kwargs["pool_timeout"] = settings.db_pool_timeout
         engine_kwargs["pool_recycle"] = 300
         engine_kwargs["pool_reset_on_return"] = "rollback"
+        engine_kwargs["pool_use_lifo"] = True
 
     return create_engine(database_url, **engine_kwargs)
 

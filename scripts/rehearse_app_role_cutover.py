@@ -67,6 +67,10 @@ def main() -> int:
         "app_reads_migrate_table": False,
         "login_disabled_after": False,
         "database_url_unchanged": True,
+        "nine_connectors": (
+            "shopify", "woocommerce", "etsy", "google_calendar", "outlook_calendar",
+            "stripe", "telnyx", "openai", "internal_commerce_scheduler",
+        ),
     }
     try:
         with admin.begin() as connection:
