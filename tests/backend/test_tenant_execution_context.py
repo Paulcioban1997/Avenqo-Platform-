@@ -173,6 +173,31 @@ async def test_tool_executor_rejects_mismatched_bound_tenant() -> None:
         reset_tenant_execution(token)
 
 
+def test_credit_reservation_rejects_foreign_bound_tenant() -> None:
+    from backend.app.ai.usage.service import AIUsageService
+
+    token = bind_tenant_execution(_execution())
+    usage = AIUsageService.__new__(AIUsageService)
+    try:
+        with pytest.raises(TenantExecutionError, match="bound tenant"):
+            usage.claim_credit_reservation(uuid4(), "base", "req-1", 1)
+    finally:
+        reset_tenant_execution(token)
+
+
+def test_conversation_service_hides_foreign_bound_tenant() -> None:
+    from backend.app.ai.chat.conversation_service import ConversationService
+    from backend.app.ai.chat.exceptions import ConversationNotFoundError
+
+    token = bind_tenant_execution(_execution())
+    service = ConversationService(SimpleNamespace())
+    try:
+        with pytest.raises(ConversationNotFoundError):
+            service.list(uuid4(), uuid4())
+    finally:
+        reset_tenant_execution(token)
+
+
 def test_tool_context_from_execution_ignores_client_company() -> None:
     execution = _execution()
     client_company = uuid4()

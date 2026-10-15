@@ -26,6 +26,7 @@ from backend.app.ai.usage.exceptions import (
 )
 from backend.app.ai.usage.credit_policy import AvenqoCreditPolicy
 from backend.app.ai.usage.included_central import central_is_included
+from backend.app.core.tenant_execution import TenantExecutionError, peek_tenant_execution
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.policy import (
     MONTHLY_AI_REQUESTS,
@@ -392,6 +393,9 @@ class AIUsageService:
         avenqo_request_id: str,
         estimated_credits: int,
     ) -> CreditReservationClaim:
+        bound = peek_tenant_execution()
+        if bound is not None and bound.company_id != company_id:
+            raise TenantExecutionError("Credits cannot be reserved outside the bound tenant.")
         with _tenant_credit_lock(company_id):
             return self._claim_credit_reservation_locked(
                 company_id,

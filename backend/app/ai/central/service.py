@@ -20,6 +20,7 @@ from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.voice.caller_scope import is_public_voice_caller
 from backend.app.voice.tool_registry import VoiceToolRegistryService
+from backend.app.core.tenant_execution import TenantExecutionError, peek_tenant_execution
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -195,6 +196,9 @@ class CentralAIService:
             elif spoken_language_input:
                 language_auto_detect = True
         started_at = perf_counter()
+        bound = peek_tenant_execution()
+        if bound is not None and bound.company_id != tenant.company_id:
+            raise TenantExecutionError("Central AI cannot run outside the bound tenant.")
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         tenant = type(tenant)(company_id=tenant.company_id, user_id=user_id)
         context = self._context_builder.build(

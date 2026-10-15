@@ -188,6 +188,22 @@ def test_two_companies_cannot_read_or_infer_each_others_ai_conversations(sec_env
     assert spoofed.json()["id"] == conversation_id
     assert spoofed.json()["title"] == "secret-a"
 
+    token_c = _register_and_login(client, notifier, "Cara", "cara@tenant-c.ca", "Tenant C Inc")
+    created_c = client.post(
+        "/api/v1/ai/chat/conversations",
+        headers={"Authorization": f"Bearer {token_c}"},
+        json={"title": "secret-c"},
+    )
+    assert created_c.status_code == 201
+    listed_a = client.get("/api/v1/ai/chat/conversations", headers=headers_a)
+    assert listed_a.status_code == 200
+    titles = {item["title"] for item in listed_a.json()}
+    assert titles == {"secret-a"}
+    assert client.get(
+        f"/api/v1/ai/chat/conversations/{created_c.json()['id']}",
+        headers=headers_a,
+    ).status_code == 404
+
 
 def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     client, session_factory, notifier = sec_env

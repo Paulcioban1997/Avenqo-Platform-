@@ -23,6 +23,9 @@ from backend.app.core.locale_catalog import (
     resolve_locale,
 )
 from backend.app.core.permissions import permissions_for
+from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.core.security import decode_access_token
@@ -402,9 +405,22 @@ async def _stream_session(
             return None
         return membership
 
-    if authorized() is None:
+    membership = authorized()
+    if membership is None:
         await websocket.close(code=4403)
         return
+
+    apply_tenant_rls(db, tenant_id, bypass=False)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=TenantContext(company_id=tenant_id, user_id=user_id),
+            user_id=user_id,
+            permissions=frozenset(permissions_for(membership.role)) if membership is not None else frozenset(),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            source="voice_stream",
+        )
+    )
 
     _audit_session_source(session, db)
     db.commit()
