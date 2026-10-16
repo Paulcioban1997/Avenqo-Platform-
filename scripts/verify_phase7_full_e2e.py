@@ -630,13 +630,24 @@ class E2EVerificationRunner:
             ),
         )
 
-        initial_bal = int(usage_service.get_credit_balance(self.company_a.id, "professional")["purchased_remaining"] or 0)
+        # Le plan dépend du choix de la compagnie cliente (base, professional, ou enterprise sur devis)
+        client_plan = getattr(self.company_a, "subscription_plan", None) or "base"
+
+        # Validation que le ledger supporte tous les plans Avenqo selon le choix du client :
+        # - base : 29.99 CAD / mois
+        # - professional : 49.99 CAD / mois
+        # - enterprise : Sur devis personnalisé
+        for plan_tier in ("base", "professional", "enterprise"):
+            tier_bal = usage_service.get_credit_balance(self.company_a.id, plan_tier)
+            assert int(tier_bal["purchased_remaining"] or 0) == 15000
+
+        initial_bal = int(usage_service.get_credit_balance(self.company_a.id, client_plan)["purchased_remaining"] or 0)
         assert initial_bal == 15000
 
-        # Step 1: Claim reservation
+        # Step 1: Claim reservation (selon le plan choisi par l'entreprise cliente)
         claim = usage_service.claim_credit_reservation(
             self.company_a.id,
-            "professional",
+            client_plan,
             "req_e2e_ledger_test",
             5,
         )
@@ -657,7 +668,7 @@ class E2EVerificationRunner:
         )
         reservation = usage_service.settle_reservation(
             self.company_a.id,
-            "professional",
+            client_plan,
             "req_e2e_ledger_test",
             attempts=attempts,
             tokens=230,
@@ -665,7 +676,7 @@ class E2EVerificationRunner:
         settled_credits = reservation.settled_purchased + reservation.settled_included
         assert settled_credits >= 1
 
-        bal_info = usage_service.get_credit_balance(self.company_a.id, "professional")
+        bal_info = usage_service.get_credit_balance(self.company_a.id, client_plan)
         assert int(bal_info["monthly_used"] or 0) == reservation.settled_included
         assert int(bal_info["purchased_remaining"] or 0) == initial_bal - reservation.settled_purchased
 
