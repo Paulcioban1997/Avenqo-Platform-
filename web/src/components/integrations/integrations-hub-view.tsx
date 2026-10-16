@@ -55,6 +55,7 @@ export interface ConnectorItem {
   storeUrl?: string;
   connectionId?: string;
   implemented?: boolean;
+  blockedReason?: string;
 }
 
 interface RawConnection {
@@ -556,6 +557,7 @@ export function IntegrationsHubView() {
     supportsSync: boolean;
     canDisconnect: boolean;
     implemented: boolean;
+    blockedReason?: string;
   }> = [
     {
       id: "woocommerce",
@@ -607,6 +609,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Enregistrement Développeur Amazon SP-API & Identifiants LWA (Login with Amazon) requis.",
     },
     {
       id: "etsy",
@@ -619,6 +622,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "App Développeur Etsy approuvée & Clé API OAuth 2.0 requises.",
     },
     {
       id: "google_ads",
@@ -631,6 +635,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Developer Token Google Ads & validation OAuth MCC requis.",
     },
     {
       id: "meta_ads",
@@ -643,6 +648,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Validation Meta App Review & jeton d'accès Marketing API requis.",
     },
     {
       id: "google_calendar",
@@ -667,6 +673,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Clé API privée Klaviyo (pk_...) requise.",
     },
     {
       id: "hubspot",
@@ -679,6 +686,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "App Développeur HubSpot & Client ID/Secret OAuth 2.0 requis.",
     },
     {
       id: "quickbooks",
@@ -691,6 +699,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Clés d'application Intuit Developer & accès Accounting API requis.",
     },
     {
       id: "zapier",
@@ -703,6 +712,7 @@ export function IntegrationsHubView() {
       supportsSync: false,
       canDisconnect: false,
       implemented: false,
+      blockedReason: "Appartenance au programme partenaire Zapier & webhook API requis.",
     },
   ];
 
@@ -710,7 +720,8 @@ export function IntegrationsHubView() {
     if (!item.implemented) {
       return {
         ...item,
-        status: "coming_soon" as StatusBadgeType,
+        status: "blocked" as StatusBadgeType,
+        blockedReason: item.blockedReason,
         lastSynced: undefined,
         recordCount: undefined,
         storeUrl: undefined,
@@ -939,7 +950,11 @@ export function IntegrationsHubView() {
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
-              {c.status === "coming_soon" ? (
+              {c.status === "blocked" ? (
+                <span className="text-rose-500 font-semibold truncate max-w-[200px]" title={c.blockedReason}>
+                  {locale.startsWith("fr") ? "Prérequis externe manquant" : "Prerequisite missing"}
+                </span>
+              ) : c.status === "coming_soon" ? (
                 <span className="italic">{comingSoonLabel}</span>
               ) : c.lastSynced ? (
                 <span className="flex items-center gap-1">
@@ -950,7 +965,12 @@ export function IntegrationsHubView() {
                 <span className="italic">{connector.disconnected}</span>
               )}
 
-              {c.status === "coming_soon" ? (
+              {c.status === "blocked" ? (
+                <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                  <span>{locale.startsWith("fr") ? "Détails" : "Details"}</span>
+                  <ArrowRight size={11} />
+                </span>
+              ) : c.status === "coming_soon" ? (
                 <span className="text-slate-400 font-semibold">{comingSoonLabel}</span>
               ) : typeof c.recordCount === "number" && c.recordCount > 0 ? (
                 <span className="font-semibold text-slate-700 dark:text-[#F4F7FB]">
@@ -1026,7 +1046,25 @@ export function IntegrationsHubView() {
                 </div>
               )}
 
-              {selectedConnector.status === "coming_soon" ? (
+              {selectedConnector.status === "blocked" ? (
+                <div className="p-4 rounded-xl border border-rose-200/80 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-xs text-rose-900 dark:text-rose-200 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{locale.startsWith("fr") ? "Statut : Bloqué (Prérequis externe manquant)" : "Status: Blocked (Missing external prerequisite)"}</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    {locale.startsWith("fr")
+                      ? "Cette intégration requiert des approbations officielles ou des identifiants API tiers non configurés sur cette instance. Conformément à la politique d'intégrité Avenqo, aucun état 'Connecté' fictif n'est affiché."
+                      : "This integration requires official provider approvals or third-party API credentials that are not yet configured on this instance. In accordance with Avenqo integrity policies, no fictional 'Connected' state is displayed."}
+                  </p>
+                  <div className="p-3 bg-white dark:bg-[#0B132B] rounded-lg border border-rose-200 dark:border-rose-800/50 text-[11px] font-mono">
+                    <span className="font-semibold block text-slate-700 dark:text-slate-300 mb-1">
+                      {locale.startsWith("fr") ? "Prérequis exact :" : "Exact prerequisite:"}
+                    </span>
+                    <span className="text-rose-700 dark:text-rose-400">{selectedConnector.blockedReason}</span>
+                  </div>
+                </div>
+              ) : selectedConnector.status === "coming_soon" ? (
                 <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-xs text-slate-600 dark:text-slate-400 space-y-2">
                   <p>{comingSoonLabel}</p>
                   <p>
