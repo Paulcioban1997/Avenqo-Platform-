@@ -26,7 +26,9 @@ async function run() {
     // 2. Perform Login with verified Sandbox account
     console.log("\n[Step 2] Authenticating as alex.physio.sandbox@avenqo.ca...");
     await page.fill('input[name="email"]', "alex.physio.sandbox@avenqo.ca");
-    await page.fill('input[name="password"]', "PhysioSecure123!");
+    const sandboxPassword = process.env.AVENQO_E2E_PASSWORD;
+    if (!sandboxPassword) throw new Error("AVENQO_E2E_PASSWORD environment variable is required");
+    await page.fill('input[name="password"]', sandboxPassword);
     await page.click('button[type="submit"]');
 
     console.log("  Awaiting dashboard navigation...");
