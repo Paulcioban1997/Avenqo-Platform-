@@ -161,12 +161,12 @@ class CRMAvailabilityService:
         config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         company = self._session.get(Company, company_id)
         schedule = (company.business_hours if company else None) or {}
-        weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[day.weekday()]
         has_business_hours = bool(company and company.business_hours and ("weekly" in company.business_hours or "date_overrides" in company.business_hours))
         has_voice_hours = bool(config and config.opening_hours)
         if not has_business_hours and not has_voice_hours:
             raise AvailabilityUnavailable("BUSINESS_HOURS_NOT_CONFIGURED")
 
+        weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[day.weekday()]
         if has_business_hours:
             records = schedule.get("date_overrides", {}).get(day.isoformat(), schedule.get("weekly", {}).get(weekday, []))
         elif config and config.opening_hours:

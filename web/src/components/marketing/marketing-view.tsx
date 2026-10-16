@@ -303,7 +303,7 @@ export function MarketingView() {
                   <span className="font-semibold text-slate-800 dark:text-slate-200">{formatSegmentLabel(segment.label)}</span>
                   <strong>{number(segment.count)}</strong>
                 </div>
-                <div role="img" aria-label={`${formatSegmentLabel(segment.label)}: ${segment.count} / ${data.segments.reduce((total, item) => total + item.count, 0)}`} className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div role="img" aria-label={`${segment.label}: ${segment.count} / ${data.segments.reduce((total, item) => total + item.count, 0)}`} className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                   <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, segment.count / Math.max(1, data.segments.reduce((total, item) => total + item.count, 0)) * 100))}%` }} />
                 </div>
               </li>
