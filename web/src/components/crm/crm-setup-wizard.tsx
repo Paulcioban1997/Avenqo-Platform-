@@ -275,6 +275,8 @@ export function CRMSetupWizard({
           </div>
           <button
             onClick={onClose}
+            aria-label="Fermer"
+            title="Fermer"
             className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition"
           >
             <X size={18} />
