@@ -104,14 +104,12 @@ class SimulatedLLMProvider(LLMProvider):
         )
 
     async def stream(self, *, system_instruction: str = "", prompt: str = "") -> AsyncIterator[str]:
-        async def _generator():
-            chunks = ["Analyse croisée : ", "Ventes = 42 500 CAD. ", "Objectif = 30%. ", "Rendez-vous demain 14h00."]
-            for chunk in chunks:
-                await asyncio.sleep(0.01)
-                yield chunk
-        return _generator()
+        chunks = ["Analyse croisée : ", "Ventes = 42 500 CAD. ", "Objectif = 30%. ", "Rendez-vous demain 14h00."]
+        for chunk in chunks:
+            await asyncio.sleep(0.01)
+            yield chunk
 
-    def estimate_cost_usd(self, model: str, prompt_tokens: int, completion_tokens: int) -> Decimal:
+    def estimate_cost_usd(self, context: object) -> Decimal | None:
         return Decimal("0.0004")
 
 
