@@ -276,11 +276,21 @@ def _decimal_value(values: Mapping[str, object], key: str, default: str) -> Deci
     return value
 
 
-def _enabled_value(values: Mapping[str, object]) -> bool:
-    value = values.get("enabled", True)
+def _enabled_value(values: Mapping[str, object], key: str = "enabled") -> bool:
+    value = values.get(key, True)
     if isinstance(value, str):
         return value.strip().casefold() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _int_value(values: Mapping[str, object], key: str, default: int = 0) -> int:
+    val = values.get(key)
+    return int(str(val if val is not None else default))
+
+
+def _float_value(values: Mapping[str, object], key: str, default: float = 0.0) -> float:
+    val = values.get(key)
+    return float(str(val if val is not None else default))
 
 
 def model_spec(
@@ -376,23 +386,23 @@ def model_spec(
         model_id=model_id,
         display_name=str(profile.get("display_name", provider)),
         capabilities=capabilities,
-        context_window=int(profile["context_window"]),
+        context_window=_int_value(profile, "context_window"),
         estimated_cost_class=str(profile.get("estimated_cost_class", "unknown")),
         latency_class=str(profile.get("latency_class", "medium")),
-        fallback_priority=int(profile.get("fallback_priority", 0)),
-        reasoning_strength=int(profile.get("reasoning_strength", 1)),
+        fallback_priority=_int_value(profile, "fallback_priority", 0),
+        reasoning_strength=_int_value(profile, "reasoning_strength", 1),
         modalities=frozenset(str(value) for value in modalities_list),
         streaming=bool(profile.get("streaming", True)),
         tool_calling=bool(profile.get("tool_calling", LLMCapability.TOOL_CALLING in capabilities)),
         structured_output=bool(profile.get("structured_output", LLMCapability.STRUCTURED_OUTPUT in capabilities)),
-        max_output_tokens=int(profile["max_output_tokens"]),
-        quality_tier=int(profile.get("quality_tier", 1)),
-        speed_tier=int(profile.get("speed_tier", 2)),
+        max_output_tokens=_int_value(profile, "max_output_tokens"),
+        quality_tier=_int_value(profile, "quality_tier", 1),
+        speed_tier=_int_value(profile, "speed_tier", 2),
         task_suitability=frozenset(str(value) for value in suitability_list),
-        request_timeout_seconds=float(profile.get("request_timeout_seconds", 60.0)),
-        max_retries=int(profile.get("max_retries", 2)),
-        base_delay_seconds=float(profile.get("base_delay_seconds", 0.5)),
-        max_delay_seconds=float(profile.get("max_delay_seconds", 4.0)),
+        request_timeout_seconds=_float_value(profile, "request_timeout_seconds", 60.0),
+        max_retries=_int_value(profile, "max_retries", 2),
+        base_delay_seconds=_float_value(profile, "base_delay_seconds", 0.5),
+        max_delay_seconds=_float_value(profile, "max_delay_seconds", 4.0),
         pricing_version=str(profile.get("pricing_version", "default")),
         pricing_source=str(profile.get("pricing_source", "configuration")),
         pricing_effective_from=str(profile.get("pricing_effective_from", "")),
