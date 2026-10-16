@@ -41,6 +41,9 @@ def get_ai_usage_service(
             max_input_tokens_per_request=settings.ai_max_input_tokens_per_request,
             max_output_tokens_per_request=settings.ai_max_output_tokens_per_request,
             max_request_credits=settings.ai_max_request_credits,
+            max_session_credits=settings.ai_max_session_credits,
+            max_session_cost_usd=settings.ai_max_session_cost_usd,
+            max_company_monthly_cost_usd=settings.ai_max_company_monthly_cost_usd,
         ),
     )
 

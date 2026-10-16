@@ -416,6 +416,7 @@ class ChatService:
                 plan_code,
                 tool_context.request_id,
                 estimated_credits,
+                conversation_id=conversation_id,
             )
             if claim.acquired:
                 reservation_active = True
@@ -624,13 +625,16 @@ class ChatService:
         if self._usage_service is not None:
             try:
                 estimated_credits = self._usage_service.estimate_credits(
-                    self._provider.estimate_cost_usd(routing_context)
+                    self._provider.estimate_cost_usd(routing_context),
+                    input_tokens=routing_context.context_tokens,
+                    output_tokens=routing_context.expected_output_tokens,
                 )
                 claim = self._usage_service.claim_credit_reservation(
                     tenant_id,
                     plan_code,
                     avenqo_request_id,
                     estimated_credits,
+                    conversation_id=conversation_id,
                 )
                 if not claim.acquired:
                     yield ChatStreamEvent(

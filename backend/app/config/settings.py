@@ -351,6 +351,15 @@ class Settings(BaseSettings):
     ai_max_request_credits: int | None = Field(
         default=None, gt=0, alias="AI_MAX_REQUEST_CREDITS"
     )
+    ai_max_session_credits: int | None = Field(
+        default=None, gt=0, alias="AI_MAX_SESSION_CREDITS"
+    )
+    ai_max_session_cost_usd: Decimal | None = Field(
+        default=None, gt=0, alias="AI_MAX_SESSION_COST_USD"
+    )
+    ai_max_company_monthly_cost_usd: Decimal | None = Field(
+        default=None, gt=0, alias="AI_MAX_COMPANY_MONTHLY_COST_USD"
+    )
     ai_model_rate_card: dict[str, dict[str, object]] = Field(
         default_factory=dict,
         alias="AI_MODEL_RATE_CARD",

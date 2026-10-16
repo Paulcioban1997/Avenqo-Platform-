@@ -378,12 +378,14 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> TenantAICreditReservation:
         return self.claim_credit_reservation(
             company_id,
             plan_code,
             avenqo_request_id,
             estimated_credits,
+            conversation_id=conversation_id,
         ).reservation
 
     def claim_credit_reservation(
@@ -392,6 +394,7 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> CreditReservationClaim:
         bound = peek_tenant_execution()
         if bound is not None and bound.company_id != company_id:
@@ -402,6 +405,7 @@ class AIUsageService:
                 plan_code,
                 avenqo_request_id,
                 estimated_credits,
+                conversation_id=conversation_id,
             )
 
     def _claim_credit_reservation_locked(
@@ -410,6 +414,7 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> CreditReservationClaim:
         if estimated_credits <= 0:
             raise ValueError("Estimated credits must be positive")
@@ -425,6 +430,44 @@ class AIUsageService:
         if existing is not None:
             self._db.commit()
             return CreditReservationClaim(existing, acquired=False)
+
+        if conversation_id is not None and (
+            self._credit_policy.max_session_credits is not None
+            or self._credit_policy.max_session_cost_usd is not None
+        ):
+            session_stats = self._db.execute(
+                select(
+                    func.coalesce(func.sum(TenantAIProviderAttempt.avenqo_credits_charged), 0),
+                    func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), Decimal("0")),
+                ).where(
+                    TenantAIProviderAttempt.company_id == company_id,
+                    TenantAIProviderAttempt.conversation_id == conversation_id,
+                )
+            ).one()
+            session_credits = int(session_stats[0])
+            session_cost = Decimal(str(session_stats[1]))
+            try:
+                self._credit_policy.validate_session_credits(session_credits + estimated_credits)
+                self._credit_policy.validate_session_cost(session_cost)
+            except ValueError as exc:
+                self._db.commit()
+                raise AIRequestBudgetExceededError(str(exc)) from exc
+
+        if self._credit_policy.max_company_monthly_cost_usd is not None:
+            month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            monthly_cost = self._db.scalar(
+                select(
+                    func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), Decimal("0"))
+                ).where(
+                    TenantAIProviderAttempt.company_id == company_id,
+                    TenantAIProviderAttempt.created_at >= month_start,
+                )
+            )
+            try:
+                self._credit_policy.validate_company_cost(Decimal(str(monthly_cost or 0)))
+            except ValueError as exc:
+                self._db.commit()
+                raise AIQuotaExceededError(str(exc)) from exc
 
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
         if limit is None or central_is_included(company_id):
