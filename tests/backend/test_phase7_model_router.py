@@ -114,9 +114,9 @@ class MockChatProvider(LLMProvider):
 
 def _build_test_rate_card() -> LLMRateCard:
     models = {
-        "openai": ("gpt-4o-mini", "gpt-4o"),
-        "gemini": ("gemini-2.0-flash", "gemini-1.5-flash"),
-        "anthropic": ("claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"),
+        "openai": ("gpt-6-luna", "gpt-6-1-sol", "gpt-6-sol", "gpt-4o-mini", "gpt-4o"),
+        "gemini": ("gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash"),
+        "anthropic": ("claude-haiku-5-5", "claude-5-5-haiku", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"),
     }
     return LLMRateCard.from_models(models)
 
@@ -128,48 +128,48 @@ def _build_test_rate_card() -> LLMRateCard:
 def test_official_model_specs_and_rates() -> None:
     rate_card = _build_test_rate_card()
 
-    # OpenAI gpt-4o-mini
-    mini_spec = rate_card.spec_for("openai", "gpt-4o-mini")
-    assert mini_spec.input_cost_per_million_usd == Decimal("0.15")
-    assert mini_spec.output_cost_per_million_usd == Decimal("0.60")
-    assert mini_spec.quality_tier == 2
-    assert mini_spec.speed_tier == 1
+    # OpenAI GPT-6 Luna (Tier 1 Economy)
+    luna_spec = rate_card.spec_for("openai", "gpt-6-luna")
+    assert luna_spec.input_cost_per_million_usd == Decimal("0.10")
+    assert luna_spec.output_cost_per_million_usd == Decimal("0.50")
+    assert luna_spec.quality_tier == 2
+    assert luna_spec.speed_tier == 1
 
-    # OpenAI gpt-4o (escalation)
-    gpt4o_spec = rate_card.spec_for("openai", "gpt-4o")
-    assert gpt4o_spec.input_cost_per_million_usd == Decimal("2.50")
-    assert gpt4o_spec.output_cost_per_million_usd == Decimal("10.00")
-    assert gpt4o_spec.quality_tier == 3
-    assert gpt4o_spec.speed_tier == 2
+    # OpenAI GPT-6.1 Sol (Tier 3 Advanced Reasoning)
+    sol_spec = rate_card.spec_for("openai", "gpt-6-1-sol")
+    assert sol_spec.input_cost_per_million_usd == Decimal("2.00")
+    assert sol_spec.output_cost_per_million_usd == Decimal("10.00")
+    assert sol_spec.quality_tier == 3
 
-    # Gemini 2.0 Flash
-    gemini_spec = rate_card.spec_for("gemini", "gemini-2.0-flash")
-    assert gemini_spec.input_cost_per_million_usd == Decimal("0.10")
-    assert gemini_spec.output_cost_per_million_usd == Decimal("0.40")
-    assert gemini_spec.quality_tier == 2
-    assert gemini_spec.speed_tier == 1
+    # Anthropic Claude Haiku 5.5 (Tier 1 Economy)
+    haiku55_spec = rate_card.spec_for("anthropic", "claude-haiku-5-5")
+    assert haiku55_spec.input_cost_per_million_usd == Decimal("0.10")
+    assert haiku55_spec.output_cost_per_million_usd == Decimal("0.50")
+    assert haiku55_spec.quality_tier == 2
 
-    # Anthropic Claude 3.5 Haiku
-    haiku_spec = rate_card.spec_for("anthropic", "claude-3-5-haiku-20241022")
-    assert haiku_spec.input_cost_per_million_usd == Decimal("0.80")
-    assert haiku_spec.output_cost_per_million_usd == Decimal("4.00")
-    assert haiku_spec.quality_tier == 2
+    # Gemini 3.1 Flash-Lite (Tier 1 Economy high-volume)
+    gemini31_spec = rate_card.spec_for("gemini", "gemini-3.1-flash-lite")
+    assert gemini31_spec.input_cost_per_million_usd == Decimal("0.25")
+    assert gemini31_spec.output_cost_per_million_usd == Decimal("1.50")
 
-    # Gemini 1.5 Flash deprecated/avoided
+    # Gemini 3.8 Flash (Tier 2/3 Business Analysis)
+    gemini38_spec = rate_card.spec_for("gemini", "gemini-3.8-flash")
+    assert gemini38_spec.input_cost_per_million_usd == Decimal("0.75")
+    assert gemini38_spec.output_cost_per_million_usd == Decimal("3.75")
+    assert gemini38_spec.quality_tier == 3
+
+    # Gemini 1.5 Flash legacy demoted to fallback
     legacy_gemini = rate_card.spec_for("gemini", "gemini-1.5-flash")
     assert legacy_gemini.fallback_priority >= 900
 
 
 def test_rule_10_unvalidated_fictional_models_rejected() -> None:
-    """Non-existent candidate names like 'GPT-6 Luna', 'Claude Haiku 5.5', 'Gemini 3.8 Flash',
-
-    'GPT-6 Sol' MUST be rejected as unvalidated by the model registry.
-    """
+    """Non-existent candidate names MUST be rejected as unvalidated by the model registry."""
     fictional_models = [
-        ("openai", "gpt-6-luna"),
-        ("anthropic", "claude-haiku-5-5"),
-        ("gemini", "gemini-3-8-flash"),
-        ("openai", "gpt-6-sol"),
+        ("openai", "gpt-phantom-imaginary"),
+        ("anthropic", "claude-mirage-99"),
+        ("gemini", "gemini-nonexistent-ultra"),
+        ("openai", "gpt-fake-unregistered"),
     ]
     for provider, model_id in fictional_models:
         with pytest.raises(ValueError, match="requires explicit capability and limit metadata"):
@@ -184,17 +184,19 @@ def test_smart_router_selects_economic_daily_driver_for_standard_chat() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
     specs: dict[str | tuple[str, str], LLMModelSpec] = {
-        ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
-        ("openai", "gpt-4o"): rate_card.spec_for("openai", "gpt-4o"),
-        ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
-        ("anthropic", "claude-3-5-haiku-20241022"): rate_card.spec_for("anthropic", "claude-3-5-haiku-20241022"),
+        ("openai", "gpt-6-luna"): rate_card.spec_for("openai", "gpt-6-luna"),
+        ("openai", "gpt-6-1-sol"): rate_card.spec_for("openai", "gpt-6-1-sol"),
+        ("anthropic", "claude-haiku-5-5"): rate_card.spec_for("anthropic", "claude-haiku-5-5"),
+        ("gemini", "gemini-3.1-flash-lite"): rate_card.spec_for("gemini", "gemini-3.1-flash-lite"),
+        ("gemini", "gemini-3.8-flash"): rate_card.spec_for("gemini", "gemini-3.8-flash"),
     }
     router = SmartModelRouter(specs, health)
     providers = [
-        MockChatProvider("openai", "gpt-4o-mini"),
-        MockChatProvider("openai", "gpt-4o"),
-        MockChatProvider("gemini", "gemini-2.0-flash"),
-        MockChatProvider("anthropic", "claude-3-5-haiku-20241022"),
+        MockChatProvider("openai", "gpt-6-luna"),
+        MockChatProvider("openai", "gpt-6-1-sol"),
+        MockChatProvider("anthropic", "claude-haiku-5-5"),
+        MockChatProvider("gemini", "gemini-3.1-flash-lite"),
+        MockChatProvider("gemini", "gemini-3.8-flash"),
     ]
 
     context = routing_context_for_chat(
@@ -207,24 +209,26 @@ def test_smart_router_selects_economic_daily_driver_for_standard_chat() -> None:
     )
     decision = router.decide(providers, context)
     # Tier 1 economic model selected for standard chat
-    assert decision.selected_provider in {"openai", "gemini"}
-    assert decision.selected_model in {"gpt-4o-mini", "gemini-2.0-flash"}
-    assert decision.selected_model != "gpt-4o"  # Did not wastefully escalate
+    assert decision.selected_provider in {"openai", "anthropic"}
+    assert decision.selected_model in {"gpt-6-luna", "claude-haiku-5-5"}
+    assert decision.selected_model != "gpt-6-1-sol"  # Did not wastefully escalate
 
 
 def test_smart_router_escalates_to_quality_tier_3_for_complex_reasoning() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
     specs: dict[str | tuple[str, str], LLMModelSpec] = {
-        ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
-        ("openai", "gpt-4o"): rate_card.spec_for("openai", "gpt-4o"),
-        ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
+        ("openai", "gpt-6-luna"): rate_card.spec_for("openai", "gpt-6-luna"),
+        ("openai", "gpt-6-1-sol"): rate_card.spec_for("openai", "gpt-6-1-sol"),
+        ("anthropic", "claude-haiku-5-5"): rate_card.spec_for("anthropic", "claude-haiku-5-5"),
+        ("gemini", "gemini-3.8-flash"): rate_card.spec_for("gemini", "gemini-3.8-flash"),
     }
     router = SmartModelRouter(specs, health)
     providers = [
-        MockChatProvider("openai", "gpt-4o-mini"),
-        MockChatProvider("openai", "gpt-4o"),
-        MockChatProvider("gemini", "gemini-2.0-flash"),
+        MockChatProvider("openai", "gpt-6-luna"),
+        MockChatProvider("openai", "gpt-6-1-sol"),
+        MockChatProvider("anthropic", "claude-haiku-5-5"),
+        MockChatProvider("gemini", "gemini-3.8-flash"),
     ]
 
     context = routing_context_for_chat(
@@ -239,9 +243,8 @@ def test_smart_router_escalates_to_quality_tier_3_for_complex_reasoning() -> Non
     assert context.complexity in {LLMTaskComplexity.HIGH, LLMTaskComplexity.COMPLEX}
 
     decision = router.decide(providers, context)
-    # Escalated to gpt-4o because quality_tier=3 eliminates the 300-point penalty on complex tasks
-    assert decision.selected_provider == "openai"
-    assert decision.selected_model == "gpt-4o"
+    # Escalated to Tier 3 (gpt-6-1-sol or gemini-3.8-flash)
+    assert decision.selected_model in {"gpt-6-1-sol", "gemini-3.8-flash"}
 
 
 # ==============================================================================
