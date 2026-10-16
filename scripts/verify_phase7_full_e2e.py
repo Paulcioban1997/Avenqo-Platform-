@@ -77,12 +77,8 @@ class SimulatedLLMProvider(LLMProvider):
     """Deterministic LLM Provider that respects unscripted dynamic conversation guidelines."""
 
     def __init__(self, name: str = "mock-gateway") -> None:
-        self._name = name
+        self.name = name
         self.invocations: list[dict[str, Any]] = []
-
-    @property
-    def name(self) -> str:
-        return self._name
 
     async def generate(self, prompt: str, system_instruction: str = "") -> LLMGeneration:
         self.invocations.append({"prompt": prompt, "system_instruction": system_instruction})
@@ -543,15 +539,11 @@ class E2EVerificationRunner:
             supports_tool_calling = True
 
             def __init__(self, name: str, model_id: str) -> None:
-                self._name = name
+                self.name = name
                 self.model_id = model_id
 
-            @property
-            def name(self) -> str:
-                return self._name
-
             async def generate(self, *, system_instruction: str = "", prompt: str = "") -> LLMGeneration:
-                return LLMGeneration(content="Benchmark response", provider=self._name, model=self.model_id)
+                return LLMGeneration(content="Benchmark response", provider=self.name, model=self.model_id)
 
             async def stream(self, *, system_instruction: str = "", prompt: str = "") -> AsyncIterator[str]:
                 yield "Benchmark response"
