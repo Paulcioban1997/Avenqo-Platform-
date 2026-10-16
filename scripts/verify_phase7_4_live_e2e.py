@@ -199,9 +199,9 @@ class Phase74VerificationRunner:
         self.storage_path = os.path.join(self.temp_dir, "qdrant_mem0")
         os.makedirs(self.storage_path, exist_ok=True)
 
+        os.environ.setdefault("AUTH_JWT_SECRET", "phase7-4-super-secret-jwt-key-minimum-32-chars-long")
         self.settings = Settings(
-            DATABASE_URL=self.db_url,
-            AUTH_JWT_SECRET="phase7-4-super-secret-jwt-key-minimum-32-chars-long",
+            database_url=self.db_url,
             AVENQO_MEMORY_ENABLED=True,
             AVENQO_MEMORY_BACKEND="qdrant",
             AVENQO_MEMORY_STORAGE_PATH=self.storage_path,
