@@ -308,8 +308,10 @@ async def test_owner_without_configured_pin_never_creates_a_credential_in_call(a
     assert env.call.caller_type == "UNKNOWN" and env.call.authenticated_user_id is None
 
 
-def test_pin_setup_api_rate_limit_rejects_repeated_authenticated_requests(authorized_media_call):
+def test_pin_setup_api_rate_limit_rejects_repeated_authenticated_requests(authorized_media_call, monkeypatch):
+    import time
     import backend.app.routers.voice as voice_router
+    monkeypatch.setattr(time, "time", lambda: 1700000000.0)
     env = authorized_media_call
     env.settings.rate_limit_enabled = True; env.settings.rate_limit_ai_per_minute = 1
     app = FastAPI(); app.include_router(voice_router.router, prefix="/api/v1")

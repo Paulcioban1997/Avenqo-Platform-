@@ -469,7 +469,7 @@ def test_alembic_0053_follows_integrated_locale_profile():
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     heads = script.get_heads()
-    assert "0061b_harden_tenant_rls_no_bypass" in heads or "0063_multi_source_selection" in heads
+    assert "0061b_harden_tenant_rls_no_bypass" in heads or "0063_multi_source_selection" in heads or "0064_ai_enterprise_memory" in heads
     assert script.get_revision("0061b_harden_tenant_rls_no_bypass").down_revision == "0061_tenant_hotpath_indexes"
     assert script.get_revision("0061_tenant_hotpath_indexes").down_revision == "0060_rls_remaining_tenant_tables"
     assert script.get_revision("0060_rls_remaining_tenant_tables").down_revision == "0059_migrate_role_schema_create"
