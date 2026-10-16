@@ -232,10 +232,7 @@ class TenantSalesService:
         end = max(timestamps)
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
-        # Historical averages are only actionable for a recently updated source.
-        # Stale imported data must not be presented as a current forecast.
-        if end < datetime.now(timezone.utc) - timedelta(days=14):
-            return None
+        is_historical = end < datetime.now(timezone.utc) - timedelta(days=14)
         history = compute_sales_trend(
             source,
             date_from=end - timedelta(days=28),
@@ -243,17 +240,40 @@ class TenantSalesService:
             granularity="week",
         )["points"]
         observations = [float(point["revenue"]) for point in history[-4:]]
+        order_observations = [int(point.get("orders") or 0) for point in history[-4:]]
         if len(observations) < 2:
             return None
         weekly_baseline = sum(observations) / len(observations)
+        weekly_orders_baseline = sum(order_observations) / len(order_observations) if order_observations else 0.0
+        variance = sum((x - weekly_baseline) ** 2 for x in observations) / (len(observations) - 1) if len(observations) > 1 else 0.0
+        std_err = (variance / len(observations)) ** 0.5
+        lower_bound = max(0.0, round(weekly_baseline - 1.96 * std_err, 2))
+        upper_bound = round(weekly_baseline + 1.96 * std_err, 2)
         forecast_points = [round(weekly_baseline, 2)] * 4
+        order_points = [round(weekly_orders_baseline, 1)] * 4
+        method = "historical_weekly_mean"
+        historical_context = (
+            f"Prévision chronologique basée sur l'historique du jeu de données (fin d'historique : {end.strftime('%Y-%m-%d')})"
+            if is_historical
+            else None
+        )
         return {
             "granularity": "week",
-            "method": "historical_weekly_mean",
+            "method": method,
             "horizon": 4,
             "forecasted_total": round(sum(forecast_points), 2),
+            "forecasted_orders": round(sum(order_points), 0),
+            "lower_bound": lower_bound,
+            "upper_bound": upper_bound,
+            "historical_context": historical_context,
             "points": [
-                {"period": str(index + 1), "value": value}
+                {
+                    "period": str(index + 1),
+                    "value": value,
+                    "orders_volume": order_points[index],
+                    "lower_bound": lower_bound,
+                    "upper_bound": upper_bound,
+                }
                 for index, value in enumerate(forecast_points)
             ],
         }

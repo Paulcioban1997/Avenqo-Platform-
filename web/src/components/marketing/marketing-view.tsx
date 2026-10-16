@@ -103,6 +103,29 @@ export function MarketingView() {
     }
   };
 
+  const formatSegmentLabel = (raw: string) => {
+    if (!locale.startsWith("fr")) {
+      const enMap: Record<string, string> = {
+        high_value: "VIP / High Value",
+        vip: "VIP / High Value",
+        new: "New Customers",
+        loyal: "Loyal Customers",
+        dormant: "Inactive / Dormant",
+        regular: "Regular Customers",
+      };
+      return enMap[raw] || raw;
+    }
+    const frMap: Record<string, string> = {
+      high_value: "Clients VIP / Valeur élevée",
+      vip: "Clients VIP / Valeur élevée",
+      new: "Nouveaux clients",
+      loyal: "Clients fidèles",
+      dormant: "Inactifs",
+      regular: "Clients réguliers",
+    };
+    return frMap[raw] || raw;
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header */}
@@ -262,14 +285,31 @@ export function MarketingView() {
           {company.customersSegment}
         </h2>
         <p className="text-xs text-slate-500">{locale.startsWith("fr") ? "Segments calculés sur tout l’historique de la source sélectionnée." : "Segments calculated from the selected source’s full history."}</p>
-        <label className="text-sm">{locale.startsWith("fr") ? "Afficher un segment" : "Show a segment"}<select aria-label="Afficher un segment" value={segmentFilter} onChange={e => setSegmentFilter(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white"><option value="">{locale.startsWith("fr") ? "Tous les segments" : "All segments"}</option>{data?.segments.map(segment => <option key={segment.label} value={segment.label}>{segment.label}</option>)}</select></label>
-        {data?.available && data.segments.length ? <ul className="grid gap-3 sm:grid-cols-3">{data.segments.filter(segment => !segmentFilter || segment.label === segmentFilter).map(segment =>
-          <li key={segment.label} className="rounded-xl border p-4">
-            <div className="flex items-center justify-between"><span>{locale.startsWith("fr") ? ({ dormant: "Inactifs", loyal: "Fidèles", vip: "VIP", regular: "Réguliers", high_value: "Forte valeur" } as Record<string, string>)[segment.label] || segment.label : segment.label}</span><strong>{number(segment.count)}</strong></div>
-            <div role="img" aria-label={`${segment.label}: ${segment.count} / ${data.segments.reduce((total, item) => total + item.count, 0)}`} className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-              <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, segment.count / Math.max(1, data.segments.reduce((total, item) => total + item.count, 0)) * 100))}%` }} />
-            </div>
-          </li>)}</ul>
+        <label className="text-sm">{locale.startsWith("fr") ? "Afficher un segment" : "Show a segment"}
+          <select aria-label="Afficher un segment" value={segmentFilter} onChange={e => setSegmentFilter(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
+            <option value="">{locale.startsWith("fr") ? "Tous les segments" : "All segments"}</option>
+            {data?.segments.map(segment => (
+              <option key={segment.label} value={segment.label}>
+                {formatSegmentLabel(segment.label)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {data?.available && data.segments.length ? (
+          <ul className="grid gap-3 sm:grid-cols-3">
+            {data.segments.filter(segment => !segmentFilter || segment.label === segmentFilter).map(segment => (
+              <li key={segment.label} className="rounded-xl border p-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{formatSegmentLabel(segment.label)}</span>
+                  <strong>{number(segment.count)}</strong>
+                </div>
+                <div role="img" aria-label={`${formatSegmentLabel(segment.label)}: ${segment.count} / ${data.segments.reduce((total, item) => total + item.count, 0)}`} className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, segment.count / Math.max(1, data.segments.reduce((total, item) => total + item.count, 0)) * 100))}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
           : <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>}
       </div>
     </div>

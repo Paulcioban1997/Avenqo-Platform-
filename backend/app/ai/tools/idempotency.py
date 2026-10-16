@@ -59,6 +59,7 @@ class AIToolExecutionIdempotencyStore:
         tool: AITool,
         arguments: dict[str, Any],
     ) -> bool:
+        now = datetime.now(timezone.utc)
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
         # Try exact arguments hash match first
         statement = (

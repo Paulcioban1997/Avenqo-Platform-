@@ -116,7 +116,15 @@ interface RetailSalesSummary {
     method: string | null;
     granularity: string;
     forecasted_total: number;
-    points: Array<{ period: string; value: number }>;
+    forecasted_orders?: number | null;
+    historical_context?: string | null;
+    points: Array<{
+      period: string;
+      value: number;
+      orders_volume?: number | null;
+      lower_bound?: number | null;
+      upper_bound?: number | null;
+    }>;
   } | null;
   forecast_unavailable_reason?: string | null;
 }
@@ -183,6 +191,7 @@ export function RetailIntelligenceView({
   const [recommendations, setRecommendations] = useState<RetailRecommendation[]>([]);
   const [recommendationsCurrency, setRecommendationsCurrency] = useState<string | null>(null);
   const [recommendationState, setRecommendationState] = useState<string | null>(null);
+  const [forecastHorizon, setForecastHorizon] = useState<"7d" | "30d" | "90d">("30d");
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
@@ -191,6 +200,14 @@ export function RetailIntelligenceView({
     const revision = ++loadRevision.current;
     setIsLoading(true);
     setLoadError(null);
+    setRetailStatus(null);
+    setProducts([]);
+    setOrders([]);
+    setCustomers([]);
+    setInventory([]);
+    setStockAnomalies([]);
+    setSalesSummary(null);
+    setRecommendations([]);
     try {
       const headers = getAuthHeaders();
       const loadResource = async (url: string) => {
@@ -201,13 +218,14 @@ export function RetailIntelligenceView({
           return null;
         }
       };
+      const salesPeriodKey = forecastHorizon === "7d" ? "last_7_days" : forecastHorizon === "90d" ? "last_90_days" : "last_30_days";
       const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
         loadResource("/api/v1/retail/status"),
         loadResource("/api/v1/retail/products?limit=100"),
         loadResource("/api/v1/retail/orders?limit=100"),
         loadResource("/api/v1/retail/customers?limit=100"),
         loadResource("/api/v1/retail/inventory?limit=500"),
-        loadResource("/api/v1/sales/summary?period=last_30_days"),
+        loadResource(`/api/v1/sales/summary?period=${salesPeriodKey}`),
         loadResource("/api/v1/recommendations"),
       ]);
       if (!statusRes && !prodRes && !ordRes && !custRes && !invRes && !salesRes && !recommendationsRes) {
@@ -271,7 +289,7 @@ export function RetailIntelligenceView({
     } finally {
       if (revision === loadRevision.current) setIsLoading(false);
     }
-  }, []);
+  }, [forecastHorizon]);
 
   useEffect(() => {
     let disposed = false;
@@ -279,7 +297,7 @@ export function RetailIntelligenceView({
     const changed = () => { void loadData(); };
     window.addEventListener("avenqo:sources-changed", changed);
     return () => { disposed = true; loadRevision.current++; window.removeEventListener("avenqo:sources-changed", changed); };
-  }, [loadData, tenantName]);
+  }, [loadData, tenantName, forecastHorizon]);
 
   const navTabs = [
     { id: "overview", label: t.retail.overview, icon: ShoppingBag },
@@ -404,7 +422,9 @@ export function RetailIntelligenceView({
     ? retail.forecastMethodModel
     : forecast?.method === "historical_weekly_mean"
       ? retail.forecastMethodHistorical
-      : retail.forecasts;
+      : forecast?.method === "historical_chronological_forecast"
+        ? (locale.startsWith("fr") ? "Projection chronologique (historique importé)" : "Chronological projection (historical dataset)")
+        : retail.forecasts;
   const forecastCurrency = new Intl.NumberFormat(locale, {
     style: "currency",
     currency: salesSummary?.currency || "USD",
@@ -900,7 +920,7 @@ export function RetailIntelligenceView({
           <ChartSkeleton />
         ) : forecast ? (
           <AvenqoCard variant="default" className="space-y-5 p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-white/[0.06] pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 dark:border-white/[0.06] pb-4">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
                   {retail.forecasts}
@@ -909,29 +929,111 @@ export function RetailIntelligenceView({
                   {forecastMethodLabel}
                 </p>
               </div>
-              <div className="text-right">
-                <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
-                  {forecastCurrency.format(forecast.forecasted_total)}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                  {retail.sales}
+
+              {/* Horizon Switcher (7j, 30j, 90j) */}
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
+                  <button
+                    onClick={() => setForecastHorizon("7d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "7d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    7 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
+                  <button
+                    onClick={() => setForecastHorizon("30d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "30d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    30 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
+                  <button
+                    onClick={() => setForecastHorizon("90d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "90d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    90 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
                 </div>
               </div>
-            </div>
-            {forecastPoints.length > 0 ? (
-              <div className="flex h-56 items-end gap-3">
-                {forecastPoints.map((point) => (
-                  <div key={point.period} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
-                    <div
-                      className="w-full max-w-12 rounded-t bg-[#0076FF]"
-                      style={{ height: `${Math.max(6, Math.abs(point.value) / maxForecastValue * 100)}%` }}
-                      title={forecastCurrency.format(point.value)}
-                    />
-                    <span className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                      {point.period}
-                    </span>
+
+              {/* Forecast Totals (Revenue + Orders) */}
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
+                    {forecastCurrency.format(forecast.forecasted_total)}
                   </div>
-                ))}
+                  <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    {retail.sales}
+                  </div>
+                </div>
+                {forecast.forecasted_orders != null && (
+                  <div className="text-right pl-4 border-l border-slate-200 dark:border-white/[0.08]">
+                    <div className="text-xl font-bold text-[#0076FF] dark:text-[#00D4FF]">
+                      {forecast.forecasted_orders.toLocaleString(locale)}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                      {locale.startsWith("fr") ? "Commandes prévues" : "Projected orders"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Historical Context Badge / Alert */}
+            {forecast.historical_context && (
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs">
+                <Sparkles className="w-4 h-4 text-[#0076FF] shrink-0" />
+                <span className="font-medium">{forecast.historical_context}</span>
+              </div>
+            )}
+
+            {forecastPoints.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex h-56 items-end gap-3 pt-6">
+                  {forecastPoints.map((point) => {
+                    const hasBounds = point.lower_bound != null && point.upper_bound != null;
+                    const tooltipText = [
+                      `${point.period}`,
+                      `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
+                      hasBounds ? `Intervalle (95%): [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
+                      point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
+                    ].filter(Boolean).join("\n");
+
+                    return (
+                      <div key={point.period} className="flex h-full flex-1 flex-col items-center justify-end gap-2 group relative">
+                        <div
+                          className="w-full max-w-14 rounded-t bg-gradient-to-t from-[#0076FF] to-[#00D4FF] hover:opacity-90 transition-all cursor-pointer relative"
+                          style={{ height: `${Math.max(8, Math.abs(point.value) / maxForecastValue * 100)}%` }}
+                          title={tooltipText}
+                        >
+                          {point.orders_volume != null && (
+                            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              {point.orders_volume} cmd
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-slate-600 dark:text-[#94A3B8] text-center">
+                          {point.period}
+                        </span>
+                        {hasBounds && (
+                          <span className="text-[9px] text-slate-400 font-mono -mt-1 hidden sm:inline">
+                            ±{forecastCurrency.format(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-slate-500 dark:text-[#94A3B8]">

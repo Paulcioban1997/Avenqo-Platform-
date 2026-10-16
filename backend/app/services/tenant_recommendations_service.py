@@ -161,9 +161,13 @@ class TenantRecommendationsService:
         if source is None:
             return
         metrics_service = BusinessMetricsService()
+        tz_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        timestamps = BusinessMetricsService._timestamps(source, tz_name)
+        is_historical = bool(timestamps and max(timestamps) < generated_at - timedelta(days=30))
+        period_key = None if is_historical else "last_30_days"
         bounds = metrics_service.resolve_period(
-            "last_30_days",
-            timezone_name=getattr(snapshot.company, "timezone", None) or "UTC",
+            period_key,
+            timezone_name=tz_name,
             now=generated_at,
             source=source,
         )

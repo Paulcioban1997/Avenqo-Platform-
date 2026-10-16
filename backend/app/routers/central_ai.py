@@ -128,7 +128,7 @@ async def message(
         conversation_id=conversation_id,
         grounded_source=(
             f"Analyse basée sur : [{active_source_name}]"
-            if active_source_name and result.selected_agent not in {None, "tenant_capabilities", "voice"} and result.status == "success"
+            if active_source_name and result.selected_agent in {"retail", "sales", "analytics"} and result.status == "success"
             else None
         ),
         source_id=active_source_id_str,

@@ -332,10 +332,24 @@ class CheckAvailabilityTool(CRMAITool):
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
         service_id = UUID(arguments.service_id) if arguments.service_id else None
         result = await self._avail.check_availability(context.tenant.company_id, start_dt, arguments.duration_minutes, emp_id, service_id)
-        is_ok = result.get("state") in ("AVAILABLE", "BUSY")
+        state = result.get("state")
+        reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
+        if state == "UNCONFIGURED" or reason == "BUSINESS_HOURS_NOT_CONFIGURED":
+            return ToolResult(
+                success=True,
+                data={
+                    **result,
+                    "available": False,
+                    "state": "UNCONFIGURED",
+                    "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                    "message": "Les horaires d'ouverture de l'entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services.",
+                },
+                error=None,
+                source_refs=("crm_appointments", "business_hours"),
+            )
+        is_ok = state in ("AVAILABLE", "BUSY")
         error_msg = None
         if not is_ok:
-            reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
             if "GOOGLE_CALENDAR_AUTH_EXPIRED" in str(reason) or "EXTERNAL_CALENDAR_ERROR" in str(reason):
                 error_msg = "Le calendrier Google associé nécessite une reconnexion. Veuillez contacter l'administrateur."
             else:
@@ -390,6 +404,19 @@ class ListAvailableSlotsTool(CRMAITool):
             )
         except AvailabilityUnavailable as exc:
             err_code = str(exc)
+            if err_code == "BUSINESS_HOURS_NOT_CONFIGURED":
+                return ToolResult(
+                    success=True,
+                    data={
+                        "target_date": target_date.isoformat(),
+                        "count": 0,
+                        "slots": [],
+                        "state": "UNCONFIGURED",
+                        "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                        "message": "Les horaires d'ouverture de l'entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services.",
+                    },
+                    source_refs=("crm_appointments", "business_hours"),
+                )
             err_msg = (
                 "Le calendrier externe Google nécessite une reconnexion."
                 if ("GOOGLE_CALENDAR_AUTH_EXPIRED" in err_code or "EXTERNAL_CALENDAR_ERROR" in err_code)

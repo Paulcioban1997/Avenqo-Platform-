@@ -55,6 +55,7 @@ google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
 class BusinessHoursRequest(BaseModel):
     timezone: str
     hours: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
+    date_overrides: dict[str, list[dict[str, str]]] | None = None
     verification_date: date | None = None
     employee_id: UUID | None = None
 
@@ -78,6 +79,18 @@ class BusinessHoursRequest(BaseModel):
                 if opened >= closed or (previous is not None and opened < previous):
                     raise ValueError("Invalid or overlapping working hours")
                 previous = closed
+        if self.date_overrides:
+            for day_str, periods in self.date_overrides.items():
+                try:
+                    date.fromisoformat(day_str)
+                except ValueError as exc:
+                    raise ValueError("Invalid date in date_overrides") from exc
+                for period in periods:
+                    if set(period) != {"open", "close"}:
+                        raise ValueError("Invalid working periods in date_overrides")
+                    opened, closed = time.fromisoformat(period["open"]), time.fromisoformat(period["close"])
+                    if opened >= closed:
+                        raise ValueError("Invalid open/close interval in date_overrides")
         if self.verification_date and not datetime.now(ZoneInfo(self.timezone)).date() < self.verification_date <= datetime.now(ZoneInfo(self.timezone)).date() + timedelta(days=14):
             raise ValueError("Verification date must be bounded and future")
         return self
@@ -95,6 +108,7 @@ def get_business_hours(tenant: TenantContext = Depends(get_tenant_context), db: 
                  for day, periods in employee.working_hours.items()}
         return {"timezone": company.timezone, "hours": hours}
     return {"timezone": company.timezone, "hours": (company.business_hours or {}).get("weekly", {}),
+            "date_overrides": (company.business_hours or {}).get("date_overrides", {}),
             "schedule": company.business_hours or {}}
 
 
@@ -120,7 +134,12 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
         weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[payload.verification_date.weekday()]
         company.business_hours = {"weekly": {}, "date_overrides": {payload.verification_date.isoformat(): payload.hours.get(weekday, [])}, "verification_only": True}
     else:
-        company.business_hours = {"weekly": payload.hours} if payload.hours else {}
+        new_bh: dict[str, Any] = {"weekly": payload.hours} if payload.hours else {}
+        if payload.date_overrides is not None:
+            new_bh["date_overrides"] = payload.date_overrides
+        elif company.business_hours and "date_overrides" in company.business_hours:
+            new_bh["date_overrides"] = company.business_hours["date_overrides"]
+        company.business_hours = new_bh
     db.commit()
     return get_business_hours(tenant, db)
 

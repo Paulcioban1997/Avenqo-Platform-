@@ -122,6 +122,12 @@ export function DashboardView({
     const revision = ++loadRevision.current;
     setIsLoading(true);
     setError(null);
+    setKpis({});
+    setPriorities([]);
+    setTrendPoints([]);
+    setCategorySplit({ available: false, items: [] });
+    setRegionalSplit({ available: false, items: [] });
+    setConversion({ available: false, value: null });
     try {
       const headers = getAuthHeaders();
       const periodKey = {
@@ -284,7 +290,11 @@ export function DashboardView({
             <MetricCard
               title={t.dashboard.revenue}
               value={kpis.revenue?.available ? formatMoney(kpis.revenue.value) : "—"}
-              delta={kpis.revenue?.change_percent ?? null}
+              delta={
+                (kpis.orders?.value ?? 0) === 0 || (kpis.revenue?.value ?? 0) === 0
+                  ? null
+                  : (kpis.revenue?.change_percent ?? null)
+              }
               period={periodLabel}
               icon={<DollarSign className="w-4 h-4" />}
               badge="Live"
@@ -294,7 +304,11 @@ export function DashboardView({
             <MetricCard
               title={t.dashboard.orders}
               value={kpis.orders?.available ? (kpis.orders.value ?? 0).toLocaleString() : "—"}
-              delta={kpis.orders?.change_percent ?? null}
+              delta={
+                (kpis.orders?.value ?? 0) === 0
+                  ? null
+                  : (kpis.orders?.change_percent ?? null)
+              }
               period={periodLabel}
               icon={<ShoppingCart className="w-4 h-4" />}
             />
@@ -303,7 +317,11 @@ export function DashboardView({
             <MetricCard
               title={t.dashboard.customers}
               value={kpis.customers?.available ? (kpis.customers.value ?? 0).toLocaleString() : "—"}
-              delta={kpis.customers?.change_percent ?? null}
+              delta={
+                (kpis.orders?.value ?? 0) === 0 || (kpis.customers?.value ?? 0) === 0
+                  ? null
+                  : (kpis.customers?.change_percent ?? null)
+              }
               period={periodLabel}
               icon={<Users className="w-4 h-4" />}
             />
@@ -312,7 +330,11 @@ export function DashboardView({
             <MetricCard
               title={t.dashboard.aov}
               value={kpis.aov?.available ? formatMoney(kpis.aov.value) : "—"}
-              delta={kpis.aov?.change_percent ?? null}
+              delta={
+                (kpis.orders?.value ?? 0) === 0 || (kpis.aov?.value ?? 0) === 0
+                  ? null
+                  : (kpis.aov?.change_percent ?? null)
+              }
               period={periodLabel}
               icon={<TrendingUp className="w-4 h-4" />}
             />
@@ -321,7 +343,11 @@ export function DashboardView({
             <MetricCard
               title={t.dashboard.conversionRate}
               value={conversion.available && conversion.value != null ? `${conversion.value.toFixed(1)}%` : "—"}
-              delta={kpis.conversion_rate?.change_percent ?? null}
+              delta={
+                (kpis.orders?.value ?? 0) === 0 || !conversion.available || (conversion.value ?? 0) === 0
+                  ? null
+                  : (kpis.conversion_rate?.change_percent ?? null)
+              }
               period={conversion.available ? periodLabel : t.dashboard.conversionUnavailable}
               icon={<Percent className="w-4 h-4" />}
             />

@@ -98,11 +98,82 @@ export function CRMSetupWizard({
   const [requireApproval, setRequireApproval] = useState(false);
   const [allowWeekend, setAllowWeekend] = useState(false);
 
+  const [dateOverrides, setDateOverrides] = useState<Record<string, { open: string; close: string }[]>>({});
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideOpen, setOverrideOpen] = useState("09:00");
+  const [overrideClose, setOverrideClose] = useState("13:00");
+
   useEffect(() => {
     if (currentTimezone) {
       setTimezone(currentTimezone);
     }
   }, [currentTimezone]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchExistingSettings = async () => {
+      try {
+        const headers = getAuthHeaders();
+        const [hoursRes, srvRes] = await Promise.all([
+          apiFetch("/api/v1/crm/settings/business-hours", { headers }).catch(() => null),
+          apiFetch("/api/v1/crm/services", { headers }).catch(() => null),
+        ]);
+        if (hoursRes && hoursRes.ok) {
+          const data = await hoursRes.json();
+          if (data.timezone) setTimezone(data.timezone);
+          if (data.hours && Object.keys(data.hours).length > 0) {
+            setWeeklySchedule((prev) => {
+              const updated = { ...prev };
+              Object.entries(data.hours).forEach(([day, periods]: [string, any]) => {
+                if (Array.isArray(periods) && periods.length > 0) {
+                  if (periods.length === 1) {
+                    updated[day] = {
+                      enabled: true,
+                      open: periods[0].open || "09:00",
+                      close: periods[0].close || "17:00",
+                      lunchBreak: false,
+                      lunchStart: "12:00",
+                      lunchEnd: "13:00",
+                    };
+                  } else if (periods.length >= 2) {
+                    updated[day] = {
+                      enabled: true,
+                      open: periods[0].open || "09:00",
+                      close: periods[periods.length - 1].close || "17:00",
+                      lunchBreak: true,
+                      lunchStart: periods[0].close || "12:00",
+                      lunchEnd: periods[1].open || "13:00",
+                    };
+                  }
+                } else if (Array.isArray(periods) && periods.length === 0) {
+                  if (updated[day]) {
+                    updated[day] = { ...updated[day], enabled: false };
+                  }
+                }
+              });
+              return updated;
+            });
+          }
+          if (data.date_overrides && typeof data.date_overrides === "object") {
+            setDateOverrides(data.date_overrides);
+          }
+        }
+        if (srvRes && srvRes.ok) {
+          const sData = await srvRes.json();
+          if (Array.isArray(sData) && sData.length > 0) {
+            setServices(sData.map((s: any) => ({
+              name: s.name,
+              duration: s.duration_minutes || 60,
+              price: s.price || 0,
+            })));
+          }
+        }
+      } catch {
+        // Silently preserve defaults if offline
+      }
+    };
+    void fetchExistingSettings();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -142,12 +213,13 @@ export function CRMSetupWizard({
       });
 
       // 1. Save business hours and timezone
-      const hoursRes = await fetch("/api/v1/crm/settings/business-hours", {
+      const hoursRes = await apiFetch("/api/v1/crm/settings/business-hours", {
         method: "PUT",
         headers,
         body: JSON.stringify({
           timezone,
           hours: hoursPayload,
+          date_overrides: dateOverrides,
         }),
       });
 
@@ -158,7 +230,7 @@ export function CRMSetupWizard({
 
       // 2. Persist configured services if none exist yet
       for (const svc of services) {
-        await fetch("/api/v1/crm/services", {
+        await apiFetch("/api/v1/crm/services", {
           method: "POST",
           headers,
           body: JSON.stringify({
