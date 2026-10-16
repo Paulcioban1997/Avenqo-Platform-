@@ -537,6 +537,7 @@ class ChatService:
         locale_explicit: bool = False,
         authorized_tool_agents: dict[str, str] | None = None,
         retrieve_tenant_data: bool = True,
+        trusted_context: str = "",
     ) -> AsyncIterator[ChatStreamEvent]:
         """Flux SSE sûr : `status` (générique) -> `delta`(s) -> `sources` -> `done`.
 
@@ -566,7 +567,13 @@ class ChatService:
             ids = {str(source.dataset_id) for source in scoped["sources"] if source.dataset_id and (source.enabled if scoped["source_type"] == "all" else source.source_type == scoped["source_type"] and str(source.source_id) == str(scoped["source_id"]))}
             sources = [source for source in sources if source.identifier in ids] if scoped["state"] == "READY" else []
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
-        prompt = f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
+        prompt = (
+            f"<trusted_server_context>{trusted_context}</trusted_server_context>\n"
+            f"<retrieved untrusted=\"true\">{context}</retrieved>\n"
+            f"<request>{query}</request>"
+            if trusted_context
+            else f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
+        )
 
         available_tools = self._available_tools(
             permissions=permissions,

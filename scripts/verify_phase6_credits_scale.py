@@ -294,6 +294,8 @@ def run_credits_scale_verification():
         # Verify operations distinction in attempts
         rag_entry = session.scalar(select(TenantAIProviderAttempt).where(TenantAIProviderAttempt.avenqo_request_id == rag_req))
         emb_entry = session.scalar(select(TenantAIProviderAttempt).where(TenantAIProviderAttempt.avenqo_request_id == emb_req))
+        assert rag_entry is not None, f"RAG attempt not found for {rag_req}"
+        assert emb_entry is not None, f"Embeddings attempt not found for {emb_req}"
         assert rag_entry.operation == "rag_retrieval_augmented_query"
         assert emb_entry.operation == "embeddings_indexing"
         assert emb_entry.output_tokens == 0
