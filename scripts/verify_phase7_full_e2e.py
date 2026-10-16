@@ -137,12 +137,8 @@ class SimulatedLLMProvider(LLMProvider):
         gen = await self.generate(system_instruction=system_instruction, prompt=prompt)
         yield gen.content
 
-    def routing(self, context: Any):
-        from contextlib import nullcontext
-        return nullcontext()
-
-    def estimate_cost_usd(self, context: Any) -> float:
-        return 0.0002
+    def estimate_cost_usd(self, context: object) -> Decimal | None:
+        return Decimal("0.0002")
 
 
 class E2EVerificationRunner:
