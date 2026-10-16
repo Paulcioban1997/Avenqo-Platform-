@@ -27,6 +27,7 @@ from backend.app.ai.llm.health import ProviderHealthRegistry, ProviderHealthStat
 from backend.app.ai.llm.model_registry import (
     LLMCapability,
     LLMModelRegistry,
+    LLMModelSpec,
     LLMRateCard,
     model_spec,
 )
@@ -182,7 +183,7 @@ def test_rule_10_unvalidated_fictional_models_rejected() -> None:
 def test_smart_router_selects_economic_daily_driver_for_standard_chat() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
-    specs = {
+    specs: dict[str | tuple[str, str], LLMModelSpec] = {
         ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
         ("openai", "gpt-4o"): rate_card.spec_for("openai", "gpt-4o"),
         ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
@@ -214,7 +215,7 @@ def test_smart_router_selects_economic_daily_driver_for_standard_chat() -> None:
 def test_smart_router_escalates_to_quality_tier_3_for_complex_reasoning() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
-    specs = {
+    specs: dict[str | tuple[str, str], LLMModelSpec] = {
         ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
         ("openai", "gpt-4o"): rate_card.spec_for("openai", "gpt-4o"),
         ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
@@ -251,7 +252,7 @@ def test_smart_router_escalates_to_quality_tier_3_for_complex_reasoning() -> Non
 async def test_gateway_automatic_cross_provider_fallback() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
-    specs = {
+    specs: dict[str | tuple[str, str], LLMModelSpec] = {
         ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
         ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
     }
@@ -373,7 +374,7 @@ def test_service_enforces_session_credit_ceiling_with_db() -> None:
         provider_cost_per_credit_usd=Decimal("0.00030"),
         max_session_credits=10,
     )
-    service = AIUsageService(db, AIQuotaPolicy(Settings(_env_file=None)), credit_policy=policy)
+    service = AIUsageService(db, AIQuotaPolicy(Settings()), credit_policy=policy)
 
     # Prepopulate previous attempts on this session consuming 8 credits
     attempt = TenantAIProviderAttempt(
@@ -448,7 +449,7 @@ def test_credit_ledger_records_model_tokens_cost_and_credits() -> None:
     policy = AvenqoCreditPolicy(
         provider_cost_per_credit_usd=Decimal("0.00030"),
     )
-    service = AIUsageService(db, AIQuotaPolicy(Settings(_env_file=None)), credit_policy=policy)
+    service = AIUsageService(db, AIQuotaPolicy(Settings()))
     service.add_purchased_credits(company.id, 500)
 
     req_id = f"req-{uuid4().hex[:8]}"
@@ -509,7 +510,7 @@ def test_credit_ledger_records_model_tokens_cost_and_credits() -> None:
 async def test_streaming_sse_and_tool_calling() -> None:
     rate_card = _build_test_rate_card()
     health = ProviderHealthRegistry()
-    specs = {
+    specs: dict[str | tuple[str, str], LLMModelSpec] = {
         ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
     }
     router = SmartModelRouter(specs, health)

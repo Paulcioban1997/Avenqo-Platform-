@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import sys
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -52,11 +53,11 @@ class BenchmarkChatProvider(LLMProvider):
             model=self.model_id,
         )
 
-    async def stream(self, *, system_instruction: str, prompt: str):
+    async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
         yield "Benchmark "
         yield "Response"
 
-    async def stream_events(self, *, system_instruction: str, prompt: str):
+    async def stream_events(self, *, system_instruction: str, prompt: str) -> AsyncIterator[LLMStreamChunk]:
         yield LLMStreamChunk(content="Benchmark response")
 
 
@@ -95,7 +96,7 @@ def verify_routing_scenarios() -> list[dict[str, Any]]:
     }
     rate_card = LLMRateCard.from_models(models)
     health = ProviderHealthRegistry()
-    specs = {
+    specs: dict[str | tuple[str, str], LLMModelSpec] = {
         ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
         ("openai", "gpt-4o"): rate_card.spec_for("openai", "gpt-4o"),
         ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
@@ -149,6 +150,7 @@ def verify_routing_scenarios() -> list[dict[str, Any]]:
             avenqo_request_id=f"bench-{uuid4()}",
         )
         decision = router.decide(providers, ctx)
+        assert decision.selected_provider is not None and decision.selected_model is not None
         chosen_spec = specs.get((decision.selected_provider, decision.selected_model))
         assert chosen_spec is not None
         is_escalated = chosen_spec.quality_tier >= 3
