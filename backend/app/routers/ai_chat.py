@@ -291,7 +291,7 @@ async def stream(
                 plan_code=plan_code,
                 capabilities=capabilities,
                 request_id=request_id,
-                trusted_context=trusted_context,
+                trusted_context=trusted_context,  # Injected into prompt as <trusted_server_context>
                 is_cancelled=is_cancelled,
                 user_language=get_company_locale(db, company.id) or company.preferred_language,
                 company_country=company.country or "",
