@@ -394,6 +394,7 @@ class Phase74VerificationRunner:
         # Completely end Conversation 1.
         # Now query from independent Conversation 2, 3, 4, 5
         recalled_conversations = []
+        ctx: str = ""
         for i in range(2, 6):
             conv_i_id = uuid4()
             ctx = mem_service.retrieve_relevant_context(
