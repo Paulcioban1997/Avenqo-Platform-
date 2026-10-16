@@ -1,7 +1,7 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
-from typing import Any
+from typing import Any, Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -104,7 +104,7 @@ def _ai_usage_module(operation: str | None) -> str:
 
 
 def _debited_attempt_credits(
-    db: Session, company_id: UUID, attempts: list[TenantAIProviderAttempt]
+    db: Session, company_id: UUID, attempts: Sequence[TenantAIProviderAttempt]
 ) -> dict[UUID, int]:
     """Display wallet debits, excluding provider costs absorbed by Avenqo."""
     request_ids = list({attempt.avenqo_request_id for attempt in attempts})
