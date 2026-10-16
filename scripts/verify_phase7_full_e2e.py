@@ -576,7 +576,7 @@ class E2EVerificationRunner:
             avenqo_request_id="req_t1_e2e",
         )
         dec_t1 = router.decide(providers, ctx_t1)
-        assert dec_t1.selected_model is not None
+        assert dec_t1.selected_provider is not None and dec_t1.selected_model is not None
 
         # Tier 2 Business (Single tool / standard business operation)
         ctx_t2 = routing_context_for_chat(
@@ -588,7 +588,7 @@ class E2EVerificationRunner:
             avenqo_request_id="req_t2_e2e",
         )
         dec_t2 = router.decide(providers, ctx_t2)
-        assert dec_t2.selected_model is not None
+        assert dec_t2.selected_provider is not None and dec_t2.selected_model is not None
 
         # Tier 3 Advanced (Multi-module cross-analysis / strategic reasoning)
         ctx_t3 = routing_context_for_chat(
@@ -600,7 +600,7 @@ class E2EVerificationRunner:
             avenqo_request_id="req_t3_e2e",
         )
         dec_t3 = router.decide(providers, ctx_t3)
-        assert dec_t3.selected_model is not None
+        assert dec_t3.selected_provider is not None and dec_t3.selected_model is not None
 
         spec_t3 = specs.get((dec_t3.selected_provider, dec_t3.selected_model))
         assert spec_t3 is not None and spec_t3.quality_tier >= 3
