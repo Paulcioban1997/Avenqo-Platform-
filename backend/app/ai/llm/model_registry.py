@@ -352,7 +352,25 @@ def model_spec(
             str(profile.get("reasoning_cost_per_million_usd", "0")),
         ),
     }
-    capabilities = frozenset(LLMCapability(value) for value in profile["capabilities"])
+    raw_capabilities = profile.get("capabilities")
+    capabilities_list = (
+        raw_capabilities
+        if isinstance(raw_capabilities, (list, tuple, set, frozenset))
+        else ()
+    )
+    capabilities = frozenset(LLMCapability(str(value)) for value in capabilities_list)
+    raw_modalities = profile.get("modalities", ("text",))
+    modalities_list = (
+        raw_modalities
+        if isinstance(raw_modalities, (list, tuple, set, frozenset))
+        else ("text",)
+    )
+    raw_suitability = profile.get("task_suitability", ())
+    suitability_list = (
+        raw_suitability
+        if isinstance(raw_suitability, (list, tuple, set, frozenset))
+        else ()
+    )
     return LLMModelSpec(
         provider=provider,
         model_id=model_id,
@@ -363,14 +381,14 @@ def model_spec(
         latency_class=str(profile.get("latency_class", "medium")),
         fallback_priority=int(profile.get("fallback_priority", 0)),
         reasoning_strength=int(profile.get("reasoning_strength", 1)),
-        modalities=frozenset(str(value) for value in profile.get("modalities", ("text",))),
+        modalities=frozenset(str(value) for value in modalities_list),
         streaming=bool(profile.get("streaming", True)),
         tool_calling=bool(profile.get("tool_calling", LLMCapability.TOOL_CALLING in capabilities)),
         structured_output=bool(profile.get("structured_output", LLMCapability.STRUCTURED_OUTPUT in capabilities)),
         max_output_tokens=int(profile["max_output_tokens"]),
         quality_tier=int(profile.get("quality_tier", 1)),
         speed_tier=int(profile.get("speed_tier", 2)),
-        task_suitability=frozenset(str(value) for value in profile.get("task_suitability", ())),
+        task_suitability=frozenset(str(value) for value in suitability_list),
         request_timeout_seconds=float(profile.get("request_timeout_seconds", 60.0)),
         max_retries=int(profile.get("max_retries", 2)),
         base_delay_seconds=float(profile.get("base_delay_seconds", 0.5)),
