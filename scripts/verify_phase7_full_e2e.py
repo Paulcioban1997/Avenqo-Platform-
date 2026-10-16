@@ -26,7 +26,7 @@ import os
 import shutil
 import tempfile
 import time
-from typing import Any
+from typing import Any, AsyncIterator
 from uuid import UUID, uuid4
 
 import httpx
@@ -80,7 +80,7 @@ class SimulatedLLMProvider(LLMProvider):
         self.name = name
         self.invocations: list[dict[str, Any]] = []
 
-    async def generate(self, prompt: str, system_instruction: str = "") -> LLMGeneration:
+    async def generate(self, *, system_instruction: str = "", prompt: str = "") -> LLMGeneration:
         self.invocations.append({"prompt": prompt, "system_instruction": system_instruction})
         text = prompt.lower()
 
@@ -133,8 +133,8 @@ class SimulatedLLMProvider(LLMProvider):
             ),
         )
 
-    async def stream(self, prompt: str, system_instruction: str = ""):
-        gen = await self.generate(prompt, system_instruction)
+    async def stream(self, *, system_instruction: str = "", prompt: str = "") -> AsyncIterator[str]:
+        gen = await self.generate(system_instruction=system_instruction, prompt=prompt)
         yield gen.content
 
     def routing(self, context: Any):
