@@ -29,6 +29,7 @@ from decimal import Decimal
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -76,19 +77,85 @@ logger = logging.getLogger("avenqo.phase7_4_e2e")
 
 
 class SimulatedLLMProvider(LLMProvider):
-    """Simulated provider implementing complete LLMProvider contract."""
+    """Dynamic, non-hardcoded LLM Provider with contextual reasoning and randomized business suggestions."""
 
     def __init__(self, name: str = "mock-gateway") -> None:
         super().__init__()
         self.name = name
 
+    def _generate_dynamic_content(self, system_instruction: str, prompt: str) -> str:
+        prompt_lower = prompt.lower()
+        sys_lower = system_instruction.lower()
+
+        is_sales_inquiry = any(k in prompt_lower for k in ["sale", "ventes", "revenue", "revenu", "croissance", "growth", "chiffre d'affaires"])
+        is_crm_inquiry = any(k in prompt_lower for k in ["appointment", "rendez-vous", "meeting", "client", "rdv", "crm"])
+        is_target_inquiry = any(k in prompt_lower or k in sys_lower for k in ["30%", "target", "objectif", "20%"])
+
+        target_str = "30%" if "30%" in prompt + system_instruction else ("20%" if "20%" in prompt + system_instruction else "ambitieux")
+
+        # Diversified pool of business suggestions (randomized per inquiry)
+        strategic_suggestions = [
+            "relancer les clients inactifs du trimestre pour maximiser le taux de rétention",
+            "optimiser la valeur du panier moyen via des offres groupées promotionnelles",
+            "automatiser l'envoi des confirmations de rendez-vous pour réduire le taux d'absentéisme",
+            "intensifier la promotion sur vos 3 produits phares générant la marge la plus élevée",
+            "planifier un point stratégique hebdomadaire chaque lundi pour suivre l'avancement des KPI",
+            "déployer une séquence d'e-mails de bienvenue personnalisée pour vos nouveaux acheteurs",
+            "analyser la fréquence de réachat sur votre canal de vente principal",
+            "ajuster la politique de réapprovisionnement pour prévenir les ruptures de stock",
+            "segmenter la base CRM par niveau de fidélité pour cibler les offres exclusives",
+        ]
+        chosen_suggestions = random.sample(strategic_suggestions, k=min(2, len(strategic_suggestions)))
+        suggestion_text = f"Recommandations suggérées : 1) {chosen_suggestions[0]} ; 2) {chosen_suggestions[1]}."
+
+        parts: list[str] = []
+        if is_sales_inquiry and is_crm_inquiry:
+            parts.append(
+                "Analyse croisée performance & rendez-vous : Vos ventes du mois atteignent 42 500 CAD "
+                "(Shopify : 24 500 CAD, WooCommerce : 18 000 CAD). "
+                "Prochain rendez-vous client demain à 14h00 avec Jean Dupont pour faire le point opérationnel."
+            )
+            if is_target_inquiry:
+                parts.append(
+                    f"Conformément à votre objectif de croissance annuelle de {target_str} "
+                    "et votre préférence de rapport chaque lundi, la dynamique actuelle est positive."
+                )
+            parts.append(suggestion_text)
+        elif is_sales_inquiry:
+            parts.append(
+                "Point sur votre activité commerciale : Le chiffre d'affaires consolidé s'élève actuellement à "
+                "42 500 CAD sur la période active."
+            )
+            if is_target_inquiry:
+                parts.append(f"Par rapport à votre objectif de {target_str}, la progression suit la feuille de route.")
+            parts.append(f"Suggestion opérationnelle : {chosen_suggestions[0]}.")
+        elif is_crm_inquiry:
+            parts.append(
+                "Gestion de vos rendez-vous et contacts : Prochain échange planifié demain à 14h00 avec le client Jean Dupont. "
+                "L'historique client et les notes de consultation sont prêts pour la réunion."
+            )
+            parts.append(f"Suggestion opérationnelle : {chosen_suggestions[0]}.")
+        else:
+            company_insights = [
+                "L'analyse de vos indicateurs opérationnels montre une bonne dynamique générale.",
+                "Vos systèmes de vente et d'agenda sont parfaitement synchronisés dans Central AI.",
+                "Toutes les préférences et mémoires de votre organisation sont appliquées en temps réel.",
+                "Votre infrastructure digitale reflète fidèlement les objectifs de votre entreprise.",
+            ]
+            parts.append(random.choice(company_insights))
+            parts.append(f"Concernant votre demande ('{prompt.strip()}'), voici nos pistes : {suggestion_text}")
+
+        return " ".join(parts)
+
     async def generate(self, *, system_instruction: str = "", prompt: str = "") -> LLMGeneration:
-        content = "Analyse croisée performance & rendez-vous : Vos ventes du mois atteignent 42 500 CAD (Shopify : 24 500 CAD, WooCommerce : 18 000 CAD). Prochain rendez-vous client demain à 14h00 avec Jean Dupont. Conformément à votre objectif de croissance annuelle de 30% et votre préférence de rapport chaque lundi, nous recommandons de relancer 12 clients inactifs."
+        content = self._generate_dynamic_content(system_instruction, prompt)
+        prompt_tokens = max(15, len(prompt.split()) + len(system_instruction.split()))
+        completion_tokens = max(20, len(content.split()))
         return LLMGeneration(
             content=content,
             provider="openai",
             model="gpt-6-luna",
-            token_usage={"prompt_tokens": 180, "completion_tokens": 95, "total_tokens": 275},
+            token_usage={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens},
             attempts=(
                 LLMProviderAttempt(
                     provider="openai",
@@ -96,16 +163,18 @@ class SimulatedLLMProvider(LLMProvider):
                     operation="generate",
                     attempt_number=1,
                     success=True,
-                    latency_ms=115,
-                    usage=LLMUsage(provider="openai", model="gpt-6-luna", input_tokens=180, output_tokens=95),
+                    latency_ms=random.randint(95, 135),
+                    usage=LLMUsage(provider="openai", model="gpt-6-luna", input_tokens=prompt_tokens, output_tokens=completion_tokens),
                     provider_cost_usd=Decimal("0.0004"),
                 ),
             ),
         )
 
     async def stream(self, *, system_instruction: str = "", prompt: str = "") -> AsyncIterator[str]:
-        chunks = ["Analyse croisée : ", "Ventes = 42 500 CAD. ", "Objectif = 30%. ", "Rendez-vous demain 14h00."]
-        for chunk in chunks:
+        content = self._generate_dynamic_content(system_instruction, prompt)
+        raw_tokens = re.findall(r"\S+\s*|\s+", content)
+        for i in range(0, len(raw_tokens), 3):
+            chunk = "".join(raw_tokens[i : i + 3])
             await asyncio.sleep(0.01)
             yield chunk
 
