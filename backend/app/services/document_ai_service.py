@@ -208,10 +208,13 @@ class DocumentAIService:
         }
 
     def _llm_summary(self, text: str, fallback: str) -> str:
+        if self._llm is None:
+            return fallback
+        llm = self._llm
         import asyncio
 
         async def _generate() -> str:
-            generation = await self._llm.generate(
+            generation = await llm.generate(
                 system_instruction=(
                     f"{LEGAL_DISCLAIMER} Résume uniquement les passages fournis. "
                     "Cite les extraits. N'invente aucune clause absente."
