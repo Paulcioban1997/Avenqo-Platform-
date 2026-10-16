@@ -502,7 +502,7 @@ class Phase75UltimateRunner:
     async def execute_flow_c_ocr_to_accounting(self) -> None:
         """FLOW C: OCR -> Accounting (Upload invoice -> extract fields -> create accounting transaction)."""
         doc = self.db.query(TenantDocument).filter(TenantDocument.kind == "ocr").first()
-        assert doc is not None
+        assert doc is not None and doc.analysis_json is not None
         extracted = json.loads(doc.analysis_json)
         txn = AccountingTransaction(
             id=uuid4(),
