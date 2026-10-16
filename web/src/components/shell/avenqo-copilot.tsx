@@ -28,6 +28,17 @@ import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { CANONICAL_LOCALES } from "@/lib/i18n/canonical-locales.generated";
+
+function getBcp47ForLocale(localeCode: string): string {
+  const found = CANONICAL_LOCALES.find((l) => l.code === localeCode);
+  if (found?.bcp47) return found.bcp47;
+  if (localeCode === "fr") return "fr-CA";
+  if (localeCode === "en") return "en-US";
+  if (localeCode === "es") return "es-ES";
+  if (localeCode === "pt") return "pt-BR";
+  return localeCode;
+}
 
 interface BrowserSpeechRecognition {
   lang: string;
@@ -222,7 +233,7 @@ export function AvenqoCopilot({
         const conversationResponse = await apiFetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers,
-          body: JSON.stringify({ title: query.slice(0, 54) }),
+          body: JSON.stringify({ title: query.slice(0, 54), locale }),
         });
         if (!conversationResponse.ok) throw new Error("Conversation creation failed");
         const conversation = await conversationResponse.json();
@@ -278,7 +289,7 @@ export function AvenqoCopilot({
         // Voice reply in dictation or fallback voice mode if enabled
         if ((mode === "mic" || fallbackVoiceRef.current) && voiceReplyEnabled && data.answer && "speechSynthesis" in window) {
           const spoken = new SpeechSynthesisUtterance(data.answer);
-          spoken.lang = locale === "fr" ? "fr-CA" : locale;
+          spoken.lang = getBcp47ForLocale(locale);
           spoken.onend = () => {
             if (fallbackVoiceRef.current) startFallbackRecognition(voiceSession);
           };
@@ -419,7 +430,7 @@ export function AvenqoCopilot({
         const conversationResponse = await apiFetch("/api/v1/ai/chat/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-          body: JSON.stringify({ title: "Central Voice Live" }),
+          body: JSON.stringify({ title: "Central Voice Live", locale }),
         });
         if (conversationResponse.ok) {
           const created = await conversationResponse.json();

@@ -54,24 +54,39 @@ def _retail_trusted_context(
     """Expose backend-computed Retail facts to Copilot without LLM inference."""
 
     try:
-        active_source = next(
-            (
-                source
-                for source in RetailSourceService(db).list_sources(tenant)
-                if source.active and source.enabled
-            ),
-            None,
-        )
-        if active_source is None:
+        source_service = RetailSourceService(db)
+        selection = source_service.active_selection(tenant)
+        all_sources = source_service.list_sources(tenant)
+        enabled_sources = [s for s in all_sources if s.enabled]
+        if not enabled_sources:
             return ""
+
+        if selection is not None and getattr(selection, "source_type", None) == "all":
+            source_display = "Toutes les sources consolidées"
+            source_type = "all"
+        else:
+            active_source = next(
+                (s for s in all_sources if s.active and s.enabled),
+                None,
+            )
+            if active_source is None:
+                if selection is None or getattr(selection, "source_type", None) == "all":
+                    source_display = "Toutes les sources consolidées"
+                    source_type = "all"
+                else:
+                    return ""
+            else:
+                source_display = active_source.display_name
+                source_type = active_source.source_type
+
         sales_data = sales.build(tenant, period_key="all")
         summary = sales_data.get("summary") or {}
         customer_data = customers.build(tenant, page=1, page_size=1)
         customer_total = customer_data.get("pagination", {}).get("total", 0)
         return (
             "Retail facts computed server-side from the active tenant source:\n"
-            f"source={active_source.display_name}\n"
-            f"source_type={active_source.source_type}\n"
+            f"source={source_display}\n"
+            f"source_type={source_type}\n"
             f"currency={sales_data.get('currency')}\n"
             f"revenue={summary.get('revenue')}\n"
             f"orders={summary.get('orders')}\n"
