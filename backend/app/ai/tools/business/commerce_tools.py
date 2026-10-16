@@ -170,8 +170,9 @@ class GetProductDetailTool(RetailAITool):
                         pass
                 scope_conn_ids = parsed
         elif active_source is not None:
-            if getattr(active_source, "source_type", None) in ("single", "connector") and getattr(active_source, "connection_id", None) is not None:
-                scope_conn_ids = [active_source.connection_id]
+            conn_id = getattr(active_source, "connection_id", None)
+            if getattr(active_source, "source_type", None) in ("single", "connector") and conn_id is not None:
+                scope_conn_ids = [conn_id]
             elif getattr(active_source, "source_type", None) == "custom_set":
                 scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
 
@@ -418,8 +419,9 @@ class GetInventorySummaryTool(RetailAITool):
                         pass
                 scope_conn_ids = parsed
         elif active_source is not None:
-            if getattr(active_source, "source_type", None) in ("single", "connector") and getattr(active_source, "connection_id", None) is not None:
-                scope_conn_ids = [active_source.connection_id]
+            conn_id = getattr(active_source, "connection_id", None)
+            if getattr(active_source, "source_type", None) in ("single", "connector") and conn_id is not None:
+                scope_conn_ids = [conn_id]
             elif getattr(active_source, "source_type", None) == "custom_set":
                 scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
 
@@ -473,9 +475,10 @@ class GetInventorySummaryTool(RetailAITool):
             if level is None:
                 continue
             item = {"name": name, "inventory_level": level}
-            if float(level) <= 0:
+            lvl_val = _safe_float(level) or 0.0
+            if lvl_val <= 0:
                 out_of_stock.append(item)
-            elif float(level) <= threshold:
+            elif lvl_val <= threshold:
                 low_stock.append(item)
             else:
                 healthy.append(item)
@@ -497,9 +500,10 @@ class GetInventorySummaryTool(RetailAITool):
             p = _product_to_dict(r)
             lvl = p.get("inventory_level")
             if lvl is not None:
-                if float(lvl) <= 0:
+                lvl_val = _safe_float(lvl) or 0.0
+                if lvl_val <= 0:
                     entry["out_of_stock"] += 1
-                elif float(lvl) <= threshold:
+                elif lvl_val <= threshold:
                     entry["low_stock"] += 1
 
         store_names = sorted(set(conn_map.values())) if conn_map else ["Boutiques connectées"]

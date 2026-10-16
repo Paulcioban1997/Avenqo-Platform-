@@ -49,6 +49,14 @@ _DASHBOARD_MAX_PREPARED_ROWS = 50_000
 _log = logging.getLogger(__name__)
 
 
+def _safe_float(value: object | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(str(value))
+
+
 @dataclass(frozen=True, slots=True)
 class TenantAnalyticsSnapshot:
     company: Company | None
@@ -191,24 +199,24 @@ class TenantAnalyticsSnapshot:
                     normalized["exchange_rate"] = rate
                     if "total_amount" in row and row["total_amount"] is not None:
                         try:
-                            s_amt = float(row["total_amount"])
+                            s_amt = _safe_float(row["total_amount"])
                             normalized["source_total_amount"] = s_amt
                             normalized["total_amount"] = round(s_amt * rate, 2)
                         except (ValueError, TypeError):
                             pass
                     if "unit_price" in row and row["unit_price"] is not None:
                         try:
-                            normalized["unit_price"] = round(float(row["unit_price"]) * rate, 2)
+                            normalized["unit_price"] = round(_safe_float(row["unit_price"]) * rate, 2)
                         except (ValueError, TypeError):
                             pass
                     if "discount_amount" in row and row["discount_amount"] is not None:
                         try:
-                            normalized["discount_amount"] = round(float(row["discount_amount"]) * rate, 2)
+                            normalized["discount_amount"] = round(_safe_float(row["discount_amount"]) * rate, 2)
                         except (ValueError, TypeError):
                             pass
                     if "refund_amount" in row and row["refund_amount"] is not None:
                         try:
-                            s_ref = float(row["refund_amount"])
+                            s_ref = _safe_float(row["refund_amount"])
                             normalized["source_refund_amount"] = s_ref
                             normalized["refund_amount"] = round(s_ref * rate, 2)
                         except (ValueError, TypeError):
@@ -220,9 +228,9 @@ class TenantAnalyticsSnapshot:
 
                 if "total_amount" in normalized and normalized["total_amount"] is not None:
                     try:
-                        tot = float(normalized["total_amount"])
-                        disc = float(normalized.get("discount_amount") or 0)
-                        ref = float(normalized.get("refund_amount") or 0)
+                        tot = _safe_float(normalized["total_amount"])
+                        disc = _safe_float(normalized.get("discount_amount"), 0.0)
+                        ref = _safe_float(normalized.get("refund_amount"), 0.0)
                         normalized["net_amount"] = round(tot - disc - ref, 2)
                     except (ValueError, TypeError):
                         pass
@@ -267,7 +275,7 @@ class TenantAnalyticsSnapshot:
         for row in prepared.rows:
             output = dict(row)
             try:
-                output[derived_column] = float(row[quantity_column]) * float(
+                output[derived_column] = _safe_float(row[quantity_column]) * _safe_float(
                     row[price_column]
                 )
             except (KeyError, TypeError, ValueError):
@@ -461,12 +469,12 @@ class TenantAnalyticsService:
                 for item in RetailSourceService(self._session).list_sources(tenant)
                 if item.enabled and item.status.upper() == "READY"
             ]
-            source_updates = [item.last_synchronized_at for item in active_sources]
-            active_source_last_updated_at = (
-                min(source_updates)
-                if source_updates and all(value is not None for value in source_updates)
-                else None
-            )
+            source_updates = [
+                item.last_synchronized_at
+                for item in active_sources
+                if item.last_synchronized_at is not None
+            ]
+            active_source_last_updated_at = min(source_updates) if source_updates else None
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
         if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
@@ -525,7 +533,7 @@ class TenantAnalyticsService:
         training_statuses = tuple(
             status
             for dataset in tenant_datasets
-            if (status := _training_status(dataset)) not in {None, "not_applicable"}
+            if (status := _training_status(dataset)) is not None and status != "not_applicable"
         )
         source_statuses = tuple(
             _pipeline_status(dataset) for dataset in source_datasets
@@ -536,8 +544,10 @@ class TenantAnalyticsService:
         prepared_ids = {item.dataset_id for item in prepared}
         candidate_conn_ids: list[UUID] = []
         if active_source is not None:
-            if getattr(active_source, "source_type", None) == "single" and getattr(active_source, "connection_id", None) is not None:
-                candidate_conn_ids = [active_source.connection_id]
+            if getattr(active_source, "source_type", None) == "single":
+                conn_id = getattr(active_source, "connection_id", None)
+                if conn_id is not None:
+                    candidate_conn_ids = [conn_id]
             elif getattr(active_source, "source_type", None) == "custom_set":
                 candidate_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
             elif getattr(active_source, "source_type", None) == "all":
