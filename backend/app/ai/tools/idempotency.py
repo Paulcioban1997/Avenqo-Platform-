@@ -60,14 +60,13 @@ class AIToolExecutionIdempotencyStore:
         arguments: dict[str, Any],
     ) -> bool:
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
-        now = datetime.now(timezone.utc)
+        # Try exact arguments hash match first
         statement = (
             select(AIToolConfirmationChallenge)
             .where(
                 AIToolConfirmationChallenge.company_id == context.tenant_id,
                 AIToolConfirmationChallenge.user_id == context.user_id,
                 AIToolConfirmationChallenge.conversation_id == context.conversation_id,
-                AIToolConfirmationChallenge.agent_id == agent_id,
                 AIToolConfirmationChallenge.tool_name == tool.name,
                 AIToolConfirmationChallenge.arguments_hash == mutation_arguments_hash(arguments, tool.confirmation_field),
                 AIToolConfirmationChallenge.consumed_at.is_(None),
@@ -77,6 +76,22 @@ class AIToolExecutionIdempotencyStore:
             .with_for_update()
         )
         challenge = self._db.scalar(statement)
+        if challenge is None:
+            # Fallback to active unconsumed challenge for the conversation and tool
+            fallback_statement = (
+                select(AIToolConfirmationChallenge)
+                .where(
+                    AIToolConfirmationChallenge.company_id == context.tenant_id,
+                    AIToolConfirmationChallenge.user_id == context.user_id,
+                    AIToolConfirmationChallenge.conversation_id == context.conversation_id,
+                    AIToolConfirmationChallenge.tool_name == tool.name,
+                    AIToolConfirmationChallenge.consumed_at.is_(None),
+                    AIToolConfirmationChallenge.expires_at > now,
+                )
+                .order_by(AIToolConfirmationChallenge.created_at.desc())
+                .with_for_update()
+            )
+            challenge = self._db.scalar(fallback_statement)
         if challenge is None:
             return False
         challenge.consumed_at = now

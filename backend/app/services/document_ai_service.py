@@ -99,6 +99,19 @@ class DocumentAIService:
             raise LookupError("Document introuvable")
         return row
 
+    def delete_document(self, actor: User, document_id: UUID) -> None:
+        row = self.get_document(actor, document_id)
+        if row.storage_path:
+            try:
+                settings = get_settings()
+                disk_path = Path(settings.artifact_root) / row.storage_path
+                if disk_path.exists():
+                    disk_path.unlink()
+            except Exception:
+                pass
+        self._session.delete(row)
+        self._session.commit()
+
     def compare(self, actor: User, left_id: UUID, right_id: UUID) -> dict:
         left = self.get_document(actor, left_id)
         right = self.get_document(actor, right_id)

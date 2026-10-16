@@ -96,6 +96,22 @@ def get_ocr(
         raise HTTPException(404, str(exc)) from exc
 
 
+@ocr_router.delete("/documents/{document_id}", status_code=204)
+def delete_ocr(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: DocumentAIService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> None:
+    _require_module(db, tenant, "ocr")
+    try:
+        service.delete_document(identity.user, document_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @ocr_router.post("/documents/{document_id}/accounting-proposal", status_code=201)
 def propose_accounting(
     document_id: UUID,
@@ -175,3 +191,20 @@ def compare_legal(
         return service.compare(identity.user, left_id, right_id)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@legal_router.delete("/documents/{document_id}", status_code=204)
+def delete_legal(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: DocumentAIService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> None:
+    _require_module(db, tenant, "legal")
+    try:
+        service.delete_document(identity.user, document_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+

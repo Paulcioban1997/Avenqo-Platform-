@@ -115,6 +115,8 @@ class ToolExecutor:
                         metadata={"error_key": "confirmation_required", "locale": context.locale},
                         error=confirmation_required_message(context.locale),
                     )
+                else:
+                    setattr(arguments, tool.confirmation_field, True)
 
             try:
                 async def run_tool() -> ToolResult:

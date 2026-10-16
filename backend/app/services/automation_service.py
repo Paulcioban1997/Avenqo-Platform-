@@ -66,6 +66,37 @@ class AutomationService:
         self._session.commit()
         return row
 
+    def toggle_workflow(self, actor: User, workflow_id: UUID) -> AutomationWorkflow:
+        workflow = self._session.scalar(
+            select(AutomationWorkflow).where(
+                AutomationWorkflow.id == workflow_id,
+                AutomationWorkflow.company_id == actor.company_id,
+            )
+        )
+        if workflow is None:
+            raise AutomationError("Automatisation introuvable")
+        workflow.is_enabled = not workflow.is_enabled
+        self._session.commit()
+        return workflow
+
+    def delete_workflow(self, actor: User, workflow_id: UUID) -> None:
+        workflow = self._session.scalar(
+            select(AutomationWorkflow).where(
+                AutomationWorkflow.id == workflow_id,
+                AutomationWorkflow.company_id == actor.company_id,
+            )
+        )
+        if workflow is None:
+            raise AutomationError("Automatisation introuvable")
+        self._session.delete(workflow)
+        self._session.commit()
+
+    def list_runs(self, company_id: UUID, workflow_id: UUID | None = None) -> list[AutomationRun]:
+        stmt = select(AutomationRun).where(AutomationRun.company_id == company_id)
+        if workflow_id is not None:
+            stmt = stmt.where(AutomationRun.workflow_id == workflow_id)
+        return list(self._session.scalars(stmt.order_by(AutomationRun.created_at.desc()).limit(50)))
+
     def run(
         self,
         actor: User,

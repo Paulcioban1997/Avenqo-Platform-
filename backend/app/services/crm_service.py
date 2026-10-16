@@ -210,7 +210,13 @@ class CRMService:
 
     def _foreign_reference_error(self, company_id: UUID, data: dict[str, Any]) -> str | None:
         for key, (model, message) in self._REFERENCE_MODELS.items():
-            if data.get(key) is not None and self._owned(model, data[key], company_id) is None:
+            val = data.get(key)
+            if (
+                val is not None
+                and str(val).strip() != ""
+                and str(val).strip().lower() not in {"none", "null"}
+                and self._owned(model, val, company_id) is None
+            ):
                 return message
         return None
 
@@ -541,7 +547,14 @@ class CRMService:
         start_time = self._availability.normalize(company_id, data["start_time"])
         duration = data.get("duration_minutes", 60)
         end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
+        service_id = data.get("service_id")
+        if service_id and (str(service_id).strip() == "" or str(service_id).strip().lower() in {"none", "null"}):
+            service_id = None
+            data["service_id"] = None
         employee_id = data.get("employee_id")
+        if employee_id and (str(employee_id).strip() == "" or str(employee_id).strip().lower() in {"none", "null"}):
+            employee_id = None
+            data["employee_id"] = None
         reference_error = self._foreign_reference_error(company_id, data)
         if reference_error:
             return None, reference_error

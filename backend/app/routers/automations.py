@@ -98,3 +98,59 @@ def run_workflow(
     except AutomationError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"id": str(run.id), "status": run.status, "detail": run.detail}
+
+
+@router.patch("/{workflow_id}/toggle")
+def toggle_workflow(
+    workflow_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: AutomationService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> dict:
+    _gate(db, tenant)
+    try:
+        row = service.toggle_workflow(identity.user, workflow_id)
+    except AutomationError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"id": str(row.id), "is_enabled": row.is_enabled}
+
+
+@router.delete("/{workflow_id}", status_code=204)
+def delete_workflow(
+    workflow_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: AutomationService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> None:
+    _gate(db, tenant)
+    try:
+        service.delete_workflow(identity.user, workflow_id)
+    except AutomationError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/{workflow_id}/history")
+def get_workflow_history(
+    workflow_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: AutomationService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> list[dict]:
+    _gate(db, tenant)
+    runs = service.list_runs(identity.user.company_id, workflow_id)
+    return [
+        {
+            "id": str(r.id),
+            "status": r.status,
+            "detail": r.detail,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in runs
+    ]
+

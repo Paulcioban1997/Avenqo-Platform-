@@ -1137,7 +1137,7 @@ export function BillingView() {
                     <th className="py-3 px-4">{invoiceTranslations.invoicePeriod}</th>
                     <th className="py-3 px-4">{billingTranslations.plan}</th>
                     <th className="py-3 px-4">{invoiceTranslations.total}</th>
-                    <th className="py-3 px-4">{t.crm.filters.status}</th>
+                    <th className="py-3 px-4">{locale.startsWith("fr") ? "Statut" : "Status"}</th>
                     <th className="py-3 px-4 text-right">{invoiceTranslations.downloadPdf}</th>
                   </tr>
                 </thead>

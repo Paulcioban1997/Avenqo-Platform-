@@ -14,7 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -308,6 +308,13 @@ class CreateAppointmentRequest(BaseModel):
     industry_data: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, max_length=255)
 
+    @field_validator("service_id", "employee_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        if v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
 
 class UpdateAppointmentRequest(BaseModel):
     title: str | None = None
@@ -319,6 +326,13 @@ class UpdateAppointmentRequest(BaseModel):
     price: float | None = None
     notes: str | None = None
     industry_data: dict[str, Any] | None = None
+
+    @field_validator("employee_id", mode="before")
+    @classmethod
+    def empty_str_to_none_update(cls, v: Any) -> Any:
+        if v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
 
 
 class CreateServiceRequest(BaseModel):

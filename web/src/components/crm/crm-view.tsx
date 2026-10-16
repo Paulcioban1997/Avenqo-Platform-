@@ -39,6 +39,7 @@ import { CRMReportsView } from "./crm-reports-view";
 import { CRMCopilotPanel } from "./crm-copilot-panel";
 import { AppointmentDetailsDrawer, type AppointmentItem } from "./appointment-details-drawer";
 import { NewAppointmentModal } from "./new-appointment-modal";
+import { CRMSetupWizard } from "./crm-setup-wizard";
 
 export type CRMSubTab =
   | "overview"
@@ -78,6 +79,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentItem | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [appointmentToEdit, setAppointmentToEdit] = useState<AppointmentItem | null>(null);
 
   // Load CRM data from backend
@@ -310,6 +312,15 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
+              onClick={() => setIsWizardOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition text-xs font-semibold"
+              title="Configuration des horaires et services"
+            >
+              <Clock className="w-4 h-4 text-[#0076FF]" />
+              <span className="hidden sm:inline">Horaires & Services</span>
+            </button>
+
+            <button
               onClick={() => loadCRMData()}
               className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
               title={t.crm.actions.syncNow}
@@ -460,6 +471,17 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           loadCRMData();
         }}
         initialAppointment={appointmentToEdit}
+        t={t}
+      />
+
+      {/* CRM SETUP WIZARD (BUSINESS HOURS, SERVICES, TIMEZONE) */}
+      <CRMSetupWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onComplete={() => {
+          setIsWizardOpen(false);
+          void loadCRMData();
+        }}
         t={t}
       />
     </div>

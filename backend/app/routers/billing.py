@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import Settings, get_settings
 from backend.app.core.error_localization import localized_api_message
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
+from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity, require_permission
+from backend.app.services.account_notifications import AccountNotifier
 from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
@@ -670,6 +671,7 @@ def request_enterprise_quote(
     request: EnterpriseQuoteRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    notifier: AccountNotifier = Depends(get_account_notifier),
 ) -> EnterpriseQuoteResponse:
     from backend.app.models.audit_log import AuditLogEntry
     from backend.app.models.billing import EnterpriseQuote
@@ -725,6 +727,29 @@ def request_enterprise_quote(
         reference_id,
         identity.user.company_id,
     )
+
+    # Deliver notification emails to Avenqo leadership
+    subject = f"Demande de devis Enterprise — {identity.user.company.name} ({reference_id})"
+    body = "\n".join([
+        "Nouvelle demande de devis Enterprise Avenqo",
+        f"Numéro de référence : {reference_id}",
+        f"Entreprise : {identity.user.company.name} ({identity.user.company_id})",
+        f"Contact : {quote.contact_name}",
+        f"Email : {quote.contact_email}",
+        f"Téléphone : {quote.contact_phone or 'Non renseigné'}",
+        f"Modules demandés : {', '.join(quote.requested_modules or []) or 'Tous les modules Enterprise'}",
+        f"Utilisateurs estimés : {quote.estimated_users or 'Non spécifié'}",
+        f"Volume mensuel attendu : {quote.monthly_volume or 'Non spécifié'}",
+        f"Intégrations requises : {', '.join(quote.required_integrations or []) or 'Standard'}",
+        f"Message du client : {quote.notes or 'Aucun message supplémentaire'}",
+        f"Date et heure de soumission : {now.isoformat()}",
+    ])
+    for admin_email in ("info@avenqo.ca", "paulmircea15@gmail.com"):
+        try:
+            notifier.send_transactional(admin_email, subject, body)
+            logger.info("Enterprise quote notification email delivered to %s", admin_email)
+        except Exception as exc:
+            logger.warning("Échec de livraison email de devis à %s: %s", admin_email, exc)
 
     return EnterpriseQuoteResponse(
         reference_id=reference_id,
