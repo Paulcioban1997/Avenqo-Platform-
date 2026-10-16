@@ -630,7 +630,7 @@ class E2EVerificationRunner:
             ),
         )
 
-        initial_bal = usage_service.get_credit_balance(self.company_a.id, "professional")["purchased_remaining"]
+        initial_bal = int(usage_service.get_credit_balance(self.company_a.id, "professional")["purchased_remaining"] or 0)
         assert initial_bal == 15000
 
         # Step 1: Claim reservation
@@ -666,8 +666,8 @@ class E2EVerificationRunner:
         assert settled_credits >= 1
 
         bal_info = usage_service.get_credit_balance(self.company_a.id, "professional")
-        assert bal_info["monthly_used"] == reservation.settled_included
-        assert bal_info["purchased_remaining"] == initial_bal - reservation.settled_purchased
+        assert int(bal_info["monthly_used"] or 0) == reservation.settled_included
+        assert int(bal_info["purchased_remaining"] or 0) == initial_bal - reservation.settled_purchased
 
         # Step 3: Verify immutable ledger record
         entry = self.db.scalar(
