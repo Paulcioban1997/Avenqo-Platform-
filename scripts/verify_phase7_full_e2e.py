@@ -155,16 +155,16 @@ class E2EVerificationRunner:
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.db = self.Session()
         self.settings = Settings(
-            avenqo_memory_enabled=True,
-            avenqo_memory_backend="qdrant",
-            avenqo_memory_storage_path=self.temp_dir,
-            avenqo_memory_collection_name="e2e_memories",
-            avenqo_memory_embedding_dims=64,
-            avenqo_memory_embedder_provider="openai",
-            avenqo_memory_llm_provider="openai",
-            ai_credit_minimum_charge=1,
-            ai_credit_minimum_reserve=1,
-            avenqo_provider_cost_per_credit_usd=0.002,
+            AVENQO_MEMORY_ENABLED=True,
+            AVENQO_MEMORY_BACKEND="qdrant",
+            AVENQO_MEMORY_STORAGE_PATH=self.temp_dir,
+            AVENQO_MEMORY_COLLECTION_NAME="e2e_memories",
+            AVENQO_MEMORY_EMBEDDING_DIMS=64,
+            AVENQO_MEMORY_EMBEDDER_PROVIDER="openai",
+            AVENQO_MEMORY_LLM_PROVIDER="openai",
+            AI_CREDIT_MINIMUM_CHARGE=1,
+            AI_CREDIT_MINIMUM_RESERVE=1,
+            AVENQO_PROVIDER_COST_PER_CREDIT_USD=Decimal("0.002"),
         )
 
     def cleanup(self) -> None:
