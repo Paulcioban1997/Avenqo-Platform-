@@ -624,7 +624,7 @@ def ai_credits_history(
                 module=_ai_usage_module(att.operation),
                 operation=op,
                 credits_used=debited[att.id],
-                user=actors.get(att.user_id, "—"),
+                user=actors.get(att.user_id, "—") if att.user_id is not None else "—",
             )
         )
     return AICreditHistoryResponse(
