@@ -134,6 +134,7 @@ TENANT_SCOPED_TABLES = (
     "billing_invoices",
     "ai_conversations",
     "ai_messages",
+    "ai_enterprise_memories",
     "voice_calls",
 )
 

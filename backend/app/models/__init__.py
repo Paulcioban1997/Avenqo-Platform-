@@ -2,6 +2,7 @@ from backend.app.models.account_token import AccountToken
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
+from backend.app.models.ai_memory import AIEnterpriseMemory, MemoryScope, MemoryType
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
 from backend.app.models.ai_tool_execution import AIToolConfirmationChallenge, AIToolExecutionRecord
 from backend.app.models.ai_usage import (
@@ -94,6 +95,9 @@ __all__ = [
     "AccountTokenPurpose",
     "AIJob",
     "AIConversation",
+    "AIEnterpriseMemory",
+    "MemoryScope",
+    "MemoryType",
     "AIMessage",
     "AIMessageRole",
     "AIMessageSource",

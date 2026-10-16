@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from backend.app.dependencies.subscription import require_active_subscription
 
 from backend.app.routers.ai_chat import router as ai_chat_router
+from backend.app.routers.ai_memory import router as ai_memory_router
 from backend.app.routers.ai_support import router as ai_support_router
 from backend.app.routers.accounting import router as accounting_router
 from backend.app.routers.admin import router as admin_router
@@ -64,6 +65,10 @@ api_router.include_router(
 )
 api_router.include_router(
 	central_ai_router,
+	prefix="/api/v1",
+)
+api_router.include_router(
+	ai_memory_router,
 	prefix="/api/v1",
 )
 api_router.include_router(ai_support_router, prefix="/api/v1")

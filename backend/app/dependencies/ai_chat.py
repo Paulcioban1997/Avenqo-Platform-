@@ -60,6 +60,9 @@ def get_tool_executor(
     )
 
 
+from backend.app.ai.memory.service import AvenqoMemoryService
+
+
 def get_chat_service(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -75,4 +78,5 @@ def get_chat_service(
         tool_executor=executor,
         usage_service=usage_service,
         debug_mode=settings.debug,
+        memory_service=AvenqoMemoryService(db, settings),
     )

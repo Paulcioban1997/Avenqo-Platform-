@@ -16,6 +16,7 @@ from backend.app.ai.llm.exceptions import LLMProviderError
 from backend.app.ai.llm.failure_classification import FailureCategory, classify_exception
 from backend.app.ai.llm.router import LLMRoutingContext, LLMTaskComplexity, LLMTaskType, routing_context_for_chat
 from backend.app.ai.llm.schemas import LLMProviderAttempt
+from backend.app.ai.memory.service import AvenqoMemoryService
 from backend.app.ai.tools.contracts import ToolCallResult, ToolExecutionContext
 from backend.app.ai.tools.executor import ToolExecutor
 from backend.app.ai.tools.registry import ToolRegistry
@@ -39,6 +40,7 @@ SYSTEM_INSTRUCTION = (
     "Never claim a calendar slot is available unless an availability tool confirms it. Never say an appointment was created, updated, or cancelled unless the corresponding CRM tool succeeds. If create_appointment succeeds but calendar_synced is false, confirm the CRM booking and say Calendar sync failed or is not connected — never claim the event was added to Google Calendar. "
     "When a signed-in user asks to book a specific date and time (even with typos), call check_availability then create_appointment. If they clearly request the booking now, set confirmed=true. If the client name is missing, use a walk-in name from the request (service + time). Surface tool errors (conflict, missing service, credits) instead of a generic failure. "
     "For demand or sales forecasts, call get_demand_forecast or get_sales_forecast on the active retail source. If the tool returns available=false, explain the specific reason (insufficient weekly history, no dated sales) — never say the data is unreliable when sales history exists. "
+    "Enterprise memory provides remembered historical preferences and context; live business data in retrieved data or tool outcomes always takes precedence over stale remembered metrics or assumptions. "
     "Improvise and adapt every single conversation dynamically and organically to the user's specific questions and real company context. Never use rigid canned scripts, fixed dialogue trees, or robotic formulas for any module."
 )
 
@@ -162,6 +164,7 @@ class ChatService:
         tool_executor: ToolExecutor | None = None,
         usage_service: AIUsageService | None = None,
         debug_mode: bool = False,
+        memory_service: AvenqoMemoryService | None = None,
     ) -> None:
         self._conversations, self._retrieval, self._provider = conversations, retrieval, provider
         self._tool_registry = tool_registry
@@ -171,6 +174,7 @@ class ChatService:
             else None
         )
         self._usage_service = usage_service
+        self._memory_service = memory_service
         self._debug_mode = debug_mode
         self.last_stream_sources = []
         self.last_tool_call_results = ()
@@ -178,7 +182,7 @@ class ChatService:
     def _release_db_before_llm(self) -> None:
         from backend.app.services.tenant_rls import release_tenant_connection
 
-        for holder in (self._conversations, self._retrieval, self._usage_service):
+        for holder in (self._conversations, self._retrieval, self._usage_service, self._memory_service):
             session = getattr(holder, "_db", None)
             if session is not None:
                 release_tenant_connection(session)
@@ -363,9 +367,27 @@ class ChatService:
             scoped = RetailSourceService(self._retrieval._db).context(TenantContext(tenant_id, user_id))
             ids = {str(source.dataset_id) for source in scoped["sources"] if source.dataset_id and (source.enabled if scoped["source_type"] == "all" else source.source_type == scoped["source_type"] and str(source.source_id) == str(scoped["source_id"]))}
             sources = [source for source in sources if source.identifier in ids] if scoped["state"] == "READY" else []
+        from backend.app.voice.caller_scope import is_public_voice_caller
+        memory_context = ""
+        if self._memory_service is not None and not is_public_voice_caller(permissions):
+            try:
+                memory_context = self._memory_service.retrieve_relevant_context(tenant_id, user_id, query)
+            except Exception as exc:
+                logger.warning("Memory retrieval failed gracefully: %s", exc)
+                memory_context = ""
+
         history = "\n".join(f"{message.role.value}: {message.content}" for message in self._conversations.messages(tenant_id, conversation_id))
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
-        prompt = f"<trusted_server_context>{trusted_context}</trusted_server_context>\n<client_context untrusted=\"true\">{client_context}</client_context>\n<conversation>{history}</conversation>\n<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
+        prompt_elements = [
+            f"<trusted_server_context>{trusted_context}</trusted_server_context>",
+            f"<client_context untrusted=\"true\">{client_context}</client_context>",
+            f"<conversation>{history}</conversation>",
+        ]
+        if memory_context:
+            prompt_elements.append(memory_context)
+        prompt_elements.append(f"<retrieved untrusted=\"true\">{context}</retrieved>")
+        prompt_elements.append(f"<request>{query}</request>")
+        prompt = "\n".join(prompt_elements)
 
         available_tools = self._available_tools(permissions=permissions, plan_code=plan_code, capabilities=capabilities, allowed_tool_names=allowed_tool_names)
         logger.info(
@@ -568,14 +590,24 @@ class ChatService:
             scoped = RetailSourceService(self._retrieval._db).context(TenantContext(tenant_id, user_id))
             ids = {str(source.dataset_id) for source in scoped["sources"] if source.dataset_id and (source.enabled if scoped["source_type"] == "all" else source.source_type == scoped["source_type"] and str(source.source_id) == str(scoped["source_id"]))}
             sources = [source for source in sources if source.identifier in ids] if scoped["state"] == "READY" else []
+        from backend.app.voice.caller_scope import is_public_voice_caller
+        memory_context = ""
+        if self._memory_service is not None and not is_public_voice_caller(permissions):
+            try:
+                memory_context = self._memory_service.retrieve_relevant_context(tenant_id, user_id, query)
+            except Exception as exc:
+                logger.warning("Memory retrieval failed gracefully in stream: %s", exc)
+                memory_context = ""
+
         context = "\n".join(f"[UNTRUSTED DATA: {source.name}] {source.content}" for source in sources)
-        prompt = (
-            f"<trusted_server_context>{trusted_context}</trusted_server_context>\n"
-            f"<retrieved untrusted=\"true\">{context}</retrieved>\n"
-            f"<request>{query}</request>"
-            if trusted_context
-            else f"<retrieved untrusted=\"true\">{context}</retrieved>\n<request>{query}</request>"
-        )
+        prompt_parts = []
+        if trusted_context:
+            prompt_parts.append(f"<trusted_server_context>{trusted_context}</trusted_server_context>")
+        if memory_context:
+            prompt_parts.append(memory_context)
+        prompt_parts.append(f"<retrieved untrusted=\"true\">{context}</retrieved>")
+        prompt_parts.append(f"<request>{query}</request>")
+        prompt = "\n".join(prompt_parts)
 
         available_tools = self._available_tools(
             permissions=permissions,

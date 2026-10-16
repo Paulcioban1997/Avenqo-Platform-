@@ -375,6 +375,16 @@ class Settings(BaseSettings):
     # Avenqo Platform Support AI (Phase 32) : dossier de la base de connaissances
     # produit (jamais les données métier d'un tenant — voir backend/app/ai/support/).
     ai_support_knowledge_root: str = Field(default="platform_knowledge", alias="AI_SUPPORT_KNOWLEDGE_ROOT")
+
+    # Avenqo Enterprise Memory (Phase 7.2) : Mem0 OSS stockage sémantique persistant
+    avenqo_memory_enabled: bool = Field(default=True, alias="AVENQO_MEMORY_ENABLED")
+    avenqo_memory_backend: str = Field(default="qdrant", alias="AVENQO_MEMORY_BACKEND")
+    avenqo_memory_storage_path: str = Field(default="var/avenqo_memory_qdrant", alias="AVENQO_MEMORY_STORAGE_PATH")
+    avenqo_memory_collection_name: str = Field(default="avenqo_enterprise_memories", alias="AVENQO_MEMORY_COLLECTION_NAME")
+    avenqo_memory_embedding_dims: int = Field(default=1536, alias="AVENQO_MEMORY_EMBEDDING_DIMS")
+    avenqo_memory_max_context_items: int = Field(default=5, ge=1, le=20, alias="AVENQO_MEMORY_MAX_CONTEXT_ITEMS")
+    avenqo_memory_embedder_provider: str = Field(default="openai", alias="AVENQO_MEMORY_EMBEDDER_PROVIDER")
+    avenqo_memory_llm_provider: str = Field(default="openai", alias="AVENQO_MEMORY_LLM_PROVIDER")
     # Rate limiting (Phase 34) : limites TECHNIQUES par défaut (pas un engagement
     # commercial), configurables par déploiement. Fenêtre glissante en mémoire —
     # voir backend/app/core/rate_limit.py (limitation : par process, non partagée
