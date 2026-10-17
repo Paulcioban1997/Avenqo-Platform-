@@ -115,7 +115,8 @@ def main() -> None:
             .values(revoked_at=datetime.now(timezone.utc))
         )
         session.commit()
-        print(f"[OK] Revoked {revoked_result.rowcount} active sessions in auth_sessions table.")
+        revoked_count = getattr(revoked_result, "rowcount", 0)
+        print(f"[OK] Revoked {revoked_count} active sessions in auth_sessions table.")
         print("[OK] Database user password_hash successfully updated.")
 
         # Invalidation & verification test
