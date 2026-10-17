@@ -9,7 +9,8 @@ from backend.app.services.tenant_rls import (
 def test_0061b_migration_integrity() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     heads = script.get_heads()
-    assert "0061b_harden_tenant_rls_no_bypass" in heads or "0063_multi_source_selection" in heads or "0064_ai_enterprise_memory" in heads
+    assert len(heads) == 1, f"Expected one linear Alembic head, got {heads}"
+    assert "0061b_harden_tenant_rls_no_bypass" in {rev.revision for rev in script.walk_revisions(heads[0], "0061b_harden_tenant_rls_no_bypass")}
     
     rev = script.get_revision("0061b_harden_tenant_rls_no_bypass")
     assert rev.down_revision == "0061_tenant_hotpath_indexes"
