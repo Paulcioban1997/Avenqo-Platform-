@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from alembic import command
+from alembic.script import ScriptDirectory
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
@@ -39,11 +40,13 @@ def test_postgres_0048_to_0050_preserves_data_and_accepts_long_revision_ids(monk
         columns = {item["name"] for item in inspect(connection).get_columns("users")}
         assert {"mfa_secret_encrypted", "mfa_recovery_hashes", "failed_login_count", "locked_until"} <= columns
         assert getattr(inspect(connection).get_columns("alembic_version")[0]["type"], "length", 0) >= 64
+    command_head = ScriptDirectory.from_config(config).get_current_head()
+    assert command_head is not None
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
         current_rev = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert current_rev in ("0061b_harden_tenant_rls_no_bypass", "0063_multi_source_selection", "0064_ai_enterprise_memory")
+        assert current_rev == command_head, f"Database at {current_rev}, expected Alembic head {command_head}"
         conversation_indexes = {item["name"] for item in inspect(connection).get_indexes("ai_conversations")}
         assert "ix_ai_conversations_company_user" in conversation_indexes
         assert connection.execute(text("SELECT has_schema_privilege('avenqo_migrate', 'public', 'CREATE')")).scalar_one() is True
