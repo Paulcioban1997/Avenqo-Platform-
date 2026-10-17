@@ -1,10 +1,8 @@
 """AVENQO — Assistant Framework foundation tests.
 
-Covers the minimal `AssistantDefinition`/`AssistantRegistry` abstraction:
-Retail resolves AVAILABLE, future assistants resolve COMING_SOON and can
-never execute, and Retail's declared tool allow-list matches exactly the
-tools actually registered in the existing (unduplicated) business Tool
-Registry factory.
+Covers the implemented `AssistantDefinition`/`AssistantRegistry` contract,
+including cross-module agents introduced in Phase 8.1. Declared tool
+allow-lists must match the existing business Tool Registry factory.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.assistants.contracts import AssistantStatus
-from backend.app.assistants.registry import build_default_assistant_registry
+from backend.app.assistants.registry import agent_entitlements, build_default_assistant_registry
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.models import Base
 
@@ -41,25 +39,24 @@ def test_retail_assistant_resolves_as_available() -> None:
     assert retail.module_code == "retail"
 
 
-def test_registry_contains_only_implemented_agents_and_future_placeholders() -> None:
+def test_registry_contains_implemented_agents_and_rejects_unknown_slugs() -> None:
     registry = build_default_assistant_registry()
 
-    for agent_id in ("retail", "crm", "accounting", "cross_agent"):
+    for agent_id in ("retail", "crm", "accounting", "cross_agent", "marketing", "ocr", "legal", "workflow", "memory"):
         definition = registry.get(agent_id)
         assert definition is not None
         assert definition.status is AssistantStatus.AVAILABLE
         assert definition.status.is_executable is True
-    assert registry.get("marketing") is None
     assert registry.get("appointments") is None
     assert registry.get("workflow") is None
     assert registry.get("crm").allowed_tool_names == frozenset()
     assert registry.get("accounting").allowed_tool_names == frozenset()
 
 
-def test_unavailable_assistant_cannot_execute() -> None:
+def test_unregistered_assistant_cannot_execute() -> None:
     registry = build_default_assistant_registry()
 
-    for slug in ("marketing", "ocr", "media", "legal", "workflow", "ai_agents"):
+    for slug in ("media", "ai_agents", "not_a_real_agent"):
         assert registry.get(slug) is None
 
 
@@ -74,7 +71,7 @@ def test_list_available_contains_only_implemented_agents() -> None:
 
     available_slugs = {item.slug for item in registry.list_available()}
 
-    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities"}
+    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities", "marketing", "ocr", "legal", "workflow", "memory"}
     assert available_slugs == expected
     voice = registry.get("voice")
     assert voice.module_code == "voice"
@@ -124,4 +121,8 @@ def test_cross_agent_definition_is_not_a_union_of_domain_tool_allowlists() -> No
 
     assert cross_agent is not None
     assert cross_agent.allowed_tool_names == frozenset({"get_cross_agent_business_health"})
-    assert cross_agent.required_entitlements == frozenset({"retail", "crm", "accounting"})
+    assert cross_agent.required_entitlements == frozenset()
+    assert cross_agent.module_code is None
+    assert agent_entitlements(cross_agent) == frozenset()
+    assert cross_agent.confirmation_policy == "explicit_user_confirmation"
+    assert cross_agent.allowed_tool_names != frozenset({"get_cross_agent_business_health", "get_retail_sales"})
