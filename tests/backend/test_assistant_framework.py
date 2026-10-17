@@ -78,9 +78,12 @@ def test_list_available_contains_only_implemented_agents() -> None:
     expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities", "marketing", "ocr", "legal", "workflow", "memory"}
     assert available_slugs == expected
     voice = registry.get("voice")
+    assert voice is not None
     assert voice.module_code == "voice"
     assert voice.entrypoints == frozenset({"voice"})
-    assert registry.get("tenant_capabilities").supported_operations == frozenset({"read"})
+    tenant_cap = registry.get("tenant_capabilities")
+    assert tenant_cap is not None
+    assert tenant_cap.supported_operations == frozenset({"read"})
 
 
 def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_session) -> None:
@@ -97,13 +100,20 @@ def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_sess
     actual_tool_names = {tool.name for tool in business_registry.list_tools()}
     assistants = build_default_assistant_registry(business_registry)
 
-    assert assistants.get("retail").allowed_tool_names == frozenset(
+    retail = assistants.get("retail")
+    crm = assistants.get("crm")
+    accounting = assistants.get("accounting")
+    assert retail is not None
+    assert crm is not None
+    assert accounting is not None
+
+    assert retail.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "retail" in tool.agent_ids
     )
-    assert assistants.get("crm").allowed_tool_names == frozenset(
+    assert crm.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "crm" in tool.agent_ids
     )
-    assert assistants.get("accounting").allowed_tool_names == frozenset(
+    assert accounting.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "accounting" in tool.agent_ids
     )
     assert all(tool.agent_ids for tool in business_registry.list_tools())
