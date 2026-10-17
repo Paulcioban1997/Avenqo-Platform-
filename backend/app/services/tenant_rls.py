@@ -83,6 +83,7 @@ def release_tenant_connection(session: object | None) -> None:
 
 _CONTEXT_SQL = text(
     "SELECT set_config('app.current_company_id', :cid, true), "
+    "set_config('app.current_tenant_id', :cid, true), "
     "set_config('app.bypass_rls', :flag, true)"
 )
 
