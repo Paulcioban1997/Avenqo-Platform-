@@ -48,7 +48,7 @@ def test_registry_contains_implemented_agents_and_rejects_unknown_slugs() -> Non
         assert definition.status is AssistantStatus.AVAILABLE
         assert definition.status.is_executable is True
     assert registry.get("appointments") is None
-    assert registry.get("workflow") is None
+    assert registry.get("unknown_agent") is None
     assert registry.get("crm").allowed_tool_names == frozenset()
     assert registry.get("accounting").allowed_tool_names == frozenset()
 
