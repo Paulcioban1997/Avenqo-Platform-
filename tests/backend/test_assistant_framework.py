@@ -49,8 +49,12 @@ def test_registry_contains_implemented_agents_and_rejects_unknown_slugs() -> Non
         assert definition.status.is_executable is True
     assert registry.get("appointments") is None
     assert registry.get("unknown_agent") is None
-    assert registry.get("crm").allowed_tool_names == frozenset()
-    assert registry.get("accounting").allowed_tool_names == frozenset()
+    crm = registry.get("crm")
+    accounting = registry.get("accounting")
+    assert crm is not None
+    assert accounting is not None
+    assert crm.allowed_tool_names == frozenset()
+    assert accounting.allowed_tool_names == frozenset()
 
 
 def test_unregistered_assistant_cannot_execute() -> None:
