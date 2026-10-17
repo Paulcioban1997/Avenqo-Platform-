@@ -102,6 +102,7 @@ from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.models import CRMCalendarConnection
 from backend.app.models.voice import CompanyRoutingNip
 from backend.app.services.company_routing_service import CompanyRoutingNipService
+from backend.app.services.data_freshness_service import DataFreshnessService
 from backend.app.schemas.voice import (
     CompanyRoutingNipConfigureRequest,
     CompanyRoutingNipResponse,
