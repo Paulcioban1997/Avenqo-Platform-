@@ -114,6 +114,9 @@ from shared.ai_engine.prediction.service import PredictionService
 
 
 class Phase81IntegrationVerifier:
+    user_ero: User
+    user_physio: User
+
     def __init__(self) -> None:
         self.results: dict[str, dict[str, Any]] = {}
         self.settings = get_settings()
@@ -144,11 +147,16 @@ class Phase81IntegrationVerifier:
         self.tenant_physio_id = UUID("838184d8-77c3-4aeb-a0bf-46394dd5c695")  # Avenqo Physio Clinic Sandbox
 
         # Load users
-        self.user_ero = self.session.scalar(select(User).where(User.company_id == self.tenant_ero_id))
-        self.user_physio = self.session.scalar(select(User).where(User.company_id == self.tenant_physio_id))
+        user_ero = self.session.scalar(select(User).where(User.company_id == self.tenant_ero_id))
+        user_physio = self.session.scalar(select(User).where(User.company_id == self.tenant_physio_id))
 
-        assert self.user_ero is not None, "Produits_Ero owner user not found"
-        assert self.user_physio is not None, "Physio Clinic owner user not found"
+        if user_ero is None:
+            raise RuntimeError("Produits_Ero owner user not found")
+        if user_physio is None:
+            raise RuntimeError("Physio Clinic owner user not found")
+
+        self.user_ero = user_ero
+        self.user_physio = user_physio
 
     def set_tenant(self, company_id: UUID) -> None:
         apply_tenant_rls(self.session, company_id)
