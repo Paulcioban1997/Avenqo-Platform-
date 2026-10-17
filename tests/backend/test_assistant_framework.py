@@ -8,6 +8,7 @@ allow-lists must match the existing business Tool Registry factory.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import create_engine
@@ -96,7 +97,11 @@ def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_sess
     class _FakePredictionService:
         pass
 
-    business_registry = build_business_tool_registry(db_session, _FakeIngestion(), _FakePredictionService())
+    business_registry = build_business_tool_registry(
+        db_session,
+        cast(Any, _FakeIngestion()),
+        cast(Any, _FakePredictionService()),
+    )
     actual_tool_names = {tool.name for tool in business_registry.list_tools()}
     assistants = build_default_assistant_registry(business_registry)
 
@@ -131,7 +136,7 @@ def test_cross_agent_definition_is_not_a_union_of_domain_tool_allowlists() -> No
         def list_tools(self):
             return (_Tool(),)
 
-    cross_agent = build_default_assistant_registry(_ToolRegistry()).get("cross_agent")
+    cross_agent = build_default_assistant_registry(cast(Any, _ToolRegistry())).get("cross_agent")
 
     assert cross_agent is not None
     assert cross_agent.allowed_tool_names == frozenset({"get_cross_agent_business_health"})
