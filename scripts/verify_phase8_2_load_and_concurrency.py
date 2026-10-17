@@ -477,7 +477,7 @@ class Phase82ConcurrencyAndLoadVerifier:
         print("\n=== STEP 6: RELIABILITY, TIMEOUTS & FAILURE RECOVERY ===")
         from backend.app.ai.llm.gateway import AvenqoAIGateway
         from backend.app.ai.llm.circuit_breaker import ProviderCircuitBreaker
-        from backend.app.ai.llm.model_registry import LLMRateCard
+        from backend.app.ai.llm.model_registry import LLMRateCard, LLMModelSpec
         from backend.app.ai.llm.exceptions import LLMProviderError
 
         class _MockProvider(LLMProvider):
@@ -507,7 +507,7 @@ class Phase82ConcurrencyAndLoadVerifier:
             "gemini": ("gemini-2.0-flash",),
         })
         health = ProviderHealthRegistry()
-        specs = {
+        specs: dict[str | tuple[str, str], LLMModelSpec] = {
             ("gemini", "gemini-2.0-flash"): rate_card.spec_for("gemini", "gemini-2.0-flash"),
             ("openai", "gpt-4o-mini"): rate_card.spec_for("openai", "gpt-4o-mini"),
         }
