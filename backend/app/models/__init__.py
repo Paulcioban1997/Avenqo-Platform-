@@ -78,7 +78,7 @@ from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
 from backend.app.models.voice_provisioning import VoiceNumberTariff, VoiceProvisioningOrder, VoiceProvisioningClaim
 from backend.app.models.voice import (
-    VoiceCallerCredential, VoiceAuthSession, VoiceBusinessConfig, VoiceCall,
+    CompanyRoutingNip, VoiceCallerCredential, VoiceAuthSession, VoiceBusinessConfig, VoiceCall,
     VoiceCentralSession, VoiceModulePermission, VoicePhoneNumber, VoiceToolAction,
 )
 from backend.app.models.workspace import (
@@ -177,6 +177,7 @@ __all__ = [
     "MediaGeneration",
     "AutomationWorkflow",
     "AutomationRun",
+    "CompanyRoutingNip",
     "VoiceBusinessConfig",
     "VoiceCall",
     "VoiceModulePermission",

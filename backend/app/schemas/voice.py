@@ -289,4 +289,23 @@ class VoiceModulePermissionGrant(BaseModel):
 
 
 class VoiceModulePermissionsUpdateRequest(BaseModel):
-    grants: list[VoiceModulePermissionGrant] = Field(default_factory=list, max_length=200)
+    grants: list[VoiceModulePermissionGrant] = Field(default_factory=list, max_length=200)
+
+
+class CompanyRoutingNipConfigureRequest(BaseModel):
+    custom_code: str | None = Field(default=None, max_length=16)
+
+
+class CompanyRoutingNipResponse(BaseModel):
+    id: str
+    company_id: str
+    routing_code: str
+    status: str
+    dispatcher_number: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    rotated_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+

@@ -264,13 +264,13 @@ class Settings(BaseSettings):
     voice_certified_realtime_locales: list[str] = Field(default_factory=list, alias="VOICE_CERTIFIED_REALTIME_LOCALES")
     voice_approved_realtime_models: list[str] = Field(default_factory=list, alias="VOICE_APPROVED_REALTIME_MODELS")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
-    voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
+    voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en", "ro"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
 
     @field_validator("voice_realtime_supported_locales", mode="before")
     @classmethod
     def _parse_voice_locales(cls, value: object) -> list[str]:
         if not value:
-            return ["fr", "en"]
+            return ["fr", "en", "ro"]
         if isinstance(value, str):
             import json
             trimmed = value.strip()
@@ -279,18 +279,20 @@ class Settings(BaseSettings):
                     parsed = json.loads(trimmed)
                     if isinstance(parsed, list):
                         result = [str(item).strip() for item in parsed if str(item).strip()]
-                        return result or ["fr", "en"]
+                        return result or ["fr", "en", "ro"]
                 except Exception:
                     pass
             result = [part.strip() for part in trimmed.split(",") if part.strip()]
-            return result or ["fr", "en"]
+            return result or ["fr", "en", "ro"]
         if isinstance(value, (list, tuple, set)):
             result = [str(item).strip() for item in value if str(item).strip()]
-            return result or ["fr", "en"]
-        return ["fr", "en"]
+            return result or ["fr", "en", "ro"]
+        return ["fr", "en", "ro"]
 
     voice_pin_max_attempts: int = Field(default=5, ge=3, le=10, alias="VOICE_PIN_MAX_ATTEMPTS")
     voice_pin_lockout_seconds: int = Field(default=900, ge=60, le=86400, alias="VOICE_PIN_LOCKOUT_SECONDS")
+    voice_shared_dispatcher_number: str = Field(default="+14386075438", alias="VOICE_SHARED_DISPATCHER_NUMBER")
+    voice_routing_nip_max_attempts: int = Field(default=3, ge=1, le=10, alias="VOICE_ROUTING_NIP_MAX_ATTEMPTS")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")

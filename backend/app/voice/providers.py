@@ -216,6 +216,61 @@ class TelnyxClient:
             json=self.media_stream_payload(stream_url=stream_url, client_state=client_state, command_id=command_id),
         )
 
+    async def gather_using_speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        minimum_digits: int = 4,
+        maximum_digits: int = 8,
+        terminating_digit: str = "#",
+        valid_digits: str = "0123456789",
+        timeout_millis: int = 15000,
+        inter_digit_timeout_millis: int = 3000,
+        command_id: str | None = None,
+        client_state: str | None = None,
+    ) -> None:
+        lang = "en-US" if language.startswith("en") else "fr-CA"
+        payload: dict[str, object] = {
+            "payload": text_prompt,
+            "payload_type": "text",
+            "service_level": "basic" if lang == "en-US" else "premium",
+            "voice": "female" if lang == "en-US" else _PREMIUM_VOICES.get(lang, "Polly.Chantal"),
+            "language": lang,
+            "minimum_digits": minimum_digits,
+            "maximum_digits": maximum_digits,
+            "valid_digits": valid_digits,
+            "terminating_digit": terminating_digit,
+            "timeout_millis": timeout_millis,
+            "inter_digit_timeout_millis": inter_digit_timeout_millis,
+        }
+        if command_id:
+            payload["command_id"] = command_id
+        if client_state:
+            payload["client_state"] = client_state
+        await self._request("POST", f"/calls/{call_control_id}/actions/gather_using_speak", json=payload)
+
+    async def speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        command_id: str | None = None,
+    ) -> None:
+        lang = "en-US" if language.startswith("en") else "fr-CA"
+        payload: dict[str, object] = {
+            "payload": text_prompt,
+            "payload_type": "text",
+            "service_level": "basic" if lang == "en-US" else "premium",
+            "voice": "female" if lang == "en-US" else _PREMIUM_VOICES.get(lang, "Polly.Chantal"),
+            "language": lang,
+        }
+        if command_id:
+            payload["command_id"] = command_id
+        await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
+
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
             "command_id": command_id, "client_state": client_state,

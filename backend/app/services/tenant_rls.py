@@ -137,6 +137,7 @@ TENANT_SCOPED_TABLES = (
     "ai_messages",
     "ai_enterprise_memories",
     "voice_calls",
+    "company_routing_nips",
 )
 
 # Additive 0060 set. Users, memberships, auth sessions and global catalogs stay

@@ -99,10 +99,27 @@ def media_transport_context(
         VoicePhoneNumber.config_id == call.config_id, VoicePhoneNumber.status == "ACTIVE", VoicePhoneNumber.provider == "telnyx"))
     account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == call.company_id))
     company = db.get(Company, call.company_id)
-    if config is None or company is None or number is None or number.phone_number != config.telnyx_phone_number or "voice" not in (number.capabilities or []):
-        raise PermissionError("Tenant number binding unavailable")
-    if not settings.telnyx_voice_connection_id or number.provider_connection_id != settings.telnyx_voice_connection_id:
-        raise PermissionError("Verified Voice connection required")
+    if config is None or company is None:
+        raise PermissionError("Tenant configuration unavailable")
+    is_dispatcher_call = bool(
+        (call.source_context or {}).get("dispatcher_routing")
+        or (call.source_context or {}).get("routing_nip")
+    )
+    if not is_dispatcher_call:
+        if number is None or number.phone_number != config.telnyx_phone_number or "voice" not in (number.capabilities or []):
+            raise PermissionError("Tenant number binding unavailable")
+        if not settings.telnyx_voice_connection_id or number.provider_connection_id != settings.telnyx_voice_connection_id:
+            raise PermissionError("Verified Voice connection required")
+    else:
+        from backend.app.models.voice import CompanyRoutingNip
+        active_nip = db.scalar(
+            select(CompanyRoutingNip.id).where(
+                CompanyRoutingNip.company_id == call.company_id,
+                CompanyRoutingNip.status == "ACTIVE",
+            )
+        )
+        if active_nip is None and (number is None or number.status != "ACTIVE"):
+            raise PermissionError("Company routing NIP or dedicated number required")
     if account is None or account.status.strip().lower() not in {"active", "trialing"} or not ModuleEntitlementService(db).can_use_module(TenantContext(call.company_id), "voice"):
         raise PermissionError("Voice entitlement unavailable")
     return call, config, company
@@ -172,10 +189,15 @@ def claim_media_start(db: Session, settings: Settings, call_id: UUID, start: dic
             options={"require": ["type", "call_id", "tenant_id", "config_id", "auth_epoch", "jti", "iat", "exp"]})
     except (ValueError, binascii.Error, UnicodeDecodeError, jwt.InvalidTokenError):
         raise PermissionError("Invalid media authorization") from None
+    expected_to = (
+        (call.source_context or {}).get("destination_number")
+        if (call.source_context or {}).get("dispatcher_routing")
+        else config.telnyx_phone_number
+    )
     if (claims["type"] != "telnyx_media" or claims["call_id"] != str(call.id) or claims["tenant_id"] != str(call.company_id)
         or claims["config_id"] != str(config.id) or claims["auth_epoch"] != auth_epoch
         or start.get("call_control_id") != call.telnyx_call_control_id
-        or (normalized_phone(start.get("to")) != normalized_phone(config.telnyx_phone_number) and start.get("to") != config.telnyx_phone_number)):
+        or (expected_to and normalized_phone(start.get("to")) != normalized_phone(expected_to) and start.get("to") != expected_to)):
         raise PermissionError("Media authorization scope mismatch")
     nonce = claims["jti"]
     if not isinstance(nonce, str) or len(nonce) > 128:

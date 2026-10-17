@@ -25,6 +25,10 @@ import {
   Users,
   Store,
   Bot,
+  KeyRound,
+  Copy,
+  Trash2,
+  PhoneIncoming,
 } from "lucide-react";
 import { useSession } from "@/lib/session-context";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -73,6 +77,8 @@ interface VoiceStatus {
   voice_ai_credits_charged: number;
   recent_calls?: { id: string; status: string; started_at: string | null }[];
   data_freshness?: { freshness_status: string };
+  routing_nip?: string | null;
+  dispatcher_number?: string | null;
 }
 
 interface Offer {
@@ -145,6 +151,14 @@ export function VoiceModuleView() {
   const [testCallStatus, setTestCallStatus] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(true);
 
+  // COMPANY TELEPHONE ROUTING NIP (DTMF) STATE
+  const [routingNip, setRoutingNip] = useState<string | null>(null);
+  const [dispatcherNumber, setDispatcherNumber] = useState<string>("+1 438-607-5438");
+  const [customNipInput, setCustomNipInput] = useState<string>("");
+  const [nipBusy, setNipBusy] = useState<boolean>(false);
+  const [nipFeedback, setNipFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [copiedNip, setCopiedNip] = useState<boolean>(false);
+
   useEffect(() => {
     const controller = new AbortController();
     queueMicrotask(async () => {
@@ -158,6 +172,7 @@ export function VoiceModuleView() {
       setQuote(null);
       setOwnedNumber("");
       setPinMessage("");
+      setNipFeedback(null);
       if (!tenantId) return;
       try {
         const response = await fetch("/api/v1/voice/capabilities", {
@@ -173,7 +188,11 @@ export function VoiceModuleView() {
         });
         if (state.ok) {
           const payload: VoiceStatus = await state.json();
-          if (!controller.signal.aborted) setStatus({ tenant: tenantId, data: payload });
+          if (!controller.signal.aborted) {
+            setStatus({ tenant: tenantId, data: payload });
+            if (payload.routing_nip) setRoutingNip(payload.routing_nip);
+            if (payload.dispatcher_number) setDispatcherNumber(payload.dispatcher_number);
+          }
         }
       } catch {
         if (!controller.signal.aborted) setError(true);
@@ -195,7 +214,107 @@ export function VoiceModuleView() {
   async function refreshVoiceStatus() {
     const response = await fetch("/api/v1/voice/status", { cache: "no-store" });
     if (!response.ok) throw new Error("voice_status_unavailable");
-    setStatus({ tenant: tenantId ?? "", data: await response.json() });
+    const payload: VoiceStatus = await response.json();
+    setStatus({ tenant: tenantId ?? "", data: payload });
+    if (payload.routing_nip !== undefined) setRoutingNip(payload.routing_nip);
+    if (payload.dispatcher_number) setDispatcherNumber(payload.dispatcher_number);
+  }
+
+  async function generateRandomNip() {
+    setNipBusy(true);
+    setNipFeedback(null);
+    try {
+      const res = await fetch("/api/v1/voice/routing-nip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_code: null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || (fr ? "Échec de génération du code NIP." : "Failed to generate routing PIN."));
+      }
+      const data = await res.json();
+      setRoutingNip(data.routing_code);
+      setNipFeedback({
+        type: "success",
+        message: fr ? `Nouveau code NIP d'entreprise généré : ${data.routing_code}` : `New company routing PIN generated: ${data.routing_code}`,
+      });
+      await refreshVoiceStatus();
+    } catch (err) {
+      setNipFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setNipBusy(false);
+    }
+  }
+
+  async function setCustomNip() {
+    if (!customNipInput.trim()) return;
+    setNipBusy(true);
+    setNipFeedback(null);
+    try {
+      const res = await fetch("/api/v1/voice/routing-nip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_code: customNipInput.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || (fr ? "Échec de configuration du NIP." : "Failed to configure PIN."));
+      }
+      const data = await res.json();
+      setRoutingNip(data.routing_code);
+      setCustomNipInput("");
+      setNipFeedback({
+        type: "success",
+        message: fr ? `Code NIP personnalisé configuré : ${data.routing_code}` : `Custom routing PIN configured: ${data.routing_code}`,
+      });
+      await refreshVoiceStatus();
+    } catch (err) {
+      setNipFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setNipBusy(false);
+    }
+  }
+
+  async function revokeNip() {
+    if (!confirm(fr ? "Êtes-vous certain de vouloir révoquer ce code NIP d'acheminement ?" : "Are you sure you want to revoke this company routing PIN?")) return;
+    setNipBusy(true);
+    setNipFeedback(null);
+    try {
+      const res = await fetch("/api/v1/voice/routing-nip", { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || (fr ? "Échec de révocation." : "Failed to revoke PIN."));
+      }
+      setRoutingNip(null);
+      setNipFeedback({
+        type: "success",
+        message: fr ? "Code NIP révoqué avec succès." : "Routing PIN successfully revoked.",
+      });
+      await refreshVoiceStatus();
+    } catch (err) {
+      setNipFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setNipBusy(false);
+    }
+  }
+
+  function copyCallingInstructions() {
+    const textToCopy = fr
+      ? `Appelez au standard Avenqo au ${dispatcherNumber} et tapez le code NIP de notre entreprise : ${routingNip}# pour joindre notre réceptionniste IA.`
+      : `Call Avenqo platform at ${dispatcherNumber} and enter our company routing PIN: ${routingNip}# to connect to our AI receptionist.`;
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedNip(true);
+    setTimeout(() => setCopiedNip(false), 3000);
   }
 
   async function saveVoicePin(event: React.FormEvent<HTMLFormElement>) {
@@ -341,7 +460,13 @@ export function VoiceModuleView() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {routingNip && (
+            <div className="px-3.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs">
+              <KeyRound className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>NIP : {routingNip}#</span>
+            </div>
+          )}
           {currentStatus?.business_number ? (
             <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -656,21 +781,171 @@ export function VoiceModuleView() {
 
           {/* STEP 5: PHONE NUMBER STATUS & SETUP */}
           {activeStep === 5 && (
-            <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in duration-200">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                  {fr ? "Étape 5 : Ligne téléphonique et provisionnement Telnyx" : "Step 5: Phone Line & Telnyx Provisioning"}
+                  {fr ? "Étape 5 : Ligne téléphonique et acheminement DTMF (NIP)" : "Step 5: Phone Line & DTMF Company Routing (PIN)"}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {fr ? "Ligne dédiée connectée directement à votre tenant Avenqo." : "Dedicated line connected directly to your Avenqo tenant."}
+                  {fr ? "Gérez l'accès téléphonique direct et la passerelle centralisée de standard d'entreprise Avenqo." : "Manage direct phone access and the central Avenqo enterprise receptionist gateway."}
                 </p>
               </div>
 
+              {/* FEEDBACK ALERT */}
+              {nipFeedback && (
+                <div
+                  className={`p-4 rounded-2xl text-xs font-semibold flex items-center justify-between gap-3 animate-in fade-in ${
+                    nipFeedback.type === "success"
+                      ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+                      : "bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {nipFeedback.type === "success" ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <ShieldAlert className="w-4 h-4 text-red-600" />}
+                    <span>{nipFeedback.message}</span>
+                  </div>
+                  <button
+                    onClick={() => setNipFeedback(null)}
+                    className="text-[11px] underline opacity-75 hover:opacity-100"
+                  >
+                    {fr ? "Fermer" : "Dismiss"}
+                  </button>
+                </div>
+              )}
+
+              {/* CARD 1: CENTRAL GATEWAY & DTMF ROUTING NIP */}
+              <div className="p-6 rounded-3xl border-2 border-purple-200 dark:border-purple-900/60 bg-gradient-to-br from-purple-50/40 via-white to-blue-50/30 dark:from-purple-950/30 dark:via-[#0B132B] dark:to-[#0B132B] space-y-5 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                      <PhoneIncoming className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-purple-700 dark:text-purple-300">
+                          {fr ? "Standard Central Partagé" : "Central Shared Gateway"}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/70 text-purple-700 dark:text-purple-300 text-[10px] font-bold">
+                          {fr ? "Acheminement DTMF" : "DTMF Routing"}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-extrabold text-slate-900 dark:text-white mt-0.5">
+                        {fr ? "Code NIP d'entreprise pour le +1 438-607-5438" : "Company Routing PIN for +1 438-607-5438"}
+                      </h4>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="px-3 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 text-xs font-mono font-bold">
+                      {dispatcherNumber}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {fr
+                    ? "Permet à vos appelants et employés d'appeler le numéro central Avenqo (+1 438-607-5438). Dès qu'ils saisissent votre NIP d'entreprise suivi de la touche dièse (#), ils sont automatiquement routés vers l'assistant vocal IA isolé de votre entreprise."
+                    : "Allows callers and team members to dial Avenqo's central number (+1 438-607-5438). Upon dialing your unique company PIN followed by hash (#), they are instantly routed to your isolated tenant voice assistant."}
+                </p>
+
+                {/* CURRENT NIP DISPLAY */}
+                <div className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-purple-100 dark:border-purple-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {fr ? "Code NIP d'accès actif" : "Active Routing PIN"}
+                    </span>
+                    {routingNip ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-2xl font-mono font-black text-purple-700 dark:text-purple-300 tracking-wider">
+                          {routingNip}#
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
+                          {fr ? "Actif & Routable" : "Active & Routable"}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-500 mt-1">
+                        {fr ? "Aucun code NIP actif configuré" : "No active routing PIN configured"}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {routingNip && (
+                      <button
+                        onClick={copyCallingInstructions}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-bold transition shadow-xs"
+                      >
+                        {copiedNip ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedNip ? (fr ? "Copié !" : "Copied!") : (fr ? "Copier les instructions" : "Copy Instructions")}</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={generateRandomNip}
+                      disabled={nipBusy}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${nipBusy ? "animate-spin" : ""}`} />
+                      <span>{routingNip ? (fr ? "Régénérer NIP (5 chiffres)" : "Rotate PIN (5 digits)") : (fr ? "Générer NIP aléatoire" : "Generate Random PIN")}</span>
+                    </button>
+                    {routingNip && (
+                      <button
+                        onClick={revokeNip}
+                        disabled={nipBusy}
+                        className="p-2 rounded-xl border border-red-200 dark:border-red-900/60 hover:bg-red-50 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 transition"
+                        title={fr ? "Révoquer ce NIP" : "Revoke PIN"}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* CUSTOM NIP FORM */}
+                <div className="pt-2 border-t border-purple-100 dark:border-purple-900/40">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-2">
+                    {fr ? "Ou définir un code NIP personnalisé (4 à 8 chiffres) :" : "Or set custom routing PIN (4 to 8 digits):"}
+                  </span>
+                  <div className="flex items-center gap-2 max-w-md">
+                    <input
+                      type="text"
+                      pattern="[0-9]*"
+                      maxLength={8}
+                      placeholder="Ex: 58392"
+                      value={customNipInput}
+                      onChange={(e) => setCustomNipInput(e.target.value.replace(/\D/g, ""))}
+                      className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-[#0076FF]"
+                    />
+                    <button
+                      onClick={setCustomNip}
+                      disabled={nipBusy || customNipInput.length < 4}
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 text-xs font-bold transition disabled:opacity-50"
+                    >
+                      {fr ? "Appliquer NIP" : "Apply PIN"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* CALLER FLOW STEPS */}
+                <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/30">
+                  <p className="text-[11px] font-bold text-purple-900 dark:text-purple-200 uppercase tracking-wider mb-2">
+                    {fr ? "Comment fonctionne l'appel de vos clients :" : "How caller flow operates:"}
+                  </p>
+                  <ol className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside">
+                    <li>{fr ? "Le client compose le " : "Caller dials "}<strong>{dispatcherNumber}</strong></li>
+                    <li>{fr ? "Le standard vocal Avenqo répond : « Bienvenue sur Avenqo. Entrez votre NIP d'entreprise suivi de # »" : "Avenqo interactive receptionist answers asking for company routing PIN followed by #"}</li>
+                    <li>{fr ? "Le client tape son code : " : "Caller enters PIN: "}<strong>{routingNip ? `${routingNip}#` : "votre code NIP#"}</strong></li>
+                    <li>{fr ? "L'assistant IA dédié de votre entreprise s'active immédiatement avec vos réservations CRM et produits." : "Your company's isolated AI receptionist engages live with your real CRM & Retail data."}</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* CARD 2: DEDICATED PHONE LINE / SANDBOX STATUS */}
               <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      {fr ? "Ligne attribuée" : "Assigned Line"}
+                      {fr ? "Ligne dédiée d'entreprise (Telnyx Direct)" : "Dedicated Company Line (Direct Telnyx)"}
                     </span>
                     <p className="text-xl font-mono font-extrabold text-slate-900 dark:text-white mt-1">
                       {currentStatus?.business_number || "+1 (514) 800-AVENQO (Sandbox)"}
@@ -683,7 +958,7 @@ export function VoiceModuleView() {
 
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {fr
-                    ? "En environnement Sandbox, le provisionnement réel de numéro Telnyx est sécurisé et simulé afin d'éviter tout frais récurrent non autorisé. La ligne répond aux tests de standard sans surcoût."
+                    ? "En environnement Sandbox, le provisionnement réel de numéro Telnyx dédié est sécurisé et simulé afin d'éviter tout frais récurrent non autorisé. La ligne répond aux tests de standard sans surcoût."
                     : "In Sandbox, real Telnyx telephone provisioning is safely simulated to protect against unauthorized charges while allowing full call flow testing."}
                 </p>
               </div>

@@ -11,7 +11,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -99,8 +99,13 @@ from backend.app.services.voice_number_service import (
     VoiceNumberOwnerActionRequired,
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
-from backend.app.services.data_freshness_service import DataFreshnessService
 from backend.app.models import CRMCalendarConnection
+from backend.app.models.voice import CompanyRoutingNip
+from backend.app.services.company_routing_service import CompanyRoutingNipService
+from backend.app.schemas.voice import (
+    CompanyRoutingNipConfigureRequest,
+    CompanyRoutingNipResponse,
+)
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
@@ -873,7 +878,78 @@ def get_voice_status(
         } for call in sorted(calls, key=lambda item: _as_utc(item.started_at) if item.started_at else datetime.min.replace(tzinfo=timezone.utc), reverse=True)[:20]],
         "call_minutes": call_minutes,
         "voice_ai_credits_charged": voice_ai_credits,
+        "routing_nip": (CompanyRoutingNipService(db, settings).get_active_nip(company_id).routing_code if CompanyRoutingNipService(db, settings).get_active_nip(company_id) is not None else None),
+        "dispatcher_number": getattr(settings, "voice_shared_dispatcher_number", "+14386075438"),
     }
+
+
+@router.get("/routing-nip", response_model=CompanyRoutingNipResponse, dependencies=[Depends(require_active_subscription)])
+def get_company_routing_nip(
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> CompanyRoutingNipResponse:
+    company_id = identity.user.company_id
+    service = CompanyRoutingNipService(db, settings)
+    nip = service.get_active_nip(company_id)
+    if nip is None:
+        raise HTTPException(status_code=404, detail="Aucun code NIP actif configuré pour cette entreprise")
+    dispatcher = getattr(settings, "voice_shared_dispatcher_number", "+14386075438")
+    return CompanyRoutingNipResponse(
+        id=str(nip.id),
+        company_id=str(nip.company_id),
+        routing_code=nip.routing_code,
+        status=nip.status,
+        dispatcher_number=dispatcher,
+        created_at=nip.created_at,
+        updated_at=nip.updated_at,
+        rotated_at=nip.rotated_at,
+        revoked_at=nip.revoked_at,
+    )
+
+
+@router.post("/routing-nip", response_model=CompanyRoutingNipResponse, dependencies=[Depends(require_active_subscription)])
+def configure_or_rotate_company_routing_nip(
+    payload: CompanyRoutingNipConfigureRequest | None = None,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> CompanyRoutingNipResponse:
+    company_id = identity.user.company_id
+    service = CompanyRoutingNipService(db, settings)
+    custom = payload.custom_code if payload is not None else None
+    try:
+        nip = service.configure_or_rotate_nip(company_id, identity.user.id, custom_code=custom)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    dispatcher = getattr(settings, "voice_shared_dispatcher_number", "+14386075438")
+    return CompanyRoutingNipResponse(
+        id=str(nip.id),
+        company_id=str(nip.company_id),
+        routing_code=nip.routing_code,
+        status=nip.status,
+        dispatcher_number=dispatcher,
+        created_at=nip.created_at,
+        updated_at=nip.updated_at,
+        rotated_at=nip.rotated_at,
+        revoked_at=nip.revoked_at,
+    )
+
+
+@router.delete("/routing-nip", dependencies=[Depends(require_active_subscription)])
+def revoke_company_routing_nip(
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    company_id = identity.user.company_id
+    service = CompanyRoutingNipService(db, settings)
+    revoked = service.revoke_nip(company_id, identity.user.id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Aucun code NIP actif à révoquer")
+    return {"success": True, "status": "REVOKED"}
 
 
 def _voice_number_service(settings: Settings) -> VoiceNumberManagementService:
@@ -1391,6 +1467,114 @@ async def telnyx_webhook(
         VoicePhoneNumber.provider == "telnyx",
         VoicePhoneNumber.status == "ACTIVE",
     ))
+    dispatcher_number = getattr(settings, "voice_shared_dispatcher_number", "+14386075438")
+    is_dispatcher = (
+        normalized_phone(destination) == normalized_phone(dispatcher_number)
+        or destination == dispatcher_number
+    )
+    if is_dispatcher:
+        if event_type == "call.initiated":
+            answer_cmd = str(UUID(hashlib.sha256(f"disp-ans:{call_control_id}".encode()).hexdigest()[:32]))
+            await TelnyxClient(settings).answer_call(call_control_id, command_id=answer_cmd)
+            return {"received": True, "routed": False, "status": "DISPATCHER_ANSWERED"}
+
+        if event_type == "call.answered":
+            gather_cmd = str(UUID(hashlib.sha256(f"disp-gather:{call_control_id}".encode()).hexdigest()[:32]))
+            greeting = "Bienvenue sur la plateforme Avenqo. Veuillez entrer le code d'accès NIP de votre entreprise suivi de la touche dièse."
+            await TelnyxClient(settings).gather_using_speak(
+                call_control_id,
+                text_prompt=greeting,
+                language="fr-CA",
+                minimum_digits=4,
+                maximum_digits=8,
+                terminating_digit="#",
+                command_id=gather_cmd,
+            )
+            return {"received": True, "routed": False, "status": "DISPATCHER_GATHER_STARTED"}
+
+        if event_type == "call.gather.ended":
+            raw_digits = str(call_payload.get("digits") or "")
+            routing_service = CompanyRoutingNipService(db, settings)
+            resolved_company_id, error = routing_service.resolve_tenant_by_nip(raw_digits)
+            if resolved_company_id is None:
+                routing_service.record_failed_lookup(raw_digits)
+                speak_cmd = str(UUID(hashlib.sha256(f"disp-fail:{call_control_id}".encode()).hexdigest()[:32]))
+                error_prompt = "Le code NIP entré est invalide. Veuillez vérifier le code d'accès de votre entreprise et rappeler. Au revoir."
+                try:
+                    await TelnyxClient(settings).speak(call_control_id, text_prompt=error_prompt, language="fr-CA", command_id=speak_cmd)
+                    await TelnyxClient(settings).hangup(call_control_id)
+                except Exception:
+                    pass
+                return {"received": True, "routed": False, "status": "INVALID_NIP"}
+
+            apply_tenant_rls(db, resolved_company_id)
+            config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == resolved_company_id))
+            if config is None or not config.enabled:
+                speak_cmd = str(UUID(hashlib.sha256(f"disp-no-voice:{call_control_id}".encode()).hexdigest()[:32]))
+                no_voice = "L'assistant vocal de cette entreprise n'est pas activé actuellement."
+                try:
+                    await TelnyxClient(settings).speak(call_control_id, text_prompt=no_voice, language="fr-CA", command_id=speak_cmd)
+                    await TelnyxClient(settings).hangup(call_control_id)
+                except Exception:
+                    pass
+                return {"received": True, "routed": False, "status": "VOICE_DISABLED"}
+
+            call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+            if call is None:
+                call = VoiceCall(
+                    id=uuid4(),
+                    company_id=resolved_company_id,
+                    config_id=config.id,
+                    telnyx_call_control_id=call_control_id,
+                    caller_phone=str(call_payload.get("from") or "anonymous"),
+                    locale=config.preferred_language or "fr",
+                    status="in_progress",
+                    source_context={
+                        "dispatcher_routing": True,
+                        "routing_nip": True,
+                        "destination_number": destination,
+                        "call_control_id": call_control_id,
+                    },
+                )
+                db.add(call)
+                db.commit()
+
+            media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
+            if media_mode:
+                base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
+                stream_url = f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
+                client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+                stream_cmd = str(UUID(hashlib.sha256(f"disp-stream:{call.id}".encode()).hexdigest()[:32]))
+                await TelnyxClient(settings).start_media_stream(
+                    call_control_id,
+                    stream_url=stream_url,
+                    client_state=client_state,
+                    command_id=stream_cmd,
+                )
+                call.status = "routed"
+                db.commit()
+                return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_STARTED"}
+
+            return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "ROUTED_PENDING_MEDIA"}
+
+        if event_type == "call.hangup":
+            call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+            if call is not None:
+                call.ended_at = call.ended_at or datetime.now(timezone.utc)
+                if call.status not in {"appointment_booked", "appointment_cancelled", "transferred", "blocked_credits"}:
+                    call.status = "ended"
+                db.commit()
+                return {"received": True, "handled": True, "status": "CALL_ENDED"}
+            return {"received": True, "handled": True}
+
+        # If a call was already routed for this call_control_id, resume with tenant call context
+        call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+        if call is not None:
+            config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id, VoiceBusinessConfig.company_id == call.company_id))
+            if config is not None:
+                apply_tenant_rls(db, config.company_id)
+                binding = VoicePhoneNumber(phone_number=destination, company_id=config.company_id, config_id=config.id, capabilities=["voice"])
+
     if binding is None or binding.config_id is None or "voice" not in (binding.capabilities or []):
         return {"received": True, "routed": False}
     config = db.scalar(select(VoiceBusinessConfig).where(
