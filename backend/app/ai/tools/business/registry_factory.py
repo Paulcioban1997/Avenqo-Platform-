@@ -16,9 +16,28 @@ from backend.app.ai.tools.business.accounting_tools import (
     GetMonthlyExpensesTool,
     GetProfitMarginTool,
     GetUnpaidInvoicesTool,
+    ReconcileSalesAndAccountingTool,
+)
+from backend.app.ai.tools.business.automation_tools import (
+    DraftAutomationWorkflowTool,
+    ExecuteAutomationWorkflowTool,
 )
 from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusinessHealthTool
 from backend.app.ai.tools.business.capability_tools import GetSubscriptionOptionsTool
+from backend.app.ai.tools.business.document_tools import (
+    AnalyzeLegalDocumentTool,
+    GetOCRDocumentTool,
+    ProposeAccountingFromOCRTool,
+)
+from backend.app.ai.tools.business.marketing_tools import DraftMarketingCampaignTool
+from backend.app.ai.tools.business.memory_tools import (
+    SaveEnterpriseMemoryTool,
+    SearchEnterpriseMemoryTool,
+)
+from backend.app.ai.tools.business.platform_tools import (
+    GetAICreditsBalanceTool,
+    GetCommerceConnectionsStatusTool,
+)
 from backend.app.ai.tools.business.crm_tools import (
     CancelAppointmentTool,
     CheckAvailabilityTool,
@@ -112,6 +131,18 @@ def build_business_tool_registry(
     registry.register(GetUnpaidInvoicesTool(session))
     registry.register(GetExpenseAnomaliesTool(session))
     registry.register(GetCashFlowForecastTool(session))
+    registry.register(ReconcileSalesAndAccountingTool(session))
+    # Phase 8.1 — Marketing, Documents (OCR & Legal), Automations, Memory & Platform Tools
+    registry.register(DraftMarketingCampaignTool(session))
+    registry.register(GetOCRDocumentTool(session))
+    registry.register(ProposeAccountingFromOCRTool(session))
+    registry.register(AnalyzeLegalDocumentTool(session))
+    registry.register(SaveEnterpriseMemoryTool(session))
+    registry.register(SearchEnterpriseMemoryTool(session))
+    registry.register(DraftAutomationWorkflowTool(session))
+    registry.register(ExecuteAutomationWorkflowTool(session))
+    registry.register(GetCommerceConnectionsStatusTool(session))
+    registry.register(GetAICreditsBalanceTool(session))
     # Phase 15 — Cross-Agent Synthesis Tools
     registry.register(GetCrossAgentBusinessHealthTool(session))
     return registry
