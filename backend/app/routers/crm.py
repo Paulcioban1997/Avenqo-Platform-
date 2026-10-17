@@ -99,6 +99,8 @@ class BusinessHoursRequest(BaseModel):
 @router.get("/settings/business-hours")
 def get_business_hours(tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db), employee_id: UUID | None = None):
     company = db.get(Company, tenant.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
     if employee_id:
         from backend.app.models.crm import CRMEmployee
         employee = db.get(CRMEmployee, employee_id)
@@ -119,6 +121,8 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
     if "crm:appointments:write" not in permissions_for(membership.role) or membership.company_id != tenant.company_id or membership.user_id != identity.user.id:
         raise HTTPException(status_code=403)
     company = db.get(Company, tenant.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
     if payload.employee_id:
         from backend.app.models.crm import CRMEmployee
         employee = db.get(CRMEmployee, payload.employee_id)
@@ -636,6 +640,8 @@ async def create_appointment(
         if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
             raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
+    if apt is None:
+        raise HTTPException(status_code=400, detail="Failed to create appointment")
     calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
     response = {
         "id": str(apt.id),
@@ -667,6 +673,8 @@ async def update_appointment(
         if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
             raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
+    if apt is None:
+        raise HTTPException(status_code=404, detail="Appointment not found")
     return {
         "id": str(apt.id),
         "title": apt.title,
@@ -1315,7 +1323,8 @@ async def crm_copilot_chat(
     if any(word in msg for word in availability_words):
         from zoneinfo import ZoneInfo
         company = db.get(Company, tenant.company_id)
-        zone = ZoneInfo(company.timezone)
+        tz_name = (company.timezone if company else None) or "America/Toronto"
+        zone = ZoneInfo(tz_name)
         today = datetime.now(zone).date()
         target_day = today
         if any(word in msg for word in ("demain", "tomorrow", "mâine", "mañana")):
@@ -1513,9 +1522,9 @@ async def crm_copilot_chat(
             },
             actor_name="Avenqo Copilot",
         )
-        if err:
+        if err or apt is None:
             return {
-                "reply": f"Booking error: {err}" if req.locale == "en" else f"Erreur lors de la réservation : {err}",
+                "reply": f"Booking error: {err or 'Failed to create appointment'}" if req.locale == "en" else f"Erreur lors de la réservation : {err or 'Échec de la création du rendez-vous'}",
                 "status": "error"
             }
 
