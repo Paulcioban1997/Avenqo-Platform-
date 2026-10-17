@@ -297,12 +297,7 @@ class CRMAvailabilityService:
         duration_minutes = service.duration_minutes if service else duration_minutes
         before = timedelta(minutes=service.buffer_before_minutes if service else 0)
         after = timedelta(minutes=service.buffer_after_minutes if service else 0)
-        try:
-            windows = self._windows(company_id, target_date, employee_id)
-        except AvailabilityUnavailable as exc:
-            if str(exc) == "BUSINESS_HOURS_NOT_CONFIGURED":
-                return []
-            raise
+        windows = self._windows(company_id, target_date, employee_id)
         if not windows:
             return []
         busy = await self._external_busy(company_id, min(window[0] for window in windows), max(window[1] for window in windows))

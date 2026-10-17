@@ -163,7 +163,7 @@ class TenantSalesService:
         points = trend["points"]
         strongest = max(points, key=lambda item: item["revenue"]) if points else None
         weakest = min(points, key=lambda item: item["revenue"]) if points else None
-        forecast = self._forecast(tenant, snapshot)
+        forecast = self._forecast(tenant, snapshot, period_key=period_key)
         return {
             **base,
             "period": {"key": period_key, **bounds},
@@ -195,6 +195,7 @@ class TenantSalesService:
         self,
         tenant: TenantContext,
         snapshot,
+        period_key: str = "last_30_days",
     ) -> dict[str, Any] | None:
         if any(model.task_code == "weekly_forecast" for model in snapshot.active_models):
             try:
@@ -247,32 +248,66 @@ class TenantSalesService:
         weekly_orders_baseline = sum(order_observations) / len(order_observations) if order_observations else 0.0
         variance = sum((x - weekly_baseline) ** 2 for x in observations) / (len(observations) - 1) if len(observations) > 1 else 0.0
         std_err = (variance / len(observations)) ** 0.5
-        lower_bound = max(0.0, round(weekly_baseline - 1.96 * std_err, 2))
-        upper_bound = round(weekly_baseline + 1.96 * std_err, 2)
-        forecast_points = [round(weekly_baseline, 2)] * 4
-        order_points = [round(weekly_orders_baseline, 1)] * 4
+
+        if period_key in ("last_7_days", "7d", "week"):
+            horizon = 7
+            granularity = "day"
+            horizon_days = 7
+            daily_baseline = round(weekly_baseline / 7.0, 2)
+            daily_orders = round(weekly_orders_baseline / 7.0, 1)
+            daily_std_err = (variance / len(observations)) ** 0.5 / (7.0 ** 0.5)
+            point_lower = max(0.0, round(daily_baseline - 1.96 * daily_std_err, 2))
+            point_upper = round(daily_baseline + 1.96 * daily_std_err, 2)
+            forecast_points = [daily_baseline] * 7
+            order_points = [daily_orders] * 7
+            point_periods = [f"J+{i + 1}" for i in range(7)]
+            total_lower = max(0.0, round(weekly_baseline - 1.96 * std_err, 2))
+            total_upper = round(weekly_baseline + 1.96 * std_err, 2)
+        elif period_key in ("last_90_days", "90d", "quarter", "last_quarter"):
+            horizon = 12
+            granularity = "week"
+            horizon_days = 90
+            point_lower = max(0.0, round(weekly_baseline - 1.96 * std_err, 2))
+            point_upper = round(weekly_baseline + 1.96 * std_err, 2)
+            forecast_points = [round(weekly_baseline, 2)] * 12
+            order_points = [round(weekly_orders_baseline, 1)] * 12
+            point_periods = [str(i + 1) for i in range(12)]
+            total_lower = max(0.0, round(weekly_baseline * 12 - 1.96 * std_err * (12.0 ** 0.5), 2))
+            total_upper = round(weekly_baseline * 12 + 1.96 * std_err * (12.0 ** 0.5), 2)
+        else:
+            horizon = 4
+            granularity = "week"
+            horizon_days = 30
+            point_lower = max(0.0, round(weekly_baseline - 1.96 * std_err, 2))
+            point_upper = round(weekly_baseline + 1.96 * std_err, 2)
+            forecast_points = [round(weekly_baseline, 2)] * 4
+            order_points = [round(weekly_orders_baseline, 1)] * 4
+            point_periods = [str(i + 1) for i in range(4)]
+            total_lower = max(0.0, round(weekly_baseline * 4 - 1.96 * std_err * (4.0 ** 0.5), 2))
+            total_upper = round(weekly_baseline * 4 + 1.96 * std_err * (4.0 ** 0.5), 2)
+
         method = "historical_weekly_mean"
         historical_context = (
-            f"Prévision chronologique basée sur l'historique du jeu de données (fin d'historique : {end.strftime('%Y-%m-%d')})"
+            f"Prévision chronologique basée sur l'historique du jeu de données (fin d'historique : {end.strftime('%Y-%m-%d')}) • Horizon : {horizon_days} jours"
             if is_historical
             else None
         )
         return {
-            "granularity": "week",
+            "granularity": granularity,
             "method": method,
-            "horizon": 4,
+            "horizon": horizon,
             "forecasted_total": round(sum(forecast_points), 2),
             "forecasted_orders": round(sum(order_points), 0),
-            "lower_bound": lower_bound,
-            "upper_bound": upper_bound,
+            "lower_bound": total_lower,
+            "upper_bound": total_upper,
             "historical_context": historical_context,
             "points": [
                 {
-                    "period": str(index + 1),
+                    "period": point_periods[index],
                     "value": value,
                     "orders_volume": order_points[index],
-                    "lower_bound": lower_bound,
-                    "upper_bound": upper_bound,
+                    "lower_bound": point_lower,
+                    "upper_bound": point_upper,
                 }
                 for index, value in enumerate(forecast_points)
             ],

@@ -742,7 +742,15 @@ async def get_available_slots(
             tenant.company_id, target_date, service_id=service_id, employee_id=employee_id
         )
     except AvailabilityUnavailable as exc:
-        return {"target_date": target_date.isoformat(), "count": 0, "slots": [], "state": str(exc), "available": False}
+        state_code = "UNCONFIGURED" if str(exc) == "BUSINESS_HOURS_NOT_CONFIGURED" else str(exc)
+        return {
+            "target_date": target_date.isoformat(),
+            "count": 0,
+            "slots": [],
+            "state": state_code,
+            "reason": str(exc),
+            "available": False,
+        }
     return {
         "target_date": target_date.isoformat(),
         "count": len(slots),
@@ -1557,7 +1565,23 @@ async def crm_copilot_chat(
         target_date = datetime.now(timezone.utc).date()
         if "demain" in msg or "tomorrow" in msg:
             target_date = target_date + timedelta(days=1)
-        slots = await avail_svc.list_available_slots(tenant.company_id, target_date)
+        try:
+            slots = await avail_svc.list_available_slots(tenant.company_id, target_date)
+        except AvailabilityUnavailable as exc:
+            if str(exc) == "BUSINESS_HOURS_NOT_CONFIGURED":
+                msg_reply = (
+                    "Your company's business hours have not been configured yet. Please configure them in the CRM via Hours & Services."
+                    if is_en
+                    else "Les horaires d'ouverture de votre entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services."
+                )
+                return {
+                    "reply": msg_reply,
+                    "status": "unavailable",
+                    "state": "UNCONFIGURED",
+                    "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                    "slots": [],
+                }
+            slots = []
         count = len(slots)
         if count == 0:
             date_str = target_date.strftime("%Y-%m-%d") if is_en else target_date.strftime("%d/%m/%Y")

@@ -1005,7 +1005,7 @@ export function RetailIntelligenceView({
                     const tooltipText = [
                       `${point.period}`,
                       `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
-                      hasBounds ? `Intervalle (95%): [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
+                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ)" : "Estimated interval (±1.96 σ)"}: [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
                       point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
                     ].filter(Boolean).join("\n");
 
