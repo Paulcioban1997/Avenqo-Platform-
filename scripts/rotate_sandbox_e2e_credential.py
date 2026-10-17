@@ -9,23 +9,26 @@ Requires explicit '--execute' flag to commit changes.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import os
 import secrets
 import string
+import subprocess
 import sys
 from typing import Any
 
 from dotenv import dotenv_values
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, ".")
 
 from backend.app.core.security import hash_password, verify_password
+from backend.app.models.auth_session import AuthSession
 from backend.app.models.user import User
 
 
-def generate_secure_password(length: int = 28) -> str:
+def generate_secure_password(length: int = 32) -> str:
     """Generate a cryptographically secure password with mixed entropy."""
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
     while True:
@@ -104,30 +107,52 @@ def main() -> None:
         # Execute Rotation
         print("\n[EXECUTING LIVE ROTATION]")
         user.password_hash = new_hash
+
+        # Revoke existing active auth sessions for this user
+        revoked_result = session.execute(
+            update(AuthSession)
+            .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
         session.commit()
-        print("✓ Database user password_hash successfully updated.")
+        print(f"[OK] Revoked {revoked_result.rowcount} active sessions in auth_sessions table.")
+        print("[OK] Database user password_hash successfully updated.")
 
         # Invalidation & verification test
         session.refresh(user)
         refreshed_hash = user.password_hash
         is_new_valid = verify_password(replacement_pass, refreshed_hash)
         
-        # Test old password rejection if old test secret candidate provided in env
-        old_test_candidate = os.environ.get("OLD_AVENQO_E2E_PASSWORD", "")
-        is_old_rejected = True
-        if old_test_candidate:
-            is_old_rejected = not verify_password(old_test_candidate, refreshed_hash)
+        # Test known compromised password explicitly
+        is_old_rejected = not verify_password("PhysioSecure123!", refreshed_hash)
 
         print(f"Verification: New Password Authenticates Successfully = {is_new_valid}")
-        print(f"Verification: Old Password Rejected = {is_old_rejected}")
+        print(f"Verification: Compromised Old Password Rejected = {is_old_rejected}")
 
-        if is_new_valid and is_old_rejected:
-            print("\n[SUCCESS] Credential rotation completed and verified.")
-            if auto_generated:
-                print("NOTE: Set the new credential into GitHub Secrets as 'AVENQO_E2E_PASSWORD'.")
-        else:
+        if not (is_new_valid and is_old_rejected):
             print("\n[ERROR] Post-rotation authentication check failed!")
             sys.exit(2)
+
+        # Secure Secret Persistence:
+        # 1. Store to GitHub Secrets via gh CLI
+        try:
+            gh_res = subprocess.run(
+                ["gh", "secret", "set", "AVENQO_E2E_PASSWORD"],
+                input=replacement_pass.encode("utf-8"),
+                capture_output=True,
+                check=True,
+            )
+            print("[OK] GitHub Secret 'AVENQO_E2E_PASSWORD' updated successfully.")
+        except Exception as e:
+            print(f"[WARN] Warning setting GitHub Secret via gh CLI: {e}")
+
+        # 2. Store to gitignored .env.e2e_sandbox for local Playwright verification
+        env_file_path = os.path.abspath(".env.e2e_sandbox")
+        with open(env_file_path, "w", encoding="utf-8") as f:
+            f.write(f"AVENQO_E2E_PASSWORD={replacement_pass}\n")
+        print(f"[OK] Secret written to gitignored file: {env_file_path}")
+
+        print("\n[SUCCESS] Credential rotation completed and verified.")
 
     finally:
         session.close()
