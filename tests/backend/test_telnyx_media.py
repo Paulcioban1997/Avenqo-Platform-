@@ -1302,9 +1302,9 @@ def test_media_audio_available_with_default_and_custom_locales():
     parsed_locales = Settings._parse_voice_locales("fr, en, es")
     assert parsed_locales == ["fr", "en", "es"]
 
-    # Setting empty should fallback to ['fr', 'en']
-    assert Settings._parse_voice_locales("") == ["fr", "en"]
-    assert Settings._parse_voice_locales([]) == ["fr", "en"]
+    # Setting empty should use the current multilingual default locales
+    assert Settings._parse_voice_locales("") == ["fr", "en", "ro"]
+    assert Settings._parse_voice_locales([]) == ["fr", "en", "ro"]
 
 
 def test_owner_bootstrap_code_generation_endpoint(signed_telnyx_webhook):
