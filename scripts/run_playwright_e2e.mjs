@@ -24,7 +24,9 @@ async function run() {
     // 2. Perform Login with persistent test account
     console.log("Filling login credentials...");
     await page.fill('input[name="email"]', "alex.physio.sandbox@avenqo.ca");
-    await page.fill('input[name="password"]', "PhysioSecure123!");
+    const e2ePassword = process.env.AVENQO_E2E_PASSWORD;
+    if (!e2ePassword) throw new Error("AVENQO_E2E_PASSWORD environment variable is required");
+    await page.fill('input[name="password"]', e2ePassword);
     await page.click('button[type="submit"]');
 
     // Wait for navigation to dashboard
