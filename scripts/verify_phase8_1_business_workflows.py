@@ -23,7 +23,7 @@ from decimal import Decimal
 import json
 import os
 import sys
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import psycopg2
@@ -256,10 +256,18 @@ class Phase81IntegrationVerifier:
     def verify_tool_registry(self) -> None:
         print("\n=== STEP 2: CENTRAL AI MULTI-MODULE TOOL REGISTRY ===")
         from backend.app.dependencies.ai_engine import get_ai_engine_container, get_model_registry_root
-        from backend.app.dependencies.datasets import get_company_dataset_ingestion_service
+        from backend.app.dependencies.datasets import (
+            get_company_dataset_ingestion_service,
+            get_data_import_policy,
+        )
+        from backend.app.services.training_dispatcher import TrainingDispatcher
 
         prediction_svc = get_ai_engine_container(get_model_registry_root()).prediction_service()
-        ingestion_svc = get_company_dataset_ingestion_service(self.session, None, None)
+        ingestion_svc = get_company_dataset_ingestion_service(
+            self.session,
+            quota=get_data_import_policy(self.session),
+            dispatcher=cast(TrainingDispatcher, None),
+        )
         registry = build_business_tool_registry(self.session, ingestion_svc, prediction_svc)
         assistant_reg = build_default_assistant_registry(registry)
 
