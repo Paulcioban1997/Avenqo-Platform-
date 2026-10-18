@@ -405,14 +405,14 @@ def test_dispatcher_stream_url_normalization_with_nested_base_url(db_session: Se
     public_key_b64 = base64.b64encode(public_bytes).decode()
 
     settings = Settings(
-        telnyx_api_key="test-key",
-        telnyx_public_key=public_key_b64,
-        telnyx_voice_connection_id="test-voice-conn-id",
-        telnyx_media_enabled=True,
-        telnyx_media_inbound_enabled=True,
+        TELNYX_API_KEY="test-key",
+        TELNYX_PUBLIC_KEY=public_key_b64,
+        TELNYX_VOICE_CONNECTION_ID="test-voice-conn-id",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
         # Base URL already includes the endpoint path as in Railway Sandbox!
-        telnyx_media_stream_base_url="wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media",
-        voice_shared_dispatcher_number="+14386075438",
+        TELNYX_MEDIA_STREAM_BASE_URL="wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media",
+        VOICE_SHARED_DISPATCHER_NUMBER="+14386075438",
     )
 
     mock_telnyx = MagicMock()
@@ -462,6 +462,7 @@ def test_dispatcher_stream_url_normalization_with_nested_base_url(db_session: Se
     # Path must occur exactly once, never duplicated
     assert stream_url_arg.count("/api/v1/voice/telnyx/media") == 1
     call_record = db_session.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+    assert call_record is not None
     assert stream_url_arg == f"wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media/{call_record.id}"
 
 
@@ -479,12 +480,12 @@ def test_dispatcher_disabled_media_mode_graceful_spoken_prompt(db_session: Sessi
 
     # Inbound media disabled
     settings = Settings(
-        telnyx_api_key="test-key",
-        telnyx_public_key=public_key_b64,
-        telnyx_voice_connection_id="test-voice-conn-id",
-        telnyx_media_enabled=False,
-        telnyx_media_inbound_enabled=False,
-        voice_shared_dispatcher_number="+14386075438",
+        TELNYX_API_KEY="test-key",
+        TELNYX_PUBLIC_KEY=public_key_b64,
+        TELNYX_VOICE_CONNECTION_ID="test-voice-conn-id",
+        TELNYX_MEDIA_ENABLED=False,
+        TELNYX_MEDIA_INBOUND_ENABLED=False,
+        VOICE_SHARED_DISPATCHER_NUMBER="+14386075438",
     )
 
     mock_telnyx = MagicMock()
@@ -535,5 +536,165 @@ def test_dispatcher_disabled_media_mode_graceful_spoken_prompt(db_session: Sessi
     assert mock_telnyx.speak.called
     assert "interactive" in mock_telnyx.speak.call_args.kwargs["text_prompt"].lower()
     assert mock_telnyx.hangup.called
+
+
+def test_dispatcher_duplicate_gather_ended_prevented(db_session: Session, setup_tenants: dict, monkeypatch):
+    """Verify that duplicate or concurrent call.gather.ended requests do not issue duplicate
+    streaming_start calls to Telnyx, returning MEDIA_STREAM_ALREADY_STARTED on subsequent calls.
+    """
+    co_a = setup_tenants["co_a"]
+    user_a = setup_tenants["user_a"]
+    CompanyRoutingNipService(db_session, Settings()).configure_or_rotate_nip(co_a.id, user_a.id, custom_code="58392")
+
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_bytes).decode()
+
+    settings = Settings(
+        TELNYX_API_KEY="test-key",
+        TELNYX_PUBLIC_KEY=public_key_b64,
+        TELNYX_VOICE_CONNECTION_ID="test-voice-conn-id",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+        TELNYX_MEDIA_STREAM_BASE_URL="wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media",
+        VOICE_SHARED_DISPATCHER_NUMBER="+14386075438",
+    )
+
+    mock_telnyx = MagicMock()
+    mock_telnyx.start_media_stream = AsyncMock()
+    monkeypatch.setattr(voice_router, "TelnyxClient", lambda _settings: mock_telnyx)
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    call_control_id = f"cc-dup-{uuid4().hex[:8]}"
+
+    body_dict = {
+        "data": {
+            "id": str(uuid4()),
+            "event_type": "call.gather.ended",
+            "payload": {
+                "call_control_id": call_control_id,
+                "connection_id": "test-voice-conn-id",
+                "direction": "incoming",
+                "from": "+15149876543",
+                "to": "+14386075438",
+                "digits": "58392#",
+            },
+        }
+    }
+    body_bytes = json.dumps(body_dict).encode("utf-8")
+    stamp = str(int(time.time()))
+    sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+
+    with TestClient(test_app) as client:
+        # First webhook arrival
+        res1 = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=body_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+        assert res1.status_code == 200
+        assert res1.json()["status"] == "MEDIA_STREAM_STARTED"
+        assert mock_telnyx.start_media_stream.call_count == 1
+
+        # Second webhook arrival (duplicate/retry)
+        res2 = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=body_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+        assert res2.status_code == 200
+        assert res2.json()["status"] == "MEDIA_STREAM_ALREADY_STARTED"
+        # start_media_stream MUST NOT be called again
+        assert mock_telnyx.start_media_stream.call_count == 1
+
+
+def test_dispatcher_streaming_start_422_retry_success(db_session: Session, setup_tenants: dict, monkeypatch):
+    """Verify that when Telnyx returns 422 on the first streaming_start attempt (transient audio state),
+    the dispatcher retries and succeeds on the second attempt without raising HTTP 500.
+    """
+    import httpx
+    co_a = setup_tenants["co_a"]
+    user_a = setup_tenants["user_a"]
+    CompanyRoutingNipService(db_session, Settings()).configure_or_rotate_nip(co_a.id, user_a.id, custom_code="58392")
+
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_bytes).decode()
+
+    settings = Settings(
+        TELNYX_API_KEY="test-key",
+        TELNYX_PUBLIC_KEY=public_key_b64,
+        TELNYX_VOICE_CONNECTION_ID="test-voice-conn-id",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+        TELNYX_MEDIA_STREAM_BASE_URL="wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media",
+        VOICE_SHARED_DISPATCHER_NUMBER="+14386075438",
+    )
+
+    # First attempt: 422 Unprocessable Entity with Telnyx error code 90046
+    resp_422 = httpx.Response(
+        422,
+        json={"errors": [{"code": "90046", "title": "Media Streaming failed"}]},
+        request=httpx.Request("POST", "https://api.telnyx.com/v2/calls/dummy/actions/streaming_start"),
+    )
+    exc_422 = httpx.HTTPStatusError("Client error '422 Unprocessable Entity'", request=resp_422.request, response=resp_422)
+
+    mock_telnyx = MagicMock()
+    mock_telnyx.start_media_stream = AsyncMock(side_effect=[exc_422, None])
+    monkeypatch.setattr(voice_router, "TelnyxClient", lambda _settings: mock_telnyx)
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    call_control_id = f"cc-retry-{uuid4().hex[:8]}"
+
+    body_dict = {
+        "data": {
+            "id": str(uuid4()),
+            "event_type": "call.gather.ended",
+            "payload": {
+                "call_control_id": call_control_id,
+                "connection_id": "test-voice-conn-id",
+                "direction": "incoming",
+                "from": "+15149876543",
+                "to": "+14386075438",
+                "digits": "58392#",
+            },
+        }
+    }
+    body_bytes = json.dumps(body_dict).encode("utf-8")
+    stamp = str(int(time.time()))
+    sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+
+    with TestClient(test_app) as client:
+        res = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=body_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+
+    # Must be HTTP 200 (never HTTP 500) and status MEDIA_STREAM_STARTED
+    assert res.status_code == 200
+    assert res.json()["status"] == "MEDIA_STREAM_STARTED"
+    assert mock_telnyx.start_media_stream.call_count == 2
+
 
 

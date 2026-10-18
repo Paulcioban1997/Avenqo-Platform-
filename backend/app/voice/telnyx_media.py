@@ -206,10 +206,17 @@ def claim_media_start(db: Session, settings: Settings, call_id: UUID, start: dic
         if (call.source_context or {}).get("dispatcher_routing")
         else config.telnyx_phone_number
     )
-    if (claims["type"] != "telnyx_media" or claims["call_id"] != str(call.id) or claims["tenant_id"] != str(call.company_id)
-        or claims["config_id"] != str(config.id) or claims["auth_epoch"] != auth_epoch
-        or start.get("call_control_id") != call.telnyx_call_control_id
-        or (expected_to and normalized_phone(start.get("to")) != normalized_phone(expected_to) and start.get("to") != expected_to)):
+    start_to = start.get("to")
+    start_call_control_id = start.get("call_control_id")
+    if (
+        claims["type"] != "telnyx_media"
+        or claims["call_id"] != str(call.id)
+        or claims["tenant_id"] != str(call.company_id)
+        or claims["config_id"] != str(config.id)
+        or claims["auth_epoch"] != auth_epoch
+        or (start_call_control_id and call.telnyx_call_control_id and start_call_control_id != call.telnyx_call_control_id)
+        or (start_to and expected_to and normalized_phone(start_to) != normalized_phone(expected_to) and start_to != expected_to)
+    ):
         raise PermissionError("Media authorization scope mismatch")
     nonce = claims["jti"]
     if not isinstance(nonce, str) or len(nonce) > 128:
@@ -1021,7 +1028,8 @@ class TelnyxMediaBridge:
     async def _read_audio(self) -> None:
         while True:
             event = await self.socket.receive_json()
-            if not isinstance(event, dict) or event.get("stream_id") != self.stream_id:
+            event_stream_id = event.get("stream_id") or (event.get("media", {}).get("stream_id") if isinstance(event.get("media"), dict) else None)
+            if not isinstance(event, dict) or (event_stream_id and event_stream_id != self.stream_id):
                 raise InvalidMediaFrame("Media stream mismatch")
             kind = event.get("event")
             if kind == "stop":
@@ -1161,15 +1169,19 @@ class TelnyxMediaBridge:
                 event = await asyncio.wait_for(self.socket.receive_json(), timeout=5)
             if not isinstance(event, dict) or event.get("event") != "start" or not isinstance(event.get("start"), dict):
                 raise InvalidMediaFrame("Media start required")
-            self.stream_id = event.get("stream_id")
+            self.stream_id = event.get("stream_id") or event["start"].get("stream_id")
             if not isinstance(self.stream_id, str) or not self.stream_id or len(self.stream_id) > 255:
                 raise InvalidMediaFrame("Invalid stream identity")
             media_fmt = event["start"].get("media_format") if isinstance(event["start"].get("media_format"), dict) else {}
-            enc = str(media_fmt.get("encoding", "")).upper()
+            raw_enc = str(media_fmt.get("encoding", "")).upper()
+            enc = raw_enc.replace("AUDIO/", "").replace("X-", "")
             rate = int(media_fmt.get("sample_rate", 0))
             channels = int(media_fmt.get("channels", 1))
-            if enc != "PCMU" or rate != 8000 or channels != 1:
+            if enc not in {"PCMU", "MULAW"} or rate not in {8000, 16000} or channels != 1:
+                logger.warning("Unsupported media format: raw_enc=%s enc=%s rate=%s channels=%s", raw_enc, enc, rate, channels)
                 raise InvalidMediaFrame("Unsupported media format")
+            if "client_state" in event and "client_state" not in event["start"]:
+                event["start"]["client_state"] = event["client_state"]
             await self.validate_start(event["start"])
             self.telemetry["media_connected"] = True
             await self.authorize()
@@ -1621,11 +1633,14 @@ async def telnyx_media_socket(
         await websocket.close(code=1000)
     except WebSocketDisconnect:
         pass
-    except PermissionError:
+    except PermissionError as exc:
+        logger.warning("Telnyx media websocket rejected (4403) for call_id=%s: %s", call_id, exc)
         await websocket.close(code=4403)
-    except (InvalidMediaFrame, asyncio.TimeoutError):
+    except (InvalidMediaFrame, asyncio.TimeoutError) as exc:
+        logger.warning("Telnyx media websocket frame/timeout error (4400) for call_id=%s: %s", call_id, exc)
         await websocket.close(code=4400)
-    except Exception:
+    except Exception as exc:
+        logger.error("Telnyx media websocket unexpected error (1011) for call_id=%s: %s", call_id, exc, exc_info=True)
         await websocket.close(code=1011)
     finally:
         db.rollback()

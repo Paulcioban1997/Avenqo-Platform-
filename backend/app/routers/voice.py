@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -17,6 +18,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from math import isfinite
+import httpx
 from httpx import HTTPStatusError, TimeoutException
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -91,7 +93,7 @@ from backend.app.schemas.voice import (
     VoiceNumberAssignRequest,
     VoiceToolRequest,
 )
-from backend.app.voice.providers import RetellVoiceProvider, TelnyxClient
+from backend.app.voice.providers import RetellVoiceProvider, TelnyxClient, telnyx_error_summary
 from backend.app.voice.service import VoiceOrchestrator, _api_key_hash, resolve_voice_source_context
 from backend.app.services.voice_number_service import (
     PhoneNumberSearch,
@@ -1520,6 +1522,15 @@ async def telnyx_webhook(
                     pass
                 return {"received": True, "routed": False, "status": "VOICE_DISABLED"}
 
+            if db.get_bind().dialect.name == "postgresql":
+                try:
+                    db.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                        {"lock_key": f"telnyx_disp:{call_control_id}"},
+                    )
+                except Exception:
+                    pass
+
             call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
             if call is None:
                 call = VoiceCall(
@@ -1539,6 +1550,8 @@ async def telnyx_webhook(
                 )
                 db.add(call)
                 db.commit()
+            elif call.status == "routed":
+                return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_ALREADY_STARTED"}
 
             media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
             if media_mode:
@@ -1547,21 +1560,59 @@ async def telnyx_webhook(
                     stream_url = f"{base_url}/{call.id}"
                 else:
                     stream_url = f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
-                client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
-                stream_cmd = str(UUID(hashlib.sha256(f"disp-stream:{call.id}".encode()).hexdigest()[:32]))
-                await TelnyxClient(settings).start_media_stream(
-                    call_control_id,
-                    stream_url=stream_url,
-                    client_state=client_state,
-                    command_id=stream_cmd,
-                )
-                call.status = "routed"
-                db.commit()
-                return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_STARTED"}
+
+                started = False
+                last_err = None
+                for attempt in range(2):
+                    client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+                    stream_cmd = str(UUID(hashlib.sha256(f"disp-stream:{call.id}:{attempt}:{uuid4().hex}".encode()).hexdigest()[:32]))
+                    try:
+                        await TelnyxClient(settings).start_media_stream(
+                            call_control_id,
+                            stream_url=stream_url,
+                            client_state=client_state,
+                            command_id=stream_cmd,
+                        )
+                        started = True
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        last_err = exc
+                        err_summary = telnyx_error_summary(exc.response)
+                        logger.warning(
+                            "start_media_stream attempt %d failed for call %s: status=%s summary=%s",
+                            attempt + 1, call.id, exc.response.status_code, err_summary,
+                        )
+                        # If Telnyx reports the call is already streaming (code 90046), treat as started
+                        if exc.response.status_code == 422 and "90046" in err_summary.get("codes", []):
+                            db.refresh(call)
+                            if call.status == "routed":
+                                started = True
+                                break
+                        if attempt == 0:
+                            await asyncio.sleep(0.6)
+                    except Exception as exc:
+                        last_err = exc
+                        logger.warning("start_media_stream attempt %d unexpected failure for call %s: %s", attempt + 1, call.id, exc)
+                        break
+
+                if started:
+                    call.status = "routed"
+                    db.commit()
+                    return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_STARTED"}
+
+                logger.error("start_media_stream failed after retries for call %s: %s", call.id, last_err)
+                err_prompt = "Une erreur technique est survenue lors de la connexion. Veuillez réessayer ultérieurement. Au revoir."
+                speak_cmd = str(UUID(hashlib.sha256(f"disp-err:{call_control_id}:{uuid4().hex}".encode()).hexdigest()[:32]))
+                try:
+                    await TelnyxClient(settings).speak(call_control_id, text_prompt=err_prompt, language="fr-CA", command_id=speak_cmd)
+                    await TelnyxClient(settings).hangup(call_control_id)
+                except Exception:
+                    pass
+                return {"received": True, "routed": False, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_FAILED"}
 
             # If media transport is disabled, inform caller politely before hangup
             no_media_prompt = "La passerelle vocale interactive n'est pas activée actuellement. Veuillez contacter le support ou réessayer plus tard. Au revoir."
-            speak_cmd = str(UUID(hashlib.sha256(f"disp-no-media:{call_control_id}".encode()).hexdigest()[:32]))
+            speak_cmd = str(UUID(hashlib.sha256(f"disp-no-media:{call_control_id}:{uuid4().hex}".encode()).hexdigest()[:32]))
             try:
                 await TelnyxClient(settings).speak(call_control_id, text_prompt=no_media_prompt, language="fr-CA", command_id=speak_cmd)
                 await TelnyxClient(settings).hangup(call_control_id)
