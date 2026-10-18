@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 import pytest
+from unittest.mock import AsyncMock, MagicMock
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.config.settings import Settings
+from backend.app.database import get_db
+from backend.app.config.settings import Settings, get_settings
+import backend.app.routers.voice as voice_router
 from backend.app.database.session import SessionLocal
 from backend.main import create_application
 from backend.app.models.audit_log import AuditLogEntry
@@ -371,10 +378,162 @@ async def test_e2e_telnyx_dispatcher_dtmf_routing(db_session: Session, setup_ten
     assert call_record.status == "routed"
     assert call_record.source_context.get("dispatcher_routing") is True
 
+    # Verify stream_url passed to Telnyx is correctly formed without duplication
+    assert mock_telnyx.start_media_stream.called
+    stream_url_arg = mock_telnyx.start_media_stream.call_args.kwargs["stream_url"]
+    assert stream_url_arg == f"wss://api.avenqo.ca/api/v1/voice/telnyx/media/{call_record.id}"
+    assert stream_url_arg.count("/api/v1/voice/telnyx/media") == 1
+
     # Step 5: Call hangup
     res5 = send_webhook("call.hangup")
     assert res5.status_code == 200
     db_session.refresh(call_record)
     assert call_record.status == "ended"
     assert call_record.ended_at is not None
+
+
+def test_dispatcher_stream_url_normalization_with_nested_base_url(db_session: Session, setup_tenants: dict, monkeypatch):
+    """Verify that when TELNYX_MEDIA_STREAM_BASE_URL already contains /api/v1/voice/telnyx/media,
+    the dispatcher normalizes and never duplicates the path.
+    """
+    co_a = setup_tenants["co_a"]
+    user_a = setup_tenants["user_a"]
+    CompanyRoutingNipService(db_session, Settings()).configure_or_rotate_nip(co_a.id, user_a.id, custom_code="58392")
+
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_bytes).decode()
+
+    settings = Settings(
+        telnyx_api_key="test-key",
+        telnyx_public_key=public_key_b64,
+        telnyx_voice_connection_id="test-voice-conn-id",
+        telnyx_media_enabled=True,
+        telnyx_media_inbound_enabled=True,
+        # Base URL already includes the endpoint path as in Railway Sandbox!
+        telnyx_media_stream_base_url="wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media",
+        voice_shared_dispatcher_number="+14386075438",
+    )
+
+    mock_telnyx = MagicMock()
+    mock_telnyx.start_media_stream = AsyncMock()
+    monkeypatch.setattr(voice_router, "TelnyxClient", lambda _settings: mock_telnyx)
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    call_control_id = f"cc-nested-{uuid4().hex[:8]}"
+
+    body_dict = {
+        "data": {
+            "id": str(uuid4()),
+            "event_type": "call.gather.ended",
+            "payload": {
+                "call_control_id": call_control_id,
+                "connection_id": "test-voice-conn-id",
+                "direction": "incoming",
+                "from": "+15149876543",
+                "to": "+14386075438",
+                "digits": "58392#",
+            },
+        }
+    }
+    body_bytes = json.dumps(body_dict).encode("utf-8")
+    stamp = str(int(time.time()))
+    sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+
+    with TestClient(test_app) as client:
+        res = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=body_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "MEDIA_STREAM_STARTED"
+    assert mock_telnyx.start_media_stream.called
+    stream_url_arg = mock_telnyx.start_media_stream.call_args.kwargs["stream_url"]
+    # Path must occur exactly once, never duplicated
+    assert stream_url_arg.count("/api/v1/voice/telnyx/media") == 1
+    call_record = db_session.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+    assert stream_url_arg == f"wss://avenqo-platform-sandbox.up.railway.app/api/v1/voice/telnyx/media/{call_record.id}"
+
+
+def test_dispatcher_disabled_media_mode_graceful_spoken_prompt(db_session: Session, setup_tenants: dict, monkeypatch):
+    """Verify that when media mode is disabled, the system plays an explanatory spoken message
+    rather than leaving the caller in dead silence.
+    """
+    co_a = setup_tenants["co_a"]
+    user_a = setup_tenants["user_a"]
+    CompanyRoutingNipService(db_session, Settings()).configure_or_rotate_nip(co_a.id, user_a.id, custom_code="58392")
+
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_bytes).decode()
+
+    # Inbound media disabled
+    settings = Settings(
+        telnyx_api_key="test-key",
+        telnyx_public_key=public_key_b64,
+        telnyx_voice_connection_id="test-voice-conn-id",
+        telnyx_media_enabled=False,
+        telnyx_media_inbound_enabled=False,
+        voice_shared_dispatcher_number="+14386075438",
+    )
+
+    mock_telnyx = MagicMock()
+    mock_telnyx.speak = AsyncMock()
+    mock_telnyx.hangup = AsyncMock()
+    monkeypatch.setattr(voice_router, "TelnyxClient", lambda _settings: mock_telnyx)
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    call_control_id = f"cc-nomedia-{uuid4().hex[:8]}"
+
+    body_dict = {
+        "data": {
+            "id": str(uuid4()),
+            "event_type": "call.gather.ended",
+            "payload": {
+                "call_control_id": call_control_id,
+                "connection_id": "test-voice-conn-id",
+                "direction": "incoming",
+                "from": "+15149876543",
+                "to": "+14386075438",
+                "digits": "58392#",
+            },
+        }
+    }
+    body_bytes = json.dumps(body_dict).encode("utf-8")
+    stamp = str(int(time.time()))
+    sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+
+    with TestClient(test_app) as client:
+        res = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=body_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "MEDIA_TRANSPORT_DISABLED"
+    assert res.json()["routed"] is False
+    # Verified spoken prompt and hangup
+    assert mock_telnyx.speak.called
+    assert "interactive" in mock_telnyx.speak.call_args.kwargs["text_prompt"].lower()
+    assert mock_telnyx.hangup.called
+
 

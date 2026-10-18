@@ -73,7 +73,7 @@ from backend.app.voice.service import voice_action_key
 from backend.app.core.permissions import permissions_for
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.plan_limits_service import PlanLimitsService
-from backend.app.services.tenant_rls import apply_tenant_rls
+from backend.app.services.tenant_rls import apply_tenant_rls, supports_rls
 from backend.app.services.voice_module_permission_service import (
     VoiceModulePermissionError,
     VoiceModulePermissionService,
@@ -1543,7 +1543,10 @@ async def telnyx_webhook(
             media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
             if media_mode:
                 base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
-                stream_url = f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
+                if base_url.endswith("/api/v1/voice/telnyx/media"):
+                    stream_url = f"{base_url}/{call.id}"
+                else:
+                    stream_url = f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
                 client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
                 stream_cmd = str(UUID(hashlib.sha256(f"disp-stream:{call.id}".encode()).hexdigest()[:32]))
                 await TelnyxClient(settings).start_media_stream(
@@ -1556,7 +1559,26 @@ async def telnyx_webhook(
                 db.commit()
                 return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_STARTED"}
 
-            return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "ROUTED_PENDING_MEDIA"}
+            # If media transport is disabled, inform caller politely before hangup
+            no_media_prompt = "La passerelle vocale interactive n'est pas activée actuellement. Veuillez contacter le support ou réessayer plus tard. Au revoir."
+            speak_cmd = str(UUID(hashlib.sha256(f"disp-no-media:{call_control_id}".encode()).hexdigest()[:32]))
+            try:
+                await TelnyxClient(settings).speak(call_control_id, text_prompt=no_media_prompt, language="fr-CA", command_id=speak_cmd)
+                await TelnyxClient(settings).hangup(call_control_id)
+            except Exception:
+                pass
+            return {"received": True, "routed": False, "company_id": str(resolved_company_id), "status": "MEDIA_TRANSPORT_DISABLED"}
+
+        if supports_rls(db):
+            try:
+                resolved_cid = db.execute(
+                    text("SELECT public.resolve_voice_call_tenant(NULL, :ccid)"),
+                    {"ccid": call_control_id},
+                ).scalar()
+                if resolved_cid is not None:
+                    apply_tenant_rls(db, UUID(str(resolved_cid)), bypass=False)
+            except Exception as exc:
+                logger.warning("resolve_voice_call_tenant failed for call_control_id: %s", exc)
 
         if event_type == "call.hangup":
             call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
@@ -1891,7 +1913,10 @@ async def telnyx_webhook(
         if media_mode:
             client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
             base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
-            stream_url = f"{base_url}/{call.id}"
+            if base_url.endswith("/api/v1/voice/telnyx/media"):
+                stream_url = f"{base_url}/{call.id}"
+            else:
+                stream_url = f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
             command_id = str(UUID(hashlib.sha256(f"media:{call.id}".encode()).hexdigest()[:32]))
             await service.telnyx.start_media_stream(active_call_control_id, stream_url=stream_url,
                 client_state=client_state, command_id=command_id)

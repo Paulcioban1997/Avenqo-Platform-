@@ -85,6 +85,17 @@ def media_transport_context(
     if not settings.telnyx_media_enabled:
         raise PermissionError("Telnyx media transport disabled")
     db.expire_all()
+    from backend.app.services.tenant_rls import apply_tenant_rls, supports_rls
+    if supports_rls(db):
+        try:
+            resolved_cid = db.execute(
+                text("SELECT public.resolve_voice_call_tenant(:call_id, NULL)"),
+                {"call_id": call_id},
+            ).scalar()
+            if resolved_cid is not None:
+                apply_tenant_rls(db, UUID(str(resolved_cid)), bypass=False)
+        except Exception as exc:
+            logger.warning("resolve_voice_call_tenant failed for call_id %s: %s", call_id, exc)
     call = db.get(VoiceCall, call_id)
     allowed = allow_statuses if allow_statuses is not None else _LIVE_MEDIA_STATUSES
     if (
@@ -94,6 +105,7 @@ def media_transport_context(
         or (require_active and call.ended_at is not None)
     ):
         raise PermissionError("Active tenant call required")
+    apply_tenant_rls(db, call.company_id, bypass=False)
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id, VoiceBusinessConfig.company_id == call.company_id))
     number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.company_id == call.company_id,
         VoicePhoneNumber.config_id == call.config_id, VoicePhoneNumber.status == "ACTIVE", VoicePhoneNumber.provider == "telnyx"))
