@@ -836,6 +836,7 @@ def get_voice_status(
     )).all() if session_ids else []
     voice_ai_credits = sum(int(item.avenqo_credits_charged or 0) for item in voice_attempts)
     telnyx_configured = bool(settings.telnyx_api_key and settings.telnyx_public_key and settings.telnyx_voice_connection_id)
+    active_nip = CompanyRoutingNipService(db, settings).get_active_nip(company_id)
     return {
         "voice_status": "ENABLED" if config is not None and config.enabled else "DISABLED" if config is not None else "NOT_CONFIGURED",
         "module_entitled": voice_module_active,
@@ -878,7 +879,7 @@ def get_voice_status(
         } for call in sorted(calls, key=lambda item: _as_utc(item.started_at) if item.started_at else datetime.min.replace(tzinfo=timezone.utc), reverse=True)[:20]],
         "call_minutes": call_minutes,
         "voice_ai_credits_charged": voice_ai_credits,
-        "routing_nip": (CompanyRoutingNipService(db, settings).get_active_nip(company_id).routing_code if CompanyRoutingNipService(db, settings).get_active_nip(company_id) is not None else None),
+        "routing_nip": active_nip.routing_code if active_nip is not None else None,
         "dispatcher_number": getattr(settings, "voice_shared_dispatcher_number", "+14386075438"),
     }
 
