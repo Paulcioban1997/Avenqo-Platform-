@@ -175,6 +175,7 @@ def test_nip_generation_and_validation(db_session: Session, setup_tenants: dict)
 
     # Previous NIP must now be ROTATED
     old = db_session.get(CompanyRoutingNip, nip.id)
+    assert old is not None
     assert old.status == "ROTATED"
     assert old.rotated_at is not None
 
