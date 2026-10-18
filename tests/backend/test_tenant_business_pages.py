@@ -177,14 +177,15 @@ def business_environment(tmp_path):
         company_b = _company(session, "Beta", "EUR")
         dataset_a = _dataset(session, company_a)
         dataset_b = _dataset(session, company_b)
+        today = datetime.now(timezone.utc).date()
         rows_a = [
-            {"date": "2026-07-20", "sale": "O0", "client": "C0", "amount": 50, "churned": 0},
-            {"date": "2026-08-20", "sale": "O1", "client": "C1", "amount": 100, "churned": 0},
-            {"date": "2026-08-25", "sale": "O2", "client": "C1", "amount": 25, "churned": 0},
-            {"date": "2026-08-28", "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
+            {"date": (today - timedelta(days=75)).isoformat(), "sale": "O0", "client": "C0", "amount": 50, "churned": 0},
+            {"date": (today - timedelta(days=50)).isoformat(), "sale": "O1", "client": "C1", "amount": 100, "churned": 0},
+            {"date": (today - timedelta(days=45)).isoformat(), "sale": "O2", "client": "C1", "amount": 25, "churned": 0},
+            {"date": (today - timedelta(days=40)).isoformat(), "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
         ]
         rows_b = [
-            {"date": "2026-08-28", "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
+            {"date": (today - timedelta(days=40)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
         ]
         prepared = {
             dataset_a.id: _prepared(company_a, dataset_a, rows_a),
