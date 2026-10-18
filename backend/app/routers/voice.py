@@ -775,23 +775,22 @@ async def preview_voice(
         else:
             text_to_speak = f"Hello, welcome to {company_name}. How can I help you today?"
 
-    if settings.openai_api_key:
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=settings.openai_api_key)
-            audio_response = await client.audio.speech.create(
-                model=settings.voice_tts_model or "gpt-4o-mini-tts",
-                voice=request.voice_id,
-                input=text_to_speak,
-                response_format="mp3",
-            )
-            audio_bytes = audio_response.content
-            if not audio_bytes:
-                raise ValueError("Empty speech response")
-            return Response(content=audio_bytes, media_type="audio/mpeg")
-        except Exception as exc:
-            logging.getLogger("avenqo.voice").warning("Speech preview failed (%s)", type(exc).__name__)
-            raise HTTPException(status_code=503, detail="Speech preview is temporarily unavailable") from None
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        audio_response = await client.audio.speech.create(
+            model=settings.voice_tts_model or "gpt-4o-mini-tts",
+            voice=request.voice_id,
+            input=text_to_speak,
+            response_format="mp3",
+        )
+        audio_bytes = audio_response.content
+        if not audio_bytes:
+            raise ValueError("Empty speech response")
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    except Exception as exc:
+        logging.getLogger("avenqo.voice").warning("Speech preview failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Speech preview is temporarily unavailable") from None
 
 
 @router.get("/status", dependencies=[Depends(require_active_subscription)])
