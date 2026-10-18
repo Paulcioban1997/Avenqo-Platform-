@@ -1843,11 +1843,12 @@ async def telnyx_webhook(
         logger.warning("Voice inbound transport unavailable; call_id=%s event=%s", call.id, event_type)
         if settings.environment == "sandbox":
             command_id = str(UUID(hashlib.sha256(f"unconfigured-reject:{call.id}".encode()).hexdigest()[:32]))
+            target_control_id = str(call.telnyx_call_control_id or call_control_id)
             try:
                 if event_type == "call.initiated":
-                    await service.telnyx.reject_call(call_control_id, command_id=command_id, cause="CALL_REJECTED")
+                    await service.telnyx.reject_call(target_control_id, command_id=command_id, cause="CALL_REJECTED")
                 else:
-                    await service.telnyx.hangup(call_control_id)
+                    await service.telnyx.hangup(target_control_id)
             except Exception as exc:
                 # Permit a signed retry using the same idempotent command ID.
                 # Do not acknowledge a provider failure as a successful rejection.
@@ -1879,20 +1880,20 @@ async def telnyx_webhook(
         return {"received": True, "routed": claim.status in {"routing", "routed", "in_progress"}, "duplicate": True}
     claim.status = "answering" if event_type == "call.initiated" else "in_progress" if media_mode else "routing"
     db.commit()
-    call_control_id = call.telnyx_call_control_id
-    if not call_control_id:
+    active_call_control_id = str(call.telnyx_call_control_id or call_control_id)
+    if not active_call_control_id:
         raise HTTPException(status_code=500, detail="Missing call control id")
     try:
         if event_type == "call.initiated":
             command_id = str(UUID(hashlib.sha256(f"answer:{call.id}".encode("utf-8")).hexdigest()[:32]))
-            await service.telnyx.answer_call(call_control_id, command_id=command_id)
+            await service.telnyx.answer_call(active_call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
         if media_mode:
             client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
             base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
             stream_url = f"{base_url}/{call.id}"
             command_id = str(UUID(hashlib.sha256(f"media:{call.id}".encode()).hexdigest()[:32]))
-            await service.telnyx.start_media_stream(call_control_id, stream_url=stream_url,
+            await service.telnyx.start_media_stream(active_call_control_id, stream_url=stream_url,
                 client_state=client_state, command_id=command_id)
             receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media"}
             db.commit()
@@ -1900,7 +1901,7 @@ async def telnyx_webhook(
         if not target or not config.telnyx_phone_number:
             raise HTTPException(status_code=500, detail="Missing transfer destination or source number")
         command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
-        await service.telnyx.transfer_call(call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
+        await service.telnyx.transfer_call(active_call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
     except Exception as exc:
         db.refresh(call)
         if call.ended_at is None:
@@ -1911,7 +1912,7 @@ async def telnyx_webhook(
             # The leg is already answered: don't leave a silent billable call
             # after streaming initialization failed. No fabricated ended_at.
             try:
-                await service.telnyx.hangup(call_control_id)
+                await service.telnyx.hangup(active_call_control_id)
                 call.status = "media_failure_hangup_requested"
                 db.commit()
             except Exception as stop_exc:
