@@ -445,6 +445,7 @@ class BusinessMetricsService:
         comparison_start: datetime | None = None,
         comparison_end: datetime | None = None,
         queried_at: datetime | None = None,
+        include_coverage: bool = False,
     ) -> dict[str, Any]:
         calculated_at = self._utc(queried_at or datetime.now(timezone.utc))
         normalized = self.normalize_source_timezone(
@@ -496,19 +497,23 @@ class BusinessMetricsService:
             "average_customer_value": round(sum(float(customer.get("total_value") or 0) for customer in customers) / total_customers, 2) if total_customers else None,
         }
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
-        coverage = self.sales_summary(snapshot, source, period_start=period_start,
-            period_end=period_end, queried_at=calculated_at)
-        static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
-        current_activity_unknown = static_dataset and (not dates or max(dates) < active_cutoff)
-        if current_activity_unknown:
-            summary["active_customers"] = None
-        if not coverage["data_covered"]:
-            summary["new_customers"] = None
+        if include_coverage:
+            coverage = self.sales_summary(snapshot, source, period_start=period_start,
+                period_end=period_end, queried_at=calculated_at)
+            static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
+            current_activity_unknown = static_dataset and (not dates or max(dates) < active_cutoff)
+            if current_activity_unknown:
+                summary["active_customers"] = None
+            if not coverage["data_covered"]:
+                summary["new_customers"] = None
         metrics = [
             self.metric_envelope(snapshot, source, metric_id, summary[metric_id], "count", period_start, period_end, orders, calculated_at=calculated_at, state="AVAILABLE" if summary[metric_id] is not None else "INSUFFICIENT_DATA")
             for metric_id in ("total_customers", "new_customers", "active_customers", "repeat_customers")
         ]
-        return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict(),
+        result = {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
+        if not include_coverage:
+            return result
+        return {**result,
                 "data_coverage": coverage["data_coverage"], "data_covered": coverage["data_covered"],
                 "coverage_message": coverage["coverage_message"],
                 "population_scope": "selected_source_history",

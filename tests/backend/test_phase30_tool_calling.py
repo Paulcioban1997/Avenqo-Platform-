@@ -479,6 +479,8 @@ async def test_get_customer_summary_counts_returning_customers(tenant_with_ready
 
     assert result.data["total_customers"] == 3
     assert result.data["returning_customers"] == 3  # 6 orders / 3 customers => each has 2
+    assert result.data["population_scope"] == "selected_source_history"
+    assert result.data["data_coverage"]["end"] is not None
 
 
 async def test_tool_raises_unavailable_when_no_ready_dataset_exists(db_session) -> None:

@@ -188,7 +188,7 @@ def test_historical_customer_population_does_not_assert_current_inactivity(histo
     from backend.app.services.business_metrics_service import BusinessMetricsService
     snapshot, source = historical_retail_source
     summary = BusinessMetricsService().customer_summary(snapshot, source,
-        period_start=None, period_end=None, queried_at=datetime(2026, 10, 19, tzinfo=timezone.utc))
+        period_start=None, period_end=None, queried_at=datetime(2026, 10, 19, tzinfo=timezone.utc), include_coverage=True)
     assert summary["total_customers"] == 1
     assert summary["active_customers"] is None
     assert summary["current_activity_status"] == "DATA_UNCOVERED"
