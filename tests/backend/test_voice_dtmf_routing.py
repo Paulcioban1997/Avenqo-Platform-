@@ -706,8 +706,8 @@ def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
     public_key_b64 = base64.b64encode(public_bytes).decode()
 
     settings = Settings(
-        telnyx_public_key=public_key_b64,
-        telnyx_voice_connection_id="test-voice-conn-id",
+        TELNYX_PUBLIC_KEY=public_key_b64,
+        TELNYX_VOICE_CONNECTION_ID="test-voice-conn-id",
     )
 
     test_app = FastAPI()
