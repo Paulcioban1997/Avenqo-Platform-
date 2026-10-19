@@ -37,10 +37,12 @@ class CentralAIContext:
     available_agents: tuple[str, ...] = ()
     authorized_sources: dict[str, object] = field(default_factory=dict)
     plan_options: tuple[dict[str, object], ...] = ()
+    company_profile: dict[str, object] = field(default_factory=dict)
 
     def as_capabilities(self) -> dict[str, object]:
         return {
             "tenant_id": str(self.tenant.company_id),
+            "company_profile": self.company_profile,
             "subscription_plan": self.plan_code,
             "subscription_status": self.subscription_status,
             "enabled_modules": list(self.active_modules),
@@ -57,9 +59,15 @@ class CentralAIContext:
         }
 
     def as_prompt_context(self) -> str:
+        from backend.app.voice.caller_scope import is_public_voice_caller
+        if is_public_voice_caller(self.permissions):
+            return json.dumps({"company_profile": self.company_profile, "conversation_language": self.user_language,
+                               "timezone": self.company_timezone, "caller_scope": "public", "personal_authentication_required_for_private_data": True},
+                              separators=(",", ":")).replace("<", chr(92) + "u003c")
         return json.dumps(
             {
                 "tenant_id": str(self.tenant.company_id),
+                "company_profile": self.company_profile,
                 "plan_code": self.plan_code,
                 "subscription_status": self.subscription_status,
                 "permissions": sorted(self.permissions),
@@ -81,7 +89,7 @@ class CentralAIContext:
                 "paid_changes_require_confirmation": True,
             },
             separators=(",", ":"),
-        )
+        ).replace("<", chr(92) + "u003c")
 
 
 class CentralAIContextBuilder:
@@ -118,7 +126,14 @@ class CentralAIContextBuilder:
             if module.state.value in {"active", "available", "limit_reached"}
         )
         premium = tuple(module.key for module in summary.modules if module.premium)
+        company_profile = {}
+        session = getattr(self._entitlements, "_session", None)
+        if session is not None:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+            from backend.app.voice.caller_scope import is_public_voice_caller
+            company_profile = CompanyIntelligenceService(session).get_profile(tenant.company_id).as_context(public=is_public_voice_caller(permissions) or "data:read" not in permissions)
         return CentralAIContext(
+            company_profile=company_profile,
             tenant=tenant,
             user_id=user_id,
             permissions=permissions,

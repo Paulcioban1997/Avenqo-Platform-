@@ -406,6 +406,8 @@ class PublicInboundConversation:
 
     def public_answer(self, transcript: str) -> dict:
         call, config, _company = self.context()
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        profile = CompanyIntelligenceService(self.db).get_profile(call.company_id)
         safe = redact_voice_secrets(transcript)
         normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
         french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
@@ -419,6 +421,8 @@ class PublicInboundConversation:
             answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
         if re.search(r"rendez.vous|appointment|booking|reservation|disponibilit|disponible|availability|available", normalized):
+            if not profile.has_crm_booking:
+                return {"status": "success", "answer": "Aucune prestation réservable vérifiée n’est configurée pour cette entreprise." if french else "This business has no verified bookable service configured.", "public": True}
             answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
@@ -433,7 +437,7 @@ class PublicInboundConversation:
                 answer = "Les heures d'ouverture ne sont pas encore renseignées." if french else "Opening hours have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"services|prix|price|tarif", normalized):
-            services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in config.services if isinstance(value, dict)]
+            services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in profile.configured_crm_services if isinstance(value, dict)]
             if services:
                 summary = ", ".join(f"{s.get('name', '')} ({s.get('price', '')} {s.get('currency', '')})".strip() for s in services)
                 answer = ("Nos services: " if french else "Our services: ") + summary
@@ -442,6 +446,9 @@ class PublicInboundConversation:
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
             answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
+            return {"status": "success", "answer": answer, "public": True}
+        if not profile.has_crm_booking:
+            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
             answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"

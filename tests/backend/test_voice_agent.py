@@ -544,6 +544,12 @@ def _voice_database(tmp_path):
     )
     session.add(_test_billing_account(session, company))
     session.add(config)
+    # Voice booking scenarios require a real, active tenant service, not only a
+    # legacy Voice label that would otherwise create arbitrary services.
+    from backend.app.models.crm import CRMService
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm", auto_init_voice=False)
+    session.add(CRMService(company_id=company.id, name="Consultation", duration_minutes=30, price=80, currency="CAD", is_active=True))
     session.commit()
     service = VoiceOrchestrator(
         session,

@@ -1,0 +1,100 @@
+"""Live company grounding. No defaults that invent offerings or elevate callers."""
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from uuid import UUID
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from backend.app.models import Company, VoiceBusinessConfig, CommerceConnection, Dataset
+from backend.app.models.crm import CRMService, CRMCalendarConnection
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from shared.ai_engine.contracts import TenantContext
+
+BOOKING_TOOLS = frozenset({"check_availability", "list_available_slots", "create_appointment", "book_appointment"})
+
+class CompanyOfferingUnavailable(ValueError):
+    pass
+
+@dataclass(frozen=True, slots=True)
+class CompanyIntelligenceProfile:
+    company_id: UUID
+    company_name: str
+    business_name: str
+    industry: str
+    timezone: str
+    currency_code: str
+    preferred_language: str
+    opening_hours: dict
+    active_modules: tuple[str, ...]
+    configured_crm_services: tuple[dict, ...]
+    has_crm_booking: bool
+    has_retail_commerce: bool
+    connected_integrations: tuple[dict, ...]
+    has_google_calendar: bool
+    catalog_status: str
+    available_datasets: tuple[dict, ...]
+
+    def as_context(self, *, public: bool = False) -> dict:
+        data = asdict(self)
+        data["company_id"] = str(self.company_id)
+        if public:
+            # Connection/dataset identities and operational state are private.
+            data.pop("connected_integrations", None)
+            data.pop("available_datasets", None)
+        return data
+
+class CompanyIntelligenceService:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_profile(self, company_id: UUID) -> CompanyIntelligenceProfile:
+        from backend.app.core.tenant_execution import peek_tenant_execution, TenantExecutionError
+        execution = peek_tenant_execution()
+        if execution is not None and execution.company_id != company_id:
+            raise TenantExecutionError("Company context cannot cross the bound tenant")
+        company = self._session.get(Company, company_id)
+        if company is None:
+            raise CompanyOfferingUnavailable("Company context unavailable")
+        config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        active = tuple(ModuleEntitlementService(self._session).get_active_modules(TenantContext(company_id)))
+        services = self._session.scalars(select(CRMService).where(CRMService.company_id == company_id, CRMService.is_active.is_(True)).order_by(CRMService.name, CRMService.id)).all() if "crm" in active else []
+        # CRM is the source of service IDs/durations/prices. A non-empty Voice
+        # catalog is an explicit allowlist, never authority to create services.
+        configured = [s for s in (config.services or []) if isinstance(s, dict) and s.get("name")] if config else []
+        status = "configured" if services else "not_configured"
+        if configured:
+            names = {str(s["name"]).strip().casefold() for s in configured}
+            ids = {str(s.get("crm_service_id") or s.get("id")) for s in configured if s.get("crm_service_id") or s.get("id")}
+            services = [s for s in services if str(s.id) in ids or s.name.strip().casefold() in names]
+            if not services:
+                status = "voice_crm_catalog_mismatch"
+        offerings = tuple({"id": str(s.id), "crm_service_id": str(s.id), "name": s.name, "duration_minutes": s.duration_minutes, "price": s.price, "currency": s.currency} for s in services)
+        connections = self._session.scalars(select(CommerceConnection).where(CommerceConnection.company_id == company_id)).all()
+        calendar = self._session.scalar(select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == company_id))
+        datasets = self._session.scalars(select(Dataset).where(Dataset.company_id == company_id).order_by(Dataset.id)).all()
+        connected_calendar = bool(calendar and calendar.sync_status == "connected")
+        return CompanyIntelligenceProfile(
+            company_id=company_id, company_name=company.name,
+            business_name=(config.business_name if config else None) or company.name,
+            industry=company.industry or "unspecified", timezone=company.timezone,
+            currency_code=company.currency_code, preferred_language=(config.preferred_language if config else None) or company.preferred_language,
+            opening_hours=company.business_hours or (config.opening_hours if config else None) or {}, active_modules=active,
+            configured_crm_services=offerings, has_crm_booking=bool("crm" in active and offerings),
+            has_retail_commerce="retail" in active,
+            connected_integrations=tuple({"provider": c.provider, "status": c.status} for c in connections),
+            has_google_calendar=connected_calendar, catalog_status=status,
+            available_datasets=tuple({"id": str(d.id), "name": d.name, "status": str(d.status)} for d in datasets),
+        )
+
+    def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:
+        profile = self.get_profile(company_id)
+        if not profile.has_crm_booking:
+            raise CompanyOfferingUnavailable("No verified bookable service is configured for this company")
+        matches = [s for s in profile.configured_crm_services if
+                   (service_id is not None and s["id"] == str(service_id)) or
+                   (service_id is None and service_name is not None and s["name"].strip().casefold() == str(service_name).strip().casefold())]
+        if service_id is None and not service_name and len(profile.configured_crm_services) == 1:
+            matches = list(profile.configured_crm_services)
+        if len(matches) != 1:
+            raise CompanyOfferingUnavailable("Select an exact, active service offered by this company")
+        return matches[0]

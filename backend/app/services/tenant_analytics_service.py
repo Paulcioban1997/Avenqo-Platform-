@@ -541,7 +541,7 @@ class TenantAnalyticsService:
         prepared, deferred_dataset_ids, summaries, retail_states = self._prepared_ready_datasets(
             tenant, source_datasets, max_prepared_rows=max_prepared_rows
         )
-        prepared_ids = {item.dataset_id for item in prepared}
+        prepared_ids = {item.dataset_id for item in prepared if item is not None}
         candidate_conn_ids: list[UUID] = []
         if active_source is not None:
             if getattr(active_source, "source_type", None) == "single":
@@ -658,7 +658,10 @@ class TenantAnalyticsService:
                     deferred_dataset_ids.add(dataset.id)
                 continue
             try:
-                result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
+                prep = self._ingestion.get_prepared_dataset(tenant, dataset.id)
+                if prep is None:
+                    raise FileNotFoundError(f"Prepared dataset {dataset.id} unavailable on disk")
+                result.append(prep)
             except Exception:
                 fallback = self._prepared_from_connector_records(tenant, dataset.id)
                 if fallback is not None:

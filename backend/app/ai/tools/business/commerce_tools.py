@@ -131,10 +131,11 @@ class GetProductDetailTool(RetailAITool):
         "(WooCommerce, Shopify, CSV) in real time — never returns cached or invented values."
     )
     input_schema = ProductDetailArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService | None = None) -> None:
         self._session = session
+        self._ingestion = ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: ProductDetailArgs) -> ToolResult:
         company_id = context.tenant.company_id
@@ -149,6 +150,20 @@ class GetProductDetailTool(RetailAITool):
 
         active_source = RetailSourceService(self._session).active_selection(context.tenant)
         if active_source is not None and active_source.source_type == "dataset":
+            if self._ingestion is not None and not arguments.sku:
+                snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
+                source = TenantProductsService.source_for(snapshot)
+                if source is not None:
+                    from backend.app.ai.tools.business.analytics import compute_product_portfolio
+                    products = compute_product_portfolio(source)
+                    matches = [p for p in products if
+                               (arguments.product_id is not None and str(p["product_id"]) == str(arguments.product_id)) or
+                               (arguments.product_id is None and arguments.product_name and arguments.product_name.casefold() in str(p.get("name") or "").casefold())]
+                    return ToolResult(success=True, data={"found": bool(matches), "source_type": "dataset",
+                        "products": [{"product_id": p["product_id"], "product_name": p.get("name"),
+                                      "inventory_level": p.get("stock_level"), "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
+                        "stock_is_current": False, "message": "Dataset observations only; missing stock is unknown, not zero.",
+                        "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict()}, source_refs=(str(source.dataset_id),))
             return ToolResult(
                 success=True,
                 data={
@@ -338,7 +353,7 @@ class GetInventorySummaryTool(RetailAITool):
         "products needing attention. Reports the actual source freshness and never labels a sync snapshot as live."
     )
     input_schema = InventorySummaryArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService | None = None) -> None:
         self._session = session

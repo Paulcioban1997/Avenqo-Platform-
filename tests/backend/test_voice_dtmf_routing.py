@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.config.settings import Settings, get_settings
 import backend.app.routers.voice as voice_router
-from backend.app.database.session import SessionLocal
 from backend.main import create_application
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.billing import BillingAccount
@@ -35,18 +34,22 @@ from backend.app.voice.providers import TelnyxClient
 
 
 @pytest.fixture
-def db_session():
-    session = SessionLocal()
+def db_session(tmp_path):
+    # Never use the configured application database for routing fixtures.
+    from tests.backend.test_voice_module_permissions import _engine
+    engine = _engine(tmp_path, "dtmf-routing.db")
+    session = Session(engine)
     try:
         yield session
     finally:
         session.rollback()
         session.close()
+        engine.dispose()
 
 
 @pytest.fixture
 def setup_tenants(db_session: Session):
-    """Create two test companies in Sandbox DB with Voice module enabled."""
+    """Create two fictitious companies in an isolated test database."""
     co_a = Company(
         id=uuid4(),
         name="Clinique Physio Sandbox A",

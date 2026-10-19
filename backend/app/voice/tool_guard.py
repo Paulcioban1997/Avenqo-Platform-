@@ -69,6 +69,10 @@ class VoiceToolGuard:
                 self._usage.ensure_quota_available(tenant.company_id, plan.code.value)
             except AIQuotaExceededError as exc:
                 raise VoiceToolDenied("credits_exhausted") from exc
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService, BOOKING_TOOLS
+        canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
+        if canonical in BOOKING_TOOLS and not CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking:
+            raise VoiceToolDenied("No verified bookable service is configured for this company")
         if is_voice_native_tool(tool_name):
             return
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
@@ -80,6 +84,8 @@ class VoiceToolGuard:
         if mapping is None:
             raise VoiceToolDenied("Voice cannot invent or execute an unmapped tool.")
         module_code, action_code = mapping
+        if (module_code in {"retail", "accounting", "marketing", "cross_agent"} or (module_code == "crm" and action_code == "read_crm_metrics")) and "data:read" not in perms:
+            raise VoiceToolDenied("Private company data requires an authenticated data reader")
         plan = self._entitlements.get_company_plan(tenant)
         if module_code not in active or not plan.allows_module(module_code):
             raise VoiceToolDenied("The required subscription module is not active.")

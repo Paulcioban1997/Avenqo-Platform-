@@ -407,28 +407,37 @@ def compute_top_products(
     metric: str,
     date_from: datetime | None,
     date_to: datetime | None,
+    sort_order: str = "desc",
 ) -> dict[str, Any]:
     reverse = _reverse_mapping(prepared.canonical_columns)
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
 
     totals: dict[str, float] = defaultdict(float)
+    orders_by_product: dict[str, set[str]] = defaultdict(set)
+    names: dict[str, str] = {}
     for row in rows:
         product_id = _value(row, reverse, "product_id")
         if product_id is None:
             continue
         product_key = str(product_id)
+        name = _value(row, reverse, "product_name")
+        if name:
+            names[product_key] = str(name)
         if metric == "revenue":
             totals[product_key] += _as_float(_value(row, reverse, "total_amount")) or 0.0
         elif metric == "quantity":
             totals[product_key] += _as_float(_value(row, reverse, "quantity")) or 0.0
         else:  # "orders"
-            totals[product_key] += 1
+            order_id = _value(row, reverse, "order_id")
+            if order_id is not None:
+                orders_by_product[product_key].add(str(order_id))
+                totals[product_key] = float(len(orders_by_product[product_key]))
 
-    ranked = sorted(totals.items(), key=lambda item: item[1], reverse=True)[:top_n]
+    ranked = sorted(totals.items(), key=lambda item: item[1], reverse=(sort_order != "asc"))[:top_n]
     return {
         "metric": metric,
         "products": [
-            {"product_id": product_id, "value": round(value, 2)} for product_id, value in ranked
+            {"product_id": product_id, "value": round(value, 2), **({"product_name": names[product_id]} if product_id in names else {})} for product_id, value in ranked
         ],
     }
 

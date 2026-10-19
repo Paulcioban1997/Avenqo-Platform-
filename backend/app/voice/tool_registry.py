@@ -8,7 +8,7 @@ from backend.app.models import CompanyMembership
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
-from backend.app.voice.module_actions import VOICE_WRITE_TOOLS
+from backend.app.voice.module_actions import VOICE_WRITE_TOOLS, action_for_tool
 from shared.ai_engine.contracts import TenantContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,6 +55,9 @@ class VoiceToolRegistryService:
             if membership is not None:
                 write_allowed = "crm:appointments:write" in permissions_for(membership.role)
 
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService, BOOKING_TOOLS
+        has_crm_booking = CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking
+
         names: set[str] = set()
         owners: dict[str, str] = {}
         for defn in self._agents.list_authorized(active):
@@ -65,9 +68,14 @@ class VoiceToolRegistryService:
             }:
                 continue
             for tool_name in defn.allowed_tool_names:
+                if tool_name in BOOKING_TOOLS and not has_crm_booking:
+                    continue
                 if tool_name == "get_subscription_options":
                     continue
-                if public_caller and not public_voice_tool_allowed(tool_name):
+                if public_caller and not public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking):
+                    continue
+                mapping = action_for_tool(tool_name)
+                if mapping and (mapping[0] in {"retail", "accounting", "marketing", "cross_agent"} or mapping == ("crm", "read_crm_metrics")) and "data:read" not in perms:
                     continue
                 if tool_name not in granted_tools:
                     continue

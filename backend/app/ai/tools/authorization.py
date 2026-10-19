@@ -27,8 +27,16 @@ class ToolAuthorizationPolicy:
     def authorize(self, tool: AITool, context: ToolExecutionContext) -> None:
         # Unauthenticated phone callers run under the tenant owner's membership
         # for transport purposes only: never let that grant private tools.
-        if is_public_voice_caller(context.permissions) and not public_voice_tool_allowed(tool.name):
-            raise ToolAuthorizationError("Caller authentication is required for this tool.")
+        if is_public_voice_caller(context.permissions):
+            has_crm_booking = True
+            try:
+                from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+                profile = CompanyIntelligenceService(self._db).get_profile(context.tenant.company_id)
+                has_crm_booking = profile.has_crm_booking
+            except Exception:
+                has_crm_booking = False
+            if not public_voice_tool_allowed(tool.name, has_crm_booking=has_crm_booking):
+                raise ToolAuthorizationError("Caller authentication is required for this tool.")
         if context.voice_path or is_public_voice_caller(context.permissions):
             VoiceToolGuard(self._db).assert_policy(
                 context.tenant,

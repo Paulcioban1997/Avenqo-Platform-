@@ -7,6 +7,7 @@ accès SQL brut, jamais une donnée fictive.
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -244,6 +245,7 @@ class GetSalesComparisonTool(RetailAITool):
 
 
 class TopProductsArgs(ToolArguments):
+    sort_order: Literal["asc", "desc"] = "desc"
     top_n: int = 5
     metric: str = "revenue"
     date_from: date | None = None
@@ -256,7 +258,8 @@ class GetTopProductsTool(RetailAITool):
     name = "get_top_products"
     description = (
         "Return the top-performing products for the tenant, ranked by revenue, "
-        "quantity sold, or number of orders."
+        "quantity sold, or distinct orders. Use sort_order=asc for lowest-performing products; "
+        "desc for best sellers. Only observed products with available sales are ranked."
     )
     input_schema = TopProductsArgs
     required_permissions = ("ai:use", "data:read")
@@ -302,6 +305,7 @@ class GetTopProductsTool(RetailAITool):
             prepared,
             top_n=top_n,
             metric=arguments.metric,
+            sort_order=arguments.sort_order,
             period_start=bounds["start"],
             period_end=bounds["end"],
         )

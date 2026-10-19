@@ -406,6 +406,8 @@ class VoiceOrchestrator:
             return {"success": False, "error": "voice_call_tenant_mismatch"}
         tenant = TenantContext(config.company_id, call.authenticated_user_id)
         if call.caller_type in {"OWNER", "EMPLOYEE"} and call.authenticated_user_id is not None:
+            if VoiceCallerAuth(self.db, self.settings).valid_session(call) is None:
+                return {"success": False, "error": "caller_authentication_required"}
             membership = self.db.scalar(select(CompanyMembership).where(
                 CompanyMembership.company_id == config.company_id,
                 CompanyMembership.user_id == call.authenticated_user_id,
@@ -590,11 +592,12 @@ class VoiceOrchestrator:
             elif call.caller_type != "CLIENT" or call.verified_client_id is None:
                 return {"success": False, "error": "caller_verification_required"}
         if tool_name == "get_business_info":
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService
             return {
                 "success": True,
                 "business_name": config.business_name,
                 "opening_hours": config.opening_hours,
-                "services": config.services,
+                "services": CompanyIntelligenceService(self.db).get_profile(config.company_id).configured_crm_services,
                 "transfer_phone": config.transfer_phone,
                 "timezone": config.timezone_name,
                 "greeting_message": config.greeting_message,
@@ -766,14 +769,8 @@ class VoiceOrchestrator:
         return {"success": True, "verified": True, "caller_type": call.caller_type}
 
     def _service_config(self, config: VoiceBusinessConfig, service_name: str) -> dict[str, Any]:
-        target = service_name.strip().casefold()
-        service = next(
-            (item for item in (config.services or []) if str(item.get("name", "")).strip().casefold() == target),
-            None,
-        )
-        if not service:
-            raise ValueError("Cette prestation n'est pas proposée par le commerce.")
-        return service
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        return CompanyIntelligenceService(self.db).require_service(config.company_id, service_name=service_name)
 
     def _opening_interval(self, config: VoiceBusinessConfig, day: date) -> tuple[datetime, datetime] | None:
         windows = CRMService(self.db)._availability._windows(config.company_id, day)

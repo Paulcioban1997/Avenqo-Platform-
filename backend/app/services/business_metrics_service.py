@@ -379,6 +379,7 @@ class BusinessMetricsService:
         period_start: datetime | None,
         period_end: datetime | None,
         queried_at: datetime | None = None,
+        sort_order: str = "desc",
     ) -> dict[str, Any]:
         normalized = self.normalize_source_timezone(
             source, getattr(snapshot.company, "timezone", None) or "UTC"
@@ -389,6 +390,7 @@ class BusinessMetricsService:
             metric=metric,
             date_from=period_start,
             date_to=period_end,
+            sort_order=sort_order,
         )
         calculated_at = self._utc(queried_at or datetime.now(timezone.utc))
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)

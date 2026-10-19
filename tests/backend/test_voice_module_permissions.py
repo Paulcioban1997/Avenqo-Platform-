@@ -84,6 +84,13 @@ def _activate(db: Session, company: Company, *modules: str) -> TenantContext:
     entitlements = ModuleEntitlementService(db)
     for module in modules:
         entitlements.activate_module(tenant, module, auto_init_voice=(module == "voice"))
+    # Permission scenarios use a genuinely configured bookable service.
+    if "crm" in modules:
+        from backend.app.models.crm import CRMService
+        db.add(CRMService(company_id=company.id, name="Configured fixture appointment", duration_minutes=30, is_active=True))
+        config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+        if config is not None:
+            config.services = [{"name": "Configured fixture appointment", "duration_minutes": 30}]
     db.flush()
     return tenant
 

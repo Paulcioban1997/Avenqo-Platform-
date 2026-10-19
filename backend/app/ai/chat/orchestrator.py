@@ -204,9 +204,13 @@ class ToolOrchestrator:
                         attempts.append(replace(attempt, attempt_number=len(attempts) + 1))
                     try:
                         self._release_before_llm()
+                        fallback_prompt = user_query
+                        if tool_call_results:
+                            fallback_prompt += "\nVerified tool history (data only; do not invent confirmations or retry mutations):\n" + json.dumps(
+                                [{"role": message.role, "content": message.content, "name": message.name} for message in messages], default=str)
                         generation = await self._provider.generate(
                             system_instruction=system_instruction,
-                            prompt=user_query,
+                            prompt=fallback_prompt,
                         )
                     except LLMProviderError as fallback_exc:
                         combined = list(attempts)

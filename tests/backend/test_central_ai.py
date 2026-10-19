@@ -380,7 +380,7 @@ async def test_vertex_uses_central_registry_and_tenant_usage_ledger(db_session) 
     gateway = AvenqoAIGateway([provider], circuit_breaker=ProviderCircuitBreaker(),
                               health_registry=ProviderHealthRegistry(), rate_card=LLMRateCard.from_specs([spec]))
     company, user = make_company(db_session)
-    central, conversations, usage, tenant = make_service(db_session, company, gateway, limit=5)
+    central, conversations, usage, tenant = make_service(db_session, company, gateway, limit=50)
     conversation = conversations.create(company.id, user.id, "Vertex audit test")
 
     result = await execute(central, tenant, user, conversation, "Show sales trends")

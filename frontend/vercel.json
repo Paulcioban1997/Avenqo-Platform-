@@ -12,7 +12,8 @@
       "codex/avenqo-voice-commercial-provisioning-20261013": false,
       "codex/avenqo-calendar-sandbox-hardening-20261013": false,
       "codex/avenqo-voice-long-calls-20261013": false,
-      "codex/avenqo-marketing-truthful-errors-20261013": false
+      "codex/avenqo-marketing-truthful-errors-20261013": false,
+      "promotion/sandbox": false
     }
   },
   "framework": null,

@@ -239,8 +239,8 @@ class CompanyRoutingNip(TimestampMixin, Base):
 
     __tablename__ = "company_routing_nips"
     __table_args__ = (
-        Index("uq_active_company_routing_nip", "company_id", unique=True, postgresql_where=(text("status = 'ACTIVE'"))),
-        Index("uq_active_routing_code_hash", "routing_code_hash", unique=True, postgresql_where=(text("status = 'ACTIVE'"))),
+        Index("uq_active_company_routing_nip", "company_id", unique=True, postgresql_where=text("status = 'ACTIVE'"), sqlite_where=text("status = 'ACTIVE'")),
+        Index("uq_active_routing_code_hash", "routing_code_hash", unique=True, postgresql_where=text("status = 'ACTIVE'"), sqlite_where=text("status = 'ACTIVE'")),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)

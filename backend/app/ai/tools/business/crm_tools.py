@@ -331,7 +331,16 @@ class CheckAvailabilityTool(CRMAITool):
 
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
         service_id = UUID(arguments.service_id) if arguments.service_id else None
-        result = await self._avail.check_availability(context.tenant.company_id, start_dt, arguments.duration_minutes, emp_id, service_id)
+        duration_minutes = arguments.duration_minutes
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                offering = CompanyIntelligenceService(self._avail._session).require_service(context.tenant.company_id, service_id=service_id)
+                service_id = UUID(offering["id"])
+                duration_minutes = offering["duration_minutes"]
+            except CompanyOfferingUnavailable as exc:
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
+        result = await self._avail.check_availability(context.tenant.company_id, start_dt, duration_minutes, emp_id, service_id)
         state = result.get("state")
         reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
         if state == "UNCONFIGURED" or reason == "BUSINESS_HOURS_NOT_CONFIGURED":
@@ -396,6 +405,13 @@ class ListAvailableSlotsTool(CRMAITool):
                 return ToolResult(success=False, error="Format de date invalide (YYYY-MM-DD attendu).", data={"error": "Format de date invalide (YYYY-MM-DD attendu)."})
 
         svc_id = UUID(arguments.service_id) if arguments.service_id else None
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                offering = CompanyIntelligenceService(self._avail._session).require_service(context.tenant.company_id, service_id=svc_id)
+                svc_id = UUID(offering["id"])
+            except CompanyOfferingUnavailable as exc:
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
 
         try:
@@ -462,6 +478,15 @@ class CreateAppointmentTool(CRMAITool):
         except ValueError:
             return ToolResult(success=False, data={"error": "Format de date/heure invalide."})
 
+        verified_service = None
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                verified_service = CompanyIntelligenceService(self._crm._session).require_service(
+                    context.tenant.company_id, service_name=arguments.service_name or arguments.title)
+            except CompanyOfferingUnavailable as exc:
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
+
         # Resolve only tenant-scoped exact identity or one unique CRM match.
         requested_name = (arguments.client_name_or_id or "").strip()
         placeholder_names = {"", "vous", "moi", "me", "client", "customer", "un client"}
@@ -508,8 +533,8 @@ class CreateAppointmentTool(CRMAITool):
                 data={"error": "Indiquez le nom du client, plus un courriel ou un téléphone, pour confirmer le rendez-vous."},
             )
 
-        service_id = None
-        if arguments.service_name:
+        service_id = UUID(verified_service["id"]) if verified_service else None
+        if arguments.service_name and verified_service is None:
             services = self._crm.list_services(context.tenant.company_id)
             matched_svc = next((s for s in services if arguments.service_name.lower() in s.name.lower()), None)
             if matched_svc:
@@ -520,7 +545,7 @@ class CreateAppointmentTool(CRMAITool):
             "service_id": service_id,
             "title": arguments.title or arguments.service_name or f"Rendez-vous - {client.full_name}",
             "start_time": start_dt,
-            "duration_minutes": arguments.duration_minutes,
+            "duration_minutes": verified_service["duration_minutes"] if verified_service else arguments.duration_minutes,
             "notes": arguments.notes,
             "idempotency_key": f"copilot:{context.tenant_id}:{context.request_id}",
         }
