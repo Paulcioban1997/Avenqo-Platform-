@@ -372,14 +372,20 @@ class BusinessMetricsService:
         previous = self.sales_summary(
             snapshot, source, period_start=previous_start, period_end=previous_end
         )
-        delta = round(float(current["revenue"]) - float(previous["revenue"]), 2)
-        prior_revenue = float(previous["revenue"])
+        covered = current["data_covered"] and previous["data_covered"]
+        delta = round(float(current["revenue"]) - float(previous["revenue"]), 2) if covered else None
+        prior_revenue = float(previous["revenue"]) if covered else None
         change = round(delta / prior_revenue * 100, 2) if prior_revenue else None
+        for period in (current, previous):
+            if not period["data_covered"]:
+                for metric in ("revenue", "orders", "average_order_value"):
+                    period[metric] = None
         return {
             "current": current,
             "previous": previous,
             "absolute_change": delta,
             "change_percent": change,
+            "data_covered": covered,
             "currency": snapshot.currency,
             "data_freshness": current["data_freshness"],
         }
@@ -483,11 +489,23 @@ class BusinessMetricsService:
             "average_customer_value": round(sum(float(customer.get("total_value") or 0) for customer in customers) / total_customers, 2) if total_customers else None,
         }
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
+        coverage = self.sales_summary(snapshot, source, period_start=period_start,
+            period_end=period_end, queried_at=calculated_at)
+        static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
+        current_activity_unknown = static_dataset and (not dates or max(dates) < active_cutoff)
+        if current_activity_unknown:
+            summary["active_customers"] = None
+        if not coverage["data_covered"]:
+            summary["new_customers"] = None
         metrics = [
             self.metric_envelope(snapshot, source, metric_id, summary[metric_id], "count", period_start, period_end, orders, calculated_at=calculated_at, state="AVAILABLE" if summary[metric_id] is not None else "INSUFFICIENT_DATA")
             for metric_id in ("total_customers", "new_customers", "active_customers", "repeat_customers")
         ]
-        return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
+        return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict(),
+                "data_coverage": coverage["data_coverage"], "data_covered": coverage["data_covered"],
+                "coverage_message": coverage["coverage_message"],
+                "population_scope": "selected_source_history",
+                "current_activity_status": "DATA_UNCOVERED" if current_activity_unknown else "AVAILABLE"}
 
     def metric_envelope(
         self,

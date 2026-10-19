@@ -152,19 +152,26 @@ def test_company_grounding_cannot_override_bound_server_tenant(tmp_path):
             reset_tenant_execution(token)
 
 
-@pytest.mark.parametrize("target_year", [2020, 2026])
-def test_recent_upload_never_extends_historical_transaction_coverage(target_year):
+@pytest.fixture
+def historical_retail_source():
     from datetime import datetime, timezone
-    from backend.app.services.business_metrics_service import BusinessMetricsService
     from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
     source = PreparedCompanyDataset(company_id=uuid4(), dataset_id=uuid4(), version=1,
-        canonical_columns={"date": "order_timestamp", "total": "total_amount", "id": "order_id"},
-        rows=({"date": "2017-12-30T12:00:00Z", "total": 120.0, "id": "historical-1"},),
+        canonical_columns={"date": "order_timestamp", "total": "total_amount", "id": "order_id", "customer": "customer_id"},
+        rows=({"date": "2017-12-30T12:00:00Z", "total": 120.0, "id": "historical-1", "customer": "customer-1"},),
         profile={}, mapping={}, cleaning_report={}, quality={}, capability_readiness={})
     snapshot = SimpleNamespace(company=SimpleNamespace(timezone="America/Toronto"), currency="CAD",
         active_source_provider=None, active_source_name="Historical.csv", active_source_type="dataset",
         active_source_selected=True, status="ready", prepared=(source,), retail_summaries=(),
         active_source_last_updated_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
+    return snapshot, source
+
+
+@pytest.mark.parametrize("target_year", [2020, 2026])
+def test_recent_upload_never_extends_historical_transaction_coverage(target_year, historical_retail_source):
+    from datetime import datetime, timezone
+    from backend.app.services.business_metrics_service import BusinessMetricsService
+    snapshot, source = historical_retail_source
     summary = BusinessMetricsService().sales_summary(snapshot, source,
         period_start=datetime(target_year, 10, 1, tzinfo=timezone.utc),
         period_end=datetime(target_year, 10, 19, tzinfo=timezone.utc),
@@ -174,3 +181,27 @@ def test_recent_upload_never_extends_historical_transaction_coverage(target_year
     assert summary["data_coverage"]["end"].startswith("2017-12-30")
     assert summary["data_coverage"]["basis"] == "transaction_timestamps"
     assert all(metric["value"] is None for metric in summary["metrics"])
+
+
+def test_historical_customer_population_does_not_assert_current_inactivity(historical_retail_source):
+    from datetime import datetime, timezone
+    from backend.app.services.business_metrics_service import BusinessMetricsService
+    snapshot, source = historical_retail_source
+    summary = BusinessMetricsService().customer_summary(snapshot, source,
+        period_start=None, period_end=None, queried_at=datetime(2026, 10, 19, tzinfo=timezone.utc))
+    assert summary["total_customers"] == 1
+    assert summary["active_customers"] is None
+    assert summary["current_activity_status"] == "DATA_UNCOVERED"
+    assert summary["data_coverage"]["end"].startswith("2017-12-30")
+
+
+def test_uncovered_periods_have_no_fabricated_sales_change(historical_retail_source):
+    from datetime import datetime, timezone
+    from backend.app.services.business_metrics_service import BusinessMetricsService
+    snapshot, source = historical_retail_source
+    summary = BusinessMetricsService().sales_comparison(snapshot, source,
+        current_start=datetime(2026, 10, 1, tzinfo=timezone.utc), current_end=datetime(2026, 10, 19, tzinfo=timezone.utc),
+        previous_start=datetime(2025, 10, 1, tzinfo=timezone.utc), previous_end=datetime(2025, 10, 19, tzinfo=timezone.utc))
+    assert summary["data_covered"] is False
+    assert summary["absolute_change"] is None and summary["change_percent"] is None
+    assert summary["current"]["revenue"] is None and summary["previous"]["orders"] is None
