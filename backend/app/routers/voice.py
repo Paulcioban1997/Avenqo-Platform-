@@ -1582,6 +1582,7 @@ async def telnyx_webhook(
                     pass
 
             call = db.scalar(select(VoiceCall).where(VoiceCall.telnyx_call_control_id == call_control_id))
+            now_utc = datetime.now(timezone.utc)
             if call is None:
                 call = VoiceCall(
                     id=uuid4(),
@@ -1591,16 +1592,25 @@ async def telnyx_webhook(
                     caller_phone=str(call_payload.get("from") or "anonymous"),
                     locale=config.preferred_language or "fr",
                     status="in_progress",
+                    started_at=now_utc,
                     source_context={
                         "dispatcher_routing": True,
                         "routing_nip": True,
                         "destination_number": destination,
                         "call_control_id": call_control_id,
+                        "live_call": True,
                     },
                 )
                 db.add(call)
                 db.commit()
-            elif call.status == "routed":
+            else:
+                if call.started_at is None:
+                    call.started_at = now_utc
+                ctx = dict(call.source_context or {})
+                ctx["live_call"] = True
+                call.source_context = ctx
+                db.commit()
+            if call.status == "routed":
                 return {"received": True, "routed": True, "company_id": str(resolved_company_id), "status": "MEDIA_STREAM_ALREADY_STARTED"}
 
             media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled

@@ -104,3 +104,49 @@ async def test_sandbox_media_hangup_failure_preserves_open_call_for_watchdog(mon
     with pytest.raises(RuntimeError):
         await media.complete_media_hangup(db, SimpleNamespace(environment="sandbox", telnyx_voice_connection_id=guard.CONNECTION_ID), "synthetic-id")
     assert call.ended_at is None and call.status == "in_progress"
+
+
+def test_live_calls_bypass_synthetic_test_deadline_guard():
+    """Regression test: live calls from real callers or dispatcher routing must never
+    be classified as synthetic test calls, preventing 90s or 0.001s test overrides.
+    """
+    settings = SimpleNamespace(
+        environment="sandbox",
+        telnyx_voice_connection_id=guard.CONNECTION_ID,
+        voice_sandbox_test_guard_enabled=True,
+    )
+
+    # 1. Dispatcher routed live call with real phone number -> Must NOT be test call
+    live_call = SimpleNamespace(
+        company_id=guard.PRODUITS_ID,
+        config_id=guard.PRODUITS_CONFIG_ID,
+        caller_phone="+15149876543",
+        source_context={"dispatcher_routing": True, "routing_nip": True, "live_call": True},
+    )
+    assert not guard.is_sandbox_test_call(live_call, settings)
+
+    # 2. Live call with real phone number without dispatcher routing -> Must NOT be test call
+    direct_live_call = SimpleNamespace(
+        company_id=guard.PRODUITS_ID,
+        config_id=guard.PRODUITS_CONFIG_ID,
+        caller_phone="+14385550199",
+        source_context={"live_call": True},
+    )
+    assert not guard.is_sandbox_test_call(direct_live_call, settings)
+
+    # 3. Synthetic test call -> Must be classified as test call for test runners
+    synthetic_call = SimpleNamespace(
+        company_id=guard.PRODUITS_ID,
+        config_id=guard.PRODUITS_CONFIG_ID,
+        caller_phone="synthetic",
+        source_context={},
+    )
+    assert guard.is_sandbox_test_call(synthetic_call, settings)
+
+    # 4. Bare test namespace (from legacy test fixtures) -> Must still pass for backward compatibility
+    bare_test_call = SimpleNamespace(
+        company_id=guard.PRODUITS_ID,
+        config_id=guard.PRODUITS_CONFIG_ID,
+    )
+    assert guard.is_sandbox_test_call(bare_test_call, settings)
+

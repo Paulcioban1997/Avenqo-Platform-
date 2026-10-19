@@ -1605,25 +1605,47 @@ async def telnyx_media_socket(
             current = db.get(VoiceCall, call_id)
             record_ai_cost(db, current, request_id, attempts)
 
+    # Ensure started_at is persisted so duration bounds and metering are measured accurately
+    if call.started_at is None:
+        call.started_at = call.created_at or datetime.now(timezone.utc)
+        with suppress(Exception):
+            db.commit()
+
     from backend.app.voice.sandbox_deadline import is_sandbox_test_call, remaining_seconds
     sandbox_duration = None
     if is_sandbox_test_call(call, settings):
-        sandbox_duration = max(0.001, remaining_seconds(call.started_at))
-    from backend.app.services.voice_commercial_controls import managed_order,remaining
-    if settings.voice_commercial_enabled and managed_order(db,call):
-        limit=max(0.001,remaining(call,settings))
-        sandbox_duration=min(sandbox_duration,limit) if sandbox_duration is not None else limit
+        rem = remaining_seconds(call.started_at)
+        sandbox_duration = max(1.0, rem) if rem > 0 else 90.0
+    from backend.app.services.voice_commercial_controls import managed_order, remaining
+    if settings.voice_commercial_enabled and managed_order(db, call):
+        comm_rem = remaining(call, settings)
+        if comm_rem is not None and comm_rem > 0:
+            limit = max(1.0, comm_rem)
+            sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
     idle_seconds = None
     if settings.voice_long_calls_enabled:
         from backend.app.voice.call_policy import remaining as policy_remaining, policy_for
         from backend.app.voice.realtime_rotation import RotatingRealtimeAdapter
         policy = policy_for(db, config, settings)
-        limit = max(0.001, policy_remaining(call) or 0.0)
-        sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
+        pol_rem = policy_remaining(call)
+        if pol_rem is not None:
+            limit = max(1.0, pol_rem)
+            sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
+        elif policy.max_call_seconds is not None:
+            sandbox_duration = min(sandbox_duration, float(policy.max_call_seconds)) if sandbox_duration is not None else float(policy.max_call_seconds)
         idle_seconds = policy.idle_seconds
         adapter = RotatingRealtimeAdapter(lambda: OpenAIRealtimeAudioAdapter(
             OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model, settings.voice_tts_model, selected_voice),
             settings.voice_realtime_model), authorize, rotation_seconds=settings.voice_realtime_rotation_seconds)
+
+    # For production-like Sandbox calls (and live calls without a lower synthetic/policy limit),
+    # ensure an appropriate bounded session duration based on plan / commercial limits (default 3600s).
+    if sandbox_duration is None:
+        from backend.app.services.plan_limits_service import PlanLimitsService
+        limits = PlanLimitsService(db).limits_for(call.company_id) if call.company_id else None
+        plan_code = limits.plan_code if limits else "base"
+        bounded_limit = settings.voice_plan_max_call_seconds.get(plan_code, 3600) or settings.voice_commercial_max_call_seconds or 3600
+        sandbox_duration = float(bounded_limit)
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,

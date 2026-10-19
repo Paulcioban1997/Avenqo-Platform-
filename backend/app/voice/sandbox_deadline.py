@@ -20,10 +20,19 @@ def approved_test_bindings():
 
 
 def is_sandbox_test_call(call, settings):
-    return (getattr(settings, "voice_sandbox_test_guard_enabled", True)
-            and settings.environment == "sandbox"
-            and settings.telnyx_voice_connection_id == CONNECTION_ID
-            and (call.company_id, call.config_id) in approved_test_bindings())
+    if not (getattr(settings, "voice_sandbox_test_guard_enabled", True)
+            and getattr(settings, "environment", "") == "sandbox"
+            and getattr(settings, "telnyx_voice_connection_id", "") == CONNECTION_ID
+            and (getattr(call, "company_id", None), getattr(call, "config_id", None)) in approved_test_bindings()):
+        return False
+    # Live production-like calls must not be constrained by synthetic test deadline guards
+    source_ctx = getattr(call, "source_context", None) or {}
+    if source_ctx.get("dispatcher_routing") or source_ctx.get("live_call") or getattr(call, "is_live", False):
+        return False
+    caller_phone = str(getattr(call, "caller_phone", "") or "")
+    if caller_phone and caller_phone.startswith("+") and caller_phone != "+10000000000" and not source_ctx.get("synthetic_test"):
+        return False
+    return True
 
 
 def remaining_seconds(started_at, *, now=None):
