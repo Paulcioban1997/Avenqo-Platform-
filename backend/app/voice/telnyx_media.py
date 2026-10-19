@@ -94,8 +94,10 @@ def media_transport_context(
             ).scalar()
             if resolved_cid is not None:
                 apply_tenant_rls(db, UUID(str(resolved_cid)), bypass=False)
+            else:
+                logger.warning("resolve_voice_call_tenant returned None for call_id %s", call_id)
         except Exception as exc:
-            logger.warning("resolve_voice_call_tenant failed for call_id %s: %s", call_id, exc)
+            logger.warning("resolve_voice_call_tenant failed for call_id %s: %s", call_id, exc, exc_info=True)
     call = db.get(VoiceCall, call_id)
     allowed = allow_statuses if allow_statuses is not None else _LIVE_MEDIA_STATUSES
     if (
@@ -1323,9 +1325,15 @@ async def telnyx_media_socket(
             raise PermissionError("Validated audio configuration required")
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
         service.usage_service.ensure_quota_available(company.id, plan)
-    except Exception:
+    except Exception as exc:
         # Starlette TestClient (and some ASGI servers) block forever if the
         # socket is closed in CONNECTING without accept(). Reject after accept.
+        logger.warning(
+            "Telnyx media websocket pre-accept rejected (4403) for call_id=%s: %s",
+            call_id,
+            exc,
+            exc_info=True,
+        )
         with suppress(Exception):
             await websocket.accept()
         await websocket.close(code=4403)

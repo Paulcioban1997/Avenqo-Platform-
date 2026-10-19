@@ -1430,6 +1430,24 @@ async def telnyx_webhook(
         from backend.app.services.voice_commercial_controls import cost_receipt
         try:return {"received":True,"handled":cost_receipt(db,settings,data,call_payload)}
         except (ValueError,TypeError):raise HTTPException(status_code=422,detail="Invalid telecom cost receipt") from None
+    if event_type in {"streaming.started", "call.streaming.started"}:
+        stream_id = call_payload.get("stream_id")
+        logger.info("Telnyx media streaming started webhook: call_control_id=%s stream_id=%s", call_control_id, stream_id)
+        return {"received": True, "handled": True, "event": "streaming.started", "stream_id": stream_id}
+    if event_type in {"streaming.stopped", "call.streaming.stopped"}:
+        stream_id = call_payload.get("stream_id")
+        logger.info("Telnyx media streaming stopped webhook: call_control_id=%s stream_id=%s", call_control_id, stream_id)
+        return {"received": True, "handled": True, "event": "streaming.stopped", "stream_id": stream_id}
+    if event_type in {"streaming.failed", "call.streaming.failed"}:
+        stream_id = call_payload.get("stream_id")
+        failure_reason = call_payload.get("failure_reason")
+        logger.warning(
+            "Telnyx media streaming failed webhook: call_control_id=%s stream_id=%s reason=%s",
+            call_control_id,
+            stream_id,
+            failure_reason,
+        )
+        return {"received": True, "handled": True, "event": "streaming.failed", "failure_reason": failure_reason}
     if event_type not in {"call.initiated", "call.answered", "call.bridged", "call.hangup", "call.gather.ended", "call.speak.ended"}:
         return {"received": True, "handled": False}
     event_id = str(data.get("id") or "")

@@ -697,4 +697,62 @@ def test_dispatcher_streaming_start_422_retry_success(db_session: Session, setup
     assert mock_telnyx.start_media_stream.call_count == 2
 
 
+def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
+    """Verify streaming lifecycle webhooks (streaming.started, streaming.stopped, streaming.failed)
+    are handled gracefully without error.
+    """
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_bytes).decode()
+
+    settings = Settings(
+        telnyx_public_key=public_key_b64,
+        telnyx_voice_connection_id="test-voice-conn-id",
+    )
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    events = [
+        ("streaming.started", {"stream_id": "stream-123"}),
+        ("streaming.stopped", {"stream_id": "stream-123"}),
+        ("streaming.failed", {"stream_id": "stream-123", "failure_reason": "connection_failed"}),
+    ]
+
+    with TestClient(test_app) as client:
+        for event_name, payload in events:
+            body_dict = {
+                "data": {
+                    "id": str(uuid4()),
+                    "event_type": event_name,
+                    "payload": {
+                        "call_control_id": "cc-stream-test",
+                        "connection_id": "test-voice-conn-id",
+                        **payload,
+                    },
+                }
+            }
+            body_bytes = json.dumps(body_dict).encode("utf-8")
+            stamp = str(int(time.time()))
+            sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+
+            res = client.post(
+                "/api/v1/voice/telnyx/webhook",
+                content=body_bytes,
+                headers={
+                    "content-type": "application/json",
+                    "telnyx-timestamp": stamp,
+                    "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+                },
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["received"] is True
+            assert data["handled"] is True
+            assert data["event"] == event_name
+
+
+
 
