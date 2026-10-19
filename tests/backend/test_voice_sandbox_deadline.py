@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -44,6 +46,8 @@ def calls(tmp_path, monkeypatch):
         other, _ = tenants["ecommerce-english"]
         config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == garage.id))
         other_config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == other.id))
+        assert config is not None
+        assert other_config is not None
         monkeypatch.setattr(guard, "GARAGE_ID", garage.id)
         monkeypatch.setattr(guard, "CONFIG_ID", config.id)
         db.add(VoicePhoneNumber(company_id=garage.id, config_id=config.id, phone_number=guard.PHONE,
@@ -100,9 +104,11 @@ async def test_sandbox_media_hangup_failure_preserves_open_call_for_watchdog(mon
     monkeypatch.setattr(media, "media_transport_context", lambda *a, **kw: (call, None, None))
     monkeypatch.setattr(media, "TelnyxClient", lambda settings: SimpleNamespace(
         hangup=AsyncMock(side_effect=RuntimeError("Synthetic failure"))))
-    db = SimpleNamespace(commit=lambda: pytest.fail("Must not commit a false termination"))
+    db = cast(Session, SimpleNamespace(commit=lambda: pytest.fail("Must not commit a false termination")))
+    test_settings = cast(Any, SimpleNamespace(environment="sandbox", telnyx_voice_connection_id=guard.CONNECTION_ID))
+    call_id = uuid4()
     with pytest.raises(RuntimeError):
-        await media.complete_media_hangup(db, SimpleNamespace(environment="sandbox", telnyx_voice_connection_id=guard.CONNECTION_ID), "synthetic-id")
+        await media.complete_media_hangup(db, test_settings, call_id)
     assert call.ended_at is None and call.status == "in_progress"
 
 
