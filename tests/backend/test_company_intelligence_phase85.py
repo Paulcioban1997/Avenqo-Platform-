@@ -150,3 +150,27 @@ def test_company_grounding_cannot_override_bound_server_tenant(tmp_path):
                 CompanyIntelligenceService(db).get_profile(other.id)
         finally:
             reset_tenant_execution(token)
+
+
+@pytest.mark.parametrize("target_year", [2020, 2026])
+def test_recent_upload_never_extends_historical_transaction_coverage(target_year):
+    from datetime import datetime, timezone
+    from backend.app.services.business_metrics_service import BusinessMetricsService
+    from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
+    source = PreparedCompanyDataset(company_id=uuid4(), dataset_id=uuid4(), version=1,
+        canonical_columns={"date": "order_timestamp", "total": "total_amount", "id": "order_id"},
+        rows=({"date": "2017-12-30T12:00:00Z", "total": 120.0, "id": "historical-1"},),
+        profile={}, mapping={}, cleaning_report={}, quality={}, capability_readiness={})
+    snapshot = SimpleNamespace(company=SimpleNamespace(timezone="America/Toronto"), currency="CAD",
+        active_source_provider=None, active_source_name="Historical.csv", active_source_type="dataset",
+        active_source_selected=True, status="ready", prepared=(source,), retail_summaries=(),
+        active_source_last_updated_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
+    summary = BusinessMetricsService().sales_summary(snapshot, source,
+        period_start=datetime(target_year, 10, 1, tzinfo=timezone.utc),
+        period_end=datetime(target_year, 10, 19, tzinfo=timezone.utc),
+        queried_at=datetime(2026, 10, 19, tzinfo=timezone.utc))
+    assert summary["data_covered"] is False
+    assert "30 décembre 2017" in summary["coverage_message"]
+    assert summary["data_coverage"]["end"].startswith("2017-12-30")
+    assert summary["data_coverage"]["basis"] == "transaction_timestamps"
+    assert all(metric["value"] is None for metric in summary["metrics"])

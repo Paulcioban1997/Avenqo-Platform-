@@ -223,14 +223,29 @@ class BusinessMetricsService:
         timestamps = self._timestamps(normalized, tz_name)
         max_trans_time = max(timestamps) if timestamps else None
         last_sync = freshness.last_updated_at
-        latest_coverage = max(filter(None, [max_trans_time, last_sync]), default=None)
+        # Uploading an old CSV today does not create transactions through today.
+        # Only a connector's synchronization may extend its observed watermark.
+        static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
+        latest_coverage = max_trans_time if static_dataset else max(filter(None, [max_trans_time, last_sync]), default=None)
+        summary["data_coverage"] = {
+            "start": min(timestamps).isoformat() if timestamps else None,
+            "end": self._utc(latest_coverage).isoformat() if latest_coverage else None,
+            "basis": "transaction_timestamps" if static_dataset else "connector_sync",
+        }
 
         data_covered = True
         coverage_message = None
+        if period_start is not None and latest_coverage is None:
+            data_covered = False
+            coverage_message = "Les dates des transactions ne sont pas disponibles ; je ne peux pas confirmer les ventes de la période demandée."
         if period_start is not None and latest_coverage is not None:
             latest_coverage_utc = self._utc(latest_coverage)
             period_start_utc = self._utc(period_start)
-            if period_start_utc.date() > latest_coverage_utc.date() or (
+            try:
+                business_zone = ZoneInfo(tz_name)
+            except (ZoneInfoNotFoundError, ValueError):
+                business_zone = timezone.utc
+            if period_start_utc.astimezone(business_zone).date() > latest_coverage_utc.astimezone(business_zone).date() or (
                 period_start_utc > latest_coverage_utc
                 and summary.get("rows_considered", 0) == 0
                 and freshness.freshness_status in {"STALE", "UNAVAILABLE"}
@@ -241,10 +256,10 @@ class BusinessMetricsService:
                     5: "mai", 6: "juin", 7: "juillet", 8: "août",
                     9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
                 }
-                sync_d = latest_coverage_utc.date()
-                target_d = period_start_utc.date()
-                sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')}"
-                target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')}"
+                sync_d = latest_coverage_utc.astimezone(business_zone).date()
+                target_d = period_start_utc.astimezone(business_zone).date()
+                sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')} {sync_d.year}"
+                target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')} {target_d.year}"
                 coverage_message = f"Les données disponibles s'arrêtent au {sync_str} ; je ne peux pas confirmer les commandes du {target_str}."
 
         if not data_covered:

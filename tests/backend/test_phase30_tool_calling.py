@@ -1043,3 +1043,15 @@ async def test_tool_fallback_preserves_real_results_and_conversation_continuity(
     assert result.content.endswith("produits concernés ?")
     assert len(result.tool_call_results) == 1 and result.tool_call_results[0].result.success
     assert len(provider.prompts) == 1
+
+
+async def test_uncovered_sales_tool_has_no_zero_activity_placeholders(tenant_with_ready_dataset):
+    from datetime import date
+    from backend.app.ai.tools.business.sales_tools import GetSalesSummaryTool, SalesSummaryArgs
+    session, _, _, _, _, ingestion, context = tenant_with_ready_dataset
+    result = await GetSalesSummaryTool(session, ingestion).run(context,
+        SalesSummaryArgs(date_from=date(2099, 10, 1), date_to=date(2099, 10, 19)))
+    assert result.success and result.data["data_covered"] is False
+    assert all(result.data[key] is None for key in ("revenue", "orders", "average_order_value"))
+    assert result.data["data_coverage"]["end"] is not None
+    assert result.metadata["warning"] == result.data["coverage_message"]

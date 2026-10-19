@@ -28,6 +28,11 @@ uses product names only when supplied by the source. No currency conversion is
 performed. Provider fallback retains actual tool results and conversation history
 instead of fabricating booking confirmations.
 
+Static-file coverage comes from transaction dates, separately from upload
+freshness. Importing a 2014–2017 CSV in 2026 cannot certify transactions through
+2026. AI sales results outside known coverage carry null monetary/count values
+and a dated warning, rather than zero-activity placeholders.
+
 ## Delivery and rollback
 
 Target branch: `promotion/sandbox`. No schema change is introduced; the existing
@@ -46,6 +51,9 @@ For a release failure, roll back only the Sandbox API to the verified baseline
 `a5b120d03e16e3d6640d3bfbc9d6edfb4d6ed992`; no database downgrade or restore is
 needed for this code-only change. If authorization is in doubt, revoke only the
 three newly granted actions before reverting code. Never revert other grants.
+After the security release `6e018c62e7da83a9dc41f39cb12083877271d740` is
+verified live and the three reads are granted, prefer that secure checkpoint for
+rollback of subsequent coverage-only fixes, retaining the validated guards.
 
 ## Real-phone acceptance (separate audio authorization required)
 

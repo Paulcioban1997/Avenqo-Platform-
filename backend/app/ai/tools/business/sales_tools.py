@@ -147,6 +147,10 @@ class GetSalesSummaryTool(RetailAITool):
         if not data.get("data_covered", True):
             metadata["data_covered"] = False
             metadata["warning"] = data.get("coverage_message")
+            # An empty filtered result is not evidence of zero business activity.
+            # Keep numerical placeholders out of the AI's authoritative result.
+            for metric in ("revenue", "orders", "average_order_value"):
+                data[metric] = None
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),), metadata=metadata)
 
 
