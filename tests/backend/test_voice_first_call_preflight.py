@@ -8,6 +8,7 @@ from backend.app.models import Base, VoiceBusinessConfig, UserRole
 from backend.app.core.permissions import permissions_for
 from backend.app.services.tenant_locale_service import get_profile
 from backend.app.services.crm_service import CRMService
+from backend.app.models.crm import CRMService as CRMServiceRecord
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.voice.tool_guard import VoiceToolGuard,VoiceToolDenied
 from backend.app.voice.sandbox_preflight import first_call_preflight,MEDIA_BASE_URL
@@ -41,6 +42,15 @@ def scenarios(tmp_path):
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         companies=prepare_scenarios(db,environment="test");db.commit()
+        # Booking fixtures must declare actual tenant-owned services. Module
+        # activation alone is deliberately insufficient to offer appointments.
+        for key, name in (("garage-montreal", "Entretien vehicule QA"), ("empresa-espanola", "Reunion QA")):
+            company, _ = companies[key]
+            service = CRMServiceRecord(company_id=company.id, name=name, duration_minutes=60, currency=company.currency_code, price=0, is_active=True)
+            db.add(service); db.flush()
+            config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+            config.services = [{"name": name, "crm_service_id": str(service.id)}]
+        db.commit()
         yield db,companies
     engine.dispose()
 
