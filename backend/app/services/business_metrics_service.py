@@ -220,6 +220,10 @@ class BusinessMetricsService:
         )
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
         tz_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        try:
+            business_zone = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            business_zone = timezone.utc
         timestamps = self._timestamps(normalized, tz_name)
         max_trans_time = max(timestamps) if timestamps else None
         last_sync = freshness.last_updated_at
@@ -241,10 +245,6 @@ class BusinessMetricsService:
         if period_start is not None and latest_coverage is not None:
             latest_coverage_utc = self._utc(latest_coverage)
             period_start_utc = self._utc(period_start)
-            try:
-                business_zone = ZoneInfo(tz_name)
-            except (ZoneInfoNotFoundError, ValueError):
-                business_zone = timezone.utc
             if period_start_utc.astimezone(business_zone).date() > latest_coverage_utc.astimezone(business_zone).date() or (
                 period_start_utc > latest_coverage_utc
                 and summary.get("rows_considered", 0) == 0
@@ -261,6 +261,13 @@ class BusinessMetricsService:
                 sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')} {sync_d.year}"
                 target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')} {target_d.year}"
                 coverage_message = f"Les données disponibles s'arrêtent au {sync_str} ; je ne peux pas confirmer les commandes du {target_str}."
+
+        if static_dataset and timestamps and period_end is not None:
+            # The other side of the historical window is also unknown, not zero.
+            earliest = self._utc(min(timestamps))
+            if self._utc(period_end) < earliest:
+                data_covered = False
+                coverage_message = f"Les données disponibles commencent au {earliest.astimezone(business_zone).date().isoformat()} ; je ne peux pas confirmer les ventes antérieures."
 
         if not data_covered:
             summary["data_covered"] = False

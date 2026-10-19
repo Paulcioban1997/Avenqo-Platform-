@@ -205,3 +205,15 @@ def test_uncovered_periods_have_no_fabricated_sales_change(historical_retail_sou
     assert summary["data_covered"] is False
     assert summary["absolute_change"] is None and summary["change_percent"] is None
     assert summary["current"]["revenue"] is None and summary["previous"]["orders"] is None
+
+
+def test_period_before_historical_window_is_not_zero_activity(historical_retail_source):
+    from datetime import datetime, timezone
+    from backend.app.services.business_metrics_service import BusinessMetricsService
+    snapshot, source = historical_retail_source
+    summary = BusinessMetricsService().sales_summary(snapshot, source,
+        period_start=datetime(2013, 10, 1, tzinfo=timezone.utc),
+        period_end=datetime(2013, 10, 19, tzinfo=timezone.utc))
+    assert summary["data_covered"] is False
+    assert "commencent au 2017-12-30" in summary["coverage_message"]
+    assert all(metric["value"] is None for metric in summary["metrics"])
