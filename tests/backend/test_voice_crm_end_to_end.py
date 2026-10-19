@@ -574,10 +574,21 @@ async def test_voice_media_appointment_booked_status_allows_continued_conversati
 @pytest.mark.asyncio
 async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monkeypatch):
     """Vérifie que CRMService et CRMAvailabilityService s'auto-réparent si les clés actives décryptent des identifiants en erreur."""
+    from zoneinfo import ZoneInfo
     from backend.app.models.crm import CRMCalendarConnection
     from backend.app.services.calendar.base import CalendarEventData
 
     _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    company.timezone = "America/Montreal"
+    company.business_hours = {
+        "weekly": {
+            "monday": [{"open": "09:00", "close": "17:00"}],
+            "tuesday": [{"open": "09:00", "close": "17:00"}],
+            "wednesday": [{"open": "09:00", "close": "17:00"}],
+            "thursday": [{"open": "09:00", "close": "17:00"}],
+            "friday": [{"open": "09:00", "close": "17:00"}],
+        }
+    }
     conn = CRMCalendarConnection(
         company_id=company.id,
         provider="google",
@@ -610,10 +621,20 @@ async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monk
     crm._cipher = cast(Any, ValidCipher())
 
     client = crm.create_client(company.id, {"first_name": "Paul", "last_name": "Test", "email": "paul@test.ca"})
+
+    # Créneau garanti sur un jour ouvrable (prochain mardi à 10h00 heure de Montréal)
+    zone = ZoneInfo("America/Montreal")
+    today_local = datetime.now(zone).date()
+    days_until_tuesday = (1 - today_local.weekday()) % 7
+    if days_until_tuesday == 0:
+        days_until_tuesday = 7
+    next_tuesday = today_local + timedelta(days=days_until_tuesday)
+    valid_start = datetime(next_tuesday.year, next_tuesday.month, next_tuesday.day, 10, 0, tzinfo=zone)
+
     apt_data = {
         "client_id": client.id,
         "title": "Consultation Auto-Réparation",
-        "start_time": (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=14, minute=0, second=0, microsecond=0),
+        "start_time": valid_start,
         "duration_minutes": 60,
     }
 
@@ -643,8 +664,8 @@ async def test_bounded_media_socket_safe_on_disconnected_socket():
         async def send_json(self, event):
             raise RuntimeError("Unexpected ASGI message 'websocket.close', after sending 'websocket.close'")
 
-    sock1 = BoundedMediaSocket(ClosedWebSocket())
-    sock2 = BoundedMediaSocket(RuntimeClosedWebSocket())
+    sock1 = BoundedMediaSocket(cast(Any, ClosedWebSocket()))
+    sock2 = BoundedMediaSocket(cast(Any, RuntimeClosedWebSocket()))
 
     # Ne doit pas lever d'exception
     await sock1.send_json({"event": "media"})
