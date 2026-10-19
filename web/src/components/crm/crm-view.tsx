@@ -100,7 +100,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         apiFetch("/api/v1/crm/services", { headers }),
         apiFetch("/api/v1/crm/employees", { headers }),
         apiFetch("/api/v1/crm/summary", { headers }),
-        apiFetch("/api/v1/crm/calendar/google/events", { headers }),
+        apiFetch("/api/v1/crm/calendar/google/events", { headers }).catch(() => null),
         apiFetch("/api/v1/crm/settings/business-hours", { headers }),
       ]);
       if (revision !== loadRevision.current) return;

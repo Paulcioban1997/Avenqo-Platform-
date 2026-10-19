@@ -1254,7 +1254,8 @@ async def get_google_calendar_events(
         )
         return {"events": events}
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Événements Google Calendar indisponibles.") from exc
+        logger.warning("Événements Google Calendar indisponibles pour company=%s: %s", tenant.company_id, exc)
+        return {"events": []}
 
 
 class GoogleCalendarSelectionRequest(BaseModel):

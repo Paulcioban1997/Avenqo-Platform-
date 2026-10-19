@@ -1034,11 +1034,20 @@ class CRMService:
             select(CRMCalendarConnection).where(
                 CRMCalendarConnection.company_id == company_id,
                 CRMCalendarConnection.provider == "google",
-                CRMCalendarConnection.sync_status == "connected",
+                CRMCalendarConnection.sync_status.in_(["connected", "error"]),
             )
         )
         if conn is None or self._cipher is None:
             return []
+        if conn.sync_status == "error":
+            try:
+                test_creds = self._cipher.decrypt(conn.encrypted_credentials)
+                if test_creds and isinstance(test_creds, dict):
+                    conn.sync_status = "connected"
+                    conn.sync_error = None
+                    self._session.commit()
+            except Exception:
+                return []
         settings = get_settings()
         provider = GoogleCalendarProvider(
             settings.google_calendar_client_id,
@@ -1090,7 +1099,7 @@ class CRMService:
         conn = self._session.scalars(
             select(CRMCalendarConnection).where(
                 CRMCalendarConnection.company_id == company_id,
-                CRMCalendarConnection.sync_status == "connected",
+                CRMCalendarConnection.sync_status.in_(["connected", "error"]),
             )
         ).first()
 
@@ -1107,7 +1116,14 @@ class CRMService:
                 return "not_configured", None
 
         if conn.sync_status == "error":
-            return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
+            try:
+                test_creds = cipher.decrypt(conn.encrypted_credentials)
+                if test_creds and isinstance(test_creds, dict):
+                    conn.sync_status = "connected"
+                    conn.sync_error = None
+                    self._session.commit()
+            except Exception:
+                return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
 
         settings = get_settings()
         try:

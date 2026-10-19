@@ -67,11 +67,12 @@ class InvalidMediaFrame(ValueError):
     pass
 
 
-_LIVE_MEDIA_STATUSES = frozenset({"answering", "routed", "in_progress"})
-_SESSION_MEDIA_STATUSES = _LIVE_MEDIA_STATUSES | frozenset({"appointment_booked"})
+_LIVE_MEDIA_STATUSES = frozenset({"answering", "routed", "in_progress", "appointment_booked"})
+_SESSION_MEDIA_STATUSES = _LIVE_MEDIA_STATUSES
 _HANGUP_MEDIA_STATUSES = _SESSION_MEDIA_STATUSES | frozenset({
     "appointment_cancelled", "transferred", "blocked_credits", "blocked_announcement", "completed",
 })
+
 
 
 def media_transport_context(
@@ -99,7 +100,7 @@ def media_transport_context(
         except Exception as exc:
             logger.warning("resolve_voice_call_tenant failed for call_id %s: %s", call_id, exc, exc_info=True)
     call = db.get(VoiceCall, call_id)
-    allowed = allow_statuses if allow_statuses is not None else _LIVE_MEDIA_STATUSES
+    allowed = allow_statuses if allow_statuses is not None else _SESSION_MEDIA_STATUSES
     if (
         call is None
         or not call.telnyx_call_control_id
@@ -281,7 +282,7 @@ class PublicInboundConversation:
     def context(self):
         if not self.settings.telnyx_media_inbound_enabled:
             raise PermissionError("Public inbound media disabled")
-        return media_transport_context(self.db, self.settings, self.call_id)
+        return media_transport_context(self.db, self.settings, self.call_id, allow_statuses=_SESSION_MEDIA_STATUSES)
 
     def greeting(self) -> str:
         _call, config, _company = self.context()
@@ -1266,7 +1267,10 @@ class BoundedMediaSocket:
             raise InvalidMediaFrame("Invalid media JSON") from None
 
     async def send_json(self, event):
-        await self.websocket.send_json(event)
+        try:
+            await self.websocket.send_json(event)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
 
 
 async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
@@ -1336,7 +1340,8 @@ async def telnyx_media_socket(
         )
         with suppress(Exception):
             await websocket.accept()
-        await websocket.close(code=4403)
+        with suppress(Exception):
+            await websocket.close(code=4403)
         return
 
     ledger = None
@@ -1660,18 +1665,22 @@ async def telnyx_media_socket(
     await websocket.accept()
     try:
         await bridge.run()
-        await websocket.close(code=1000)
+        with suppress(Exception):
+            await websocket.close(code=1000)
     except WebSocketDisconnect:
         pass
     except PermissionError as exc:
         logger.warning("Telnyx media websocket rejected (4403) for call_id=%s: %s", call_id, exc)
-        await websocket.close(code=4403)
+        with suppress(Exception):
+            await websocket.close(code=4403)
     except (InvalidMediaFrame, asyncio.TimeoutError) as exc:
         logger.warning("Telnyx media websocket frame/timeout error (4400) for call_id=%s: %s", call_id, exc)
-        await websocket.close(code=4400)
+        with suppress(Exception):
+            await websocket.close(code=4400)
     except Exception as exc:
         logger.error("Telnyx media websocket unexpected error (1011) for call_id=%s: %s", call_id, exc, exc_info=True)
-        await websocket.close(code=1011)
+        with suppress(Exception):
+            await websocket.close(code=1011)
     finally:
         db.rollback()
         # Only the socket that claimed the signed media ticket owns the call lifecycle;

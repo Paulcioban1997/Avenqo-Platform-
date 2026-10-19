@@ -491,3 +491,161 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     db.refresh(conn)
     assert conn.sync_status == "error"
     assert "reconnect" in (conn.error_message or "").lower()
+
+
+def test_prompt_grounding_time_range_interpretation_and_qc_continuity():
+    """Vérifie que les règles d'interprétation horaire (10h-11h = début à 10h), de grounding et de continuité fr-CA sont présentes."""
+    instruction = _localized_system_instruction(
+        "Base system instruction",
+        user_language="fr-CA",
+        company_country="CA",
+        company_currency="CAD",
+        company_timezone="America/Montreal",
+        is_voice_call=True,
+    )
+    assert "10:00 - 11:00" in instruction
+    assert "starts at 10:00" in instruction
+    assert "Ground business hours and available services strictly in actual tenant CRM configuration" in instruction
+    assert "Conversation Continuity & Quebec French (fr-CA)" in instruction
+
+
+@pytest.mark.asyncio
+async def test_voice_media_appointment_booked_status_allows_continued_conversation(tmp_path):
+    """Vérifie que le statut appointment_booked n'interrompt pas la conversation vocale et ne lève pas PermissionError."""
+    from backend.app.config.settings import Settings
+    from backend.app.models.voice import VoiceCall
+    from backend.app.voice.telnyx_media import (
+        PublicInboundConversation,
+        _SESSION_MEDIA_STATUSES,
+        media_transport_context,
+    )
+
+    _engine, db, company, config, _key, _orch = _voice_database(tmp_path)
+    settings = Settings(
+        telnyx_media_enabled=True,
+        telnyx_media_inbound_enabled=True,
+        telnyx_voice_connection_id="conn-test",
+    )
+
+    from backend.app.models.voice import VoicePhoneNumber
+
+    if not config.telnyx_phone_number:
+        config.telnyx_phone_number = "+15145550000"
+
+    phone = VoicePhoneNumber(
+        company_id=company.id,
+        config_id=config.id,
+        phone_number=config.telnyx_phone_number,
+        country_code="CA",
+        number_type="local",
+        provider="telnyx",
+        status="ACTIVE",
+        capabilities=["voice"],
+        provider_connection_id="conn-test",
+    )
+    db.add(phone)
+
+    call = VoiceCall(
+        id=uuid4(),
+        company_id=company.id,
+        config_id=config.id,
+        telnyx_call_control_id="ccid-test-booked",
+        status="appointment_booked",
+        caller_phone="+15142955720",
+        ended_at=None,
+    )
+    db.add(call)
+    db.commit()
+
+    # 1. media_transport_context ne doit pas lever PermissionError
+    res_call, res_cfg, res_comp = media_transport_context(db, settings, call.id)
+    assert res_call.id == call.id
+    assert res_call.status == "appointment_booked"
+    assert "appointment_booked" in _SESSION_MEDIA_STATUSES
+
+    # 2. PublicInboundConversation.context() et security_gate ne doivent pas lever PermissionError
+    pub_conv = PublicInboundConversation(db, settings, call.id)
+    gate_result = pub_conv.security_gate("Avez-vous du stationnement sur place ?")
+    # Une question normale sur le stationnement ne doit pas être bloquée par un gate
+    assert gate_result is None
+
+
+@pytest.mark.asyncio
+async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monkeypatch):
+    """Vérifie que CRMService et CRMAvailabilityService s'auto-réparent si les clés actives décryptent des identifiants en erreur."""
+    from backend.app.models.crm import CRMCalendarConnection
+    from backend.app.services.calendar.base import CalendarEventData
+
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    conn = CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="founder@avenqo.com",
+        encrypted_credentials="enc_creds_healed",
+        sync_status="error",
+        sync_error="Decryption error on calendar credentials. Please reconnect.",
+    )
+    db.add(conn)
+    db.commit()
+
+    class ValidCipher:
+        def decrypt(self, val):
+            return {"access_token": "valid_token", "refresh_token": "valid_refresh"}
+        def encrypt(self, val):
+            return val
+
+    class MockGoogleProvider:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def create_event(self, creds, event_data, calendar_id):
+            return "google_evt_12345"
+        async def check_busy_slots(self, creds, s, e, cal_id):
+            return []
+
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", MockGoogleProvider)
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", MockGoogleProvider)
+
+    crm = BackendCRMService(db)
+    crm._cipher = ValidCipher()
+
+    client = crm.create_client(company.id, {"first_name": "Paul", "last_name": "Test", "email": "paul@test.ca"})
+    apt_data = {
+        "client_id": client.id,
+        "title": "Consultation Auto-Réparation",
+        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "duration_minutes": 60,
+    }
+
+    # Création du rendez-vous avec synchronisation Google Calendar
+    apt, err = await crm.create_appointment(company.id, apt_data)
+    assert err is None
+    assert apt is not None
+    assert apt.external_event_id == "google_evt_12345"
+
+    # Vérifier que le statut de connexion est repassé à connected et l'erreur effacée
+    db.refresh(conn)
+    assert conn.sync_status == "connected"
+    assert conn.sync_error is None
+
+
+@pytest.mark.asyncio
+async def test_bounded_media_socket_safe_on_disconnected_socket():
+    """Vérifie que BoundedMediaSocket.send_json absorbe WebSocketDisconnect et RuntimeError sans planter."""
+    from starlette.websockets import WebSocketDisconnect
+    from backend.app.voice.telnyx_media import BoundedMediaSocket
+
+    class ClosedWebSocket:
+        async def send_json(self, event):
+            raise WebSocketDisconnect(code=1006)
+
+    class RuntimeClosedWebSocket:
+        async def send_json(self, event):
+            raise RuntimeError("Unexpected ASGI message 'websocket.close', after sending 'websocket.close'")
+
+    sock1 = BoundedMediaSocket(ClosedWebSocket())
+    sock2 = BoundedMediaSocket(RuntimeClosedWebSocket())
+
+    # Ne doit pas lever d'exception
+    await sock1.send_json({"event": "media"})
+    await sock2.send_json({"event": "media"})
+
