@@ -212,6 +212,29 @@ def _phase4d_services(session, prepared):
     return products, recommendations, predictions
 
 
+def test_product_recommendations_preserve_period_response_contract(business_environment):
+    from backend.app.schemas.tenant_products_recommendations import TenantRecommendationsResponse
+
+    session, company, _, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company, dataset,
+        [
+            {"date": day, "sale": f"ORDER-{index}", "sku": "P1", "amount": amount}
+            for index, (day, amount) in enumerate(
+                [("2017-11-15", 10)] * 6 + [("2017-12-15", 20)] * 6
+            )
+        ],
+        {"date": "order_timestamp", "sale": "order_id", "sku": "product_id", "amount": "total_amount"},
+    )
+    _, service, _ = _phase4d_services(session, prepared)
+    result = TenantRecommendationsResponse.model_validate(service.build(TenantContext(company.id)))
+    product = next(item for item in result.recommendations if item.type == "product_growth")
+    assert product.period == "dataset_last_30_days_vs_previous"
+    assert product.evidence["period"]["start"].year == 2017
+    assert product.evidence["current"] == 120
+    assert product.evidence["comparison"] == 60
+
+
 def test_retail_sales_period_does_not_relabel_historical_dataset_as_recent(
     business_environment,
 ):

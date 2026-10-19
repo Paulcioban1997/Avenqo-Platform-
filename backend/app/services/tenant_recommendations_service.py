@@ -119,7 +119,7 @@ class TenantRecommendationsService:
                     } if assessment is not None else {},
                     "source_capability": signal.capability,
                     "metric": signal.metric,
-                    "period": metadata["evidence"].get("period"),
+                    "period": metadata.get("period", metadata["evidence"].get("period")),
                     "source": source_context,
                     "freshness_status": freshness.freshness_status,
                     "freshness_timestamp": freshness.last_updated_at,
@@ -271,6 +271,7 @@ class TenantRecommendationsService:
             metadata_by_key[(task_code, signal.entity)] = {
                 "title": task_code,
                 "explanation": "product_revenue_changed",
+                "period": "dataset_last_30_days_vs_previous",
                 "evidence": {
                     "product_id": product_id,
                     "product_name": product.get("name"),

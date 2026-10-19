@@ -70,3 +70,13 @@ rollback of subsequent coverage-only fixes, retaining the validated guards.
 
 Automated tests and database queries do not certify spoken French or live audio.
 Release verdict remains `LIVE_COMPANY_INTELLIGENCE_PENDING` until a real call passes.
+
+## Runtime recommendation contract regression
+
+Post-deployment logs exposed a separate `/api/v1/recommendations` 500: product
+comparison evidence contains a dictionary of actual date bounds, while the public
+response requires a string `period`. Product recommendations now expose the stable
+label `dataset_last_30_days_vs_previous` and retain the original dates in
+`evidence.period`. The regression test builds real product growth evidence from
+isolated historical rows and validates the complete response schema, including
+both actual revenue windows. No schema or data migration is required.
