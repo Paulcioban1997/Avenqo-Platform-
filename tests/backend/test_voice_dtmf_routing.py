@@ -699,8 +699,21 @@ def test_dispatcher_streaming_start_422_retry_success(db_session: Session, setup
 
 def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
     """Verify streaming lifecycle webhooks (streaming.started, streaming.stopped, streaming.failed)
-    are handled gracefully without error.
+    are handled gracefully with handled=True for authorized calls, and handled=False for unknown calls.
     """
+    co_a = setup_tenants["co_a"]
+    cfg_a = setup_tenants["cfg_a"]
+    call = VoiceCall(
+        id=uuid4(),
+        company_id=co_a.id,
+        config_id=cfg_a.id,
+        telnyx_call_control_id="cc-stream-test",
+        caller_phone="+15145550123",
+        status="in_progress",
+    )
+    db_session.add(call)
+    db_session.commit()
+
     private_key = Ed25519PrivateKey.generate()
     public_bytes = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     public_key_b64 = base64.b64encode(public_bytes).decode()
@@ -722,6 +735,7 @@ def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
     ]
 
     with TestClient(test_app) as client:
+        # 1. Authorized call events must be handled=True
         for event_name, payload in events:
             body_dict = {
                 "data": {
@@ -752,6 +766,34 @@ def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
             assert data["received"] is True
             assert data["handled"] is True
             assert data["event"] == event_name
+
+        # 2. Unknown call events must be handled=False
+        unknown_body = {
+            "data": {
+                "id": str(uuid4()),
+                "event_type": "streaming.started",
+                "payload": {
+                    "call_control_id": "cc-unknown-call-id",
+                    "connection_id": "test-voice-conn-id",
+                    "stream_id": "stream-unknown",
+                },
+            }
+        }
+        unknown_bytes = json.dumps(unknown_body).encode("utf-8")
+        stamp = str(int(time.time()))
+        sig = private_key.sign(stamp.encode() + b"|" + unknown_bytes)
+        res_unknown = client.post(
+            "/api/v1/voice/telnyx/webhook",
+            content=unknown_bytes,
+            headers={
+                "content-type": "application/json",
+                "telnyx-timestamp": stamp,
+                "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+            },
+        )
+        assert res_unknown.status_code == 200
+        assert res_unknown.json()["received"] is True
+        assert res_unknown.json()["handled"] is False
 
 
 
