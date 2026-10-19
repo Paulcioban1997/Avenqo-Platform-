@@ -617,8 +617,8 @@ async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monk
     monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", MockGoogleProvider)
     monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", MockGoogleProvider)
 
-    crm = BackendCRMService(db)
-    crm._cipher = cast(Any, ValidCipher())
+    cipher = cast(Any, ValidCipher())
+    crm = BackendCRMService(db, cipher=cipher)
 
     client = crm.create_client(company.id, {"first_name": "Paul", "last_name": "Test", "email": "paul@test.ca"})
 
