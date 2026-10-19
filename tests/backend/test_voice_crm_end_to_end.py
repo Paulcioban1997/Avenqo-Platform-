@@ -449,6 +449,7 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     """P0 Regression : En cas de refresh token révoqué, CRMCalendarConnection passe à sync_status='error'."""
     from backend.app.models.crm import CRMCalendarConnection
     from backend.app.services.calendar.base import CalendarProviderError
+    from email.message import Message
     import urllib.error
 
     _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
@@ -471,17 +472,17 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     class FailingProvider:
         async def check_busy_slots(self, creds, s, e, cal_id):
             err = CalendarProviderError("401 Unauthorized")
-            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 401, "Unauthorized", {}, None)
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 401, "Unauthorized", Message(), None)
             raise err
 
         async def refresh_access_token(self, r_tok):
             err = CalendarProviderError("400 Bad Request: invalid_grant")
-            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_grant", {}, None)
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_grant", Message(), None)
             raise err
 
     monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: FailingProvider())
 
-    avail = CRMAvailabilityService(db, cipher=FakeCipher())
+    avail = CRMAvailabilityService(db, cipher=cast(Any, FakeCipher()))
     future_start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
     res = await avail.check_availability(company.id, future_start)
     assert res["available"] is False
@@ -606,13 +607,13 @@ async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monk
     monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", MockGoogleProvider)
 
     crm = BackendCRMService(db)
-    crm._cipher = ValidCipher()
+    crm._cipher = cast(Any, ValidCipher())
 
     client = crm.create_client(company.id, {"first_name": "Paul", "last_name": "Test", "email": "paul@test.ca"})
     apt_data = {
         "client_id": client.id,
         "title": "Consultation Auto-Réparation",
-        "start_time": datetime.now(timezone.utc) + timedelta(days=2),
+        "start_time": (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=14, minute=0, second=0, microsecond=0),
         "duration_minutes": 60,
     }
 
