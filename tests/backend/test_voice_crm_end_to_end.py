@@ -523,9 +523,9 @@ async def test_voice_media_appointment_booked_status_allows_continued_conversati
 
     _engine, db, company, config, _key, _orch = _voice_database(tmp_path)
     settings = Settings(
-        telnyx_media_enabled=True,
-        telnyx_media_inbound_enabled=True,
-        telnyx_voice_connection_id="conn-test",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+        TELNYX_VOICE_CONNECTION_ID="conn-test",
     )
 
     from backend.app.models.voice import VoicePhoneNumber
