@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 import json
 from pathlib import Path
 from decimal import Decimal
@@ -250,6 +252,13 @@ class Settings(BaseSettings):
     voice_tts_model: str | None = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
+    # Isolated model lab only. This flag cannot enable unmetered PSTN inference.
+    voice_open_speech_lab_enabled: bool = Field(default=False, alias="VOICE_OPEN_SPEECH_LAB_ENABLED")
+    voice_open_speech_company_ids: list[UUID] = Field(default_factory=list, alias="VOICE_OPEN_SPEECH_COMPANY_IDS")
+    voice_open_speech_asr_url: str | None = Field(default=None, alias="VOICE_OPEN_SPEECH_ASR_URL")
+    voice_open_speech_tts_url: str | None = Field(default=None, alias="VOICE_OPEN_SPEECH_TTS_URL")
+    voice_open_speech_api_key: str | None = Field(default=None, repr=False, alias="VOICE_OPEN_SPEECH_API_KEY")
+    voice_open_speech_tts_backend: str = Field(default="kokoro", alias="VOICE_OPEN_SPEECH_TTS_BACKEND")
     voice_commercial_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_ENABLED")
     voice_long_calls_enabled: bool = Field(default=False, alias="VOICE_LONG_CALLS_ENABLED")
     voice_sandbox_test_guard_enabled: bool = Field(default=True, alias="VOICE_SANDBOX_TEST_GUARD_ENABLED")

@@ -140,6 +140,7 @@ jobs:
           tests/backend/test_voice_sandbox_deadline.py
           tests/backend/test_voice_module_permissions.py
           tests/backend/test_company_intelligence_phase85.py
+          tests/backend/test_open_speech_sandbox.py
           tests/backend/test_voice_dtmf_routing.py
           tests/backend/test_voice_tenant_integration.py
           tests/backend/test_telnyx_media.py
