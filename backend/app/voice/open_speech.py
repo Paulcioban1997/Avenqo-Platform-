@@ -69,7 +69,10 @@ class OpenSpeechClient:
             raise SpeechUnavailable("Usage reconciliation required")
         job_id = str(uuid4())
         if self.usage_ledger is not None:
-            self.usage_ledger.register(job_id)
+            if hasattr(self.usage_ledger, "register_inference"):
+                self.usage_ledger.register_inference(job_id, role)
+            else:
+                self.usage_ledger.register(job_id)
         self.pending_jobs[job_id] = role
         return job_id
 
@@ -168,6 +171,14 @@ class OpenSpeechClient:
             raise
 
     async def close(self):
+        if self.pending_jobs and self.usage_ledger is not None:
+            try:
+                await asyncio.wait_for(self.reconcile_usage(), timeout=min(3, self.config.timeout_seconds))
+            except (SpeechUnavailable, asyncio.TimeoutError):
+                pass  # Unknown jobs stay recorded; do not retry inference or invent costs.
+            finally:
+                if hasattr(self.usage_ledger, "terminate"):
+                    self.usage_ledger.terminate()
         if self._owns_client:
             await self.client.aclose()
 

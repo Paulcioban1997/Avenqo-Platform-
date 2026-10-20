@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import hashlib
+import json
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from backend.app.models import Company, VoiceBusinessConfig, CommerceConnection, Dataset
-from backend.app.models.crm import CRMService, CRMCalendarConnection
+from backend.app.models.crm import CRMService, CRMCalendarConnection, CRMEmployee
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
 
@@ -33,6 +35,9 @@ class CompanyIntelligenceProfile:
     has_google_calendar: bool
     catalog_status: str
     available_datasets: tuple[dict, ...]
+    business_configuration: dict
+    context_version: str
+    calendar_resources: tuple[dict, ...]
 
     def as_context(self, *, public: bool = False) -> dict:
         data = asdict(self)
@@ -41,6 +46,7 @@ class CompanyIntelligenceProfile:
             # Connection/dataset identities and operational state are private.
             data.pop("connected_integrations", None)
             data.pop("available_datasets", None)
+            data.pop("calendar_resources", None)
         return data
 
 class CompanyIntelligenceService:
@@ -52,12 +58,14 @@ class CompanyIntelligenceService:
         execution = peek_tenant_execution()
         if execution is not None and execution.company_id != company_id:
             raise TenantExecutionError("Company context cannot cross the bound tenant")
-        company = self._session.get(Company, company_id)
+        company = self._session.get(Company, company_id, populate_existing=True)
         if company is None:
             raise CompanyOfferingUnavailable("Company context unavailable")
-        config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id).execution_options(populate_existing=True))
+        from backend.app.services.voice_onboarding_service import stored_business_profile
+        business = stored_business_profile(self._session, company_id)
         active = tuple(ModuleEntitlementService(self._session).get_active_modules(TenantContext(company_id)))
-        services = self._session.scalars(select(CRMService).where(CRMService.company_id == company_id, CRMService.is_active.is_(True)).order_by(CRMService.name, CRMService.id)).all() if "crm" in active else []
+        services = self._session.scalars(select(CRMService).where(CRMService.company_id == company_id, CRMService.is_active.is_(True)).order_by(CRMService.name, CRMService.id).execution_options(populate_existing=True)).all() if "crm" in active else []
         # CRM is the source of service IDs/durations/prices. A non-empty Voice
         # catalog is an explicit allowlist, never authority to create services.
         configured = [s for s in (config.services or []) if isinstance(s, dict) and s.get("name")] if config else []
@@ -68,11 +76,24 @@ class CompanyIntelligenceService:
             services = [s for s in services if str(s.id) in ids or s.name.strip().casefold() in names]
             if not services:
                 status = "voice_crm_catalog_mismatch"
+        if business:
+            selected = set(business.get("bookable_service_ids", []))
+            services = [s for s in services if str(s.id) in selected]
+            if not services:
+                status = "booking_not_selected"
         offerings = tuple({"id": str(s.id), "crm_service_id": str(s.id), "name": s.name, "duration_minutes": s.duration_minutes, "price": s.price, "currency": s.currency} for s in services)
         connections = self._session.scalars(select(CommerceConnection).where(CommerceConnection.company_id == company_id)).all()
         calendar = self._session.scalar(select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == company_id))
         datasets = self._session.scalars(select(Dataset).where(Dataset.company_id == company_id).order_by(Dataset.id)).all()
         connected_calendar = bool(calendar and calendar.sync_status == "connected")
+        resources = self._session.scalars(select(CRMEmployee).where(CRMEmployee.company_id == company_id,
+            CRMEmployee.is_active.is_(True)).limit(100)).all() if "crm" in active else []
+        signature = {"business": business, "services": offerings, "modules": active,
+                     "name": company.name, "industry": company.industry, "timezone": company.timezone,
+                     "hours": company.business_hours, "voice_services": config.services if config else [],
+                     "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar}
+        signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
+        version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
         return CompanyIntelligenceProfile(
             company_id=company_id, company_name=company.name,
             business_name=(config.business_name if config else None) or company.name,
@@ -84,6 +105,9 @@ class CompanyIntelligenceService:
             connected_integrations=tuple({"provider": c.provider, "status": c.status} for c in connections),
             has_google_calendar=connected_calendar, catalog_status=status,
             available_datasets=tuple({"id": str(d.id), "name": d.name, "status": str(d.status)} for d in datasets),
+            business_configuration={k: v for k, v in business.items() if k not in {"allowed_actions", "expected_version"}},
+            context_version=version,
+            calendar_resources=tuple({"id": str(r.id), "name": r.name, "working_hours": r.working_hours} for r in resources),
         )
 
     def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:

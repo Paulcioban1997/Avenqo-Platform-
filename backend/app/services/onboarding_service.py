@@ -61,7 +61,7 @@ class OnboardingService:
         record.current_tools = list(request.current_tools)
         record.team_size = request.team_size
         record.refined_industry = request.refined_industry
-        record.draft_payload = {"selected_modules": list(request.selected_modules)}
+        record.draft_payload = {**(record.draft_payload or {}), "selected_modules": list(request.selected_modules)}
         self._session.commit()
         return self._to_response(record, tenant)
 

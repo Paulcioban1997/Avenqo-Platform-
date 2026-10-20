@@ -20,7 +20,7 @@ from backend.app.voice.speech_jobs import PilotUsageLedger
 logger = logging.getLogger("avenqo.voice.speech")
 
 
-def build_lab_adapter(settings, *, company_id):
+def build_lab_adapter(settings, *, company_id, usage_ledger=None):
     """Server-only factory. company_id must come from authenticated tenant context.
 
     This is not an authorization substitute: the existing Central/Voice tool
@@ -42,8 +42,15 @@ def build_lab_adapter(settings, *, company_id):
     artifact = artifacts.get(settings.voice_open_speech_tts_backend)
     if artifact is None:
         raise SpeechUnavailable("Unreviewed speech backend")
-    ledger = PilotUsageLedger(company_id=company_id, call_id=uuid4(),
-                              rate_usd_per_compute_second=0, source="existing-local-unpaid-lab")
+    if usage_ledger is not None:
+        if usage_ledger.tenant.company_id != company_id or not usage_ledger.nonbillable:
+            raise SpeechUnavailable("Lab requires same-tenant nonbillable usage attribution")
+        if usage_ledger.tts_artifact != artifact:
+            raise SpeechUnavailable("Usage attribution must pin the selected speech model")
+        ledger = usage_ledger
+    else:
+        ledger = PilotUsageLedger(company_id=company_id, call_id=uuid4(),
+                                  rate_usd_per_compute_second=0, source="existing-local-unpaid-lab")
     return OpenSpeechRealtimeAdapter(OpenSpeechClient(OpenSpeechConfig(
         asr_url=settings.voice_open_speech_asr_url,
         tts_url=settings.voice_open_speech_tts_url,

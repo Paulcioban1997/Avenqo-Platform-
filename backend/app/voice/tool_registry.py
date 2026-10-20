@@ -57,6 +57,8 @@ class VoiceToolRegistryService:
 
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService, BOOKING_TOOLS
         has_crm_booking = CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking
+        from backend.app.services.voice_onboarding_service import stored_business_profile
+        business = stored_business_profile(self._session, tenant.company_id)
 
         names: set[str] = set()
         owners: dict[str, str] = {}
@@ -75,6 +77,8 @@ class VoiceToolRegistryService:
                 if public_caller and not public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking):
                     continue
                 mapping = action_for_tool(tool_name)
+                if business and (not mapping or f"{mapping[0]}:{mapping[1]}" not in business.get("allowed_actions", [])):
+                    continue
                 if mapping and (mapping[0] in {"retail", "accounting", "marketing", "cross_agent"} or mapping == ("crm", "read_crm_metrics")) and "data:read" not in perms:
                     continue
                 if tool_name not in granted_tools:

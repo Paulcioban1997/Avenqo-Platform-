@@ -78,6 +78,7 @@ class CreateAppointmentArgs(ToolArguments):
     title: str = Field(description="Intitulé ou motif du rendez-vous (ex: Changement de pneus, Consultation).")
     duration_minutes: int = Field(default=60, description="Durée en minutes.")
     service_name: str | None = Field(default=None, description="Nom de la prestation.")
+    service_id: UUID | None = Field(default=None, description="Identifiant canonique du service CRM autorisé.")
     notes: str | None = Field(default=None, description="Notes ou spécifications (ex: Véhicule, Plaque d'immatriculation).")
     idempotency_key: str | None = Field(default=None, description="Clé stable de l'opération pour éviter les doublons lors d'une nouvelle tentative.")
     confirmed: bool = Field(default=False, description="Vrai uniquement après confirmation explicite de l'utilisateur.")
@@ -483,7 +484,8 @@ class CreateAppointmentTool(CRMAITool):
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
             try:
                 verified_service = CompanyIntelligenceService(self._crm._session).require_service(
-                    context.tenant.company_id, service_name=arguments.service_name or arguments.title)
+                    context.tenant.company_id, service_id=arguments.service_id,
+                    service_name=arguments.service_name or arguments.title)
             except CompanyOfferingUnavailable as exc:
                 return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
 

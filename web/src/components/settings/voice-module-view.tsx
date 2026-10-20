@@ -38,6 +38,7 @@ import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
 import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
+import { VoiceBusinessOnboarding } from "@/components/voice/voice-business-onboarding";
 import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
 import { VoiceCallPolicy } from "@/components/voice/voice-call-policy";
 import { VoiceModulePermissionsSection } from "@/components/settings/voice-module-permissions";
@@ -1270,6 +1271,7 @@ export function VoiceModuleView() {
             </section>
 
             {/* CALL POLICY, PROVISIONING & PERMISSIONS */}
+            {enabled && <VoiceBusinessOnboarding key={tenantId} tenantId={tenantId} canManage={canManageVoice} />}
             {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
             {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
             {enabled && <VoiceCallPolicy key={tenantId} tenantId={tenantId} canManage={canManageVoice} />}

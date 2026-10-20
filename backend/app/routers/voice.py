@@ -114,7 +114,32 @@ from shared.ai_engine.contracts import TenantContext
 router = APIRouter(prefix="/voice", tags=["voice-agent"])
 router.add_api_websocket_route("/telnyx/media/{call_id}", telnyx_media_socket)
 manage_voice = require_permission("modules:manage")
+from backend.app.schemas.voice_onboarding import VoiceBusinessProfileRequest
+from backend.app.services.voice_onboarding_service import VoiceOnboardingService, VoiceProfileConflict
 logger = logging.getLogger("avenqo.voice")
+
+
+@router.get("/business-profile", dependencies=[Depends(require_active_subscription)])
+def get_voice_business_profile(identity: CurrentIdentity = Depends(manage_voice), db: Session = Depends(get_db)):
+    _ensure_voice_access(db, identity.user.company_id)
+    return VoiceOnboardingService(db).view(TenantContext(identity.user.company_id))
+
+
+@router.put("/business-profile", dependencies=[Depends(require_active_subscription)])
+def update_voice_business_profile(request: VoiceBusinessProfileRequest,
+    identity: CurrentIdentity = Depends(manage_voice), db: Session = Depends(get_db)):
+    _ensure_voice_access(db, identity.user.company_id)
+    try:
+        return VoiceOnboardingService(db).save(TenantContext(identity.user.company_id), identity.user.id, request)
+    except VoiceProfileConflict as exc:
+        db.rollback()
+        raise HTTPException(409, str(exc)) from None
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(403, str(exc)) from None
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from None
 
 
 def _secret_val(val: SecretStr | str | None) -> str:

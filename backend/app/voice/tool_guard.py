@@ -84,6 +84,10 @@ class VoiceToolGuard:
         if mapping is None:
             raise VoiceToolDenied("Voice cannot invent or execute an unmapped tool.")
         module_code, action_code = mapping
+        from backend.app.services.voice_onboarding_service import stored_business_profile
+        business = stored_business_profile(self._session, tenant.company_id)
+        if business and f"{module_code}:{action_code}" not in business.get("allowed_actions", []):
+            raise VoiceToolDenied("This capability is disabled in company Voice settings")
         if (module_code in {"retail", "accounting", "marketing", "cross_agent"} or (module_code == "crm" and action_code == "read_crm_metrics")) and "data:read" not in perms:
             raise VoiceToolDenied("Private company data requires an authenticated data reader")
         plan = self._entitlements.get_company_plan(tenant)
