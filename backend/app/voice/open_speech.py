@@ -53,13 +53,54 @@ class OpenSpeechConfig:
 
 
 class OpenSpeechClient:
-    def __init__(self, config: OpenSpeechConfig, *, client=None):
+    def __init__(self, config: OpenSpeechConfig, *, client=None, usage_ledger=None):
         self.config = config
         self.client = client or httpx.AsyncClient(
             headers={"Authorization": "Bearer " + config.api_key},
             timeout=config.timeout_seconds, follow_redirects=False, trust_env=False,
         )
         self._owns_client = client is None
+        self.usage_ledger = usage_ledger
+        self.pending_jobs = {}
+        self._accounting_blocked = False
+
+    def _job(self, role):
+        if self._accounting_blocked or len(self.pending_jobs) >= 1000:
+            raise SpeechUnavailable("Usage reconciliation required")
+        job_id = str(uuid4())
+        if self.usage_ledger is not None:
+            self.usage_ledger.register(job_id)
+        self.pending_jobs[job_id] = role
+        return job_id
+
+    async def reconcile_usage(self):
+        """Recover compute receipts even when the audio request was cancelled.
+
+        A 404, timeout or restarted/unknown job is not evidence of free compute.
+        Keep it pending; no automatic inference retry or tool replay.
+        """
+        receipts = []
+        for job_id, role in list(self.pending_jobs.items()):
+            url = self.config.asr_url if role == "asr" else self.config.tts_url
+            artifact = PARAKEET if role == "asr" else self.config.tts_artifact
+            try:
+                response = await self.client.get(url + "/v1/usage/" + job_id)
+                response.raise_for_status()
+                receipt = response.json()
+                if (receipt.get("id") != job_id or receipt.get("model") != artifact.model_id
+                        or receipt.get("revision") != artifact.revision or receipt.get("role") != role):
+                    raise SpeechUnavailable("Untrusted compute receipt")
+                if self.usage_ledger is not None:
+                    self.usage_ledger.reconcile(receipt)
+                elif receipt.get("status") not in {"completed", "failed"}:
+                    raise SpeechUnavailable("Unsettled compute receipt")
+                receipts.append(receipt)
+                del self.pending_jobs[job_id]
+            except (httpx.HTTPError, ValueError, KeyError, TypeError, SpeechUnavailable):
+                self._accounting_blocked = True
+                raise SpeechUnavailable("Compute receipt unresolved; pilot admission blocked") from None
+        self._accounting_blocked = False
+        return receipts
 
     async def ready(self, locale: str):
         code = language_code(locale)
@@ -77,10 +118,11 @@ class OpenSpeechClient:
                 raise SpeechUnavailable("Speech readiness failed") from None
 
     async def transcribe(self, pcm: bytes) -> dict:
+        job_id = self._job("asr")
         try:
             response = await self.client.post(self.config.asr_url + "/v1/audio/transcriptions",
                                              content=pcm_wav(pcm, 24000),
-                                             headers={"Content-Type": "audio/wav"})
+                                             headers={"Content-Type": "audio/wav", "X-Speech-Job-Id": job_id})
             response.raise_for_status()
             data = response.json()
             if (data.get("model") != PARAKEET.model_id or data.get("revision") != PARAKEET.revision
@@ -90,16 +132,22 @@ class OpenSpeechClient:
             if not math.isfinite(seconds) or abs(seconds - len(pcm) / 48000) > .05:
                 raise SpeechUnavailable("Invalid ASR duration")
             return data
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, SpeechUnavailable):
+            self._accounting_blocked = True
             raise SpeechUnavailable("Speech recognition failed") from None
+        except asyncio.CancelledError:
+            self._accounting_blocked = True
+            raise
 
     async def synthesize(self, text: str, locale: str) -> tuple[bytes, str]:
         if language_code(locale) not in self.config.tts_artifact.locales:
             raise SpeechUnavailable("TTS language unsupported; explicit provider fallback required")
+        job_id = self._job("tts")
         try:
             # Stream and bound the response even if a worker sends no Content-Length.
             async with self.client.stream("POST", self.config.tts_url + "/v1/audio/speech",
-                                          json={"input": text, "language": locale}) as response:
+                                          json={"input": text, "language": locale},
+                                          headers={"X-Speech-Job-Id": job_id}) as response:
                 response.raise_for_status()
                 if (response.headers.get("X-Audio-Sample-Rate") != "24000"
                         or response.headers.get("X-Audio-Encoding") != "pcm_s16le"):
@@ -112,8 +160,12 @@ class OpenSpeechClient:
                 if not body or len(body) % 2:
                     raise SpeechUnavailable("Invalid PCM output")
                 return bytes(body), response.headers.get("X-Speech-Request-Id", uuid4().hex)
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError, SpeechUnavailable):
+            self._accounting_blocked = True
             raise SpeechUnavailable("Speech synthesis failed") from None
+        except asyncio.CancelledError:
+            self._accounting_blocked = True
+            raise
 
     async def close(self):
         if self._owns_client:

@@ -8,11 +8,14 @@ settlement and telephone quality have been validated. No zero-cost assumption.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
+from uuid import uuid4
 
 from backend.app.voice.open_speech import (
     OpenSpeechClient, OpenSpeechConfig, OpenSpeechRealtimeAdapter, SpeechUnavailable,
 )
 from backend.app.voice.open_speech_catalog import CHATTERBOX, KOKORO
+from backend.app.voice.speech_jobs import PilotUsageLedger
 
 logger = logging.getLogger("avenqo.voice.speech")
 
@@ -30,15 +33,22 @@ def build_lab_adapter(settings, *, company_id):
     if not all((settings.voice_open_speech_asr_url, settings.voice_open_speech_tts_url,
                 settings.voice_open_speech_api_key)):
         raise SpeechUnavailable("Independent speech worker configuration incomplete")
+    # Phase 8.7 budget override: no remote/paid inference has been authorized.
+    # No public tunnel to the developer machine. Only local processes are allowed.
+    if any(urlsplit(url).hostname not in {"localhost", "127.0.0.1", "::1"}
+           for url in (settings.voice_open_speech_asr_url, settings.voice_open_speech_tts_url)):
+        raise SpeechUnavailable("Zero-budget lab permits loopback inference only")
     artifacts = {"kokoro": KOKORO, "chatterbox": CHATTERBOX}
     artifact = artifacts.get(settings.voice_open_speech_tts_backend)
     if artifact is None:
         raise SpeechUnavailable("Unreviewed speech backend")
+    ledger = PilotUsageLedger(company_id=company_id, call_id=uuid4(),
+                              rate_usd_per_compute_second=0, source="existing-local-unpaid-lab")
     return OpenSpeechRealtimeAdapter(OpenSpeechClient(OpenSpeechConfig(
         asr_url=settings.voice_open_speech_asr_url,
         tts_url=settings.voice_open_speech_tts_url,
         api_key=settings.voice_open_speech_api_key, tts_artifact=artifact,
-    )))
+    ), usage_ledger=ledger))
 
 
 def phone_readiness(settings):
@@ -51,6 +61,7 @@ def phone_readiness(settings):
                                              and settings.voice_open_speech_api_key),
         "telephone_ready": False,
         "blockers": ["inference_hosting_not_validated", "cancelled_inference_cost_settlement_pending",
+                     "zero_budget_remote_inference_not_authorized",
                      "telephone_latency_and_french_canadian_quality_not_certified"],
         "phone_provider": "existing_configured_provider",
     }

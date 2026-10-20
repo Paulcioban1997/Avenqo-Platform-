@@ -48,6 +48,8 @@ Set these directly in the worker process environment, not in Git:
 | `VOICE_SPEECH_DEVICE` | `cuda` for measured Parakeet; `cpu` or `cuda` for Kokoro |
 | `VOICE_SPEECH_TTS_BACKEND` | `kokoro` for selected candidate; `chatterbox` comparator |
 | `HF_HUB_CACHE` | Absolute path of prepared model cache |
+| `VOICE_SPEECH_USAGE_DB` | Separate worker-local persistent SQLite journal, required by the process factory; never the Avenqo application DB |
+| `VOICE_SPEECH_PREWARM_LANGUAGES` | Optional explicit `fr,en,es`; warmup must finish before readiness |
 
 From the repository root, start the appropriate environment:
 
@@ -83,6 +85,20 @@ claimed for those pipelines.
 No public endpoint exposes this factory. These variables have **not** been
 created on Railway. Do not set them to production credentials or localhost on a
 remote API expecting it to reach this laptop.
+
+**Phase 8.7 budget override:** the backend lab factory now allows loopback
+workers only; remote inference is refused even with the lab flag. No public
+tunnel, paid endpoint or additional infrastructure is authorized. Run one worker
+process per usage journal, with an independent journal file for ASR and TTS.
+`GET /v1/usage/{opaque-job-uuid}` requires the same independent authentication.
+No text/audio is retained in receipts. Duplicate job IDs return 409 rather than
+replaying inference; a full journal denies work without deleting old receipts.
+After a worker restart, unfinished receipts become unknown and block admission.
+They require investigation, not an automatic reset or zero-cost settlement.
+Client cancellation retains job IDs for explicit reconciliation. The unpaid
+pilot ledger records server-bound company/call allocation estimates, not customer
+charges; it does not replace the live Avenqo credit ledger. See the Phase 8.7
+report for these accounting limits and the offline A/B protocol.
 
 The Telnyx bridge uses `build_phone_adapter()` and retains the existing OpenAI
 provider, including its existing long-call rotation. The lab flag alone cannot
