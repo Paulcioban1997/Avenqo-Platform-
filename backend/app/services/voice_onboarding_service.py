@@ -52,6 +52,10 @@ class VoiceOnboardingService:
                   "secondary_locales": locale.secondary_locales, "contact_phone": company.phone,
                   "website": company.website or ""}
         values.update({k: v for k, v in saved.items() if k not in {"version", "expected_version"}})
+        # CRM owns split shifts, dated exceptions and verification-only schedules.
+        # Never replace these with the legacy Voice weekday-only representation.
+        if "weekly" in (company.business_hours or {}) or "date_overrides" in (company.business_hours or {}):
+            values["opening_hours"] = company.business_hours
         values["expected_version"] = saved.get("version", 0)
         if not saved and config:
             values["bookable_service_ids"] = [str(s["crm_service_id"]) for s in config.services or [] if s.get("crm_service_id")]
@@ -87,6 +91,10 @@ class VoiceOnboardingService:
         current = dict((record.draft_payload or {}).get(PROFILE_KEY) or {}) if record else {}
         if current.get("version", 0) != request.expected_version:
             raise VoiceProfileConflict("Business settings changed; reload before saving")
+        company = self.db.get(Company, tenant.company_id, populate_existing=True)
+        schedule = company.business_hours or {}
+        if ("weekly" in schedule or "date_overrides" in schedule) and request.opening_hours != schedule:
+            raise ValueError("Edit CRM schedules and dated exceptions in the CRM workspace")
         limit = PlanLimitsService(self.db).limits_for(tenant.company_id).max_sites
         if limit is not None and len(request.locations) > limit:
             raise ValueError("Location count exceeds subscription allowance")
@@ -110,7 +118,9 @@ class VoiceOnboardingService:
                 greeting_message=VoiceOrchestrator.greeting_for(request.business_name, request.primary_locale))
             self.db.add(config)
         config.business_name, config.timezone_name = request.business_name, request.timezone
-        config.opening_hours, config.preferred_language = request.opening_hours, request.primary_locale
+        if "weekly" not in request.opening_hours and "date_overrides" not in request.opening_hours:
+            config.opening_hours = request.opening_hours
+        config.preferred_language = request.primary_locale
         config.services = [{"name": s.name, "crm_service_id": str(s.id), "duration_minutes": s.duration_minutes,
                             "price": s.price, "currency": s.currency} for s in services]
         company = self.db.get(Company, tenant.company_id)

@@ -105,6 +105,31 @@ def test_unknown_pricing_never_reserves_or_debits(tmp_path):
         assert not db.scalars(select(TenantAICreditReservation)).all()
 
 
+def test_crm_split_schedule_exceptions_survive_voice_save_and_cannot_be_flattened(tmp_path):
+    with Session(_engine(tmp_path,"crm-hours.db")) as db:
+        c,owner=_company(db,"crm-hours");tenant=_activate(db,c,"voice","crm")
+        schedule={"weekly":{"monday":[{"open":"09:00","close":"12:00"},{"open":"13:00","close":"17:00"}]},
+                  "date_overrides":{"2030-01-07":[]},"verification_only":True}
+        c.business_hours=schedule;db.commit()
+        service=VoiceOnboardingService(db)
+        profile=service.view(tenant)["profile"]
+        assert profile["opening_hours"]==schedule
+        service.save(tenant,owner.id,VoiceBusinessProfileRequest.model_validate(profile))
+        assert db.get(type(c),c.id,populate_existing=True).business_hours==schedule
+        cfg=db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id==c.id))
+        assert "weekly" not in cfg.opening_hours
+        with pytest.raises(ValueError,match="CRM schedules"):
+            service.save(tenant,owner.id,request(c,expected_version=1,opening_hours={"monday":{"open":"09:00","close":"17:00"}}))
+        c.business_hours={**schedule,"date_overrides":{"2030-01-08":[]}};db.commit()
+        assert service.view(tenant)["profile"]["opening_hours"]==c.business_hours
+
+
+@pytest.mark.parametrize("period", [{"open":"17:00","close":"09:00"}, {"open":9,"close":"17:00"}, {"open":"09:00+02:00","close":"17:00"}])
+def test_invalid_crm_hours_are_rejected_without_mutation(period):
+    with pytest.raises(ValueError):
+        VoiceBusinessProfileRequest(business_name="Fixture",industry="Fixture",opening_hours={"weekly":{"monday":[period]}})
+
+
 def test_crash_after_credit_commit_recovers_without_duplicate_usage(tmp_path, monkeypatch):
     with Session(_engine(tmp_path,"crash.db")) as db:
         c,owner=_company(db,"crash");tenant=_activate(db,c,"voice","crm")

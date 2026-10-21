@@ -7,9 +7,11 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { LOCALES } from "@/lib/i18n/locales";
 import { VOICE_ONBOARDING_COPY } from "@/lib/i18n/voice-onboarding-copy";
 
+type WorkingPeriod = { open: string; close: string };
+type CrmSchedule = { weekly?: Record<string, WorkingPeriod[]>; date_overrides?: Record<string, WorkingPeriod[]>; verification_only?: boolean };
 type Profile = {
   expected_version: number; business_name: string; industry: string; description: string;
-  activities: string[]; locations: string[]; timezone: string; opening_hours: Record<string, { open: string; close: string }>;
+  activities: string[]; locations: string[]; timezone: string; opening_hours: Record<string, WorkingPeriod> | CrmSchedule;
   primary_locale: string; secondary_locales: string[]; contact_phone: string | null; website: string;
   bookable_service_ids: string[]; allowed_actions: string[]; cancellation_policy: string;
   communication_style: string; accent_preference: string; vocabulary: string[];
@@ -47,6 +49,9 @@ export function VoiceBusinessOnboarding({ tenantId, canManage }: { tenantId?: st
   if (!canManage) return null;
   const data = loaded && loaded.tenant === tenantId ? loaded.value : null;
   const profile = data?.profile;
+  const crmSchedule = profile && ("weekly" in profile.opening_hours || "date_overrides" in profile.opening_hours)
+    ? profile.opening_hours as CrmSchedule : null;
+  const simpleHours = (crmSchedule ? {} : profile?.opening_hours ?? {}) as Record<string, WorkingPeriod>;
   const edit = (patch: Partial<Profile>) => {
     if (data && tenantId) setLoaded({ tenant: tenantId, value: { ...data, profile: { ...data.profile, ...patch } } });
     setNotice("");
@@ -85,11 +90,14 @@ export function VoiceBusinessOnboarding({ tenantId, canManage }: { tenantId?: st
           <label className="block text-sm">{t.primary}<select className={fieldClass} value={profile.primary_locale} onChange={e => edit({ primary_locale: e.target.value })}>{LOCALES.map(l => <option key={l.code} value={l.code}>{l.nativeName}</option>)}</select></label>
           <label className="block text-sm">{t.secondary}<select multiple className={fieldClass} value={profile.secondary_locales} onChange={e => edit({ secondary_locales: Array.from(e.target.selectedOptions, o => o.value) })}>{LOCALES.filter(l => l.code !== profile.primary_locale).map(l => <option key={l.code} value={l.code}>{l.nativeName}</option>)}</select></label>
           {textField("communication_style", t.style)}{textField("accent_preference", t.accent)}{listField("vocabulary", t.vocabulary)}
-          <fieldset className="space-y-2 sm:col-span-2"><legend className="text-sm font-medium">{t.hours}</legend>{days.map((day, i) => <div key={day} className="flex flex-wrap items-center gap-3 text-sm">
+          {crmSchedule ? <div className="space-y-2 text-sm sm:col-span-2"><h3 className="font-medium">{t.hours}</h3><p>{t.crmHours}</p>
+            {days.map((day, i) => <p key={day}>{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 5 + i)))} : {(crmSchedule.weekly?.[day] ?? []).map(p => `${p.open}–${p.close}`).join(", ") || t.closed}</p>)}
+            <Link href="/crm" className="text-blue-600 underline">{t.crm}</Link>
+          </div> : <fieldset className="space-y-2 sm:col-span-2"><legend className="text-sm font-medium">{t.hours}</legend>{days.map((day, i) => <div key={day} className="flex flex-wrap items-center gap-3 text-sm">
             <span className="w-24">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 5 + i)))}</span>
-            <label><input type="checkbox" checked={!profile.opening_hours[day]} onChange={e => { const hours = { ...profile.opening_hours }; if (e.target.checked) delete hours[day]; else hours[day] = { open: "09:00", close: "17:00" }; edit({ opening_hours: hours }); }} /> {t.closed}</label>
-            {profile.opening_hours[day] && ["open", "close"].map(side => <label key={side}>{side === "open" ? t.open : t.close}<input type="time" className="ml-2 rounded border p-1 dark:bg-slate-950" value={profile.opening_hours[day][side as "open" | "close"]} onChange={e => edit({ opening_hours: { ...profile.opening_hours, [day]: { ...profile.opening_hours[day], [side]: e.target.value } } })} /></label>)}
-          </div>)}</fieldset>
+            <label><input type="checkbox" checked={!simpleHours[day]} onChange={e => { const hours = { ...simpleHours }; if (e.target.checked) delete hours[day]; else hours[day] = { open: "09:00", close: "17:00" }; edit({ opening_hours: hours }); }} /> {t.closed}</label>
+            {simpleHours[day] && ["open", "close"].map(side => <label key={side}>{side === "open" ? t.open : t.close}<input type="time" className="ml-2 rounded border p-1 dark:bg-slate-950" value={simpleHours[day][side as "open" | "close"]} onChange={e => edit({ opening_hours: { ...simpleHours, [day]: { ...simpleHours[day], [side]: e.target.value } } })} /></label>)}
+          </div>)}</fieldset>}
         </div>}
         {step === 1 && <div className="space-y-4">
           <h3 className="font-medium">{t.services}</h3><p className="text-sm text-slate-600 dark:text-slate-300">{t.catalog}</p>

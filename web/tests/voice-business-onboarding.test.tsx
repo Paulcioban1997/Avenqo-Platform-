@@ -14,6 +14,18 @@ const setup = { profile: { expected_version: 1, business_name: "Entreprise A", i
   readiness: { configuration_saved: true, booking_authorized: false, telephone_verified: false } };
 
 describe("Business-aware Voice onboarding", () => {
+  it("preserves CRM split hours and date overrides when saving other settings", async () => {
+    const hours = { weekly: { monday: [{ open: "09:00", close: "12:00" }, { open: "13:00", close: "17:00" }] }, date_overrides: { "2030-01-07": [] }, verification_only: true };
+    const fetcher = vi.fn(async () => ({ json: async () => ({ ...setup, profile: { ...setup.profile, opening_hours: hours } }) }));
+    vi.stubGlobal("fetch", fetcher);
+    render(<VoiceBusinessOnboarding tenantId="a" canManage />);
+    await screen.findByText(/Horaires CRM/);
+    expect(screen.getByText(/09:00–12:00, 13:00–17:00/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer mes réglages" }));
+    await screen.findByText("Réglages enregistrés.");
+    const calls = fetcher.mock.calls as unknown as [string, RequestInit?][];
+    expect(JSON.parse(calls[1][1]!.body as string).opening_hours).toEqual(hours);
+  });
   it("requires management access and never claims telephone acceptance", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     render(<VoiceBusinessOnboarding tenantId="a" canManage={false} />);

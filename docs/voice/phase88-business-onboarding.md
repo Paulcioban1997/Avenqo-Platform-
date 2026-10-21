@@ -52,6 +52,18 @@ No database schema or Alembic migration is introduced. Expected head remains
 `0067_resolve_voice_call_tenant_owner`. HF phone selection remains blocked and
 workers remain loopback-only. Model dependencies/weights are not in the API image.
 
+### Post-deployment correction: canonical CRM schedules
+
+Real validation of `8295dd1` exposed a legacy-format assumption: the business
+profile rejected existing CRM `{weekly, date_overrides}` schedules. The read-only
+preflight failed before any tenant update. The follow-up fix accepts and validates
+canonical CRM periods, displays them without flattening split shifts, retains
+dated exceptions and test restrictions, and directs edits to CRM. Saving Voice
+preferences cannot overwrite an existing canonical schedule; stale or simplified
+replacements are rejected. CRM remains the live source when reloading a profile.
+Regression tests cover preservation, malformed periods and the UI save payload.
+The follow-up commit requires its own Sandbox deployment authorization.
+
 ## Validation and delivery evidence
 
 Local focused backend runs: 115 existing/new regression cases passed, then 45

@@ -58,6 +58,34 @@ class VoiceBusinessProfileRequest(BaseModel):
     @field_validator("opening_hours")
     @classmethod
     def hours(cls, value):
+        if "weekly" in value or "date_overrides" in value:
+            from datetime import date, time
+            if not set(value) <= {"weekly", "date_overrides", "verification_only"}:
+                raise ValueError("Unknown CRM schedule field")
+            weekly, overrides = value.get("weekly", {}), value.get("date_overrides", {})
+            if not isinstance(weekly, dict) or not isinstance(overrides, dict) or len(overrides) > 3660:
+                raise ValueError("Invalid CRM schedule")
+            weekdays = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+            if not set(weekly) <= weekdays:
+                raise ValueError("Invalid CRM weekday")
+            for key, periods in overrides.items():
+                date.fromisoformat(key)
+            for periods in [*weekly.values(), *overrides.values()]:
+                if not isinstance(periods, list) or len(periods) > 8:
+                    raise ValueError("Invalid CRM working periods")
+                previous = None
+                for period in periods:
+                    if not isinstance(period, dict) or set(period) != {"open", "close"}:
+                        raise ValueError("Invalid CRM working period")
+                    if not all(isinstance(period[k], str) for k in ("open", "close")):
+                        raise ValueError("CRM times must be strings")
+                    opened, closed = time.fromisoformat(period["open"]), time.fromisoformat(period["close"])
+                    if opened.tzinfo is not None or closed.tzinfo is not None:
+                        raise ValueError("CRM hours use the company timezone")
+                    if opened >= closed or (previous is not None and opened < previous):
+                        raise ValueError("Invalid or overlapping CRM hours")
+                    previous = closed
+            return value
         return VoiceConfigRequest.validate_opening_hours(value)
 
     @field_validator("website")
