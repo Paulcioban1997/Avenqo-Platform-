@@ -630,6 +630,14 @@ def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
 
 def test_sales_never_invents_change_and_only_uses_active_validated_forecast(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
+    # This case asserts empty current/previous calendar months. Fifty days ago
+    # can fall in the previous month (e.g. Oct 21 -> Sep 1), so the shared
+    # rolling-window fixture cannot guarantee that precondition year-round.
+    historical = datetime.now(timezone.utc) - timedelta(days=400)
+    prepared[dataset.id] = _prepared(company, dataset, [
+        {**row, "date": (historical - timedelta(days=index)).isoformat()}
+        for index, row in enumerate(prepared[dataset.id].rows)
+    ])
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=False)
     sales, _customers, predictions = _services(session, prepared)
     inactive = sales.build(TenantContext(company.id))
