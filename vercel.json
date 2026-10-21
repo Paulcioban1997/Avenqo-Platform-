@@ -13,7 +13,8 @@
       "codex/avenqo-calendar-sandbox-hardening-20261013": false,
       "codex/avenqo-voice-long-calls-20261013": false,
       "codex/avenqo-marketing-truthful-errors-20261013": false,
-      "promotion/sandbox": false
+      "promotion/sandbox": false,
+      "codex/sandbox-commerce-cron-20261021": false
     }
   },
   "rewrites": [
