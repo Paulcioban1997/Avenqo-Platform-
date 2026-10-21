@@ -118,6 +118,7 @@ jobs:
           tests/backend/test_connector_key_rotation.py
           tests/backend/test_internal_commerce.py
           tests/backend/test_scheduler_http.py
+          tests/backend/test_commerce_cron_trigger.py
           tests/backend/test_plan_limits.py
           tests/backend/test_telnyx_speak_contract.py
           -q
@@ -126,6 +127,17 @@ jobs:
           ENVIRONMENT: test
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
+
+      - name: Build and smoke-test isolated commerce cron image
+        timeout-minutes: 5
+        run: |
+          docker build -f backend/Dockerfile.commerce-cron -t avenqo-commerce-cron-test .
+          set +e
+          docker run --rm --network none avenqo-commerce-cron-test > /tmp/commerce-cron-smoke.jsonl
+          result=$?
+          set -e
+          test "$result" -eq 1
+          python -c "import json; rows=[json.loads(x) for x in open('/tmp/commerce-cron-smoke.jsonl')]; assert rows[0]['event']=='commerce_cron_started'; assert rows[-1]['category']=='configuration'; assert rows[-1]['exit_status']==1"
 
       - name: Run Voice Master contract suite
         timeout-minutes: 15
