@@ -15,6 +15,7 @@ type Profile = {
   primary_locale: string; secondary_locales: string[]; contact_phone: string | null; website: string;
   bookable_service_ids: string[]; allowed_actions: string[]; cancellation_policy: string;
   communication_style: string; accent_preference: string; vocabulary: string[];
+  input_noise_reduction?: "off" | "near_field" | "far_field";
 };
 type Setup = {
   profile: Profile; industry_suggestions: string[]; context_version: string;
@@ -90,6 +91,9 @@ export function VoiceBusinessOnboarding({ tenantId, canManage }: { tenantId?: st
           <label className="block text-sm">{t.primary}<select className={fieldClass} value={profile.primary_locale} onChange={e => edit({ primary_locale: e.target.value })}>{LOCALES.map(l => <option key={l.code} value={l.code}>{l.nativeName}</option>)}</select></label>
           <label className="block text-sm">{t.secondary}<select multiple className={fieldClass} value={profile.secondary_locales} onChange={e => edit({ secondary_locales: Array.from(e.target.selectedOptions, o => o.value) })}>{LOCALES.filter(l => l.code !== profile.primary_locale).map(l => <option key={l.code} value={l.code}>{l.nativeName}</option>)}</select></label>
           {textField("communication_style", t.style)}{textField("accent_preference", t.accent)}{listField("vocabulary", t.vocabulary)}
+          <label className="block text-sm">{t.noise}<select className={fieldClass} value={profile.input_noise_reduction ?? "off"} onChange={e => edit({ input_noise_reduction: e.target.value as Profile["input_noise_reduction"] })}>
+            <option value="off">{t.noiseOff}</option><option value="near_field">{t.noiseNear}</option><option value="far_field">{t.noiseFar}</option>
+          </select><span className="mt-1 block text-xs text-slate-500">{t.noiseHelp}</span></label>
           {crmSchedule ? <div className="space-y-2 text-sm sm:col-span-2"><h3 className="font-medium">{t.hours}</h3><p>{t.crmHours}</p>
             {days.map((day, i) => <p key={day}>{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 5 + i)))} : {(crmSchedule.weekly?.[day] ?? []).map(p => `${p.open}–${p.close}`).join(", ") || t.closed}</p>)}
             <Link href="/crm" className="text-blue-600 underline">{t.crm}</Link>

@@ -117,10 +117,15 @@ class VoiceOnboardingService:
                 voice_api_key_hash=_api_key_hash(key), voice_api_key_last4=key[-4:], enabled=False,
                 greeting_message=VoiceOrchestrator.greeting_for(request.business_name, request.primary_locale))
             self.db.add(config)
+        from backend.app.voice.service import VoiceOrchestrator
+        was_generated_greeting = config.greeting_message == VoiceOrchestrator.greeting_for(
+            config.business_name, config.preferred_language)
         config.business_name, config.timezone_name = request.business_name, request.timezone
         if "weekly" not in request.opening_hours and "date_overrides" not in request.opening_hours:
             config.opening_hours = request.opening_hours
         config.preferred_language = request.primary_locale
+        if was_generated_greeting:
+            config.greeting_message = VoiceOrchestrator.greeting_for(request.business_name, request.primary_locale)
         config.services = [{"name": s.name, "crm_service_id": str(s.id), "duration_minutes": s.duration_minutes,
                             "price": s.price, "currency": s.currency} for s in services]
         company = self.db.get(Company, tenant.company_id)

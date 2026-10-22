@@ -52,6 +52,9 @@ class OpenAIAudioConfig:
     tts_model: str | None
     tts_voice: str | None
     base_url: str = "https://api.openai.com/v1"
+    speech_speed: float = 1.0
+    input_noise_reduction: str = "off"
+    delivery_style: str = "professional"
 
 
 class OpenAISpeechToTextAdapter:
@@ -90,6 +93,7 @@ class OpenAITextToSpeechAdapter:
             model=self._config.tts_model,
             voice=self._config.tts_voice,
             response_format="opus",
+            speed=self._config.speech_speed,
             instructions=f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate.",
         )
         return response.read()
@@ -137,14 +141,18 @@ class OpenAIRealtimeAudioAdapter:
         self._manager = client.realtime.connect(model=self._model)
         self._connection = await self._manager.__aenter__()
         is_preview = "preview" in (self._model or "").lower()
+        noise = None if self._config.input_noise_reduction == "off" else {"type": self._config.input_noise_reduction}
         if is_preview:
             session_payload: dict[str, Any] = {
                 "instructions": (
+                    f"Start in {locale_info(locale).english_name}. Use a {self._config.delivery_style} delivery. "
                     "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
                 "modalities": ["audio", "text"],
                 "voice": self._config.tts_voice,
+                "speed": self._config.speech_speed,
+                "input_audio_noise_reduction": noise,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "input_audio_transcription": {"model": self._config.stt_model} if self._config.stt_model else None,
@@ -159,12 +167,14 @@ class OpenAIRealtimeAudioAdapter:
             session_payload = {
                 "type": "realtime",
                 "instructions": (
+                    f"Start in {locale_info(locale).english_name}. Use a {self._config.delivery_style} delivery. "
                     "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
                 "output_modalities": ["audio"],
                 "audio": {
                     "input": {
+                        "noise_reduction": noise,
                         "format": {"type": "audio/pcm", "rate": 24000},
                         "transcription": {"model": self._config.stt_model or "gpt-4o-mini-transcribe"},
                         "turn_detection": {
@@ -177,6 +187,7 @@ class OpenAIRealtimeAudioAdapter:
                         },
                     },
                     "output": {
+                        "speed": self._config.speech_speed,
                         "format": {"type": "audio/pcm", "rate": 24000},
                         "voice": self._config.tts_voice or "marin",
                     },
@@ -204,7 +215,8 @@ class OpenAIRealtimeAudioAdapter:
             "response": {
                 "conversation": "none",
                 "output_modalities": ["audio"],
-                "instructions": "Speak the supplied text verbatim in its existing language. Do not translate, answer, or add information.",
+                "instructions": "Speak the supplied text verbatim in its existing language. Do not translate, answer, or add information. "
+                    f"Use a {self._config.delivery_style} delivery.",
                 "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
             },
         })
