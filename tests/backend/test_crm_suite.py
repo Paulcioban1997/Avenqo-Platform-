@@ -1465,7 +1465,7 @@ def test_ai_copilot_crm_tools_execution(db_session):
     assert create_res.data["title"] == "Consultation IA"
 
 
-def test_create_appointment_tool_books_explicit_user_request(db_session):
+def test_create_appointment_tool_requires_consent_after_explicit_user_request(db_session):
     company = _create_company(db_session, "tenant-explicit-booking")
     crm_svc = CRMAppService(db_session)
     ctx = ToolExecutionContext(
@@ -1475,19 +1475,22 @@ def test_create_appointment_tool_books_explicit_user_request(db_session):
         request_id="explicit-booking-1",
         user_message="tu peu me prendre un rdv vous pour aujourd'hui au gym a 10h30 ? c'est le 14 octobre 2026",
     )
-    create_res = asyncio.run(
-        CreateAppointmentTool(db_session).run(
-            ctx,
-            CreateAppointmentArgs(
-                client_name_or_id="vous",
-                title="Gym",
-                start_time=datetime(2026, 10, 14, 10, 30, tzinfo=ZoneInfo(company.timezone)).isoformat(),
-                duration_minutes=60,
-                service_name="gym",
-                confirmed=False,
-            ),
-        )
+    arguments = CreateAppointmentArgs(
+        client_name_or_id="vous",
+        title="Gym",
+        start_time=datetime(2026, 10, 14, 10, 30, tzinfo=ZoneInfo(company.timezone)).isoformat(),
+        duration_minutes=60,
+        service_name="gym",
+        confirmed=False,
     )
+    tool = CreateAppointmentTool(db_session)
+    pending = asyncio.run(tool.run(ctx, arguments))
+    assert pending.success is False
+    assert pending.data["confirmation_required"] is True
+    assert crm_svc.list_appointments(company.id, limit=10) == []
+
+    # The executor supplies this flag only after validated user consent.
+    create_res = asyncio.run(tool.run(ctx, arguments.model_copy(update={"confirmed": True})))
     assert create_res.success is True
     assert create_res.data["id"]
     assert create_res.data["title"] == "Gym"
