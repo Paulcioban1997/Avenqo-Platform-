@@ -55,7 +55,21 @@ class BackupMetadata:
         return asdict(self)
 
 
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+
+
+def _postgres_run(database_url: str, command: list[str], *, timeout: int):
+    """Keep the password out of argv and errors while preserving SSL/query options."""
+    import os
+    parts = urlsplit(database_url.strip())
+    env = os.environ.copy()
+    if parts.password is not None:
+        env["PGPASSWORD"] = unquote(parts.password)
+    host = parts.netloc.rsplit("@", 1)[-1]
+    netloc = f"{parts.username}@{host}" if parts.username is not None else host
+    safe_dsn = parts._replace(scheme="postgresql", netloc=netloc).geturl()
+    return subprocess.run([*command, "--dbname", safe_dsn], env=env,
+                          capture_output=True, text=True, timeout=timeout, check=False)
 
 def database_scheme(database_url: str) -> str | None:
     """Scheme de connexion SAFE à logger (ex. `postgresql`) — jamais l'URL
@@ -104,6 +118,11 @@ def _sha256_of_file(path: Path) -> str:
 
 
 def _git_revision() -> str | None:
+    import os
+    import re
+    revision = os.getenv("RAILWAY_GIT_COMMIT_SHA", "")
+    if re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        return revision
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -139,22 +158,52 @@ class S3BackupStorage:
 
     def __init__(self, settings: Settings, staging_root: Path) -> None:
         import boto3
+        from botocore.config import Config
 
         self._bucket = settings.backup_s3_bucket
+        endpoint_host = urlsplit(settings.backup_s3_endpoint_url or "").hostname or ""
+        railway_s3 = endpoint_host == "storageapi.dev" or endpoint_host.endswith(".storageapi.dev")
+        if railway_s3 and settings.backup_s3_region != "auto":
+            raise BackupError("S3_SIGNING_REGION: Railway S3 requires region auto, not the physical bucket region.")
         self._client = boto3.client(
             "s3",
             endpoint_url=settings.backup_s3_endpoint_url,
             aws_access_key_id=settings.backup_s3_access_key,
             aws_secret_access_key=settings.backup_s3_secret_key,
             region_name=settings.backup_s3_region,
+            config=Config(signature_version="s3v4", connect_timeout=10, read_timeout=60,
+                          retries={"mode": "standard", "total_max_attempts": 3},
+                          s3={"addressing_style": "virtual"} if railway_s3 else {}),
         )
         self.root = staging_root
         self.root.mkdir(parents=True, exist_ok=True)
 
     def upload(self, local_path: Path) -> None:
-        self._client.upload_file(str(local_path), self._bucket, local_path.name)
+        # Read back the actual bytes: multipart ETags are not SHA-256 digests.
+        try:
+            self._client.upload_file(str(local_path), self._bucket, local_path.name)
+            head = self._client.head_object(Bucket=self._bucket, Key=local_path.name)
+            if head["ContentLength"] != local_path.stat().st_size:
+                raise CorruptBackupError("S3_VERIFY_SIZE: uploaded object size mismatch.")
+            response = self._client.get_object(Bucket=self._bucket, Key=local_path.name)
+            body = response["Body"]
+            digest = hashlib.sha256()
+            try:
+                for chunk in iter(lambda: body.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            finally:
+                body.close()
+            if digest.hexdigest() != _sha256_of_file(local_path):
+                raise CorruptBackupError("S3_VERIFY_SHA256: uploaded object checksum mismatch.")
+        except BackupError:
+            raise
+        except Exception as exc:
+            # Do not echo SDK exception text, signed requests or credentials.
+            reason = "SignatureDoesNotMatch" if "SignatureDoesNotMatch" in str(exc) else "request_failed"
+            raise BackupError(f"S3_UPLOAD: {reason}; verify references, signing region and deployment credentials.") from None
 
     def download(self, name: str, local_path: Path) -> None:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         self._client.download_file(self._bucket, name, str(local_path))
 
     def exists(self, name: str) -> bool:
@@ -168,8 +217,10 @@ class S3BackupStorage:
         self._client.delete_object(Bucket=self._bucket, Key=name)
 
     def list_names(self) -> list[str]:
-        response = self._client.list_objects_v2(Bucket=self._bucket)
-        return [item["Key"] for item in response.get("Contents", [])]
+        names: list[str] = []
+        for page in self._client.get_paginator("list_objects_v2").paginate(Bucket=self._bucket):
+            names.extend(item["Key"] for item in page.get("Contents", []))
+        return names
 
 
 class BackupService:
@@ -193,8 +244,17 @@ class BackupService:
         return self._storage.root
 
     def create_backup(self) -> BackupMetadata:
-        kind = _database_kind(self._settings.database_url)
         backup_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + "Z"
+        try:
+            return self._create_backup(backup_id)
+        finally:
+            if self._s3 is not None:
+                # Only this attempt's temporary files; never old local/S3 archives.
+                for suffix in (".sql", ".db", ".json", "_artifacts.tar.gz"):
+                    (self.root / f"{backup_id}{suffix}").unlink(missing_ok=True)
+
+    def _create_backup(self, backup_id: str) -> BackupMetadata:
+        kind = _database_kind(self._settings.database_url)
         suffix = ".sql" if kind == "postgresql" else ".db"
         destination_path = self.root / f"{backup_id}{suffix}"
 
@@ -215,15 +275,16 @@ class BackupService:
             finally:
                 source_conn.close()
         else:  # postgresql — pg_dump cohérent, jamais de secret dans les logs
-            result = subprocess.run(
+            result = _postgres_run(self._settings.database_url,
                 ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
-                 "--file", str(destination_path), self._settings.database_url],
-                capture_output=True, text=True, timeout=600, check=False,
+                 "--file", str(destination_path)], timeout=600,
             )
             if result.returncode != 0:
                 destination_path.unlink(missing_ok=True)
                 raise BackupError(f"pg_dump a échoué (code {result.returncode})")
 
+        if not destination_path.exists() or destination_path.stat().st_size == 0:
+            raise BackupError("BACKUP_EMPTY: export produced no data.")
         checksum = _sha256_of_file(destination_path)
 
         # Sauvegarde des artefacts fichiers (données brutes et nettoyées)
@@ -265,10 +326,12 @@ class BackupService:
         )
         if self._s3 is not None:
             self._s3.upload(destination_path)
-            self._s3.upload(metadata_path)
             if artifacts_path is not None and artifacts_path.exists():
                 self._s3.upload(artifacts_path)
-        self._apply_retention()
+            # Publish the manifest only after all payloads pass remote verification.
+            self._s3.upload(metadata_path)
+        if getattr(self._settings, "backup_retention_enabled", True):
+            self._apply_retention()
         return metadata
 
     def list_backups(self) -> list[BackupMetadata]:
@@ -358,9 +421,8 @@ class BackupService:
             finally:
                 source_conn.close()
         else:  # postgresql
-            result = subprocess.run(
-                ["psql", target_database_url, "-f", str(db_path)],
-                capture_output=True, text=True, timeout=1800, check=False,
+            result = _postgres_run(target_database_url,
+                ["psql", "--set=ON_ERROR_STOP=1", "-f", str(db_path)], timeout=1800,
             )
             if result.returncode != 0:
                 raise BackupError(f"psql restore a échoué (code {result.returncode})")
