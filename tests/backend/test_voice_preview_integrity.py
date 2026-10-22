@@ -41,6 +41,23 @@ def test_preview_preserves_voice_and_model_and_fails_explicitly(tmp_path, monkey
         engine.dispose()
 
 
+def test_preview_defaults_to_company_language_and_selected_speed(tmp_path, monkeypatch):
+    engine, db, company, config, *_ = _voice_database(tmp_path)
+    company.preferred_language = "ro"
+    db.commit()
+    speech = AsyncMock(return_value=SimpleNamespace(content=b"fixture-audio"))
+    monkeypatch.setattr("openai.AsyncOpenAI", lambda **kwargs: SimpleNamespace(audio=SimpleNamespace(speech=SimpleNamespace(create=speech))))
+    identity = SimpleNamespace(user=SimpleNamespace(company_id=company.id, company=company))
+    try:
+        asyncio.run(preview_voice(VoicePreviewRequest(voice_id="ballad", speech_speed=1.15),
+            identity, db, Settings(OPENAI_API_KEY="test-provider-key", VOICE_TTS_MODEL="gpt-4o-mini-tts")))
+        assert speech.call_args.kwargs["input"].startswith("Bună")
+        assert speech.call_args.kwargs["speed"] == 1.15
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_partial_customization_preserves_values_and_can_clear_greeting(tmp_path):
     engine, db, company, config, *_ = _voice_database(tmp_path)
     db.commit()
@@ -53,9 +70,10 @@ def test_partial_customization_preserves_values_and_can_clear_greeting(tmp_path)
         assert result.greeting_message == ""
         assert result.speech_speed == 1.15
         assert result.personality_tone == "chaleureux"
-        with pytest.raises(HTTPException) as invalid:
-            update_voice_customization(VoiceCustomizationUpdateRequest(voice_id="invented"), identity, db, Settings())
-        assert invalid.value.status_code == 422
+        for unsupported_voice in ("invented", "fable", "nova", "onyx"):
+            with pytest.raises(HTTPException) as invalid:
+                update_voice_customization(VoiceCustomizationUpdateRequest(voice_id=unsupported_voice), identity, db, Settings())
+            assert invalid.value.status_code == 422
     finally:
         db.close()
         engine.dispose()

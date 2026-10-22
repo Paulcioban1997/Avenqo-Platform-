@@ -31,7 +31,7 @@ class VoiceConfigRequest(BaseModel):
     retell_sip_uri: str | None = Field(default=None, pattern=r"^sips?:[^\s]+$")
     voice_id: str = Field(default="alloy", min_length=1, max_length=64)
     voice_provider: str = Field(default="openai", min_length=1, max_length=32)
-    speech_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    speech_speed: float = Field(default=1.0, ge=0.5, le=1.5)
     personality_tone: str = Field(default="professionnel", min_length=1, max_length=64)
     custom_pronunciation: str | None = Field(default=None, max_length=255)
     farewell_message: str | None = Field(default=None, max_length=1000)
@@ -251,14 +251,15 @@ class VoiceCatalogItem(BaseModel):
 class VoicePreviewRequest(BaseModel):
     voice_id: str = Field(default="alloy", min_length=1, max_length=64)
     text: str | None = Field(default=None, max_length=500)
-    language: str | None = Field(default="fr", max_length=16)
+    language: str | None = Field(default=None, max_length=16)
+    speech_speed: float = Field(default=1.0, ge=0.5, le=1.5)
 
 
 
 class VoiceCustomizationUpdateRequest(BaseModel):
     voice_id: str | None = Field(default=None, max_length=64)
     voice_provider: str | None = Field(default=None, max_length=32)
-    speech_speed: float | None = Field(default=None, ge=0.5, le=2.0)
+    speech_speed: float | None = Field(default=None, ge=0.5, le=1.5)
     personality_tone: str | None = Field(default=None, max_length=64)
     greeting_message: str | None = Field(default=None, max_length=2000)
     farewell_message: str | None = Field(default=None, max_length=2000)

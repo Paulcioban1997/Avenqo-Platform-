@@ -150,7 +150,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           voice_id: voice.id,
-          text: `Bonjour, je suis votre assistant vocal Avenqo. Comment puis-je vous aider aujourd'hui ?`,
+          speech_speed: speechSpeed,
         }),
       });
 

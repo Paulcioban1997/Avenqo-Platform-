@@ -47,7 +47,7 @@ from backend.app.models import (
     VoiceToolAction,
 )
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
-from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
+from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
@@ -1293,10 +1293,10 @@ async def telnyx_media_socket(
     principal_id = None
     auth_epoch = None
     public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
-    selected_voice = getattr(config, "voice_id", None) or settings.voice_tts_voice or "alloy"
+    from backend.app.voice.audio_preferences import phone_audio_config
+    tenant_audio = phone_audio_config(db, settings, config)
     adapter = build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
-        OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model,
-                         settings.voice_tts_model, selected_voice), settings.voice_realtime_model))
+        tenant_audio, settings.voice_realtime_model))
     bridge: TelnyxMediaBridge
 
     async def authorize() -> None:
@@ -1585,7 +1585,7 @@ async def telnyx_media_socket(
             sandbox_duration = min(sandbox_duration, float(policy.max_call_seconds)) if sandbox_duration is not None else float(policy.max_call_seconds)
         idle_seconds = policy.idle_seconds
         adapter = RotatingRealtimeAdapter(lambda: build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
-            OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model, settings.voice_tts_model, selected_voice),
+            tenant_audio,
             settings.voice_realtime_model)), authorize, rotation_seconds=settings.voice_realtime_rotation_seconds)
 
     # For production-like Sandbox calls (and live calls without a lower synthetic/policy limit),

@@ -764,7 +764,13 @@ def get_voice_catalog(
     settings: Settings = Depends(get_settings),
 ) -> list[VoiceCatalogItem]:
     _ensure_voice_access(db, identity.user.company_id)
-    return _supported_preview_voices(settings)
+    return _supported_phone_voices(settings)
+
+
+def _supported_phone_voices(settings: Settings) -> list[VoiceCatalogItem]:
+    # TTS preview support alone does not imply telephone Realtime support.
+    realtime = {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
+    return [voice for voice in _supported_preview_voices(settings) if voice.id in realtime]
 
 
 def _supported_preview_voices(settings: Settings) -> list[VoiceCatalogItem]:
@@ -795,12 +801,8 @@ async def preview_voice(
     if request.text and request.text.strip():
         text_to_speak = request.text.strip()
     else:
-        if lang.startswith("fr"):
-            text_to_speak = f"Bonjour, vous êtes bien chez {company_name}. Comment puis-je vous aider aujourd'hui ?"
-        elif lang.startswith("es"):
-            text_to_speak = f"Hola, bienvenido a {company_name}. ¿Cómo puedo ayudarle hoy?"
-        else:
-            text_to_speak = f"Hello, welcome to {company_name}. How can I help you today?"
+        from backend.app.voice.messages import voice_greeting
+        text_to_speak = voice_greeting(lang, company_name)
 
     try:
         from openai import AsyncOpenAI
@@ -808,6 +810,7 @@ async def preview_voice(
         audio_response = await client.audio.speech.create(
             model=settings.voice_tts_model or "gpt-4o-mini-tts",
             voice=request.voice_id,
+            speed=request.speech_speed,
             input=text_to_speak,
             response_format="mp3",
         )
@@ -1331,7 +1334,7 @@ def update_voice_customization(
     settings: Settings = Depends(get_settings),
 ) -> VoiceCustomizationResponse:
     _ensure_voice_access(db, identity.user.company_id)
-    if request.voice_id is not None and request.voice_id not in {voice.id for voice in _supported_preview_voices(settings)}:
+    if request.voice_id is not None and request.voice_id not in {voice.id for voice in _supported_phone_voices(settings)}:
         raise HTTPException(status_code=422, detail="Voice unavailable for the configured speech model")
     if request.voice_provider not in {None, "openai"}:
         raise HTTPException(status_code=422, detail="Unsupported voice provider")
@@ -1393,7 +1396,10 @@ async def update_voice_config(
     if "voice_provider" in request and request["voice_provider"]:
         config.voice_provider = str(request["voice_provider"])
     if "speech_speed" in request and request["speech_speed"] is not None:
-        config.speech_speed = float(request["speech_speed"])
+        try:
+            config.speech_speed = VoiceCustomizationUpdateRequest(speech_speed=request["speech_speed"]).speech_speed
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Speech speed must be between 0.5 and 1.5") from None
     if "personality_tone" in request and request["personality_tone"]:
         config.personality_tone = str(request["personality_tone"])
     if "greeting_message" in request and request["greeting_message"]:

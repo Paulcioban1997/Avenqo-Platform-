@@ -1,5 +1,6 @@
 """Tenant business data, never permission grants or provider credentials."""
 from uuid import UUID
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from backend.app.schemas.voice import VoiceConfigRequest
@@ -27,6 +28,7 @@ class VoiceBusinessProfileRequest(BaseModel):
     cancellation_policy: str = Field(default="", max_length=1500)
     communication_style: str = Field(default="professional", max_length=120)
     accent_preference: str = Field(default="", max_length=120)
+    input_noise_reduction: Literal["off", "near_field", "far_field"] = "off"
     vocabulary: list[str] = Field(default_factory=list, max_length=100)
 
     @field_validator("activities", "locations", "vocabulary")

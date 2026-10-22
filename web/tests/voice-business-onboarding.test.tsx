@@ -14,6 +14,26 @@ const setup = { profile: { expected_version: 1, business_name: "Entreprise A", i
   readiness: { configuration_saved: true, booking_authorized: false, telephone_verified: false } };
 
 describe("Business-aware Voice onboarding", () => {
+  it("saves and reloads the company's reception language and noise reduction", async () => {
+    let stored = { ...setup, profile: { ...setup.profile, input_noise_reduction: "off" } };
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") stored = { ...stored, profile: JSON.parse(String(init.body)) };
+      return { json: async () => stored };
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const first = render(<VoiceBusinessOnboarding tenantId="a" canManage />);
+    await screen.findByLabelText("Langue principale");
+    fireEvent.change(screen.getByLabelText("Langue principale"), { target: { value: "ro" } });
+    fireEvent.change(screen.getByLabelText(/Atténuation du bruit entrant/), { target: { value: "near_field" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer mes réglages" }));
+    await screen.findByText("Réglages enregistrés.");
+    expect(stored.profile.primary_locale).toBe("ro");
+    expect(stored.profile.input_noise_reduction).toBe("near_field");
+    first.unmount();
+    render(<VoiceBusinessOnboarding tenantId="a" canManage />);
+    expect(await screen.findByLabelText("Langue principale")).toHaveValue("ro");
+    expect(screen.getByLabelText(/Atténuation du bruit entrant/)).toHaveValue("near_field");
+  });
   it("preserves CRM split hours and date overrides when saving other settings", async () => {
     const hours = { weekly: { monday: [{ open: "09:00", close: "12:00" }, { open: "13:00", close: "17:00" }] }, date_overrides: { "2030-01-07": [] }, verification_only: true };
     const fetcher = vi.fn(async () => ({ json: async () => ({ ...setup, profile: { ...setup.profile, opening_hours: hours } }) }));
