@@ -21,7 +21,7 @@ import argparse
 import sys
 
 from backend.app.config.settings import get_settings
-from backend.app.services.backup_service import BackupError, BackupService
+from backend.app.services.backup_service import BackupError, BackupService, database_scheme
 
 
 def main() -> int:
@@ -51,7 +51,7 @@ def main() -> int:
         print(f"ÉCHEC de la restauration : {exc}", file=sys.stderr)
         return 1
 
-    print(f"Restauration réussie vers {args.target_database_url}")
+    print(f"Restauration réussie : database_scheme={database_scheme(args.target_database_url)}")
     return 0
 
 

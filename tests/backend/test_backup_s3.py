@@ -17,6 +17,7 @@ from backend.app.services.backup_service import BackupService
 def s3_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'app.db'}")
     monkeypatch.setenv("BACKUP_ROOT", str(tmp_path / "staging"))
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path / "isolated-artifacts"))
     monkeypatch.delenv("BACKUP_S3_ENDPOINT_URL", raising=False)
     monkeypatch.setenv("BACKUP_S3_BUCKET", "avenqo-backups")
     monkeypatch.setenv("BACKUP_S3_ACCESS_KEY", "test-access")
@@ -71,6 +72,7 @@ def test_s3_backup_upload_list_download_cycle(s3_settings) -> None:
     service = BackupService(s3_settings)
     metadata = service.create_backup()
 
+    assert not (service.root / f"{metadata.backup_id}.db").exists()
     names = set(service._s3.list_names())
     assert f"{metadata.backup_id}.db" in names
     assert f"{metadata.backup_id}.json" in names
@@ -79,7 +81,7 @@ def test_s3_backup_upload_list_download_cycle(s3_settings) -> None:
     assert any(b.backup_id == metadata.backup_id for b in listed)
 
     for suffix in (".db", ".json"):
-        (service.root / f"{metadata.backup_id}{suffix}").unlink()
+        (service.root / f"{metadata.backup_id}{suffix}").unlink(missing_ok=True)
     db_path, meta_path = service._resolve_backup_id(metadata.backup_id)
     assert db_path.exists() and meta_path.exists()
 

@@ -55,6 +55,7 @@ def backup_settings(tmp_path: Path, source_db):
         AUTH_JWT_SECRET="e" * 32,
         DATABASE_URL=f"sqlite:///{db_path.as_posix()}",
         BACKUP_ROOT=str(tmp_path / "backups"),
+        ARTIFACT_ROOT=str(tmp_path / "isolated-artifacts"),
     )
 
 

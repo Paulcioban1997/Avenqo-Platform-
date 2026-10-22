@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.services.backup_service import BackupService, database_scheme
+from backend.app.services.backup_service import BackupError, BackupService, database_scheme
 
 
 @dataclass(slots=True)
@@ -45,6 +45,7 @@ class BackupRuntimeSettings:
     backup_s3_secret_key: str | None
     backup_s3_region: str
     artifact_root: str = "var/artifacts"
+    backup_retention_enabled: bool = False
 
     @property
     def backup_s3_enabled(self) -> bool:
@@ -75,6 +76,15 @@ def _load_backup_settings() -> BackupRuntimeSettings:
         raise RuntimeError("BACKUP_RETENTION_DAYS doit être un entier positif.") from exc
     if retention_days < 1:
         raise RuntimeError("BACKUP_RETENTION_DAYS doit être supérieur ou égal à 1.")
+    retention_enabled = os.getenv("BACKUP_RETENTION_ENABLED", "false").strip().lower()
+    if retention_enabled not in {"true", "false"}:
+        raise RuntimeError("BACKUP_RETENTION_ENABLED doit être true ou false.")
+    s3_fields = [_optional_env(name) for name in (
+        "BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY")]
+    if (any(s3_fields) or _optional_env("BACKUP_S3_ENDPOINT_URL")) and not all(s3_fields):
+        raise RuntimeError("S3_CONFIG_INCOMPLETE: all three bucket authentication variables are required.")
+    if any(value and "${{" in value for value in s3_fields):
+        raise RuntimeError("S3_REFERENCE_UNRESOLVED: check Railway variable references.")
 
     return BackupRuntimeSettings(
         database_url=database_url,
@@ -88,6 +98,7 @@ def _load_backup_settings() -> BackupRuntimeSettings:
         backup_s3_secret_key=_optional_env("BACKUP_S3_SECRET_KEY"),
         backup_s3_region=os.getenv("BACKUP_S3_REGION", "auto").strip() or "auto",
         artifact_root=os.getenv("ARTIFACT_ROOT", "var/artifacts").strip() or "var/artifacts",
+        backup_retention_enabled=retention_enabled == "true",
     )
 
 
@@ -110,4 +121,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BackupError as exc:
+        code = next((code for code in ("S3_SIGNING_REGION", "S3_UPLOAD", "S3_VERIFY_SIZE", "S3_VERIFY_SHA256")
+                     if str(exc).startswith(code + ":")), "BACKUP_FAILED")
+        print(f"backup_failed: {code}; no backup success confirmed.", file=sys.stderr)
+        sys.exit(1)
+    except Exception:
+        # SDK/database exceptions may contain credentials; no traceback to cron logs.
+        print("backup_failed: check configuration and S3/DB access; no backup success confirmed.", file=sys.stderr)
+        sys.exit(1)

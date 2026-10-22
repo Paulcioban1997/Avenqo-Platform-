@@ -1,0 +1,72 @@
+name: Backup recovery
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/services/backup_service.py
+      - scripts/backup_db.py
+      - scripts/restore_db.py
+      - tests/backend/test_backup*.py
+      - tests/backend/test_phase34_backup_restore.py
+      - .github/workflows/backup-recovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-recovery:
+    name: Backup S3 integrity and isolated PostgreSQL 18 restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: backup_fixture
+          # Disposable runner-only fixture, no Production credentials or connection.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: 'sqlite:///:memory:'
+      PYTHONPATH: .
+      BACKUP_TEST_ISOLATED: 'true'
+      BACKUP_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/backup_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install PostgreSQL 18 client from official PGDG repository
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+      - name: Install test dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install 'moto[s3]>=5.0.0'
+      - name: Test verified upload, failure preservation, retention and isolated restore
+        run: >-
+          python -m pytest
+          tests/backend/test_backup_recovery.py
+          tests/backend/test_backup_s3.py
+          tests/backend/test_backup_db_detection.py
+          tests/backend/test_backup_env_diagnostic.py
+          tests/backend/test_phase34_backup_restore.py
+          -q -rs
