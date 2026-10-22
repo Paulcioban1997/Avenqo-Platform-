@@ -20,25 +20,27 @@ and a date/time. A Voice request such as “Je voudrais un rendez-vous demain
 instead of requesting confirmation; the equivalent English case also failed.
 Romanian already failed closed because the heuristic did not match it.
 
-Voice must now have `confirmed=True` before entering service/client/appointment
+Central and Voice must now have `confirmed=True` before entering service/client/appointment
 processing. This uses the existing confirmation contract; it is not a new
 proof-of-consent mechanism. The Central confirmation policy, tenant guard,
 canonical service validation and availability checks remain necessary.
-Non-Voice Central retains its existing direct-command behavior.
+A booking phrase with a date/time is intent, not consent, in either channel.
 
 Integration validation found the same shortcut in `ToolExecutor`: it could set
-the confirmation flag before dispatching CRM. Voice now also requires the
+the confirmation flag before dispatching CRM. Both channels now require the
 existing confirmation challenge at that execution boundary. A model-supplied
 `confirmed=True` with a negative sentence is insufficient. A natural “yes” must
 match the proposed operation's exact arguments; the legacy changed-argument
-fallback is disabled for Voice. Only the latest active proposal may be confirmed,
+fallback is disabled for bookings in both channels and for all Voice mutations. Only the latest active proposal may be confirmed,
 so an older matching slot cannot be approved after a changed proposal.
 Real authorization and an isolated SQLite
 confirmation store exercise refusals and the successful exact-details path.
 
 Three regressions use synthetic SQLite tenants and verify that the unconfirmed
 French, English and Romanian requests create neither a client nor an appointment.
-Existing CRM tests also exercise confirmed creation and the non-Voice shortcut.
+Existing CRM tests also exercise confirmed creation. Executor regressions cover
+negative and ambiguous requests with both channel flags and a model-provided
+confirmation flag; no model claim can substitute for user consent.
 The new cases are included in the existing Voice CI suite.
 
 ## Delivery gates

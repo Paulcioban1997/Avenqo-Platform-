@@ -63,7 +63,8 @@ class AIToolExecutionIdempotencyStore:
     ) -> bool:
         now = datetime.now(timezone.utc)
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
-        # Voice confirms only the latest proposal, never an older matching slot.
+        # Booking confirms only the latest exact proposal in Central and Voice.
+        strict_proposal = context.voice_path or tool.name == "create_appointment"
         expected_hash = mutation_arguments_hash(arguments, tool.confirmation_field)
         statement = (
             select(AIToolConfirmationChallenge)
@@ -78,12 +79,12 @@ class AIToolExecutionIdempotencyStore:
             .order_by(AIToolConfirmationChallenge.created_at.desc())
             .with_for_update()
         )
-        if not context.voice_path:
+        if not strict_proposal:
             statement = statement.where(AIToolConfirmationChallenge.arguments_hash == expected_hash)
         challenge = self._db.scalar(statement)
-        if context.voice_path and challenge is not None and challenge.arguments_hash != expected_hash:
+        if strict_proposal and challenge is not None and challenge.arguments_hash != expected_hash:
             return False
-        if challenge is None and not context.voice_path:
+        if challenge is None and not strict_proposal:
             # Fallback to active unconsumed challenge for the conversation and tool
             fallback_statement = (
                 select(AIToolConfirmationChallenge)

@@ -38,6 +38,7 @@ def _executor(db, company, owner, tenant):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("voice_path", [False, True])
 @pytest.mark.parametrize("claimed_confirmation", [False, True])
 @pytest.mark.parametrize("locale,message", [
     ("fr-CA", "Je voudrais un rendez-vous demain à 14h, mais ne réservez pas encore."),
@@ -47,24 +48,26 @@ def _executor(db, company, owner, tenant):
     ("en-CA", "Maybe book an appointment tomorrow at 14:00, I am not sure yet."),
     ("ro-RO", "Poate mâine la 14:00, încă nu sunt sigur."),
 ])
-async def test_executor_cannot_promote_voice_intent_or_model_flag_to_consent(tmp_path, locale, message, claimed_confirmation):
+async def test_executor_cannot_promote_voice_intent_or_model_flag_to_consent(tmp_path, locale, message, claimed_confirmation, voice_path):
     with Session(_engine(tmp_path, "executor-negative.db")) as db:
         company, owner = _company(db, "executor-negative")
         tenant = _activate(db, company, "voice", "crm")
         executor, context, arguments, run = _executor(db, company, owner, tenant)
-        result = await executor.execute("create_appointment", replace(context, user_message=message, locale=locale),
+        result = await executor.execute("create_appointment", replace(context, user_message=message, locale=locale, voice_path=voice_path),
                                         {**arguments, "confirmed": claimed_confirmation})
         assert result.data.get("confirmation_required") is True
         run.assert_not_called()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("voice_path", [False, True])
 @pytest.mark.parametrize("changed_details", [False, True])
-async def test_voice_yes_confirms_only_the_proposed_booking_details(tmp_path, changed_details):
+async def test_voice_yes_confirms_only_the_proposed_booking_details(tmp_path, changed_details, voice_path):
     with Session(_engine(tmp_path, "executor-consent.db")) as db:
         company, owner = _company(db, "executor-consent")
         tenant = _activate(db, company, "voice", "crm")
         executor, context, arguments, run = _executor(db, company, owner, tenant)
+        context = replace(context, voice_path=voice_path)
         first = await executor.execute("create_appointment", replace(context, user_message="Please review these details."), arguments)
         assert first.data["confirmation_required"] is True
         proposed = {**arguments, "start_time": "2030-01-07T15:00:00-05:00"} if changed_details else arguments

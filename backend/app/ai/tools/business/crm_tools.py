@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.base import CRMAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
-from backend.app.ai.tools.natural_confirmation import is_explicit_booking_request
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
@@ -468,10 +467,9 @@ class CreateAppointmentTool(CRMAITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CreateAppointmentArgs) -> ToolResult:
-        # A telephone request starts a booking conversation; the caller must
-        # still confirm the proposed details before any CRM/client mutation.
-        # Keep the existing direct-command behavior for non-Voice Central.
-        if not arguments.confirmed and (context.voice_path or not is_explicit_booking_request(context.user_message)):
+        # Intent starts a booking conversation, in both Central and Voice.
+        # Only the executor may validate consent before a CRM/client mutation.
+        if not arguments.confirmed:
             return ToolResult(
                 success=False,
                 data={"confirmation_required": True},

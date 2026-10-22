@@ -29,7 +29,6 @@ from backend.app.ai.tools.exceptions import (
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.ai.tools.natural_confirmation import (
     confirmation_required_message,
-    is_explicit_booking_request,
     is_natural_confirmation,
 )
 from backend.app.core.tenant_execution import (
@@ -89,7 +88,7 @@ class ToolExecutor:
                 confirmed = getattr(arguments, tool.confirmation_field, False) is True
                 explicit_confirmation = (
                     confirmed and context.user_message.strip().casefold() == "/confirm"
-                ) or (not context.voice_path and is_explicit_booking_request(context.user_message))
+                )
                 natural_confirmation = False
                 if (
                     not explicit_confirmation

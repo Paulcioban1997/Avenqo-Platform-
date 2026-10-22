@@ -6,6 +6,8 @@ PR64 contains the booking confirmation correction, including the executor
 boundary and latest-exact-proposal confirmation. PR65 contains tenant-owned
 voice, speed, tone, noise filtering, greeting and language propagation.
 Both extend promotion/sandbox at40af97b. No migration is added.
+The candidate additionally closes the legacy Central text intent shortcut:
+a date/time in a booking request is not consent in either channel.
 
 Four textual conflicts exist when combining them: the workflow test list and
 root/web/frontend vercel.json. Resolve by keeping BOTH new regression files and
