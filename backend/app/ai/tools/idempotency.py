@@ -39,6 +39,7 @@ class AIToolExecutionIdempotencyStore:
         ttl_seconds: int = 600,
     ) -> None:
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
+        issued_at = datetime.now(timezone.utc)
         challenge = AIToolConfirmationChallenge(
             company_id=context.tenant_id,
             user_id=context.user_id,
@@ -48,7 +49,8 @@ class AIToolExecutionIdempotencyStore:
             tool_name=tool.name,
             arguments_hash=mutation_arguments_hash(arguments, tool.confirmation_field),
             locale=locale,
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+            created_at=issued_at,
+            expires_at=issued_at + timedelta(seconds=ttl_seconds),
         )
         self._db.add(challenge)
         self._db.commit()
@@ -61,7 +63,8 @@ class AIToolExecutionIdempotencyStore:
     ) -> bool:
         now = datetime.now(timezone.utc)
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
-        # Try exact arguments hash match first
+        # Voice confirms only the latest proposal, never an older matching slot.
+        expected_hash = mutation_arguments_hash(arguments, tool.confirmation_field)
         statement = (
             select(AIToolConfirmationChallenge)
             .where(
@@ -69,15 +72,18 @@ class AIToolExecutionIdempotencyStore:
                 AIToolConfirmationChallenge.user_id == context.user_id,
                 AIToolConfirmationChallenge.conversation_id == context.conversation_id,
                 AIToolConfirmationChallenge.tool_name == tool.name,
-                AIToolConfirmationChallenge.arguments_hash == mutation_arguments_hash(arguments, tool.confirmation_field),
                 AIToolConfirmationChallenge.consumed_at.is_(None),
                 AIToolConfirmationChallenge.expires_at > now,
             )
             .order_by(AIToolConfirmationChallenge.created_at.desc())
             .with_for_update()
         )
+        if not context.voice_path:
+            statement = statement.where(AIToolConfirmationChallenge.arguments_hash == expected_hash)
         challenge = self._db.scalar(statement)
-        if challenge is None:
+        if context.voice_path and challenge is not None and challenge.arguments_hash != expected_hash:
+            return False
+        if challenge is None and not context.voice_path:
             # Fallback to active unconsumed challenge for the conversation and tool
             fallback_statement = (
                 select(AIToolConfirmationChallenge)

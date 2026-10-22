@@ -89,7 +89,7 @@ class ToolExecutor:
                 confirmed = getattr(arguments, tool.confirmation_field, False) is True
                 explicit_confirmation = (
                     confirmed and context.user_message.strip().casefold() == "/confirm"
-                ) or is_explicit_booking_request(context.user_message)
+                ) or (not context.voice_path and is_explicit_booking_request(context.user_message))
                 natural_confirmation = False
                 if (
                     not explicit_confirmation

@@ -26,6 +26,16 @@ proof-of-consent mechanism. The Central confirmation policy, tenant guard,
 canonical service validation and availability checks remain necessary.
 Non-Voice Central retains its existing direct-command behavior.
 
+Integration validation found the same shortcut in `ToolExecutor`: it could set
+the confirmation flag before dispatching CRM. Voice now also requires the
+existing confirmation challenge at that execution boundary. A model-supplied
+`confirmed=True` with a negative sentence is insufficient. A natural “yes” must
+match the proposed operation's exact arguments; the legacy changed-argument
+fallback is disabled for Voice. Only the latest active proposal may be confirmed,
+so an older matching slot cannot be approved after a changed proposal.
+Real authorization and an isolated SQLite
+confirmation store exercise refusals and the successful exact-details path.
+
 Three regressions use synthetic SQLite tenants and verify that the unconfirmed
 French, English and Romanian requests create neither a client nor an appointment.
 Existing CRM tests also exercise confirmed creation and the non-Voice shortcut.
