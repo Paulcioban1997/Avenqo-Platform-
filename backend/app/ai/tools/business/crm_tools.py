@@ -468,7 +468,10 @@ class CreateAppointmentTool(CRMAITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CreateAppointmentArgs) -> ToolResult:
-        if not arguments.confirmed and not is_explicit_booking_request(context.user_message):
+        # A telephone request starts a booking conversation; the caller must
+        # still confirm the proposed details before any CRM/client mutation.
+        # Keep the existing direct-command behavior for non-Voice Central.
+        if not arguments.confirmed and (context.voice_path or not is_explicit_booking_request(context.user_message)):
             return ToolResult(
                 success=False,
                 data={"confirmation_required": True},

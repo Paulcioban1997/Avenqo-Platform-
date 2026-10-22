@@ -143,6 +143,7 @@ jobs:
           tests/backend/test_open_speech_sandbox.py
           tests/backend/test_speech_compute_receipts.py
           tests/backend/test_voice_business_onboarding.py
+          tests/backend/test_voice_booking_confirmation_boundary.py
           tests/backend/test_voice_dtmf_routing.py
           tests/backend/test_voice_tenant_integration.py
           tests/backend/test_telnyx_media.py
