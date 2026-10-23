@@ -23,13 +23,7 @@ jobs:
           python -m pytest tests/backend/test_backup67_sandbox_harness.py -q
       - name: Build isolated validation image
         run: docker build -f backend/Dockerfile.backup-qa -t avenqo-backup-qa .
-      - name: Verify private PostgreSQL 18 lifecycle without provider credentials
-        run: |
-          docker run --rm --entrypoint bash avenqo-backup-qa -c '
-            set -eu
-            initdb -D /tmp/qa-data -U qa_runtime --auth-local=trust --auth-host=reject >/tmp/init.log
-            mkdir /tmp/qa-socket
-            pg_ctl -D /tmp/qa-data -l /tmp/qa-pg.log -o "-c listen_addresses= -k /tmp/qa-socket" -w start
-            psql -h /tmp/qa-socket -U qa_runtime -d postgres -v ON_ERROR_STOP=1 -c "SELECT current_setting('\''server_version'\''), inet_server_addr() IS NULL"
-            pg_ctl -D /tmp/qa-data -m fast -w stop
-          '
+      - name: Reproduce URI regression and verify actual Python PostgreSQL lifecycle
+        run: >-
+          docker run --rm --network none avenqo-backup-qa
+          python scripts/validate_backup67_sandbox.py --postgres-smoke
