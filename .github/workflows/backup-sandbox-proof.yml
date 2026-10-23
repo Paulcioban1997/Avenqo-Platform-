@@ -1,0 +1,35 @@
+name: Backup Sandbox proof harness
+'on':
+  pull_request:
+    branches: [codex/production-backup-recovery-20261022]
+permissions:
+  contents: read
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: 'sqlite:///:memory:'
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify namespace and fail-closed guards
+        run: |
+          pip install pytest fastapi pydantic-settings 'moto[s3]>=5.0.0'
+          python -m pytest tests/backend/test_backup67_sandbox_harness.py -q
+      - name: Build isolated validation image
+        run: docker build -f backend/Dockerfile.backup-qa -t avenqo-backup-qa .
+      - name: Verify private PostgreSQL 18 lifecycle without provider credentials
+        run: |
+          docker run --rm --entrypoint bash avenqo-backup-qa -c '
+            set -eu
+            initdb -D /tmp/qa-data -U qa_runtime --auth-local=trust --auth-host=reject >/tmp/init.log
+            mkdir /tmp/qa-socket
+            pg_ctl -D /tmp/qa-data -l /tmp/qa-pg.log -o "-c listen_addresses= -k /tmp/qa-socket" -w start
+            psql -h /tmp/qa-socket -U qa_runtime -d postgres -v ON_ERROR_STOP=1 -c "SELECT current_setting('\''server_version'\''), inet_server_addr() IS NULL"
+            pg_ctl -D /tmp/qa-data -m fast -w stop
+          '
