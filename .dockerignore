@@ -20,3 +20,9 @@ platform_knowledge
 tmp_e2e_avenqo
 *.txt
 .github
+
+scratch/
+.env
+.env.*
+**/.env
+**/.env.*

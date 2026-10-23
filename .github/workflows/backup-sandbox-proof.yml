@@ -1,0 +1,29 @@
+name: Backup Sandbox proof harness
+'on':
+  pull_request:
+    branches: [codex/production-backup-recovery-20261022]
+permissions:
+  contents: read
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: 'sqlite:///:memory:'
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify namespace and fail-closed guards
+        run: |
+          pip install pytest fastapi pydantic-settings 'moto[s3]>=5.0.0'
+          python -m pytest tests/backend/test_backup67_sandbox_harness.py -q
+      - name: Build isolated validation image
+        run: docker build -f backend/Dockerfile.backup-qa -t avenqo-backup-qa .
+      - name: Reproduce URI regression and verify actual Python PostgreSQL lifecycle
+        run: >-
+          docker run --rm --network none avenqo-backup-qa
+          python scripts/validate_backup67_sandbox.py --postgres-smoke

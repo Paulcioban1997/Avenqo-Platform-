@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "main": false,
-      "codex/production-backup-recovery-20261022": false
+      "codex/production-backup-recovery-20261022": false,
+      "codex/backup67-sandbox-proof-20261023": false
     }
   },
   "rewrites": [
