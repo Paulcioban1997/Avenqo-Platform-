@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from math import isfinite
 import httpx
 from httpx import HTTPStatusError, TimeoutException
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1546,15 +1546,22 @@ async def telnyx_webhook(
             except Exception:
                 raise HTTPException(status_code=502,detail="Unable to terminate suspended Voice call") from None
             return {"received":True,"routed":False,"status":"VOICE_SUSPENDED"}
+    dest_norm = normalized_phone(destination)
     binding = db.scalar(select(VoicePhoneNumber).where(
-        VoicePhoneNumber.phone_number == destination,
+        or_(
+            VoicePhoneNumber.phone_number == destination,
+            VoicePhoneNumber.phone_number == dest_norm,
+        ),
         VoicePhoneNumber.provider == "telnyx",
         VoicePhoneNumber.status == "ACTIVE",
     ))
     dispatcher_number = getattr(settings, "voice_shared_dispatcher_number", "+14386075438")
     is_dispatcher = (
-        normalized_phone(destination) == normalized_phone(dispatcher_number)
-        or destination == dispatcher_number
+        binding is None
+        and (
+            normalized_phone(destination) == normalized_phone(dispatcher_number)
+            or destination == dispatcher_number
+        )
     )
     if is_dispatcher:
         if event_type == "call.initiated":

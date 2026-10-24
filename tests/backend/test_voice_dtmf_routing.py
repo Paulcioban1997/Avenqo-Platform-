@@ -799,5 +799,149 @@ def test_streaming_lifecycle_webhooks(db_session: Session, setup_tenants: dict):
         assert res_unknown.json()["handled"] is False
 
 
+def test_dedicated_bound_phone_number_routes_directly_without_dispatcher_nip(db_session: Session, monkeypatch: pytest.MonkeyPatch):
+    """When a phone number is assigned directly to a company (e.g. Produits_Ero),
+
+    inbound calls route directly to the company voice agent without forcing public
+    callers to enter an enterprise NIP.
+    """
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from backend.app.models import BillingAccount, Company, VoiceBusinessConfig, VoicePhoneNumber
+    from backend.app.services.tenant_rls import apply_tenant_rls
+
+    private_key = Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes_raw()
+
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:8]}",
+        email=f"direct.{uuid4().hex[:6]}@produits-ero.test",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        preferred_language="fr",
+    )
+    db_session.add(company)
+    db_session.flush()
+
+    apply_tenant_rls(db_session, company_id)
+
+    billing = BillingAccount(company_id=company_id, plan_code="professional", status="active")
+    db_session.add(billing)
+
+    config_id = uuid4()
+    config = VoiceBusinessConfig(
+        id=config_id,
+        company_id=company_id,
+        enabled=True,
+        telnyx_phone_number="+14386075438",
+        preferred_language="fr",
+        business_name="Produits_Ero",
+        greeting_message="Bonjour et bienvenue chez Produits_Ero.",
+        voice_api_key_hash=hashlib.sha256(uuid4().bytes).hexdigest(),
+        voice_api_key_last4=uuid4().hex[:4],
+    )
+    db_session.add(config)
+
+    phone = VoicePhoneNumber(
+        id=uuid4(),
+        company_id=company_id,
+        config_id=config_id,
+        phone_number="+14386075438",
+        country_code="CA",
+        number_type="local",
+        provider="telnyx",
+        provider_number_id="test-owned-number",
+        provider_connection_id="test-voice-conn-id",
+        status="ACTIVE",
+        capabilities=["voice"],
+    )
+    db_session.add(phone)
+    db_session.commit()
+
+    from shared.ai_engine.contracts import TenantContext
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    ModuleEntitlementService(db_session).activate_module(TenantContext(company_id), "voice")
+    db_session.commit()
+
+    settings = Settings()
+    settings.telnyx_api_key = "test-telnyx-key"
+    settings.telnyx_public_key = base64.b64encode(public_bytes).decode()
+    settings.telnyx_voice_connection_id = "test-voice-conn-id"
+    settings.voice_shared_dispatcher_number = "+14386075438"
+    settings.telnyx_media_enabled = True
+    settings.telnyx_media_inbound_enabled = True
+    settings.telnyx_media_stream_base_url = "wss://api.avenqo.ca"
+    settings.rate_limit_enabled = False
+    settings.voice_realtime_provider = "openai"
+    settings.voice_realtime_model = "gpt-realtime-2.1"
+    settings.voice_realtime_supported_locales = ["fr", "en"]
+    settings.openai_api_key = "test-openai-key"
+
+    mock_telnyx = AsyncMock(spec=TelnyxClient)
+    mock_telnyx.answer_call = AsyncMock()
+    mock_telnyx.gather_using_speak = AsyncMock()
+    mock_telnyx.speak = AsyncMock()
+    mock_telnyx.hangup = AsyncMock()
+    mock_telnyx.start_media_stream = AsyncMock()
+    monkeypatch.setattr(voice_router, "TelnyxClient", lambda _settings: mock_telnyx)
+    monkeypatch.setattr(voice_router, "media_audio_available", lambda _settings, _locale: True)
+    monkeypatch.setattr(voice_router, "_ensure_voice_access", lambda _db, _cid: None)
+
+    test_app = FastAPI()
+    test_app.include_router(voice_router.router, prefix="/api/v1")
+    test_app.dependency_overrides[get_db] = lambda: db_session
+    test_app.dependency_overrides[get_settings] = lambda: settings
+
+    call_control_id = f"cc-direct-{uuid4().hex[:8]}"
+
+    def send_webhook(event_type: str, **payload):
+        body_dict = {
+            "data": {
+                "id": str(uuid4()),
+                "event_type": event_type,
+                "payload": {
+                    "call_control_id": call_control_id,
+                    "connection_id": "test-voice-conn-id",
+                    "direction": "incoming",
+                    "from": "+15141234567",
+                    "to": "+14386075438",
+                    **payload,
+                },
+            }
+        }
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+        stamp = str(int(time.time()))
+        sig = private_key.sign(stamp.encode() + b"|" + body_bytes)
+        with TestClient(test_app) as client:
+            return client.post(
+                "/api/v1/voice/telnyx/webhook",
+                content=body_bytes,
+                headers={
+                    "content-type": "application/json",
+                    "telnyx-timestamp": stamp,
+                    "telnyx-signature-ed25519": base64.b64encode(sig).decode(),
+                },
+            )
+
+    # 1. Direct call initiated: answers directly without dispatcher NIP prompt
+    res1 = send_webhook("call.initiated")
+    assert res1.status_code == 200
+    assert res1.json()["status"] == "answering"
+    assert res1.json().get("status") != "DISPATCHER_ANSWERED"
+    assert mock_telnyx.answer_call.called
+
+    # 2. Direct call answered: immediately starts media stream for Produits_Ero without gather prompt
+    res2 = send_webhook("call.answered")
+    assert res2.status_code == 200
+    assert res2.json()["routed"] is True
+    assert mock_telnyx.start_media_stream.called
+    assert not mock_telnyx.gather_using_speak.called
+
+
+
 
 
