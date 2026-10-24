@@ -462,6 +462,7 @@ def test_scenario_h_unsupported_language_fallback_and_interruption():
     assert result == "fr-CA"
     assert session.fallback_applied is True
     assert session.unsupported_language_requested == "es-ES"
+    assert session.fallback_reason is not None
     assert "not enabled" in session.fallback_reason
 
     # Audit export reflects the transparent fallback
