@@ -198,10 +198,13 @@ def test_scenario_b_employee_with_valid_pin():
         result = auth.verify_gather(call, "907182", identifier="employe@produitsero.com")
         db.commit()
 
-        assert result["authenticated"] is True
-        assert result["user_id"] == str(user.id)
+        assert result == {"success": True, "authenticated": True}
         assert call.caller_type == "EMPLOYEE"
         assert call.authenticated_user_id == user.id
+        sess = auth.valid_session(call)
+        assert sess is not None
+        assert sess.principal_id == user.id
+        assert sess.caller_type == "EMPLOYEE"
 
         # Verification of caller permissions
         perms = permissions_for(membership.role)
@@ -355,8 +358,11 @@ def test_scenario_e_dual_tenant_complete_isolation():
         # Correct PIN on Tenant B succeeds
         valid_b = auth.verify_gather(call_b, "583921", identifier="dr@physioclinic.com")
         db.commit()
-        assert valid_b["authenticated"] is True
-        assert valid_b["user_id"] == str(user_b.id)
+        assert valid_b == {"success": True, "authenticated": True}
+        assert call_b.authenticated_user_id == user_b.id
+        sess_b = auth.valid_session(call_b)
+        assert sess_b is not None
+        assert sess_b.principal_id == user_b.id
 
 
 # ==============================================================================

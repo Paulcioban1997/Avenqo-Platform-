@@ -369,7 +369,7 @@ class VoiceCallerAuth:
         credential.failed_attempts = 0; credential.locked_until = None
         self.establish(call)
         self.db.flush()
-        return {"success": True, "authenticated": True, "caller_type": call.caller_type, "user_id": str(call.authenticated_user_id)}
+        return {"success": True, "authenticated": True}
 
     def logout_session(self, call) -> dict[str, Any]:
         """Revoke active private voice session and return call to public mode."""
