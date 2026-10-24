@@ -38,6 +38,9 @@ class CompanyIntelligenceProfile:
     business_configuration: dict
     context_version: str
     calendar_resources: tuple[dict, ...]
+    public_products: tuple[dict, ...] = ()
+    phone: str | None = None
+    website: str | None = None
 
     def as_context(self, *, public: bool = False) -> dict:
         data = asdict(self)
@@ -88,10 +91,45 @@ class CompanyIntelligenceService:
         connected_calendar = bool(calendar and calendar.sync_status == "connected")
         resources = self._session.scalars(select(CRMEmployee).where(CRMEmployee.company_id == company_id,
             CRMEmployee.is_active.is_(True)).limit(100)).all() if "crm" in active else []
+
+        products_list: list[dict] = []
+        if "retail" in active:
+            try:
+                from backend.app.models.commerce_connection import NormalizedCommerceRecord
+                records = self._session.scalars(
+                    select(NormalizedCommerceRecord).where(
+                        NormalizedCommerceRecord.company_id == company_id,
+                        NormalizedCommerceRecord.entity_type == "products",
+                        NormalizedCommerceRecord.deleted.is_(False),
+                    ).limit(30)
+                ).all()
+                for r in records:
+                    pdata = r.normalized_data or {}
+                    pname = pdata.get("product_name")
+                    if not pname:
+                        continue
+                    variants = pdata.get("variants") or []
+                    price = None
+                    inventory = 0
+                    if isinstance(variants, list) and variants:
+                        price = variants[0].get("unit_price")
+                        inventory = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
+                    products_list.append({
+                        "name": pname,
+                        "category": pdata.get("product_category") or "",
+                        "price": price,
+                        "currency": company.currency_code,
+                        "in_stock": inventory > 0,
+                        "inventory_count": inventory,
+                    })
+            except Exception:
+                products_list = []
+
         signature = {"business": business, "services": offerings, "modules": active,
                      "name": company.name, "industry": company.industry, "timezone": company.timezone,
                      "hours": company.business_hours, "voice_services": config.services if config else [],
-                     "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar}
+                     "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar,
+                     "products": products_list, "phone": company.phone, "website": company.website}
         signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
         version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
         return CompanyIntelligenceProfile(
@@ -108,6 +146,9 @@ class CompanyIntelligenceService:
             business_configuration={k: v for k, v in business.items() if k not in {"allowed_actions", "expected_version"}},
             context_version=version,
             calendar_resources=tuple({"id": str(r.id), "name": r.name, "working_hours": r.working_hours} for r in resources),
+            public_products=tuple(products_list),
+            phone=company.phone or (config.transfer_phone if config else None),
+            website=company.website,
         )
 
     def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:

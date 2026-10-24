@@ -62,6 +62,9 @@ class VoiceToolRegistryService:
 
         names: set[str] = set()
         owners: dict[str, str] = {}
+        if public_caller:
+            names.add("get_business_info")
+            owners["get_business_info"] = "voice"
         for defn in self._agents.list_authorized(active):
             if defn.category in {"platform", "platform_support"} or defn.slug in {
                 "tenant_capabilities",
@@ -77,7 +80,6 @@ class VoiceToolRegistryService:
                 if public_caller and not public_voice_tool_allowed(
                     tool_name,
                     has_crm_booking=has_crm_booking,
-                    has_retail="retail" in active,
                 ):
                     continue
                 mapping = action_for_tool(tool_name)

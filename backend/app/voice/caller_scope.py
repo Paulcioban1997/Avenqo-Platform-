@@ -28,24 +28,13 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
     "create_appointment",
 })
 
-# Public retail catalog inquiry tools (products, prices, public inventory availability)
-PUBLIC_VOICE_RETAIL_TOOLS: frozenset[str] = frozenset({
-    "get_top_products",
-    "get_product_detail",
-    "get_inventory_summary",
-})
-
 # Union of all possible public tools for backward compatibility
-PUBLIC_VOICE_TOOLS: frozenset[str] = (
-    PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS | PUBLIC_VOICE_RETAIL_TOOLS
-)
+PUBLIC_VOICE_TOOLS: frozenset[str] = PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS
 
 # Permissions granted to an unauthenticated caller. The public marker is what
-# restricts the tool scope; the CRM permissions only allow the public booking,
-# and data:read allows reading public retail product catalog and pricing.
+# restricts the tool scope; the CRM permissions only allow the public booking.
 PUBLIC_VOICE_CALLER_PERMISSIONS: frozenset[str] = frozenset({
     "ai:use",
-    "data:read",
     "crm:appointments:read",
     "crm:appointments:write",
     PUBLIC_VOICE_CALLER_PERMISSION,
@@ -60,14 +49,11 @@ def public_voice_tool_allowed(
     tool_name: str,
     *,
     has_crm_booking: bool = True,
-    has_retail: bool = True,
 ) -> bool:
     if tool_name in PUBLIC_VOICE_BASE_TOOLS:
         return True
     if tool_name in PUBLIC_VOICE_CRM_TOOLS:
         return has_crm_booking
-    if tool_name in PUBLIC_VOICE_RETAIL_TOOLS:
-        return has_retail
     return False
 
 
@@ -76,7 +62,6 @@ __all__ = [
     "PUBLIC_VOICE_CALLER_PERMISSION",
     "PUBLIC_VOICE_CALLER_PERMISSIONS",
     "PUBLIC_VOICE_CRM_TOOLS",
-    "PUBLIC_VOICE_RETAIL_TOOLS",
     "PUBLIC_VOICE_TOOLS",
     "is_public_voice_caller",
     "public_voice_tool_allowed",

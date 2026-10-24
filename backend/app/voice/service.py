@@ -593,13 +593,17 @@ class VoiceOrchestrator:
                 return {"success": False, "error": "caller_verification_required"}
         if tool_name == "get_business_info":
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+            profile = CompanyIntelligenceService(self.db).get_profile(config.company_id)
             return {
                 "success": True,
-                "business_name": config.business_name,
-                "opening_hours": config.opening_hours,
-                "services": CompanyIntelligenceService(self.db).get_profile(config.company_id).configured_crm_services,
+                "business_name": config.business_name or profile.business_name,
+                "phone": profile.phone or config.transfer_phone,
+                "website": profile.website,
+                "opening_hours": config.opening_hours or profile.opening_hours,
+                "services": profile.configured_crm_services,
+                "products": profile.public_products,
                 "transfer_phone": config.transfer_phone,
-                "timezone": config.timezone_name,
+                "timezone": config.timezone_name or profile.timezone,
                 "greeting_message": config.greeting_message,
             }
         if tool_name == "take_message":

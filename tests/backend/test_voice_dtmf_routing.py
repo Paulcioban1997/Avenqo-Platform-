@@ -1016,12 +1016,12 @@ def test_public_voice_caller_can_access_retail_and_crm_tools(db_session: Session
     tool_service = VoiceToolRegistryService(db_session, registry)
     tools, owners = tool_service.allowed_tools(tenant, permissions=PUBLIC_VOICE_CALLER_PERMISSIONS)
 
-    assert "get_top_products" in tools
-    assert "get_product_detail" in tools
-    assert "get_inventory_summary" in tools
+    assert "get_business_info" in tools
     assert "check_availability" in tools
     assert "list_available_slots" in tools
     assert "create_appointment" in tools
+    assert "get_top_products" not in tools
+    assert "get_sales_summary" not in tools
 
 
 
