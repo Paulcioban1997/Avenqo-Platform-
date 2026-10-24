@@ -145,8 +145,10 @@ class OpenAIRealtimeAudioAdapter:
         if is_preview:
             session_payload: dict[str, Any] = {
                 "instructions": (
-                    f"Start in {locale_info(locale).english_name}. Use a {self._config.delivery_style} delivery. "
-                    "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
+                    f"You are a warm, highly natural, professional phone receptionist representing the business. "
+                    f"Start in {locale_info(locale).english_name}. Speak with a {self._config.delivery_style} delivery, "
+                    "natural conversational pacing, and friendly human intonation. Avoid mechanical, robotic, or monotonous reading. "
+                    "Avenqo AI Central supplies the authorized response text. Speak it naturally in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
                 "modalities": ["audio", "text"],
@@ -167,8 +169,10 @@ class OpenAIRealtimeAudioAdapter:
             session_payload = {
                 "type": "realtime",
                 "instructions": (
-                    f"Start in {locale_info(locale).english_name}. Use a {self._config.delivery_style} delivery. "
-                    "Avenqo AI Central supplies the authorized response text. Speak it in its original language. "
+                    f"You are a warm, highly natural, professional phone receptionist representing the business. "
+                    f"Start in {locale_info(locale).english_name}. Speak with a {self._config.delivery_style} delivery, "
+                    "natural conversational pacing, and friendly human intonation. Avoid mechanical, robotic, or monotonous reading. "
+                    "Avenqo AI Central supplies the authorized response text. Speak it naturally in its original language. "
                     "When a new user utterance uses a different language, follow that language. Never translate to French by default."
                 ),
                 "output_modalities": ["audio"],
@@ -215,8 +219,11 @@ class OpenAIRealtimeAudioAdapter:
             "response": {
                 "conversation": "none",
                 "output_modalities": ["audio"],
-                "instructions": "Speak the supplied text verbatim in its existing language. Do not translate, answer, or add information. "
-                    f"Use a {self._config.delivery_style} delivery.",
+                "instructions": (
+                    "Speak the supplied text verbatim with a natural, conversational, warm, and friendly human tone. "
+                    f"Use a {self._config.delivery_style} delivery with smooth pacing and expressive warmth. "
+                    "Avoid robotic, mechanical, or monotone reading. Do not translate or add information."
+                ),
                 "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
             },
         })

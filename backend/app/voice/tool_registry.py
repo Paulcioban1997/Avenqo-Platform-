@@ -8,7 +8,7 @@ from backend.app.models import CompanyMembership
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
-from backend.app.voice.module_actions import VOICE_WRITE_TOOLS, action_for_tool
+from backend.app.voice.module_actions import VOICE_NATIVE_TOOLS, VOICE_WRITE_TOOLS, action_for_tool
 from shared.ai_engine.contracts import TenantContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -74,15 +74,25 @@ class VoiceToolRegistryService:
                     continue
                 if tool_name == "get_subscription_options":
                     continue
-                if public_caller and not public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking):
+                if public_caller and not public_voice_tool_allowed(
+                    tool_name,
+                    has_crm_booking=has_crm_booking,
+                    has_retail="retail" in active,
+                ):
                     continue
                 mapping = action_for_tool(tool_name)
-                if business and (not mapping or f"{mapping[0]}:{mapping[1]}" not in business.get("allowed_actions", [])):
-                    continue
-                if mapping and (mapping[0] in {"retail", "accounting", "marketing", "cross_agent"} or mapping == ("crm", "read_crm_metrics")) and "data:read" not in perms:
-                    continue
-                if tool_name not in granted_tools:
-                    continue
+                if tool_name not in VOICE_NATIVE_TOOLS:
+                    if business and business.get("allowed_actions"):
+                        if not mapping or f"{mapping[0]}:{mapping[1]}" not in business.get("allowed_actions", []):
+                            continue
+                    if (
+                        mapping
+                        and (mapping[0] in {"accounting", "marketing", "cross_agent"} or mapping == ("crm", "read_crm_metrics"))
+                        and "data:read" not in perms
+                    ):
+                        continue
+                    if tool_name not in granted_tools:
+                        continue
                 if tool_name in VOICE_WRITE_TOOLS and not write_allowed and not public_caller:
                     continue
                 names.add(tool_name)

@@ -942,6 +942,89 @@ def test_dedicated_bound_phone_number_routes_directly_without_dispatcher_nip(db_
     assert not mock_telnyx.gather_using_speak.called
 
 
+def test_public_voice_caller_can_access_retail_and_crm_tools(db_session: Session):
+    """Verify that public voice callers have access to retail products/prices and CRM booking tools."""
+    from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
+    from backend.app.assistants.registry import AssistantRegistry
+    from backend.app.models.company import Company
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    from backend.app.services.tenant_rls import apply_tenant_rls
+    from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
+    from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
+    from backend.app.voice.tool_registry import VoiceToolRegistryService
+    from shared.ai_engine.contracts import TenantContext
+
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:8]}",
+        email=f"retail.{uuid4().hex[:6]}@produits-ero.test",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        preferred_language="fr",
+    )
+    db_session.add(company)
+    db_session.flush()
+
+    apply_tenant_rls(db_session, company_id)
+
+    tenant = TenantContext(company_id)
+
+    entitlements = ModuleEntitlementService(db_session)
+    entitlements.activate_module(tenant, "voice")
+    entitlements.activate_module(tenant, "retail")
+    entitlements.activate_module(tenant, "crm")
+
+    from backend.app.models.crm import CRMService
+    db_session.add(CRMService(company_id=company_id, name="Consultation", duration_minutes=30, is_active=True))
+    db_session.flush()
+
+    grants = VoiceModulePermissionService(db_session)
+    grants.grant(tenant, "retail", "read_products", granted_by=None)
+    grants.grant(tenant, "retail", "read_inventory", granted_by=None)
+    grants.grant(tenant, "crm", "read_availability", granted_by=None)
+    grants.grant(tenant, "crm", "list_slots", granted_by=None)
+    grants.grant(tenant, "crm", "create_appointment", granted_by=None)
+    db_session.commit()
+
+    registry = AssistantRegistry()
+    registry.register(
+        AssistantDefinition(
+            slug="retail",
+            name_key="retail",
+            description_key="retail",
+            status=AssistantStatus.AVAILABLE,
+            category="commerce",
+            module_code="retail",
+            allowed_tool_names=frozenset({"get_top_products", "get_product_detail", "get_inventory_summary"}),
+        )
+    )
+    registry.register(
+        AssistantDefinition(
+            slug="crm",
+            name_key="crm",
+            description_key="crm",
+            status=AssistantStatus.AVAILABLE,
+            category="operations",
+            module_code="crm",
+            allowed_tool_names=frozenset({"check_availability", "list_available_slots", "create_appointment"}),
+        )
+    )
+    tool_service = VoiceToolRegistryService(db_session, registry)
+    tools, owners = tool_service.allowed_tools(tenant, permissions=PUBLIC_VOICE_CALLER_PERMISSIONS)
+
+    assert "get_top_products" in tools
+    assert "get_product_detail" in tools
+    assert "get_inventory_summary" in tools
+    assert "check_availability" in tools
+    assert "list_available_slots" in tools
+    assert "create_appointment" in tools
+
+
+
 
 
 

@@ -1547,6 +1547,24 @@ async def telnyx_webhook(
                 raise HTTPException(status_code=502,detail="Unable to terminate suspended Voice call") from None
             return {"received":True,"routed":False,"status":"VOICE_SUSPENDED"}
     dest_norm = normalized_phone(destination)
+    if supports_rls(db):
+        try:
+            resolved_cid = None
+            if call_control_id:
+                resolved_cid = db.execute(
+                    text("SELECT public.resolve_voice_call_tenant(NULL, :ccid)"),
+                    {"ccid": call_control_id},
+                ).scalar()
+            if resolved_cid is None and (destination or dest_norm):
+                resolved_cid = db.execute(
+                    text("SELECT public.resolve_voice_phone_number_tenant(:dest)"),
+                    {"dest": dest_norm or destination},
+                ).scalar()
+            if resolved_cid is not None:
+                apply_tenant_rls(db, UUID(str(resolved_cid)), bypass=False)
+        except Exception as exc:
+            logger.warning("Tenant pre-resolution failed for destination=%s ccid=%s: %s", destination, call_control_id, exc)
+
     binding = db.scalar(select(VoicePhoneNumber).where(
         or_(
             VoicePhoneNumber.phone_number == destination,
