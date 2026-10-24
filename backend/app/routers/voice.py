@@ -1397,7 +1397,9 @@ async def update_voice_config(
         config.voice_provider = str(request["voice_provider"])
     if "speech_speed" in request and request["speech_speed"] is not None:
         try:
-            config.speech_speed = VoiceCustomizationUpdateRequest(speech_speed=request["speech_speed"]).speech_speed
+            parsed_speed = VoiceCustomizationUpdateRequest(speech_speed=request["speech_speed"]).speech_speed
+            if parsed_speed is not None:
+                config.speech_speed = parsed_speed
         except ValueError:
             raise HTTPException(status_code=422, detail="Speech speed must be between 0.5 and 1.5") from None
     if "personality_tone" in request and request["personality_tone"]:
