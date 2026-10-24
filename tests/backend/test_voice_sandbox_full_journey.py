@@ -390,16 +390,19 @@ def test_scenario_f_single_language_vs_multilingual_tenants():
         db.commit()
 
         prof_a = get_stored_profile(db, comp_a.id)
+        assert prof_a is not None
         assert prof_a.primary_locale in {"ro", "ro-RO"}
         assert to_bcp47(prof_a.primary_locale) == "ro-RO"
         assert prof_a.secondary_locales == []
         assert authorized_locales(prof_a) == ["ro"]
 
         prof_b = get_stored_profile(db, comp_b.id)
+        assert prof_b is not None
         assert to_bcp47(prof_b.primary_locale) in {"fr-CA", "fr-FR"}
         assert set(prof_b.secondary_locales) == {"en", "es"} or set(prof_b.secondary_locales) == {"en-US", "es-ES"}
 
         prof_c = get_stored_profile(db, comp_c.id)
+        assert prof_c is not None
         assert to_bcp47(prof_c.primary_locale) == "de-DE"
         assert authorized_locales(prof_c) == ["de"]
 
