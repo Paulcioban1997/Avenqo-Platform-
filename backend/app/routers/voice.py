@@ -1791,11 +1791,12 @@ async def telnyx_webhook(
             await TelnyxClient(settings).gather_using_speak(
                 call_control_id,
                 text_prompt=greeting,
+                command_id=gather_cmd,
+                client_state="dispatcher_nip_gather",
                 language="fr-CA",
                 minimum_digits=4,
                 maximum_digits=8,
                 terminating_digit="#",
-                command_id=gather_cmd,
             )
             return {"received": True, "routed": False, "status": "DISPATCHER_GATHER_STARTED"}
 
@@ -1978,16 +1979,17 @@ async def telnyx_webhook(
     admitted, admit_reason = VoiceLifecycleService(db).is_call_admissible(config.company_id, caller_phone)
     if not admitted:
         logger.info("Inbound call rejected by voice lifecycle gate: company_id=%s reason=%s caller=%s event=%s", config.company_id, admit_reason, caller_phone, event_type)
+        telnyx_client = TelnyxClient(settings)
         if event_type == "call.initiated":
             try:
                 command_id = str(UUID(hashlib.sha256(f"lifecycle-reject:{call_control_id}".encode()).hexdigest()[:32]))
-                await service.telnyx.reject_call(call_control_id, command_id=command_id)
+                await telnyx_client.reject_call(call_control_id, command_id=command_id)
             except Exception:
                 pass
             return {"received": True, "routed": False, "status": "NOT_ACTIVE_BLOCKED", "reason": admit_reason}
         elif event_type == "call.answered":
             try:
-                await service.telnyx.hangup(call_control_id)
+                await telnyx_client.hangup(call_control_id)
             except Exception:
                 pass
             return {"received": True, "routed": False, "status": "NOT_ACTIVE_BLOCKED", "reason": admit_reason}
