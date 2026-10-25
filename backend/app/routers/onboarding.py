@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
-from backend.app.schemas.onboarding import OnboardingStatusResponse, OnboardingSubmitRequest
+from backend.app.schemas.onboarding import OnboardingDraftRequest, OnboardingStatusResponse, OnboardingSubmitRequest
 from backend.app.services.onboarding_service import OnboardingService
 from shared.ai_engine.contracts import TenantContext
 
@@ -31,6 +31,15 @@ def complete_onboarding(
     service: OnboardingService = Depends(get_onboarding_service),
 ) -> OnboardingStatusResponse:
     return service.submit(tenant, request)
+
+
+@router.post("/draft", response_model=OnboardingStatusResponse)
+def save_onboarding_draft(
+    request: OnboardingDraftRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: OnboardingService = Depends(get_onboarding_service),
+) -> OnboardingStatusResponse:
+    return service.save_draft(tenant, request)
 
 
 @router.post("/skip", response_model=OnboardingStatusResponse)

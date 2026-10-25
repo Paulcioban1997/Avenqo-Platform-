@@ -417,8 +417,10 @@ class DatasetCleaningService:
         try:
             from sqlalchemy import text
             from backend.app.database.session import SessionLocal
+            from backend.app.services.tenant_rls import apply_tenant_rls
 
             with SessionLocal() as db_session:
+                apply_tenant_rls(db_session, tenant.company_id)
                 conn_rows = db_session.execute(
                     text("SELECT id, provider, dataset_ids, sync_cursor FROM commerce_connections WHERE company_id = :comp_id"),
                     {"comp_id": str(tenant.company_id)}

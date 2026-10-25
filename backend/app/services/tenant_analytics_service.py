@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -21,6 +22,10 @@ from backend.app.models import (
 from backend.app.routers.datasets import _pipeline_status, _training_status
 from backend.app.services import retail_kpi_cache
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.commerce_normalized_source import (
+    prepared_from_normalized_connection,
+    try_restore_connector_retail_dataset,
+)
 from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.models import CommerceConnectionStatus
 from shared.ai_engine.contracts import TenantContext
@@ -44,6 +49,14 @@ _DASHBOARD_MAX_PREPARED_ROWS = 50_000
 _log = logging.getLogger(__name__)
 
 
+def _safe_float(value: object | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(str(value))
+
+
 @dataclass(frozen=True, slots=True)
 class TenantAnalyticsSnapshot:
     company: Company | None
@@ -65,12 +78,18 @@ class TenantAnalyticsSnapshot:
     active_source_name: str | None = None
     active_source_last_updated_at: datetime | None = None
     active_source_last_event_received_at: datetime | None = None
+    allow_multi_currency: bool = False
 
     @property
     def currency(self) -> str:
         return self.company.currency_code if self.company is not None else "USD"
 
-    def source_for(self, required_fields: frozenset[str]) -> PreparedCompanyDataset | None:
+    def source_for(
+        self,
+        required_fields: frozenset[str],
+        *,
+        convert_currencies: bool = False,
+    ) -> PreparedCompanyDataset | None:
         candidates = [
             (item, self._with_derived_revenue(self._compose_from(item)))
             for item in self.prepared
@@ -129,23 +148,40 @@ class TenantAnalyticsSnapshot:
             len(item.canonical_columns),
             len(item.rows),
         ))
-        if len(components) == 1:
-            return selected
-
-        if "total_amount" in required_fields or "unit_price" in required_fields:
-            currencies = {str(row["currency"]).upper() for item in components for row in self._canonical_rows(item) if row.get("currency")}
+        if not (convert_currencies or self.allow_multi_currency) and ("total_amount" in required_fields or "unit_price" in required_fields):
+            currencies = {
+                str(row["currency"]).upper()
+                for item in components
+                for row in self._canonical_rows(item)
+                if row.get("currency")
+            }
             if len(currencies) > 1:
                 raise ValueError("INCOMPATIBLE_SOURCE_CURRENCIES")
+
+        if len(components) == 1:
+            return selected
 
         canonical_fields = set().union(
             *(set(item.canonical_columns.values()) for item in components)
         )
+        canonical_fields.update({
+            "net_amount",
+            "source_currency",
+            "source_total_amount",
+            "source_refund_amount",
+            "exchange_rate",
+        })
+        from backend.app.services.currency_service import CurrencyService
+
+        currency_service = CurrencyService()
+        base_currency = self.currency
+
         reconciled_rows: list[dict[str, object]] = []
         seen_rows: set[tuple[tuple[str, str], ...]] = set()
         seen_commerce: set[tuple] = set()
         for item in components:
             for row in self._canonical_rows(item):
-                normalized = {field: row.get(field) for field in canonical_fields}
+                normalized = {field: row.get(field) for field in canonical_fields if field in row}
                 provider = row.get("source_provider")
                 store = row.get("source_store") or row.get("source_connection_id")
                 record = row.get("source_order_id") or row.get("shopify_order_gid")
@@ -155,6 +191,50 @@ class TenantAnalyticsSnapshot:
                     if identity in seen_commerce:
                         continue
                     seen_commerce.add(identity)
+
+                row_currency = str(row.get("currency") or base_currency).strip().upper()
+                if row_currency != base_currency:
+                    normalized["source_currency"] = row_currency
+                    rate = float(currency_service.get_rate(row_currency, base_currency))
+                    normalized["exchange_rate"] = rate
+                    if "total_amount" in row and row["total_amount"] is not None:
+                        try:
+                            s_amt = _safe_float(row["total_amount"])
+                            normalized["source_total_amount"] = s_amt
+                            normalized["total_amount"] = round(s_amt * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "unit_price" in row and row["unit_price"] is not None:
+                        try:
+                            normalized["unit_price"] = round(_safe_float(row["unit_price"]) * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "discount_amount" in row and row["discount_amount"] is not None:
+                        try:
+                            normalized["discount_amount"] = round(_safe_float(row["discount_amount"]) * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    if "refund_amount" in row and row["refund_amount"] is not None:
+                        try:
+                            s_ref = _safe_float(row["refund_amount"])
+                            normalized["source_refund_amount"] = s_ref
+                            normalized["refund_amount"] = round(s_ref * rate, 2)
+                        except (ValueError, TypeError):
+                            pass
+                    normalized["currency"] = base_currency
+                else:
+                    normalized["currency"] = base_currency
+                    normalized["exchange_rate"] = 1.0
+
+                if "total_amount" in normalized and normalized["total_amount"] is not None:
+                    try:
+                        tot = _safe_float(normalized["total_amount"])
+                        disc = _safe_float(normalized.get("discount_amount"), 0.0)
+                        ref = _safe_float(normalized.get("refund_amount"), 0.0)
+                        normalized["net_amount"] = round(tot - disc - ref, 2)
+                    except (ValueError, TypeError):
+                        pass
+
                 fingerprint = tuple(
                     sorted((field, repr(value)) for field, value in normalized.items())
                 )
@@ -195,7 +275,7 @@ class TenantAnalyticsSnapshot:
         for row in prepared.rows:
             output = dict(row)
             try:
-                output[derived_column] = float(row[quantity_column]) * float(
+                output[derived_column] = _safe_float(row[quantity_column]) * _safe_float(
                     row[price_column]
                 )
             except (KeyError, TypeError, ValueError):
@@ -389,21 +469,55 @@ class TenantAnalyticsService:
                 for item in RetailSourceService(self._session).list_sources(tenant)
                 if item.enabled and item.status.upper() == "READY"
             ]
-            source_updates = [item.last_synchronized_at for item in active_sources]
-            active_source_last_updated_at = (
-                min(source_updates)
-                if source_updates and all(value is not None for value in source_updates)
-                else None
-            )
+            source_updates = [
+                item.last_synchronized_at
+                for item in active_sources
+                if item.last_synchronized_at is not None
+            ]
+            active_source_last_updated_at = min(source_updates) if source_updates else None
         source_datasets = datasets
         enabled_dataset_ids = RetailSourceService(self._session).enabled_dataset_ids(tenant)
         if tenant.user_id is not None and active_source is not None and active_source.source_type != "all":
-            selected_id = active_source.dataset_id
-            if active_source.connection_id is not None:
-                connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
-                selected_id = RetailSourceService._connection_dataset_id(connection) if connection is not None and connection.status == CommerceConnectionStatus.READY.value else None
-            source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
-            datasets = source_datasets
+            if active_source.source_type == "custom_set":
+                selected_ds_ids = set(getattr(active_source, "dataset_ids", []) or [])
+                selected_conn_ids = set(getattr(active_source, "connection_ids", []) or [])
+                for cid in selected_conn_ids:
+                    conn = self._session.get(CommerceConnection, cid)
+                    if conn is not None and conn.company_id == tenant.company_id:
+                        ds_id = RetailSourceService._connection_dataset_id(conn)
+                        if ds_id:
+                            selected_ds_ids.add(ds_id)
+                source_datasets = tuple(dataset for dataset in datasets if dataset.id in selected_ds_ids)
+                datasets = source_datasets
+            else:
+                selected_id = active_source.dataset_id
+                if active_source.connection_id is not None:
+                    connection = self._session.scalar(select(CommerceConnection).where(CommerceConnection.id == active_source.connection_id, CommerceConnection.company_id == tenant.company_id))
+                    if connection is not None and connection.status != CommerceConnectionStatus.DISCONNECTED.value:
+                        source_service = RetailSourceService(self._session)
+                        if not source_service._connector_artifact_ready(connection):
+                            restored = try_restore_connector_retail_dataset(
+                                self._session, self._ingestion, tenant, connection
+                            )
+                            if restored is not None:
+                                self._session.refresh(connection)
+                                datasets = tuple(
+                                    self._session.scalars(
+                                        select(Dataset)
+                                        .where(Dataset.company_id == tenant.company_id)
+                                        .options(
+                                            selectinload(Dataset.training_jobs),
+                                            selectinload(Dataset.versions),
+                                            selectinload(Dataset.mapping),
+                                        )
+                                        .order_by(Dataset.uploaded_at.desc())
+                                    ).all()
+                                )
+                        selected_id = RetailSourceService._connection_dataset_id(connection)
+                    else:
+                        selected_id = None
+                source_datasets = tuple(dataset for dataset in datasets if dataset.id == selected_id)
+                datasets = source_datasets
         elif enabled_dataset_ids is not None:
             source_datasets = tuple(
                 dataset for dataset in datasets if dataset.id in enabled_dataset_ids
@@ -419,7 +533,7 @@ class TenantAnalyticsService:
         training_statuses = tuple(
             status
             for dataset in tenant_datasets
-            if (status := _training_status(dataset)) not in {None, "not_applicable"}
+            if (status := _training_status(dataset)) is not None and status != "not_applicable"
         )
         source_statuses = tuple(
             _pipeline_status(dataset) for dataset in source_datasets
@@ -427,7 +541,35 @@ class TenantAnalyticsService:
         prepared, deferred_dataset_ids, summaries, retail_states = self._prepared_ready_datasets(
             tenant, source_datasets, max_prepared_rows=max_prepared_rows
         )
-        prepared_ids = {item.dataset_id for item in prepared}
+        prepared_ids = {item.dataset_id for item in prepared if item is not None}
+        candidate_conn_ids: list[UUID] = []
+        if active_source is not None:
+            if getattr(active_source, "source_type", None) == "single":
+                conn_id = getattr(active_source, "connection_id", None)
+                if conn_id is not None:
+                    candidate_conn_ids = [conn_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                candidate_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+            elif getattr(active_source, "source_type", None) == "all":
+                conns = self._session.scalars(
+                    select(CommerceConnection.id).where(
+                        CommerceConnection.company_id == tenant.company_id,
+                        CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                    )
+                ).all()
+                candidate_conn_ids = list(conns)
+
+        fallback_list = list(prepared)
+        for cid in candidate_conn_ids:
+            conn = self._session.get(CommerceConnection, cid)
+            if conn is not None and conn.company_id == tenant.company_id and conn.status != CommerceConnectionStatus.DISCONNECTED.value:
+                ds_id = RetailSourceService._connection_dataset_id(conn) or conn.id
+                if ds_id not in prepared_ids:
+                    fb = prepared_from_normalized_connection(self._session, tenant, conn, ds_id)
+                    if fb is not None:
+                        fallback_list.append(fb)
+                        prepared_ids.add(ds_id)
+        prepared = tuple(fallback_list)
         relationships = tuple(
             self._session.scalars(
                 select(DatasetRelationship).where(
@@ -453,7 +595,7 @@ class TenantAnalyticsService:
         status = self._status(
             tenant_datasets, statuses, prepared, deferred_dataset_ids
         )
-        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets and not prepared:
             status = "source_unavailable"
         if enabled_dataset_ids == frozenset() and not retail_states:
             status = "no_data"
@@ -462,7 +604,7 @@ class TenantAnalyticsService:
                 status = "partial_ready" if deferred_dataset_ids or any(s != "ready" for s in source_statuses) else "ready"
             else:
                 status = "source_unavailable" if "SOURCE_UNAVAILABLE" in retail_states else "processing"
-        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets:
+        if tenant.user_id is not None and active_source is not None and active_source.source_type != "all" and not source_datasets and not prepared:
             status = "source_unavailable"
         snapshot = TenantAnalyticsSnapshot(
             company=company,
@@ -516,8 +658,15 @@ class TenantAnalyticsService:
                     deferred_dataset_ids.add(dataset.id)
                 continue
             try:
-                result.append(self._ingestion.get_prepared_dataset(tenant, dataset.id))
+                prep = self._ingestion.get_prepared_dataset(tenant, dataset.id)
+                if prep is None:
+                    raise FileNotFoundError(f"Prepared dataset {dataset.id} unavailable on disk")
+                result.append(prep)
             except Exception:
+                fallback = self._prepared_from_connector_records(tenant, dataset.id)
+                if fallback is not None:
+                    result.append(fallback)
+                    continue
                 _log.exception(
                     "Tenant analytics dataset unavailable endpoint=/api/v1/dashboard "
                     "status=degraded tenant=%s dataset=%s category=prepared_dataset_unavailable",
@@ -526,6 +675,30 @@ class TenantAnalyticsService:
                 )
                 continue
         return tuple(result), deferred_dataset_ids, summaries, retail_states
+
+    def _prepared_from_connector_records(
+        self,
+        tenant: TenantContext,
+        dataset_id: object,
+    ) -> PreparedCompanyDataset | None:
+        connections = self._session.scalars(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+            )
+        ).all()
+        for connection in connections:
+            if RetailSourceService._connection_dataset_id(connection) != dataset_id:
+                continue
+            prepared = prepared_from_normalized_connection(
+                self._session,
+                tenant,
+                connection,
+                dataset_id if isinstance(dataset_id, UUID) else None,
+            )
+            if prepared is not None:
+                return prepared
+        return None
 
     @staticmethod
     def _capabilities(

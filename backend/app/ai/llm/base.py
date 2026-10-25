@@ -30,6 +30,8 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
+        if False:
+            yield ""
         raise NotImplementedError
 
     async def stream_events(

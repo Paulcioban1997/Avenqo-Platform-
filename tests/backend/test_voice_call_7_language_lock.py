@@ -283,7 +283,8 @@ async def test_crm_tools_check_and_list_available_slots(tmp_path):
     )
 
     list_tool = ListAvailableSlotsTool(db)
-    target_date = (date.today() + timedelta(days=7)).isoformat()
+    # The fixture is closed on weekends; always request a future Monday.
+    target_date = (date.today() + timedelta(days=7 - date.today().weekday())).isoformat()
     list_res = await list_tool.run(context, ListAvailableSlotsArgs(target_date=target_date))
     assert list_res.success is True
     assert list_res.data["count"] > 0
@@ -330,16 +331,16 @@ def test_voice_audio_capabilities_matrix_44_locales():
     matrix = voice_audio_capabilities_matrix()
     assert len(matrix) == 44
 
-    # Exactement les 5 variantes testées ont live_audio_validated=True
+    # Synthetic tests cannot certify live telephone audio.
     validated = [row["locale"] for row in matrix if row["live_audio_validated"]]
-    assert set(validated) == {"fr", "en", "es", "ro"}  # avec leurs bcp47 fr-CA, en-US, es-ES, ro-RO
+    assert validated == []
 
-    # Les 40 autres n'ont PAS de fausse validation audio
+    # No live validation evidence is registered yet.
     unvalidated = [row["locale"] for row in matrix if not row["live_audio_validated"]]
-    assert len(unvalidated) == 40
+    assert len(unvalidated) == 44
 
     cap_ro = get_voice_language_capability("ro-RO")
-    assert cap_ro["live_audio_validated"] is True
+    assert cap_ro["live_audio_validated"] is False
     assert cap_ro["stt_available"] is True
 
     cap_ja = get_voice_language_capability("ja-JP")

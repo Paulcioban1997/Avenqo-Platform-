@@ -5,10 +5,11 @@ import re
 import secrets
 import base64
 import json
+from typing import Any
 from uuid import UUID
 
 from pwdlib.exceptions import UnknownHashError
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
@@ -87,10 +88,18 @@ class VoiceCallerAuth:
             principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_id, CRMClient.company_id == tenant.company_id, CRMClient.is_deleted.is_(False)))
         else:
             raise ValueError("Unsupported principal type")
-        phone = normalized_phone(phone_number or (principal.phone if principal is not None else None))
+        raw_phone = phone_number or (principal.phone if principal is not None else None)
+        if isinstance(principal, User) and principal.company is not None and principal.company.country:
+            if principal.company.country.upper() in {"CA", "US", "CANADA", "UNITED STATES"}:
+                digits = re.sub(r"\D", "", raw_phone or "")
+                if len(digits) == 10:
+                    raw_phone = "+1" + digits
+                elif len(digits) == 11 and digits.startswith("1"):
+                    raw_phone = "+" + digits
+        phone = normalized_phone(raw_phone)
         if principal is None or phone is None:
             raise PermissionError("A registered tenant principal phone is required")
-        if principal.phone is None:
+        if principal.phone is None or principal_type == "USER":
             principal.phone = phone
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
@@ -245,6 +254,18 @@ class VoiceCallerAuth:
         session.caller_type = caller_type; session.principal_id = principal_id; session.permissions = permissions
         session.authenticated_at = now
         session.expires_at = now + timedelta(seconds=getattr(self.settings, "voice_auth_session_ttl_seconds", 600))
+        if getattr(self.settings, "voice_long_calls_enabled", False):
+            from backend.app.voice.call_policy import policy_for, remaining
+            from backend.app.models import VoiceBusinessConfig
+            config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id,
+                                                                      VoiceBusinessConfig.company_id == call.company_id))
+            if config is None:
+                raise PermissionError("Voice configuration unavailable")
+            policy = policy_for(self.db, config, self.settings)
+            seconds = remaining(call)
+            if seconds is None or seconds <= 0:
+                raise PermissionError("Call allowance exhausted")
+            session.expires_at = now + timedelta(seconds=min(policy.auth_seconds, seconds))
         session.revoked_at = None
         self.db.flush()
         return session
@@ -271,14 +292,43 @@ class VoiceCallerAuth:
             return None
         return session
 
-    def verify_gather(self, call, pin):
+    def verify_gather(self, call, pin, identifier: str | None = None):
         failed = {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
         maximum = getattr(self.settings, "voice_pin_max_attempts", 5)
         now = datetime.now(timezone.utc)
         if call.ended_at is not None or call.verification_attempts >= maximum:
             return failed
-        credential = self.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == call.company_id,
-            VoiceCallerCredential.phone_number == normalized_phone(call.caller_phone), VoiceCallerCredential.enabled.is_(True)).with_for_update())
+        
+        credential = None
+        if identifier:
+            id_str = str(identifier).strip()
+            # Lookup user by email, phone, or UUID within company
+            user_filters = [User.email == id_str, User.phone == id_str]
+            try:
+                user_filters.append(User.id == UUID(id_str))
+            except Exception:
+                pass
+            user_cand = self.db.scalar(
+                select(User).where(
+                    User.company_id == call.company_id,
+                    User.is_active.is_(True),
+                    or_(*user_filters),
+                )
+            )
+            if user_cand is not None:
+                credential = self.db.scalar(
+                    select(VoiceCallerCredential).where(
+                        VoiceCallerCredential.company_id == call.company_id,
+                        VoiceCallerCredential.principal_type == "USER",
+                        VoiceCallerCredential.principal_id == user_cand.id,
+                        VoiceCallerCredential.enabled.is_(True),
+                    ).with_for_update()
+                )
+
+        if credential is None and not identifier:
+            credential = self.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == call.company_id,
+                VoiceCallerCredential.phone_number == normalized_phone(call.caller_phone), VoiceCallerCredential.enabled.is_(True)).with_for_update())
+        
         call.verification_attempts += 1
         if credential is None:
             verify_password(self._peppered(call.company_id, call.id, pin), hash_password(secrets.token_urlsafe(32)))
@@ -300,7 +350,9 @@ class VoiceCallerAuth:
             self.db.flush(); return failed
         principal_model = User if credential.principal_type == "USER" else CRMClient
         principal = self.db.get(principal_model, credential.principal_id)
-        if principal is None or principal.company_id != call.company_id or normalized_phone(principal.phone) != credential.phone_number:
+        if principal is None or principal.company_id != call.company_id:
+            self.db.flush(); return failed
+        if not identifier and normalized_phone(principal.phone) != credential.phone_number:
             self.db.flush(); return failed
         if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
@@ -319,3 +371,21 @@ class VoiceCallerAuth:
         self.establish(call)
         self.db.flush()
         return {"success": True, "authenticated": True}
+
+    def logout_session(self, call) -> dict[str, Any]:
+        """Revoke active private voice session and return call to public mode."""
+        now = datetime.now(timezone.utc)
+        session = self.db.scalar(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.call_id == call.id,
+                VoiceAuthSession.company_id == call.company_id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        )
+        if session is not None:
+            session.revoked_at = now
+        call.caller_type = "PUBLIC"
+        call.authenticated_user_id = None
+        call.verified_client_id = None
+        self.db.flush()
+        return {"success": True, "mode": "public"}

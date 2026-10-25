@@ -31,6 +31,10 @@ from backend.app.ai.tools.natural_confirmation import (
     confirmation_required_message,
     is_natural_confirmation,
 )
+from backend.app.core.tenant_execution import (
+    peek_tenant_execution,
+    strip_client_tenant_arguments,
+)
 
 logger = logging.getLogger("avenqo.tool_calling")
 
@@ -66,10 +70,15 @@ class ToolExecutor:
 
             if self._authorization_policy is None:
                 raise ToolAuthorizationError("Tool authorization is not configured.")
+            bound = peek_tenant_execution()
+            if bound is not None and bound.company_id != context.tenant_id:
+                raise ToolAuthorizationError("The tool cannot run outside the bound tenant.")
             self._authorization_policy.authorize(tool, context)
 
             try:
-                arguments = tool.input_schema.model_validate(raw_arguments)
+                arguments = tool.input_schema.model_validate(
+                    strip_client_tenant_arguments(raw_arguments)
+                )
             except ValidationError as exc:
                 raise ToolValidationError(f"Invalid arguments for '{name}'.") from exc
 
@@ -105,6 +114,8 @@ class ToolExecutor:
                         metadata={"error_key": "confirmation_required", "locale": context.locale},
                         error=confirmation_required_message(context.locale),
                     )
+                else:
+                    setattr(arguments, tool.confirmation_field, True)
 
             try:
                 async def run_tool() -> ToolResult:
@@ -140,6 +151,8 @@ class ToolExecutor:
                     "success": success,
                     "tenant_id": str(context.tenant_id),
                     "request_id": context.request_id,
+                    "conversation_id": str(context.conversation_id) if context.conversation_id else None,
+                    "voice_path": context.voice_path,
                 },
             )
 

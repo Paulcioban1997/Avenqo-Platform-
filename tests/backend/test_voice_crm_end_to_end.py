@@ -177,13 +177,16 @@ async def test_tool_scope_for_voice_call_never_drops_tools_when_agent_none(tmp_p
     )
 
     # Cas 1 : Énoncé standard sans mot-clé CRM (« Allô, est-ce que vous avez fini ? »)
-    # Sur /voice avec le module "crm" actif : les outils CRM DOIVENT être fournis !
+    # Sur /voice, granted booking actions persist even when no agent is selected.
     active_modules = frozenset({"crm", "voice"})
+    booking = frozenset({"check_availability", "create_appointment", "list_available_slots"})
     scope = service._tool_scope_for_request(
         agent=None,
         query="Allô, est-ce que vous avez fini ?",
         page_context="/voice",
         active_modules=active_modules,
+        permissions=frozenset({"ai:use", "crm:appointments:write"}),
+        granted_voice_tools=booking,
     )
     assert scope is not None
     allowed_tools, tool_agents = scope
@@ -234,12 +237,14 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
         usage_service=cast(Any, None),
     )
 
-    # 1. Tenant avec CRM seul : a les outils CRM, mais ni Retail ni Accounting
+    # 1. Tenant avec CRM seul + booking grants : CRM tools only, never Retail/Accounting
+    crm_grants = frozenset({"check_availability", "create_appointment", "list_available_slots"})
     scope_crm = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "voice"}),
+        granted_voice_tools=crm_grants,
     )
     assert scope_crm is not None
     tools_crm, agents_crm = scope_crm
@@ -248,12 +253,14 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
     assert "get_unpaid_invoices" not in tools_crm
     assert "get_subscription_options" not in tools_crm
 
-    # 2. Tenant avec CRM + Retail : a les outils CRM et Retail, mais pas Accounting
+    # 2. Tenant avec CRM + Retail grants : CRM and Retail tools, never Accounting
+    crm_retail_grants = crm_grants | frozenset({"get_sales_summary"})
     scope_crm_retail = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "retail", "voice"}),
+        granted_voice_tools=crm_retail_grants,
     )
     assert scope_crm_retail is not None
     tools_cr, agents_cr = scope_crm_retail
@@ -263,12 +270,16 @@ def test_voice_universal_discovery_of_all_authorized_business_modules(tmp_path):
     assert agents_cr["get_sales_summary"] == "retail"
     assert "get_unpaid_invoices" not in tools_cr
 
-    # 3. Tenant complet CRM + Retail + Accounting : découverte universelle de tous les modules métier
+    # 3. Tenant complet : only explicitly granted Voice actions are discovered
+    all_grants = crm_retail_grants | frozenset({
+        "get_unpaid_invoices", "get_monthly_expenses", "get_cross_agent_business_health",
+    })
     scope_all = service._tool_scope_for_request(
         agent=None,
         query="Allô ?",
         page_context="/voice",
         active_modules=frozenset({"crm", "retail", "accounting", "voice"}),
+        granted_voice_tools=all_grants,
     )
     assert scope_all is not None
     tools_all, agents_all = scope_all
@@ -311,23 +322,33 @@ def test_voice_topic_switching_mid_call_preserves_cross_module_capabilities(tmp_
     )
 
     all_modules = frozenset({"crm", "retail", "accounting", "voice"})
+    granted = frozenset({"check_availability", "get_sales_summary", "get_unpaid_invoices"})
 
     # Tour 1 : Demande de rendez-vous -> scope /voice donne accès à CRM
-    scope_1 = service._tool_scope_for_request(asst_reg.get("crm"), "Prends un rendez-vous demain", "/voice", all_modules)
+    scope_1 = service._tool_scope_for_request(
+        asst_reg.get("crm"), "Prends un rendez-vous demain", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_1 is not None
     tools_1, agents_1 = scope_1
     assert "check_availability" in tools_1
     assert agents_1["check_availability"] == "crm"
 
     # Tour 2 : Changement de sujet -> Combien de commandes aujourd'hui ?
-    scope_2 = service._tool_scope_for_request(asst_reg.get("retail"), "Combien de commandes reçues aujourd'hui ?", "/voice", all_modules)
+    scope_2 = service._tool_scope_for_request(
+        asst_reg.get("retail"), "Combien de commandes reçues aujourd'hui ?", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_2 is not None
     tools_2, agents_2 = scope_2
     assert "get_sales_summary" in tools_2
     assert agents_2["get_sales_summary"] == "retail"
 
     # Tour 3 : Changement de sujet -> Factures impayées ?
-    scope_3 = service._tool_scope_for_request(asst_reg.get("accounting"), "Quelles sont les factures impayées ?", "/voice", all_modules)
+    scope_3 = service._tool_scope_for_request(
+        asst_reg.get("accounting"), "Quelles sont les factures impayées ?", "/voice", all_modules,
+        granted_voice_tools=granted,
+    )
     assert scope_3 is not None
     tools_3, agents_3 = scope_3
     assert "get_unpaid_invoices" in tools_3
@@ -428,6 +449,7 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     """P0 Regression : En cas de refresh token révoqué, CRMCalendarConnection passe à sync_status='error'."""
     from backend.app.models.crm import CRMCalendarConnection
     from backend.app.services.calendar.base import CalendarProviderError
+    from email.message import Message
     import urllib.error
 
     _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
@@ -450,17 +472,17 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     class FailingProvider:
         async def check_busy_slots(self, creds, s, e, cal_id):
             err = CalendarProviderError("401 Unauthorized")
-            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 401, "Unauthorized", {}, None)
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 401, "Unauthorized", Message(), None)
             raise err
 
         async def refresh_access_token(self, r_tok):
             err = CalendarProviderError("400 Bad Request: invalid_grant")
-            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_grant", {}, None)
+            err.__cause__ = urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_grant", Message(), None)
             raise err
 
     monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", lambda *args: FailingProvider())
 
-    avail = CRMAvailabilityService(db, cipher=FakeCipher())
+    avail = CRMAvailabilityService(db, cipher=cast(Any, FakeCipher()))
     future_start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0)
     res = await avail.check_availability(company.id, future_start)
     assert res["available"] is False
@@ -470,3 +492,182 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
     db.refresh(conn)
     assert conn.sync_status == "error"
     assert "reconnect" in (conn.error_message or "").lower()
+
+
+def test_prompt_grounding_time_range_interpretation_and_qc_continuity():
+    """Vérifie que les règles d'interprétation horaire (10h-11h = début à 10h), de grounding et de continuité fr-CA sont présentes."""
+    instruction = _localized_system_instruction(
+        "Base system instruction",
+        user_language="fr-CA",
+        company_country="CA",
+        company_currency="CAD",
+        company_timezone="America/Montreal",
+        is_voice_call=True,
+    )
+    assert "10:00 - 11:00" in instruction
+    assert "starts at 10:00" in instruction
+    assert "Ground business hours and available services strictly in actual tenant CRM configuration" in instruction
+    assert "Conversation Continuity & Quebec French (fr-CA)" in instruction
+
+
+@pytest.mark.asyncio
+async def test_voice_media_appointment_booked_status_allows_continued_conversation(tmp_path):
+    """Vérifie que le statut appointment_booked n'interrompt pas la conversation vocale et ne lève pas PermissionError."""
+    from backend.app.config.settings import Settings
+    from backend.app.models.voice import VoiceCall
+    from backend.app.voice.telnyx_media import (
+        PublicInboundConversation,
+        _SESSION_MEDIA_STATUSES,
+        media_transport_context,
+    )
+
+    _engine, db, company, config, _key, _orch = _voice_database(tmp_path)
+    settings = Settings(
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+        TELNYX_VOICE_CONNECTION_ID="conn-test",
+    )
+
+    from backend.app.models.voice import VoicePhoneNumber
+
+    if not config.telnyx_phone_number:
+        config.telnyx_phone_number = "+15145550000"
+
+    phone = VoicePhoneNumber(
+        company_id=company.id,
+        config_id=config.id,
+        phone_number=config.telnyx_phone_number,
+        country_code="CA",
+        number_type="local",
+        provider="telnyx",
+        status="ACTIVE",
+        capabilities=["voice"],
+        provider_connection_id="conn-test",
+    )
+    db.add(phone)
+
+    call = VoiceCall(
+        id=uuid4(),
+        company_id=company.id,
+        config_id=config.id,
+        telnyx_call_control_id="ccid-test-booked",
+        status="appointment_booked",
+        caller_phone="+15142955720",
+        ended_at=None,
+    )
+    db.add(call)
+    db.commit()
+
+    # 1. media_transport_context ne doit pas lever PermissionError
+    res_call, res_cfg, res_comp = media_transport_context(db, settings, call.id)
+    assert res_call.id == call.id
+    assert res_call.status == "appointment_booked"
+    assert "appointment_booked" in _SESSION_MEDIA_STATUSES
+
+    # 2. PublicInboundConversation.context() et security_gate ne doivent pas lever PermissionError
+    pub_conv = PublicInboundConversation(db, settings, call.id)
+    gate_result = pub_conv.security_gate("Avez-vous du stationnement sur place ?")
+    # Une question normale sur le stationnement ne doit pas être bloquée par un gate
+    assert gate_result is None
+
+
+@pytest.mark.asyncio
+async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monkeypatch):
+    """Vérifie que CRMService et CRMAvailabilityService s'auto-réparent si les clés actives décryptent des identifiants en erreur."""
+    from zoneinfo import ZoneInfo
+    from backend.app.models.crm import CRMCalendarConnection
+    from backend.app.services.calendar.base import CalendarEventData
+
+    _engine, db, company, _config, _key, _orch = _voice_database(tmp_path)
+    company.timezone = "America/Montreal"
+    company.business_hours = {
+        "weekly": {
+            "monday": [{"open": "09:00", "close": "17:00"}],
+            "tuesday": [{"open": "09:00", "close": "17:00"}],
+            "wednesday": [{"open": "09:00", "close": "17:00"}],
+            "thursday": [{"open": "09:00", "close": "17:00"}],
+            "friday": [{"open": "09:00", "close": "17:00"}],
+        }
+    }
+    conn = CRMCalendarConnection(
+        company_id=company.id,
+        provider="google",
+        account_email="founder@avenqo.com",
+        encrypted_credentials="enc_creds_healed",
+        sync_status="error",
+        sync_error="Decryption error on calendar credentials. Please reconnect.",
+    )
+    db.add(conn)
+    db.commit()
+
+    class ValidCipher:
+        def decrypt(self, val):
+            return {"access_token": "valid_token", "refresh_token": "valid_refresh"}
+        def encrypt(self, val):
+            return val
+
+    class MockGoogleProvider:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def create_event(self, creds, event_data, calendar_id):
+            return "google_evt_12345"
+        async def check_busy_slots(self, creds, s, e, cal_id):
+            return []
+
+    monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", MockGoogleProvider)
+    monkeypatch.setattr("backend.app.services.crm_availability_service.GoogleCalendarProvider", MockGoogleProvider)
+
+    cipher = cast(Any, ValidCipher())
+    crm = BackendCRMService(db, cipher=cipher)
+
+    client = crm.create_client(company.id, {"first_name": "Paul", "last_name": "Test", "email": "paul@test.ca"})
+
+    # Créneau garanti sur un jour ouvrable (prochain mardi à 10h00 heure de Montréal)
+    zone = ZoneInfo("America/Montreal")
+    today_local = datetime.now(zone).date()
+    days_until_tuesday = (1 - today_local.weekday()) % 7
+    if days_until_tuesday == 0:
+        days_until_tuesday = 7
+    next_tuesday = today_local + timedelta(days=days_until_tuesday)
+    valid_start = datetime(next_tuesday.year, next_tuesday.month, next_tuesday.day, 10, 0, tzinfo=zone)
+
+    apt_data = {
+        "client_id": client.id,
+        "title": "Consultation Auto-Réparation",
+        "start_time": valid_start,
+        "duration_minutes": 60,
+    }
+
+    # Création du rendez-vous avec synchronisation Google Calendar
+    apt, err = await crm.create_appointment(company.id, apt_data)
+    assert err is None
+    assert apt is not None
+    assert apt.external_event_id == "google_evt_12345"
+
+    # Vérifier que le statut de connexion est repassé à connected et l'erreur effacée
+    db.refresh(conn)
+    assert conn.sync_status == "connected"
+    assert conn.sync_error is None
+
+
+@pytest.mark.asyncio
+async def test_bounded_media_socket_safe_on_disconnected_socket():
+    """Vérifie que BoundedMediaSocket.send_json absorbe WebSocketDisconnect et RuntimeError sans planter."""
+    from starlette.websockets import WebSocketDisconnect
+    from backend.app.voice.telnyx_media import BoundedMediaSocket
+
+    class ClosedWebSocket:
+        async def send_json(self, event):
+            raise WebSocketDisconnect(code=1006)
+
+    class RuntimeClosedWebSocket:
+        async def send_json(self, event):
+            raise RuntimeError("Unexpected ASGI message 'websocket.close', after sending 'websocket.close'")
+
+    sock1 = BoundedMediaSocket(cast(Any, ClosedWebSocket()))
+    sock2 = BoundedMediaSocket(cast(Any, RuntimeClosedWebSocket()))
+
+    # Ne doit pas lever d'exception
+    await sock1.send_json({"event": "media"})
+    await sock2.send_json({"event": "media"})
+

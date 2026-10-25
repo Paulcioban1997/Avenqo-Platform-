@@ -6,14 +6,14 @@ import csv
 import hashlib
 import io
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ from backend.app.connectors.woocommerce import (
     WooCommerceRateLimitError,
     WooCommerceTemporaryError,
 )
+from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
 from backend.app.models import (
     CommerceConnection,
     CommerceConnectionStatus,
@@ -166,7 +167,7 @@ class CommerceSyncService:
         ("inventory", ConnectorCapability.INVENTORY, "sync_inventory"),
         ("refunds", ConnectorCapability.REFUNDS, "sync_refunds"),
     )
-    _SNAPSHOT_FIELDS = (
+    _SNAPSHOT_FIELDS: tuple[str, ...] = (
         "product_name",
         "product_id",
         "sku",
@@ -430,6 +431,35 @@ class CommerceSyncService:
             raise CommerceSyncAlreadyRunning("Commerce synchronization is already running")
         self._begin_or_resume(connection)
 
+    def reserve_all(
+        self,
+        tenant: TenantContext,
+        connection_ids: Sequence[UUID] | None = None,
+    ) -> list[UUID]:
+        query = select(CommerceConnection).where(
+            CommerceConnection.company_id == tenant.company_id,
+            CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+        )
+        if connection_ids is not None:
+            query = query.where(CommerceConnection.id.in_(list(connection_ids)))
+
+        connections = self._db.scalars(
+            query.with_for_update().execution_options(populate_existing=True)
+        ).all()
+
+        reserved: list[UUID] = []
+        for connection in connections:
+            if connection.status in {
+                CommerceConnectionStatus.DISCONNECTED.value,
+                CommerceConnectionStatus.REAUTH_REQUIRED.value,
+            }:
+                continue
+            if self._is_active_sync(connection):
+                continue
+            self._begin_or_resume(connection)
+            reserved.append(connection.id)
+        return reserved
+
     def is_active(
         self,
         tenant: TenantContext,
@@ -454,6 +484,17 @@ class CommerceSyncService:
 
         connector = self._registry.get("shopify")
         normalized_shop = shop.strip().lower()
+        # Secure tenant resolution without global RLS bypass
+        resolved_tenant = None
+        try:
+            resolved_tenant = self._db.scalar(
+                text("SELECT public.resolve_commerce_connection_tenant(:p, :id)"),
+                {"p": "shopify", "id": normalized_shop},
+            )
+        except Exception:
+            pass
+        if resolved_tenant:
+            apply_tenant_rls(self._db, resolved_tenant)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.provider == "shopify",
@@ -461,6 +502,8 @@ class CommerceSyncService:
                 CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
+        if connection is not None and not resolved_tenant:
+            apply_tenant_rls(self._db, connection.company_id)
         tenant_id = connection.company_id if connection is not None else UUID(int=0)
         payload = await connector.handle_webhook(
             tenant_id=tenant_id,
@@ -558,6 +601,16 @@ class CommerceSyncService:
         )
         if len(delivery_id) > 255 or len(topic) > 120:
             raise CommerceSyncDataError("WooCommerce webhook metadata is invalid")
+        resolved_tenant = None
+        try:
+            resolved_tenant = self._db.scalar(
+                text("SELECT public.resolve_commerce_connection_tenant(:p, :id)"),
+                {"p": "woocommerce", "id": str(connection_id)},
+            )
+        except Exception:
+            pass
+        if resolved_tenant:
+            apply_tenant_rls(self._db, resolved_tenant)
         connection = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.id == connection_id,
@@ -566,6 +619,8 @@ class CommerceSyncService:
                 != CommerceConnectionStatus.DISCONNECTED.value,
             )
         )
+        if connection is not None and not resolved_tenant:
+            apply_tenant_rls(self._db, connection.company_id)
         if connection is None:
             return CommerceWebhookAcceptance(
                 receipt_id=None,
@@ -575,6 +630,7 @@ class CommerceSyncService:
                 duplicate=False,
                 should_process=False,
             )
+        apply_tenant_rls(self._db, connection.company_id)
         tenant = TenantContext(company_id=connection.company_id)
         context = await self._connections.sync_context(tenant, connection.id)
         connector = self._registry.get("woocommerce")
@@ -1052,6 +1108,20 @@ class CommerceSyncService:
             self._db.commit()
         return dataset
 
+    def ensure_retail_snapshot(
+        self,
+        tenant: TenantContext,
+        connection: CommerceConnection,
+        *,
+        changed_records: int = 0,
+    ) -> Dataset | None:
+        """Rebuild the Retail CSV dataset from persisted normalized commerce records."""
+        return self._materialize_retail_snapshot(
+            tenant,
+            connection,
+            changed_records=changed_records,
+        )
+
     def _canonical_retail_dataset(
         self,
         tenant: TenantContext,
@@ -1109,7 +1179,7 @@ class CommerceSyncService:
     def _snapshot_rows(
         self,
         connection: CommerceConnection,
-        records: list[NormalizedCommerceRecord],
+        records: Sequence[NormalizedCommerceRecord],
     ) -> list[dict[str, Any]]:
         data_by_entity: dict[str, list[dict[str, Any]]] = {}
         for record in records:

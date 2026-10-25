@@ -425,28 +425,15 @@ async def test_number_provisioning_and_automatic_tenant_binding(multi_tenant_db,
         quote_token=quote_token,
         confirmed=True,
     )
-    res_confirmed = await voice_router.provision_voice_number(
-        confirmed, identity_a, db, settings, membership_a
-    )
-    print("DEBUG RES_CONFIRMED:", res_confirmed)
-    assert res_confirmed["status"] == "ACTIVE"
-    assert len(mock_provider.orders) == 1
-
-    # Verify VoicePhoneNumber in DB
-    phone = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == "+15145550001"))
-    assert phone is not None
-    assert phone.company_id == comp_a.id
-    assert phone.status == "ACTIVE"
-    assert phone.provider == "telnyx"
-
-    # Verify automatic binding to VoiceBusinessConfig
-    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == comp_a.id))
-    assert phone.config_id == config.id
-    assert config.telnyx_phone_number == "+15145550001"
+    with pytest.raises(HTTPException) as error:
+        await voice_router.provision_voice_number(confirmed,identity_a,db,settings,membership_a)
+    assert error.value.status_code==409
+    assert mock_provider.orders==[]
+    assert db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number==confirmed.phone_number)) is None
 
 
 def test_owner_sets_own_pin_and_activates_voice(multi_tenant_db):
-    """7. Le OWNER choisit lui-même son NIP (Avenqo ne génère jamais de NIP) -> Voice AI = ACTIVE."""
+    """Owner PIN requires reauthentication and cannot alone activate paid audio."""
     db, comp_a, owner_a, _, _, _, _ = multi_tenant_db
     tenant_a = TenantContext(comp_a.id, owner_a.id)
     ModuleEntitlementService(db).activate_module(tenant_a, "voice")
@@ -460,12 +447,16 @@ def test_owner_sets_own_pin_and_activates_voice(multi_tenant_db):
     membership_a = SimpleNamespace(role=UserRole.OWNER)
 
     # Owner sets their chosen PIN
-    req = VoicePinRequest(pin=SecretStr("582914"))  # 6-digit owner PIN
+    import secrets
+    from backend.app.core.security import hash_password
+    password=secrets.token_urlsafe(24)+"Aa1!"
+    owner_a.password_hash=hash_password(password);db.commit()
+    req = VoicePinRequest(pin=SecretStr("582914"),confirm_pin=SecretStr("582914"),current_password=SecretStr(password))
     res = voice_router.set_user_voice_pin(req, identity_a, membership_a, db, settings)
     assert res["status"] == "CONFIGURED"
 
     db.refresh(config)
-    assert config.enabled is True  # Voice AI is now ACTIVE!
+    assert config.enabled is False  # Payment/audio activation remain separate gates.
 
 
 def test_two_concurrent_tenants_separate_numbers_and_cross_tenant_isolation(multi_tenant_db):
@@ -664,7 +655,7 @@ async def test_telnyx_purchase_failure_clean_rollback(multi_tenant_db, monkeypat
 
     with pytest.raises(HTTPException) as exc_info:
         await voice_router.provision_voice_number(req, identity_a, db, settings, membership_a)
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.status_code == 409
 
     # Clean rollback verified: NO phantom row exists in database
     dangling = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.phone_number == "+15145550001"))
@@ -712,15 +703,11 @@ async def test_retry_purchase_without_double_purchase(multi_tenant_db, monkeypat
     identity_a = cast(CurrentIdentity, SimpleNamespace(user=owner_a))
     membership_a = SimpleNamespace(role=UserRole.OWNER)
 
-    # First purchase succeeds
-    res1 = await voice_router.provision_voice_number(req, identity_a, db, settings, membership_a)
-    assert res1["status"] == "ACTIVE"
-    assert len(mock_provider.orders) == 1
-
-    # Retry purchase returns ALREADY_ASSIGNED without placing a second Telnyx order
-    res2 = await voice_router.provision_voice_number(req, identity_a, db, settings, membership_a)
-    assert res2["status"] == "ALREADY_ASSIGNED"
-    assert len(mock_provider.orders) == 1  # Exactly 1 order made, NO double billing!
+    for _ in range(2):
+        with pytest.raises(HTTPException) as error:
+            await voice_router.provision_voice_number(req,identity_a,db,settings,membership_a)
+        assert error.value.status_code==409
+    assert mock_provider.orders==[]
 
 
 def test_produits_ero_pilot_uses_same_generic_pipeline(multi_tenant_db):

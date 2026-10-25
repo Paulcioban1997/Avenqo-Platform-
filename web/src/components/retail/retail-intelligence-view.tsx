@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -95,9 +97,12 @@ interface InventoryItem {
 
 interface RetailInventoryAnomaly {
   id: string;
+  type?: string;
   product: string;
   sku: string;
-  expected_range: { lower: number; upper: number };
+  metric?: string;
+  explanation?: string;
+  expected_range: { lower: number; upper: number | null };
   observed_value: number;
   delta: number;
   severity: string;
@@ -111,8 +116,17 @@ interface RetailSalesSummary {
     method: string | null;
     granularity: string;
     forecasted_total: number;
-    points: Array<{ period: string; value: number }>;
+    forecasted_orders?: number | null;
+    historical_context?: string | null;
+    points: Array<{
+      period: string;
+      value: number;
+      orders_volume?: number | null;
+      lower_bound?: number | null;
+      upper_bound?: number | null;
+    }>;
   } | null;
+  forecast_unavailable_reason?: string | null;
 }
 
 interface RetailRecommendation {
@@ -163,6 +177,7 @@ export function RetailIntelligenceView({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const loadRevision = useRef(0);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -176,6 +191,7 @@ export function RetailIntelligenceView({
   const [recommendations, setRecommendations] = useState<RetailRecommendation[]>([]);
   const [recommendationsCurrency, setRecommendationsCurrency] = useState<string | null>(null);
   const [recommendationState, setRecommendationState] = useState<string | null>(null);
+  const [forecastHorizon, setForecastHorizon] = useState<"7d" | "30d" | "90d">("30d");
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
@@ -184,17 +200,37 @@ export function RetailIntelligenceView({
     const revision = ++loadRevision.current;
     setIsLoading(true);
     setLoadError(null);
+    setRetailStatus(null);
+    setProducts([]);
+    setOrders([]);
+    setCustomers([]);
+    setInventory([]);
+    setStockAnomalies([]);
+    setSalesSummary(null);
+    setRecommendations([]);
     try {
       const headers = getAuthHeaders();
+      const loadResource = async (url: string) => {
+        try {
+          return await apiFetch(url, { headers });
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.category === "session_expired") throw error;
+          return null;
+        }
+      };
+      const salesPeriodKey = forecastHorizon === "7d" ? "last_7_days" : forecastHorizon === "90d" ? "last_90_days" : "last_30_days";
       const [statusRes, prodRes, ordRes, custRes, invRes, salesRes, recommendationsRes] = await Promise.all([
-        apiFetch("/api/v1/retail/status", { headers }),
-        apiFetch("/api/v1/retail/products?limit=100", { headers }),
-        apiFetch("/api/v1/retail/orders?limit=100", { headers }),
-        apiFetch("/api/v1/retail/customers?limit=100", { headers }),
-        apiFetch("/api/v1/retail/inventory?limit=100", { headers }),
-        apiFetch("/api/v1/sales/summary?period=last_30_days", { headers }),
-        apiFetch("/api/v1/recommendations", { headers }),
+        loadResource("/api/v1/retail/status"),
+        loadResource("/api/v1/retail/products?limit=100"),
+        loadResource("/api/v1/retail/orders?limit=100"),
+        loadResource("/api/v1/retail/customers?limit=100"),
+        loadResource("/api/v1/retail/inventory?limit=500"),
+        loadResource(`/api/v1/sales/summary?period=${salesPeriodKey}`),
+        loadResource("/api/v1/recommendations"),
       ]);
+      if (!statusRes && !prodRes && !ordRes && !custRes && !invRes && !salesRes && !recommendationsRes) {
+        throw new ApiRequestError("backend_error");
+      }
       if (revision !== loadRevision.current) return;
 
       if (statusRes && statusRes.ok) {
@@ -253,7 +289,7 @@ export function RetailIntelligenceView({
     } finally {
       if (revision === loadRevision.current) setIsLoading(false);
     }
-  }, []);
+  }, [forecastHorizon]);
 
   useEffect(() => {
     let disposed = false;
@@ -261,7 +297,7 @@ export function RetailIntelligenceView({
     const changed = () => { void loadData(); };
     window.addEventListener("avenqo:sources-changed", changed);
     return () => { disposed = true; loadRevision.current++; window.removeEventListener("avenqo:sources-changed", changed); };
-  }, [loadData, tenantName]);
+  }, [loadData, tenantName, forecastHorizon]);
 
   const navTabs = [
     { id: "overview", label: t.retail.overview, icon: ShoppingBag },
@@ -290,22 +326,38 @@ export function RetailIntelligenceView({
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
   );
-  const inventoryHasStockData = inventory.some((item) => item.stock_quantity !== null);
   const forecast = salesSummary?.forecast ?? null;
   const forecastPoints = forecast?.points ?? [];
   const catalog = getApplicationCatalog(locale);
   const anomalyCopy = RETAIL_ANOMALY_COPY[locale];
 
   const recommendationTitle = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    const productName = recommendation.affected_product?.name;
     if (recommendation.type === "revenue_decline") return catalog.dashboardHome.revenueDeclineTitle;
     if (recommendation.type === "revenue_growth") return catalog.dashboardHome.revenueGrowthTitle;
-    const productName = recommendation.affected_product?.name;
+    if (recommendation.type === "product_decline") {
+      return productName ? `${phase4d.productDeclineTitle} — ${productName}` : phase4d.productDeclineTitle;
+    }
+    if (recommendation.type === "product_growth") {
+      return productName ? `${phase4d.productGrowthTitle} — ${productName}` : phase4d.productGrowthTitle;
+    }
+    if (recommendation.type === "product_concentration") {
+      return productName ? `${phase4d.productConcentrationTitle} — ${productName}` : phase4d.productConcentrationTitle;
+    }
     return productName ? `${retail.products}: ${productName}` : retail.recommendations;
   };
-  const recommendationDescription = (recommendation: RetailRecommendation) =>
-    recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth"
-      ? catalog.dashboardHome.revenueChangedExplanation
-      : retail.recommendationsDescription;
+  const recommendationDescription = (recommendation: RetailRecommendation) => {
+    const phase4d = catalog.phase4d;
+    if (recommendation.type === "revenue_decline" || recommendation.type === "revenue_growth") {
+      return catalog.dashboardHome.revenueChangedExplanation;
+    }
+    if (recommendation.type === "product_decline" || recommendation.type === "product_growth") {
+      return phase4d.productRevenueChangedExplanation;
+    }
+    if (recommendation.type === "product_concentration") return phase4d.productConcentrationExplanation;
+    return retail.recommendationsDescription;
+  };
   const recommendationSource = (recommendation: RetailRecommendation) => {
     if (recommendation.source?.selection === "all") return SOURCE_SELECTOR_COPY[locale][1];
     const provider = recommendation.source?.provider === "shopify" ? "Shopify"
@@ -347,12 +399,32 @@ export function RetailIntelligenceView({
       ].filter(Boolean).join(" · ");
   const formatStock = (value: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
+    if (value == null || !Number.isFinite(value)) return "—";
+    if (metric === "product_revenue") {
+      return new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: salesSummary?.currency || recommendationsCurrency || "CAD",
+        maximumFractionDigits: 0,
+      }).format(value);
+    }
+    return `${formatStock(value)}${metric === "inventory_stock_quantity" ? ` ${retail.unit}` : ""}`;
+  };
+  const anomalyExplanation = (anom: RetailInventoryAnomaly) => {
+    if (anom.type === "stockout" || anom.explanation === "inventory_stockout") return retail.stockoutRiskAlert;
+    if (anom.type === "sales_drop" || anom.type === "sales_decline" || anom.explanation === "product_sales_dropped_to_zero" || anom.explanation === "product_revenue_declined") {
+      return catalog.phase4d.productDeclineTitle;
+    }
+    return anomalyCopy.explanation;
+  };
   const maxForecastValue = Math.max(1, ...forecastPoints.map((point) => Math.abs(point.value)));
   const forecastMethodLabel = forecast?.method === "trained_model"
     ? retail.forecastMethodModel
     : forecast?.method === "historical_weekly_mean"
       ? retail.forecastMethodHistorical
-      : retail.forecasts;
+      : forecast?.method === "historical_chronological_forecast"
+        ? (locale.startsWith("fr") ? "Projection chronologique (historique importé)" : "Chronological projection (historical dataset)")
+        : retail.forecasts;
   const forecastCurrency = new Intl.NumberFormat(locale, {
     style: "currency",
     currency: salesSummary?.currency || "USD",
@@ -434,7 +506,30 @@ export function RetailIntelligenceView({
       </div>
 
       {/* 8-Tab Subnavigation Bar */}
-      <div className="overflow-x-auto pb-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets précédents" : "Previous tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      <div
+        ref={tabScrollRef}
+        className="overflow-x-auto pb-1 flex-1"
+        onKeyDown={(event) => {
+          const index = navTabs.findIndex((tab) => tab.id === activeTab);
+          if (event.key === "ArrowRight" && index < navTabs.length - 1) {
+            event.preventDefault();
+            setActiveTab(navTabs[index + 1].id as RetailSubTab);
+          }
+          if (event.key === "ArrowLeft" && index > 0) {
+            event.preventDefault();
+            setActiveTab(navTabs[index - 1].id as RetailSubTab);
+          }
+        }}
+      >
         <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] min-w-max">
           {navTabs.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -459,6 +554,15 @@ export function RetailIntelligenceView({
             );
           })}
         </nav>
+      </div>
+        <button
+          type="button"
+          aria-label={locale.startsWith("fr") ? "Onglets suivants" : "Next tabs"}
+          onClick={() => tabScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {/* Tab 1: Overview backed by tenant source data */}
@@ -816,7 +920,7 @@ export function RetailIntelligenceView({
           <ChartSkeleton />
         ) : forecast ? (
           <AvenqoCard variant="default" className="space-y-5 p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-white/[0.06] pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 dark:border-white/[0.06] pb-4">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-[#F4F7FB]">
                   {retail.forecasts}
@@ -825,29 +929,111 @@ export function RetailIntelligenceView({
                   {forecastMethodLabel}
                 </p>
               </div>
-              <div className="text-right">
-                <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
-                  {forecastCurrency.format(forecast.forecasted_total)}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                  {retail.sales}
+
+              {/* Horizon Switcher (7j, 30j, 90j) */}
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
+                  <button
+                    onClick={() => setForecastHorizon("7d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "7d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    7 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
+                  <button
+                    onClick={() => setForecastHorizon("30d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "30d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    30 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
+                  <button
+                    onClick={() => setForecastHorizon("90d")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                      forecastHorizon === "90d"
+                        ? "bg-white dark:bg-[#172652] text-slate-900 dark:text-[#F4F7FB] shadow-2xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    90 {locale.startsWith("fr") ? "jours" : "days"}
+                  </button>
                 </div>
               </div>
-            </div>
-            {forecastPoints.length > 0 ? (
-              <div className="flex h-56 items-end gap-3">
-                {forecastPoints.map((point) => (
-                  <div key={point.period} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
-                    <div
-                      className="w-full max-w-12 rounded-t bg-[#0076FF]"
-                      style={{ height: `${Math.max(6, Math.abs(point.value) / maxForecastValue * 100)}%` }}
-                      title={forecastCurrency.format(point.value)}
-                    />
-                    <span className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                      {point.period}
-                    </span>
+
+              {/* Forecast Totals (Revenue + Orders) */}
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
+                    {forecastCurrency.format(forecast.forecasted_total)}
                   </div>
-                ))}
+                  <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    {retail.sales}
+                  </div>
+                </div>
+                {forecast.forecasted_orders != null && (
+                  <div className="text-right pl-4 border-l border-slate-200 dark:border-white/[0.08]">
+                    <div className="text-xl font-bold text-[#0076FF] dark:text-[#00D4FF]">
+                      {forecast.forecasted_orders.toLocaleString(locale)}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                      {locale.startsWith("fr") ? "Commandes prévues" : "Projected orders"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Historical Context Badge / Alert */}
+            {forecast.historical_context && (
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 text-xs">
+                <Sparkles className="w-4 h-4 text-[#0076FF] shrink-0" />
+                <span className="font-medium">{forecast.historical_context}</span>
+              </div>
+            )}
+
+            {forecastPoints.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex h-56 items-end gap-3 pt-6">
+                  {forecastPoints.map((point) => {
+                    const hasBounds = point.lower_bound != null && point.upper_bound != null;
+                    const tooltipText = [
+                      `${point.period}`,
+                      `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
+                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ)" : "Estimated interval (±1.96 σ)"}: [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
+                      point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
+                    ].filter(Boolean).join("\n");
+
+                    return (
+                      <div key={point.period} className="flex h-full flex-1 flex-col items-center justify-end gap-2 group relative">
+                        <div
+                          className="w-full max-w-14 rounded-t bg-gradient-to-t from-[#0076FF] to-[#00D4FF] hover:opacity-90 transition-all cursor-pointer relative"
+                          style={{ height: `${Math.max(8, Math.abs(point.value) / maxForecastValue * 100)}%` }}
+                          title={tooltipText}
+                        >
+                          {point.orders_volume != null && (
+                            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              {point.orders_volume} cmd
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-slate-600 dark:text-[#94A3B8] text-center">
+                          {point.period}
+                        </span>
+                        {hasBounds && (
+                          <span className="text-[9px] text-slate-400 font-mono -mt-1 hidden sm:inline">
+                            ±{forecastCurrency.format(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-slate-500 dark:text-[#94A3B8]">
@@ -857,9 +1043,12 @@ export function RetailIntelligenceView({
           </AvenqoCard>
         ) : (
           <EmptyState
-            icon={<Sparkles className="w-8 h-8 text-neutral-400" />}
             title={retail.forecasts}
-            description={retail.forecastUnavailable}
+            description={
+              salesSummary?.forecast_unavailable_reason === "insufficient_weekly_history"
+                ? retail.forecastNeedHistory
+                : retail.forecastUnavailable
+            }
           />
         )
       )}
@@ -904,7 +1093,7 @@ export function RetailIntelligenceView({
                           <span className="text-[10px] font-mono text-slate-400">({anom.sku})</span>
                         </div>
                         <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-1">
-                          {anomalyCopy.explanation}
+                          {anomalyExplanation(anom)}
                         </p>
                         {sourceLabel(anom.source) && (
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
@@ -917,13 +1106,13 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {anomalyCopy.observed}: {formatStock(anom.observed_value)} {retail.unit}
+                          {anomalyCopy.observed}: {formatAnomalyValue(anom.observed_value, anom.metric)}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatStock(anom.expected_range.lower)}–{formatStock(anom.expected_range.upper)} {retail.unit}
+                          {anomalyCopy.expectedRange}: {formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.difference}: {formatStock(anom.delta)} {retail.unit}
+                          {anomalyCopy.difference}: {formatAnomalyValue(anom.delta, anom.metric)}
                         </div>
                       </div>
                       <button
@@ -937,9 +1126,7 @@ export function RetailIntelligenceView({
                 ))
               ) : (
                 <div className="p-6 text-center text-slate-400 text-xs">
-                  {anomalyState === "insufficient_data" || (inventory.length > 0 && !inventoryHasStockData)
-                    ? t.common.insufficientData
-                    : anomalyCopy.none}
+                  {anomalyState === "insufficient_data" ? t.common.insufficientData : anomalyCopy.none}
                 </div>
               )}
             </div>
@@ -989,13 +1176,9 @@ export function RetailIntelligenceView({
                 </div>
               ))
             ) : recommendationState === "INSUFFICIENT_DATA" ? (
-              <EmptyState title={retail.recommendations} description={t.common.insufficientData} />
-            ) : inventory.length === 0 || !inventoryHasStockData ? (
-              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
+              <EmptyState title={retail.recommendations} description={retail.recommendationsNeedOrders} />
             ) : (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                {retail.recommendationsUnavailable}
-              </div>
+              <EmptyState title={retail.recommendations} description={retail.recommendationsUnavailable} />
             )}
           </div>
         </AvenqoCard>

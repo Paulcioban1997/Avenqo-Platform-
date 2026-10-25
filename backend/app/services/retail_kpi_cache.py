@@ -21,7 +21,11 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
 
-from backend.app.ai.tools.business.analytics import parse_business_datetime
+from backend.app.ai.tools.business.analytics import (
+    parse_business_datetime,
+    resolve_canonical_source_column,
+    split_from_dimension_totals,
+)
 
 _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="retail-kpi")
 _lock = Lock()
@@ -50,7 +54,7 @@ def descriptor(tenant, dataset):
     except OSError:
         return None
     return {
-        "format": 5, "company": str(tenant.company_id), "dataset": str(dataset.id),
+        "format": 6, "company": str(tenant.company_id), "dataset": str(dataset.id),
         "version": version.version_number, "version_id": version.id,
         "artifact": str(path.resolve()), "checksum": version.checksum,
         "size": stat.st_size, "mtime": stat.st_mtime_ns,
@@ -176,7 +180,28 @@ def build(spec):
     trend_buckets: dict[str, dict[str, dict[str, object]]] = {
         name: {} for name in ranges
     }
+    split_buckets: dict[str, dict[str, dict[str, dict[str, float | int]]]] = {
+        name: {"product_category": {}, "customer_region": {}, "customer_country": {}}
+        for name in ranges
+    }
+    category_col = reverse.get("product_category")
+    region_col = reverse.get("customer_region")
+    country_col = reverse.get("customer_country")
+    header_resolved = False
     for row in rows(path):
+        if not header_resolved:
+            sample = list(row.keys())
+            mapping = spec.get("mapping") or {}
+            category_col = category_col or resolve_canonical_source_column(
+                "product_category", mapping, sample
+            )
+            region_col = region_col or resolve_canonical_source_column(
+                "customer_region", mapping, sample
+            )
+            country_col = country_col or resolve_canonical_source_column(
+                "customer_country", mapping, sample
+            )
+            header_resolved = True
         value = timestamp(row.get(date_col)) if date_col else None
         if end:
             if value is None:
@@ -234,6 +259,21 @@ def build(spec):
                 point["rows"] += 1
                 if order_value is not None and str(order_value).strip():
                     point["orders"].add(str(order_value).strip())
+            for field_name, column in (
+                ("product_category", category_col),
+                ("customer_region", region_col),
+                ("customer_country", country_col),
+            ):
+                if not column:
+                    continue
+                label = str(row.get(column) or "").strip()
+                if not label:
+                    continue
+                stats = split_buckets[bucket_name][field_name].setdefault(
+                    label, {"revenue": 0.0, "orders": 0}
+                )
+                stats["revenue"] = float(stats["revenue"]) + float(amount)
+                stats["orders"] = int(stats["orders"]) + 1
     fields = set(reverse)
     revenue_ready = "total_amount" in fields or {"quantity", "unit_price"} <= fields
     available = {"revenue": revenue_ready, "orders": "order_id" in fields,
@@ -269,6 +309,13 @@ def build(spec):
                },
                "current": metrics(buckets["source_current"]),
                "period_trends": {key: trend(key) for key in ranges},
+               "period_splits": {
+                   key: {
+                       dimension: split_from_dimension_totals(totals)
+                       for dimension, totals in split_buckets[key].items()
+                   }
+                   for key in ranges
+               },
                "previous": metrics(buckets["source_previous"])
                if buckets["source_previous"]["rows"] else {},
                "period": {key: value.isoformat() if value else None for key, value in

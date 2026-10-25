@@ -13,8 +13,34 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 from backend.app.config.settings import Settings
+from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
+
+
+def _company_locale(company: object) -> str:
+    """Use the explicit tenant profile, then the legacy setting if absent.
+
+    Profile updates synchronize Company.preferred_language. A stale legacy
+    value must not make invoices disagree with Voice, CRM and Central AI.
+    """
+    company_id = getattr(company, "id", None)
+    try:
+        from sqlalchemy.orm import object_session
+
+        db = object_session(company)
+    except Exception:
+        db = None
+    if db is not None and company_id is not None:
+        resolved = get_company_locale(db, company_id)
+        if resolved:
+            return resolved
+    profile = getattr(company, "locale_profile", None)
+    if profile is not None and getattr(profile, "primary_locale", None):
+        return str(profile.primary_locale)
+    return catalog_code_or_none(getattr(company, "preferred_language", None)) or "fr"
+
+
 _SMTP_CONNECTION_TIMEOUT_SECONDS = 10
 _HTTPS_CONNECTION_TIMEOUT_SECONDS = 10
 _RESEND_EMAIL_API_URL = "https://api.resend.com/emails"
@@ -121,7 +147,7 @@ class AccountNotificationService:
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
 
     def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
-        labels = self._invoice_labels(company.preferred_language)
+        labels = self._invoice_labels(_company_locale(company))
         amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
         period = "—"
         if invoice.period_start and invoice.period_end:
@@ -161,8 +187,12 @@ class AccountNotificationService:
         return {**fallback, **json.loads(catalog_path.read_text(encoding="utf-8")).get("invoiceEmail", {})}
 
     def _account_link(self, path: str, token: str) -> str:
-        base_url = self._settings.frontend_url.rstrip("/")
-        return f"{base_url}{path}?{urlencode({'token': token})}"
+        params = {"token": token}
+        environment = self._settings.environment.strip().lower()
+        if environment == "sandbox":
+            params["env"] = "sandbox"
+        base_url = self._settings.public_frontend_origin()
+        return f"{base_url}{path}?{urlencode(params)}"
 
     def _send(self, recipient: str, subject: str, body: str) -> None:
         html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
@@ -248,13 +278,21 @@ class ResendHTTPSEmailTransport:
         try:
             with urlopen(request, timeout=_HTTPS_CONNECTION_TIMEOUT_SECONDS) as response:
                 status_code = response.status
-                if not 200 <= status_code < 300:
+                raw = response.read()
+                payload_response = _parse_email_api_payload(raw)
+                if not 200 <= status_code < 300 or not payload_response.get("id"):
                     raise RuntimeError("Transactional email API rejected the request")
+                logger.info(
+                    "HTTPS email accepted status=%s provider_id_present=true",
+                    status_code,
+                )
         except (HTTPError, URLError, OSError, RuntimeError) as exc:
+            error_name = _email_api_error_name(exc)
             logger.warning(
-                "HTTPS email delivery failed status=%s error_type=%s",
+                "HTTPS email delivery failed status=%s error_type=%s error_name=%s",
                 getattr(exc, "code", None),
                 type(exc).__name__,
+                error_name,
             )
             raise
 
@@ -268,6 +306,37 @@ class SMTPAccountNotifier(AccountNotificationService):
                 "SMTP non configuré : définir l'hôte et les identifiants d'envoi"
             )
         super().__init__(settings, SMTPEmailTransport(settings))
+
+
+def _parse_email_api_payload(raw: bytes | str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    if isinstance(raw, bytes):
+        text_body = raw.decode("utf-8", errors="replace")
+    else:
+        text_body = raw
+    try:
+        parsed = json.loads(text_body)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _email_api_error_name(exc: BaseException) -> str:
+    raw = b""
+    if isinstance(exc, HTTPError):
+        try:
+            raw = exc.read()
+        except Exception:
+            raw = b""
+    payload = _parse_email_api_payload(raw)
+    name = payload.get("name") or payload.get("message") or ""
+    if name:
+        return str(name)[:80]
+    text_body = raw.decode("utf-8", errors="replace") if raw else ""
+    if "1010" in text_body:
+        return "cloudflare_1010"
+    return text_body.strip()[:80]
 
 
 class HTTPSAccountNotifier(AccountNotificationService):

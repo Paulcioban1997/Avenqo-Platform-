@@ -159,6 +159,52 @@ def test_authenticated_user_identity_real_names_and_organizations(sec_env) -> No
     assert orgs_mircea[0]["name"] == "Produits Miro Inc"
 
 
+def test_two_companies_cannot_read_or_infer_each_others_ai_conversations(sec_env) -> None:
+    client, session_factory, notifier = sec_env
+    token_a = _register_and_login(client, notifier, "Alice", "alice@tenant-a.ca", "Tenant A Inc")
+    token_b = _register_and_login(client, notifier, "Bob", "bob@tenant-b.ca", "Tenant B Inc")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    created = client.post("/api/v1/ai/chat/conversations", headers=headers_a, json={"title": "secret-a"})
+    assert created.status_code == 201
+    conversation_id = created.json()["id"]
+
+    listed_b = client.get("/api/v1/ai/chat/conversations", headers=headers_b)
+    assert listed_b.status_code == 200
+    assert listed_b.json() == []
+
+    foreign = client.get(f"/api/v1/ai/chat/conversations/{conversation_id}", headers=headers_b)
+    assert foreign.status_code == 404
+
+    with session_factory() as session:
+        company_b = session.scalar(select(Company).where(Company.name == "Tenant B Inc"))
+        assert company_b is not None
+        spoofed = client.get(
+            f"/api/v1/ai/chat/conversations/{conversation_id}",
+            headers={**headers_a, "X-Company-Id": str(company_b.id), "X-Avenqo-Tenant-Id": str(company_b.id)},
+        )
+    assert spoofed.status_code == 200
+    assert spoofed.json()["id"] == conversation_id
+    assert spoofed.json()["title"] == "secret-a"
+
+    token_c = _register_and_login(client, notifier, "Cara", "cara@tenant-c.ca", "Tenant C Inc")
+    created_c = client.post(
+        "/api/v1/ai/chat/conversations",
+        headers={"Authorization": f"Bearer {token_c}"},
+        json={"title": "secret-c"},
+    )
+    assert created_c.status_code == 201
+    listed_a = client.get("/api/v1/ai/chat/conversations", headers=headers_a)
+    assert listed_a.status_code == 200
+    titles = {item["title"] for item in listed_a.json()}
+    assert titles == {"secret-a"}
+    assert client.get(
+        f"/api/v1/ai/chat/conversations/{created_c.json()['id']}",
+        headers=headers_a,
+    ).status_code == 404
+
+
 def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     client, session_factory, notifier = sec_env
 
@@ -184,7 +230,7 @@ def test_cross_tenant_switch_attack_prevented(sec_env) -> None:
     assert "non autorisé" in err_msg.lower()
 
 
-def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
+def test_super_admin_tenant_switch_requires_explicit_membership(sec_env) -> None:
     client, session_factory, notifier = sec_env
 
     # Création d'une entreprise cible
@@ -235,19 +281,12 @@ def test_super_admin_tenant_switch_and_audit_trail(sec_env) -> None:
         headers={"Authorization": f"Bearer {admin_token}"},
         json={"company_id": str(target_company_id)},
     )
-    assert switch_res.status_code == 200
-    assert switch_res.json()["company"]["name"] == "Lucia Boutique Inc"
-
-    # Vérification que l'événement d'audit immuable a bien été consigné
+    assert switch_res.status_code == 403
     with session_factory() as session:
-        audit = session.scalar(
-            select(AuditLogEntry).where(
-                AuditLogEntry.action == "super_admin_tenant_switch",
-                AuditLogEntry.target_id == str(target_company_id),
-            )
-        )
-        assert audit is not None
-        assert audit.safe_metadata["admin_email"] == "platform.admin@avenqo.ca"
+        assert session.scalar(select(AuditLogEntry).where(
+            AuditLogEntry.action == "tenant_switched",
+            AuditLogEntry.company_id == target_company_id,
+        )) is None
 
 
 def test_cross_tenant_invoice_pdf_download_denied(sec_env) -> None:
@@ -298,6 +337,7 @@ def test_billing_subscription_and_ai_credits_scoped_to_tenant(sec_env) -> None:
         # Création d'une tentative IA pour Lucia
         attempt = TenantAIProviderAttempt(
             company_id=lucia_company.id,
+            user_id=session.scalar(select(User.id).where(User.company_id == lucia_company.id)),
             avenqo_request_id=f"req_{uuid4().hex[:12]}",
             attempt_number=1,
             operation="retail_demand_forecast",

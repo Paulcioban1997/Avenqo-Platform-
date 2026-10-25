@@ -1,8 +1,13 @@
+import 'dart:math';
 import 'package:avenqo/core/api_client.dart';
 import 'package:avenqo/core/token_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+// Ephemeral synthetic test credential, never used by a deployed service.
+final nonSensitiveTestPassword =
+    'Aa1!${List.generate(24, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
 
 class _TestTokenStore implements TokenStore {
   String? accessToken;
@@ -93,7 +98,7 @@ void main() {
 
     final response = await api.register({
       'email': 'owner@avenqo.test',
-      'password': 'Avenqo2026!',
+      'password': nonSensitiveTestPassword,
       'selected_modules': ['retail', 'crm'],
     });
 

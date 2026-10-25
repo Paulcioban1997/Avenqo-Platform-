@@ -75,3 +75,8 @@ class Company(TimestampMixin, Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    locale_profile: Mapped["CompanyLocaleProfile | None"] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )

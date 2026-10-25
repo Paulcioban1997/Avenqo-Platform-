@@ -3,12 +3,14 @@ from fastapi import APIRouter, Depends
 from backend.app.dependencies.subscription import require_active_subscription
 
 from backend.app.routers.ai_chat import router as ai_chat_router
+from backend.app.routers.ai_memory import router as ai_memory_router
 from backend.app.routers.ai_support import router as ai_support_router
 from backend.app.routers.accounting import router as accounting_router
 from backend.app.routers.admin import router as admin_router
 from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
+from backend.app.routers.voice_provisioning import router as voice_provisioning_router
 from backend.app.routers.central_ai import router as central_ai_router
 from backend.app.routers.commerce import router as commerce_router
 from backend.app.routers.crm import (
@@ -30,9 +32,17 @@ from backend.app.routers.onboarding import router as onboarding_router
 from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
+from backend.app.routers.security import router as security_router
+from backend.app.routers.tenant_locale import router as tenant_locale_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.voice import router as voice_router
 from backend.app.routers.ai_voice import router as ai_voice_router
+from backend.app.routers.workspace import router as workspace_router
+from backend.app.routers.documents import legal_router, ocr_router
+from backend.app.routers.media import router as media_router
+from backend.app.routers.automations import router as automations_router
+from backend.app.routers.marketplace import router as marketplace_router
+from backend.app.routers.agents_catalog import router as agents_catalog_router
 from backend.app.routers.tenant_business import customers_router, sales_router
 from backend.app.routers.tenant_products_recommendations import (
 	products_router,
@@ -40,16 +50,26 @@ from backend.app.routers.tenant_products_recommendations import (
 )
 
 api_router = APIRouter()
+api_router.include_router(security_router, prefix="/api/v1")
+api_router.include_router(workspace_router, prefix="/api/v1")
+api_router.include_router(marketplace_router, prefix="/api/v1")
+api_router.include_router(ocr_router, prefix="/api/v1")
+api_router.include_router(legal_router, prefix="/api/v1")
+api_router.include_router(media_router, prefix="/api/v1")
+api_router.include_router(automations_router, prefix="/api/v1")
+api_router.include_router(agents_catalog_router, prefix="/api/v1")
 api_router.include_router(health_router, prefix="/api/v1")
 api_router.include_router(
 	ai_chat_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(
 	central_ai_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	ai_memory_router,
+	prefix="/api/v1",
 )
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")
@@ -59,6 +79,7 @@ api_router.include_router(
 	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(auth_router, prefix="/api/v1")
+api_router.include_router(tenant_locale_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
 api_router.include_router(commerce_router, prefix="/api/v1")
 api_router.include_router(
@@ -98,7 +119,6 @@ api_router.include_router(sectors_router, prefix="/api/v1")
 api_router.include_router(
 	modules_router,
 	prefix="/api/v1",
-	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(
 	retail_router,
@@ -124,6 +144,7 @@ api_router.include_router(
 # the transaction with its signed, tenant-bound OAuth state instead.
 api_router.include_router(google_oauth_callback_router, prefix="/api/v1")
 api_router.include_router(voice_router, prefix="/api/v1")
+api_router.include_router(voice_provisioning_router, prefix="/api/v1")
 api_router.include_router(
 	accounting_router,
 	prefix="/api/v1",

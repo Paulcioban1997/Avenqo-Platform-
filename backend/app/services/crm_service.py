@@ -14,6 +14,7 @@ from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.models.crm import (
     CRMActivity,
     CRMActivityLog,
@@ -52,6 +53,15 @@ def _tenant_month_bounds(now: datetime, timezone_name: str | None) -> tuple[date
     else:
         next_local = datetime(local_now.year, local_now.month + 1, 1, tzinfo=tenant_timezone)
     return start_local.astimezone(timezone.utc), next_local.astimezone(timezone.utc)
+
+
+def _client_preferred_language(session: Session, company_id: UUID, data: dict[str, Any]) -> str:
+    """Use the client's explicit locale, else the tenant profile. Never invent en/fr from country."""
+
+    explicit = data.get("preferred_language")
+    if explicit:
+        return str(explicit).strip()
+    return get_company_locale(session, company_id) or "fr"
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +126,7 @@ class CRMService:
         ) or 0
 
         total_tracked = completed_count + no_show_count
-        attendance_rate = round((completed_count / total_tracked * 100), 1) if total_tracked > 0 else 100.0
+        attendance_rate = round((completed_count / total_tracked * 100), 1) if total_tracked > 0 else None
 
         # 4. Total revenue generated (completed appointments + won opportunities)
         apt_revenue = self._session.scalar(
@@ -140,6 +150,7 @@ class CRMService:
             "active_clients": active_clients,
             "appointments_this_month": apts_this_month,
             "attendance_rate_percent": attendance_rate,
+            "attendance_tracked_count": total_tracked,
             "total_revenue_generated": round(total_revenue, 2),
             "currency": "CAD",
         }
@@ -183,6 +194,31 @@ class CRMService:
                 CRMClient.is_deleted.is_(False),
             )
         ).first()
+
+    _REFERENCE_MODELS = {
+        "client_id": (CRMClient, "Le client spécifié n'existe pas."),
+        "service_id": (CRMServiceModel, "Le service spécifié n'existe pas."),
+        "employee_id": (CRMEmployee, "L'employé spécifié n'existe pas."),
+        "appointment_id": (CRMAppointment, "Le rendez-vous spécifié n'existe pas."),
+    }
+
+    def _owned(self, model: Any, record_id: Any, company_id: UUID) -> Any:
+        if record_id is None:
+            return None
+        record = self._session.get(model, record_id)
+        return record if record is not None and record.company_id == company_id else None
+
+    def _foreign_reference_error(self, company_id: UUID, data: dict[str, Any]) -> str | None:
+        for key, (model, message) in self._REFERENCE_MODELS.items():
+            val = data.get(key)
+            if (
+                val is not None
+                and str(val).strip() != ""
+                and str(val).strip().lower() not in {"none", "null"}
+                and self._owned(model, val, company_id) is None
+            ):
+                return message
+        return None
 
     def resolve_client_for_appointment(
         self,
@@ -243,7 +279,7 @@ class CRMService:
             last_name=data["last_name"].strip(),
             email=email or "",
             phone=phone,
-            preferred_language=data.get("preferred_language", "fr"),
+            preferred_language=_client_preferred_language(self._session, company_id, data),
             company_name=data.get("company_name"),
             industry_type=data.get("industry_type", "general"),
             industry_metadata=data.get("industry_metadata", {}),
@@ -457,9 +493,9 @@ class CRMService:
 
         results = []
         for a in apts:
-            client = self._session.get(CRMClient, a.client_id)
-            service = self._session.get(CRMServiceModel, a.service_id) if a.service_id else None
-            employee = self._session.get(CRMEmployee, a.employee_id) if a.employee_id else None
+            client = self._owned(CRMClient, a.client_id, company_id)
+            service = self._owned(CRMServiceModel, a.service_id, company_id)
+            employee = self._owned(CRMEmployee, a.employee_id, company_id)
 
             if search:
                 needle = search.strip().lower()
@@ -511,7 +547,17 @@ class CRMService:
         start_time = self._availability.normalize(company_id, data["start_time"])
         duration = data.get("duration_minutes", 60)
         end_time = self._availability.normalize(company_id, data["end_time"]) if data.get("end_time") else (start_time + timedelta(minutes=duration))
+        service_id = data.get("service_id")
+        if service_id and (str(service_id).strip() == "" or str(service_id).strip().lower() in {"none", "null"}):
+            service_id = None
+            data["service_id"] = None
         employee_id = data.get("employee_id")
+        if employee_id and (str(employee_id).strip() == "" or str(employee_id).strip().lower() in {"none", "null"}):
+            employee_id = None
+            data["employee_id"] = None
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         idempotency_key = str(data.get("idempotency_key") or "").strip() or None
         if idempotency_key:
@@ -585,13 +631,11 @@ class CRMService:
         self._session.add(appointment)
         self._session.flush()
 
-        # External Calendar Sync (Google Calendar)
+        # External Calendar Sync (Google Calendar). CRM row stays even if sync fails.
         calendar_sync, sync_error = await self._sync_to_external_calendar(
             company_id, appointment, client, action="create"
         )
-        if calendar_sync == "failed":
-            self._session.rollback()
-            return None, sync_error or "Google Calendar did not confirm the appointment."
+        self._record_calendar_sync_state(appointment, calendar_sync, sync_error)
         await CRMNotificationService(self._session).record_appointment_event(
             company_id, appointment, client, "created"
         )
@@ -605,7 +649,11 @@ class CRMService:
             entity_id=appointment.id,
             action="create",
             actor_name=actor_name,
-            details={"title": appointment.title, "start": appointment.start_time.isoformat()},
+            details={
+                "title": appointment.title,
+                "start": appointment.start_time.isoformat(),
+                "calendar_sync": calendar_sync,
+            },
         )
         self._session.commit()
         return appointment, None
@@ -643,6 +691,9 @@ class CRMService:
         ).first()
         if not apt:
             return None, "Rendez-vous introuvable."
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            return None, reference_error
 
         supplied_start = data.get("start_time", apt.start_time)
         if "start_time" not in data and supplied_start.tzinfo is None:
@@ -730,6 +781,9 @@ class CRMService:
         if apt.status == "cancelled" and not apt.external_event_id:
             return AppointmentMutationResult(apt, "already_cancelled")
 
+        original_external_event_id = apt.external_event_id
+        calendar_connection = self.get_calendar_connection(company_id)
+        original_calendar_id = calendar_connection.calendar_id if calendar_connection else None
         apt.status = "cancelled"
 
         client = self.get_client(company_id, apt.client_id)
@@ -752,7 +806,8 @@ class CRMService:
             entity_id=apt.id,
             action="cancel",
             actor_name=actor_name,
-            details={"status": "cancelled", "calendar_sync": calendar_sync},
+            details={"status": "cancelled", "calendar_sync": calendar_sync,
+                     "external_event_id": original_external_event_id, "calendar_id": original_calendar_id},
         )
         self._session.commit()
         return AppointmentMutationResult(apt, calendar_sync, sync_error)
@@ -794,6 +849,26 @@ class CRMService:
         )
         self._session.commit()
         return AppointmentMutationResult(apt, "deleted")
+
+    def _record_calendar_sync_state(
+        self,
+        appointment: CRMAppointment,
+        calendar_sync: str,
+        sync_error: str | None,
+    ) -> None:
+        """Record calendar sync on the instance / return path — never in industry_data."""
+        appointment._calendar_sync = calendar_sync
+        appointment._calendar_sync_error = sync_error
+
+    @staticmethod
+    def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
+        """Dedicated calendar-sync signal. industry_data remains the tenant industry bag."""
+        status = getattr(appointment, "_calendar_sync", None)
+        if status:
+            return str(status), getattr(appointment, "_calendar_sync_error", None)
+        if appointment.external_event_id:
+            return "synced", None
+        return "not_configured", None
 
     # --- External Calendar Sync Helper ---
 
@@ -959,11 +1034,20 @@ class CRMService:
             select(CRMCalendarConnection).where(
                 CRMCalendarConnection.company_id == company_id,
                 CRMCalendarConnection.provider == "google",
-                CRMCalendarConnection.sync_status == "connected",
+                CRMCalendarConnection.sync_status.in_(["connected", "error"]),
             )
         )
         if conn is None or self._cipher is None:
             return []
+        if conn.sync_status == "error":
+            try:
+                test_creds = self._cipher.decrypt(conn.encrypted_credentials)
+                if test_creds and isinstance(test_creds, dict):
+                    conn.sync_status = "connected"
+                    conn.sync_error = None
+                    self._session.commit()
+            except Exception:
+                return []
         settings = get_settings()
         provider = GoogleCalendarProvider(
             settings.google_calendar_client_id,
@@ -1015,19 +1099,35 @@ class CRMService:
         conn = self._session.scalars(
             select(CRMCalendarConnection).where(
                 CRMCalendarConnection.company_id == company_id,
-                CRMCalendarConnection.sync_status == "connected",
+                CRMCalendarConnection.sync_status.in_(["connected", "error"]),
             )
         ).first()
 
-        if not conn or not self._cipher:
+        if not conn:
+            if action in {"update", "delete"} and appointment.external_event_id:
+                return "failed", "Calendrier connecté indisponible : la synchronisation doit être confirmée avant cette action."
             return "not_configured", None
 
+        cipher = self._cipher
+        if cipher is None:
+            try:
+                cipher = ConnectorSecretCipher(get_settings().connector_encryption_keys)
+            except Exception:
+                return "not_configured", None
+
         if conn.sync_status == "error":
-            return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
+            try:
+                test_creds = cipher.decrypt(conn.encrypted_credentials)
+                if test_creds and isinstance(test_creds, dict):
+                    conn.sync_status = "connected"
+                    conn.sync_error = None
+                    self._session.commit()
+            except Exception:
+                return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
 
         settings = get_settings()
         try:
-            creds = self._cipher.decrypt(conn.encrypted_credentials)
+            creds = cipher.decrypt(conn.encrypted_credentials)
             if conn.provider == "google":
                 try:
                     provider = GoogleCalendarProvider(
@@ -1075,8 +1175,8 @@ class CRMService:
                         try:
                             refreshed = await provider.refresh_access_token(str(creds["refresh_token"]))
                             creds = {**creds, **refreshed}
-                            if hasattr(self._cipher, "encrypt"):
-                                conn.encrypted_credentials = self._cipher.encrypt(creds)
+                            if hasattr(cipher, "encrypt"):
+                                conn.encrypted_credentials = cipher.encrypt(creds)
                             conn.sync_status = "connected"
                             conn.sync_error = None
                             self._session.commit()
@@ -1157,6 +1257,9 @@ class CRMService:
     # --- Notes ---
 
     def create_note(self, company_id: UUID, data: dict[str, Any], author_name: str = "Système") -> CRMNote:
+        reference_error = self._foreign_reference_error(company_id, data)
+        if reference_error:
+            raise LookupError(reference_error)
         note = CRMNote(
             company_id=company_id,
             client_id=data.get("client_id"),

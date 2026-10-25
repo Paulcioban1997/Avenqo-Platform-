@@ -39,6 +39,7 @@ class AIToolExecutionIdempotencyStore:
         ttl_seconds: int = 600,
     ) -> None:
         agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
+        issued_at = datetime.now(timezone.utc)
         challenge = AIToolConfirmationChallenge(
             company_id=context.tenant_id,
             user_id=context.user_id,
@@ -48,7 +49,8 @@ class AIToolExecutionIdempotencyStore:
             tool_name=tool.name,
             arguments_hash=mutation_arguments_hash(arguments, tool.confirmation_field),
             locale=locale,
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+            created_at=issued_at,
+            expires_at=issued_at + timedelta(seconds=ttl_seconds),
         )
         self._db.add(challenge)
         self._db.commit()
@@ -59,24 +61,45 @@ class AIToolExecutionIdempotencyStore:
         tool: AITool,
         arguments: dict[str, Any],
     ) -> bool:
-        agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
         now = datetime.now(timezone.utc)
+        agent_id = context.authorized_tool_agents.get(tool.name, context.selected_agent_id) or ""
+        # Booking confirms only the latest exact proposal in Central and Voice.
+        strict_proposal = context.voice_path or tool.name == "create_appointment"
+        expected_hash = mutation_arguments_hash(arguments, tool.confirmation_field)
         statement = (
             select(AIToolConfirmationChallenge)
             .where(
                 AIToolConfirmationChallenge.company_id == context.tenant_id,
                 AIToolConfirmationChallenge.user_id == context.user_id,
                 AIToolConfirmationChallenge.conversation_id == context.conversation_id,
-                AIToolConfirmationChallenge.agent_id == agent_id,
                 AIToolConfirmationChallenge.tool_name == tool.name,
-                AIToolConfirmationChallenge.arguments_hash == mutation_arguments_hash(arguments, tool.confirmation_field),
                 AIToolConfirmationChallenge.consumed_at.is_(None),
                 AIToolConfirmationChallenge.expires_at > now,
             )
             .order_by(AIToolConfirmationChallenge.created_at.desc())
             .with_for_update()
         )
+        if not strict_proposal:
+            statement = statement.where(AIToolConfirmationChallenge.arguments_hash == expected_hash)
         challenge = self._db.scalar(statement)
+        if strict_proposal and challenge is not None and challenge.arguments_hash != expected_hash:
+            return False
+        if challenge is None and not strict_proposal:
+            # Fallback to active unconsumed challenge for the conversation and tool
+            fallback_statement = (
+                select(AIToolConfirmationChallenge)
+                .where(
+                    AIToolConfirmationChallenge.company_id == context.tenant_id,
+                    AIToolConfirmationChallenge.user_id == context.user_id,
+                    AIToolConfirmationChallenge.conversation_id == context.conversation_id,
+                    AIToolConfirmationChallenge.tool_name == tool.name,
+                    AIToolConfirmationChallenge.consumed_at.is_(None),
+                    AIToolConfirmationChallenge.expires_at > now,
+                )
+                .order_by(AIToolConfirmationChallenge.created_at.desc())
+                .with_for_update()
+            )
+            challenge = self._db.scalar(fallback_statement)
         if challenge is None:
             return False
         challenge.consumed_at = now

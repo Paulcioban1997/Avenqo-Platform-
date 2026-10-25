@@ -31,7 +31,7 @@ class VoiceConfigRequest(BaseModel):
     retell_sip_uri: str | None = Field(default=None, pattern=r"^sips?:[^\s]+$")
     voice_id: str = Field(default="alloy", min_length=1, max_length=64)
     voice_provider: str = Field(default="openai", min_length=1, max_length=32)
-    speech_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    speech_speed: float = Field(default=1.0, ge=0.5, le=1.5)
     personality_tone: str = Field(default="professionnel", min_length=1, max_length=64)
     custom_pronunciation: str | None = Field(default=None, max_length=255)
     farewell_message: str | None = Field(default=None, max_length=1000)
@@ -251,15 +251,16 @@ class VoiceCatalogItem(BaseModel):
 class VoicePreviewRequest(BaseModel):
     voice_id: str = Field(default="alloy", min_length=1, max_length=64)
     text: str | None = Field(default=None, max_length=500)
-    language: str | None = Field(default="fr", max_length=16)
+    language: str | None = Field(default=None, max_length=16)
+    speech_speed: float = Field(default=1.0, ge=0.5, le=1.5)
 
 
 
 class VoiceCustomizationUpdateRequest(BaseModel):
     voice_id: str | None = Field(default=None, max_length=64)
-    voice_provider: str | None = Field(default="openai", max_length=32)
-    speech_speed: float | None = Field(default=1.0, ge=0.5, le=2.0)
-    personality_tone: str | None = Field(default="professionnel", max_length=64)
+    voice_provider: str | None = Field(default=None, max_length=32)
+    speech_speed: float | None = Field(default=None, ge=0.5, le=1.5)
+    personality_tone: str | None = Field(default=None, max_length=64)
     greeting_message: str | None = Field(default=None, max_length=2000)
     farewell_message: str | None = Field(default=None, max_length=2000)
     custom_pronunciation: dict[str, Any] | None = None
@@ -279,4 +280,66 @@ class VoiceCustomizationResponse(BaseModel):
 
 class RetellWebhookEnvelope(BaseModel):
     event: str
-    call: dict[str, Any]
+    call: dict[str, Any]
+
+
+class VoiceModulePermissionGrant(BaseModel):
+    module_code: str = Field(min_length=1, max_length=64)
+    action_code: str = Field(min_length=1, max_length=64)
+    granted: bool
+
+
+class VoiceModulePermissionsUpdateRequest(BaseModel):
+    grants: list[VoiceModulePermissionGrant] = Field(default_factory=list, max_length=200)
+
+
+class CompanyRoutingNipConfigureRequest(BaseModel):
+    custom_code: str | None = Field(default=None, max_length=16)
+
+
+class CompanyRoutingNipResponse(BaseModel):
+    id: str
+    company_id: str
+    routing_code: str
+    status: str
+    dispatcher_number: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    rotated_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceLifecycleStatusResponse(BaseModel):
+    status: str
+    can_activate: bool
+    checklist: dict[str, bool]
+    phone_number: str | None = None
+    number_status: str | None = None
+    ivr: dict[str, Any]
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceLifecycleActionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+    confirmed: bool = True
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceIvrSettingsRequest(BaseModel):
+    ivr_enabled: bool = True
+    ivr_greeting: str | None = Field(default=None, max_length=2000)
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceAuthPinStatusResponse(BaseModel):
+    configured: bool
+    enabled: bool
+    phone_number: str | None = None
+    failed_attempts: int = 0
+    locked_until: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)

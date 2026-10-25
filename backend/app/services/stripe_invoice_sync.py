@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import Settings
 from backend.app.models import BillingAccount, BillingInvoice
 from backend.app.services.stripe_gateway import BillingProvider
+from backend.app.services.invoice_tax import invoice_tax_snapshot
 
 
 def _stripe_datetime(value: object) -> datetime | None:
@@ -70,6 +71,8 @@ def sync_customer_invoices(
                 BillingInvoice.stripe_invoice_id == stripe_invoice_id
             )
         )
+        if existing is not None and existing.company_id != company_id:
+            raise ValueError("Stripe invoice already belongs to another tenant")
         lines = (invoice.get("lines") or {}).get("data") or []
         first_line = lines[0] if lines else {}
         period = first_line.get("period") or {}
@@ -90,7 +93,7 @@ def sync_customer_invoices(
             or account.stripe_subscription_id
         )
         discounts = invoice.get("total_discount_amounts") or []
-        taxes = invoice.get("total_tax_amounts") or invoice.get("total_taxes") or []
+        taxes = invoice_tax_snapshot(invoice)
         status_transitions = invoice.get("status_transitions") or {}
 
         issued_at = _stripe_datetime(invoice.get("created")) or datetime.now(timezone.utc)
@@ -113,6 +116,8 @@ def sync_customer_invoices(
                 "name": invoice.get("customer_name"),
                 "address": invoice.get("customer_address"),
                 "phone": invoice.get("customer_phone"),
+                "tax_breakdown": taxes,
+                "automatic_tax": invoice.get("automatic_tax") or {},
             },
             "tax_identifiers": invoice.get("customer_tax_ids") or [],
             "customer_email": invoice.get("customer_email"),

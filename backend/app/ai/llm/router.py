@@ -204,7 +204,7 @@ class SmartModelRouter:
         expected_cost = spec.cost_for(estimated_usage)
 
         if context.complexity in {LLMTaskComplexity.HIGH, LLMTaskComplexity.REASONING}:
-            task_penalty = (3 - spec.quality_tier) * 300
+            task_penalty = (3 - spec.quality_tier) * 800
             cost_weight = Decimal("10000")
         elif context.complexity == LLMTaskComplexity.LOW:
             task_penalty = (spec.quality_tier - 1) * 20
@@ -276,6 +276,8 @@ def routing_context_for_chat(
     reasoning_markers = (
         "why", "pourquoi", "analy", "compare", "forecast", "prévi", "predict",
         "cause", "recommend", "stratég", "strategy", "explain", "explique",
+        "reconcil", "réconcil", "écart", "discrepancy", "anomal", "audit",
+        "rentab", "marge", "profitab", "synthes", "synthèse", "deep", "approfondi",
     )
     if any(marker in normalized for marker in simple_markers):
         task_type = LLMTaskType.EXTRACTION

@@ -27,18 +27,52 @@ interface ClientOption {
   phone?: string | null;
 }
 
-async function readApiError(response: Response): Promise<{ message: string; requestId?: string }> {
+async function readApiError(response: Response): Promise<{ message: string; requestId?: string; isConflict?: boolean }> {
   const data = await response.json().catch(() => ({}));
-  const validationDetails = Array.isArray(data.error?.details)
-    ? data.error.details.map((item: { loc?: unknown[]; msg?: string }) => item.msg ? `${(item.loc || []).join(".")}: ${item.msg}` : "").filter(Boolean).join("; ")
-    : "";
-  const rawMessage = data.detail || validationDetails || data.error?.message || data.message;
-  const message = typeof rawMessage === "string"
-    ? rawMessage
-    : response.status === 401
-      ? "Votre session a expiré. Reconnectez-vous."
-      : "La requête CRM n'a pas pu être traitée.";
-  return { message, requestId: data.request_id };
+  let message = "";
+  if (Array.isArray(data.detail)) {
+    message = data.detail
+      .map((item: { loc?: unknown[]; msg?: string }) => {
+        const field = Array.isArray(item.loc) ? item.loc.slice(1).join(".") : "";
+        return field ? `${field}: ${item.msg}` : item.msg || "";
+      })
+      .filter(Boolean)
+      .join("; ");
+  } else if (typeof data.detail === "string") {
+    if (data.detail === "OUTSIDE_WORKING_HOURS") {
+      message = "Ce créneau est en dehors des heures d'ouverture de l'entreprise ou des horaires du collaborateur.";
+    } else if (data.detail === "INVALID_WORKING_HOURS") {
+      message = "Les horaires d'ouverture configurés sont invalides.";
+    } else if (data.detail === "RESOURCE_NOT_AUTHORIZED") {
+      message = "La ressource sélectionnée (service ou collaborateur) n'est pas autorisée.";
+    } else {
+      message = data.detail;
+    }
+  } else if (data.detail && typeof data.detail === "object") {
+    if (data.detail.code === "APPOINTMENT_CONFLICT") {
+      message = "Conflit d'horaire : ce créneau est déjà réservé dans le calendrier.";
+    } else {
+      message = data.detail.message || JSON.stringify(data.detail);
+    }
+  } else if (typeof data.error?.message === "string") {
+    message = data.error.message;
+  } else if (typeof data.message === "string") {
+    message = data.message;
+  }
+
+  if (!message) {
+    if (response.status === 401) {
+      message = "Votre session a expiré. Reconnectez-vous.";
+    } else if (response.status === 409) {
+      message = "Conflit d'horaire détecté : ce créneau chevauche un rendez-vous existant.";
+    } else if (response.status === 403) {
+      message = "Action non autorisée pour votre rôle.";
+    } else {
+      message = `Erreur (${response.status}) lors de l'enregistrement du rendez-vous.`;
+    }
+  }
+
+  return { message, requestId: data.request_id, isConflict: response.status === 409 };
 }
 
 interface ServiceOption {
@@ -292,13 +326,13 @@ export function NewAppointmentModal({
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 409) {
-          setConflictWarning(data.detail || data.error?.message || "Conflit d'horaire détecté.");
+        const details = await readApiError(res);
+        if (details.isConflict) {
+          setConflictWarning(details.message);
           setIsSubmitting(false);
           return;
         }
-        throw new Error(data.detail || data.error?.message || "Erreur lors de l'enregistrement du rendez-vous.");
+        throw new Error(details.message);
       }
 
       onSuccess();

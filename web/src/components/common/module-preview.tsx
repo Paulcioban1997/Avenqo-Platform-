@@ -15,6 +15,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { MODULE_PREVIEW_COPY } from "@/lib/i18n/module-preview-copy";
 
 interface ModulePreviewProps {
   iconType?: "voice" | "ocr" | "chatbots" | "automations" | "agents";
@@ -48,7 +49,8 @@ export function ModulePreview({
   targetRelease = "2026",
 }: ModulePreviewProps) {
   const { locale } = useLocale();
-  const isFr = locale === "fr";
+  const isFr = locale.startsWith("fr");
+  const copy = MODULE_PREVIEW_COPY[locale];
 
   const Icon = iconMap[iconType] || Sparkles;
   const title = isFr ? titleFr : titleEn;
@@ -73,7 +75,7 @@ export function ModulePreview({
                 </span>
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
-                  {isFr ? `Disponible prochainement (${targetRelease})` : `Coming soon (${targetRelease})`}
+                  {copy.comingSoon.replace("{targetRelease}", targetRelease)}
                 </span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white mt-1">
@@ -92,13 +94,13 @@ export function ModulePreview({
               className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/[0.08] text-slate-400 dark:text-slate-500 font-semibold text-sm cursor-not-allowed border border-slate-300 dark:border-white/[0.06] flex items-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
-              {isFr ? "Accès anticipé restreint" : "Restricted Early Access"}
+              {copy.restrictedAccess}
             </button>
             <Link
               href="/connections"
               className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-semibold text-sm transition-colors flex items-center gap-2 shadow-xs"
             >
-              {isFr ? "Connecter vos données" : "Connect your data"}
+              {copy.connectData}
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -109,12 +111,10 @@ export function ModulePreview({
       <div className="bg-white dark:bg-[#0B132B] rounded-2xl border border-slate-200/80 dark:border-white/[0.08] p-6 sm:p-8 shadow-xs space-y-6">
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-            {isFr ? "Fonctionnalités au programme" : "Planned capabilities"}
+            {copy.plannedCapabilities}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            {isFr
-              ? "Ce module sera alimenté par vos données synchronisées sans aucune fuite entre organisations."
-              : "This module will be directly powered by your synchronized datasets with complete tenant isolation."}
+            {copy.plannedDescription}
           </p>
         </div>
 
@@ -135,10 +135,10 @@ export function ModulePreview({
         <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-[#0076FF]" />
-            {isFr ? "Architecture scellée multi-tenant Avenqo" : "Avenqo isolated multi-tenant architecture"}
+            {copy.isolatedArchitecture}
           </span>
           <Link href="/dashboard" className="text-[#0076FF] hover:underline font-medium">
-            {isFr ? "Retour au tableau de bord" : "Return to dashboard"}
+            {copy.returnDashboard}
           </Link>
         </div>
       </div>

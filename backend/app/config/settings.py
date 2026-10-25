@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 import json
 from pathlib import Path
 from decimal import Decimal
@@ -136,6 +138,18 @@ class Settings(BaseSettings):
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
     auth_cookie_secure: bool | None = Field(default=None, alias="AUTH_COOKIE_SECURE")
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+
+    def public_api_origin(self) -> str:
+        """Canonical public API origin for this environment. Never logs secrets."""
+        env = self.environment.strip().lower()
+        if env == "sandbox":
+            return "https://avenqo-platform-sandbox.up.railway.app"
+        if env == "production":
+            return "https://api.avenqo.ca"
+        return f"http://{self.host}:{self.port}"
+
+    def public_frontend_origin(self) -> str:
+        return self.frontend_url.strip().rstrip("/")
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
@@ -148,6 +162,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     avenqo_owner_notification_email: str | None = Field(default=None, alias="AVENQO_OWNER_NOTIFICATION_EMAIL")
     stripe_secret_key: str | None = Field(default=None, alias="STRIPE_SECRET_KEY")
+    stripe_automatic_tax_enabled: bool = Field(default=False, alias="STRIPE_AUTOMATIC_TAX_ENABLED")
     stripe_webhook_secret: str | None = Field(default=None, alias="STRIPE_WEBHOOK_SECRET")
     stripe_price_base: str | None = Field(default=None, alias="STRIPE_PRICE_BASE")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
@@ -185,6 +200,10 @@ class Settings(BaseSettings):
     connector_encryption_keys: Annotated[List[str], NoDecode] = Field(
         default_factory=list,
         alias="CONNECTOR_ENCRYPTION_KEYS",
+    )
+    mfa_encryption_keys: Annotated[List[str], NoDecode] = Field(
+        default_factory=list,
+        alias="MFA_ENCRYPTION_KEYS",
     )
     shopify_client_id: str | None = Field(default=None, alias="SHOPIFY_CLIENT_ID")
     shopify_client_secret: str | None = Field(default=None, alias="SHOPIFY_CLIENT_SECRET")
@@ -233,14 +252,34 @@ class Settings(BaseSettings):
     voice_tts_model: str | None = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str | None = Field(default="marin", alias="VOICE_TTS_VOICE")
     voice_realtime_provider: str | None = Field(default="openai", alias="VOICE_REALTIME_PROVIDER")
+    # Isolated model lab only. This flag cannot enable unmetered PSTN inference.
+    voice_open_speech_lab_enabled: bool = Field(default=False, alias="VOICE_OPEN_SPEECH_LAB_ENABLED")
+    voice_open_speech_company_ids: list[UUID] = Field(default_factory=list, alias="VOICE_OPEN_SPEECH_COMPANY_IDS")
+    voice_open_speech_asr_url: str | None = Field(default=None, alias="VOICE_OPEN_SPEECH_ASR_URL")
+    voice_open_speech_tts_url: str | None = Field(default=None, alias="VOICE_OPEN_SPEECH_TTS_URL")
+    voice_open_speech_api_key: str | None = Field(default=None, repr=False, alias="VOICE_OPEN_SPEECH_API_KEY")
+    voice_open_speech_tts_backend: str = Field(default="kokoro", alias="VOICE_OPEN_SPEECH_TTS_BACKEND")
+    voice_commercial_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_ENABLED")
+    voice_long_calls_enabled: bool = Field(default=False, alias="VOICE_LONG_CALLS_ENABLED")
+    voice_sandbox_test_guard_enabled: bool = Field(default=True, alias="VOICE_SANDBOX_TEST_GUARD_ENABLED")
+    voice_plan_max_call_seconds: dict[str, int | None] = Field(default_factory=lambda: {"base": 3600, "professional": 3600, "enterprise": None}, alias="VOICE_PLAN_MAX_CALL_SECONDS")
+    voice_budget_rate_ceiling_usd_per_minute: Decimal | None = Field(default=None, gt=0, le=100, allow_inf_nan=False, alias="VOICE_BUDGET_RATE_CEILING_USD_PER_MINUTE")
+    voice_auth_max_session_seconds: int = Field(default=600, ge=60, le=86400, alias="VOICE_AUTH_MAX_SESSION_SECONDS")
+    voice_realtime_rotation_seconds: int = Field(default=3000, ge=60, le=3300, alias="VOICE_REALTIME_ROTATION_SECONDS")
+    voice_commercial_max_call_seconds:int=Field(default=3600,ge=60,le=86400,alias="VOICE_COMMERCIAL_MAX_CALL_SECONDS")
+    voice_commercial_payments_enabled: bool = Field(default=False, alias="VOICE_COMMERCIAL_PAYMENTS_ENABLED")
+    voice_telecom_purchases_enabled: bool = Field(default=False, alias="VOICE_TELECOM_PURCHASES_ENABLED")
+    voice_provisioning_worker_enabled: bool = Field(default=False, alias="VOICE_PROVISIONING_WORKER_ENABLED")
+    voice_certified_realtime_locales: list[str] = Field(default_factory=list, alias="VOICE_CERTIFIED_REALTIME_LOCALES")
+    voice_approved_realtime_models: list[str] = Field(default_factory=list, alias="VOICE_APPROVED_REALTIME_MODELS")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
-    voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
+    voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en", "ro"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
 
     @field_validator("voice_realtime_supported_locales", mode="before")
     @classmethod
     def _parse_voice_locales(cls, value: object) -> list[str]:
         if not value:
-            return ["fr", "en"]
+            return ["fr", "en", "ro"]
         if isinstance(value, str):
             import json
             trimmed = value.strip()
@@ -249,22 +288,27 @@ class Settings(BaseSettings):
                     parsed = json.loads(trimmed)
                     if isinstance(parsed, list):
                         result = [str(item).strip() for item in parsed if str(item).strip()]
-                        return result or ["fr", "en"]
+                        return result or ["fr", "en", "ro"]
                 except Exception:
                     pass
             result = [part.strip() for part in trimmed.split(",") if part.strip()]
-            return result or ["fr", "en"]
+            return result or ["fr", "en", "ro"]
         if isinstance(value, (list, tuple, set)):
             result = [str(item).strip() for item in value if str(item).strip()]
-            return result or ["fr", "en"]
-        return ["fr", "en"]
+            return result or ["fr", "en", "ro"]
+        return ["fr", "en", "ro"]
 
     voice_pin_max_attempts: int = Field(default=5, ge=3, le=10, alias="VOICE_PIN_MAX_ATTEMPTS")
     voice_pin_lockout_seconds: int = Field(default=900, ge=60, le=86400, alias="VOICE_PIN_LOCKOUT_SECONDS")
+    voice_shared_dispatcher_number: str = Field(default="+14386075438", alias="VOICE_SHARED_DISPATCHER_NUMBER")
+    voice_routing_nip_max_attempts: int = Field(default=3, ge=1, le=10, alias="VOICE_ROUTING_NIP_MAX_ATTEMPTS")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")
     google_calendar_redirect_uri: str | None = Field(default=None, alias="GOOGLE_CALENDAR_REDIRECT_URI")
+    microsoft_calendar_client_id: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_ID")
+    microsoft_calendar_client_secret: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_SECRET")
+    microsoft_calendar_redirect_uri: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_REDIRECT_URI")
     ai_max_tool_iterations: int = Field(default=5, ge=1, le=20, alias="AI_MAX_TOOL_ITERATIONS")
     ai_max_tools_per_request: int = Field(default=8, ge=1, le=50, alias="AI_MAX_TOOLS_PER_REQUEST")
     ai_max_tool_result_chars: int = Field(default=8000, ge=500, alias="AI_MAX_TOOL_RESULT_CHARS")
@@ -318,6 +362,15 @@ class Settings(BaseSettings):
     ai_max_request_credits: int | None = Field(
         default=None, gt=0, alias="AI_MAX_REQUEST_CREDITS"
     )
+    ai_max_session_credits: int | None = Field(
+        default=None, gt=0, alias="AI_MAX_SESSION_CREDITS"
+    )
+    ai_max_session_cost_usd: Decimal | None = Field(
+        default=None, gt=0, alias="AI_MAX_SESSION_COST_USD"
+    )
+    ai_max_company_monthly_cost_usd: Decimal | None = Field(
+        default=None, gt=0, alias="AI_MAX_COMPANY_MONTHLY_COST_USD"
+    )
     ai_model_rate_card: dict[str, dict[str, object]] = Field(
         default_factory=dict,
         alias="AI_MODEL_RATE_CARD",
@@ -333,6 +386,16 @@ class Settings(BaseSettings):
     # Avenqo Platform Support AI (Phase 32) : dossier de la base de connaissances
     # produit (jamais les données métier d'un tenant — voir backend/app/ai/support/).
     ai_support_knowledge_root: str = Field(default="platform_knowledge", alias="AI_SUPPORT_KNOWLEDGE_ROOT")
+
+    # Avenqo Enterprise Memory (Phase 7.2) : Mem0 OSS stockage sémantique persistant
+    avenqo_memory_enabled: bool = Field(default=True, alias="AVENQO_MEMORY_ENABLED")
+    avenqo_memory_backend: str = Field(default="qdrant", alias="AVENQO_MEMORY_BACKEND")
+    avenqo_memory_storage_path: str = Field(default="var/avenqo_memory_qdrant", alias="AVENQO_MEMORY_STORAGE_PATH")
+    avenqo_memory_collection_name: str = Field(default="avenqo_enterprise_memories", alias="AVENQO_MEMORY_COLLECTION_NAME")
+    avenqo_memory_embedding_dims: int = Field(default=1536, alias="AVENQO_MEMORY_EMBEDDING_DIMS")
+    avenqo_memory_max_context_items: int = Field(default=5, ge=1, le=20, alias="AVENQO_MEMORY_MAX_CONTEXT_ITEMS")
+    avenqo_memory_embedder_provider: str = Field(default="openai", alias="AVENQO_MEMORY_EMBEDDER_PROVIDER")
+    avenqo_memory_llm_provider: str = Field(default="openai", alias="AVENQO_MEMORY_LLM_PROVIDER")
     # Rate limiting (Phase 34) : limites TECHNIQUES par défaut (pas un engagement
     # commercial), configurables par déploiement. Fenêtre glissante en mémoire —
     # voir backend/app/core/rate_limit.py (limitation : par process, non partagée
@@ -344,6 +407,18 @@ class Settings(BaseSettings):
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+    db_pool_size: int = Field(default=10, ge=1, le=100, alias="AVENQO_DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=20, ge=0, le=100, alias="AVENQO_DB_MAX_OVERFLOW")
+    db_pool_timeout: float = Field(default=5.0, ge=1.0, le=60.0, alias="AVENQO_DB_POOL_TIMEOUT")
+    # statement_timeout applies only to running SQL, not to LLM HTTP awaits.
+    # After Central AI releases the pooled connection, a slow model cannot trip it.
+    db_statement_timeout_ms: int = Field(default=15000, ge=0, le=120000, alias="AVENQO_DB_STATEMENT_TIMEOUT_MS")
+    # idle_in_transaction applies only while a transaction is open. Central AI
+    # commits and returns the connection before awaiting a provider.
+    db_idle_in_transaction_timeout_ms: int = Field(
+        default=60000, ge=0, le=300000, alias="AVENQO_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS"
+    )
+    http_sync_thread_limit: int = Field(default=40, ge=8, le=256, alias="AVENQO_HTTP_SYNC_THREAD_LIMIT")
 
     # Sauvegarde/restauration (remédiation post-Phase 34) : répertoire local de
     # stockage des archives et politique de rétention par défaut (technique,
@@ -365,6 +440,7 @@ class Settings(BaseSettings):
     platform_admin_password: str | None = Field(default=None, alias="PLATFORM_ADMIN_PASSWORD")
     billing_legal_business_name: str | None = Field(default=None, alias="BILLING_LEGAL_BUSINESS_NAME")
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
+    billing_business_tax_ids: dict[str, str] = Field(default_factory=dict, alias="BILLING_BUSINESS_TAX_IDS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
@@ -379,14 +455,22 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
-    @field_validator("connector_encryption_keys", "shopify_scopes", mode="before")
+    @field_validator("connector_encryption_keys", "mfa_encryption_keys", "shopify_scopes", mode="before")
     @classmethod
     def parse_string_list(cls, value: object) -> object:
         if isinstance(value, str):
             stripped = value.strip()
             if stripped.startswith("["):
-                return value
+                return json.loads(stripped)
             return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
+
+    @field_validator("openai_api_key", "anthropic_api_key", "google_ai_api_key", mode="before")
+    @classmethod
+    def normalize_ai_api_key(cls, value: object) -> object:
+        # A copied trailing newline makes HTTP authorization headers invalid.
+        if isinstance(value, str):
+            return "".join(value.split()) or None
         return value
 
     @field_validator(
@@ -400,6 +484,7 @@ class Settings(BaseSettings):
         "shopify_client_id", "shopify_client_secret", "shopify_redirect_uri",
         "woocommerce_callback_uri", "woocommerce_webhook_uri",
         "google_calendar_client_id", "google_calendar_client_secret", "google_calendar_redirect_uri",
+        "microsoft_calendar_client_id", "microsoft_calendar_client_secret", "microsoft_calendar_redirect_uri",
         mode="before",
     )
     @classmethod
@@ -486,6 +571,8 @@ class Settings(BaseSettings):
                 missing.append("CORS_ORIGINS")
             if not self.allowed_hosts or "*" in self.allowed_hosts:
                 missing.append("ALLOWED_HOSTS")
+            if self._connectors_or_calendar_enabled() and not self.connector_encryption_keys:
+                missing.append("CONNECTOR_ENCRYPTION_KEYS")
             if missing:
                 raise ValueError(
                     "Configuration production manquante ou non sécurisée : "
@@ -544,6 +631,12 @@ class Settings(BaseSettings):
             and (self.stripe_price_base or self.stripe_price_demo)
             and self.stripe_price_professional
         )
+
+    def _connectors_or_calendar_enabled(self) -> bool:
+        shopify = bool(self.shopify_client_id and self.shopify_client_secret)
+        woocommerce = bool(self.woocommerce_callback_uri or self.woocommerce_webhook_uri)
+        calendar = bool(self.google_calendar_client_id and self.google_calendar_client_secret)
+        return shopify or woocommerce or calendar
 
     @property
     def shopify_connector_configured(self) -> bool:

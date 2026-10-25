@@ -19,7 +19,10 @@ from backend.app.models import (
     Dataset,
     DatasetStatus,
     DatasetRelationship,
+    DatasetVersion,
+    DatasetVersionStatus,
     Mapping,
+    NormalizedCommerceRecord,
     User,
 )
 from backend.app.routers.retail import (
@@ -555,7 +558,10 @@ def test_inventory_anomaly_detection_requires_sufficient_complete_source_data():
         population_complete=True,
         detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
     )
-    assert (anomalies, state, sample_size) == ([], "insufficient_data", 29)
+    assert state == "detected"
+    assert sample_size == 29
+    assert {item["type"] for item in anomalies} == {"low_stock"}
+    assert {item["sku"] for item in anomalies} == {"1", "2", "3", "4", "5"}
 
 
 def test_inventory_anomaly_detection_returns_quantitative_provenance():
@@ -571,7 +577,8 @@ def test_inventory_anomaly_detection_returns_quantitative_provenance():
         detected_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
     )
     assert state == "detected" and sample_size == 31
-    assert anomalies == [{
+    assert {item["sku"] for item in anomalies if item["type"] == "low_stock"} == {"1", "2", "3", "4", "5"}
+    assert [item for item in anomalies if item["type"] == "inventory_outlier"] == [{
         "id": "inventory-iqr:outlier",
         "type": "inventory_outlier",
         "product": "Outlier",
@@ -731,3 +738,149 @@ def test_ai_dataset_access_never_falls_back_when_shopify_is_active(source_enviro
             tenant,
             frozenset({"total_amount"}),
         )
+
+
+def _missing_artifact(session, dataset, tmp_path):
+    session.add(
+        DatasetVersion(
+            dataset_id=dataset.id,
+            version_number=1,
+            name=dataset.name,
+            status=DatasetVersionStatus.READY,
+            is_current=True,
+            artifact_path=str(tmp_path / "missing-retail.csv"),
+            row_count=1,
+        )
+    )
+
+
+def _woo_normalized_records(session, company, connection):
+    session.add_all(
+        [
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider=connection.provider,
+                entity_type="products",
+                source_record_id="woo-42",
+                normalized_data={
+                    "product_id": "woo-42",
+                    "product_name": "Cafe Grain Woo",
+                    "sku": "WOO-CAFE",
+                    "unit_price": 18.5,
+                    "inventory_level": 7,
+                    "product_category": "Boissons",
+                    "variants": [],
+                },
+            ),
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider=connection.provider,
+                entity_type="customers",
+                source_record_id="woo-cust-1",
+                normalized_data={
+                    "customer_id": "woo-cust-1",
+                    "email": "client@example.test",
+                    "country": "CA",
+                },
+            ),
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider=connection.provider,
+                entity_type="orders",
+                source_record_id="woo-order-1",
+                normalized_data={
+                    "order_id": "woo-order-1",
+                    "order_timestamp": "2026-10-01T12:00:00Z",
+                    "customer_id": "woo-cust-1",
+                    "customer_email": "client@example.test",
+                    "currency": "CAD",
+                    "total_amount": 18.5,
+                    "line_items": [
+                        {
+                            "product_id": "woo-42",
+                            "product_name": "Cafe Grain Woo",
+                            "sku": "WOO-CAFE",
+                            "quantity": 1,
+                            "unit_price": 18.5,
+                            "source_line_item_id": "line-1",
+                        }
+                    ],
+                    "source_order_id": "woo-order-1",
+                },
+            ),
+        ]
+    )
+
+
+class _MissingArtifactIngestion(_PreparedIngestion):
+    def get_prepared_dataset(self, tenant, dataset_id):
+        raise LookupError("artifact missing")
+
+
+def test_woocommerce_missing_csv_uses_normalized_shop_records(source_environment, tmp_path):
+    session, company, _, uploaded, shopify_dataset, connection, prepared = source_environment
+    connection.provider = "woocommerce"
+    connection.external_account_id = "https://wordpress-production-7219.example"
+    connection.display_name = "wordpress-production-7219"
+    connection.status = CommerceConnectionStatus.READY.value
+    _missing_artifact(session, shopify_dataset, tmp_path)
+    _woo_normalized_records(session, company, connection)
+    session.commit()
+
+    tenant = TenantContext(company.id, uuid4())
+    service = RetailSourceService(session)
+    listed = next(source for source in service.list_sources(tenant) if source.source_type == "connector")
+    assert listed.status.upper() == "READY"
+    assert listed.provider == "woocommerce"
+    selected = service.select_source(tenant, source_type="connector", source_id=connection.id)
+    assert selected.status.upper() == "READY"
+
+    analytics = TenantAnalyticsService(session, _MissingArtifactIngestion(prepared))
+    snapshot = analytics.load(tenant)
+    assert snapshot.status != "source_unavailable"
+    products = list_retail_products(tenant, TenantProductsService(analytics))
+    names = {item["product_name"] for item in products["products"]}
+    assert "Cafe Grain Woo" in names
+    assert "SUPER Product" not in names
+    assert "SHOPIFY Product" not in names
+    orders = list_retail_orders(tenant, analytics)
+    assert any(item["order_number"] == "woo-order-1" for item in orders["orders"])
+    customers = list_retail_customers(tenant, TenantCustomersService(analytics, _UnusedPredictions()))
+    assert any(item["id"] == "woo-cust-1" for item in customers["customers"])
+    assert any(item["email"] == "client@example.test" for item in customers["customers"])
+
+
+def test_shopify_reauth_keeps_historical_records_readable(source_environment, tmp_path):
+    session, company, _, _, shopify_dataset, connection, prepared = source_environment
+    connection.status = CommerceConnectionStatus.REAUTH_REQUIRED.value
+    _missing_artifact(session, shopify_dataset, tmp_path)
+    connection.provider = "shopify"
+    _woo_normalized_records(session, company, connection)
+    session.commit()
+
+    tenant = TenantContext(company.id, uuid4())
+    service = RetailSourceService(session)
+    selected = service.select_source(tenant, source_type="connector", source_id=connection.id)
+    assert selected.status.upper() == "READY"
+    context = service.context(tenant)
+    assert context["state"] == "READY"
+    assert context["reauthorization_required"] is True
+    assert context["authorize_path"] == "/api/v1/connectors/shopify/authorize"
+    analytics = TenantAnalyticsService(session, _MissingArtifactIngestion(prepared))
+    products = list_retail_products(tenant, TenantProductsService(analytics))
+    assert "Cafe Grain Woo" in {item["product_name"] for item in products["products"]}
+
+
+def test_ready_connector_without_records_or_artifact_stays_unavailable(source_environment, tmp_path):
+    session, company, _, _, shopify_dataset, connection, _ = source_environment
+    _missing_artifact(session, shopify_dataset, tmp_path)
+    session.commit()
+    tenant = TenantContext(company.id, uuid4())
+    service = RetailSourceService(session)
+    listed = next(source for source in service.list_sources(tenant) if source.source_type == "connector")
+    assert listed.status.upper() == "SOURCE_UNAVAILABLE"
+    with pytest.raises(RetailSourceNotFound):
+        service.select_source(tenant, source_type="connector", source_id=connection.id)

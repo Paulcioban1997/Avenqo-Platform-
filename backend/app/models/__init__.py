@@ -2,6 +2,7 @@ from backend.app.models.account_token import AccountToken
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.models.ai_job import AIJob
 from backend.app.models.ai_chat import AIConversation, AIMessage, AIMessageRole, AIMessageSource
+from backend.app.models.ai_memory import AIEnterpriseMemory, MemoryScope, MemoryType
 from backend.app.models.ai_support_chat import AISupportConversation, AISupportMessage, AISupportMessageSource
 from backend.app.models.ai_tool_execution import AIToolConfirmationChallenge, AIToolExecutionRecord
 from backend.app.models.ai_usage import (
@@ -26,8 +27,9 @@ from backend.app.models.base import (
     TimestampMixin,
     UserRole,
 )
-from backend.app.models.billing import AICreditPurchase, BillingAccount, BillingInvoice, EnterpriseQuote, StripeWebhookEvent
+from backend.app.models.billing import AICreditPackOffer, AICreditPurchase, BillingAccount, BillingInvoice, BillingTestDocument, EnterpriseQuote, StripeWebhookEvent
 from backend.app.models.company import Company
+from backend.app.models.company_locale_profile import CompanyLocaleProfile
 from backend.app.models.user_source_selection import UserSourceSelection
 from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.company_module import CompanyModule
@@ -74,7 +76,15 @@ from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
-from backend.app.models.voice import VoiceCallerCredential, VoiceAuthSession, VoiceBusinessConfig, VoiceCall, VoiceCentralSession, VoicePhoneNumber, VoiceToolAction
+from backend.app.models.voice_provisioning import VoiceNumberTariff, VoiceProvisioningOrder, VoiceProvisioningClaim
+from backend.app.models.voice import (
+    CompanyRoutingNip, VoiceCallerCredential, VoiceAuthSession, VoiceBusinessConfig, VoiceCall,
+    VoiceCentralSession, VoiceModulePermission, VoicePhoneNumber, VoiceToolAction,
+)
+from backend.app.models.workspace import (
+    AutomationRun, AutomationWorkflow, EmployeeInvitation, EmployeeResponsibility,
+    EmployeeTask, LoginEvent, MediaGeneration, TenantDocument,
+)
 
 __all__ = [
     "VoiceCallerCredential",
@@ -85,10 +95,14 @@ __all__ = [
     "AccountTokenPurpose",
     "AIJob",
     "AIConversation",
+    "AIEnterpriseMemory",
+    "MemoryScope",
+    "MemoryType",
     "AIMessage",
     "AIMessageRole",
     "AIMessageSource",
     "AIToolExecutionRecord",
+    "AICreditPackOffer",
     "AICreditPurchase",
     "AISupportConversation",
     "AISupportMessage",
@@ -99,6 +113,7 @@ __all__ = [
     "BillingAccount",
     "BillingInvoice",
     "Company",
+    "CompanyLocaleProfile",
     "CompanyModule",
     "CompanyModuleStatus",
     "CompanyOnboarding",
@@ -154,8 +169,18 @@ __all__ = [
     "TrainingJob",
     "User",
     "UserRole",
+    "LoginEvent",
+    "EmployeeInvitation",
+    "EmployeeResponsibility",
+    "EmployeeTask",
+    "TenantDocument",
+    "MediaGeneration",
+    "AutomationWorkflow",
+    "AutomationRun",
+    "CompanyRoutingNip",
     "VoiceBusinessConfig",
     "VoiceCall",
+    "VoiceModulePermission",
     "VoicePhoneNumber",
     "VoiceToolAction",
 ]

@@ -1,22 +1,21 @@
 """AVENQO — Assistant Framework foundation tests.
 
-Covers the minimal `AssistantDefinition`/`AssistantRegistry` abstraction:
-Retail resolves AVAILABLE, future assistants resolve COMING_SOON and can
-never execute, and Retail's declared tool allow-list matches exactly the
-tools actually registered in the existing (unduplicated) business Tool
-Registry factory.
+Covers the implemented `AssistantDefinition`/`AssistantRegistry` contract,
+including cross-module agents introduced in Phase 8.1. Declared tool
+allow-lists must match the existing business Tool Registry factory.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.assistants.contracts import AssistantStatus
-from backend.app.assistants.registry import build_default_assistant_registry
+from backend.app.assistants.registry import agent_entitlements, build_default_assistant_registry
 from backend.app.ai.tools.business.registry_factory import build_business_tool_registry
 from backend.app.models import Base
 
@@ -41,25 +40,28 @@ def test_retail_assistant_resolves_as_available() -> None:
     assert retail.module_code == "retail"
 
 
-def test_registry_contains_only_implemented_agents_and_future_placeholders() -> None:
+def test_registry_contains_implemented_agents_and_rejects_unknown_slugs() -> None:
     registry = build_default_assistant_registry()
 
-    for agent_id in ("retail", "crm", "accounting", "cross_agent"):
+    for agent_id in ("retail", "crm", "accounting", "cross_agent", "marketing", "ocr", "legal", "workflow", "memory"):
         definition = registry.get(agent_id)
         assert definition is not None
         assert definition.status is AssistantStatus.AVAILABLE
         assert definition.status.is_executable is True
-    assert registry.get("marketing") is None
     assert registry.get("appointments") is None
-    assert registry.get("workflow") is None
-    assert registry.get("crm").allowed_tool_names == frozenset()
-    assert registry.get("accounting").allowed_tool_names == frozenset()
+    assert registry.get("unknown_agent") is None
+    crm = registry.get("crm")
+    accounting = registry.get("accounting")
+    assert crm is not None
+    assert accounting is not None
+    assert crm.allowed_tool_names == frozenset()
+    assert accounting.allowed_tool_names == frozenset()
 
 
-def test_unavailable_assistant_cannot_execute() -> None:
+def test_unregistered_assistant_cannot_execute() -> None:
     registry = build_default_assistant_registry()
 
-    for slug in ("marketing", "ocr", "media", "legal", "workflow", "ai_agents"):
+    for slug in ("media", "ai_agents", "not_a_real_agent"):
         assert registry.get(slug) is None
 
 
@@ -74,12 +76,15 @@ def test_list_available_contains_only_implemented_agents() -> None:
 
     available_slugs = {item.slug for item in registry.list_available()}
 
-    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities"}
+    expected = {"retail", "crm", "accounting", "cross_agent", "platform_support", "voice", "tenant_capabilities", "marketing", "ocr", "legal", "workflow", "memory"}
     assert available_slugs == expected
     voice = registry.get("voice")
+    assert voice is not None
     assert voice.module_code == "voice"
     assert voice.entrypoints == frozenset({"voice"})
-    assert registry.get("tenant_capabilities").supported_operations == frozenset({"read"})
+    tenant_cap = registry.get("tenant_capabilities")
+    assert tenant_cap is not None
+    assert tenant_cap.supported_operations == frozenset({"read"})
 
 
 def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_session) -> None:
@@ -92,17 +97,28 @@ def test_retail_allowed_tool_names_matches_actual_business_tool_registry(db_sess
     class _FakePredictionService:
         pass
 
-    business_registry = build_business_tool_registry(db_session, _FakeIngestion(), _FakePredictionService())
+    business_registry = build_business_tool_registry(
+        db_session,
+        cast(Any, _FakeIngestion()),
+        cast(Any, _FakePredictionService()),
+    )
     actual_tool_names = {tool.name for tool in business_registry.list_tools()}
     assistants = build_default_assistant_registry(business_registry)
 
-    assert assistants.get("retail").allowed_tool_names == frozenset(
+    retail = assistants.get("retail")
+    crm = assistants.get("crm")
+    accounting = assistants.get("accounting")
+    assert retail is not None
+    assert crm is not None
+    assert accounting is not None
+
+    assert retail.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "retail" in tool.agent_ids
     )
-    assert assistants.get("crm").allowed_tool_names == frozenset(
+    assert crm.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "crm" in tool.agent_ids
     )
-    assert assistants.get("accounting").allowed_tool_names == frozenset(
+    assert accounting.allowed_tool_names == frozenset(
         tool.name for tool in business_registry.list_tools() if "accounting" in tool.agent_ids
     )
     assert all(tool.agent_ids for tool in business_registry.list_tools())
@@ -120,8 +136,12 @@ def test_cross_agent_definition_is_not_a_union_of_domain_tool_allowlists() -> No
         def list_tools(self):
             return (_Tool(),)
 
-    cross_agent = build_default_assistant_registry(_ToolRegistry()).get("cross_agent")
+    cross_agent = build_default_assistant_registry(cast(Any, _ToolRegistry())).get("cross_agent")
 
     assert cross_agent is not None
     assert cross_agent.allowed_tool_names == frozenset({"get_cross_agent_business_health"})
-    assert cross_agent.required_entitlements == frozenset({"retail", "crm", "accounting"})
+    assert cross_agent.required_entitlements == frozenset()
+    assert cross_agent.module_code is None
+    assert agent_entitlements(cross_agent) == frozenset()
+    assert cross_agent.confirmation_policy == "explicit_user_confirmation"
+    assert cross_agent.allowed_tool_names != frozenset({"get_cross_agent_business_health", "get_retail_sales"})

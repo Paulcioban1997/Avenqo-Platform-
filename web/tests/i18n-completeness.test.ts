@@ -8,6 +8,15 @@ import { APP_LOCALE_WORDS } from "../src/lib/i18n/app-locale-overrides";
 import { APPLICATION_CATALOGS } from "../src/lib/i18n/generated-app-catalogs";
 import { CANONICAL_LOCALES } from "../src/lib/i18n/canonical-locales.generated";
 import { VOICE_AUTH_MESSAGES } from "../src/lib/i18n/voice-auth-messages.generated";
+import { MARKETING_SURFACE_COPY } from "../src/lib/i18n/marketing-surface-copy";
+import {
+  VOICE_PERMISSIONS_COPY,
+  VOICE_PERMISSION_ACTION_CODES,
+  VOICE_PERMISSION_MODULE_CODES,
+} from "../src/lib/i18n/voice-permissions-copy";
+import { MODULE_PREVIEW_COPY } from "../src/lib/i18n/module-preview-copy";
+import { COPILOT_CHIPS_COPY } from "../src/lib/i18n/copilot-chips-copy";
+import { reconcileLoginLocale } from "../src/lib/i18n/locale-persistence";
 
 const requiredAppPaths = [
   "navigation.dashboard",
@@ -104,7 +113,7 @@ describe("Avenqo canonical localization", () => {
 
   it("keeps generated Web application catalogs synchronized with all canonical JSON sources", () => {
     const catalogRoot = resolve(process.cwd(), "../frontend/assets/i18n");
-    const generatedSections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4e"];
+    const generatedSections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4d", "phase4e"];
     expect(Object.keys(APPLICATION_CATALOGS)).toHaveLength(44);
     for (const locale of LOCALES) {
       const source = JSON.parse(readFileSync(resolve(catalogRoot, `${locale.code}.json`), "utf8"));
@@ -154,5 +163,54 @@ describe("Avenqo canonical localization", () => {
     expect(integrations).toContain('/api/v1/crm/calendar/connection');
     expect(dashboard).toContain("data.trend?.points");
     expect(dashboard).not.toContain("/api/v1/sales/summary");
+  });
+
+  it("keeps voicePermissions and marketing surface strings for all 44 locales", () => {
+    const voiceRequired = ["title", "description", "locked", "moduleOff"] as const;
+    const marketingRequired = [
+      "kpiAudience", "kpiCampaigns", "kpiConversion", "kpiRoi",
+      "draftTitle", "draftSubject", "draftChannel", "draftSegment", "draftContent",
+      "activate", "activationHint",
+    ] as const;
+    expect(Object.keys(VOICE_PERMISSIONS_COPY)).toHaveLength(44);
+    expect(Object.keys(MARKETING_SURFACE_COPY)).toHaveLength(44);
+    expect(Object.keys(MODULE_PREVIEW_COPY)).toHaveLength(44);
+    expect(Object.keys(COPILOT_CHIPS_COPY)).toHaveLength(44);
+    for (const locale of LOCALES) {
+      for (const key of voiceRequired) {
+        expect(VOICE_PERMISSIONS_COPY[locale.code][key].trim(), `${locale.code}:voice.${key}`).not.toBe("");
+      }
+      for (const key of marketingRequired) {
+        expect(MARKETING_SURFACE_COPY[locale.code][key].trim(), `${locale.code}:marketing.${key}`).not.toBe("");
+      }
+    }
+  });
+
+  it("keeps Voice permission action_code and module_code enums unchanged", () => {
+    const permissionsUi = readFileSync(
+      resolve(process.cwd(), "src/components/settings/voice-module-permissions.tsx"),
+      "utf8",
+    );
+    expect(VOICE_PERMISSION_ACTION_CODES).toEqual([
+      "read_availability", "list_slots", "create_appointment", "update_appointment",
+      "cancel_appointment", "read_client_self", "read_crm_metrics", "read_sales_summary",
+      "read_products", "read_inventory", "read_unpaid_invoices", "read_cashflow",
+      "read_documents", "read", "read_business_health",
+    ]);
+    expect(VOICE_PERMISSION_MODULE_CODES).toEqual([
+      "crm", "retail", "accounting", "ocr", "marketing", "appointments",
+      "hr", "media", "legal", "workflow", "ai_agents", "cross_agent",
+    ]);
+    expect(permissionsUi).toContain("value={action.action_code}");
+    expect(permissionsUi).toContain("module.module_code");
+    expect(permissionsUi).toContain("action.action_code");
+    expect(permissionsUi).not.toMatch(/value=\{copy\./);
+  });
+
+  it("reconciles login locale with company preferred_language unless the client changed it this session", () => {
+    expect(reconcileLoginLocale("ro", "fr", false)).toEqual({ locale: "ro", persistCompany: false });
+    expect(reconcileLoginLocale("en", "ja", true)).toEqual({ locale: "ja", persistCompany: true });
+    expect(reconcileLoginLocale(null, "fr", false)).toEqual({ locale: "fr", persistCompany: false });
+    expect(reconcileLoginLocale("pt-BR", "fr", false)).toEqual({ locale: "pt", persistCompany: false });
   });
 });

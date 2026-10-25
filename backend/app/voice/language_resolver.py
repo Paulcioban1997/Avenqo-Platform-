@@ -205,6 +205,20 @@ def to_bcp47(code: str | None) -> str:
         return "es-ES"
     if case in {"ro", "ro-ro"}:
         return "ro-RO"
+    if case in {"de", "de-de"}:
+        return "de-DE"
+    if case in {"it", "it-it"}:
+        return "it-IT"
+    if case in {"pt", "pt-pt", "pt-br"}:
+        return "pt-PT" if case != "pt-br" else "pt-BR"
+    if case in {"zh", "zh-cn"}:
+        return "zh-CN"
+    if case in {"ja", "ja-jp"}:
+        return "ja-JP"
+    if case in {"ru", "ru-ru"}:
+        return "ru-RU"
+    if case in {"ar", "ar-sa"}:
+        return "ar-SA"
     if "-" in cleaned:
         parts = cleaned.split("-", 1)
         return f"{parts[0].lower()}-{parts[1].upper()}"
@@ -235,15 +249,16 @@ class RegionLanguageResolver:
         c_code = (country_code or "").strip().upper()
         country_data = REGION_LANGUAGE_DATA.get(c_code)
         if country_data is None:
-            # Fallback vers locale catalogue
+            # Fallback vers locale catalogue sans imposer de combinaison globale
             primary = to_bcp47(f"en-{c_code}" if len(c_code) == 2 else "en-US")
+            secondaries = ["en-US"] if primary != "en-US" else ["fr-FR"]
             return RegionLanguageRecommendation(
                 country_code=c_code,
                 region=region,
                 locality=locality,
                 primary_locale=primary,
-                secondary_locales=["en-US"] if primary != "en-US" else ["fr-FR"],
-                allowed_locales=[primary, "en-US", "fr-FR", "es-ES", "ro-RO"],
+                secondary_locales=secondaries,
+                allowed_locales=[primary] + [s for s in secondaries if s != primary],
                 source="fallback",
             )
 
@@ -268,10 +283,8 @@ class RegionLanguageResolver:
         canonical_primary = to_bcp47(primary)
         canonical_secondary = [to_bcp47(s) for s in secondary if to_bcp47(s) != canonical_primary]
 
+        # Respect strict : seules la langue principale et les langues secondaires de la région/tenant
         all_allowed = [canonical_primary] + canonical_secondary
-        for extra in ("fr-CA", "en-CA", "en-US", "es-ES", "ro-RO"):
-            if extra not in all_allowed:
-                all_allowed.append(extra)
 
         return RegionLanguageRecommendation(
             country_code=c_code,
@@ -304,13 +317,16 @@ class CallLanguageSession:
     last_confirmed_locale: str = ""
     consecutive_evidence_count: int = 0
     pending_candidate_locale: str | None = None
+    fallback_applied: bool = False
+    fallback_reason: str | None = None
+    unsupported_language_requested: str | None = None
 
     def __post_init__(self) -> None:
         self.primary_locale = to_bcp47(self.primary_locale)
         self.active_locale = to_bcp47(self.active_locale or self.primary_locale)
         self.last_confirmed_locale = self.active_locale
         if not self.allowed_locales:
-            self.allowed_locales = (self.primary_locale, "en-US", "fr-CA", "es-ES", "ro-RO")
+            self.allowed_locales = (self.primary_locale,)
         else:
             self.allowed_locales = tuple(to_bcp47(loc) for loc in self.allowed_locales)
 
@@ -330,9 +346,18 @@ class CallLanguageSession:
                 target_lang = target_locale.split("-")[0]
                 matching_allowed = next(
                     (loc for loc in self.allowed_locales if loc.split("-")[0] == target_lang),
-                    target_locale,
+                    None,
                 )
-                return to_bcp47(matching_allowed)
+                if matching_allowed:
+                    return to_bcp47(matching_allowed)
+                # Demande explicite pour une langue non activée par l'entreprise
+                self.fallback_applied = True
+                self.unsupported_language_requested = target_locale
+                self.fallback_reason = (
+                    f"Requested language '{target_locale}' is not enabled for this business. "
+                    f"Transparent fallback applied: remaining on '{self.active_locale}'."
+                )
+                return None
         return None
 
     def process_utterance(self, transcript: str) -> str:
@@ -352,6 +377,9 @@ class CallLanguageSession:
             self.evidence = f"explicit_switch_request: {transcript}"
             self.consecutive_evidence_count = 0
             self.pending_candidate_locale = None
+            self.fallback_applied = False
+            self.fallback_reason = None
+            self.unsupported_language_requested = None
             return self.active_locale
 
         norm = self._normalize(transcript)
@@ -386,6 +414,17 @@ class CallLanguageSession:
 
         # 4. Énoncé dans une autre langue : requiert 3 énoncés consécutifs à haute confiance
         # pour un changement implicite, afin d'éviter les bascules dues à un accent ou à un emprunt.
+        if not any(loc.split("-")[0] == detected_lang for loc in self.allowed_locales):
+            self.consecutive_evidence_count = 0
+            self.pending_candidate_locale = None
+            self.fallback_applied = True
+            self.unsupported_language_requested = detected_bcp47
+            self.fallback_reason = (
+                f"Spoken language '{detected_bcp47}' is not enabled for this business. "
+                f"Transparent fallback applied: remaining on '{self.active_locale}'."
+            )
+            return self.active_locale
+
         if detection.confidence and detection.confidence >= 0.90 and len(words) >= 4:
             if self.pending_candidate_locale == detected_bcp47:
                 self.consecutive_evidence_count += 1
@@ -402,6 +441,9 @@ class CallLanguageSession:
                 self.evidence = f"consecutive_implicit_detection_{self.consecutive_evidence_count}_turns"
                 self.consecutive_evidence_count = 0
                 self.pending_candidate_locale = None
+                self.fallback_applied = False
+                self.fallback_reason = None
+                self.unsupported_language_requested = None
                 return self.active_locale
 
         # Maintien de la langue active par défaut (Language Lock)
@@ -419,4 +461,7 @@ class CallLanguageSession:
             "confidence": self.confidence,
             "evidence": self.evidence,
             "last_confirmed_locale": self.last_confirmed_locale,
+            "fallback_applied": self.fallback_applied,
+            "fallback_reason": self.fallback_reason,
+            "unsupported_language_requested": self.unsupported_language_requested,
         }

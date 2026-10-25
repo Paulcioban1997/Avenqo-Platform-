@@ -19,6 +19,7 @@ import {
   BarChart3,
   Bot,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -39,6 +40,7 @@ import { CRMReportsView } from "./crm-reports-view";
 import { CRMCopilotPanel } from "./crm-copilot-panel";
 import { AppointmentDetailsDrawer, type AppointmentItem } from "./appointment-details-drawer";
 import { NewAppointmentModal } from "./new-appointment-modal";
+import { CRMSetupWizard } from "./crm-setup-wizard";
 
 export type CRMSubTab =
   | "overview"
@@ -78,6 +80,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentItem | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isHoursConfigured, setIsHoursConfigured] = useState<boolean>(true);
   const [appointmentToEdit, setAppointmentToEdit] = useState<AppointmentItem | null>(null);
 
   // Load CRM data from backend
@@ -90,13 +94,14 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
     setCompanyName("");
     try {
       const headers = getAuthHeaders();
-      const [kpiRes, appRes, srvRes, empRes, sumRes, googleRes] = await Promise.all([
+      const [kpiRes, appRes, srvRes, empRes, sumRes, googleRes, hoursRes] = await Promise.all([
         apiFetch("/api/v1/crm/kpis", { headers }),
         apiFetch("/api/v1/crm/appointments?limit=250", { headers }),
         apiFetch("/api/v1/crm/services", { headers }),
         apiFetch("/api/v1/crm/employees", { headers }),
         apiFetch("/api/v1/crm/summary", { headers }),
-        apiFetch("/api/v1/crm/calendar/google/events", { headers }),
+        apiFetch("/api/v1/crm/calendar/google/events", { headers }).catch(() => null),
+        apiFetch("/api/v1/crm/settings/business-hours", { headers }),
       ]);
       if (revision !== loadRevision.current) return;
 
@@ -107,6 +112,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           active_clients: finiteMetric(kData?.active_clients),
           appointments_this_month: finiteMetric(kData?.appointments_this_month),
           attendance_rate_percent: finiteMetric(kData?.attendance_rate_percent),
+          attendance_tracked_count: finiteMetric(kData?.attendance_tracked_count),
           total_revenue_generated: finiteMetric(kData?.total_revenue_generated),
           currency: typeof kData?.currency === "string" ? kData.currency : undefined,
         });
@@ -156,6 +162,13 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         if (sumData.company_name) {
           setCompanyName(sumData.company_name);
         }
+      }
+      if (hoursRes && hoursRes.ok) {
+        const hData = await hoursRes.json();
+        if (revision !== loadRevision.current) return;
+        const hoursObj = hData?.hours;
+        const hasAnyOpen = hoursObj && typeof hoursObj === "object" && Object.values(hoursObj).some((val) => Array.isArray(val) && val.length > 0);
+        setIsHoursConfigured(Boolean(hasAnyOpen));
       }
     } catch (error) {
       if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
@@ -309,6 +322,15 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
+              onClick={() => setIsWizardOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition text-xs font-semibold"
+              title="Configuration des horaires et services"
+            >
+              <Clock className="w-4 h-4 text-[#0076FF]" />
+              <span className="hidden sm:inline">Horaires & Services</span>
+            </button>
+
+            <button
               onClick={() => loadCRMData()}
               className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
               title={t.crm.actions.syncNow}
@@ -341,6 +363,30 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
             className={`rounded-xl border px-4 py-3 text-sm ${actionNotice.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}
           >
             {actionNotice.text}
+          </div>
+        )}
+
+        {/* UNCONFIGURED BUSINESS HOURS BANNER */}
+        {!isHoursConfigured && (
+          <div
+            data-testid="crm-business-hours-unconfigured-banner"
+            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 animate-in fade-in duration-200"
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div>
+                <p className="text-sm font-bold">Horaires d'ouverture non configurés</p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                  Votre entreprise n'a pas encore défini ses plages de disponibilité. L'IA centrale et la prise de rendez-vous automatique sont suspendues tant que les horaires ne sont pas définis.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsWizardOpen(true)}
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition shrink-0 shadow-sm"
+            >
+              Configurer maintenant
+            </button>
           </div>
         )}
 
@@ -459,6 +505,17 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           loadCRMData();
         }}
         initialAppointment={appointmentToEdit}
+        t={t}
+      />
+
+      {/* CRM SETUP WIZARD (BUSINESS HOURS, SERVICES, TIMEZONE) */}
+      <CRMSetupWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onComplete={() => {
+          setIsWizardOpen(false);
+          void loadCRMData();
+        }}
         t={t}
       />
     </div>

@@ -33,6 +33,8 @@ class LLMUsage:
     agent_id: str | None = None
     module_id: str | None = None
     idempotency_key: str | None = None
+    cache_creation_input_tokens: int = 0
+    cache_creation_1h_input_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -43,6 +45,8 @@ class LLMUsage:
         return {
             "input_tokens": self.input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "cache_creation_input_tokens": self.cache_creation_input_tokens,
+            "cache_creation_1h_input_tokens": self.cache_creation_1h_input_tokens,
             "output_tokens": self.output_tokens,
             "text_input_tokens": self.text_input_tokens,
             "cached_text_input_tokens": self.cached_text_input_tokens,

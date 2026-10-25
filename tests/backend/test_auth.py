@@ -1,4 +1,5 @@
-﻿from collections.abc import Generator
+import secrets
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -19,6 +20,9 @@ from modules.registry import BUSINESS_MODULE_REGISTRY
 from scripts.seed_demo import DEMO_EMAIL, seed_demo
 from tests.subscription_helpers import activate_subscription_by_id
 
+
+# Ephemeral fixture for local synthetic test accounts; no deployed credential.
+NON_SENSITIVE_TEST_PASSWORD = secrets.token_urlsafe(24) + "Aa1!"
 
 class RecordingNotifier:
     """Capture les jetons sans envoyer de vrai courriel pendant les tests."""
@@ -70,7 +74,7 @@ def registration_payload(
         "first_name": "Alex",
         "last_name": "Martin",
         "email": email,
-        "password": "Avenqo2026!",
+        "password": NON_SENSITIVE_TEST_PASSWORD,
         "country": "Canada",
         "timezone": "America/Toronto",
         "industry": "E-commerce",
@@ -81,7 +85,7 @@ def verify_and_login(
     client: TestClient,
     notifier: RecordingNotifier,
     email: str,
-    password: str = "Avenqo2026!",
+    password: str = NON_SENSITIVE_TEST_PASSWORD,
 ) -> dict[str, object]:
     verification = client.post(
         "/api/v1/auth/email/verify",
@@ -342,6 +346,9 @@ def test_email_verification_https_envoie_le_payload_attendu(
     class SuccessfulResponse:
         status = 200
 
+        def read(self) -> bytes:
+            return b'{"id":"re_fixture_message"}'
+
         def __enter__(self):
             return self
 
@@ -418,6 +425,108 @@ def test_echec_email_https_est_journalise_sans_secrets(
     assert secret not in logs
     assert token not in logs
     assert recipient not in logs
+
+
+def test_https_email_requires_provider_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    class EmptyIdResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        lambda request, timeout: EmptyIdResponse(),
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY="provider-api-key",
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with pytest.raises(RuntimeError):
+        notifier.send_email_verification("customer@example.ca", "safe-token")
+
+
+def test_https_error_body_is_logged_without_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "provider-secret-value"
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    def failing_urlopen(request, timeout: int):
+        payload = json.dumps({"name": "validation_error", "message": "domain is not verified"}).encode()
+        raise HTTPError(request.full_url, 403, "Forbidden", hdrs=None, fp=BytesIO(payload))
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY=secret,
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with caplog.at_level("WARNING"), pytest.raises(HTTPError):
+        notifier.send_email_verification("private@example.ca", "verification-secret-token")
+    logs = caplog.text
+    assert "status=403" in logs
+    assert "error_name=validation_error" in logs
+    assert secret not in logs
+    assert "private@example.ca" not in logs
+    assert "verification-secret-token" not in logs
+
+
+def test_https_cloudflare_1010_is_logged_without_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "provider-secret-value"
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    def failing_urlopen(request, timeout: int):
+        raise HTTPError(
+            request.full_url,
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=BytesIO(b"error code: 1010\n"),
+        )
+
+    monkeypatch.setattr(
+        "backend.app.services.account_notifications.urlopen",
+        failing_urlopen,
+    )
+    notifier = HTTPSAccountNotifier(
+        Settings(
+            EMAIL_PROVIDER="https_api",
+            EMAIL_API_KEY=secret,
+            EMAIL_FROM_EMAIL="info@avenqo.ca",
+            FRONTEND_URL="https://avenqo.ca",
+        )
+    )
+    with caplog.at_level("WARNING"), pytest.raises(HTTPError):
+        notifier.send_email_verification("private@example.ca", "verification-secret-token")
+    logs = caplog.text
+    assert "status=403" in logs
+    assert "error_name=cloudflare_1010" in logs
+    assert secret not in logs
+    assert "private@example.ca" not in logs
+    assert "verification-secret-token" not in logs
 
 
 def test_smtp_respecte_la_desactivation_starttls(
@@ -538,6 +647,31 @@ def test_renvoi_masque_lexistence_du_compte_si_https_echoue(
         assert user.email_verified_at is None
 
 
+def test_preferred_language_patch_updates_company_without_changing_currency(auth_environment) -> None:
+    client, session_factory, notifier = auth_environment
+    payload = registration_payload("locale@acme.ca", "Locale Company") | {"preferred_language": "fr"}
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 201
+    tokens = verify_and_login(client, notifier, "locale@acme.ca")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["company"]["preferred_language"] == "fr"
+
+    updated = client.patch("/api/v1/auth/preferred-language", json={"preferred_language": "ro"}, headers=headers)
+    assert updated.status_code == 200
+    assert updated.json()["preferred_language"] == "ro"
+
+    rejected = client.patch("/api/v1/auth/preferred-language", json={"preferred_language": "xx"}, headers=headers)
+    assert rejected.status_code == 422
+
+    with session_factory() as session:
+        company = session.scalar(select(Company).where(Company.name == "Locale Company"))
+        assert company is not None
+        assert company.preferred_language == "ro"
+        assert company.currency_code == "CAD"
+
+
 def test_inscription_persiste_le_profil_entreprise_et_les_besoins(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     payload = registration_payload("profile@acme.ca", "Profile Company") | {
@@ -608,7 +742,14 @@ def test_native_voice_onboarding_never_requires_phone_setup(auth_environment, pl
         modules = session.scalars(select(Module.code).join(CompanyModule, CompanyModule.module_id == Module.id)
             .where(CompanyModule.company_id == company.id)).all()
         assert set(modules) == set(selected)
-        assert session.scalar(select(VoiceBusinessConfig.id).where(VoiceBusinessConfig.company_id == company.id)) is None
+        config=session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+        if "voice" in selected:
+            assert config is not None and config.company_id==company.id
+            assert config.telnyx_phone_number is None
+        else:
+            assert config is None
+        from backend.app.models.voice_provisioning import VoiceProvisioningOrder
+        assert session.scalar(select(VoiceProvisioningOrder.id).where(VoiceProvisioningOrder.company_id==company.id)) is None
         assert session.scalar(select(VoicePhoneNumber.id).where(VoicePhoneNumber.company_id == company.id)) is None
 
 
@@ -714,6 +855,7 @@ def test_reset_password_revoque_les_sessions_existantes(auth_environment) -> Non
         json={"email": payload["email"]},
     )
     assert forgot.status_code == 200
+    assert forgot.json()["email_delivery_configured"] is True
     reset = client.post(
         "/api/v1/auth/password/reset",
         json={
@@ -855,16 +997,16 @@ def test_gestion_employes_respecte_roles_et_tenants(auth_environment) -> None:
 def test_seed_demo_est_idempotent(auth_environment) -> None:
     client, session_factory, _ = auth_environment
     with session_factory() as session:
-        first = seed_demo(session, "Avenqo2026!")
+        first = seed_demo(session, NON_SENSITIVE_TEST_PASSWORD)
         first_id = first.id
     with session_factory() as session:
-        second = seed_demo(session, "Avenqo2026!")
+        second = seed_demo(session, NON_SENSITIVE_TEST_PASSWORD)
         assert second.id == first_id
         assert session.scalars(select(User).where(User.email == DEMO_EMAIL)).all() == [second]
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": DEMO_EMAIL, "password": "Avenqo2026!"},
+        json={"email": DEMO_EMAIL, "password": NON_SENSITIVE_TEST_PASSWORD},
     )
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "owner"

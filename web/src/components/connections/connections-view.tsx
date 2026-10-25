@@ -701,7 +701,8 @@ export function ConnectionsView() {
                   ) : (
                     <button
                       onClick={async () => {
-                        const shop = prompt(connector.shopDomainTitle);
+                        const knownShop = (isError && conn?.store_url) ? conn.store_url : "";
+                        const shop = knownShop || prompt(connector.shopDomainTitle);
                         if (!shop) return;
                         setActionLoading(true);
                         try {

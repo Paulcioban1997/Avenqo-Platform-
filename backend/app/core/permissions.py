@@ -12,7 +12,8 @@ ROLE_PERMISSIONS: dict[UserRole, tuple[str, ...]] = {
 }
 
 
-def permissions_for(role: UserRole) -> tuple[str, ...]:
+def permissions_for(role: UserRole | str) -> tuple[str, ...]:
     """Retourne les permissions stables d'un rôle."""
 
-    return ROLE_PERMISSIONS[role]
+    resolved = role if isinstance(role, UserRole) else UserRole(str(role))
+    return ROLE_PERMISSIONS[resolved]
