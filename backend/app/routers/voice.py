@@ -10,6 +10,7 @@ import hmac
 import logging
 import secrets
 import time
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -2275,9 +2276,11 @@ async def telnyx_webhook(
                 if call.verification_attempts >= max_att:
                     lock_msg = "Nombre maximal de tentatives de NIP dépassé. Au revoir." if (config.preferred_language or "fr").startswith("fr") else "Maximum PIN attempts exceeded. Goodbye."
                     command_id = str(UUID(hashlib.sha256(f"lock-hangup:{call.id}".encode()).hexdigest()[:32]))
-                    with suppress(Exception):
+                    try:
                         await service.telnyx.speak(active_control_id, text_prompt=lock_msg, command_id=command_id)
                         await service.telnyx.hangup(active_control_id)
+                    except Exception:
+                        pass
                     call.status = "ended"
                     call.ended_at = datetime.now(timezone.utc)
                     receipt.result = {**receipt.result, "authenticated": False, "status": "LOCKED_OUT"}
