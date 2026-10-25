@@ -271,6 +271,35 @@ class TelnyxClient:
             payload["command_id"] = command_id
         await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
 
+    async def gather_using_speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        command_id: str,
+        client_state: str,
+        language: str = "fr-CA",
+        minimum_digits: int = 1,
+        maximum_digits: int = 1,
+        valid_digits: str = "12",
+        timeout_millis: int = 10000,
+    ) -> None:
+        lang = "en-US" if language.startswith("en") else "fr-CA"
+        payload: dict[str, object] = {
+            "payload": text_prompt,
+            "payload_type": "text",
+            "service_level": "basic" if lang == "en-US" else "premium",
+            "voice": "female" if lang == "en-US" else _PREMIUM_VOICES.get(lang, "Polly.Chantal"),
+            "language": lang,
+            "minimum_digits": minimum_digits,
+            "maximum_digits": maximum_digits,
+            "valid_digits": valid_digits,
+            "timeout_millis": timeout_millis,
+            "client_state": client_state,
+            "command_id": command_id,
+        }
+        await self._request("POST", f"/calls/{call_control_id}/actions/gather_using_speak", json=payload)
+
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
             "command_id": command_id, "client_state": client_state,

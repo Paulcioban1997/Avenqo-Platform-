@@ -1350,7 +1350,7 @@ def test_local_media_inbound_answers_then_streams_without_retell_or_caller_auth(
     env.settings.telnyx_media_enabled = True; env.settings.telnyx_media_inbound_enabled = True
     env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
     env.settings.openai_api_key = "fake-audio-key"; env.settings.voice_realtime_supported_locales = ["fr"]
-    env.config.enabled = False; env.config.retell_agent_id = None; env.config.retell_sip_uri = None
+    env.config.enabled = True; env.config.retell_agent_id = None; env.config.retell_sip_uri = None
     env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
     env.session.commit()
     initiated = env.event()

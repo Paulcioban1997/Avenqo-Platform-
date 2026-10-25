@@ -66,6 +66,10 @@ from backend.app.schemas.voice import (
     VoicePinSetupRequest,
     VoicePhoneAccessRequest,
     VoiceMemberAccessRequest,
+    VoiceLifecycleStatusResponse,
+    VoiceLifecycleActionRequest,
+    VoiceIvrSettingsRequest,
+    VoiceAuthPinStatusResponse,
     VoiceSetupRequest,
     VoiceOwnedNumberRequest,
     VoiceModulePermissionsUpdateRequest,
@@ -1442,6 +1446,198 @@ def rotate_voice_key(
     return VoiceConfigCreatedResponse(**service.public_config(config), voice_api_key=key)
 
 
+
+# ---------------------------------------------------------------------------
+# Voice Lifecycle & Fail-Closed Gatekeeper Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/lifecycle/status", response_model=VoiceLifecycleStatusResponse, dependencies=[Depends(require_active_subscription)])
+def get_voice_lifecycle_status(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> VoiceLifecycleStatusResponse:
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    _ensure_voice_access(db, identity.user.company_id)
+    service = VoiceLifecycleService(db)
+    status_dict = service.get_status(identity.user.company_id)
+    return VoiceLifecycleStatusResponse(**status_dict)
+
+
+@router.post("/lifecycle/activate", response_model=VoiceLifecycleStatusResponse, dependencies=[Depends(require_active_subscription)])
+def activate_voice_lifecycle(
+    payload: VoiceLifecycleActionRequest | None = None,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+) -> VoiceLifecycleStatusResponse:
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    _ensure_voice_access(db, identity.user.company_id)
+    service = VoiceLifecycleService(db)
+    try:
+        status_dict = service.activate(identity.user.company_id, identity.user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return VoiceLifecycleStatusResponse(**status_dict)
+
+
+@router.post("/lifecycle/suspend", response_model=VoiceLifecycleStatusResponse, dependencies=[Depends(require_active_subscription)])
+def suspend_voice_lifecycle(
+    payload: VoiceLifecycleActionRequest | None = None,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+) -> VoiceLifecycleStatusResponse:
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    _ensure_voice_access(db, identity.user.company_id)
+    service = VoiceLifecycleService(db)
+    reason = payload.reason if payload and payload.reason else "Admin suspended"
+    try:
+        status_dict = service.suspend(identity.user.company_id, identity.user.id, reason=reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return VoiceLifecycleStatusResponse(**status_dict)
+
+
+@router.put("/lifecycle/ivr", response_model=VoiceLifecycleStatusResponse, dependencies=[Depends(require_active_subscription)])
+def update_voice_ivr_settings(
+    payload: VoiceIvrSettingsRequest,
+    identity: CurrentIdentity = Depends(manage_voice),
+    db: Session = Depends(get_db),
+) -> VoiceLifecycleStatusResponse:
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    _ensure_voice_access(db, identity.user.company_id)
+    service = VoiceLifecycleService(db)
+    try:
+        status_dict = service.update_ivr_settings(
+            identity.user.company_id,
+            identity.user.id,
+            ivr_enabled=payload.ivr_enabled,
+            ivr_greeting=payload.ivr_greeting,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return VoiceLifecycleStatusResponse(**status_dict)
+
+
+# ---------------------------------------------------------------------------
+# Employee Personal Voice PIN Management Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/auth/pin", response_model=VoiceAuthPinStatusResponse)
+def get_user_voice_pin_status(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> VoiceAuthPinStatusResponse:
+    credential = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.user.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == identity.user.id,
+        )
+    )
+    if credential is None:
+        return VoiceAuthPinStatusResponse(
+            configured=False,
+            enabled=False,
+            phone_number=identity.user.phone,
+            failed_attempts=0,
+            locked_until=None,
+        )
+    return VoiceAuthPinStatusResponse(
+        configured=True,
+        enabled=credential.enabled,
+        phone_number=credential.phone_number,
+        failed_attempts=credential.failed_attempts,
+        locked_until=credential.locked_until,
+    )
+
+
+@router.post("/auth/pin", response_model=VoiceAuthPinStatusResponse)
+def set_user_voice_pin(
+    payload: VoicePinSetupRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VoiceAuthPinStatusResponse:
+    auth_controller = VoiceCallerAuth(db, settings)
+    tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
+    phone_to_use = payload.phone_number or identity.user.phone
+    try:
+        credential = auth_controller.set_pin(
+            tenant=tenant,
+            principal_type="USER",
+            principal_id=identity.user.id,
+            pin=payload.pin_value,
+            phone_number=phone_to_use,
+        )
+        db.commit()
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return VoiceAuthPinStatusResponse(
+        configured=True,
+        enabled=credential.enabled,
+        phone_number=credential.phone_number,
+        failed_attempts=credential.failed_attempts,
+        locked_until=credential.locked_until,
+    )
+
+
+@router.post("/auth/sessions/revoke")
+def revoke_user_voice_sessions(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    revoked_count = 0
+    for session in db.scalars(
+        select(VoiceAuthSession).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == identity.user.id,
+            VoiceAuthSession.revoked_at.is_(None),
+        )
+    ):
+        session.revoked_at = now
+        revoked_count += 1
+    db.commit()
+    return {"revoked": True, "count": revoked_count}
+
+
+@router.put("/auth/phone-access", response_model=VoiceAuthPinStatusResponse)
+def update_user_phone_access(
+    payload: VoicePhoneAccessRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> VoiceAuthPinStatusResponse:
+    credential = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.user.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == identity.user.id,
+        )
+    )
+    if credential is None:
+        raise HTTPException(status_code=404, detail="No Voice PIN credential found for user")
+    credential.enabled = payload.enabled
+    if not payload.enabled:
+        now = datetime.now(timezone.utc)
+        for session in db.scalars(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.company_id == identity.user.company_id,
+                VoiceAuthSession.principal_id == identity.user.id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        ):
+            session.revoked_at = now
+    db.commit()
+    return VoiceAuthPinStatusResponse(
+        configured=True,
+        enabled=credential.enabled,
+        phone_number=credential.phone_number,
+        failed_attempts=credential.failed_attempts,
+        locked_until=credential.locked_until,
+    )
+
+
 @router.post("/telnyx/webhook", dependencies=[Depends(rate_limit("voice_telnyx_webhook", "rate_limit_webhook_per_minute"))])
 async def telnyx_webhook(
     request: Request,
@@ -1777,6 +1973,26 @@ async def telnyx_webhook(
     if config is None:
         return {"received": True, "routed": False}
     apply_tenant_rls(db, config.company_id)
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    caller_phone = call_payload.get("from") or ""
+    admitted, admit_reason = VoiceLifecycleService(db).is_call_admissible(config.company_id, caller_phone)
+    if not admitted:
+        logger.info("Inbound call rejected by voice lifecycle gate: company_id=%s reason=%s caller=%s event=%s", config.company_id, admit_reason, caller_phone, event_type)
+        if event_type == "call.initiated":
+            try:
+                command_id = str(UUID(hashlib.sha256(f"lifecycle-reject:{call_control_id}".encode()).hexdigest()[:32]))
+                await service.telnyx.reject_call(call_control_id, command_id=command_id)
+            except Exception:
+                pass
+            return {"received": True, "routed": False, "status": "NOT_ACTIVE_BLOCKED", "reason": admit_reason}
+        elif event_type == "call.answered":
+            try:
+                await service.telnyx.hangup(call_control_id)
+            except Exception:
+                pass
+            return {"received": True, "routed": False, "status": "NOT_ACTIVE_BLOCKED", "reason": admit_reason}
+        return {"received": True, "routed": False, "status": "NOT_ACTIVE_IGNORED", "reason": admit_reason}
+
     media_mode = settings.telnyx_media_enabled and settings.telnyx_media_inbound_enabled
     if not config.enabled and not media_mode:
         return {"received": True, "routed": False}
@@ -1977,6 +2193,113 @@ async def telnyx_webhook(
                 db.commit()
                 return {"received": True, "stage": "enter_pin"}
 
+        ivr_stage = (call.source_context or {}).get("ivr_stage")
+        active_control_id = str(call.telnyx_call_control_id or call_control_id)
+
+        if ivr_stage == "menu":
+            if digits_str == "1":
+                # Touche 1: Employés -> demander le NIP personnel
+                pin_prompt = "Pour les employés, veuillez composer votre NIP personnel à 6 chiffres suivi de dièse." if (config.preferred_language or "fr").startswith("fr") else "For employees, please enter your 6-digit personal PIN followed by pound."
+                command_id = str(UUID(hashlib.sha256(f"ivr-pin-prompt:{call.id}".encode()).hexdigest()[:32]))
+                client_state = auth_controller.challenge(call)
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "ivr_stage": "employee_pin",
+                }
+                receipt.result = {**receipt.result, "ivr": "employee_pin_prompted"}
+                db.commit()
+                await service.telnyx.gather_using_speak(
+                    active_control_id,
+                    text_prompt=pin_prompt,
+                    command_id=command_id,
+                    client_state=client_state,
+                    language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                    minimum_digits=6,
+                    maximum_digits=12,
+                    valid_digits="0123456789",
+                    timeout_millis=20000,
+                )
+                return {"received": True, "ivr_stage": "employee_pin_prompted"}
+            elif digits_str == "2":
+                # Touche 2: Clients -> pas de NIP requis, mode public direct
+                call.caller_type = "CLIENT"
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "ivr_stage": "customer_public",
+                    "pin_gather_status": "public_customer",
+                }
+                client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+                base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
+                stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
+                command_id = str(UUID(hashlib.sha256(f"media-cust:{call.id}".encode()).hexdigest()[:32]))
+                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT"}
+                db.commit()
+                return {"received": True, "routed": True, "caller_mode": "CLIENT"}
+            else:
+                # Invalid or timeout on menu -> default to public customer receptionist
+                call.caller_type = "CLIENT"
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "ivr_stage": "customer_public",
+                }
+                client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+                base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
+                stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
+                command_id = str(UUID(hashlib.sha256(f"media-def:{call.id}".encode()).hexdigest()[:32]))
+                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT_FALLBACK"}
+                db.commit()
+                return {"received": True, "routed": True, "caller_mode": "CLIENT_FALLBACK"}
+
+        if ivr_stage == "employee_pin":
+            auth_result = auth_controller.verify_gather(call, digits_str)
+            if auth_result.get("authenticated"):
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "ivr_stage": "staff_authenticated",
+                    "pin_gather_status": "authenticated",
+                }
+                client_state = issue_media_client_state(db, settings, call.id, public_mode=False)
+                base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
+                stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
+                command_id = str(UUID(hashlib.sha256(f"media-staff:{call.id}".encode()).hexdigest()[:32]))
+                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                receipt.result = {**receipt.result, "routed": True, "authenticated": True, "caller_mode": "STAFF"}
+                db.commit()
+                return {"received": True, "authenticated": True, "caller_mode": "STAFF"}
+            else:
+                max_att = getattr(settings, "voice_pin_max_attempts", 5)
+                if call.verification_attempts >= max_att:
+                    lock_msg = "Nombre maximal de tentatives de NIP dépassé. Au revoir." if (config.preferred_language or "fr").startswith("fr") else "Maximum PIN attempts exceeded. Goodbye."
+                    command_id = str(UUID(hashlib.sha256(f"lock-hangup:{call.id}".encode()).hexdigest()[:32]))
+                    with suppress(Exception):
+                        await service.telnyx.speak(active_control_id, text_prompt=lock_msg, command_id=command_id)
+                        await service.telnyx.hangup(active_control_id)
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    receipt.result = {**receipt.result, "authenticated": False, "status": "LOCKED_OUT"}
+                    db.commit()
+                    return {"received": True, "authenticated": False, "status": "LOCKED_OUT"}
+                else:
+                    invalid_msg = "NIP invalide. Veuillez recomposer votre NIP." if (config.preferred_language or "fr").startswith("fr") else "Invalid PIN. Please re-enter your PIN."
+                    command_id = str(UUID(hashlib.sha256(f"retry-pin:{call.id}:{call.verification_attempts}".encode()).hexdigest()[:32]))
+                    client_state = auth_controller.challenge(call)
+                    receipt.result = {**receipt.result, "authenticated": False, "retry": True}
+                    db.commit()
+                    await service.telnyx.gather_using_speak(
+                        active_control_id,
+                        text_prompt=invalid_msg,
+                        command_id=command_id,
+                        client_state=client_state,
+                        language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                        minimum_digits=6,
+                        maximum_digits=12,
+                        valid_digits="0123456789",
+                        timeout_millis=20000,
+                    )
+                    return {"received": True, "authenticated": False, "retry": True}
+
         # Standard PIN authentication (Customer, Employee, or Owner)
         result = auth_controller.verify_gather(call, digits_str)
         if media_mode:
@@ -2080,7 +2403,38 @@ async def telnyx_webhook(
             await service.telnyx.answer_call(active_call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
         if media_mode:
-            client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
+            ivr_enabled = bool((config.call_policy or {}).get("ivr_enabled", False))
+            current_stage = (call.source_context or {}).get("ivr_stage")
+            # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
+            if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:
+                greeting = (config.call_policy or {}).get(
+                    "ivr_greeting",
+                    f"Bienvenue chez {config.business_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
+                )
+                command_id = str(UUID(hashlib.sha256(f"ivr-greeting:{call.id}".encode()).hexdigest()[:32]))
+                auth_controller = VoiceCallerAuth(db, settings)
+                client_state = auth_controller.challenge(call)
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "ivr_stage": "menu",
+                }
+                receipt.result = {**receipt.result, "ivr": "menu_prompted"}
+                db.commit()
+                await service.telnyx.gather_using_speak(
+                    active_call_control_id,
+                    text_prompt=greeting,
+                    command_id=command_id,
+                    client_state=client_state,
+                    language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                    minimum_digits=1,
+                    maximum_digits=1,
+                    valid_digits="12",
+                    timeout_millis=10000,
+                )
+                return {"received": True, "routed": False, "ivr": "menu"}
+
+            is_staff = current_stage == "staff_authenticated"
+            client_state = issue_media_client_state(db, settings, call.id, public_mode=not is_staff)
             base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
             if base_url.endswith("/api/v1/voice/telnyx/media"):
                 stream_url = f"{base_url}/{call.id}"
@@ -2089,7 +2443,7 @@ async def telnyx_webhook(
             command_id = str(UUID(hashlib.sha256(f"media:{call.id}".encode()).hexdigest()[:32]))
             await service.telnyx.start_media_stream(active_call_control_id, stream_url=stream_url,
                 client_state=client_state, command_id=command_id)
-            receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media"}
+            receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "STAFF" if is_staff else "CLIENT"}
             db.commit()
             return {"received": True, "routed": True}
         if not target or not config.telnyx_phone_number:

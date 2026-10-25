@@ -41,6 +41,7 @@ import { VoiceCustomizationSection } from "@/components/voice/voice-customizatio
 import { VoiceBusinessOnboarding } from "@/components/voice/voice-business-onboarding";
 import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
 import { VoiceCallPolicy } from "@/components/voice/voice-call-policy";
+import { VoiceLifecycleCard } from "@/components/voice/voice-lifecycle-card";
 import { VoiceModulePermissionsSection } from "@/components/settings/voice-module-permissions";
 
 interface Capabilities {
@@ -501,6 +502,13 @@ export function VoiceModuleView() {
           </Link>
         </div>
       )}
+
+      {/* P2 LIFECYCLE, ACTIVATION & IVR ROUTING CARD */}
+      <VoiceLifecycleCard
+        tenantId={tenantId}
+        canManage={canManageVoice}
+        businessName={identity?.company?.name || "Entreprise"}
+      />
 
       {/* 6-STEP SIMPLE GUIDED CONFIGURATION */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-xs overflow-hidden">

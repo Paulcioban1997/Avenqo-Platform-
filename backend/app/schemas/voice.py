@@ -310,3 +310,36 @@ class CompanyRoutingNipResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class VoiceLifecycleStatusResponse(BaseModel):
+    status: str
+    can_activate: bool
+    checklist: dict[str, bool]
+    phone_number: str | None = None
+    number_status: str | None = None
+    ivr: dict[str, Any]
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceLifecycleActionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+    confirmed: bool = True
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceIvrSettingsRequest(BaseModel):
+    ivr_enabled: bool = True
+    ivr_greeting: str | None = Field(default=None, max_length=2000)
+    model_config = ConfigDict(extra="forbid")
+
+
+class VoiceAuthPinStatusResponse(BaseModel):
+    configured: bool
+    enabled: bool
+    phone_number: str | None = None
+    failed_attempts: int = 0
+    locked_until: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
