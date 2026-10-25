@@ -1522,7 +1522,7 @@ def update_voice_ivr_settings(
 # ---------------------------------------------------------------------------
 
 @router.get("/auth/pin", response_model=VoiceAuthPinStatusResponse)
-def get_user_voice_pin_status(
+def get_voice_auth_pin(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> VoiceAuthPinStatusResponse:
@@ -1551,7 +1551,7 @@ def get_user_voice_pin_status(
 
 
 @router.post("/auth/pin", response_model=VoiceAuthPinStatusResponse)
-def set_user_voice_pin(
+def set_voice_auth_pin(
     payload: VoicePinSetupRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
