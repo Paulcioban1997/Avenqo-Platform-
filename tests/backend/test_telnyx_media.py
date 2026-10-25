@@ -458,7 +458,7 @@ def configure_local_public_call(env):
     env.settings.telnyx_media_enabled = True; env.settings.telnyx_media_inbound_enabled = True
     env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
     env.settings.openai_api_key = "fake-audio-key"; env.settings.voice_realtime_supported_locales = ["fr"]
-    env.config.enabled = False; env.config.retell_agent_id = None; env.config.retell_sip_uri = None
+    env.config.enabled = True; env.config.retell_agent_id = None; env.config.retell_sip_uri = None
     env.binding.provider_connection_id = env.settings.telnyx_voice_connection_id
     env.session.commit()
 

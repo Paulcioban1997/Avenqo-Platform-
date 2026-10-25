@@ -107,10 +107,14 @@ def media_transport_context(
     ):
         raise PermissionError("Active tenant call required")
     apply_tenant_rls(db, call.company_id, bypass=False)
+    is_dispatcher_call = bool(
+        (call.source_context or {}).get("dispatcher_routing")
+        or (call.source_context or {}).get("routing_nip")
+    )
     from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
     caller_phone = call.caller_phone or ""
     admitted, reason = VoiceLifecycleService(db).is_call_admissible(call.company_id, caller_phone)
-    if not admitted:
+    if not admitted and not is_dispatcher_call:
         raise PermissionError(f"Voice agent lifecycle not admitted: {reason}")
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id, VoiceBusinessConfig.company_id == call.company_id))
     number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.company_id == call.company_id,

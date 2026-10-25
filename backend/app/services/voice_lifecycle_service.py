@@ -115,7 +115,7 @@ class VoiceLifecycleService:
 
         # Derive computed status if not explicitly set
         if not stored_status:
-            if config and config.enabled and can_activate:
+            if config and config.enabled:
                 current_status = VoiceLifecycleStatus.ACTIVE.value
             elif can_activate:
                 current_status = VoiceLifecycleStatus.READY_FOR_TEST.value
@@ -125,11 +125,6 @@ class VoiceLifecycleService:
                 current_status = VoiceLifecycleStatus.DRAFT.value
         else:
             current_status = stored_status
-
-        # Synchronize enabled flag: enabled must be True ONLY when ACTIVE
-        if config and config.enabled != (current_status == VoiceLifecycleStatus.ACTIVE.value):
-            config.enabled = (current_status == VoiceLifecycleStatus.ACTIVE.value)
-            self.db.flush()
 
         return {
             "status": current_status,
