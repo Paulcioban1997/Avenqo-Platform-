@@ -132,7 +132,10 @@ class CentralAIService:
             for tool_name in defn.allowed_tool_names:
                 if tool_name == "get_subscription_options":
                     continue
-                if public_caller and not public_voice_tool_allowed(tool_name):
+                if public_caller and not public_voice_tool_allowed(
+                    tool_name,
+                    has_crm_booking="crm" in active_modules,
+                ):
                     continue
                 if tool_name not in granted_voice_tools:
                     continue
@@ -174,7 +177,7 @@ class CentralAIService:
             voice_allowed = {to_bcp47(code) for code in (
                 [primary, *(profile.secondary_locales or [])] if profile else [primary]
             )}
-            if to_bcp47(user_language) not in voice_allowed:
+            if to_bcp47(user_language) not in voice_allowed and not (locale_explicit or spoken_language_input):
                 user_language = primary
         user_language = resolve_locale(user_language)
         language_source = "explicit" if locale_explicit else "fallback"
@@ -188,9 +191,11 @@ class CentralAIService:
             language_source = language_detection.source
             language_confidence = language_detection.confidence
             language_explicitly_requested = language_detection.source == "explicit_request"
-            if language_detection.locale is not None and (voice_allowed is None or any(
-                code.split("-")[0] == language_detection.locale.split("-")[0] for code in voice_allowed
-            )):
+            if language_detection.locale is not None and (
+                voice_allowed is None
+                or language_explicitly_requested
+                or any(code.split("-")[0] == language_detection.locale.split("-")[0] for code in voice_allowed)
+            ):
                 user_language = language_detection.locale
                 locale_explicit = True
             elif spoken_language_input:
@@ -351,7 +356,7 @@ class CentralAIService:
                 retrieve_tenant_data=False if is_voice or is_public_voice_caller(permissions) else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
-                follow_latest_utterance_language=spoken_language_input and not is_voice_request,
+                follow_latest_utterance_language=spoken_language_input or language_explicitly_requested,
                 language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
             )

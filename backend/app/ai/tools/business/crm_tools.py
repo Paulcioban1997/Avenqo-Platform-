@@ -61,11 +61,13 @@ class CheckAvailabilityArgs(ToolArguments):
     duration_minutes: int = Field(default=60, description="Durée de la prestation en minutes.")
     employee_id: str | None = Field(default=None, description="UUID optionnel du collaborateur/praticien.")
     service_id: str | None = Field(default=None, description="UUID de la prestation avec ses marges configurées.")
+    service_name: str | None = Field(default=None, description="Nom ou intitulé de la prestation souhaitée.")
 
 
 class ListAvailableSlotsArgs(ToolArguments):
     target_date: str = Field(description="Date cible au format YYYY-MM-DD (ex: 2026-09-20).")
     service_id: str | None = Field(default=None, description="UUID optionnel de la prestation.")
+    service_name: str | None = Field(default=None, description="Nom optionnel de la prestation.")
     employee_id: str | None = Field(default=None, description="UUID optionnel du collaborateur/praticien.")
 
 
@@ -335,10 +337,29 @@ class CheckAvailabilityTool(CRMAITool):
         if context.voice_path:
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
             try:
-                offering = CompanyIntelligenceService(self._avail._session).require_service(context.tenant.company_id, service_id=service_id)
+                offering = CompanyIntelligenceService(self._avail._session).require_service(
+                    context.tenant.company_id,
+                    service_id=service_id,
+                    service_name=arguments.service_name,
+                )
                 service_id = UUID(offering["id"])
                 duration_minutes = offering["duration_minutes"]
             except CompanyOfferingUnavailable as exc:
+                profile = CompanyIntelligenceService(self._avail._session).get_profile(context.tenant.company_id)
+                if profile.configured_crm_services:
+                    services_info = [
+                        {"name": s["name"], "duration_minutes": s["duration_minutes"], "price": s.get("price")}
+                        for s in profile.configured_crm_services
+                    ]
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "state": "SERVICE_SELECTION_REQUIRED",
+                            "message": "Plusieurs services sont proposés avec des durées différentes. Demandez au client quel service il souhaite réserver.",
+                            "available_services": services_info,
+                        },
+                        source_refs=("crm_services",),
+                    )
                 return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
         result = await self._avail.check_availability(context.tenant.company_id, start_dt, duration_minutes, emp_id, service_id)
         state = result.get("state")
@@ -408,9 +429,28 @@ class ListAvailableSlotsTool(CRMAITool):
         if context.voice_path:
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
             try:
-                offering = CompanyIntelligenceService(self._avail._session).require_service(context.tenant.company_id, service_id=svc_id)
+                offering = CompanyIntelligenceService(self._avail._session).require_service(
+                    context.tenant.company_id,
+                    service_id=svc_id,
+                    service_name=arguments.service_name,
+                )
                 svc_id = UUID(offering["id"])
             except CompanyOfferingUnavailable as exc:
+                profile = CompanyIntelligenceService(self._avail._session).get_profile(context.tenant.company_id)
+                if profile.configured_crm_services:
+                    services_info = [
+                        {"name": s["name"], "duration_minutes": s["duration_minutes"], "price": s.get("price")}
+                        for s in profile.configured_crm_services
+                    ]
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "state": "SERVICE_SELECTION_REQUIRED",
+                            "message": "Plusieurs services sont proposés avec des durées différentes. Demandez au client quel service il souhaite réserver.",
+                            "available_services": services_info,
+                        },
+                        source_refs=("crm_services",),
+                    )
                 return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
 

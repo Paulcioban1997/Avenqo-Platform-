@@ -151,6 +151,8 @@ class ToolExecutor:
                     "success": success,
                     "tenant_id": str(context.tenant_id),
                     "request_id": context.request_id,
+                    "conversation_id": str(context.conversation_id) if context.conversation_id else None,
+                    "voice_path": context.voice_path,
                 },
             )
 

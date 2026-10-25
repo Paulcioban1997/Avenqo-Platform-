@@ -76,10 +76,17 @@ class VoiceToolGuard:
         if is_voice_native_tool(tool_name):
             return
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
-        if public_caller and not (
-            public_voice_tool_allowed(tool_name) or public_voice_tool_allowed(canonical)
-        ):
-            raise VoiceToolDenied("Caller authentication is required for this tool.")
+        if public_caller:
+            has_crm_booking = True
+            try:
+                has_crm_booking = CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking
+            except Exception:
+                has_crm_booking = False
+            if not (
+                public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking)
+                or public_voice_tool_allowed(canonical, has_crm_booking=has_crm_booking)
+            ):
+                raise VoiceToolDenied("Caller authentication is required for this tool.")
         mapping = action_for_tool(tool_name)
         if mapping is None:
             raise VoiceToolDenied("Voice cannot invent or execute an unmapped tool.")

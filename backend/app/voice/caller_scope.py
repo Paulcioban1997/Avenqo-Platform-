@@ -29,7 +29,9 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
 })
 
 # Union of all possible public tools for backward compatibility
-PUBLIC_VOICE_TOOLS: frozenset[str] = PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS
+PUBLIC_VOICE_TOOLS: frozenset[str] = (
+    PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS
+)
 
 # Permissions granted to an unauthenticated caller. The public marker is what
 # restricts the tool scope; the CRM permissions only allow the public booking.

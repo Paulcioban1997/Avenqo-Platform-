@@ -56,26 +56,40 @@ def _normalize_query(q: str) -> str:
 
 
 def _product_to_dict(record: NormalizedCommerceRecord) -> dict[str, object]:
-    """Extrait les champs canoniques depuis le JSON normalisé d'un produit."""
+    """Extrait les champs canoniques depuis le JSON normalisé d'un produit (avec support des variantes Shopify/WooCommerce)."""
     data: dict[str, Any] = record.normalized_data or {}
+    variants = data.get("variants") or []
+
     price_val = data.get("unit_price")
     if price_val is None:
         price_val = data.get("price") if data.get("price") is not None else data.get("regular_price")
+    if price_val is None and isinstance(variants, list) and variants:
+        price_val = variants[0].get("unit_price") or variants[0].get("price")
 
     inv_val = data.get("inventory_level")
     if inv_val is None:
         inv_val = data.get("stock_quantity")
+    if inv_val is None and isinstance(variants, list) and variants:
+        inv_val = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
+
+    sku_val = data.get("sku")
+    if not sku_val and isinstance(variants, list) and variants:
+        sku_val = variants[0].get("sku")
+
+    in_stock_val = data.get("in_stock")
+    if in_stock_val is None and inv_val is not None:
+        in_stock_val = (_safe_float(inv_val) or 0) > 0
 
     return {
         "product_name": _safe_str(data.get("product_name") or data.get("name")),
         "product_id": _safe_str(data.get("product_id") or data.get("id")),
-        "sku": _safe_str(data.get("sku")),
+        "sku": _safe_str(sku_val),
         "unit_price": _safe_float(price_val),
         "inventory_level": _safe_float(inv_val),
         "stock_quantity": _safe_float(inv_val),
         "product_category": _safe_str(data.get("product_category") or data.get("category")),
-        "in_stock": data.get("in_stock"),
-        "stock_status": _safe_str(data.get("stock_status")),
+        "in_stock": in_stock_val,
+        "stock_status": _safe_str(data.get("stock_status") or ("instock" if in_stock_val else "outofstock")),
         "source_updated_at": (
             record.source_updated_at.isoformat() if record.source_updated_at else None
         ),
@@ -255,6 +269,31 @@ class GetProductDetailTool(RetailAITool):
 
         search_label = arguments.product_name or arguments.product_id or arguments.sku
 
+        approximate_match_name: str | None = None
+        if not records and arguments.product_name:
+            # Recherche approximative sécurisée pour requêtes orales (ex: ASR 'The Hiva Board' -> 'The Hidden Snowboard')
+            from difflib import SequenceMatcher
+            q_norm = _normalize_query(arguments.product_name)
+            q_words = set(q_norm.split())
+            all_records = list(self._session.scalars(base_query.limit(200)).all())
+            scored_candidates = []
+            for r in all_records:
+                data = r.normalized_data or {}
+                pname = str(data.get("product_name") or data.get("name") or "")
+                p_norm = _normalize_query(pname)
+                ratio = SequenceMatcher(None, q_norm, p_norm).ratio()
+                p_words = set(p_norm.split())
+                word_overlap = len(q_words & p_words) / max(len(q_words), 1)
+                score = max(ratio, word_overlap * 0.85)
+                if score >= 0.5:
+                    scored_candidates.append((score, r, pname))
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            if scored_candidates:
+                top_score = scored_candidates[0][0]
+                selected = [c for c in scored_candidates if c[0] >= max(0.5, top_score - 0.05)][:3]
+                records = [c[1] for c in selected]
+                approximate_match_name = ", ".join(c[2] for c in selected)
+
         if not records:
             logger.info(
                 "commerce_product_lookup tenant_id=%s query=%r found=0",
@@ -287,6 +326,9 @@ class GetProductDetailTool(RetailAITool):
             p = _product_to_dict(r)
             cid = r.connection_id
             p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            if approximate_match_name:
+                p["matched_approximate"] = True
+                p["original_query"] = arguments.product_name
             products.append(p)
 
         source_refs = tuple({str(r.id) for r in records})
